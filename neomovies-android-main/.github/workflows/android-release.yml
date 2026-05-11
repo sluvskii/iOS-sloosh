@@ -1,0 +1,280 @@
+name: Android Release
+
+on:
+  release:
+    types:
+      - published
+
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Git tag to build'
+        required: true
+        type: string
+      prerelease:
+        description: 'Build prerelease variant'
+        required: true
+        default: true
+        type: boolean
+      upload_to_release:
+        description: 'Upload APK to the GitHub Release with this tag'
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Fix gradlew permissions
+        run: chmod +x ./gradlew
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Gradle cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties', '**/libs.versions.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
+      - name: Detect version and channel
+        id: meta
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            TAG_NAME="${{ github.event.release.tag_name }}"
+            IS_PRERELEASE="${{ github.event.release.prerelease }}"
+            UPLOAD_TO_RELEASE=true
+          else
+            TAG_NAME="${{ inputs.tag }}"
+            IS_PRERELEASE="${{ inputs.prerelease }}"
+            UPLOAD_TO_RELEASE="${{ inputs.upload_to_release }}"
+          fi
+
+          VERSION="${TAG_NAME#v}"
+
+          if [[ "$IS_PRERELEASE" == "true" ]]; then
+            VARIANT=prerelease
+            TASK=assemblePrerelease
+            TV_VARIANT=tvPrerelease
+            TV_TASK=assembleTvPrerelease
+          else
+            VARIANT=release
+            TASK=assembleRelease
+            TV_VARIANT=tvRelease
+            TV_TASK=assembleTvRelease
+          fi
+
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "is_prerelease=$IS_PRERELEASE" >> $GITHUB_OUTPUT
+          echo "variant=$VARIANT" >> $GITHUB_OUTPUT
+          echo "task=$TASK" >> $GITHUB_OUTPUT
+          echo "tv_variant=$TV_VARIANT" >> $GITHUB_OUTPUT
+          echo "tv_task=$TV_TASK" >> $GITHUB_OUTPUT
+          echo "tag_name=$TAG_NAME" >> $GITHUB_OUTPUT
+          echo "upload_to_release=$UPLOAD_TO_RELEASE" >> $GITHUB_OUTPUT
+
+      - name: Setup prerelease keystore
+        if: ${{ steps.meta.outputs.is_prerelease == 'true' }}
+        env:
+          KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "RELEASE_KEYSTORE_BASE64 secret not set, skipping keystore setup"
+            exit 0
+          fi
+          echo "$KEYSTORE_BASE64" | tr -d '\n\r ' | base64 -d > "$RUNNER_TEMP/release.keystore"
+          
+          # Temporary diagnostic: verify keystore and passwords work
+          echo "=== Keystore diagnostic ==="
+          wc -c < "$RUNNER_TEMP/release.keystore"
+          keytool -list -keystore "$RUNNER_TEMP/release.keystore" -storepass "${{ secrets.RELEASE_KEYSTORE_PASSWORD }}" -noprompt || echo "STOREPASS FAILED"
+          
+          # Test if keypass works by attempting to export the key
+          keytool -exportcert -keystore "$RUNNER_TEMP/release.keystore" \
+            -storepass "${{ secrets.RELEASE_KEYSTORE_PASSWORD }}" \
+            -keypass "${{ secrets.RELEASE_KEY_PASSWORD }}" \
+            -alias "${{ secrets.RELEASE_KEY_ALIAS }}" \
+            -file /tmp/test.crt || echo "KEYPASS FAILED - this is the problem!"
+          
+          echo "RELEASE_KEYSTORE_PATH=$RUNNER_TEMP/release.keystore" >> $GITHUB_ENV
+          echo "RELEASE_KEYSTORE_PASSWORD=${{ secrets.RELEASE_KEYSTORE_PASSWORD }}" >> $GITHUB_ENV
+          echo "RELEASE_KEY_ALIAS=${{ secrets.RELEASE_KEY_ALIAS }}" >> $GITHUB_ENV
+          echo "RELEASE_KEY_PASSWORD=${{ secrets.RELEASE_KEY_PASSWORD }}" >> $GITHUB_ENV
+
+      - name: Build APKs
+        env:
+          CI: 'true'
+          APP_VERSION: ${{ steps.meta.outputs.version }}
+          NEO_ID_API_KEY: ${{ secrets.NEO_ID_API_KEY }}
+          NEO_ID_SITE_ID: ${{ secrets.NEO_ID_SITE_ID }}
+        run: ./gradlew :app:${{ steps.meta.outputs.task }} :app:${{ steps.meta.outputs.tv_task }} --build-cache --no-daemon
+
+      - name: Locate APKs
+        id: apk
+        shell: bash
+        run: |
+          set -e
+          APK_DIR="app/build/outputs/apk/${{ steps.meta.outputs.variant }}"
+          TV_APK_DIR="app/build/outputs/apk/${{ steps.meta.outputs.tv_variant }}"
+          echo "dir=$APK_DIR" >> $GITHUB_OUTPUT
+          echo "tv_dir=$TV_APK_DIR" >> $GITHUB_OUTPUT
+          echo "count=$(ls -1 $APK_DIR/*.apk | wc -l | xargs)" >> $GITHUB_OUTPUT
+          echo "tv_count=$(ls -1 $TV_APK_DIR/*.apk | wc -l | xargs)" >> $GITHUB_OUTPUT
+
+      - name: Rename APKs
+        id: renamed
+        shell: bash
+        run: |
+          set -e
+          IN_DIR="${{ steps.apk.outputs.dir }}"
+          TV_IN_DIR="${{ steps.apk.outputs.tv_dir }}"
+          OUT_DIR="$IN_DIR/renamed"
+          TV_OUT_DIR="$TV_IN_DIR/renamed"
+          mkdir -p "$OUT_DIR"
+          mkdir -p "$TV_OUT_DIR"
+
+          VARIANT="${{ steps.meta.outputs.variant }}"
+          TV_VARIANT="${{ steps.meta.outputs.tv_variant }}"
+          VERSION="${{ steps.meta.outputs.version }}"
+
+          for f in "$IN_DIR"/*.apk; do
+            b="$(basename "$f")"
+            abi="universal"
+            if [[ "$b" == *"arm64-v8a"* ]]; then
+              abi="arm64-v8a"
+            elif [[ "$b" == *"armeabi-v7a"* ]]; then
+              abi="armeabi-v7a"
+            elif [[ "$b" == *"universal"* ]]; then
+              abi="universal"
+            fi
+
+            cp -f "$f" "$OUT_DIR/neomovies-$VARIANT-$VERSION-$abi.apk"
+          done
+
+          for f in "$TV_IN_DIR"/*.apk; do
+            b="$(basename "$f")"
+            abi="universal"
+            if [[ "$b" == *"arm64-v8a"* ]]; then
+              abi="arm64-v8a"
+            elif [[ "$b" == *"armeabi-v7a"* ]]; then
+              abi="armeabi-v7a"
+            elif [[ "$b" == *"universal"* ]]; then
+              abi="universal"
+            fi
+
+            cp -f "$f" "$TV_OUT_DIR/neomovies-tv-$TV_VARIANT-$VERSION-$abi.apk"
+          done
+
+          echo "dir=$OUT_DIR" >> $GITHUB_OUTPUT
+          echo "tv_dir=$TV_OUT_DIR" >> $GITHUB_OUTPUT
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: apks-${{ steps.meta.outputs.variant }}
+          path: ${{ steps.renamed.outputs.dir }}/*.apk
+
+      - name: Upload TV APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: apks-${{ steps.meta.outputs.tv_variant }}
+          path: ${{ steps.renamed.outputs.tv_dir }}/*.apk
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: ${{ steps.meta.outputs.upload_to_release == 'true' }}
+        with:
+          tag_name: ${{ steps.meta.outputs.tag_name }}
+          name: ${{ steps.meta.outputs.tag_name }}
+          prerelease: ${{ steps.meta.outputs.is_prerelease }}
+          files: |
+            ${{ steps.renamed.outputs.dir }}/*.apk
+            ${{ steps.renamed.outputs.tv_dir }}/*.apk
+
+      - name: Create release post
+        if: ${{ steps.meta.outputs.upload_to_release == 'true' && steps.meta.outputs.is_prerelease == 'true' }}
+        run: |
+          VERSION="${{ steps.meta.outputs.version }}"
+          TAG="${{ steps.meta.outputs.tag_name }}"
+          SLUG="release-${VERSION}"
+          DATE=$(date -u +"%Y-%m-%d")
+          
+          # Create EN post
+          mkdir -p site/src/content/posts/en
+          cat > "site/src/content/posts/en/${SLUG}.mdx" << 'EOF'
+          export const metadata = {
+            title: "NeoMovies ${VERSION} Released",
+            description: "Download the latest prerelease version of NeoMovies for Android",
+            date: "${DATE}",
+            lang: "en",
+            slug: "${SLUG}"
+          }
+          
+          # NeoMovies ${VERSION}
+          
+          New prerelease version is now available for download.
+          
+          ## Download
+          
+          - [Mobile APK (universal)](https://github.com/neomovies/neomovies-android/releases/download/${TAG}/neomovies-prerelease-${VERSION}-universal.apk)
+          - [TV APK (universal)](https://github.com/neomovies/neomovies-android/releases/download/${TAG}/neomovies-tv-prerelease-${VERSION}-universal.apk)
+          
+          [View all downloads on GitHub](https://github.com/neomovies/neomovies-android/releases/tag/${TAG})
+          EOF
+          
+          # Create RU post
+          mkdir -p site/src/content/posts/ru
+          cat > "site/src/content/posts/ru/${SLUG}.mdx" << 'EOF'
+          export const metadata = {
+            title: "Вышел NeoMovies ${VERSION}",
+            description: "Скачайте последнюю предварительную версию NeoMovies для Android",
+            date: "${DATE}",
+            lang: "ru",
+            slug: "${SLUG}"
+          }
+          
+          # NeoMovies ${VERSION}
+          
+          Доступна новая предварительная версия для скачивания.
+          
+          ## Скачать
+          
+          - [Мобильный APK (universal)](https://github.com/neomovies/neomovies-android/releases/download/${TAG}/neomovies-prerelease-${VERSION}-universal.apk)
+          - [TV APK (universal)](https://github.com/neomovies/neomovies-android/releases/download/${TAG}/neomovies-tv-prerelease-${VERSION}-universal.apk)
+          
+          [Все файлы на GitHub](https://github.com/neomovies/neomovies-android/releases/tag/${TAG})
+          EOF
+
+      - name: Commit and push release post
+        if: ${{ steps.meta.outputs.upload_to_release == 'true' && steps.meta.outputs.is_prerelease == 'true' }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin main
+          git add site/src/content/posts/
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Add release post for ${{ steps.meta.outputs.tag_name }}"
+            git push origin HEAD:main
+          fi

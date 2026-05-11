@@ -1,0 +1,249 @@
+package com.neo.neomovies.ui.home
+
+import androidx.compose.animation.Crossfade
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.runtime.remember
+import com.neo.neomovies.R
+import com.neo.neomovies.ui.components.MediaPosterCard
+import com.neo.neomovies.ui.navigation.CategoryType
+import com.neo.neomovies.ui.home.collectAsStateWithLifecycleCompat
+import org.koin.androidx.compose.koinViewModel
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Search
+import com.neo.neomovies.data.network.OfflineManager
+import com.neo.neomovies.ui.downloads.DownloadsScreen
+
+@Composable
+fun HomeScreen(
+    onOpenCategory: (CategoryType) -> Unit,
+    onOpenDetails: (String) -> Unit,
+    onOpenSearch: () -> Unit,
+    viewModel: HomeViewModel = koinViewModel(),
+) {
+    val state by viewModel.state.collectAsStateWithLifecycleCompat()
+    val offline by OfflineManager.isOffline().collectAsStateWithLifecycleCompat()
+
+    if (offline) {
+        val context = androidx.compose.ui.platform.LocalContext.current
+        DownloadsScreen(
+            onDeleteEntry = { entry ->
+                val store = com.neo.neomovies.downloads.DownloadsStore(context)
+                store.removeById(entry.id)
+                if (store.isExoDownload(entry.id)) {
+                    androidx.media3.exoplayer.offline.DownloadService.sendRemoveDownload(
+                        context,
+                        com.neo.neomovies.downloads.NeoDownloadService::class.java,
+                        entry.id,
+                        false,
+                    )
+                }
+            },
+            onPlayEntry = { entry ->
+                val filePath = entry.filePath.takeIf { it.isNotBlank() }
+                val url = if (filePath != null && java.io.File(filePath).exists()) {
+                    "file://$filePath"
+                } else {
+                    entry.originalUrl ?: return@DownloadsScreen
+                }
+                val kpId = entry.showId
+                    ?.removePrefix("kp_")
+                    ?.toIntOrNull()
+                val displayTitle = when {
+                    entry.seasonNumber != null && entry.episodeNumber != null ->
+                        "S%02dE%02d".format(entry.seasonNumber, entry.episodeNumber)
+                    else -> entry.title
+                }
+                context.startActivity(
+                    com.neo.player.PlayerActivity.intentExo(
+                        context,
+                        urls = listOf(url),
+                        names = listOf(displayTitle),
+                        startIndex = 0,
+                        title = entry.showTitle ?: entry.title,
+                        startFromBeginning = false,
+                        useCollapsHeaders = false,
+                        kinopoiskId = kpId,
+                    ),
+                )
+            },
+        )
+        return
+    }
+
+    val mode = when {
+        state.isLoading -> HomeMode.Loading
+        state.error != null -> HomeMode.Error
+        else -> HomeMode.Content
+    }
+
+    Crossfade(targetState = mode, label = "home_mode") { m ->
+        when (m) {
+            HomeMode.Loading -> {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator()
+                }
+            }
+
+            HomeMode.Error -> {
+                Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Text(text = state.error ?: stringResource(R.string.common_error))
+                }
+            }
+
+            HomeMode.Content -> {
+                val screenWidthDp = LocalConfiguration.current.screenWidthDp
+                val cardWidth: Dp = remember(screenWidthDp) {
+                    when {
+                        screenWidthDp >= 900 -> 200.dp
+                        screenWidthDp >= 600 -> 170.dp
+                        else -> 130.dp
+                    }
+                }
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(bottom = 24.dp),
+                    verticalArrangement = Arrangement.spacedBy(18.dp),
+                ) {
+                    item {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = stringResource(R.string.home_title),
+                                style = MaterialTheme.typography.headlineSmall,
+                                modifier = Modifier.weight(1f),
+                            )
+                            IconButton(onClick = onOpenSearch) {
+                                Icon(imageVector = Icons.Filled.Search, contentDescription = stringResource(R.string.action_search))
+                            }
+                        }
+                    }
+
+                    item {
+                        HomeSection(
+                            title = stringResource(R.string.home_section_popular),
+                            items = state.popular,
+                            onMore = { onOpenCategory(CategoryType.POPULAR) },
+                            onOpenDetails = onOpenDetails,
+                            cardWidth = cardWidth,
+                        )
+                    }
+
+                    item {
+                        HomeSection(
+                            title = stringResource(R.string.home_section_top_movies),
+                            items = state.topMovies,
+                            onMore = { onOpenCategory(CategoryType.TOP_MOVIES) },
+                            onOpenDetails = onOpenDetails,
+                            cardWidth = cardWidth,
+                        )
+                    }
+
+                    item {
+                        HomeSection(
+                            title = stringResource(R.string.home_section_top_tv),
+                            items = state.topTv,
+                            onMore = { onOpenCategory(CategoryType.TOP_TV) },
+                            onOpenDetails = onOpenDetails,
+                            cardWidth = cardWidth,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+private enum class HomeMode {
+    Loading,
+    Error,
+    Content,
+}
+
+@Composable
+private fun HomeSection(
+    title: String,
+    items: List<com.neo.neomovies.data.network.dto.MediaDto>,
+    onMore: () -> Unit,
+    onOpenDetails: (String) -> Unit,
+    cardWidth: Dp,
+) {
+    val displayItems = remember(items) { items.take(12) }
+
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.weight(1f),
+            )
+            IconButton(onClick = onMore, modifier = Modifier.size(40.dp)) {
+                Icon(
+                    imageVector = Icons.Filled.ChevronRight,
+                    contentDescription = stringResource(R.string.action_more),
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            items(displayItems, key = { item ->
+                when (val v = item.id) {
+                    is Number -> v.toLong()
+                    else -> v?.toString() ?: item.hashCode()
+                }
+            }) { item ->
+                val rawId = when (val v = item.id) {
+                    is Number -> v.toLong().toString()
+                    else -> v?.toString()
+                }
+                val sourceId = rawId?.let { if (it.contains("_")) it else "kp_$it" }
+                MediaPosterCard(
+                    item = item,
+                    modifier = Modifier.width(cardWidth),
+                    onClick = { if (sourceId != null) onOpenDetails(sourceId) },
+                )
+            }
+        }
+    }
+}

@@ -1,0 +1,599 @@
+package com.neo.player
+
+import android.app.Application
+import android.content.Context
+import android.net.Uri
+import android.os.Build
+import android.os.Bundle
+import android.util.Log
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.SavedStateHandle
+import androidx.media3.common.AudioAttributes
+import androidx.media3.common.C
+import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
+import androidx.media3.common.MimeTypes
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
+import androidx.media3.common.TrackGroup
+import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.common.Tracks
+import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.cache.CacheDataSource
+import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.RenderersFactory
+import androidx.media3.exoplayer.analytics.AnalyticsListener
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
+import androidx.media3.extractor.DefaultExtractorsFactory
+import androidx.media3.extractor.ts.DefaultTsPayloadReaderFactory
+import androidx.media3.extractor.ts.TsExtractor
+import com.neo.neomovies.ui.settings.PlayerEngineManager
+import com.neo.neomovies.ui.settings.PlayerEngineMode
+import com.neo.neomovies.ui.settings.SourceManager
+import com.neo.neomovies.ui.settings.SourceMode
+import com.neo.player.mpv.MPVPlayer
+import com.neo.neomovies.downloads.DownloadUtil
+import java.io.File
+import java.net.URLDecoder
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.receiveAsFlow
+import kotlinx.coroutines.flow.update
+
+class PlayerViewModel(
+    application: Application,
+    private val savedStateHandle: SavedStateHandle,
+) : AndroidViewModel(application), Player.Listener {
+
+    var player: Player
+        private set
+
+    private var useExo: Boolean = false
+    var playbackSpeed: Float = 1f
+    var isInPictureInPictureMode: Boolean = false
+    var playWhenReady: Boolean = true
+    private var baseTitle: String = ""
+
+    private var kpId: Int? = null
+    private var onEpisodeProgressUpdate: ((Int, Int, Int, Long, Long) -> Unit)? = null
+
+    private val useCollapsHeaders: Boolean by lazy {
+        savedStateHandle.get<Boolean>(PlayerActivity.EXTRA_USE_COLLAPS_HEADERS)
+            ?: (SourceManager.getMode(getApplication()) == SourceMode.COLLAPS)
+    }
+
+    private val isAlloha: Boolean by lazy {
+        savedStateHandle.get<Boolean>(PlayerActivity.EXTRA_IS_ALLOHA)
+            ?: (SourceManager.getMode(getApplication()) == SourceMode.ALLOHA)
+    }
+    
+    private val forceFirstAudioTrack: Boolean by lazy { useCollapsHeaders || isAlloha }
+    private var appliedFirstAudioOverride: Boolean = false
+
+    private val _uiState = MutableStateFlow(UiState(currentItemTitle = "", fileLoaded = false))
+    val uiState = _uiState.asStateFlow()
+
+    private val _tracksVersion = MutableStateFlow(0)
+    val tracksVersion = _tracksVersion.asStateFlow()
+
+    private val eventsChannel = Channel<PlayerEvents>(capacity = Channel.BUFFERED)
+    val eventsChannelFlow = eventsChannel.receiveAsFlow()
+
+    data class UiState(
+        val currentItemTitle: String,
+        val fileLoaded: Boolean,
+    )
+
+    private val prefs by lazy {
+        application.getSharedPreferences("player_progress", Context.MODE_PRIVATE)
+    }
+
+    private val watchedPrefs by lazy {
+        application.getSharedPreferences("collaps_watched", Context.MODE_PRIVATE)
+    }
+
+    // Shared AudioAttributes to avoid duplication
+    private val audioAttributes = AudioAttributes.Builder()
+        .setContentType(C.AUDIO_CONTENT_TYPE_MOVIE)
+        .setUsage(C.USAGE_MEDIA)
+        .build()
+
+    init {
+        useExo = savedStateHandle.get<Boolean>(PlayerActivity.EXTRA_USE_EXO)
+            ?: (PlayerEngineManager.getMode(getApplication()) == PlayerEngineMode.EXO)
+        
+        Log.d("PlayerVM", "init useExo=$useExo")
+        player = createPlayer(useExo)
+        player.addListener(this)
+    }
+
+    fun setEngine(useExo: Boolean) {
+        if (this.useExo == useExo) return
+        this.useExo = useExo
+
+        player.removeListener(this)
+        player.release()
+
+        player = createPlayer(useExo)
+        player.addListener(this)
+        
+        // Note: You might need to re-initialize the playlist here 
+        // if engine is switched during playback.
+    }
+
+    private fun createPlayer(useExo: Boolean): Player {
+        return if (!useExo) {
+            val builder = MPVPlayer.Builder(getApplication())
+                .setAudioAttributes(audioAttributes, true)
+                .setSeekBackIncrementMs(10_000)
+                .setSeekForwardIncrementMs(10_000)
+                .setPauseAtEndOfMediaItems(false)
+
+            if (useCollapsHeaders) {
+                builder.setHttpHeaders(
+                    userAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+                    referrer = "https://kinokrad.my/",
+                    headerFields = "Referer: https://kinokrad.my/,Origin: https://kinokrad.my",
+                )
+                builder.setDefaultAudioTrack(1)
+            }
+            builder.build()
+        } else {
+            val trackSelector = DefaultTrackSelector(getApplication()).apply {
+                val builder = buildUponParameters()
+                    .setAllowInvalidateSelectionsOnRendererCapabilitiesChange(true)
+                // Alloha HLS: prefer H264 codec and Russian audio.
+                // Quality is controlled via bnsi quality picker, not track constraints.
+                if (isAlloha) {
+                    builder
+                        .setPreferredVideoMimeType(MimeTypes.VIDEO_H264)
+                        .setPreferredAudioLanguage("ru")
+                        .setPreferredTextLanguage("ru")
+                        .setSelectUndeterminedTextLanguage(true)
+                }
+                parameters = builder.build()
+            }
+
+            val extractorsFactory = DefaultExtractorsFactory()
+                .setTsExtractorFlags(DefaultTsPayloadReaderFactory.FLAG_ENABLE_HDMV_DTS_AUDIO_STREAMS)
+                .setTsExtractorTimestampSearchBytes(1500 * TsExtractor.TS_PACKET_SIZE)
+
+            val httpDataSourceFactory = DefaultHttpDataSource.Factory()
+            if (useCollapsHeaders) {
+                httpDataSourceFactory.setUserAgent("Mozilla/5.0 (Windows NT 10.0; Win64; x64)")
+                httpDataSourceFactory.setDefaultRequestProperties(
+                    mapOf(
+                        "Referer" to "https://kinokrad.my/",
+                        "Origin" to "https://kinokrad.my",
+                    )
+                )
+            }
+
+            val upstreamFactory = DefaultDataSource.Factory(getApplication(), httpDataSourceFactory)
+            val dataSourceFactory = CacheDataSource.Factory()
+                .setCache(DownloadUtil.getDownloadCache(getApplication()))
+                .setUpstreamDataSourceFactory(upstreamFactory)
+                .setCacheWriteDataSinkFactory(null)
+            val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory, extractorsFactory)
+
+            val extensionMode = if (isEmulator()) {
+                DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF
+            } else {
+                DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON
+            }
+
+            val renderersFactory = DefaultRenderersFactory(getApplication())
+                .setExtensionRendererMode(extensionMode)
+                .setEnableDecoderFallback(true)
+
+            ExoPlayer.Builder(getApplication(), renderersFactory)
+                .setTrackSelector(trackSelector)
+                .setMediaSourceFactory(mediaSourceFactory)
+                .build().apply {
+                    setAudioAttributes(this@PlayerViewModel.audioAttributes, true)
+                    setPauseAtEndOfMediaItems(false)
+                    addAnalyticsListener(createAnalyticsListener())
+                }
+        }
+    }
+
+    private fun isEmulator(): Boolean {
+        return Build.FINGERPRINT.contains("generic") ||
+                Build.MODEL.contains("emulator") ||
+                Build.MODEL.contains("sdk_gphone") ||
+                Build.MANUFACTURER.contains("genymotion")
+    }
+
+    private fun createAnalyticsListener() = object : AnalyticsListener {
+        override fun onVideoDecoderInitialized(eventTime: AnalyticsListener.EventTime, decoderName: String, initializedTimestampMs: Long, initializationDurationMs: Long) {
+            Log.d("PlayerVM", "VideoDecoder: $decoderName")
+        }
+        override fun onPlayerError(eventTime: AnalyticsListener.EventTime, error: PlaybackException) {
+            Log.e("PlayerVM", "Error: ${error.errorCodeName}", error)
+        }
+    }
+
+    fun initializePlayer(
+        urls: List<String>,
+        names: List<String>?,
+        startIndex: Int,
+        title: String?,
+        startFromBeginning: Boolean,
+        kinopoiskId: Int? = null,
+        episodeProgressCallback: ((Int, Int, Int, Long, Long) -> Unit)? = null,
+    ) {
+        baseTitle = title?.takeIf { it.isNotBlank() } ?: ""
+        kpId = kinopoiskId
+        onEpisodeProgressUpdate = episodeProgressCallback
+        _uiState.update { it.copy(currentItemTitle = baseTitle, fileLoaded = false) }
+        appliedFirstAudioOverride = false
+
+        val resolvedUrls = if (!useExo) urls.map { resolveMpvUri(it) } else urls
+
+        val mediaItems = resolvedUrls.mapIndexed { index, url ->
+            val displayName = names?.getOrNull(index).orEmpty()
+            val extras = Bundle().apply { putString("display_name", displayName) }
+            MediaItem.Builder()
+                .setMediaId(url)
+                .setUri(url)
+                .setMediaMetadata(
+                    MediaMetadata.Builder()
+                        .setTitle(baseTitle)
+                        .setExtras(extras)
+                        .build()
+                )
+                .build()
+        }
+
+        val currentUrl = resolvedUrls.getOrNull(startIndex) ?: resolvedUrls.firstOrNull().orEmpty()
+        val initialItem = mediaItems.getOrNull(startIndex)
+        if (initialItem != null) {
+            _uiState.update { it.copy(currentItemTitle = buildDisplayTitle(initialItem)) }
+        }
+
+        val progressKey = if (isAlloha && kinopoiskId != null) {
+            val epIdx = com.neo.neomovies.data.alloha.AllohaSessionHolder.currentEpisodeIndex
+            "pos_alloha_${kinopoiskId}_ep$epIdx"
+        } else {
+            "pos_$currentUrl"
+        }
+        val startPosition = if (startFromBeginning) 0L else prefs.getLong(progressKey, 0L)
+
+        // Alloha: URLs go through a local HLS proxy -- use OkHttpDataSource + HlsMediaSource
+        // directly, bypassing the built-in MediaSourceFactory (which uses DefaultHttpDataSource
+        // + CacheDataSource that can't connect to localhost).
+        if (useExo && isAlloha) {
+            val activeHeaders = com.neo.neomovies.data.alloha.AllohaSessionHolder.session?.activeHeaders.orEmpty()
+            val okClient = okhttp3.OkHttpClient.Builder()
+                .followRedirects(true)
+                .connectTimeout(10, java.util.concurrent.TimeUnit.SECONDS)
+                .readTimeout(15, java.util.concurrent.TimeUnit.SECONDS)
+                .build()
+            val okFactory = androidx.media3.datasource.okhttp.OkHttpDataSource.Factory(okClient)
+                .setUserAgent(activeHeaders["user-agent"] ?: "Mozilla/5.0")
+            val hlsFactory = androidx.media3.exoplayer.hls.HlsMediaSource.Factory(okFactory)
+
+            val mediaSources = mediaItems.map { item ->
+                hlsFactory.createMediaSource(item)
+            }
+
+            (player as ExoPlayer).setMediaSources(mediaSources, startIndex, startPosition)
+            player.prepare()
+            player.playWhenReady = true
+            return
+        }
+
+        player.setMediaItems(mediaItems, startIndex, startPosition)
+        player.prepare()
+        player.playWhenReady = true
+    }
+
+    private fun resolveMpvUri(url: String): String {
+        val authority = getApplication<Application>().packageName + ".fileprovider"
+        val prefix = "content://$authority/cache/collaps/"
+        if (!url.startsWith(prefix)) return url
+
+        val fileName = url.removePrefix(prefix).substringBefore('?').substringBefore('#')
+        val f = File(getApplication<Application>().cacheDir, "collaps/$fileName")
+        
+        if (!f.exists()) return url
+
+        if (f.extension.equals("mpd", ignoreCase = true)) {
+            val hls = File(f.parentFile, f.nameWithoutExtension + ".m3u8")
+            if (hls.exists()) return hls.absolutePath
+        }
+        return f.absolutePath
+    }
+
+    override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+        _uiState.update { it.copy(currentItemTitle = buildDisplayTitle(mediaItem)) }
+        appliedFirstAudioOverride = false
+    }
+
+    override fun onTracksChanged(tracks: Tracks) {
+        _tracksVersion.update { it + 1 }
+        if (!useExo || !forceFirstAudioTrack || appliedFirstAudioOverride) return
+
+        val audioGroups = tracks.groups.filter { it.type == C.TRACK_TYPE_AUDIO }
+
+        if (isAlloha) {
+            // For Alloha: only override when there are multiple separate audio groups.
+            // For a single group with multiple tracks (e.g. ru + en renditions),
+            // setPreferredAudioLanguage("ru") handles selection — forcing index 0
+            // would pick English when it comes first in the playlist.
+            if (audioGroups.size > 1) {
+                val trackGroup = audioGroups[0].mediaTrackGroup
+                player.trackSelectionParameters = player.trackSelectionParameters
+                    .buildUpon()
+                    .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+                    .setOverrideForType(TrackSelectionOverride(trackGroup, listOf(0)))
+                    .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+                    .build()
+            }
+            appliedFirstAudioOverride = true
+        } else {
+            val group = audioGroups.firstOrNull() ?: return
+            val trackGroup = group.mediaTrackGroup
+            if (trackGroup.length > 0) {
+                player.trackSelectionParameters = player.trackSelectionParameters
+                    .buildUpon()
+                    .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+                    .setOverrideForType(TrackSelectionOverride(trackGroup, listOf(0)))
+                    .setTrackTypeDisabled(C.TRACK_TYPE_AUDIO, false)
+                    .build()
+                appliedFirstAudioOverride = true
+            }
+        }
+    }
+
+    private fun buildDisplayTitle(mediaItem: MediaItem?): String {
+        val displayName = mediaItem?.mediaMetadata?.extras?.getString("display_name").orEmpty()
+        val rawName = displayName.ifBlank {
+            val url = mediaItem?.localConfiguration?.uri?.toString().orEmpty()
+            url.substringAfterLast('/').substringAfterLast('\\')
+        }
+        val fileName = runCatching { URLDecoder.decode(rawName, "UTF-8") }.getOrDefault(rawName)
+        val se = parseSeasonEpisode(fileName)
+
+        return when {
+            se != null && baseTitle.isNotBlank() -> "$baseTitle • $se"
+            baseTitle.isNotBlank() -> baseTitle
+            else -> fileName
+        }
+    }
+
+    private fun parseSeasonEpisode(name: String): String? {
+        val patterns = listOf(
+            "(?i)\\bS(\\d{1,2})\\s*[._-]?\\s*E(\\d{1,3})\\b",
+            "(?i)\\b(\\d{1,2})\\s*[xX]\\s*(\\d{1,3})\\b",
+            "(?i)season\\s*(\\d{1,2}).*episode\\s*(\\d{1,3})"
+        )
+        
+        for (pattern in patterns) {
+            Regex(pattern).find(name)?.let { m ->
+                val s = m.groupValues[1].toIntOrNull()
+                val e = m.groupValues[2].toIntOrNull()
+                if (s != null && e != null) {
+                    return if (pattern.contains("x")) "%dx%02d".format(s, e) else "S%02dE%02d".format(s, e)
+                }
+            }
+        }
+        return null
+    }
+
+    // For Alloha the proxy URL is always the same — use kpId+episodeIndex as unique key
+    private fun progressKey(): String {
+        val mediaId = player.currentMediaItem?.mediaId ?: return ""
+        return if (isAlloha && kpId != null) {
+            val epIdx = com.neo.neomovies.data.alloha.AllohaSessionHolder.currentEpisodeIndex
+            "pos_alloha_${kpId}_ep$epIdx"
+        } else {
+            "pos_$mediaId"
+        }
+    }
+
+    fun clearCurrentProgress() {
+        val key = progressKey().takeIf { it.isNotBlank() } ?: return
+        prefs.edit().remove(key).apply()
+    }
+
+    fun clearEpisodeProgress(episodeIndex: Int) {
+        if (kpId == null) return
+        prefs.edit().remove("pos_alloha_${kpId}_ep$episodeIndex").apply()
+    }
+
+    fun updatePlaybackProgress() {
+        val key = progressKey().takeIf { it.isNotBlank() } ?: return
+        val position = player.currentPosition
+        prefs.edit().putLong(key, position).apply()
+        savedStateHandle["position"] = position
+        
+        // Update Collaps episode progress if available
+        val displayName = player.currentMediaItem?.mediaMetadata?.extras?.getString("display_name").orEmpty()
+        val displayTitle = buildDisplayTitle(player.currentMediaItem)
+        val se = parseSeasonEpisode(displayName)
+            ?: parseSeasonEpisode(displayTitle)
+            ?: run {
+                val url = player.currentMediaItem?.localConfiguration?.uri?.toString().orEmpty()
+                parseSeasonEpisode(url.substringAfterLast('/').substringAfterLast('\\'))
+            }
+        val currentKpId = kpId
+        val duration = player.duration
+        if (se != null && baseTitle.isNotBlank()) {
+            // Extract season and episode from SxxEyy format
+            val match = Regex("S(\\d{1,2})E(\\d{1,3})").find(se)
+            if (match != null) {
+                val season = match.groupValues[1].toIntOrNull()
+                val episode = match.groupValues[2].toIntOrNull()
+                if (currentKpId != null && season != null && episode != null) {
+                    val cb = onEpisodeProgressUpdate
+                    if (cb != null) {
+                        cb(currentKpId, season, episode, position, duration)
+                        return
+                    }
+                    persistEpisodeProgress(currentKpId, season, episode, position, duration)
+                    return
+                }
+            }
+        }
+
+        val cb = onEpisodeProgressUpdate
+        if (currentKpId != null && cb != null) {
+            cb(currentKpId, 0, 0, position, duration)
+            return
+        }
+
+        // Persist generic (movie/non-episodic) progress by Kinopoisk ID so DetailsScreen can show resume.
+        if (currentKpId != null) {
+            watchedPrefs.edit()
+                .putLong("kp_${currentKpId}_last_position", position)
+                .putLong("kp_${currentKpId}_last_duration", duration)
+                .apply()
+        }
+    }
+
+    private fun persistEpisodeProgress(kpId: Int, season: Int, episode: Int, positionMs: Long, durationMs: Long) {
+        if (season <= 0 || episode <= 0) return
+        val watchedKey = "kp_${kpId}_s${season}_e${episode}"
+        val watchedThresholdMs = if (durationMs > 0) {
+            val percentThreshold = (durationMs * 0.85f).toLong()
+            val creditsThreshold = durationMs - 180_000L
+            maxOf(percentThreshold, creditsThreshold)
+        } else {
+            Long.MAX_VALUE
+        }
+        watchedPrefs.edit()
+            .putLong(watchedKey, positionMs)
+            .putBoolean("${watchedKey}_watched", durationMs > 0 && positionMs >= watchedThresholdMs)
+            .putInt("kp_${kpId}_last_season", season)
+            .putInt("kp_${kpId}_last_episode", episode)
+            .putLong("kp_${kpId}_last_position", positionMs)
+            .putLong("kp_${kpId}_last_duration", durationMs)
+            .apply()
+    }
+
+    fun getSelectableTracks(trackType: @C.TrackType Int): List<SelectableTrack> {
+        val groups = player.currentTracks.groups.filter { it.type == trackType }
+        val result = ArrayList<SelectableTrack>()
+        var displayIndex = 1
+
+        for (group in groups) {
+            val trackGroup = group.mediaTrackGroup
+            for (i in 0 until trackGroup.length) {
+                val format = trackGroup.getFormat(i)
+                val label = format.label
+                val language = format.language
+                
+                val displayLabel = when {
+                    trackType == C.TRACK_TYPE_VIDEO && format.height > 0 -> "${format.height}p"
+                    !label.isNullOrBlank() -> label
+                    !language.isNullOrBlank() && language != "und" -> language
+                    else -> "Track ${displayIndex++}"
+                }
+
+                result += SelectableTrack(
+                    label = displayLabel,
+                    formatId = format.id,
+                    trackGroup = trackGroup,
+                    trackIndex = i,
+                    isSelected = group.isTrackSelected(i),
+                    isSupported = group.isTrackSupported(i),
+                    height = format.height
+                )
+            }
+        }
+
+        if (trackType == C.TRACK_TYPE_VIDEO) {
+            result.sortByDescending { it.height }
+        }
+        return result
+    }
+
+    fun switchToTrack(trackType: @C.TrackType Int, index: Int) {
+        if (!useExo) {
+            val mpv = (player as? MPVPlayer) ?: return
+            val track = if (index == -1) null else getSelectableTracks(trackType).getOrNull(index)
+            mpv.selectTrack(trackType, track?.formatId)
+            return
+        }
+
+        val builder = player.trackSelectionParameters.buildUpon()
+        if (index == -1) {
+            builder.clearOverridesOfType(trackType)
+                   .setTrackTypeDisabled(trackType, trackType == C.TRACK_TYPE_TEXT)
+        } else {
+            val track = getSelectableTracks(trackType).getOrNull(index) ?: return
+            builder.clearOverridesOfType(trackType)
+                   .setOverrideForType(TrackSelectionOverride(track.trackGroup, listOf(track.trackIndex)))
+                   .setTrackTypeDisabled(trackType, false)
+        }
+        player.trackSelectionParameters = builder.build()
+    }
+
+    /** Reset audio track override so the next onTracksChanged selects first audio (Russian). */
+    fun resetAudioOverride() {
+        appliedFirstAudioOverride = false
+    }
+
+    fun selectSpeed(speed: Float) {
+        player.setPlaybackSpeed(speed)
+        playbackSpeed = speed
+    }
+
+    override fun onPlaybackStateChanged(state: Int) {
+        if (state == Player.STATE_READY) _uiState.update { it.copy(fileLoaded = true) }
+        if (state == Player.STATE_ENDED) eventsChannel.trySend(PlayerEvents.NavigateBack)
+    }
+
+    override fun onPlayerError(error: PlaybackException) {
+        Log.e("PlayerVM", "Player error: ${error.errorCodeName}", error)
+        if (isAlloha) {
+            val session = com.neo.neomovies.data.alloha.AllohaSessionHolder.session
+            val iframeUrl = session?.parser?.lastIframeUrl
+            if (!iframeUrl.isNullOrBlank()) {
+                val wasPlaying = player.playWhenReady
+                Log.d("PlayerVM", "Alloha CDN error, restarting session from ${player.currentPosition}ms")
+                session.onM3u8Updated = { _ ->
+                    appliedFirstAudioOverride = false
+                    player.prepare()
+                    player.playWhenReady = wasPlaying
+                }
+                session.startSession(iframeUrl, isRestart = true)
+                return
+            }
+        }
+    }
+
+    override fun onIsPlayingChanged(isPlaying: Boolean) {
+        eventsChannel.trySend(PlayerEvents.IsPlayingChanged(isPlaying))
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        player.removeListener(this)
+        player.release()
+        // Release the Alloha session (proxy + parser) when the player is done
+        com.neo.neomovies.data.alloha.AllohaSessionHolder.session?.release()
+        com.neo.neomovies.data.alloha.AllohaSessionHolder.clear()
+    }
+}
+
+sealed interface PlayerEvents {
+    data object NavigateBack : PlayerEvents
+    data class IsPlayingChanged(val isPlaying: Boolean) : PlayerEvents
+    data class PlayWhenReadyChanged(val playWhenReady: Boolean, val reason: Int) : PlayerEvents
+}
+
+data class SelectableTrack(
+    val label: String,
+    val formatId: String?,
+    val trackGroup: TrackGroup,
+    val trackIndex: Int,
+    val isSelected: Boolean,
+    val isSupported: Boolean,
+    val height: Int = 0 // Added for easier sorting
+)
