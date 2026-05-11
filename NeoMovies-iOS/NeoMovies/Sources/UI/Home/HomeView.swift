@@ -39,8 +39,8 @@ struct MovieSection: View {
             
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 16) {
-                    ForEach(movies, id: \.id?.stringValue) { movie in
-                        NavigationLink(destination: DetailsView(movieId: movie.id?.stringValue ?? "")) {
+                    ForEach(movies) { movie in
+                        NavigationLink(destination: DetailsView(movieId: movie.id)) {
                             MoviePosterCard(movie: movie)
                         }
                         .buttonStyle(.plain)
