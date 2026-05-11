@@ -33,6 +33,7 @@ jobs:
           -scheme NeoMovies \
           -configuration Release \
           -sdk iphoneos \
+          -derivedDataPath ./build \
           CODE_SIGN_IDENTITY="" \
           CODE_SIGNING_REQUIRED=NO \
           CODE_SIGNING_ALLOWED=NO
@@ -41,7 +42,7 @@ jobs:
       run: |
         cd NeoMovies-iOS
         mkdir -p Payload
-        mv build/Release-iphoneos/NeoMovies.app Payload/
+        mv build/Build/Products/Release-iphoneos/NeoMovies.app Payload/
         zip -r NeoMovies.ipa Payload
 
     - name: Upload IPA Artifact
