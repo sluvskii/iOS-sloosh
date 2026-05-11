@@ -1,28 +1,38 @@
 import SwiftUI
 
 struct ContentView: View {
+    init() {
+        // Modern iOS 26 transparent TabBar styling
+        let appearance = UITabBarAppearance()
+        appearance.configureWithTransparentBackground()
+        appearance.backgroundEffect = UIBlurEffect(style: .systemUltraThinMaterial)
+        UITabBar.appearance().standardAppearance = appearance
+        UITabBar.appearance().scrollEdgeAppearance = appearance
+    }
+    
     var body: some View {
         TabView {
             HomeView()
                 .tabItem {
-                    Label("Home", systemImage: "house")
+                    Label("Главная", systemImage: "house.fill")
                 }
             SearchView()
                 .tabItem {
-                    Label("Search", systemImage: "magnifyingglass")
+                    Label("Поиск", systemImage: "magnifyingglass")
                 }
             FavoritesView()
                 .tabItem {
-                    Label("Favorites", systemImage: "heart")
+                    Label("Избранное", systemImage: "heart.fill")
                 }
             DownloadsView()
                 .tabItem {
-                    Label("Downloads", systemImage: "arrow.down.circle")
+                    Label("Загрузки", systemImage: "arrow.down.circle.fill")
                 }
             SettingsView()
                 .tabItem {
-                    Label("Settings", systemImage: "gear")
+                    Label("Настройки", systemImage: "gearshape.fill")
                 }
         }
+        .tint(.blue)
     }
 }

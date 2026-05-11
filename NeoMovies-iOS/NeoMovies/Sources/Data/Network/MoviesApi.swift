@@ -11,7 +11,7 @@ class MoviesApi {
     static let shared = MoviesApi()
     
     // Default base URL from android project (would normally be in config)
-    private let baseURL = "https://api.neomovies.com" 
+    private let baseURL = "https://api.neomovies.ru" 
     
     private init() {}
     

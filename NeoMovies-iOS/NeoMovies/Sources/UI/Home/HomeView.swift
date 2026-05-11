@@ -6,19 +6,21 @@ struct HomeView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: 32) {
                     if viewModel.isLoading {
-                        ProgressView()
+                        ProgressView("Загрузка...")
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .padding(.top, 100)
                     } else {
-                        MovieSection(title: "Popular Movies", movies: viewModel.popularMovies)
-                        MovieSection(title: "Top Rated Movies", movies: viewModel.topMovies)
-                        MovieSection(title: "Top TV Shows", movies: viewModel.topTv)
+                        MovieSection(title: "Популярные", movies: viewModel.popularMovies)
+                        MovieSection(title: "Высокий рейтинг", movies: viewModel.topMovies)
+                        MovieSection(title: "Топ сериалы", movies: viewModel.topTv)
                     }
                 }
                 .padding(.vertical)
             }
             .navigationTitle("NeoMovies")
+            .background(Color(UIColor.systemGroupedBackground))
             .task {
                 await viewModel.loadData()
             }
@@ -31,14 +33,13 @@ struct MovieSection: View {
     let movies: [MediaDto]
     
     var body: some View {
-        VStack(alignment: .leading) {
+        VStack(alignment: .leading, spacing: 16) {
             Text(title)
-                .font(.title2)
-                .bold()
+                .font(.system(size: 24, weight: .bold, design: .rounded))
                 .padding(.horizontal)
             
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 16) {
+                HStack(spacing: 20) {
                     ForEach(movies) { movie in
                         NavigationLink(destination: DetailsView(movieId: movie.id)) {
                             MoviePosterCard(movie: movie)
@@ -47,6 +48,7 @@ struct MovieSection: View {
                     }
                 }
                 .padding(.horizontal)
+                .padding(.bottom, 10)
             }
         }
     }
@@ -56,27 +58,29 @@ struct MoviePosterCard: View {
     let movie: MediaDto
     
     var body: some View {
-        VStack {
+        VStack(alignment: .leading, spacing: 8) {
             AsyncImage(url: URL(string: movie.displayPosterUrl ?? "")) { phase in
                 switch phase {
                 case .empty:
                     Rectangle()
-                        .fill(Color.gray.opacity(0.3))
-                        .frame(width: 120, height: 180)
-                        .cornerRadius(8)
+                        .fill(Color.gray.opacity(0.2))
+                        .frame(width: 140, height: 210)
+                        .cornerRadius(16)
                 case .success(let image):
                     image
                         .resizable()
                         .aspectRatio(contentMode: .fill)
-                        .frame(width: 120, height: 180)
-                        .cornerRadius(8)
+                        .frame(width: 140, height: 210)
+                        .cornerRadius(16)
+                        .shadow(color: .black.opacity(0.15), radius: 10, x: 0, y: 5)
                 case .failure:
                     Rectangle()
-                        .fill(Color.gray.opacity(0.3))
-                        .frame(width: 120, height: 180)
-                        .cornerRadius(8)
+                        .fill(Color.gray.opacity(0.2))
+                        .frame(width: 140, height: 210)
+                        .cornerRadius(16)
                         .overlay(
-                            Image(systemName: "film")
+                            Image(systemName: "film.fill")
+                                .font(.system(size: 30))
                                 .foregroundColor(.gray)
                         )
                 @unknown default:
@@ -85,10 +89,21 @@ struct MoviePosterCard: View {
             }
             
             Text(movie.displayTitle)
-                .font(.caption)
+                .font(.system(size: 14, weight: .semibold, design: .rounded))
                 .lineLimit(2)
-                .multilineTextAlignment(.center)
-                .frame(width: 120)
+                .multilineTextAlignment(.leading)
+                .frame(width: 140, alignment: .leading)
+            
+            if let rating = movie.rating, rating > 0 {
+                HStack(spacing: 4) {
+                    Image(systemName: "star.fill")
+                        .foregroundColor(.orange)
+                        .font(.system(size: 10))
+                    Text(String(format: "%.1f", rating))
+                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .foregroundColor(.secondary)
+                }
+            }
         }
     }
 }
