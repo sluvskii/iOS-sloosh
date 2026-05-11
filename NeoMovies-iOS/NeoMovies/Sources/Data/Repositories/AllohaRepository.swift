@@ -94,7 +94,10 @@ class AllohaRepository {
                     var parsedTrans: [AllohaTranslation] = []
                     for (tKey, tValue) in transObj {
                         guard let tDict = tValue as? [String: Any],
-                              let iframe = tDict["iframe"] as? String, !iframe.isEmpty else { continue }
+                              var iframe = tDict["iframe"] as? String, !iframe.isEmpty else { continue }
+                        if iframe.hasPrefix("//") {
+                            iframe = "https:" + iframe
+                        }
                         let transName = tDict["translation"] as? String ?? "Unknown"
                         parsedTrans.append(AllohaTranslation(id: tKey, name: transName, iframeUrl: iframe))
                     }
@@ -114,7 +117,10 @@ class AllohaRepository {
             parsedSeasons.sort { $0.season < $1.season }
             return AllohaApiResult(title: title, isSerial: true, movie: nil, seasons: parsedSeasons)
         } else {
-            let iframe = dataObj["iframe"] as? String ?? ""
+            var iframe = dataObj["iframe"] as? String ?? ""
+            if iframe.hasPrefix("//") {
+                iframe = "https:" + iframe
+            }
             var movie: AllohaMovie? = nil
             if !iframe.isEmpty {
                 movie = AllohaMovie(title: title, iframeUrl: iframe, translations: [
