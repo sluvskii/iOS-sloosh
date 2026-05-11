@@ -63,25 +63,30 @@ struct MoviePosterCard: View {
                 switch phase {
                 case .empty:
                     Rectangle()
-                        .fill(Color.gray.opacity(0.2))
+                        .fill(Color.gray.opacity(0.1))
                         .frame(width: 140, height: 210)
-                        .cornerRadius(16)
+                        .cornerRadius(24) // More rounded for iOS 26
                 case .success(let image):
                     image
                         .resizable()
                         .aspectRatio(contentMode: .fill)
                         .frame(width: 140, height: 210)
-                        .cornerRadius(16)
-                        .shadow(color: .black.opacity(0.15), radius: 10, x: 0, y: 5)
+                        .cornerRadius(24)
+                        .overlay(
+                            // Liquid Glass specular highlight
+                            RoundedRectangle(cornerRadius: 24)
+                                .stroke(Color.white.opacity(0.3), lineWidth: 0.5)
+                        )
+                        .shadow(color: .black.opacity(0.2), radius: 12, x: 0, y: 8)
                 case .failure:
                     Rectangle()
-                        .fill(Color.gray.opacity(0.2))
+                        .fill(Color.gray.opacity(0.1))
                         .frame(width: 140, height: 210)
-                        .cornerRadius(16)
+                        .cornerRadius(24)
                         .overlay(
                             Image(systemName: "film.fill")
                                 .font(.system(size: 30))
-                                .foregroundColor(.gray)
+                                .foregroundColor(.gray.opacity(0.5))
                         )
                 @unknown default:
                     EmptyView()
@@ -89,7 +94,7 @@ struct MoviePosterCard: View {
             }
             
             Text(movie.displayTitle)
-                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                .font(.system(size: 15, weight: .semibold, design: .rounded))
                 .lineLimit(2)
                 .multilineTextAlignment(.leading)
                 .frame(width: 140, alignment: .leading)
@@ -100,7 +105,7 @@ struct MoviePosterCard: View {
                         .foregroundColor(.orange)
                         .font(.system(size: 10))
                     Text(String(format: "%.1f", rating))
-                        .font(.system(size: 12, weight: .bold, design: .rounded))
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
                         .foregroundColor(.secondary)
                 }
             }
