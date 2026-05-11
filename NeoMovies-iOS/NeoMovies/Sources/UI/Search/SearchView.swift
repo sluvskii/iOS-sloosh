@@ -5,8 +5,8 @@ struct SearchView: View {
     
     var body: some View {
         NavigationStack {
-            List(viewModel.results, id: \.id?.stringValue) { movie in
-                NavigationLink(destination: DetailsView(movieId: movie.id?.stringValue ?? "")) {
+            List(viewModel.results) { movie in
+                NavigationLink(destination: DetailsView(movieId: movie.id)) {
                     HStack {
                         AsyncImage(url: URL(string: movie.displayPosterUrl ?? "")) { phase in
                             if let image = phase.image {

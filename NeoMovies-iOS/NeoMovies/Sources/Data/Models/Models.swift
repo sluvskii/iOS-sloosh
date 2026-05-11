@@ -66,7 +66,8 @@ enum AnyCodableValue: Codable {
 }
 
 struct MediaDto: Codable, Identifiable {
-    let id: AnyCodableValue?
+    var id: String { identifier } // Satisfies Identifiable using our custom identifier
+    let originalId: AnyCodableValue?
     let title: String?
     let originalTitle: String?
     let year: AnyCodableValue?
@@ -78,6 +79,16 @@ struct MediaDto: Codable, Identifiable {
     let externalIds: ExternalIdsDto?
     let name: String?
     let poster_path: String?
+    
+    enum CodingKeys: String, CodingKey {
+        case originalId = "id"
+        case title, originalTitle, year, rating, posterUrl, description, type, genres, externalIds, name, poster_path
+    }
+    
+    // Identifiable requirement helper
+    var identifier: String {
+        originalId?.stringValue ?? UUID().uuidString
+    }
     
     var displayTitle: String {
         title ?? name ?? originalTitle ?? "Unknown"
