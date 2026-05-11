@@ -1,0 +1,259 @@
+<resources>
+    <string name="app_name">NeoMovies</string>
+
+    <string name="profile_title">Profile</string>
+    <string name="settings_title">Settings</string>
+    <string name="about_title">About</string>
+    <string name="credits_title">Credits</string>
+
+    <string name="action_login_with_neo_id">Login with Neo ID</string>
+    <string name="action_logout">Logout</string>
+
+    <string name="settings_language">Language</string>
+    <string name="settings_language_system">System</string>
+    <string name="settings_language_ru">Русский</string>
+    <string name="settings_language_en">English</string>
+
+    <string name="settings_torrserver">TorrServer</string>
+
+    <string name="settings_player">Player</string>
+    <string name="settings_player_exoplayer">ExoPlayer</string>
+    <string name="settings_player_mpv">MPV</string>
+    <string name="settings_player_mpv_experimental">MPV (Experimental)</string>
+    <string name="settings_player_vlc">VLC</string>
+
+    <string name="settings_source">Source</string>
+    <string name="settings_source_collaps">Collaps</string>
+    <string name="settings_source_torrents">Torrents</string>
+    <string name="settings_source_alloha">Alloha (Experimental)</string>
+
+    <string name="alloha_parsing_stream">Capturing stream session…</string>
+    <string name="alloha_error_no_kp">Kinopoisk ID required for Alloha</string>
+
+    <string name="torrserver_status_label">Status: %1$s</string>
+    <string name="torrserver_status_running">Server is running</string>
+    <string name="torrserver_status_stopped">Server is stopped</string>
+    <string name="torrserver_status_not_downloaded">Server file not found</string>
+    <string name="torrserver_installed_version_label">Installed: %1$s</string>
+    <string name="torrserver_version_label">Version (MatriX.xxx)</string>
+    <string name="torrserver_url_label">URL: %1$s</string>
+
+    <string name="torrserver_download">Download server</string>
+    <string name="torrserver_update">Update server</string>
+    <string name="torrserver_start">Start</string>
+    <string name="torrserver_stop">Stop</string>
+    <string name="torrserver_delete">Delete server</string>
+    <string name="torrserver_autostart">Start with app</string>
+
+    <string name="torrserver_delete_title">Delete TorrServer</string>
+    <string name="torrserver_delete_message">This will remove the downloaded TorrServer binary and logs.</string>
+    <string name="torrserver_delete_confirm">Delete</string>
+    <string name="torrserver_delete_cancel">Cancel</string>
+
+    <string name="torrserver_required_title">TorrServer required</string>
+    <string name="torrserver_required_not_downloaded">To play torrents you need to download TorrServer.</string>
+    <string name="torrserver_required_not_running">To play torrents you need to start TorrServer.</string>
+    <string name="torrserver_required_download_and_start">Download &amp; start</string>
+    <string name="torrserver_required_start">Start</string>
+    <string name="torrserver_required_cancel">Cancel</string>
+
+    <string name="torrserver_autostart_prompt_title">Enable autostart?</string>
+    <string name="torrserver_autostart_prompt_message">Start TorrServer automatically when the app launches.</string>
+    <string name="torrserver_autostart_prompt_enable">Enable</string>
+    <string name="torrserver_autostart_prompt_not_now">Not now</string>
+
+    <string name="torrserver_notification_title">TorrServer</string>
+    <string name="torrserver_action_stop">Stop</string>
+    <string name="torrserver_notif_downloading">Downloading TorrServer…</string>
+    <string name="torrserver_notif_downloaded">TorrServer downloaded</string>
+    <string name="torrserver_notif_download_error">Download error</string>
+    <string name="torrserver_notif_starting">Starting TorrServer…</string>
+    <string name="torrserver_notif_stopping">Stopping TorrServer…</string>
+    <string name="torrserver_notif_not_downloaded">TorrServer is not downloaded</string>
+    <string name="torrserver_notif_started">TorrServer started</string>
+    <string name="torrserver_notif_start_error">Start error: %1$s</string>
+    <string name="torrserver_notif_start_failed">Failed to start TorrServer</string>
+
+    <string name="torrserver_logs_title">Logs</string>
+    <string name="torrserver_logs_refresh">Refresh</string>
+    <string name="torrserver_logs_empty">No logs yet</string>
+
+    <string name="torrserver_app_logs_title">App logs</string>
+    <string name="torrserver_app_logs_empty">No app logs yet</string>
+
+    <string name="torrents_not_found">No torrents found</string>
+    <string name="select_file">Select file</string>
+    <string name="torrent_quality_unknown">TOR</string>
+    <string name="torrent_seeds_format">%1$s • %2$d seeds</string>
+
+    <string name="about_latest_release">Latest release</string>
+    <string name="about_latest_release_desc">Repository for app</string>
+    <string name="about_prereleases">Prereleases</string>
+    <string name="about_prereleases_desc">All prerelease builds</string>
+    <string name="about_telegram_channel">Telegram channel</string>
+    <string name="about_telegram_channel_desc">Telegram channel for news about app</string>
+    <string name="about_credits">Credits</string>
+    <string name="about_credits_desc">Thanks to our supporters</string>
+    <string name="about_changes">Changes</string>
+    <string name="about_changes_desc">What’s new in this version</string>
+    <string name="about_settings">Settings</string>
+    <string name="about_settings_desc">Configure the app</string>
+    <string name="about_version">Version</string>
+
+    <string name="changes_title">Changes</string>
+    <string name="changes_version_label">Version: %1$s</string>
+
+    <string-array name="changes_history">
+        <item>0.1.0-pre6||- Added Alloha source: HLS proxy, voiceover selection, subtitles, intro/outro skip, auto quality.\n- Episode switching in player (|&lt; and &gt;| buttons).\n- Fixed TV player: D-pad navigation, Back button, audio tracks and subtitles.\n- UI optimizations: smooth poster loading, faster lists.\n- Added languages: Ukrainian, Belarusian, Romanian.\n- Auto-update via GitHub Releases.</item>
+        <item>0.1.0-pre5||- Updated API models for search and favorites.\n- Added offline episode downloads with correct playback duration.\n- Fixed search history (persisted across sessions).\n- Fixed delete button for downloaded episodes.\n- Various bug fixes and stability improvements.</item>
+        <item>0.1.0-pre4||- New features have been added to the TV player, as well as fixes for the main player.\n- Added series switching to source Collaps.</item>
+        <item>0.1.0-pre3||- Bug fixes and rewrite TV Player.</item>
+        <item>0.1.0-pre2||- Add Collaps player and TV UI.</item>
+        <item>0.1.0-pre1||- Initial prerelease\n- Add players: ExoPlayer and libMPV\n- Add TorrServer and made small improves.</item>
+    </string-array>
+
+    <string name="credits_loading">Loading…</string>
+    <string name="credits_offline_cache">Offline cache</string>
+
+    <string name="credits_section_libraries">Libraries &amp; open-source</string>
+    <string name="credits_section_thanks">Thanks</string>
+    <string name="credits_section_supporters">Supporters</string>
+
+    <string name="nav_back">Back</string>
+
+    <string name="tab_home">Home</string>
+    <string name="tab_downloads">Downloads</string>
+    <string name="downloads_channel_name">Downloads</string>
+    <string name="download_series">Download series</string>
+    <string name="download_series_quality">Download series (quality)</string>
+    <string name="download_season">Download season</string>
+    <string name="download_season_quality">Download season (quality)</string>
+    <string name="download_movie">Download movie</string>
+    <string name="download_movie_quality">Download movie (quality)</string>
+    <string name="downloads_active">Active</string>
+    <string name="downloads_movies">Movies</string>
+    <string name="downloads_series">Series</string>
+    <string name="downloads_empty">No downloads</string>
+    <string name="nav_downloads">Downloads</string>
+    <string name="download_pause">Pause</string>
+    <string name="download_resume">Resume</string>
+    <string name="download_remove">Remove</string>
+    <string name="download_delete_season">Delete season</string>
+    <string name="download_delete_series">Delete series</string>
+    <string name="download_play">Play</string>
+    <string name="select_all">Select all</string>
+    <string name="download_selected">Download selected</string>
+    <string name="download_not_enough_space_title">Not enough space</string>
+    <string name="download_not_enough_space_message">Not enough free storage to download selected files.</string>
+    <string name="common_ok">OK</string>
+    <string name="offline_search_unavailable">Search is unavailable offline.</string>
+    <string name="offline_categories_unavailable">Categories are unavailable offline.</string>
+    <string name="download_quality_unavailable">Quality list unavailable.</string>
+    <string name="loading">Loading…</string>
+    <string name="offline_details_unavailable">No offline data for this item.</string>
+    <string name="tab_favorites">Favorites</string>
+    <string name="favorites_auth_required">To use favorites, please log in.</string>
+    <string name="favorites_go_to_profile">Go to profile</string>
+    <string name="favorites_empty">No favorites yet</string>
+    <string name="favorites_add">Add to favorites</string>
+    <string name="favorites_remove">Remove from favorites</string>
+
+    <string name="home_title">NeoMovies</string>
+    <string name="home_section_popular">Popular</string>
+    <string name="home_section_top_movies">Top movies</string>
+    <string name="home_section_top_tv">Top TV</string>
+    <string name="action_search">Search</string>
+    <string name="action_more">More</string>
+    <string name="action_watch">Watch</string>
+    <string name="action_selected">✓</string>
+
+    <string name="lumex_select_season">Season</string>
+    <string name="lumex_select_episode">Episode</string>
+    <string name="lumex_select_voiceover">Voiceover</string>
+    <string name="lumex_select_quality">Quality</string>
+    <string name="quality_auto">Auto</string>
+    <string name="settings_update_channel">Update channel</string>
+    <string name="settings_update_channel_stable">Stable releases</string>
+    <string name="settings_update_channel_prerelease">Pre-releases</string>
+    <string name="about_check_update">Check for updates</string>
+    <string name="about_check_update_desc">Tap to check for a new version</string>
+    <string name="about_check_update_checking">Checking…</string>
+    <string name="about_check_update_latest">You have the latest version</string>
+    <string name="lumex_no_data">No sources available</string>
+
+    <string name="common_error">Error</string>
+    <string name="action_retry">Retry</string>
+
+    <string name="search_title">Search</string>
+    <string name="search_hint">Enter title</string>
+    <string name="search_start_typing">Start typing a query</string>
+    <string name="search_nothing_found">Nothing found</string>
+    <string name="search_history_remove">Remove from history</string>
+    <string name="search_history">History</string>
+    <string name="search_history_clear">Clear all</string>
+
+    <string name="pagination_prev">Previous</string>
+    <string name="pagination_next">Next</string>
+
+    <string name="details_back">Back</string>
+    <string name="common_separator_dot"> • </string>
+    <string name="details_duration_minutes">%1$d min</string>
+    <string name="details_rating_format">★ %1$.1f</string>
+
+    <string name="player_title">Player</string>
+    <string name="player_video_placeholder">Video surface (stub)</string>
+    <string name="player_play">Play</string>
+    <string name="player_pause">Pause</string>
+    <string name="player_rewind_10">Rewind 10 seconds</string>
+    <string name="player_forward_10">Forward 10 seconds</string>
+    <string name="player_captions">Captions</string>
+    <string name="player_settings">Settings</string>
+    <string name="player_fullscreen">Fullscreen</string>
+    <string name="player_time_format">%1$02d:%2$02d</string>
+    <string name="player_debug_source_id">Source: %1$s</string>
+
+    <string name="player_controls_exit">Exit</string>
+    <string name="player_controls_lock">Lock controls</string>
+    <string name="player_controls_play_pause">Play/Pause</string>
+    <string name="player_controls_rewind">Rewind</string>
+    <string name="player_controls_fast_forward">Fast forward</string>
+    <string name="player_controls_skip_back">Skip back</string>
+    <string name="player_controls_skip_forward">Skip forward</string>
+    <string name="player_controls_progress">Seek</string>
+    <string name="player_controls_pip">Picture in picture</string>
+    <string name="player_controls_aspect_ratio">Aspect ratio</string>
+
+    <string name="episode_watched">Watched</string>
+    <string name="episode_progress">%1$d%%</string>
+
+    <string name="details_watched_count">Watched series: %1$d</string>
+    <string name="details_last_watched">Stopped at: S%1$02dE%2$02d%3$s</string>
+    <string name="details_watch_progress_minutes">Stopped at: %1$d/%2$d min%3$s</string>
+    <string name="details_watch_progress_position">Stopped at: %1$d min</string>
+
+    <string name="picture_in_picture">Picture in picture</string>
+    <string name="select_playback_speed">Select playback speed</string>
+    <string name="select_audio_track">Select audio track</string>
+    <string name="select_subtitle_track">Select subtitle track</string>
+    <string name="select_video_quality">Select quality</string>
+    <string name="none">None</string>
+
+    <string name="player_trickplay">Trickplay preview</string>
+    <string name="player_skip">Skip ⏭</string>
+    <string name="player_controls_skip_intro">Skip intro</string>
+    <string name="player_controls_skip_outro">Skip outro</string>
+    <string name="player_controls_skip_recap">Skip recap</string>
+    <string name="player_controls_skip_commercial">Skip commercials</string>
+    <string name="player_controls_skip_preview">Skip preview</string>
+    <string name="player_controls_skip_unknown">Skip</string>
+    <string name="player_controls_next_episode">Next episode</string>
+
+    <string name="category_popular">Popular</string>
+    <string name="category_top_movies">Top movies</string>
+    <string name="category_top_tv">Top TV</string>
+
+    <string name="download_progress_details">Downloading: %1$d%% %2$s</string>
+    <string name="downloaded_label">Downloaded</string>
+    <string name="download_in_progress">Downloading %1$d%%</string>
+    <string name="download_complete">Downloaded</string>
+</resources>
