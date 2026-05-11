@@ -38,7 +38,7 @@ class HlsProxyResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate, U
         
         // Decode proxied absolute URLs
         var realUrl: URL
-        if components.path == "/proxy" {
+        if components.path.hasPrefix("/proxy") {
             guard let urlQuery = components.queryItems?.first(where: { $0.name == "url" })?.value,
                   let decodedData = Data(base64Encoded: urlQuery),
                   let decodedString = String(data: decodedData, encoding: .utf8),
@@ -109,6 +109,9 @@ class HlsProxyResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate, U
                         loadingRequest.contentInformationRequest?.contentLength = total
                     }
                     loadingRequest.contentInformationRequest?.isByteRangeAccessSupported = true
+                    
+                    // Respond with response to avoid playback stuck
+                    loadingRequest.response = httpResponse
                 }
             }
         }
@@ -154,8 +157,15 @@ class HlsProxyResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate, U
                         loadingRequest.contentInformationRequest?.contentLength = Int64(rewrittenData.count)
                         loadingRequest.contentInformationRequest?.isByteRangeAccessSupported = false
                         
+                        if let response = state.response {
+                            loadingRequest.response = response
+                        }
+                        
                         loadingRequest.dataRequest?.respond(with: rewrittenData)
                     } else {
+                        if let response = state.response {
+                            loadingRequest.response = response
+                        }
                         loadingRequest.dataRequest?.respond(with: state.data)
                     }
                 }
@@ -219,7 +229,10 @@ class HlsProxyResourceLoaderDelegate: NSObject, AVAssetResourceLoaderDelegate, U
             return urlString
         }
         
-        var comp = URLComponents(string: "neoproxy://127.0.0.1/proxy")!
+        let isM3u8 = absoluteUrlString.contains(".m3u8")
+        let ext = isM3u8 ? ".m3u8" : ".ts"
+        
+        var comp = URLComponents(string: "neoproxy://127.0.0.1/proxy\(ext)")!
         comp.queryItems = [URLQueryItem(name: "url", value: encoded)]
         return comp.string ?? urlString
     }

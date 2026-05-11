@@ -160,7 +160,7 @@ class PlayerViewModel: ObservableObject, AllohaParserDelegate {
             return
         }
         
-        var comp = URLComponents(string: "neoproxy://127.0.0.1/proxy")!
+        var comp = URLComponents(string: "neoproxy://127.0.0.1/proxy.m3u8")!
         comp.queryItems = [URLQueryItem(name: "url", value: encoded)]
         
         guard let proxyUrl = comp.url else {
