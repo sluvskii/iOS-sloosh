@@ -72,17 +72,17 @@ struct MoviePosterCard: View {
                         .aspectRatio(contentMode: .fill)
                         .frame(width: 140, height: 210)
                         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-                        // Native Liquid Glass effect using iOS 26 materials
+                        // Native Liquid Glass effect matching SlooshIOS Theme
                         .overlay(
-                            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                                .stroke(.quaternary, lineWidth: 1)
+                            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                                .stroke(Color.primary.opacity(0.1), lineWidth: 1)
                         )
                         .shadow(color: .black.opacity(0.25), radius: 15, x: 0, y: 10)
                 case .failure:
                     Rectangle()
-                        .fill(.ultraThinMaterial)
+                        .fill(.regularMaterial)
                         .frame(width: 140, height: 210)
-                        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
                         .overlay(
                             Image(systemName: "film.fill")
                                 .font(.system(size: 30))
@@ -102,7 +102,13 @@ struct MoviePosterCard: View {
             if let rating = movie.rating, rating > 0 {
                 HStack(spacing: 4) {
                     Image(systemName: "star.fill")
-                        .foregroundColor(.orange)
+                        .foregroundColor(Color(UIColor { traitCollection in
+                            if traitCollection.userInterfaceStyle == .dark {
+                                return UIColor(red: 0.70, green: 1.0, blue: 0.0, alpha: 1.0)
+                            } else {
+                                return UIColor(red: 0.45, green: 0.80, blue: 0.0, alpha: 1.0)
+                            }
+                        }))
                         .font(.system(size: 10))
                     Text(String(format: "%.1f", rating))
                         .font(.system(size: 13, weight: .bold, design: .rounded))
