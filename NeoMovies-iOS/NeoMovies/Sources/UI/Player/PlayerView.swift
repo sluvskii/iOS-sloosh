@@ -67,6 +67,7 @@ class PlayerViewModel: ObservableObject, AllohaParserDelegate {
     @Published var error: String?
     
     private var parser: AllohaParser?
+    private var resourceLoaderDelegate: HlsProxyResourceLoaderDelegate?
     
     func loadAlloha(kpId: Int) {
         isLoading = true
@@ -107,6 +108,7 @@ class PlayerViewModel: ObservableObject, AllohaParserDelegate {
         player = nil
         parser?.release()
         parser = nil
+        resourceLoaderDelegate = nil
     }
     
     // MARK: - AllohaParserDelegate
@@ -151,7 +153,27 @@ class PlayerViewModel: ObservableObject, AllohaParserDelegate {
     }
     
     private func playVideo(url: URL, headers: [String: String]) {
-        let asset = AVURLAsset(url: url, options: ["AVURLAssetHTTPHeaderFieldsKey": headers])
+        let absoluteUrlString = url.absoluteString
+        guard let encoded = absoluteUrlString.data(using: .utf8)?.base64EncodedString() else {
+            self.error = "Ошибка формирования URL"
+            self.isLoading = false
+            return
+        }
+        
+        var comp = URLComponents(string: "neoproxy://127.0.0.1/proxy")!
+        comp.queryItems = [URLQueryItem(name: "url", value: encoded)]
+        
+        guard let proxyUrl = comp.url else {
+            self.error = "Ошибка формирования URL"
+            self.isLoading = false
+            return
+        }
+        
+        resourceLoaderDelegate = HlsProxyResourceLoaderDelegate(headers: headers)
+        
+        let asset = AVURLAsset(url: proxyUrl)
+        asset.resourceLoader.setDelegate(resourceLoaderDelegate, queue: .main)
+        
         let playerItem = AVPlayerItem(asset: asset)
         self.player = AVPlayer(playerItem: playerItem)
         self.isLoading = false
