@@ -61,7 +61,7 @@ struct DetailsView: View {
                             .lineSpacing(4)
                         
                         // Play Button
-                        NavigationLink(destination: PlayerView(movieId: movieId, videoUrl: "sample_url")) {
+                        NavigationLink(destination: PlayerView(kpId: details.externalIds?.kp, fallbackTitle: details.title ?? details.name ?? "")) {
                             HStack {
                                 Image(systemName: "play.fill")
                                 Text("Смотреть")
