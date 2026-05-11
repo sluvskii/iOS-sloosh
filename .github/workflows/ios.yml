@@ -45,8 +45,17 @@ jobs:
         mv build/Build/Products/Release-iphoneos/NeoMovies.app Payload/
         zip -r NeoMovies.ipa Payload
 
-    - name: Upload IPA Artifact
-      uses: actions/upload-artifact@v4
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      if: github.ref == 'refs/heads/main'
       with:
-        name: NeoMovies-Unsigned-IPA
-        path: NeoMovies-iOS/NeoMovies.ipa
+        tag_name: latest
+        name: Development Build (Latest)
+        body: |
+          Auto-generated IPA build from the latest commit.
+          **Note:** This is an unsigned IPA file. You need to use tools like TrollStore, AltStore, or SideStore to install it.
+        files: NeoMovies-iOS/NeoMovies.ipa
+        draft: false
+        prerelease: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
