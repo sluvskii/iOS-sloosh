@@ -2,30 +2,6 @@ import SwiftUI
 import UIKit
 
 struct ContentView: View {
-    init() {
-        // Modern iOS 26 transparent TabBar styling with Liquid Glass
-        let appearance = UITabBarAppearance()
-        appearance.configureWithTransparentBackground()
-        
-        // Emulate iOS 26 "Clear" theme and refraction
-        let blurEffect = UIBlurEffect(style: .systemUltraThinMaterial)
-        appearance.backgroundEffect = blurEffect
-        
-        // Add a subtle border to match the glassmorphism look
-        appearance.shadowColor = UIColor.separator.withAlphaComponent(0.3)
-        
-        // Update item appearances for the "Clear" theme
-        let itemAppearance = UITabBarItemAppearance()
-        itemAppearance.normal.iconColor = UIColor.secondaryLabel
-        itemAppearance.selected.iconColor = UIColor.systemBlue
-        appearance.stackedLayoutAppearance = itemAppearance
-        appearance.inlineLayoutAppearance = itemAppearance
-        appearance.compactInlineLayoutAppearance = itemAppearance
-        
-        UITabBar.appearance().standardAppearance = appearance
-        UITabBar.appearance().scrollEdgeAppearance = appearance
-    }
-    
     var body: some View {
         TabView {
             HomeView()
@@ -49,6 +25,9 @@ struct ContentView: View {
                     Label("Настройки", systemImage: "gearshape.fill")
                 }
         }
+        // Native iOS 26 TabBar styling applied via SwiftUI modifiers available in newer SDKs
+        .toolbarBackground(.visible, for: .tabBar)
+        .toolbarBackground(.ultraThinMaterial, for: .tabBar)
         .tint(.blue)
     }
 }

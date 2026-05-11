@@ -65,24 +65,24 @@ struct MoviePosterCard: View {
                     Rectangle()
                         .fill(Color.gray.opacity(0.1))
                         .frame(width: 140, height: 210)
-                        .cornerRadius(24) // More rounded for iOS 26
+                        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
                 case .success(let image):
                     image
                         .resizable()
                         .aspectRatio(contentMode: .fill)
                         .frame(width: 140, height: 210)
-                        .cornerRadius(24)
+                        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                        // Native Liquid Glass effect using iOS 26 materials
                         .overlay(
-                            // Liquid Glass specular highlight
-                            RoundedRectangle(cornerRadius: 24)
-                                .stroke(Color.white.opacity(0.3), lineWidth: 0.5)
+                            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                                .stroke(.quaternary, lineWidth: 1)
                         )
-                        .shadow(color: .black.opacity(0.2), radius: 12, x: 0, y: 8)
+                        .shadow(color: .black.opacity(0.25), radius: 15, x: 0, y: 10)
                 case .failure:
                     Rectangle()
-                        .fill(Color.gray.opacity(0.1))
+                        .fill(.ultraThinMaterial)
                         .frame(width: 140, height: 210)
-                        .cornerRadius(24)
+                        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
                         .overlay(
                             Image(systemName: "film.fill")
                                 .font(.system(size: 30))

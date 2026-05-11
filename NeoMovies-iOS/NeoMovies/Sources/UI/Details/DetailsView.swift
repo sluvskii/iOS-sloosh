@@ -69,21 +69,16 @@ struct DetailsView: View {
                             }
                             .frame(maxWidth: .infinity)
                             .padding()
-                            // Liquid Glass button styling
-                            .background(
-                                ZStack {
-                                    Color.white.opacity(0.15)
-                                    Color.blue.opacity(0.8)
-                                }
-                            )
-                            .background(.ultraThinMaterial)
+                            // Native iOS 26 Liquid Glass button styling
+                            .background(.regularMaterial)
+                            .background(Color.blue.opacity(0.4)) // Subtle tinting
                             .foregroundColor(.white)
-                            .cornerRadius(24)
+                            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
                             .overlay(
-                                RoundedRectangle(cornerRadius: 24)
-                                    .stroke(Color.white.opacity(0.4), lineWidth: 0.5)
+                                RoundedRectangle(cornerRadius: 24, style: .continuous)
+                                    .stroke(.quaternary, lineWidth: 1)
                             )
-                            .shadow(color: .blue.opacity(0.4), radius: 15, x: 0, y: 8)
+                            .shadow(color: .blue.opacity(0.3), radius: 15, x: 0, y: 8)
                         }
                         .padding(.top, 16)
                     }
