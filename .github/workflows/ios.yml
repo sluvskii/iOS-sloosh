@@ -51,8 +51,8 @@ jobs:
       uses: softprops/action-gh-release@v1
       if: github.ref == 'refs/heads/main'
       with:
-        tag_name: latest
-        name: Development Build (Latest)
+        tag_name: build-${{ github.run_number }}
+        name: Development Build #${{ github.run_number }}
         body: |
           Auto-generated IPA build from the latest commit.
           **Note:** This is an unsigned IPA file. You need to use tools like TrollStore, AltStore, or SideStore to install it.
