@@ -69,10 +69,21 @@ struct DetailsView: View {
                             }
                             .frame(maxWidth: .infinity)
                             .padding()
-                            .background(Color.blue)
+                            // Liquid Glass button styling
+                            .background(
+                                ZStack {
+                                    Color.white.opacity(0.15)
+                                    Color.blue.opacity(0.8)
+                                }
+                            )
+                            .background(.ultraThinMaterial)
                             .foregroundColor(.white)
-                            .cornerRadius(16)
-                            .shadow(color: .blue.opacity(0.3), radius: 10, x: 0, y: 5)
+                            .cornerRadius(24)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 24)
+                                    .stroke(Color.white.opacity(0.4), lineWidth: 0.5)
+                            )
+                            .shadow(color: .blue.opacity(0.4), radius: 15, x: 0, y: 8)
                         }
                         .padding(.top, 16)
                     }

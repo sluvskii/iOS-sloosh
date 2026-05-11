@@ -30,9 +30,28 @@ struct AllohaApiResult: Codable {
     let seasons: [AllohaSeason]
 }
 
+class TrustAllSessionDelegate: NSObject, URLSessionDelegate {
+    func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge, completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+        if challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
+           let serverTrust = challenge.protectionSpace.serverTrust {
+            // Bypass SSL certificate validation for Alloha API
+            completionHandler(.useCredential, URLCredential(trust: serverTrust))
+            return
+        }
+        completionHandler(.performDefaultHandling, nil)
+    }
+}
+
 class AllohaRepository {
     static let shared = AllohaRepository()
     private let token = "ffbd312217e27c4245f2678afe1881"
+    
+    // Create a URLSession that ignores SSL certificate errors
+    private lazy var session: URLSession = {
+        let configuration = URLSessionConfiguration.default
+        let delegate = TrustAllSessionDelegate()
+        return URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
+    }()
     
     func fetchByKpId(kpId: Int) async throws -> AllohaApiResult {
         guard let encodedToken = token.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
@@ -44,7 +63,7 @@ class AllohaRepository {
         var request = URLRequest(url: url)
         request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1", forHTTPHeaderField: "User-Agent")
         
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
         
         guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
             throw URLError(.badServerResponse)
