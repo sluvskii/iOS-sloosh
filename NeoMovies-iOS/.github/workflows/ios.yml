@@ -1,0 +1,47 @@
+name: iOS Build
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Select Xcode
+      run: sudo xcode-select -s /Applications/Xcode_15.2.app
+
+    - name: Install XcodeGen
+      run: brew install xcodegen
+
+    - name: Generate Xcode Project
+      run: xcodegen generate
+
+    - name: Build iOS App
+      run: |
+        xcodebuild clean build \
+          -project NeoMovies.xcodeproj \
+          -scheme NeoMovies \
+          -configuration Release \
+          -sdk iphoneos \
+          CODE_SIGN_IDENTITY="" \
+          CODE_SIGNING_REQUIRED=NO \
+          CODE_SIGNING_ALLOWED=NO
+
+    - name: Package IPA (Unsigned)
+      run: |
+        mkdir -p Payload
+        mv build/Release-iphoneos/NeoMovies.app Payload/
+        zip -r NeoMovies.ipa Payload
+
+    - name: Upload IPA Artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: NeoMovies-Unsigned-IPA
+        path: NeoMovies.ipa
