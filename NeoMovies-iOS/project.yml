@@ -1,0 +1,20 @@
+name: NeoMovies
+options:
+  bundleIdPrefix: com.neo
+targets:
+  NeoMovies:
+    type: application
+    platform: iOS
+    deploymentTarget: "16.0"
+    sources:
+      - path: NeoMovies/Sources
+      - path: NeoMovies/Resources
+    info:
+      path: NeoMovies/Info.plist
+      properties:
+        UILaunchStoryboardName: LaunchScreen
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+          UISceneConfigurations: {}
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true

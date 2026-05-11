@@ -1,0 +1,70 @@
+import Foundation
+
+enum NetworkError: Error {
+    case invalidURL
+    case noData
+    case decodingError
+    case serverError(Int)
+}
+
+class MoviesApi {
+    static let shared = MoviesApi()
+    
+    // Default base URL from android project (would normally be in config)
+    private let baseURL = "https://api.neomovies.com" 
+    
+    private init() {}
+    
+    private func performRequest<T: Codable>(endpoint: String, method: String = "GET", queryItems: [URLQueryItem] = []) async throws -> T {
+        var components = URLComponents(string: "\(baseURL)/\(endpoint)")
+        if !queryItems.isEmpty {
+            components?.queryItems = queryItems
+        }
+        
+        guard let url = components?.url else {
+            throw NetworkError.invalidURL
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        // Add auth headers if needed
+        
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
+            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 500
+            throw NetworkError.serverError(statusCode)
+        }
+        
+        do {
+            let decoder = JSONDecoder()
+            return try decoder.decode(T.self, from: data)
+        } catch {
+            print("Decoding error: \(error)")
+            throw NetworkError.decodingError
+        }
+    }
+    
+    func getPopularMovies(page: Int = 1) async throws -> ApiEnvelope<MediaResponse> {
+        return try await performRequest(endpoint: "api/v1/movies/popular", queryItems: [URLQueryItem(name: "page", value: String(page))])
+    }
+    
+    func getTopMovies(page: Int = 1) async throws -> ApiEnvelope<MediaResponse> {
+        return try await performRequest(endpoint: "api/v1/movies/top-rated", queryItems: [URLQueryItem(name: "page", value: String(page))])
+    }
+    
+    func getTopTv(page: Int = 1) async throws -> ApiEnvelope<MediaResponse> {
+        return try await performRequest(endpoint: "api/v1/tv/top-rated", queryItems: [URLQueryItem(name: "page", value: String(page))])
+    }
+    
+    func getDetails(id: String) async throws -> ApiEnvelope<MediaDetailsDto> {
+        return try await performRequest(endpoint: "api/v1/movie/\(id)")
+    }
+    
+    func searchMovies(query: String, page: Int = 1) async throws -> ApiEnvelope<MediaResponse> {
+        return try await performRequest(endpoint: "api/v1/search", queryItems: [
+            URLQueryItem(name: "query", value: query),
+            URLQueryItem(name: "page", value: String(page))
+        ])
+    }
+}
