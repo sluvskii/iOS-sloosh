@@ -1,5 +1,5 @@
 import SwiftUI
-import WebKit
+import AVKit
 
 struct PlayerView: View {
     let kpId: Int?
@@ -31,9 +31,15 @@ struct PlayerView: View {
                         .multilineTextAlignment(.center)
                         .padding()
                 }
-            } else if let urlString = viewModel.iframeUrl, let url = URL(string: urlString) {
-                WebView(url: url)
+            } else if let player = viewModel.player {
+                VideoPlayer(player: player)
                     .edgesIgnoringSafeArea(.all)
+                    .onAppear {
+                        player.play()
+                    }
+                    .onDisappear {
+                        player.pause()
+                    }
             } else {
                 Text("Видео не найдено")
                     .foregroundColor(.white)
@@ -41,63 +47,113 @@ struct PlayerView: View {
         }
         .onAppear {
             if let kpId = kpId {
-                Task {
-                    await viewModel.loadAlloha(kpId: kpId)
-                }
+                viewModel.loadAlloha(kpId: kpId)
             } else {
                 viewModel.error = "Кинопоиск ID не найден для этого фильма"
                 viewModel.isLoading = false
             }
+        }
+        .onDisappear {
+            viewModel.cleanup()
         }
         .navigationBarTitleDisplayMode(.inline)
     }
 }
 
 @MainActor
-class PlayerViewModel: ObservableObject {
-    @Published var iframeUrl: String?
+class PlayerViewModel: ObservableObject, AllohaParserDelegate {
+    @Published var player: AVPlayer?
     @Published var isLoading = true
     @Published var error: String?
     
-    func loadAlloha(kpId: Int) async {
+    private var parser: AllohaParser?
+    
+    func loadAlloha(kpId: Int) {
         isLoading = true
         error = nil
         
+        Task {
+            do {
+                let result = try await AllohaRepository.shared.fetchByKpId(kpId: kpId)
+                var iframeUrl: String?
+                if result.isSerial, let firstSeason = result.seasons.first, let firstEp = firstSeason.episodes.first, let trans = firstEp.translations.first {
+                    iframeUrl = trans.iframeUrl
+                } else if let movie = result.movie {
+                    iframeUrl = movie.iframeUrl
+                }
+                
+                guard let url = iframeUrl else {
+                    self.error = "Видео недоступно для просмотра"
+                    self.isLoading = false
+                    return
+                }
+                
+                self.startParsing(iframeUrl: url)
+            } catch {
+                self.error = "Ошибка загрузки: \(error.localizedDescription)"
+                self.isLoading = false
+            }
+        }
+    }
+    
+    private func startParsing(iframeUrl: String) {
+        parser = AllohaParser()
+        parser?.delegate = self
+        parser?.parse(iframeUrl: iframeUrl)
+    }
+    
+    func cleanup() {
+        player?.pause()
+        player = nil
+        parser?.release()
+        parser = nil
+    }
+    
+    // MARK: - AllohaParserDelegate
+    
+    func onHlsLinksReceived(json: String, extraHeaders: [String : String]) {
         do {
-            let result = try await AllohaRepository.shared.fetchByKpId(kpId: kpId)
-            if result.isSerial, let firstSeason = result.seasons.first, let firstEp = firstSeason.episodes.first, let trans = firstEp.translations.first {
-                self.iframeUrl = trans.iframeUrl
-            } else if let movie = result.movie {
-                self.iframeUrl = movie.iframeUrl
+            if let data = json.data(using: .utf8),
+               let dict = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let hlsSource = dict["hlsSource"] as? [[String: Any]],
+               let firstSource = hlsSource.first,
+               let quality = firstSource["quality"] as? [String: String],
+               let firstQualityKey = quality.keys.first,
+               let urlString = quality[firstQualityKey]?.components(separatedBy: " or ").first,
+               let url = URL(string: urlString) {
+                
+                playVideo(url: url, headers: extraHeaders)
             } else {
-                self.error = "Видео недоступно для просмотра"
+                self.error = "Не удалось извлечь ссылку на видео"
+                self.isLoading = false
             }
         } catch {
-            self.error = "Ошибка загрузки: \(error.localizedDescription)"
+            self.error = "Ошибка парсинга: \(error.localizedDescription)"
+            self.isLoading = false
         }
-        
-        isLoading = false
     }
-}
-
-struct WebView: UIViewRepresentable {
-    let url: URL
-
-    func makeUIView(context: Context) -> WKWebView {
-        let config = WKWebViewConfiguration()
-        config.allowsInlineMediaPlayback = true
-        config.mediaTypesRequiringUserActionForPlayback = []
-        
-        let webView = WKWebView(frame: .zero, configuration: config)
-        webView.backgroundColor = .black
-        webView.isOpaque = false
-        webView.scrollView.backgroundColor = .black
-        webView.scrollView.isScrollEnabled = false
-        return webView
+    
+    func onConfigUpdate(edgeHash: String, ttlSeconds: Int, extraHeaders: [String : String]) {
+        // Ignored for simple AVPlayer, AVPlayer handles streams automatically
     }
-
-    func updateUIView(_ webView: WKWebView, context: Context) {
-        let request = URLRequest(url: url)
-        webView.load(request)
+    
+    func onM3u8Refreshed(url: String, extraHeaders: [String : String]) {
+        // Ignored for simple AVPlayer
+    }
+    
+    func onStreamHeadersUpdated(extraHeaders: [String : String]) {
+        // Ignored for simple AVPlayer
+    }
+    
+    func onError(error: String) {
+        self.error = error
+        self.isLoading = false
+    }
+    
+    private func playVideo(url: URL, headers: [String: String]) {
+        let asset = AVURLAsset(url: url, options: ["AVURLAssetHTTPHeaderFieldsKey": headers])
+        let playerItem = AVPlayerItem(asset: asset)
+        self.player = AVPlayer(playerItem: playerItem)
+        self.isLoading = false
     }
 }
