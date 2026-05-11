@@ -5,7 +5,7 @@ targets:
   NeoMovies:
     type: application
     platform: iOS
-    deploymentTarget: "19.0" # Target iOS 19 (which aligns with iOS 26 features depending on the SDK versioning)
+    deploymentTarget: "26.0" # Target exact iOS 26 SDK
     sources:
       - path: NeoMovies/Sources
       - path: NeoMovies/Resources
