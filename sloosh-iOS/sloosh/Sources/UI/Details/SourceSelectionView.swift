@@ -9,7 +9,7 @@ struct GlassButtonStyle: ButtonStyle {
             .padding(.vertical, 16)
             .background(
                 Capsule()
-                    .fill(Color.neoAccent.opacity(configuration.isPressed ? 0.7 : 1.0))
+                    .fill(Color.slooshAccent.opacity(configuration.isPressed ? 0.7 : 1.0))
             )
             .overlay(
                 Capsule()
@@ -281,7 +281,7 @@ struct ChipView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
                 .background(
-                    isSelected ? Color.neoAccent : Color(UIColor.secondarySystemBackground)
+                    isSelected ? Color.slooshAccent : Color(UIColor.secondarySystemBackground)
                 )
                 .foregroundColor(
                     isSelected ? .black : (isAvailable ? .primary : .secondary)
