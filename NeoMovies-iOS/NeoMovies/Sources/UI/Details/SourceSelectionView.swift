@@ -4,20 +4,37 @@ struct GlassButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: 18, weight: .bold))
-            .foregroundColor(.black)
+            // Используем адаптивный цвет текста для стекла
+            .foregroundColor(.primary)
             .frame(maxWidth: .infinity)
             .padding(.vertical, 16)
+            // 1. Настоящий блюр (материал) как основа
+            .background(.ultraThinMaterial, in: Capsule())
+            // 2. Легкая тонировка акцентным цветом
             .background(
-                Capsule()
-                    .fill(Color.neoAccent.opacity(configuration.isPressed ? 0.7 : 1.0))
+                Color.neoAccent.opacity(configuration.isPressed ? 0.5 : 0.3)
+                    .clipShape(Capsule())
             )
+            // 3. Красивая стеклянная окантовка (блик)
             .overlay(
                 Capsule()
-                    .stroke(Color.white.opacity(configuration.isPressed ? 0.4 : 0.2), lineWidth: 1)
+                    .stroke(
+                        LinearGradient(
+                            colors: [
+                                .white.opacity(configuration.isPressed ? 0.7 : 0.5),
+                                .white.opacity(configuration.isPressed ? 0.3 : 0.1)
+                            ],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        ),
+                        lineWidth: 1
+                    )
             )
-            .shadow(color: Color.black.opacity(0.15), radius: 8, x: 0, y: 4)
-            .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
-            .animation(.spring(response: 0.3, dampingFraction: 0.6, blendDuration: 0), value: configuration.isPressed)
+            // 4. Тень для объема
+            .shadow(color: Color.black.opacity(0.2), radius: configuration.isPressed ? 4 : 10, x: 0, y: configuration.isPressed ? 2 : 5)
+            // 5. Анимация продавливания
+            .scaleEffect(configuration.isPressed ? 0.95 : 1.0)
+            .animation(.spring(response: 0.3, dampingFraction: 0.6), value: configuration.isPressed)
     }
 }
 
