@@ -28,10 +28,13 @@ class PlayerPresenterViewController: UIViewController {
             playerController.showsPlaybackControls = true
             playerController.allowsPictureInPicturePlayback = true
             
-            // КРИТИЧНО ВАЖНО: Используем overFullScreen, чтобы SwiftUI не вызывал onDisappear
-            // для PlayerView. Если вызовется onDisappear, он убьет прокси-сервер (HlsProxyServer),
-            // и видео не будет проигрываться (появится перечеркнутый плей).
-            playerController.modalPresentationStyle = .overFullScreen
+            // ВАЖНО: Используем fullScreen вместо overFullScreen!
+            // overFullScreen заставляет родительский контроллер оставаться в иерархии вьюх, 
+            // что ломает логику SwiftUI .onDisappear. Но если использовать просто fullScreen, 
+            // SwiftUI может вызвать onDisappear слишком рано и убить сервер.
+            // Чтобы этого избежать, мы перенесем cleanup сервера из onDisappear 
+            // непосредственно в логику закрытия плеера (onDismiss).
+            playerController.modalPresentationStyle = .fullScreen
             
             self.present(playerController, animated: true) {
                 player.play()
@@ -73,23 +76,19 @@ class PlayerPresenterViewController: UIViewController {
 
 struct ModalPlayerPresenter: UIViewControllerRepresentable {
     var player: AVPlayer
-    @Environment(\.presentationMode) var presentationMode
+    var onDismiss: () -> Void
     
     func makeUIViewController(context: Context) -> PlayerPresenterViewController {
         let controller = PlayerPresenterViewController()
         controller.view.backgroundColor = .clear
         controller.player = player
-        controller.onDismiss = {
-            presentationMode.wrappedValue.dismiss()
-        }
+        controller.onDismiss = onDismiss
         return controller
     }
     
     func updateUIViewController(_ uiViewController: PlayerPresenterViewController, context: Context) {
         uiViewController.player = player
-        uiViewController.onDismiss = {
-            presentationMode.wrappedValue.dismiss()
-        }
+        uiViewController.onDismiss = onDismiss
     }
 }
 
@@ -125,8 +124,11 @@ struct PlayerView: View {
                         .padding()
                 }
             } else if let player = viewModel.player {
-                ModalPlayerPresenter(player: player)
-                    .edgesIgnoringSafeArea(.all)
+                ModalPlayerPresenter(player: player) {
+                    viewModel.cleanup() // Теперь очистка происходит ТОЛЬКО когда плеер реально закрылся
+                    presentationMode.wrappedValue.dismiss()
+                }
+                .edgesIgnoringSafeArea(.all)
             } else {
                 Text("Видео не найдено")
                     .foregroundColor(.white)
@@ -142,9 +144,7 @@ struct PlayerView: View {
                 viewModel.isLoading = false
             }
         }
-        .onDisappear {
-            viewModel.cleanup()
-        }
+        // Убрали .onDisappear с cleanup, чтобы он не убивал видео при показе плеера
         .navigationBarHidden(true)
         .navigationBarBackButtonHidden(true)
     }
