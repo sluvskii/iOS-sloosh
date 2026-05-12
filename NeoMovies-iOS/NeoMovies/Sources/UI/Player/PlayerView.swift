@@ -67,7 +67,6 @@ class PlayerViewModel: ObservableObject, AllohaParserDelegate {
     @Published var error: String?
     
     private var parser: AllohaParser?
-    private var resourceLoaderDelegate: HlsProxyResourceLoaderDelegate?
     
     func loadAlloha(kpId: Int) {
         isLoading = true
@@ -108,7 +107,7 @@ class PlayerViewModel: ObservableObject, AllohaParserDelegate {
         player = nil
         parser?.release()
         parser = nil
-        resourceLoaderDelegate = nil
+        HlsProxyServer.shared.stop()
     }
     
     // MARK: - AllohaParserDelegate
@@ -154,26 +153,26 @@ class PlayerViewModel: ObservableObject, AllohaParserDelegate {
     
     private func playVideo(url: URL, headers: [String: String]) {
         let absoluteUrlString = url.absoluteString
-        guard let encoded = absoluteUrlString.data(using: .utf8)?.base64EncodedString() else {
+        guard let encodedData = absoluteUrlString.data(using: .utf8) else {
             self.error = "Ошибка формирования URL"
             self.isLoading = false
             return
         }
         
-        var comp = URLComponents(string: "neoproxy://127.0.0.1/proxy.m3u8")!
-        comp.queryItems = [URLQueryItem(name: "url", value: encoded)]
+        let encoded = encodedData.base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
         
-        guard let proxyUrl = comp.url else {
+        HlsProxyServer.shared.start(headers: headers)
+        
+        guard let proxyUrl = URL(string: "http://127.0.0.1:\(HlsProxyServer.shared.port.rawValue)/proxy?url=\(encoded)") else {
             self.error = "Ошибка формирования URL"
             self.isLoading = false
             return
         }
-        
-        resourceLoaderDelegate = HlsProxyResourceLoaderDelegate(headers: headers)
         
         let asset = AVURLAsset(url: proxyUrl)
-        asset.resourceLoader.setDelegate(resourceLoaderDelegate, queue: .main)
-        
         let playerItem = AVPlayerItem(asset: asset)
         self.player = AVPlayer(playerItem: playerItem)
         self.isLoading = false
