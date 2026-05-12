@@ -1,11 +1,13 @@
 name: sloosh
 options:
-  bundleIdPrefix: com.sloosh
+  bundleIdPrefix: com
 targets:
   sloosh:
     type: application
     platform: iOS
     deploymentTarget: "16.0" # Back to 16.0 to match the original project architecture, custom UI styling used
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: com.sloosh.ios
     sources:
       - path: sloosh/Sources
       - path: sloosh/Resources
