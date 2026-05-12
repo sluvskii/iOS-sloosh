@@ -22,7 +22,7 @@ struct DetailsView: View {
                         let height = isScrollingDown ? 450 + minY : 450
                         let offset = isScrollingDown ? -minY : 0
 
-                        AsyncImage(url: URL(string: details.backdropUrl ?? details.posterUrl ?? "")) { phase in
+                        AsyncImage(url: URL(string: details.displayBackdropUrl ?? details.displayPosterUrl ?? "")) { phase in
                             if let image = phase.image {
                                 image.resizable()
                                     .aspectRatio(contentMode: .fill)

@@ -65,24 +65,24 @@ struct MoviePosterCard: View {
                     Rectangle()
                         .fill(Color.gray.opacity(0.1))
                         .frame(width: 140, height: 210)
-                        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 case .success(let image):
                     image
                         .resizable()
                         .aspectRatio(contentMode: .fill)
                         .frame(width: 140, height: 210)
-                        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                         // Native Liquid Glass effect matching SlooshIOS Theme
                         .overlay(
-                            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
                                 .stroke(Color.primary.opacity(0.1), lineWidth: 1)
                         )
-                        .shadow(color: .black.opacity(0.25), radius: 15, x: 0, y: 10)
+                        .shadow(color: .black.opacity(0.25), radius: 10, x: 0, y: 8)
                 case .failure:
                     Rectangle()
                         .fill(.regularMaterial)
                         .frame(width: 140, height: 210)
-                        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
+                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                         .overlay(
                             Image(systemName: "film.fill")
                                 .font(.system(size: 30))
@@ -95,7 +95,8 @@ struct MoviePosterCard: View {
             
             Text(movie.displayTitle)
                 .font(.system(size: 15, weight: .semibold, design: .rounded))
-                .lineLimit(2)
+                .lineLimit(1)
+                .truncationMode(.tail)
                 .multilineTextAlignment(.leading)
                 .frame(width: 140, alignment: .leading)
             

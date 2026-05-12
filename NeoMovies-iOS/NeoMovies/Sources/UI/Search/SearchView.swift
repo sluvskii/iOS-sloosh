@@ -20,6 +20,8 @@ struct SearchView: View {
                         VStack(alignment: .leading, spacing: 6) {
                             Text(movie.displayTitle)
                                 .font(.system(size: 16, weight: .bold, design: .rounded))
+                                .lineLimit(1)
+                                .truncationMode(.tail)
                             
                             HStack {
                                 if let year = movie.year?.stringValue {
