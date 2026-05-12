@@ -220,11 +220,13 @@ struct SourceSelectionView: View {
                         .font(.system(size: 16, weight: .bold))
                         .foregroundColor(.black)
                         .frame(maxWidth: .infinity)
-                        .padding()
+                        .padding(.vertical, 14)
                         .background(Color.neoAccent)
-                        .cornerRadius(24)
+                        .clipShape(Capsule())
                 }
-                .padding()
+                .padding(.horizontal, 32)
+                .padding(.bottom, 32)
+                .padding(.top, 32)
                 .background(
                     LinearGradient(gradient: Gradient(colors: [Color(UIColor.systemBackground).opacity(0), Color(UIColor.systemBackground)]), startPoint: .top, endPoint: .bottom)
                 )
@@ -264,18 +266,18 @@ struct ChipView: View {
         Button(action: action) {
             Text(title)
                 .font(.system(size: 16, weight: .medium))
-                .padding(.horizontal, 20)
-                .padding(.vertical, 10)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
                 .background(
                     isSelected ? Color.neoAccent : Color(UIColor.secondarySystemBackground)
                 )
                 .foregroundColor(
                     isSelected ? .black : (isAvailable ? .primary : .secondary)
                 )
-                .cornerRadius(24)
+                .clipShape(Capsule())
                 .opacity(isAvailable ? 1.0 : 0.4)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 24)
+                    Capsule()
                         .stroke(isSelected ? Color.clear : Color(UIColor.separator).opacity(0.3), lineWidth: 1)
                 )
         }
