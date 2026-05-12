@@ -93,11 +93,18 @@ struct ModalPlayerPresenter: UIViewControllerRepresentable {
 }
 
 struct PlayerView: View {
-    let iframeUrl: String
+    let iframeUrl: String?
+    let directVideoUrl: String?
     let fallbackTitle: String
     
     @StateObject private var viewModel = PlayerViewModel()
     @Environment(\.presentationMode) var presentationMode
+    
+    init(iframeUrl: String? = nil, directVideoUrl: String? = nil, fallbackTitle: String) {
+        self.iframeUrl = iframeUrl
+        self.directVideoUrl = directVideoUrl
+        self.fallbackTitle = fallbackTitle
+    }
     
     var body: some View {
         ZStack {
@@ -136,7 +143,14 @@ struct PlayerView: View {
         }
         .onAppear {
             if viewModel.player == nil { // Избегаем повторной загрузки при перерисовках
-                viewModel.load(iframeUrl: iframeUrl)
+                if let directUrl = directVideoUrl {
+                    viewModel.loadDirect(url: directUrl)
+                } else if let iframe = iframeUrl {
+                    viewModel.load(iframeUrl: iframe)
+                } else {
+                    viewModel.error = "Нет URL для воспроизведения"
+                    viewModel.isLoading = false
+                }
             }
         }
         // Убрали .onDisappear с cleanup, чтобы он не убивал видео при показе плеера
@@ -160,6 +174,24 @@ class PlayerViewModel: ObservableObject, AllohaParserDelegate {
         error = nil
         
         startParsing(iframeUrl: iframeUrl)
+    }
+    
+    func loadDirect(url: String) {
+        if player != nil { return }
+        
+        isLoading = true
+        error = nil
+        
+        guard let parsedUrl = URL(string: url) else {
+            self.error = "Некорректный URL"
+            self.isLoading = false
+            return
+        }
+        
+        let asset = AVURLAsset(url: parsedUrl)
+        let playerItem = AVPlayerItem(asset: asset)
+        self.player = AVPlayer(playerItem: playerItem)
+        self.isLoading = false
     }
     
     private func startParsing(iframeUrl: String) {

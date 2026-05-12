@@ -7,7 +7,7 @@ struct SettingsView: View {
                 Section(header: Text("Основные")) {
                     NavigationLink("Язык", destination: Text("Настройки языка"))
                     NavigationLink("Настройки плеера", destination: Text("Настройки плеера"))
-                    NavigationLink("Источники", destination: Text("Настройки источников"))
+                    NavigationLink("Источники", destination: SourceSettingsView())
                 }
                 
                 Section(header: Text("О приложении")) {
