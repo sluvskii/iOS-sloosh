@@ -16,6 +16,11 @@ class PlayerPresenterViewController: UIViewController {
             playerController.showsPlaybackControls = true
             playerController.allowsPictureInPicturePlayback = true
             
+            // КРИТИЧНО ВАЖНО: Используем overFullScreen, чтобы SwiftUI не вызывал onDisappear
+            // для PlayerView. Если вызовется onDisappear, он убьет прокси-сервер (HlsProxyServer),
+            // и видео не будет проигрываться (появится перечеркнутый плей).
+            playerController.modalPresentationStyle = .overFullScreen
+            
             self.present(playerController, animated: true) {
                 player.play()
             }
@@ -89,7 +94,9 @@ struct PlayerView: View {
         }
         .onAppear {
             if let kpId = kpId {
-                viewModel.loadAlloha(kpId: kpId)
+                if viewModel.player == nil { // Избегаем повторной загрузки при перерисовках
+                    viewModel.loadAlloha(kpId: kpId)
+                }
             } else {
                 viewModel.error = "Кинопоиск ID не найден для этого фильма"
                 viewModel.isLoading = false
@@ -126,6 +133,8 @@ class PlayerViewModel: ObservableObject, AllohaParserDelegate {
     private var parser: AllohaParser?
     
     func loadAlloha(kpId: Int) {
+        if player != nil { return } // Защита от двойного вызова
+        
         isLoading = true
         error = nil
         
