@@ -6,6 +6,7 @@ struct PlayerView: View {
     let fallbackTitle: String
     
     @StateObject private var viewModel = PlayerViewModel()
+    @Environment(\.presentationMode) var presentationMode
     
     var body: some View {
         ZStack {
@@ -44,6 +45,26 @@ struct PlayerView: View {
                 Text("Видео не найдено")
                     .foregroundColor(.white)
             }
+            
+            // Custom Back Button Overlay
+            VStack {
+                HStack {
+                    Button(action: {
+                        presentationMode.wrappedValue.dismiss()
+                    }) {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 20, weight: .bold))
+                            .foregroundColor(.white)
+                            .padding(12)
+                            .background(Color.black.opacity(0.5))
+                            .clipShape(Circle())
+                    }
+                    .padding(.top, 40) // SafeArea top inset approx for landscape
+                    .padding(.leading, 20)
+                    Spacer()
+                }
+                Spacer()
+            }
         }
         .onAppear {
             if let kpId = kpId {
@@ -52,11 +73,26 @@ struct PlayerView: View {
                 viewModel.error = "Кинопоиск ID не найден для этого фильма"
                 viewModel.isLoading = false
             }
+            AppDelegate.orientationLock = .landscape
+            if #available(iOS 16.0, *) {
+                guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene else { return }
+                windowScene.requestGeometryUpdate(.iOS(interfaceOrientations: .landscape))
+            } else {
+                UIDevice.current.setValue(UIInterfaceOrientation.landscapeRight.rawValue, forKey: "orientation")
+            }
         }
         .onDisappear {
             viewModel.cleanup()
+            AppDelegate.orientationLock = .all
+            if #available(iOS 16.0, *) {
+                guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene else { return }
+                windowScene.requestGeometryUpdate(.iOS(interfaceOrientations: .portrait))
+            } else {
+                UIDevice.current.setValue(UIInterfaceOrientation.portrait.rawValue, forKey: "orientation")
+            }
         }
-        .navigationBarTitleDisplayMode(.inline)
+        .navigationBarHidden(true)
+        .navigationBarBackButtonHidden(true)
     }
 }
 
