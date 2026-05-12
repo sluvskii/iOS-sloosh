@@ -80,19 +80,13 @@ struct DetailsView: View {
                                     Image(systemName: "play.fill")
                                 }
                                 Text(viewModel.isFetchingSources ? "Загрузка..." : "Смотреть")
-                                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                                    .font(.system(size: 16, weight: .bold))
                             }
                             .frame(maxWidth: .infinity)
                             .padding()
-                            .background(.regularMaterial)
-                            .background(Color.blue.opacity(0.4))
+                            .background(Color.neoAccent)
                             .foregroundColor(.white)
-                            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 24, style: .continuous)
-                                    .stroke(.quaternary, lineWidth: 1)
-                            )
-                            .shadow(color: .blue.opacity(0.3), radius: 15, x: 0, y: 8)
+                            .cornerRadius(16)
                         }
                         .disabled(viewModel.isFetchingSources)
                         .padding(.top, 16)
