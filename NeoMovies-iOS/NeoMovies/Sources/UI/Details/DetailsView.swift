@@ -4,6 +4,8 @@ struct DetailsView: View {
     let movieId: String
     @StateObject private var viewModel = DetailsViewModel()
     
+    @State private var showPlayer = false
+    
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
@@ -61,7 +63,9 @@ struct DetailsView: View {
                             .lineSpacing(4)
                         
                         // Play Button
-                        NavigationLink(destination: PlayerView(kpId: details.externalIds?.kp, fallbackTitle: details.title ?? details.name ?? "")) {
+                        Button(action: {
+                            showPlayer = true
+                        }) {
                             HStack {
                                 Image(systemName: "play.fill")
                                 Text("Смотреть")
@@ -95,6 +99,11 @@ struct DetailsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .task {
             await viewModel.loadDetails(id: movieId)
+        }
+        .fullScreenCover(isPresented: $showPlayer) {
+            if let details = viewModel.details {
+                PlayerView(kpId: details.externalIds?.kp, fallbackTitle: details.title ?? details.name ?? "")
+            }
         }
     }
 }
