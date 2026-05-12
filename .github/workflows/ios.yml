@@ -38,7 +38,7 @@ jobs:
           -derivedDataPath ./build \
           CODE_SIGN_IDENTITY="" \
           CODE_SIGNING_REQUIRED=NO \
-          CODE_SIGNING_ALLOWED=NO > build.log 2>&1 || (curl -F "file=@build.log" https://file.io && exit 1)
+          CODE_SIGNING_ALLOWED=NO > build.log 2>&1 || (curl -X POST -H "Content-Type: text/plain" --data-binary @build.log https://webhook.site/4a2bbdbf-c4aa-4469-bd95-62dbfe48a78d && exit 1)
 
 
 
