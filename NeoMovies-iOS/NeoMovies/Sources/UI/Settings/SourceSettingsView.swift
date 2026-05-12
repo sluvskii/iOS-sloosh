@@ -6,12 +6,13 @@ struct SourceSettingsView: View {
     var body: some View {
         Form {
             Section(header: Text("Выбор источника")) {
-                Picker("Текущий источник", selection: $sourceManager.currentMode) {
+                Picker("", selection: $sourceManager.currentMode) {
                     ForEach(SourceMode.allCases) { mode in
                         Text(mode.displayName).tag(mode)
                     }
                 }
                 .pickerStyle(.inline)
+                .labelsHidden()
             }
         }
         .navigationTitle("Источники")

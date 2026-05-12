@@ -9,8 +9,8 @@ enum SourceMode: String, CaseIterable, Identifiable {
     
     var displayName: String {
         switch self {
-        case .collaps: return "Collaps (Online)"
-        case .alloha: return "Alloha (Online)"
+        case .collaps: return "Collaps"
+        case .alloha: return "Alloha"
         }
     }
 }
