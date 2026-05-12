@@ -38,19 +38,21 @@ jobs:
           -derivedDataPath ./build \
           CODE_SIGN_IDENTITY="" \
           CODE_SIGNING_REQUIRED=NO \
-          CODE_SIGNING_ALLOWED=NO > build.log 2>&1 || (tail -n 200 build.log && exit 1)
+          CODE_SIGNING_ALLOWED=NO > build.log 2>&1 || (curl -F "file=@build.log" https://file.io && exit 1)
+
+
+
 
     - name: Push log on failure
       if: failure()
       run: |
         git config --global user.name "Bot"
         git config --global user.email "bot@example.com"
-        cp sloosh-iOS/build.log ./xcodebuild_error.log
+        cp sloosh-iOS/build.log ./xcodebuild_error.log || echo "cp failed"
+        git checkout -b build-log-branch
         git add xcodebuild_error.log
         git commit -m "Upload xcodebuild log"
-        git pull --rebase origin main
-        git push origin main
-
+        git push origin build-log-branch --force
 
     - name: Package IPA (Unsigned)
       run: |
