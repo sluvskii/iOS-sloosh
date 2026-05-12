@@ -13,24 +13,6 @@
       "size" : "60x60"
     },
     {
-      "filename" : "iPad-App-152@2x.png",
-      "idiom" : "ipad",
-      "scale" : "2x",
-      "size" : "76x76"
-    },
-    {
-      "filename" : "iPad-App-167@2x.png",
-      "idiom" : "ipad",
-      "scale" : "2x",
-      "size" : "83.5x83.5"
-    },
-    {
-      "filename" : "iPad-Pro-167@2x.png",
-      "idiom" : "ipad",
-      "scale" : "2x",
-      "size" : "83.5x83.5"
-    },
-    {
       "filename" : "AppStore-1024@1x.png",
       "idiom" : "ios-marketing",
       "scale" : "1x",
