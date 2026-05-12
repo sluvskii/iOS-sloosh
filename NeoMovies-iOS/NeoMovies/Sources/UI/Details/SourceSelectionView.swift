@@ -63,12 +63,15 @@ struct SourceSelectionView: View {
                             presentationMode.wrappedValue.dismiss()
                         }
                     }) {
-                        Text("Смотреть")
-                            .frame(maxWidth: .infinity, alignment: .center)
-                            .font(.system(size: 16, weight: .bold))
-                            .foregroundColor(selectedTranslation != nil ? .white : .gray)
+                        HStack {
+                            Image(systemName: "play.fill")
+                            Text("Смотреть")
+                        }
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(selectedTranslation != nil ? Color(UIColor.systemBackground) : .gray)
                     }
-                    .listRowBackground(selectedTranslation != nil ? Color.neoAccent : Color(UIColor.systemGray5))
+                    .listRowBackground(selectedTranslation != nil ? Color.primary : Color(UIColor.systemGray5))
                     .disabled(selectedTranslation == nil)
                 }
             }
