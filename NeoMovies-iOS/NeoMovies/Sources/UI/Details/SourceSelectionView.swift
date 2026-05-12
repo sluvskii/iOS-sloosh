@@ -225,7 +225,7 @@ struct SourceSelectionView: View {
                         .clipShape(Capsule())
                 }
                 .padding(.horizontal, 32)
-                .padding(.bottom, 24)
+                .padding(.bottom, 8)
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
