@@ -95,8 +95,29 @@ struct MediaDto: Codable, Identifiable {
     }
     
     var displayPosterUrl: String? {
-        posterUrl ?? poster_path
+        normalizeImageUrl(path: posterUrl ?? poster_path)
     }
+}
+
+func normalizeImageUrl(path: String?) -> String? {
+    guard let path = path?.trimmingCharacters(in: .whitespacesAndNewlines), !path.isEmpty else { return nil }
+    
+    if path.hasPrefix("http://") || path.hasPrefix("https://") {
+        return path
+    }
+    
+    var id: String? = nil
+    if path.allSatisfy({ $0.isNumber }) {
+        id = path
+    } else if path.hasPrefix("kp_") {
+        let suffix = String(path.dropFirst(3))
+        if suffix.allSatisfy({ $0.isNumber }) {
+            id = suffix
+        }
+    }
+    
+    guard let validId = id else { return nil }
+    return "https://api.neomovies.ru/api/v1/images/kp_small/\(validId)?fallback=true"
 }
 
 struct MediaDetailsDto: Codable {
@@ -116,6 +137,15 @@ struct MediaDetailsDto: Codable {
     let country: String?
     let language: String?
     let externalIds: ExternalIdsDto?
+    
+    var displayPosterUrl: String? {
+        normalizeImageUrl(path: posterUrl)
+    }
+    
+    var displayBackdropUrl: String? {
+        // We can reuse the same normalizer for backdrop, or just check if it's full URL
+        normalizeImageUrl(path: backdropUrl)
+    }
 }
 
 struct GenreDto: Codable {
