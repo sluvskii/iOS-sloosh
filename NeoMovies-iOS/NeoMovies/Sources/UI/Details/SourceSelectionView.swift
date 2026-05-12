@@ -172,16 +172,14 @@ struct SourceSelectionView: View {
                                     .font(.headline)
                                     .foregroundColor(.secondary)
                                 
-                                ScrollView(.horizontal, showsIndicators: false) {
-                                    HStack(spacing: 8) {
-                                        ForEach(allSeasons, id: \.self) { s in
-                                            ChipView(
-                                                title: "Сезон \(s)",
-                                                isSelected: selectedSeason == s,
-                                                isAvailable: isSeasonAvailable(s)
-                                            ) {
-                                                selectSeason(s)
-                                            }
+                                FlowLayout(spacing: 8) {
+                                    ForEach(allSeasons, id: \.self) { s in
+                                        ChipView(
+                                            title: "Сезон \(s)",
+                                            isSelected: selectedSeason == s,
+                                            isAvailable: isSeasonAvailable(s)
+                                        ) {
+                                            selectSeason(s)
                                         }
                                     }
                                 }
@@ -196,7 +194,7 @@ struct SourceSelectionView: View {
                                     FlowLayout(spacing: 8) {
                                         ForEach(allEpisodes, id: \.self) { e in
                                             ChipView(
-                                                title: "\(e)",
+                                                title: "\(e) серия",
                                                 isSelected: selectedEpisode == e,
                                                 isAvailable: isEpisodeAvailable(e)
                                             ) {
@@ -265,19 +263,19 @@ struct ChipView: View {
     var body: some View {
         Button(action: action) {
             Text(title)
-                .font(.system(size: 14, weight: .medium))
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
+                .font(.system(size: 16, weight: .medium))
+                .padding(.horizontal, 20)
+                .padding(.vertical, 10)
                 .background(
                     isSelected ? Color.neoAccent : Color(UIColor.secondarySystemBackground)
                 )
                 .foregroundColor(
                     isSelected ? .black : (isAvailable ? .primary : .secondary)
                 )
-                .cornerRadius(20)
+                .cornerRadius(24)
                 .opacity(isAvailable ? 1.0 : 0.4)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 20)
+                    RoundedRectangle(cornerRadius: 24)
                         .stroke(isSelected ? Color.clear : Color(UIColor.separator).opacity(0.3), lineWidth: 1)
                 )
         }
