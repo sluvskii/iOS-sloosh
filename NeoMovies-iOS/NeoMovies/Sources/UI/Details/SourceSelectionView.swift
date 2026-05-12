@@ -175,7 +175,7 @@ struct SourceSelectionView: View {
                                 FlowLayout(spacing: 8) {
                                     ForEach(allSeasons, id: \.self) { s in
                                         ChipView(
-                                            title: "Сезон \(s)",
+                                            title: "\(s) сезон",
                                             isSelected: selectedSeason == s,
                                             isAvailable: isSeasonAvailable(s)
                                         ) {
@@ -217,19 +217,15 @@ struct SourceSelectionView: View {
                     playSelected()
                 }) {
                     Text("Далее")
-                        .font(.system(size: 16, weight: .bold))
+                        .font(.system(size: 18, weight: .bold))
                         .foregroundColor(.black)
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 14)
+                        .padding(.vertical, 16)
                         .background(Color.neoAccent)
                         .clipShape(Capsule())
                 }
                 .padding(.horizontal, 32)
-                .padding(.bottom, 32)
-                .padding(.top, 32)
-                .background(
-                    LinearGradient(gradient: Gradient(colors: [Color(UIColor.systemBackground).opacity(0), Color(UIColor.systemBackground)]), startPoint: .top, endPoint: .bottom)
-                )
+                .padding(.bottom, 24)
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
