@@ -76,12 +76,21 @@ struct SourceSelectionView: View {
                 }
             }
             .tint(Color.neoAccent)
-            .navigationTitle("Выбор источника")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
-                    Button("Закрыть") {
+                ToolbarItem(placement: .principal) {
+                    Text(result.title)
+                        .font(.headline)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+                ToolbarItem(placement: .navigationBarLeading) {
+                    Button(action: {
                         presentationMode.wrappedValue.dismiss()
+                    }) {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(.primary)
                     }
                 }
             }
