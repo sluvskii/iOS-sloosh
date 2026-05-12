@@ -5,12 +5,24 @@ class PlayerPresenterViewController: UIViewController {
     var player: AVPlayer?
     var onDismiss: (() -> Void)?
     private var didPresent = false
+    private var checkTimer: Timer?
     
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         
         if !didPresent, let player = player {
             didPresent = true
+            
+            // 1. Плавно переводим ориентацию в горизонтальную ТОЛЬКО перед показом самого видео
+            AppDelegate.orientationLock = .landscape
+            if #available(iOS 16.0, *) {
+                if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+                    windowScene.requestGeometryUpdate(.iOS(interfaceOrientations: .landscape))
+                }
+            } else {
+                UIDevice.current.setValue(UIInterfaceOrientation.landscapeRight.rawValue, forKey: "orientation")
+            }
+            
             let playerController = AVPlayerViewController()
             playerController.player = player
             playerController.showsPlaybackControls = true
@@ -23,11 +35,39 @@ class PlayerPresenterViewController: UIViewController {
             
             self.present(playerController, animated: true) {
                 player.play()
+                self.startDismissalObserver()
             }
-        } else if didPresent && presentedViewController == nil {
-            // The player was dismissed
-            onDismiss?()
         }
+    }
+    
+    // 2. Таймер нужен для отлова "жеста смахивания вниз", потому что overFullScreen
+    // не вызывает viewDidAppear повторно при закрытии дочернего контроллера
+    private func startDismissalObserver() {
+        checkTimer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] timer in
+            guard let self = self else {
+                timer.invalidate()
+                return
+            }
+            if self.presentedViewController == nil {
+                timer.invalidate()
+                
+                // Возвращаем ориентацию обратно
+                AppDelegate.orientationLock = .all
+                if #available(iOS 16.0, *) {
+                    if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+                        windowScene.requestGeometryUpdate(.iOS(interfaceOrientations: .portrait))
+                    }
+                } else {
+                    UIDevice.current.setValue(UIInterfaceOrientation.portrait.rawValue, forKey: "orientation")
+                }
+                
+                self.onDismiss?()
+            }
+        }
+    }
+    
+    deinit {
+        checkTimer?.invalidate()
     }
 }
 
@@ -101,23 +141,9 @@ struct PlayerView: View {
                 viewModel.error = "Кинопоиск ID не найден для этого фильма"
                 viewModel.isLoading = false
             }
-            AppDelegate.orientationLock = .landscape
-            if #available(iOS 16.0, *) {
-                guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene else { return }
-                windowScene.requestGeometryUpdate(.iOS(interfaceOrientations: .landscape))
-            } else {
-                UIDevice.current.setValue(UIInterfaceOrientation.landscapeRight.rawValue, forKey: "orientation")
-            }
         }
         .onDisappear {
             viewModel.cleanup()
-            AppDelegate.orientationLock = .all
-            if #available(iOS 16.0, *) {
-                guard let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene else { return }
-                windowScene.requestGeometryUpdate(.iOS(interfaceOrientations: .portrait))
-            } else {
-                UIDevice.current.setValue(UIInterfaceOrientation.portrait.rawValue, forKey: "orientation")
-            }
         }
         .navigationBarHidden(true)
         .navigationBarBackButtonHidden(true)
