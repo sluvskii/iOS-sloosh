@@ -5,6 +5,7 @@ struct DetailsView: View {
     @StateObject private var viewModel = DetailsViewModel()
     
     @State private var showPlayer = false
+    @State private var selectedIframeUrl: String? = nil
     
     var body: some View {
         ScrollView {
@@ -64,18 +65,27 @@ struct DetailsView: View {
                         
                         // Play Button
                         Button(action: {
-                            showPlayer = true
+                            Task {
+                                if let kpId = details.externalIds?.kp {
+                                    await viewModel.fetchAllohaSources(kpId: kpId)
+                                }
+                            }
                         }) {
                             HStack {
-                                Image(systemName: "play.fill")
-                                Text("Смотреть")
+                                if viewModel.isFetchingSources {
+                                    ProgressView()
+                                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                                        .padding(.trailing, 8)
+                                } else {
+                                    Image(systemName: "play.fill")
+                                }
+                                Text(viewModel.isFetchingSources ? "Загрузка..." : "Смотреть")
                                     .font(.system(size: 18, weight: .bold, design: .rounded))
                             }
                             .frame(maxWidth: .infinity)
                             .padding()
-                            // Native iOS 26 Liquid Glass button styling
                             .background(.regularMaterial)
-                            .background(Color.blue.opacity(0.4)) // Subtle tinting
+                            .background(Color.blue.opacity(0.4))
                             .foregroundColor(.white)
                             .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
                             .overlay(
@@ -84,6 +94,7 @@ struct DetailsView: View {
                             )
                             .shadow(color: .blue.opacity(0.3), radius: 15, x: 0, y: 8)
                         }
+                        .disabled(viewModel.isFetchingSources)
                         .padding(.top, 16)
                     }
                     .padding(.horizontal)
@@ -100,18 +111,34 @@ struct DetailsView: View {
         .task {
             await viewModel.loadDetails(id: movieId)
         }
+        .sheet(item: $viewModel.alohaResultWrapper) { wrapper in
+            SourceSelectionView(result: wrapper.result) { iframeUrl in
+                selectedIframeUrl = iframeUrl
+                showPlayer = true
+            }
+            .presentationDetents([.medium, .large])
+        }
         .fullScreenCover(isPresented: $showPlayer) {
-            if let details = viewModel.details {
-                PlayerView(kpId: details.externalIds?.kp, fallbackTitle: details.title ?? details.name ?? "")
+            if let iframeUrl = selectedIframeUrl, let details = viewModel.details {
+                PlayerView(iframeUrl: iframeUrl, fallbackTitle: details.title ?? details.name ?? "")
             }
         }
     }
+}
+
+// Обертка для Identifiable, чтобы использовать в .sheet(item:)
+struct AllohaResultWrapper: Identifiable {
+    let id = UUID()
+    let result: AllohaApiResult
 }
 
 @MainActor
 class DetailsViewModel: ObservableObject {
     @Published var details: MediaDetailsDto?
     @Published var isLoading = true
+    
+    @Published var isFetchingSources = false
+    @Published var alohaResultWrapper: AllohaResultWrapper?
     
     func loadDetails(id: String) async {
         isLoading = true
@@ -121,6 +148,18 @@ class DetailsViewModel: ObservableObject {
             details = try await MoviesRepository.shared.getDetails(id: id)
         } catch {
             print("Error loading details: \(error)")
+        }
+    }
+    
+    func fetchAllohaSources(kpId: Int) async {
+        isFetchingSources = true
+        defer { isFetchingSources = false }
+        
+        do {
+            let result = try await AllohaRepository.shared.fetchByKpId(kpId: kpId)
+            self.alohaResultWrapper = AllohaResultWrapper(result: result)
+        } catch {
+            print("Error fetching Alloha sources: \(error)")
         }
     }
 }
