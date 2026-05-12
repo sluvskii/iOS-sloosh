@@ -82,7 +82,7 @@ struct DetailsView: View {
                         Button(action: {
                             Task {
                                 if let kpId = details.externalIds?.kp {
-                                    await viewModel.fetchAllohaSources(kpId: kpId)
+                                    await viewModel.fetchSources(kpId: kpId, title: details.title ?? details.name ?? "")
                                 }
                             }
                         }) {
@@ -127,25 +127,51 @@ struct DetailsView: View {
         .task {
             await viewModel.loadDetails(id: movieId)
         }
-        .sheet(item: $viewModel.alohaResultWrapper) { wrapper in
-            SourceSelectionView(result: wrapper.result) { iframeUrl in
-                selectedIframeUrl = iframeUrl
-                showPlayer = true
+        .sheet(item: $viewModel.sourceResultWrapper) { wrapper in
+            if wrapper.mode == .alloha, let result = wrapper.allohaResult {
+                SourceSelectionView(result: result) { iframeUrl in
+                    selectedIframeUrl = iframeUrl
+                    showPlayer = true
+                }
+                .presentationDetents([.medium, .large])
+            } else if wrapper.mode == .collaps {
+                let isSerial = wrapper.collapsSeasons != nil && !(wrapper.collapsSeasons?.isEmpty ?? true)
+                CollapsSelectionView(
+                    result: wrapper.collapsSeasons ?? [],
+                    movieResult: wrapper.collapsMovie,
+                    isSerial: isSerial,
+                    title: viewModel.details?.title ?? viewModel.details?.name ?? "",
+                    onPlay: { url in
+                        // Collaps returns direct HLS/MPD urls
+                        selectedIframeUrl = url // we use this state variable for the URL
+                        showPlayer = true
+                    }
+                )
+                .presentationDetents([.medium, .large])
+            } else {
+                Text("Нет доступных источников")
             }
-            .presentationDetents([.medium, .large])
         }
         .fullScreenCover(isPresented: $showPlayer) {
-            if let iframeUrl = selectedIframeUrl, let details = viewModel.details {
-                PlayerView(iframeUrl: iframeUrl, fallbackTitle: details.title ?? details.name ?? "")
+            if let url = selectedIframeUrl, let details = viewModel.details {
+                let mode = SourceManager.shared.currentMode
+                if mode == .alloha {
+                    PlayerView(iframeUrl: url, fallbackTitle: details.title ?? details.name ?? "")
+                } else {
+                    PlayerView(directVideoUrl: url, fallbackTitle: details.title ?? details.name ?? "")
+                }
             }
         }
     }
 }
 
 // Обертка для Identifiable, чтобы использовать в .sheet(item:)
-struct AllohaResultWrapper: Identifiable {
+struct SourceResultWrapper: Identifiable {
     let id = UUID()
-    let result: AllohaApiResult
+    let mode: SourceMode
+    var allohaResult: AllohaApiResult?
+    var collapsSeasons: [CollapsSeason]?
+    var collapsMovie: CollapsMovie?
 }
 
 @MainActor
@@ -154,7 +180,7 @@ class DetailsViewModel: ObservableObject {
     @Published var isLoading = true
     
     @Published var isFetchingSources = false
-    @Published var alohaResultWrapper: AllohaResultWrapper?
+    @Published var sourceResultWrapper: SourceResultWrapper?
     
     func loadDetails(id: String) async {
         isLoading = true
@@ -167,15 +193,27 @@ class DetailsViewModel: ObservableObject {
         }
     }
     
-    func fetchAllohaSources(kpId: Int) async {
+    func fetchSources(kpId: Int, title: String) async {
         isFetchingSources = true
         defer { isFetchingSources = false }
         
+        let mode = SourceManager.shared.currentMode
         do {
-            let result = try await AllohaRepository.shared.fetchByKpId(kpId: kpId)
-            self.alohaResultWrapper = AllohaResultWrapper(result: result)
+            switch mode {
+            case .alloha:
+                let result = try await AllohaRepository.shared.fetchByKpId(kpId: kpId)
+                self.sourceResultWrapper = SourceResultWrapper(mode: .alloha, allohaResult: result)
+            case .collaps:
+                let seasons = try await CollapsRepository.shared.getSeasonsByKpId(kpId: kpId)
+                if seasons.isEmpty {
+                    let movie = try await CollapsRepository.shared.getMovieByKpId(kpId: kpId)
+                    self.sourceResultWrapper = SourceResultWrapper(mode: .collaps, collapsMovie: movie)
+                } else {
+                    self.sourceResultWrapper = SourceResultWrapper(mode: .collaps, collapsSeasons: seasons)
+                }
+            }
         } catch {
-            print("Error fetching Alloha sources: \(error)")
+            print("Error fetching sources: \(error)")
         }
     }
 }
