@@ -10,7 +10,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 }
 
 @main
-struct NeoMoviesApp: App {
+struct slooshApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
     
     init() {

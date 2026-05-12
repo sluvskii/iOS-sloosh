@@ -11,7 +11,7 @@ struct SettingsView: View {
                 }
                 
                 Section(header: Text("О приложении")) {
-                    NavigationLink("О NeoMovies", destination: Text("Информация"))
+                    NavigationLink("О sloosh", destination: Text("Информация"))
                     NavigationLink("Авторы", destination: Text("Титры"))
                 }
             }

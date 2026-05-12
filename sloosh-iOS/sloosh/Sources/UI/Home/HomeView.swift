@@ -19,7 +19,7 @@ struct HomeView: View {
                 }
                 .padding(.vertical)
             }
-            .navigationTitle("NeoMovies")
+            .navigationTitle("sloosh")
             .background(Color(UIColor.systemGroupedBackground))
             .task {
                 await viewModel.loadData()

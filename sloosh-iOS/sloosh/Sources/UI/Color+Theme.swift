@@ -1,7 +1,7 @@
 import SwiftUI
 
 extension Color {
-    static let neoAccent = Color(UIColor { traitCollection in
+    static let slooshAccent = Color(UIColor { traitCollection in
         if traitCollection.userInterfaceStyle == .dark {
             return UIColor(red: 0.70, green: 1.0, blue: 0.0, alpha: 1.0)
         } else {
