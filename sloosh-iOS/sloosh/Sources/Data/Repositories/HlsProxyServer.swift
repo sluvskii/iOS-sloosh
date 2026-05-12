@@ -4,7 +4,7 @@ import Network
 class HlsProxyServer {
     static let shared = HlsProxyServer()
     private var listener: NWListener?
-    private let queue = DispatchQueue(label: "com.sloosh.hlsproxy", attributes: .concurrent)
+    private let queue = DispatchQueue(label: "com.sloosh.ios.hlsproxy", attributes: .concurrent)
     private var headers: [String: String] = [:]
     
     // We use a custom delegate to bypass SSL issues like in Android's buildTrustingClient
