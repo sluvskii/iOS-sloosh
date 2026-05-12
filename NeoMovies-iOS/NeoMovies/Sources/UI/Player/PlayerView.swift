@@ -93,7 +93,7 @@ struct ModalPlayerPresenter: UIViewControllerRepresentable {
 }
 
 struct PlayerView: View {
-    let kpId: Int?
+    let iframeUrl: String
     let fallbackTitle: String
     
     @StateObject private var viewModel = PlayerViewModel()
@@ -135,13 +135,8 @@ struct PlayerView: View {
             }
         }
         .onAppear {
-            if let kpId = kpId {
-                if viewModel.player == nil { // Избегаем повторной загрузки при перерисовках
-                    viewModel.loadAlloha(kpId: kpId)
-                }
-            } else {
-                viewModel.error = "Кинопоиск ID не найден для этого фильма"
-                viewModel.isLoading = false
+            if viewModel.player == nil { // Избегаем повторной загрузки при перерисовках
+                viewModel.load(iframeUrl: iframeUrl)
             }
         }
         // Убрали .onDisappear с cleanup, чтобы он не убивал видео при показе плеера
@@ -158,34 +153,13 @@ class PlayerViewModel: ObservableObject, AllohaParserDelegate {
     
     private var parser: AllohaParser?
     
-    func loadAlloha(kpId: Int) {
+    func load(iframeUrl: String) {
         if player != nil { return } // Защита от двойного вызова
         
         isLoading = true
         error = nil
         
-        Task {
-            do {
-                let result = try await AllohaRepository.shared.fetchByKpId(kpId: kpId)
-                var iframeUrl: String?
-                if result.isSerial, let firstSeason = result.seasons.first, let firstEp = firstSeason.episodes.first, let trans = firstEp.translations.first {
-                    iframeUrl = trans.iframeUrl
-                } else if let movie = result.movie {
-                    iframeUrl = movie.iframeUrl
-                }
-                
-                guard let url = iframeUrl else {
-                    self.error = "Видео недоступно для просмотра"
-                    self.isLoading = false
-                    return
-                }
-                
-                self.startParsing(iframeUrl: url)
-            } catch {
-                self.error = "Ошибка загрузки: \(error.localizedDescription)"
-                self.isLoading = false
-            }
-        }
+        startParsing(iframeUrl: iframeUrl)
     }
     
     private func startParsing(iframeUrl: String) {

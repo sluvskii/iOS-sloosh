@@ -1,29 +1,29 @@
 import Foundation
 
-struct AllohaTranslation: Codable {
+struct AllohaTranslation: Codable, Hashable, Equatable {
     let id: String
     let name: String
     let iframeUrl: String
 }
 
-struct AllohaEpisode: Codable {
+struct AllohaEpisode: Codable, Hashable, Equatable {
     let season: Int
     let episode: Int
     let translations: [AllohaTranslation]
 }
 
-struct AllohaSeason: Codable {
+struct AllohaSeason: Codable, Hashable, Equatable {
     let season: Int
     let episodes: [AllohaEpisode]
 }
 
-struct AllohaMovie: Codable {
+struct AllohaMovie: Codable, Hashable, Equatable {
     let title: String
     let iframeUrl: String
     let translations: [AllohaTranslation]
 }
 
-struct AllohaApiResult: Codable {
+struct AllohaApiResult: Codable, Hashable, Equatable {
     let title: String
     let isSerial: Bool
     let movie: AllohaMovie?
@@ -117,15 +117,36 @@ class AllohaRepository {
             parsedSeasons.sort { $0.season < $1.season }
             return AllohaApiResult(title: title, isSerial: true, movie: nil, seasons: parsedSeasons)
         } else {
-            var iframe = dataObj["iframe"] as? String ?? ""
-            if iframe.hasPrefix("//") {
-                iframe = "https:" + iframe
+            var parsedTrans: [AllohaTranslation] = []
+            
+            if let transObj = dataObj["translation"] as? [String: Any] {
+                for (tKey, tValue) in transObj {
+                    guard let tDict = tValue as? [String: Any],
+                          var iframe = tDict["iframe"] as? String, !iframe.isEmpty else { continue }
+                    if iframe.hasPrefix("//") {
+                        iframe = "https:" + iframe
+                    }
+                    let transName = tDict["translation"] as? String ?? "Unknown"
+                    parsedTrans.append(AllohaTranslation(id: tKey, name: transName, iframeUrl: iframe))
+                }
+                parsedTrans.sort { $0.name < $1.name }
             }
+            
             var movie: AllohaMovie? = nil
-            if !iframe.isEmpty {
-                movie = AllohaMovie(title: title, iframeUrl: iframe, translations: [
-                    AllohaTranslation(id: "default", name: title, iframeUrl: iframe)
-                ])
+            if !parsedTrans.isEmpty {
+                // Ищем дефолтный iframe на всякий случай
+                var iframe = dataObj["iframe"] as? String ?? parsedTrans.first!.iframeUrl
+                if iframe.hasPrefix("//") { iframe = "https:" + iframe }
+                movie = AllohaMovie(title: title, iframeUrl: iframe, translations: parsedTrans)
+            } else {
+                // Фолбэк на старую логику, если нет объекта translation
+                var iframe = dataObj["iframe"] as? String ?? ""
+                if iframe.hasPrefix("//") { iframe = "https:" + iframe }
+                if !iframe.isEmpty {
+                    movie = AllohaMovie(title: title, iframeUrl: iframe, translations: [
+                        AllohaTranslation(id: "default", name: title, iframeUrl: iframe)
+                    ])
+                }
             }
             return AllohaApiResult(title: title, isSerial: false, movie: movie, seasons: [])
         }
