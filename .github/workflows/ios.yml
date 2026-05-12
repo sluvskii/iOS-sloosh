@@ -24,15 +24,15 @@ jobs:
 
     - name: Generate Xcode Project
       run: |
-        cd NeoMovies-iOS
+        cd sloosh-iOS
         xcodegen generate
 
     - name: Build iOS App
       run: |
-        cd NeoMovies-iOS
+        cd sloosh-iOS
         xcodebuild clean build \
-          -project NeoMovies.xcodeproj \
-          -scheme NeoMovies \
+          -project sloosh.xcodeproj \
+          -scheme sloosh \
           -configuration Release \
           -sdk iphoneos \
           -derivedDataPath ./build \
@@ -42,10 +42,10 @@ jobs:
 
     - name: Package IPA (Unsigned)
       run: |
-        cd NeoMovies-iOS
+        cd sloosh-iOS
         mkdir -p Payload
-        mv build/Build/Products/Release-iphoneos/NeoMovies.app Payload/
-        zip -r NeoMovies.ipa Payload
+        mv build/Build/Products/Release-iphoneos/sloosh.app Payload/
+        zip -r sloosh.ipa Payload
 
     - name: Create Release
       uses: softprops/action-gh-release@v1
@@ -56,7 +56,7 @@ jobs:
         body: |
           Auto-generated IPA build from the latest commit.
           **Note:** This is an unsigned IPA file. You need to use tools like TrollStore, AltStore, or SideStore to install it.
-        files: NeoMovies-iOS/NeoMovies.ipa
+        files: sloosh-iOS/sloosh.ipa
         draft: false
         prerelease: true
       env:
