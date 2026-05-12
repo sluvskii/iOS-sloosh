@@ -1,6 +1,53 @@
 import SwiftUI
 import AVKit
 
+class PlayerPresenterViewController: UIViewController {
+    var player: AVPlayer?
+    var onDismiss: (() -> Void)?
+    private var didPresent = false
+    
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        
+        if !didPresent, let player = player {
+            didPresent = true
+            let playerController = AVPlayerViewController()
+            playerController.player = player
+            playerController.showsPlaybackControls = true
+            playerController.allowsPictureInPicturePlayback = true
+            
+            self.present(playerController, animated: true) {
+                player.play()
+            }
+        } else if didPresent && presentedViewController == nil {
+            // The player was dismissed
+            onDismiss?()
+        }
+    }
+}
+
+struct ModalPlayerPresenter: UIViewControllerRepresentable {
+    var player: AVPlayer
+    @Environment(\.presentationMode) var presentationMode
+    
+    func makeUIViewController(context: Context) -> PlayerPresenterViewController {
+        let controller = PlayerPresenterViewController()
+        controller.view.backgroundColor = .clear
+        controller.player = player
+        controller.onDismiss = {
+            presentationMode.wrappedValue.dismiss()
+        }
+        return controller
+    }
+    
+    func updateUIViewController(_ uiViewController: PlayerPresenterViewController, context: Context) {
+        uiViewController.player = player
+        uiViewController.onDismiss = {
+            presentationMode.wrappedValue.dismiss()
+        }
+    }
+}
+
 struct PlayerView: View {
     let kpId: Int?
     let fallbackTitle: String
@@ -33,37 +80,11 @@ struct PlayerView: View {
                         .padding()
                 }
             } else if let player = viewModel.player {
-                VideoPlayer(player: player)
+                ModalPlayerPresenter(player: player)
                     .edgesIgnoringSafeArea(.all)
-                    .onAppear {
-                        player.play()
-                    }
-                    .onDisappear {
-                        player.pause()
-                    }
             } else {
                 Text("Видео не найдено")
                     .foregroundColor(.white)
-            }
-            
-            // Custom Back Button Overlay
-            VStack {
-                HStack {
-                    Button(action: {
-                        presentationMode.wrappedValue.dismiss()
-                    }) {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 20, weight: .bold))
-                            .foregroundColor(.white)
-                            .padding(12)
-                            .background(Color.black.opacity(0.5))
-                            .clipShape(Circle())
-                    }
-                    .padding(.top, 40) // SafeArea top inset approx for landscape
-                    .padding(.leading, 20)
-                    Spacer()
-                }
-                Spacer()
             }
         }
         .onAppear {
