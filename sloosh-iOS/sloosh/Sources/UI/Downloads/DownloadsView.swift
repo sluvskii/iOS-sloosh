@@ -18,7 +18,7 @@ struct DownloadsView: View {
                     .padding(.top, 4)
             }
             .navigationTitle("Загрузки")
-            .background(Color(UIColor.systemGroupedBackground))
+            .background(.regularMaterial)
         }
     }
 }
