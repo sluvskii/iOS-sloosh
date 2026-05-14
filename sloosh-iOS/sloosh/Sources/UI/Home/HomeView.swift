@@ -128,6 +128,10 @@ class HomeViewModel: ObservableObject {
     @Published var isLoading = true
     
     func loadData() async {
+        if !popularMovies.isEmpty || !topMovies.isEmpty || !topTv.isEmpty {
+            return
+        }
+        
         isLoading = true
         defer { isLoading = false }
         
