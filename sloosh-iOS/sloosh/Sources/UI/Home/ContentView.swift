@@ -25,7 +25,6 @@ struct ContentView: View {
                     Label("Настройки", systemImage: "gearshape.fill")
                 }
         }
-        .tabBarMinimizeBehavior(.onScrollDown)
         .tint(Color(UIColor { traitCollection in
             if traitCollection.userInterfaceStyle == .dark {
                 return UIColor(red: 0.70, green: 1.0, blue: 0.0, alpha: 1.0) // #B3FF00 for Dark

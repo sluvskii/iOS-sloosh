@@ -50,7 +50,7 @@ struct SearchView: View {
             .listStyle(.plain)
             .navigationTitle("Поиск")
             .searchable(text: $viewModel.searchQuery, prompt: "Фильмы и сериалы...")
-            .onChange(of: viewModel.searchQuery) { newValue in
+            .onChange(of: viewModel.searchQuery) { oldValue, newValue in
                 Task {
                     await viewModel.performSearch()
                 }
