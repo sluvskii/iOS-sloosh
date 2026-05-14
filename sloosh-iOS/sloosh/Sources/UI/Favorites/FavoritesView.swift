@@ -17,8 +17,9 @@ struct FavoritesView: View {
                     .multilineTextAlignment(.center)
                     .padding(.top, 4)
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             .navigationTitle("Избранное")
-            .background(.regularMaterial)
+            .background(Color(UIColor.systemBackground))
         }
     }
 }
