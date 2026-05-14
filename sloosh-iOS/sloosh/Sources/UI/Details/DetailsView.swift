@@ -183,6 +183,10 @@ class DetailsViewModel: ObservableObject {
     @Published var sourceResultWrapper: SourceResultWrapper?
     
     func loadDetails(id: String) async {
+        if details != nil && (details?.id == id || details?.sourceId == id || details?.externalIds?.kp?.description == id.replacingOccurrences(of: "kp_", with: "")) {
+            return
+        }
+        
         isLoading = true
         defer { isLoading = false }
         
