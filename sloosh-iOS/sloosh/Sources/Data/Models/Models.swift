@@ -106,6 +106,14 @@ func normalizeImageUrl(path: String?) -> String? {
         return path
     }
     
+    if path.hasPrefix("/") {
+        return "https://api.neomovies.ru" + path
+    }
+    
+    if path.hasPrefix("api/") {
+        return "https://api.neomovies.ru/" + path
+    }
+    
     var id: String? = nil
     if path.allSatisfy({ $0.isNumber }) {
         id = path
