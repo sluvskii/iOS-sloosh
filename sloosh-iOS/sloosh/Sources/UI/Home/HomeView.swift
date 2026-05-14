@@ -35,7 +35,7 @@ struct HomeView: View {
                     .padding(.horizontal, 16)
                     .padding(.vertical, 12)
                 }
-                .background(Color(UIColor.systemBackground))
+                .background(.regularMaterial)
                 .shadow(color: .black.opacity(0.05), radius: 3, x: 0, y: 2)
                 .zIndex(1) // Ensure shadow is above the grid
                 
@@ -88,7 +88,7 @@ struct HomeView: View {
             }
             .navigationTitle("")
             .navigationBarHidden(true)
-            .background(Color(UIColor.systemGroupedBackground))
+            .background(.regularMaterial)
             .task {
                 await viewModel.selectCategory(.popular)
             }

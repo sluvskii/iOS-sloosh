@@ -6,6 +6,7 @@ struct DetailsView: View {
     
     @State private var showPlayer = false
     @State private var selectedIframeUrl: String? = nil
+    @Namespace private var transition
     
     var body: some View {
         ScrollView {
@@ -105,6 +106,7 @@ struct DetailsView: View {
                             .clipShape(Capsule())
                         }
                         .disabled(viewModel.isFetchingSources)
+                        .matchedTransitionSource(id: "playBtn", in: transition)
                         .padding(.horizontal, 24)
                         .padding(.top, 16)
                         
@@ -135,6 +137,7 @@ struct DetailsView: View {
                     showPlayer = true
                 }
                 .presentationDetents([.medium, .large])
+                .navigationTransition(.zoom(sourceID: "playBtn", in: transition))
             } else if wrapper.mode == .collaps {
                 let isSerial = wrapper.collapsSeasons != nil && !(wrapper.collapsSeasons?.isEmpty ?? true)
                 CollapsSelectionView(
@@ -149,6 +152,7 @@ struct DetailsView: View {
                     }
                 )
                 .presentationDetents([.medium, .large])
+                .navigationTransition(.zoom(sourceID: "playBtn", in: transition))
             } else {
                 Text("Нет доступных источников")
             }
