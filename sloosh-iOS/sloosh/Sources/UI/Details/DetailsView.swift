@@ -31,6 +31,7 @@ struct DetailsView: View {
                             } else {
                                 Rectangle().fill(Color.gray.opacity(0.2))
                                     .frame(width: geometry.size.width, height: height)
+                                    .shimmer()
                             }
                         }
                         .offset(y: offset)
