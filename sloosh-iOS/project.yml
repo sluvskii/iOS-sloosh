@@ -5,7 +5,7 @@ targets:
   sloosh:
     type: application
     platform: iOS
-    deploymentTarget: "18.0" # Max target supported by current GitHub Actions Runner
+    deploymentTarget: "26.0" # Updated to target iOS 26 to enable Liquid Glass design
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.sloosh.ios
