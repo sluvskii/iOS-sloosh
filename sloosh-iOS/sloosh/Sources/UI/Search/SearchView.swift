@@ -13,7 +13,7 @@ struct SearchView: View {
                                 image.resizable().aspectRatio(contentMode: .fill).frame(width: 60, height: 90).cornerRadius(8)
                                     .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
                             } else {
-                                Rectangle().fill(Color.gray.opacity(0.2)).frame(width: 60, height: 90).cornerRadius(8)
+                                Rectangle().fill(Color.gray.opacity(0.2)).frame(width: 60, height: 90).cornerRadius(8).shimmer()
                             }
                         }
                         

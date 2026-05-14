@@ -63,9 +63,10 @@ struct MoviePosterCard: View {
                 switch phase {
                 case .empty:
                     Rectangle()
-                        .fill(Color.gray.opacity(0.1))
+                        .fill(Color.gray.opacity(0.2))
                         .frame(width: 140, height: 210)
                         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .shimmer()
                 case .success(let image):
                     image
                         .resizable()
