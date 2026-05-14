@@ -88,7 +88,7 @@ struct HomeView: View {
             }
             .navigationTitle("")
             .navigationBarHidden(true)
-            .background(.regularMaterial)
+            .background(Color(UIColor.systemBackground))
             .task {
                 await viewModel.selectCategory(.popular)
             }
