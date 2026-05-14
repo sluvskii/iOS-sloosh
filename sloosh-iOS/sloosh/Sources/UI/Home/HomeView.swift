@@ -157,7 +157,8 @@ struct MoviePosterCard: View {
             VStack(alignment: .leading, spacing: 4) {
                 Text(movie.displayTitle)
                     .font(.system(size: 14, weight: .semibold, design: .rounded))
-                    .lineLimit(2)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
                     .multilineTextAlignment(.leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 
