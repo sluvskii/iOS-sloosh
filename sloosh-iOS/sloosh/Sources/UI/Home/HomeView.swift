@@ -86,8 +86,8 @@ struct HomeView: View {
                     }
                 }
             }
-            .navigationTitle("sloosh")
-            .navigationBarTitleDisplayMode(.inline)
+            .navigationTitle("")
+            .navigationBarHidden(true)
             .background(Color(UIColor.systemGroupedBackground))
             .task {
                 await viewModel.selectCategory(.popular)
