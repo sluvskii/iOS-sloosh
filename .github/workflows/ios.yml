@@ -22,6 +22,13 @@ jobs:
     - name: Install XcodeGen
       run: brew install xcodegen
 
+    - name: Run SwiftLint
+      run: |
+        brew install swiftlint
+        cd sloosh-iOS
+        swiftlint lint --reporter github-actions-logging
+      continue-on-error: true
+
     - name: Generate Xcode Project
       run: |
         cd sloosh-iOS
