@@ -5,15 +5,51 @@ enum HomeCategory: String, CaseIterable {
     case all = "Все"
     case movies = "Фильмы"
     case tvShows = "Сериалы"
+    case cartoons = "Мультфильмы"
+
+    var title: String { rawValue }
+}
+
+enum HomeFilter: String, CaseIterable, Identifiable {
+    case popular = "Популярное"
+    case latest = "Свежие"
+    case topRated = "По рейтингу"
+
+    var id: String { rawValue }
+
+    var title: String { rawValue }
+
+    var systemImage: String {
+        switch self {
+        case .popular:
+            return "flame.fill"
+        case .latest:
+            return "sparkles"
+        case .topRated:
+            return "star.fill"
+        }
+    }
+
+    var subtitle: String {
+        switch self {
+        case .popular:
+            return "Самое интересное прямо сейчас"
+        case .latest:
+            return "Сначала более свежие релизы"
+        case .topRated:
+            return "Подборка с сильными оценками"
+        }
+    }
 }
 
 struct HomeView: View {
     @StateObject private var viewModel = HomeViewModel()
-    
+    @Namespace private var topPanelNamespace
+
     let columns = [
         GridItem(.adaptive(minimum: 105), spacing: 16)
     ]
-    
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -24,17 +60,13 @@ struct HomeView: View {
                         }
                     }
                     .padding(16)
-                    .padding(.top, 8)
                 } else if viewModel.items.isEmpty {
-                    VStack(spacing: 16) {
-                        Image(systemName: "film")
-                            .font(.system(size: 48))
-                            .foregroundColor(.gray)
-                        Text("Ничего не найдено")
-                            .font(.headline)
-                            .foregroundColor(.secondary)
-                    }
+                    HomeEmptyState(
+                        category: viewModel.selectedCategory,
+                        filter: viewModel.selectedFilter
+                    )
                     .frame(maxWidth: .infinity, minHeight: 300)
+                    .padding(.horizontal, 20)
                 } else {
                     LazyVGrid(columns: columns, spacing: 20) {
                         ForEach(viewModel.items) { movie in
@@ -58,68 +90,167 @@ struct HomeView: View {
                         }
                     }
                     .padding(16)
-                    .padding(.top, 8)
                 }
             }
+            .scrollIndicators(.hidden)
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    HomeCategorySegmentedControl(selection: $viewModel.selectedCategory)
-                        .frame(maxWidth: 260)
-                }
+            .safeAreaInset(edge: .top, spacing: 0) {
+                HomeTopPanel(
+                    selectedCategory: $viewModel.selectedCategory,
+                    selectedFilter: $viewModel.selectedFilter,
+                    namespace: topPanelNamespace
+                )
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+                .padding(.bottom, 10)
             }
             .background(Color(UIColor.systemBackground))
             .task {
-                await viewModel.selectCategory(.all)
+                await viewModel.applyCurrentSelection(force: true)
             }
             .onChange(of: viewModel.selectedCategory) { _, newCategory in
                 Task {
-                    await viewModel.selectCategory(newCategory)
+                    await viewModel.applyCurrentSelection()
+                }
+            }
+            .onChange(of: viewModel.selectedFilter) { _, newFilter in
+                Task {
+                    await viewModel.applyCurrentSelection()
                 }
             }
         }
     }
 }
 
-struct HomeCategorySegmentedControl: UIViewRepresentable {
-    @Binding var selection: HomeCategory
+private struct HomeTopPanel: View {
+    @Binding var selectedCategory: HomeCategory
+    @Binding var selectedFilter: HomeFilter
+    let namespace: Namespace.ID
 
-    func makeUIView(context: Context) -> UISegmentedControl {
-        let control = UISegmentedControl(items: HomeCategory.allCases.map(\.rawValue))
-        control.selectedSegmentIndex = HomeCategory.allCases.firstIndex(of: selection) ?? 0
-        control.apportionsSegmentWidthsByContent = true
-        control.addTarget(
-            context.coordinator,
-            action: #selector(Coordinator.valueChanged(_:)),
-            for: .valueChanged
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(alignment: .center, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Главная")
+                        .font(.system(size: 30, weight: .bold, design: .rounded))
+
+                    Text(selectedFilter.subtitle)
+                        .font(.system(size: 13, weight: .medium, design: .rounded))
+                        .foregroundColor(.secondary)
+                        .lineLimit(2)
+                }
+
+                Spacer(minLength: 12)
+
+                Menu {
+                    Picker("Сортировка", selection: $selectedFilter) {
+                        ForEach(HomeFilter.allCases) { filter in
+                            Label(filter.title, systemImage: filter.systemImage)
+                                .tag(filter)
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: selectedFilter.systemImage)
+                            .font(.system(size: 14, weight: .bold))
+                        Text(selectedFilter.title)
+                            .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(.secondary)
+                    }
+                    .foregroundColor(.primary)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                    .background(.ultraThinMaterial, in: Capsule())
+                    .overlay(
+                        Capsule()
+                            .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                    )
+                }
+                .menuStyle(.button)
+            }
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 10) {
+                    ForEach(HomeCategory.allCases, id: \.self) { category in
+                        let isSelected = selectedCategory == category
+
+                        Button {
+                            withAnimation(.spring(response: 0.34, dampingFraction: 0.82)) {
+                                selectedCategory = category
+                            }
+                        } label: {
+                            Text(category.title)
+                                .font(.system(size: 15, weight: .semibold, design: .rounded))
+                                .foregroundStyle(isSelected ? Color.black : Color.primary)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 10)
+                                .background {
+                                    ZStack {
+                                        if isSelected {
+                                            Capsule()
+                                                .fill(Color.slooshAccent)
+                                                .matchedGeometryEffect(id: "home-category-pill", in: namespace)
+                                        } else {
+                                            Capsule()
+                                                .fill(.clear)
+                                        }
+                                    }
+                                }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(6)
+                .background(.ultraThinMaterial, in: Capsule())
+                .overlay(
+                    Capsule()
+                        .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                )
+            }
+        }
+        .padding(14)
+        .background(
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .fill(.ultraThinMaterial)
         )
-        return control
+        .overlay(
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+        )
+        .shadow(color: .black.opacity(0.08), radius: 20, x: 0, y: 8)
     }
+}
 
-    func updateUIView(_ uiView: UISegmentedControl, context: Context) {
-        let selectedIndex = HomeCategory.allCases.firstIndex(of: selection) ?? 0
-        if uiView.selectedSegmentIndex != selectedIndex {
-            uiView.selectedSegmentIndex = selectedIndex
+private struct HomeEmptyState: View {
+    let category: HomeCategory
+    let filter: HomeFilter
+
+    var body: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "film.stack")
+                .font(.system(size: 44))
+                .foregroundColor(.secondary)
+
+            Text("Ничего не найдено")
+                .font(.system(size: 22, weight: .bold, design: .rounded))
+
+            Text("Попробуйте выбрать другую вкладку или сменить фильтрацию с `\(filter.title)` на другой режим.")
+                .font(.system(size: 15, weight: .medium, design: .rounded))
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
         }
-    }
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(selection: $selection)
-    }
-
-    final class Coordinator: NSObject {
-        private let selection: Binding<HomeCategory>
-
-        init(selection: Binding<HomeCategory>) {
-            self.selection = selection
-        }
-
-        @objc func valueChanged(_ sender: UISegmentedControl) {
-            let categories = HomeCategory.allCases
-            guard categories.indices.contains(sender.selectedSegmentIndex) else { return }
-            selection.wrappedValue = categories[sender.selectedSegmentIndex]
-        }
+        .padding(24)
+        .background(
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .fill(.ultraThinMaterial)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 28, style: .continuous)
+                .stroke(Color.primary.opacity(0.06), lineWidth: 1)
+        )
     }
 }
 
@@ -220,99 +351,158 @@ struct MoviePosterCardPlaceholder: View {
 @MainActor
 class HomeViewModel: ObservableObject {
     @Published var selectedCategory: HomeCategory = .all
+    @Published var selectedFilter: HomeFilter = .popular
     @Published var items: [MediaDto] = []
     @Published var isLoading = false
     @Published var isLoadingMore = false
-    
-    private var loadedCategory: HomeCategory?
-    
+
+    private var loadedKey: HomeCacheKey?
+
     private var currentPage = 1
     private var canLoadMore = true
-    
-    private var cachedItems: [HomeCategory: [MediaDto]] = [:]
-    private var cachedPages: [HomeCategory: Int] = [:]
-    private var cachedCanLoadMore: [HomeCategory: Bool] = [:]
-    
-    func selectCategory(_ category: HomeCategory) async {
-        if loadedCategory == category && !items.isEmpty {
-            selectedCategory = category
+
+    private var cachedItems: [HomeCacheKey: [MediaDto]] = [:]
+    private var cachedPages: [HomeCacheKey: Int] = [:]
+    private var cachedCanLoadMore: [HomeCacheKey: Bool] = [:]
+
+    func applyCurrentSelection(force: Bool = false) async {
+        let key = HomeCacheKey(category: selectedCategory, filter: selectedFilter)
+
+        if !force, loadedKey == key && !items.isEmpty {
             return
         }
-        
-        selectedCategory = category
-        
-        if let cached = cachedItems[category], !cached.isEmpty {
+
+        if !force, let cached = cachedItems[key], !cached.isEmpty {
             items = cached
-            currentPage = cachedPages[category] ?? 1
-            canLoadMore = cachedCanLoadMore[category] ?? true
-            loadedCategory = category
+            currentPage = cachedPages[key] ?? 1
+            canLoadMore = cachedCanLoadMore[key] ?? true
+            loadedKey = key
             return
         }
-        
+
         items = []
         currentPage = 1
         canLoadMore = true
         await loadData()
-        loadedCategory = category
+        loadedKey = key
     }
-    
+
     func loadData() async {
         guard canLoadMore, !isLoading, !isLoadingMore else { return }
-        
+
+        let cacheKey = HomeCacheKey(category: selectedCategory, filter: selectedFilter)
+
         if items.isEmpty {
             isLoading = true
         } else {
             isLoadingMore = true
         }
-        
+
         defer {
             isLoading = false
             isLoadingMore = false
         }
-        
+
         do {
             var newItems: [MediaDto] = []
             var pagesFetched = 0
-            
-            // To ensure we get enough items for filtered categories, we might fetch multiple pages
+
             while newItems.isEmpty && pagesFetched < 3 && canLoadMore {
                 let fetched = try await fetchPage(currentPage)
                 if fetched.isEmpty {
                     canLoadMore = false
                     break
                 }
-                
-                switch selectedCategory {
-                case .all:
-                    newItems.append(contentsOf: fetched)
-                case .movies:
-                    newItems.append(contentsOf: fetched.filter { $0.type == "movie" })
-                case .tvShows:
-                    newItems.append(contentsOf: fetched.filter { $0.type == "tv" })
-                }
-                
+
+                newItems.append(contentsOf: filterItemsForSelectedCategory(fetched))
+
                 currentPage += 1
                 pagesFetched += 1
             }
-            
+
             let existingIds = Set(items.map { $0.id })
             let uniqueNewItems = newItems.filter { !existingIds.contains($0.id) }
-            
+
             items.append(contentsOf: uniqueNewItems)
-            
-            cachedItems[selectedCategory] = items
-            cachedPages[selectedCategory] = currentPage
-            cachedCanLoadMore[selectedCategory] = canLoadMore
-            
+
+            cachedItems[cacheKey] = items
+            cachedPages[cacheKey] = currentPage
+            cachedCanLoadMore[cacheKey] = canLoadMore
         } catch {
             print("Failed to load category data: \(error)")
         }
     }
-    
+
     private func fetchPage(_ page: Int) async throws -> [MediaDto] {
+        let baseItems: [MediaDto]
+
+        switch selectedFilter {
+        case .popular:
+            baseItems = try await MoviesRepository.shared.getPopularMovies(page: page)
+        case .latest:
+            let popular = try await MoviesRepository.shared.getPopularMovies(page: page)
+            baseItems = popular.sorted { lhs, rhs in
+                let leftYear = extractedYear(from: lhs)
+                let rightYear = extractedYear(from: rhs)
+                if leftYear == rightYear {
+                    return (lhs.rating ?? 0) > (rhs.rating ?? 0)
+                }
+                return leftYear > rightYear
+            }
+        case .topRated:
+            switch selectedCategory {
+            case .tvShows:
+                baseItems = try await MoviesRepository.shared.getTopTv(page: page)
+            case .movies, .cartoons:
+                baseItems = try await MoviesRepository.shared.getTopMovies(page: page)
+            case .all:
+                async let topMovies = MoviesRepository.shared.getTopMovies(page: page)
+                async let topTv = MoviesRepository.shared.getTopTv(page: page)
+                baseItems = try await (topMovies + topTv)
+                    .sorted { ($0.rating ?? 0) > ($1.rating ?? 0) }
+            }
+        }
+
+        return baseItems
+    }
+
+    private func filterItemsForSelectedCategory(_ items: [MediaDto]) -> [MediaDto] {
         switch selectedCategory {
-        case .all, .movies, .tvShows:
-            return try await MoviesRepository.shared.getPopularMovies(page: page)
+        case .all:
+            return items
+        case .movies:
+            return items.filter { $0.type == "movie" && !isCartoon($0) }
+        case .tvShows:
+            return items.filter { $0.type == "tv" && !isCartoon($0) }
+        case .cartoons:
+            return items.filter(isCartoon)
         }
     }
+
+    private func isCartoon(_ item: MediaDto) -> Bool {
+        let genreNames = item.genres?
+            .compactMap { $0.name?.lowercased() }
+            .joined(separator: " ") ?? ""
+
+        let haystack = [
+            genreNames,
+            item.displayTitle.lowercased(),
+            item.originalTitle?.lowercased() ?? ""
+        ].joined(separator: " ")
+
+        return haystack.contains("мульт")
+            || haystack.contains("анимац")
+            || haystack.contains("animation")
+            || haystack.contains("anime")
+    }
+
+    private func extractedYear(from item: MediaDto) -> Int {
+        let raw = item.year?.stringValue ?? ""
+        return Int(raw.prefix(4)) ?? 0
+    }
+}
+
+private struct HomeCacheKey: Hashable {
+    let category: HomeCategory
+    let filter: HomeFilter
 }

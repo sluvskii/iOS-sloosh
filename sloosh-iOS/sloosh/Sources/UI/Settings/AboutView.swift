@@ -1,8 +1,6 @@
 import SwiftUI
 
 struct AboutView: View {
-    @Environment(\.openURL) private var openURL
-
     private var appVersion: String {
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
         let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
@@ -15,7 +13,7 @@ struct AboutView: View {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("sloosh")
                         .font(.system(size: 24, weight: .bold, design: .rounded))
-                    Text("Премиальный клиент для просмотра фильмов и сериалов с фокусом на современный iOS-интерфейс.")
+                    Text("Приложение для просмотра фильмов и сериалов с современным iOS-интерфейсом.")
                         .font(.system(size: 15, weight: .medium, design: .rounded))
                         .foregroundColor(.secondary)
                     Text("Версия \(appVersion)")
@@ -25,32 +23,15 @@ struct AboutView: View {
                 .padding(.vertical, 6)
             }
 
-            Section("Ссылки") {
-                Button("Telegram-канал") {
-                    open("https://t.me/neomovies_news")
-                }
-                Button("Последний релиз Android") {
-                    open("https://github.com/Neo-Open-Source/neomovies-android/releases/latest")
-                }
-                Button("Все релизы") {
-                    open("https://github.com/Neo-Open-Source/neomovies-android/releases")
-                }
-            }
-
             Section("Технологии") {
                 Label("SwiftUI интерфейс", systemImage: "swift")
                 Label("AVPlayer для воспроизведения", systemImage: "play.rectangle")
-                Label("WKWebView + HLS proxy для Alloha", systemImage: "network")
-                Label("Collaps и Alloha sources", systemImage: "antenna.radiowaves.left.and.right")
+                Label("Адаптивный интерфейс для iPhone", systemImage: "iphone")
+                Label("Быстрая навигация по каталогу", systemImage: "magnifyingglass")
             }
             .foregroundColor(.secondary)
         }
         .navigationTitle("О приложении")
         .navigationBarTitleDisplayMode(.inline)
-    }
-
-    private func open(_ rawUrl: String) {
-        guard let url = URL(string: rawUrl) else { return }
-        openURL(url)
     }
 }
