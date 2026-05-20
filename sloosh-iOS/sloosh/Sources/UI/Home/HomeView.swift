@@ -15,77 +15,74 @@ struct HomeView: View {
     
     var body: some View {
         NavigationStack {
-            // Infinite Grid
-            ScrollView {
-                if viewModel.isLoading {
-                    LazyVGrid(columns: columns, spacing: 20) {
-                        ForEach(0..<12, id: \.self) { _ in
-                            MoviePosterCardPlaceholder()
-                        }
-                    }
-                    .padding(16)
-                    .padding(.top, 8)
-                } else if viewModel.items.isEmpty {
-                    VStack(spacing: 16) {
-                        Image(systemName: "film")
-                            .font(.system(size: 48))
-                            .foregroundColor(.gray)
-                        Text("Ничего не найдено")
-                            .font(.headline)
-                            .foregroundColor(.secondary)
-                    }
-                    .frame(maxWidth: .infinity, minHeight: 300)
-                } else {
-                    LazyVGrid(columns: columns, spacing: 20) {
-                        ForEach(viewModel.items) { movie in
-                            NavigationLink(destination: DetailsView(movieId: movie.id)) {
-                                MoviePosterCard(movie: movie)
-                            }
-                            .buttonStyle(.plain)
-                            .onAppear {
-                                if movie.id == viewModel.items.last?.id {
-                                    Task {
-                                        await viewModel.loadData()
-                                    }
-                                }
-                            }
-                        }
-                        
-                        if viewModel.isLoadingMore {
-                            ForEach(0..<3, id: \.self) { _ in
+            ZStack(alignment: .top) {
+                // Infinite Grid
+                ScrollView {
+                    // Padding for the top segmented control
+                    Spacer().frame(height: 60)
+                    
+                    if viewModel.isLoading {
+                        LazyVGrid(columns: columns, spacing: 20) {
+                            ForEach(0..<12, id: \.self) { _ in
                                 MoviePosterCardPlaceholder()
                             }
                         }
-                    }
-                    .padding(16)
-                    .padding(.top, 8)
-                }
-            }
-            .safeAreaInset(edge: .top) {
-                // iOS 26 Floating Liquid Glass Tab Bar
-                HStack(spacing: 4) {
-                    ForEach(HomeCategory.allCases, id: \.self) { category in
-                        NavBarTab(
-                            title: category.rawValue,
-                            isSelected: viewModel.selectedCategory == category
-                        ) {
-                            Task {
-                                await viewModel.selectCategory(category)
+                        .padding(16)
+                        .padding(.top, 8)
+                    } else if viewModel.items.isEmpty {
+                        VStack(spacing: 16) {
+                            Image(systemName: "film")
+                                .font(.system(size: 48))
+                                .foregroundColor(.gray)
+                            Text("Ничего не найдено")
+                                .font(.headline)
+                                .foregroundColor(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 300)
+                    } else {
+                        LazyVGrid(columns: columns, spacing: 20) {
+                            ForEach(viewModel.items) { movie in
+                                NavigationLink(destination: DetailsView(movieId: movie.id)) {
+                                    MoviePosterCard(movie: movie)
+                                }
+                                .buttonStyle(.plain)
+                                .onAppear {
+                                    if movie.id == viewModel.items.last?.id {
+                                        Task {
+                                            await viewModel.loadData()
+                                        }
+                                    }
+                                }
+                            }
+                            
+                            if viewModel.isLoadingMore {
+                                ForEach(0..<3, id: \.self) { _ in
+                                    MoviePosterCardPlaceholder()
+                                }
                             }
                         }
+                        .padding(16)
+                        .padding(.top, 8)
                     }
                 }
-                .padding(6)
-                .background(.ultraThinMaterial)
-                .clipShape(Capsule())
-                .overlay(
-                    Capsule()
-                        .stroke(Color.primary.opacity(0.1), lineWidth: 0.5)
-                )
-                .shadow(color: Color.black.opacity(0.15), radius: 12, x: 0, y: 6)
-                .padding(.horizontal, 24)
-                .padding(.top, 8)
-                .padding(.bottom, 8)
+                
+                // Native Picker for categories
+                VStack(spacing: 0) {
+                    Picker("Категория", selection: $viewModel.selectedCategory) {
+                        ForEach(HomeCategory.allCases, id: \.self) { category in
+                            Text(category.rawValue).tag(category)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .padding(.horizontal)
+                    .padding(.vertical, 8)
+                    .background(.ultraThinMaterial)
+                }
+                .onChange(of: viewModel.selectedCategory) { newCategory in
+                    Task {
+                        await viewModel.selectCategory(newCategory)
+                    }
+                }
             }
             .navigationTitle("")
             .navigationBarHidden(true)
@@ -111,33 +108,6 @@ struct CategoryPill: View {
                 .background(isSelected ? Color.primary : Color(UIColor.secondarySystemBackground))
                 .foregroundColor(isSelected ? Color(UIColor.systemBackground) : .primary)
                 .clipShape(Capsule())
-        }
-        .buttonStyle(.plain)
-    }
-}
-
-struct NavBarTab: View {
-    let title: String
-    let isSelected: Bool
-    let action: () -> Void
-    
-    var body: some View {
-        Button(action: action) {
-            Text(title)
-                .font(.system(size: 15, weight: isSelected ? .bold : .medium, design: .rounded))
-                .foregroundColor(isSelected ? Color(UIColor.systemBackground) : .primary)
-                .padding(.horizontal, 20)
-                .padding(.vertical, 10)
-                .background(
-                    ZStack {
-                        if isSelected {
-                            Capsule()
-                                .fill(Color.primary)
-                                .shadow(color: Color.primary.opacity(0.2), radius: 4, x: 0, y: 2)
-                        }
-                    }
-                )
-                .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isSelected)
         }
         .buttonStyle(.plain)
     }
