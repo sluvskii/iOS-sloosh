@@ -67,4 +67,8 @@ class MoviesApi {
             URLQueryItem(name: "page", value: String(page))
         ])
     }
+
+    func getSupportList() async throws -> [SupportItemDto] {
+        return try await performRequest(endpoint: "api/v1/support/list")
+    }
 }
