@@ -101,11 +101,19 @@ struct HomeView: View {
                     HomeFilterMenu(selectedFilter: $viewModel.selectedFilter)
                 }
             }
+            .toolbarBackground(.visible, for: .navigationBar)
+            .toolbarBackground(.regularMaterial, for: .navigationBar)
             .safeAreaInset(edge: .top, spacing: 0) {
-                HomeCategorySegmentedPicker(selectedCategory: $viewModel.selectedCategory)
-                    .padding(.horizontal, 16)
-                    .padding(.top, 8)
-                    .padding(.bottom, 12)
+                VStack(spacing: 0) {
+                    HomeCategorySegmentedPicker(selectedCategory: $viewModel.selectedCategory)
+                        .padding(.horizontal, 16)
+                        .padding(.top, 8)
+                        .padding(.bottom, 12)
+
+                    Divider()
+                        .opacity(0.35)
+                }
+                .background(.regularMaterial)
             }
             .background(Color(UIColor.systemBackground))
             .task {
