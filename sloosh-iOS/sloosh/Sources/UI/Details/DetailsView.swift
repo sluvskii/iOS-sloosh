@@ -57,28 +57,8 @@ struct DetailsView: View {
                             .font(.system(size: 34, weight: .heavy, design: .rounded))
                             .multilineTextAlignment(.center)
                             .padding(.horizontal)
-                        
-                        // Metadata Row
-                        HStack(spacing: 8) {
-                            if let rating = details.rating, rating > 0 {
-                                HStack(spacing: 4) {
-                                    Image(systemName: "star.fill")
-                                        .foregroundColor(.orange)
-                                    Text(String(format: "%.1f", rating))
-                                        .bold()
-                                }
-                            }
-                            
-                            if details.rating != nil, details.rating! > 0, details.releaseDate != nil {
-                                Text("·").foregroundColor(.secondary)
-                            }
-                            
-                            if let year = details.releaseDate?.prefix(4) {
-                                Text(String(year))
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                        .font(.system(size: 15, weight: .medium))
+
+                        DetailsPrimaryMetadataRow(details: details)
                         
                         // Play Button
                         Button(action: {
@@ -109,12 +89,9 @@ struct DetailsView: View {
                         .matchedTransitionSource(id: "playBtn", in: transition)
                         .padding(.horizontal, 24)
                         .padding(.top, 16)
-                        
-                        Text(details.description ?? "Описание отсутствует.")
-                            .font(.system(size: 16, weight: .regular, design: .rounded))
-                            .foregroundColor(.secondary)
-                            .lineSpacing(4)
-                            .padding(.top, 24)
+
+                        DetailsInfoSection(details: details)
+                            .padding(.top, 20)
                             .padding(.horizontal)
                     }
                     .offset(y: -80)
@@ -166,6 +143,152 @@ struct DetailsView: View {
                     PlayerView(directVideoUrl: url, fallbackTitle: details.title ?? details.name ?? "")
                 }
             }
+        }
+    }
+}
+
+private struct DetailsPrimaryMetadataRow: View {
+    let details: MediaDetailsDto
+
+    var body: some View {
+        HStack(spacing: 8) {
+            if let rating = details.rating, rating > 0 {
+                Label(String(format: "%.1f", rating), systemImage: "star.fill")
+                    .foregroundColor(.orange)
+            }
+
+            if let year = details.releaseDate?.prefix(4), !year.isEmpty {
+                Text(String(year))
+            }
+
+            if let type = details.type?.uppercased(), !type.isEmpty {
+                Text(type == "TV" ? "Сериал" : "Фильм")
+            }
+
+            if let duration = details.duration, duration > 0 {
+                Text("\(duration) мин")
+            }
+        }
+        .font(.system(size: 15, weight: .semibold, design: .rounded))
+        .foregroundColor(.secondary)
+        .multilineTextAlignment(.center)
+        .padding(.horizontal)
+    }
+}
+
+private struct DetailsInfoSection: View {
+    let details: MediaDetailsDto
+
+    private var genres: [String] {
+        details.genres?
+            .compactMap { $0.name?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty } ?? []
+    }
+
+    private var infoItems: [(String, String)] {
+        var items: [(String, String)] = []
+
+        if let originalTitle = details.originalTitle, !originalTitle.isEmpty, originalTitle != details.title {
+            items.append(("Оригинальное название", originalTitle))
+        }
+
+        if let country = details.country, !country.isEmpty {
+            items.append(("Страна", country))
+        }
+
+        if let language = details.language, !language.isEmpty {
+            items.append(("Язык", language))
+        }
+
+        if let sourceId = details.sourceId, !sourceId.isEmpty {
+            items.append(("ID источника", sourceId))
+        }
+
+        if let imdb = details.externalIds?.imdb, !imdb.isEmpty {
+            items.append(("IMDb", imdb))
+        }
+
+        if let tmdb = details.externalIds?.tmdb {
+            items.append(("TMDb", "\(tmdb)"))
+        }
+
+        if let kp = details.externalIds?.kp {
+            items.append(("Кинопоиск", "\(kp)"))
+        }
+
+        return items
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 18) {
+            if !genres.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Жанры")
+                        .font(.system(size: 18, weight: .bold, design: .rounded))
+
+                    FlowLayout(spacing: 8) {
+                        ForEach(genres, id: \.self) { genre in
+                            Text(genre)
+                                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 8)
+                                .background(.ultraThinMaterial, in: Capsule())
+                                .overlay(
+                                    Capsule()
+                                        .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                                )
+                        }
+                    }
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Описание")
+                    .font(.system(size: 18, weight: .bold, design: .rounded))
+
+                Text(details.description ?? "Описание отсутствует.")
+                    .font(.system(size: 16, weight: .regular, design: .rounded))
+                    .foregroundColor(.secondary)
+                    .lineSpacing(4)
+            }
+
+            if !infoItems.isEmpty {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Информация")
+                        .font(.system(size: 18, weight: .bold, design: .rounded))
+
+                    VStack(spacing: 10) {
+                        ForEach(infoItems, id: \.0) { item in
+                            HStack(alignment: .top, spacing: 12) {
+                                Text(item.0)
+                                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                    .foregroundColor(.secondary)
+                                    .frame(width: 140, alignment: .leading)
+
+                                Text(item.1)
+                                    .font(.system(size: 15, weight: .medium, design: .rounded))
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+                    .padding(16)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            .stroke(Color.primary.opacity(0.06), lineWidth: 1)
+                    )
+                }
+            }
+
+            HStack(spacing: 10) {
+                Label(SourceManager.shared.currentMode.displayName, systemImage: "antenna.radiowaves.left.and.right")
+                if let type = details.type, !type.isEmpty {
+                    Label(type == "tv" ? "Сериал" : "Фильм", systemImage: "film")
+                }
+            }
+            .font(.system(size: 14, weight: .semibold, design: .rounded))
+            .foregroundColor(.secondary)
         }
     }
 }

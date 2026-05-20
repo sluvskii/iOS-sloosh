@@ -169,7 +169,13 @@ struct ExternalIdsDto: Codable {
 
 struct SupportItemDto: Codable {
     let id: String?
+    let name: String?
+    let type: String?
     let text: String?
+    let description: String?
+    let contributions: [String]?
+    let year: Int?
+    let isActive: Bool?
 }
 
 struct FavoriteDto: Codable {

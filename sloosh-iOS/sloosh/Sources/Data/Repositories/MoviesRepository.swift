@@ -47,4 +47,9 @@ class MoviesRepository: ObservableObject {
         let response = try await MoviesApi.shared.searchMovies(query: query, page: page)
         return response.data?.results ?? []
     }
+
+    func searchMoviesResponse(query: String, page: Int = 1) async throws -> MediaResponse {
+        let response = try await MoviesApi.shared.searchMovies(query: query, page: page)
+        return response.data ?? MediaResponse(page: page, results: [], pages: 1, total: 0, total_pages: 1, total_results: 0)
+    }
 }
