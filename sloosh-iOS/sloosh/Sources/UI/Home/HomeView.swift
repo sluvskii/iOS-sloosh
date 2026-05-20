@@ -8,6 +8,7 @@ enum HomeCategory: String, CaseIterable {
 
 struct HomeView: View {
     @StateObject private var viewModel = HomeViewModel()
+    @Namespace private var animation
     
     let columns = [
         GridItem(.adaptive(minimum: 105), spacing: 16)
@@ -66,23 +67,42 @@ struct HomeView: View {
                     }
                 }
                 
-                // Native Picker for categories
-                VStack(spacing: 0) {
-                    Picker("Категория", selection: $viewModel.selectedCategory) {
-                        ForEach(HomeCategory.allCases, id: \.self) { category in
-                            Text(category.rawValue).tag(category)
+                // Floating Liquid Glass Category Picker
+                HStack(spacing: 4) {
+                    ForEach(HomeCategory.allCases, id: \.self) { category in
+                        Button(action: {
+                            Task {
+                                await viewModel.selectCategory(category)
+                            }
+                        }) {
+                            Text(category.rawValue)
+                                .font(.system(size: 15, weight: viewModel.selectedCategory == category ? .bold : .medium, design: .rounded))
+                                .foregroundColor(viewModel.selectedCategory == category ? Color(UIColor.systemBackground) : .primary)
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 8)
+                                .background(
+                                    ZStack {
+                                        if viewModel.selectedCategory == category {
+                                            Capsule()
+                                                .fill(Color.primary)
+                                                .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
+                                                .matchedGeometryEffect(id: "ACTIVE_CATEGORY", in: animation)
+                                        }
+                                    }
+                                )
                         }
-                    }
-                    .pickerStyle(.segmented)
-                    .padding(.horizontal)
-                    .padding(.vertical, 8)
-                    .background(.ultraThinMaterial)
-                }
-                .onChange(of: viewModel.selectedCategory) { newCategory in
-                    Task {
-                        await viewModel.selectCategory(newCategory)
+                        .buttonStyle(.plain)
                     }
                 }
+                .padding(6)
+                .background(.ultraThinMaterial, in: Capsule())
+                .overlay(
+                    Capsule()
+                        .stroke(Color.primary.opacity(0.1), lineWidth: 0.5)
+                )
+                .shadow(color: .black.opacity(0.15), radius: 12, x: 0, y: 6)
+                .padding(.top, 8)
+                .animation(.spring(response: 0.3, dampingFraction: 0.7), value: viewModel.selectedCategory)
             }
             .navigationTitle("")
             .navigationBarHidden(true)
