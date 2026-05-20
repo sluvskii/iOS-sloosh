@@ -114,6 +114,32 @@ struct CategoryPill: View {
     }
 }
 
+struct NavBarTab: View {
+    let title: String
+    let isSelected: Bool
+    let action: () -> Void
+    
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 8) {
+                Text(title)
+                    .font(.system(size: 16, weight: isSelected ? .bold : .medium, design: .rounded))
+                    .foregroundColor(isSelected ? .primary : .secondary)
+                
+                Rectangle()
+                    .fill(isSelected ? Color.primary : Color.clear)
+                    .frame(height: 3)
+                    .cornerRadius(1.5)
+                    .padding(.horizontal, 16)
+            }
+            .padding(.top, 12)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .frame(maxWidth: .infinity)
+    }
+}
+
 struct MoviePosterCard: View {
     let movie: MediaDto
     
