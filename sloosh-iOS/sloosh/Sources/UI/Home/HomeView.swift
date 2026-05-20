@@ -1,11 +1,9 @@
 import SwiftUI
 
 enum HomeCategory: String, CaseIterable {
-    case popular = "Популярное"
+    case all = "Все"
     case movies = "Фильмы"
     case tvShows = "Сериалы"
-    case topRated = "Высокий рейтинг"
-    case topTv = "Топ сериалы"
 }
 
 struct HomeView: View {
@@ -17,12 +15,57 @@ struct HomeView: View {
     
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                // Category Picker
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 10) {
+            // Infinite Grid
+            ScrollView {
+                if viewModel.isLoading {
+                    LazyVGrid(columns: columns, spacing: 20) {
+                        ForEach(0..<12, id: \.self) { _ in
+                            MoviePosterCardPlaceholder()
+                        }
+                    }
+                    .padding(16)
+                    .padding(.top, 8)
+                } else if viewModel.items.isEmpty {
+                    VStack(spacing: 16) {
+                        Image(systemName: "film")
+                            .font(.system(size: 48))
+                            .foregroundColor(.gray)
+                        Text("Ничего не найдено")
+                            .font(.headline)
+                            .foregroundColor(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 300)
+                } else {
+                    LazyVGrid(columns: columns, spacing: 20) {
+                        ForEach(viewModel.items) { movie in
+                            NavigationLink(destination: DetailsView(movieId: movie.id)) {
+                                MoviePosterCard(movie: movie)
+                            }
+                            .buttonStyle(.plain)
+                            .onAppear {
+                                if movie.id == viewModel.items.last?.id {
+                                    Task {
+                                        await viewModel.loadData()
+                                    }
+                                }
+                            }
+                        }
+                        
+                        if viewModel.isLoadingMore {
+                            ForEach(0..<3, id: \.self) { _ in
+                                MoviePosterCardPlaceholder()
+                            }
+                        }
+                    }
+                    .padding(16)
+                    .padding(.top, 8)
+                }
+            }
+            .safeAreaInset(edge: .top) {
+                VStack(spacing: 0) {
+                    HStack(spacing: 0) {
                         ForEach(HomeCategory.allCases, id: \.self) { category in
-                            CategoryPill(
+                            NavBarTab(
                                 title: category.rawValue,
                                 isSelected: viewModel.selectedCategory == category
                             ) {
@@ -32,65 +75,21 @@ struct HomeView: View {
                             }
                         }
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
+                    .padding(.top, 8)
                 }
-                .background(.regularMaterial)
-                .shadow(color: .black.opacity(0.05), radius: 3, x: 0, y: 2)
-                .zIndex(1) // Ensure shadow is above the grid
-                
-                // Infinite Grid
-                ScrollView {
-                    if viewModel.isLoading {
-                        LazyVGrid(columns: columns, spacing: 20) {
-                            ForEach(0..<12, id: \.self) { _ in
-                                MoviePosterCardPlaceholder()
-                            }
-                        }
-                        .padding(16)
-                        .padding(.top, 8)
-                    } else if viewModel.items.isEmpty {
-                        VStack(spacing: 16) {
-                            Image(systemName: "film")
-                                .font(.system(size: 48))
-                                .foregroundColor(.gray)
-                            Text("Ничего не найдено")
-                                .font(.headline)
-                                .foregroundColor(.secondary)
-                        }
-                        .frame(maxWidth: .infinity, minHeight: 300)
-                    } else {
-                        LazyVGrid(columns: columns, spacing: 20) {
-                            ForEach(viewModel.items) { movie in
-                                NavigationLink(destination: DetailsView(movieId: movie.id)) {
-                                    MoviePosterCard(movie: movie)
-                                }
-                                .buttonStyle(.plain)
-                                .onAppear {
-                                    if movie.id == viewModel.items.last?.id {
-                                        Task {
-                                            await viewModel.loadData()
-                                        }
-                                    }
-                                }
-                            }
-                            
-                            if viewModel.isLoadingMore {
-                                ForEach(0..<3, id: \.self) { _ in
-                                    MoviePosterCardPlaceholder()
-                                }
-                            }
-                        }
-                        .padding(16)
-                        .padding(.top, 8)
-                    }
-                }
+                .background(.ultraThinMaterial)
+                .overlay(
+                    Rectangle()
+                        .frame(height: 0.5)
+                        .foregroundColor(Color.primary.opacity(0.1)),
+                    alignment: .bottom
+                )
             }
             .navigationTitle("")
             .navigationBarHidden(true)
             .background(Color(UIColor.systemBackground))
             .task {
-                await viewModel.selectCategory(.popular)
+                await viewModel.selectCategory(.all)
             }
         }
     }
@@ -211,7 +210,7 @@ struct MoviePosterCardPlaceholder: View {
 
 @MainActor
 class HomeViewModel: ObservableObject {
-    @Published var selectedCategory: HomeCategory = .popular
+    @Published var selectedCategory: HomeCategory = .all
     @Published var items: [MediaDto] = []
     @Published var isLoading = false
     @Published var isLoadingMore = false
@@ -270,16 +269,12 @@ class HomeViewModel: ObservableObject {
                 }
                 
                 switch selectedCategory {
-                case .popular:
+                case .all:
                     newItems.append(contentsOf: fetched)
                 case .movies:
                     newItems.append(contentsOf: fetched.filter { $0.type == "movie" })
                 case .tvShows:
                     newItems.append(contentsOf: fetched.filter { $0.type == "tv" })
-                case .topRated:
-                    newItems.append(contentsOf: fetched)
-                case .topTv:
-                    newItems.append(contentsOf: fetched)
                 }
                 
                 currentPage += 1
@@ -302,12 +297,8 @@ class HomeViewModel: ObservableObject {
     
     private func fetchPage(_ page: Int) async throws -> [MediaDto] {
         switch selectedCategory {
-        case .popular, .movies, .tvShows:
+        case .all, .movies, .tvShows:
             return try await MoviesRepository.shared.getPopularMovies(page: page)
-        case .topRated:
-            return try await MoviesRepository.shared.getTopMovies(page: page)
-        case .topTv:
-            return try await MoviesRepository.shared.getTopTv(page: page)
         }
     }
 }
