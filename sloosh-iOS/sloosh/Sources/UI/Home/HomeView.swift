@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 enum HomeCategory: String, CaseIterable {
     case all = "Все"
@@ -8,7 +9,6 @@ enum HomeCategory: String, CaseIterable {
 
 struct HomeView: View {
     @StateObject private var viewModel = HomeViewModel()
-    @Namespace private var animation
     
     let columns = [
         GridItem(.adaptive(minimum: 105), spacing: 16)
@@ -16,120 +16,110 @@ struct HomeView: View {
     
     var body: some View {
         NavigationStack {
-            ZStack(alignment: .top) {
-                // Infinite Grid
-                ScrollView {
-                    // Padding for the top segmented control
-                    Spacer().frame(height: 60)
-                    
-                    if viewModel.isLoading {
-                        LazyVGrid(columns: columns, spacing: 20) {
-                            ForEach(0..<12, id: \.self) { _ in
+            ScrollView {
+                if viewModel.isLoading {
+                    LazyVGrid(columns: columns, spacing: 20) {
+                        ForEach(0..<12, id: \.self) { _ in
+                            MoviePosterCardPlaceholder()
+                        }
+                    }
+                    .padding(16)
+                    .padding(.top, 8)
+                } else if viewModel.items.isEmpty {
+                    VStack(spacing: 16) {
+                        Image(systemName: "film")
+                            .font(.system(size: 48))
+                            .foregroundColor(.gray)
+                        Text("Ничего не найдено")
+                            .font(.headline)
+                            .foregroundColor(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 300)
+                } else {
+                    LazyVGrid(columns: columns, spacing: 20) {
+                        ForEach(viewModel.items) { movie in
+                            NavigationLink(destination: DetailsView(movieId: movie.id)) {
+                                MoviePosterCard(movie: movie)
+                            }
+                            .buttonStyle(.plain)
+                            .onAppear {
+                                if movie.id == viewModel.items.last?.id {
+                                    Task {
+                                        await viewModel.loadData()
+                                    }
+                                }
+                            }
+                        }
+
+                        if viewModel.isLoadingMore {
+                            ForEach(0..<3, id: \.self) { _ in
                                 MoviePosterCardPlaceholder()
                             }
                         }
-                        .padding(16)
-                        .padding(.top, 8)
-                    } else if viewModel.items.isEmpty {
-                        VStack(spacing: 16) {
-                            Image(systemName: "film")
-                                .font(.system(size: 48))
-                                .foregroundColor(.gray)
-                            Text("Ничего не найдено")
-                                .font(.headline)
-                                .foregroundColor(.secondary)
-                        }
-                        .frame(maxWidth: .infinity, minHeight: 300)
-                    } else {
-                        LazyVGrid(columns: columns, spacing: 20) {
-                            ForEach(viewModel.items) { movie in
-                                NavigationLink(destination: DetailsView(movieId: movie.id)) {
-                                    MoviePosterCard(movie: movie)
-                                }
-                                .buttonStyle(.plain)
-                                .onAppear {
-                                    if movie.id == viewModel.items.last?.id {
-                                        Task {
-                                            await viewModel.loadData()
-                                        }
-                                    }
-                                }
-                            }
-                            
-                            if viewModel.isLoadingMore {
-                                ForEach(0..<3, id: \.self) { _ in
-                                    MoviePosterCardPlaceholder()
-                                }
-                            }
-                        }
-                        .padding(16)
-                        .padding(.top, 8)
                     }
+                    .padding(16)
+                    .padding(.top, 8)
                 }
-                
-                // Floating Liquid Glass Category Picker
-                HStack(spacing: 4) {
-                    ForEach(HomeCategory.allCases, id: \.self) { category in
-                        Button(action: {
-                            Task {
-                                await viewModel.selectCategory(category)
-                            }
-                        }) {
-                            Text(category.rawValue)
-                                .font(.system(size: 15, weight: viewModel.selectedCategory == category ? .bold : .medium, design: .rounded))
-                                .foregroundColor(viewModel.selectedCategory == category ? Color(UIColor.systemBackground) : .primary)
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 8)
-                                .background(
-                                    ZStack {
-                                        if viewModel.selectedCategory == category {
-                                            Capsule()
-                                                .fill(Color.primary)
-                                                .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
-                                                .matchedGeometryEffect(id: "ACTIVE_CATEGORY", in: animation)
-                                        }
-                                    }
-                                )
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(6)
-                .background(.ultraThinMaterial, in: Capsule())
-                .overlay(
-                    Capsule()
-                        .stroke(Color.primary.opacity(0.1), lineWidth: 0.5)
-                )
-                .shadow(color: .black.opacity(0.15), radius: 12, x: 0, y: 6)
-                .padding(.top, 8)
-                .animation(.spring(response: 0.3, dampingFraction: 0.7), value: viewModel.selectedCategory)
             }
             .navigationTitle("")
-            .navigationBarHidden(true)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    HomeCategorySegmentedControl(selection: $viewModel.selectedCategory)
+                        .frame(maxWidth: 260)
+                }
+            }
             .background(Color(UIColor.systemBackground))
             .task {
                 await viewModel.selectCategory(.all)
+            }
+            .onChange(of: viewModel.selectedCategory) { _, newCategory in
+                Task {
+                    await viewModel.selectCategory(newCategory)
+                }
             }
         }
     }
 }
 
-struct CategoryPill: View {
-    let title: String
-    let isSelected: Bool
-    let action: () -> Void
-    
-    var body: some View {
-        Button(action: action) {
-            Text(title)
-                .font(.system(size: 15, weight: .semibold, design: .rounded))
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .background(isSelected ? Color.primary : Color(UIColor.secondarySystemBackground))
-                .foregroundColor(isSelected ? Color(UIColor.systemBackground) : .primary)
-                .clipShape(Capsule())
+struct HomeCategorySegmentedControl: UIViewRepresentable {
+    @Binding var selection: HomeCategory
+
+    func makeUIView(context: Context) -> UISegmentedControl {
+        let control = UISegmentedControl(items: HomeCategory.allCases.map(\.rawValue))
+        control.selectedSegmentIndex = HomeCategory.allCases.firstIndex(of: selection) ?? 0
+        control.apportionsSegmentWidthsByContent = true
+        control.addTarget(
+            context.coordinator,
+            action: #selector(Coordinator.valueChanged(_:)),
+            for: .valueChanged
+        )
+        return control
+    }
+
+    func updateUIView(_ uiView: UISegmentedControl, context: Context) {
+        let selectedIndex = HomeCategory.allCases.firstIndex(of: selection) ?? 0
+        if uiView.selectedSegmentIndex != selectedIndex {
+            uiView.selectedSegmentIndex = selectedIndex
         }
-        .buttonStyle(.plain)
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(selection: $selection)
+    }
+
+    final class Coordinator: NSObject {
+        private let selection: Binding<HomeCategory>
+
+        init(selection: Binding<HomeCategory>) {
+            self.selection = selection
+        }
+
+        @objc func valueChanged(_ sender: UISegmentedControl) {
+            let categories = HomeCategory.allCases
+            guard categories.indices.contains(sender.selectedSegmentIndex) else { return }
+            selection.wrappedValue = categories[sender.selectedSegmentIndex]
+        }
     }
 }
 
