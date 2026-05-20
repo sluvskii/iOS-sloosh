@@ -62,28 +62,30 @@ struct HomeView: View {
                 }
             }
             .safeAreaInset(edge: .top) {
-                VStack(spacing: 0) {
-                    HStack(spacing: 0) {
-                        ForEach(HomeCategory.allCases, id: \.self) { category in
-                            NavBarTab(
-                                title: category.rawValue,
-                                isSelected: viewModel.selectedCategory == category
-                            ) {
-                                Task {
-                                    await viewModel.selectCategory(category)
-                                }
+                // iOS 26 Floating Liquid Glass Tab Bar
+                HStack(spacing: 4) {
+                    ForEach(HomeCategory.allCases, id: \.self) { category in
+                        NavBarTab(
+                            title: category.rawValue,
+                            isSelected: viewModel.selectedCategory == category
+                        ) {
+                            Task {
+                                await viewModel.selectCategory(category)
                             }
                         }
                     }
-                    .padding(.top, 8)
                 }
+                .padding(6)
                 .background(.ultraThinMaterial)
+                .clipShape(Capsule())
                 .overlay(
-                    Rectangle()
-                        .frame(height: 0.5)
-                        .foregroundColor(Color.primary.opacity(0.1)),
-                    alignment: .bottom
+                    Capsule()
+                        .stroke(Color.primary.opacity(0.1), lineWidth: 0.5)
                 )
+                .shadow(color: Color.black.opacity(0.15), radius: 12, x: 0, y: 6)
+                .padding(.horizontal, 24)
+                .padding(.top, 8)
+                .padding(.bottom, 8)
             }
             .navigationTitle("")
             .navigationBarHidden(true)
@@ -121,22 +123,23 @@ struct NavBarTab: View {
     
     var body: some View {
         Button(action: action) {
-            VStack(spacing: 8) {
-                Text(title)
-                    .font(.system(size: 16, weight: isSelected ? .bold : .medium, design: .rounded))
-                    .foregroundColor(isSelected ? .primary : .secondary)
-                
-                Rectangle()
-                    .fill(isSelected ? Color.primary : Color.clear)
-                    .frame(height: 3)
-                    .cornerRadius(1.5)
-                    .padding(.horizontal, 16)
-            }
-            .padding(.top, 12)
-            .contentShape(Rectangle())
+            Text(title)
+                .font(.system(size: 15, weight: isSelected ? .bold : .medium, design: .rounded))
+                .foregroundColor(isSelected ? Color(UIColor.systemBackground) : .primary)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 10)
+                .background(
+                    ZStack {
+                        if isSelected {
+                            Capsule()
+                                .fill(Color.primary)
+                                .shadow(color: Color.primary.opacity(0.2), radius: 4, x: 0, y: 2)
+                        }
+                    }
+                )
+                .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isSelected)
         }
         .buttonStyle(.plain)
-        .frame(maxWidth: .infinity)
     }
 }
 
