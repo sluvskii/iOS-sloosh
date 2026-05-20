@@ -17,12 +17,6 @@ struct SettingsView: View {
                     NavigationLink("О sloosh") {
                         AboutView()
                     }
-                    NavigationLink("Изменения") {
-                        ChangesView()
-                    }
-                    NavigationLink("Благодарности") {
-                        CreditsView()
-                    }
                 }
             }
             .navigationTitle("Настройки")
@@ -36,7 +30,7 @@ private struct PlayerSettingsPlaceholderView: View {
             Section("Плеер") {
                 Label("Сейчас используется нативный AVPlayer", systemImage: "play.rectangle.fill")
                 Label("Поддерживается fullscreen и смена ориентации", systemImage: "iphone.landscape")
-                Label("Alloha работает через встроенный parser и HLS proxy", systemImage: "network")
+                Label("Интерфейс воспроизведения адаптирован под iPhone", systemImage: "network")
             }
 
             Section("План развития") {
