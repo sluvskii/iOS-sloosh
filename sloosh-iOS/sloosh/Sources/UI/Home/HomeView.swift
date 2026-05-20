@@ -29,17 +29,6 @@ enum HomeFilter: String, CaseIterable, Identifiable {
             return "star.fill"
         }
     }
-
-    var subtitle: String {
-        switch self {
-        case .popular:
-            return "Самое интересное прямо сейчас"
-        case .latest:
-            return "Сначала более свежие релизы"
-        case .topRated:
-            return "Подборка с сильными оценками"
-        }
-    }
 }
 
 struct HomeView: View {
@@ -95,15 +84,17 @@ struct HomeView: View {
             .scrollIndicators(.hidden)
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
-            .safeAreaInset(edge: .top, spacing: 0) {
-                HomeTopPanel(
-                    selectedCategory: $viewModel.selectedCategory,
-                    selectedFilter: $viewModel.selectedFilter,
-                    namespace: topPanelNamespace
-                )
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
-                .padding(.bottom, 10)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    HomeCategoryToolbarStrip(
+                        selectedCategory: $viewModel.selectedCategory,
+                        namespace: topPanelNamespace
+                    )
+                }
+
+                ToolbarItem(placement: .topBarTrailing) {
+                    HomeFilterMenu(selectedFilter: $viewModel.selectedFilter)
+                }
             }
             .background(Color(UIColor.systemBackground))
             .task {
@@ -123,104 +114,75 @@ struct HomeView: View {
     }
 }
 
-private struct HomeTopPanel: View {
+private struct HomeCategoryToolbarStrip: View {
     @Binding var selectedCategory: HomeCategory
-    @Binding var selectedFilter: HomeFilter
     let namespace: Namespace.ID
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(alignment: .center, spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("Главная")
-                        .font(.system(size: 30, weight: .bold, design: .rounded))
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(HomeCategory.allCases, id: \.self) { category in
+                    let isSelected = selectedCategory == category
 
-                    Text(selectedFilter.subtitle)
-                        .font(.system(size: 13, weight: .medium, design: .rounded))
-                        .foregroundColor(.secondary)
-                        .lineLimit(2)
-                }
-
-                Spacer(minLength: 12)
-
-                Menu {
-                    Picker("Сортировка", selection: $selectedFilter) {
-                        ForEach(HomeFilter.allCases) { filter in
-                            Label(filter.title, systemImage: filter.systemImage)
-                                .tag(filter)
+                    Button {
+                        withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                            selectedCategory = category
                         }
-                    }
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: selectedFilter.systemImage)
-                            .font(.system(size: 14, weight: .bold))
-                        Text(selectedFilter.title)
+                    } label: {
+                        Text(category.title)
                             .font(.system(size: 14, weight: .semibold, design: .rounded))
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(.secondary)
-                    }
-                    .foregroundColor(.primary)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 12)
-                    .background(.ultraThinMaterial, in: Capsule())
-                    .overlay(
-                        Capsule()
-                            .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-                    )
-                }
-                .menuStyle(.button)
-            }
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 10) {
-                    ForEach(HomeCategory.allCases, id: \.self) { category in
-                        let isSelected = selectedCategory == category
-
-                        Button {
-                            withAnimation(.spring(response: 0.34, dampingFraction: 0.82)) {
-                                selectedCategory = category
-                            }
-                        } label: {
-                            Text(category.title)
-                                .font(.system(size: 15, weight: .semibold, design: .rounded))
-                                .foregroundStyle(isSelected ? Color.black : Color.primary)
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 10)
-                                .background {
-                                    ZStack {
-                                        if isSelected {
-                                            Capsule()
-                                                .fill(Color.slooshAccent)
-                                                .matchedGeometryEffect(id: "home-category-pill", in: namespace)
-                                        } else {
-                                            Capsule()
-                                                .fill(.clear)
-                                        }
+                            .foregroundStyle(isSelected ? Color.black : Color.primary)
+                            .lineLimit(1)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                            .background {
+                                ZStack {
+                                    if isSelected {
+                                        Capsule()
+                                            .fill(Color.slooshAccent)
+                                            .matchedGeometryEffect(id: "home-category-pill", in: namespace)
+                                    } else {
+                                        Capsule()
+                                            .fill(.clear)
                                     }
-                                }
-                        }
-                        .buttonStyle(.plain)
-                    }
                 }
-                .padding(6)
-                .background(.ultraThinMaterial, in: Capsule())
-                .overlay(
-                    Capsule()
-                        .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-                )
+                            }
+                    }
+                    .buttonStyle(.plain)
+                }
             }
         }
-        .padding(14)
+        .frame(maxWidth: 320)
+        .padding(.horizontal, 6)
+        .padding(.vertical, 4)
         .background(
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
+            Capsule(style: .continuous)
                 .fill(.ultraThinMaterial)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
+            Capsule(style: .continuous)
                 .stroke(Color.primary.opacity(0.08), lineWidth: 1)
         )
-        .shadow(color: .black.opacity(0.08), radius: 20, x: 0, y: 8)
+    }
+}
+
+private struct HomeFilterMenu: View {
+    @Binding var selectedFilter: HomeFilter
+
+    var body: some View {
+        Menu {
+            Picker("Сортировка", selection: $selectedFilter) {
+                ForEach(HomeFilter.allCases) { filter in
+                    Label(filter.title, systemImage: filter.systemImage)
+                        .tag(filter)
+                }
+            }
+        } label: {
+            Image(systemName: "line.3.horizontal.decrease.circle")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(.primary)
+                .frame(width: 32, height: 32)
+        }
     }
 }
 
