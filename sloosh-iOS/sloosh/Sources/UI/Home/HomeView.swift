@@ -224,6 +224,8 @@ class HomeViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var isLoadingMore = false
     
+    private var loadedCategory: HomeCategory?
+    
     private var currentPage = 1
     private var canLoadMore = true
     
@@ -232,7 +234,8 @@ class HomeViewModel: ObservableObject {
     private var cachedCanLoadMore: [HomeCategory: Bool] = [:]
     
     func selectCategory(_ category: HomeCategory) async {
-        if selectedCategory == category && !items.isEmpty {
+        if loadedCategory == category && !items.isEmpty {
+            selectedCategory = category
             return
         }
         
@@ -242,6 +245,7 @@ class HomeViewModel: ObservableObject {
             items = cached
             currentPage = cachedPages[category] ?? 1
             canLoadMore = cachedCanLoadMore[category] ?? true
+            loadedCategory = category
             return
         }
         
@@ -249,6 +253,7 @@ class HomeViewModel: ObservableObject {
         currentPage = 1
         canLoadMore = true
         await loadData()
+        loadedCategory = category
     }
     
     func loadData() async {
