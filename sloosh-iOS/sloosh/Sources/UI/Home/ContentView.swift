@@ -3,35 +3,50 @@ import UIKit
 
 struct ContentView: View {
     var body: some View {
-        TabView {
-            HomeView()
-                .tabItem {
-                    Label("Главная", systemImage: "house.fill")
+        if #available(iOS 18.0, *) {
+            TabView {
+                Tab("Главная", systemImage: "house.fill") {
+                    HomeView()
                 }
-            SearchView()
-                .tabItem {
-                    Label("Поиск", systemImage: "magnifyingglass")
+                Tab("Поиск", systemImage: "magnifyingglass") {
+                    SearchView()
                 }
-            FavoritesView()
-                .tabItem {
-                    Label("Избранное", systemImage: "heart.fill")
+                Tab("Избранное", systemImage: "heart.fill") {
+                    FavoritesView()
                 }
-            DownloadsView()
-                .tabItem {
-                    Label("Загрузки", systemImage: "arrow.down.circle.fill")
+                Tab("Загрузки", systemImage: "arrow.down.circle.fill") {
+                    DownloadsView()
                 }
-            SettingsView()
-                .tabItem {
-                    Label("Настройки", systemImage: "gearshape.fill")
+                Tab("Настройки", systemImage: "gearshape.fill") {
+                    SettingsView()
                 }
-        }
-        .tabBarMinimizeBehavior(.onScrollDown)
-        .tint(Color(UIColor { traitCollection in
-            if traitCollection.userInterfaceStyle == .dark {
-                return UIColor(red: 0.70, green: 1.0, blue: 0.0, alpha: 1.0) // #B3FF00 for Dark
-            } else {
-                return UIColor(red: 0.45, green: 0.80, blue: 0.0, alpha: 1.0) // Darker green for Light
             }
-        }))
+            .tabViewStyle(.sidebarAdaptable)
+            .tint(Color.slooshAccent)
+        } else {
+            TabView {
+                HomeView()
+                    .tabItem {
+                        Label("Главная", systemImage: "house.fill")
+                    }
+                SearchView()
+                    .tabItem {
+                        Label("Поиск", systemImage: "magnifyingglass")
+                    }
+                FavoritesView()
+                    .tabItem {
+                        Label("Избранное", systemImage: "heart.fill")
+                    }
+                DownloadsView()
+                    .tabItem {
+                        Label("Загрузки", systemImage: "arrow.down.circle.fill")
+                    }
+                SettingsView()
+                    .tabItem {
+                        Label("Настройки", systemImage: "gearshape.fill")
+                    }
+            }
+            .tint(Color.slooshAccent)
+        }
     }
 }
