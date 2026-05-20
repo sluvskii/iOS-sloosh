@@ -8,6 +8,19 @@ enum HomeCategory: String, CaseIterable {
     case cartoons = "Мультфильмы"
 
     var title: String { rawValue }
+
+    var segmentedTitle: String {
+        switch self {
+        case .all:
+            return "Все"
+        case .movies:
+            return "Фильмы"
+        case .tvShows:
+            return "Сериалы"
+        case .cartoons:
+            return "Мульты"
+        }
+    }
 }
 
 enum HomeFilter: String, CaseIterable, Identifiable {
@@ -33,7 +46,6 @@ enum HomeFilter: String, CaseIterable, Identifiable {
 
 struct HomeView: View {
     @StateObject private var viewModel = HomeViewModel()
-    @Namespace private var topPanelNamespace
 
     let columns = [
         GridItem(.adaptive(minimum: 105), spacing: 16)
@@ -85,16 +97,16 @@ struct HomeView: View {
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .principal) {
-                    HomeCategoryToolbarStrip(
-                        selectedCategory: $viewModel.selectedCategory,
-                        namespace: topPanelNamespace
-                    )
-                }
-
                 ToolbarItem(placement: .topBarTrailing) {
                     HomeFilterMenu(selectedFilter: $viewModel.selectedFilter)
                 }
+            }
+            .safeAreaInset(edge: .top, spacing: 0) {
+                HomeCategorySegmentedPicker(selectedCategory: $viewModel.selectedCategory)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+                    .padding(.bottom, 12)
+                    .background(.clear)
             }
             .background(Color(UIColor.systemBackground))
             .task {
@@ -114,55 +126,18 @@ struct HomeView: View {
     }
 }
 
-private struct HomeCategoryToolbarStrip: View {
+private struct HomeCategorySegmentedPicker: View {
     @Binding var selectedCategory: HomeCategory
-    let namespace: Namespace.ID
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(HomeCategory.allCases, id: \.self) { category in
-                    let isSelected = selectedCategory == category
-
-                    Button {
-                        withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
-                            selectedCategory = category
-                        }
-                    } label: {
-                        Text(category.title)
-                            .font(.system(size: 14, weight: .semibold, design: .rounded))
-                            .foregroundStyle(isSelected ? Color.black : Color.primary)
-                            .lineLimit(1)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 8)
-                            .background {
-                                ZStack {
-                                    if isSelected {
-                                        Capsule()
-                                            .fill(Color.slooshAccent)
-                                            .matchedGeometryEffect(id: "home-category-pill", in: namespace)
-                                    } else {
-                                        Capsule()
-                                            .fill(.clear)
-                                    }
-                }
-                            }
-                    }
-                    .buttonStyle(.plain)
-                }
+        Picker("Категория", selection: $selectedCategory) {
+            ForEach(HomeCategory.allCases, id: \.self) { category in
+                Text(category.segmentedTitle)
+                    .tag(category)
             }
         }
-        .frame(maxWidth: 320)
-        .padding(.horizontal, 6)
-        .padding(.vertical, 4)
-        .background(
-            Capsule(style: .continuous)
-                .fill(.ultraThinMaterial)
-        )
-        .overlay(
-            Capsule(style: .continuous)
-                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-        )
+        .pickerStyle(.segmented)
+        .labelsHidden()
     }
 }
 
