@@ -12,20 +12,18 @@
     {
       "layers": [
         {
-          "blend-mode": "normal",
           "glass": true,
           "image-name": "Foreground.svg",
-          "name": "Foreground",
-          "opacity": 1
+          "name": "Foreground"
         }
       ],
       "shadow": {
         "kind": "neutral",
-        "opacity": 0.5
+        "opacity": 0.4
       },
       "translucency": {
         "enabled": true,
-        "value": 0.5
+        "value": 0.15
       }
     }
   ],
