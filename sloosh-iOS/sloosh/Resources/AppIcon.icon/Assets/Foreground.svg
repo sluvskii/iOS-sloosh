@@ -1,20 +1,3 @@
 <svg width="1024" height="1024" viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
-  <defs>
-    <linearGradient id="glass-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#FFFFFF" stop-opacity="0.9"/>
-      <stop offset="100%" stop-color="#FFFFFF" stop-opacity="0.3"/>
-    </linearGradient>
-    <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
-      <feGaussianBlur stdDeviation="24" result="blur" />
-      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
-    </filter>
-  </defs>
-  
-  <!-- Outer glass squircle or circle for the play button -->
-  <circle cx="512" cy="512" r="320" fill="url(#glass-gradient)" opacity="0.2" filter="url(#glow)"/>
-  <circle cx="512" cy="512" r="320" fill="none" stroke="url(#glass-gradient)" stroke-width="8" opacity="0.6"/>
-  
-  <!-- Play triangle -->
-  <path d="M 440 360 L 680 512 L 440 664 Z" fill="url(#glass-gradient)" filter="url(#glow)"/>
-  <path d="M 440 360 L 680 512 L 440 664 Z" fill="none" stroke="#FFFFFF" stroke-width="6" opacity="0.8"/>
+  <path d="M 400 300 L 720 512 L 400 724 Z" fill="#FFFFFF"/>
 </svg>
