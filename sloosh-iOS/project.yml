@@ -13,6 +13,10 @@ targets:
     sources:
       - path: sloosh/Sources
       - path: sloosh/Resources
+        excludes:
+          - AppIcon.icon
+      - path: sloosh/Resources/AppIcon.icon
+        buildPhase: resources
     info:
       path: sloosh/Info.plist
       properties:
