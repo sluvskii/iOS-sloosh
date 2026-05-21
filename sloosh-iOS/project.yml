@@ -10,14 +10,11 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.sloosh.ios
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    fileGroups:
+      - sloosh/Resources/AppIcon.icon
     sources:
       - path: sloosh/Sources
       - path: sloosh/Resources
-        excludes:
-          - AppIcon.icon
-      - path: sloosh/Resources/AppIcon.icon
-        type: folder.iconcomposer.icon
-        buildPhase: resources
     info:
       path: sloosh/Info.plist
       properties:
