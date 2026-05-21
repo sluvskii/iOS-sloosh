@@ -12,10 +12,15 @@
     {
       "layers": [
         {
+          "glass": false,
           "image-name": "Foreground.svg",
-          "name": "Foreground"
+          "name": "Foreground",
+          "opacity": 1
         }
-      ]
+      ],
+      "translucency": {
+        "enabled": false
+      }
     }
   ],
   "supported-platforms": {
