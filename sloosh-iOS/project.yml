@@ -16,6 +16,7 @@ targets:
         excludes:
           - AppIcon.icon
       - path: sloosh/Resources/AppIcon.icon
+        type: folder.iconcomposer.icon
         buildPhase: resources
     info:
       path: sloosh/Info.plist
