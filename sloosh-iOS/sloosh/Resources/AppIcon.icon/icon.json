@@ -1,0 +1,37 @@
+{
+  "fill": {
+    "solid": "extended-gray:0.00000,1.00000"
+  },
+  "groups": [
+    {
+      "blur-material": null,
+      "hidden": false,
+      "layers": [
+        {
+          "blend-mode": "normal",
+          "fill": {
+            "solid": "extended-gray:1.00000,1.00000"
+          },
+          "glass": false,
+          "hidden": false,
+          "image-name": "Background.svg",
+          "name": "Background Layer",
+          "opacity": 1
+        },
+        {
+          "blend-mode": "normal",
+          "fill": {
+            "solid": "extended-gray:1.00000,1.00000"
+          },
+          "glass": true,
+          "hidden": false,
+          "image-name": "Foreground.svg",
+          "name": "Foreground Layer",
+          "opacity": 1
+        }
+      ],
+      "name": "Main Group"
+    }
+  ],
+  "version": 1
+}
