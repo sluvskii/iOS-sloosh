@@ -99,7 +99,7 @@ struct HomeView: View {
             .toolbar {
                 // Нативная панель в navigation bar: фильтр справа и сегментированный выбор по центру
                 ToolbarItem(placement: .principal) {
-                    HomeCategorySegmentedPicker(selectedCategory: $viewModel.selectedCategory)
+                    HomeCategoryChips(selectedCategory: $viewModel.selectedCategory)
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 6)
                 }
@@ -128,19 +128,35 @@ struct HomeView: View {
     }
 }
 
-private struct HomeCategorySegmentedPicker: View {
+private struct HomeCategoryChips: View {
     @Binding var selectedCategory: HomeCategory
 
     var body: some View {
-        Picker("Категория", selection: $selectedCategory) {
-            ForEach(HomeCategory.allCases, id: \.self) { category in
-                Text(category.segmentedTitle)
-                    .tag(category)
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(HomeCategory.allCases, id: \.self) { category in
+                    Button(action: {
+                        withAnimation { selectedCategory = category }
+                    }) {
+                        Text(category.segmentedTitle)
+                            .font(.system(size: 14, weight: .semibold))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                    }
+                    .background(
+                        Capsule()
+                            .fill(.ultraThinMaterial)
+                    )
+                    .foregroundColor(selectedCategory == category ? .primary : .secondary)
+                    .overlay(
+                        Capsule()
+                            .stroke(Color.primary.opacity(selectedCategory == category ? 0.06 : 0.0), lineWidth: 1)
+                    )
+                    .shadow(color: Color.black.opacity(0.06), radius: 4, x: 0, y: 2)
+                }
             }
+            .padding(.horizontal, 6)
         }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-        .controlSize(.large)
     }
 }
 
