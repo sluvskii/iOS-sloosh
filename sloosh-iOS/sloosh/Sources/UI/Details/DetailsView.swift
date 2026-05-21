@@ -32,7 +32,7 @@ struct DetailsView: View {
                             } else {
                                 Rectangle().fill(Color.gray.opacity(0.2))
                                     .frame(width: geometry.size.width, height: height)
-                                    .shimmer()
+                                    // ...existing code...
                             }
                         }
                         .offset(y: offset)
@@ -54,7 +54,7 @@ struct DetailsView: View {
                     
                     VStack(alignment: .center, spacing: 12) {
                         Text(details.title ?? details.name ?? "Без названия")
-                            .font(.system(size: 34, weight: .heavy, design: .rounded))
+                            .font(.system(size: 34, weight: .heavy))
                             .multilineTextAlignment(.center)
                             .padding(.horizontal)
 
@@ -169,7 +169,7 @@ private struct DetailsPrimaryMetadataRow: View {
                 Text("\(duration) мин")
             }
         }
-        .font(.system(size: 15, weight: .semibold, design: .rounded))
+    .font(.system(size: 15, weight: .semibold))
         .foregroundColor(.secondary)
         .multilineTextAlignment(.center)
         .padding(.horizontal)
@@ -224,12 +224,12 @@ private struct DetailsInfoSection: View {
             if !genres.isEmpty {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Жанры")
-                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                        .font(.system(size: 18, weight: .bold))
 
                     FlowLayout(spacing: 8) {
                         ForEach(genres, id: \.self) { genre in
                             Text(genre)
-                                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                .font(.system(size: 14, weight: .semibold))
                                 .padding(.horizontal, 14)
                                 .padding(.vertical, 8)
                                 .background(.ultraThinMaterial, in: Capsule())
@@ -244,10 +244,10 @@ private struct DetailsInfoSection: View {
 
             VStack(alignment: .leading, spacing: 10) {
                 Text("Описание")
-                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                    .font(.system(size: 18, weight: .bold))
 
                 Text(details.description ?? "Описание отсутствует.")
-                    .font(.system(size: 16, weight: .regular, design: .rounded))
+                    .font(.system(size: 16, weight: .regular))
                     .foregroundColor(.secondary)
                     .lineSpacing(4)
             }
@@ -255,18 +255,18 @@ private struct DetailsInfoSection: View {
             if !infoItems.isEmpty {
                 VStack(alignment: .leading, spacing: 12) {
                     Text("Информация")
-                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                        .font(.system(size: 18, weight: .bold))
 
                     VStack(spacing: 10) {
                         ForEach(infoItems, id: \.0) { item in
                             HStack(alignment: .top, spacing: 12) {
                                 Text(item.0)
-                                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                    .font(.system(size: 14, weight: .semibold))
                                     .foregroundColor(.secondary)
                                     .frame(width: 140, alignment: .leading)
 
                                 Text(item.1)
-                                    .font(.system(size: 15, weight: .medium, design: .rounded))
+                                    .font(.system(size: 15, weight: .medium))
                                     .frame(maxWidth: .infinity, alignment: .leading)
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -287,7 +287,7 @@ private struct DetailsInfoSection: View {
                     Label(type == "tv" ? "Сериал" : "Фильм", systemImage: "film")
                 }
             }
-            .font(.system(size: 14, weight: .semibold, design: .rounded))
+            .font(.system(size: 14, weight: .semibold))
             .foregroundColor(.secondary)
         }
     }

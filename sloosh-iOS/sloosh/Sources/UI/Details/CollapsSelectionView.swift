@@ -151,7 +151,7 @@ struct CollapsSelectionView: View {
     }
     
     var body: some View {
-        NavigationView {
+    NavigationStack {
             ZStack(alignment: .bottom) {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 24) {
@@ -225,7 +225,19 @@ struct CollapsSelectionView: View {
                 }) {
                     Text("Далее")
                 }
-                .buttonStyle(GlassButtonStyle())
+                .font(.system(size: 18, weight: .bold))
+                .foregroundColor(.primary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+                .background(
+                    Capsule()
+                        .fill(.ultraThinMaterial)
+                )
+                .overlay(
+                    Capsule()
+                        .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                )
+                .shadow(color: Color.black.opacity(0.10), radius: 8, x: 0, y: 4)
                 .padding(.horizontal, 32)
                 .padding(.bottom, 8)
             }
