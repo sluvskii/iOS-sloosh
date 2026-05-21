@@ -53,66 +53,84 @@ struct HomeView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                if viewModel.isLoading {
-                    LazyVGrid(columns: columns, spacing: 20) {
-                        ForEach(0..<12, id: \.self) { _ in
-                            MoviePosterCardPlaceholder()
-                        }
-                    }
-                    .padding(16)
-                } else if viewModel.items.isEmpty {
-                    HomeEmptyState(
-                        category: viewModel.selectedCategory,
-                        filter: viewModel.selectedFilter
-                    )
-                    .frame(maxWidth: .infinity, minHeight: 300)
-                    .padding(.horizontal, 20)
-                } else {
-                    LazyVGrid(columns: columns, spacing: 20) {
-                        ForEach(viewModel.items) { movie in
-                            NavigationLink(destination: DetailsView(movieId: movie.id)) {
-                                MoviePosterCard(movie: movie)
-                            }
-                            .buttonStyle(.plain)
-                            .onAppear {
-                                if movie.id == viewModel.items.last?.id {
-                                    Task {
-                                        await viewModel.loadData()
-                                    }
-                                }
-                            }
-                        }
-
-                        if viewModel.isLoadingMore {
-                            ForEach(0..<3, id: \.self) { _ in
+            ZStack(alignment: .top) {
+                ScrollView {
+                    if viewModel.isLoading {
+                        LazyVGrid(columns: columns, spacing: 20) {
+                            ForEach(0..<12, id: \.self) { _ in
                                 MoviePosterCardPlaceholder()
                             }
                         }
-                    }
-                    .padding(16)
-                }
-            }
-            .scrollIndicators(.hidden)
-            .navigationTitle("")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    Picker("Category", selection: $viewModel.selectedCategory) {
-                        ForEach(HomeCategory.allCases, id: \.self) { category in
-                            Text(category.segmentedTitle)
-                                .tag(category)
+                        .padding(16)
+                    } else if viewModel.items.isEmpty {
+                        HomeEmptyState(
+                            category: viewModel.selectedCategory,
+                            filter: viewModel.selectedFilter
+                        )
+                        .frame(maxWidth: .infinity, minHeight: 300)
+                        .padding(.horizontal, 20)
+                    } else {
+                        LazyVGrid(columns: columns, spacing: 20) {
+                            ForEach(viewModel.items) { movie in
+                                NavigationLink(destination: DetailsView(movieId: movie.id)) {
+                                    MoviePosterCard(movie: movie)
+                                }
+                                .buttonStyle(.plain)
+                                .onAppear {
+                                    if movie.id == viewModel.items.last?.id {
+                                        Task {
+                                            await viewModel.loadData()
+                                        }
+                                    }
+                                }
+                            }
+
+                            if viewModel.isLoadingMore {
+                                ForEach(0..<3, id: \.self) { _ in
+                                    MoviePosterCardPlaceholder()
+                                }
+                            }
                         }
+                        .padding(16)
                     }
-                    .pickerStyle(.segmented)
-                    .labelsHidden()
                 }
-                ToolbarItem(placement: .topBarTrailing) {
-                    HomeFilterMenu(selectedFilter: $viewModel.selectedFilter)
+                .scrollIndicators(.hidden)
+                .navigationTitle("")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        HomeFilterMenu(selectedFilter: $viewModel.selectedFilter)
+                    }
                 }
+                
+                // Плавающая панель с чипами категорий над контентом
+                VStack {
+                    HStack(spacing: 8) {
+                        ForEach(HomeCategory.allCases, id: \.self) { category in
+                            Button(action: {
+                                withAnimation { viewModel.selectedCategory = category }
+                            }) {
+                                Text(category.segmentedTitle)
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 6)
+                            }
+                            .foregroundColor(viewModel.selectedCategory == category ? .primary : .secondary)
+                            .background(
+                                Capsule()
+                                    .fill(.ultraThinMaterial)
+                            )
+                        }
+                        Spacer()
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    
+                    Spacer()
+                }
+                .frame(maxHeight: .infinity, alignment: .top)
+                .ignoresSafeArea(edges: .top)
             }
-            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
-            .toolbarBackground(.visible, for: .navigationBar)
             .background(Color(UIColor.systemBackground))
             .task {
                 await viewModel.applyCurrentSelection(force: true)
