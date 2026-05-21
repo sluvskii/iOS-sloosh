@@ -97,20 +97,19 @@ struct HomeView: View {
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                // Нативная панель в navigation bar: фильтр справа и сегментированный выбор по центру
+                ToolbarItem(placement: .principal) {
+                    HomeCategorySegmentedPicker(selectedCategory: $viewModel.selectedCategory)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6)
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     HomeFilterMenu(selectedFilter: $viewModel.selectedFilter)
                 }
             }
-            .safeAreaInset(edge: .top, spacing: 0) {
-                HomeCategorySegmentedPicker(selectedCategory: $viewModel.selectedCategory)
-                    .padding(.horizontal, 16)
-                    .padding(.top, 8)
-                    .padding(.bottom, 12)
-                    .frame(maxWidth: .infinity)
-                    .background(.ultraThinMaterial)
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .padding(.horizontal, 8)
-            }
+            // Нативный Liquid Glass фон для navigation bar (iOS 16+ / iOS 26)
+            .toolbarBackground(.ultraThinMaterial, for: .navigationBar)
+            .toolbarBackground(.visible, for: .navigationBar)
             .background(Color(UIColor.systemBackground))
             .task {
                 await viewModel.applyCurrentSelection(force: true)
