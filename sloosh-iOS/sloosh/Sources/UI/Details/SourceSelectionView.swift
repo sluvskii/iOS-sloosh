@@ -1,25 +1,6 @@
 import SwiftUI
 
-struct GlassButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.system(size: 18, weight: .bold))
-            .foregroundColor(.black)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 16)
-            .background(
-                Capsule()
-                    .fill(Color.slooshAccent.opacity(configuration.isPressed ? 0.7 : 1.0))
-            )
-            .overlay(
-                Capsule()
-                    .stroke(Color.white.opacity(configuration.isPressed ? 0.4 : 0.2), lineWidth: 1)
-            )
-            .shadow(color: Color.black.opacity(0.15), radius: 8, x: 0, y: 4)
-            .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
-            .animation(.spring(response: 0.3, dampingFraction: 0.6, blendDuration: 0), value: configuration.isPressed)
-    }
-}
+// GlassButtonStyle удалён. Используйте стандартную кнопку с .background(.ultraThinMaterial) и Capsule.
 
 struct SourceSelectionView: View {
     let result: AllohaApiResult
@@ -163,7 +144,7 @@ struct SourceSelectionView: View {
     }
     
     var body: some View {
-        NavigationView {
+    NavigationStack {
             ZStack(alignment: .bottom) {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 24) {
@@ -239,7 +220,19 @@ struct SourceSelectionView: View {
                 }) {
                     Text("Далее")
                 }
-                .buttonStyle(GlassButtonStyle())
+                .font(.system(size: 18, weight: .bold))
+                .foregroundColor(.primary)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 16)
+                .background(
+                    Capsule()
+                        .fill(.ultraThinMaterial)
+                )
+                .overlay(
+                    Capsule()
+                        .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                )
+                .shadow(color: Color.black.opacity(0.10), radius: 8, x: 0, y: 4)
                 .padding(.horizontal, 32)
                 .padding(.bottom, 8)
             }

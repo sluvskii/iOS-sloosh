@@ -115,7 +115,7 @@ struct SearchView: View {
                                 .disabled(viewModel.page <= 1 || viewModel.isAppending || viewModel.isLoading)
 
                                 Text("\(viewModel.page) / \(viewModel.totalPages)")
-                                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                    .font(.system(size: 14, weight: .semibold))
                                     .foregroundColor(.secondary)
 
                                 Button("Далее") {
@@ -164,9 +164,9 @@ struct SearchEmptyState: View {
                 .font(.system(size: 42))
                 .foregroundColor(.secondary)
             Text(title)
-                .font(.system(size: 22, weight: .bold, design: .rounded))
+                .font(.system(size: 22, weight: .bold))
             Text(subtitle)
-                .font(.system(size: 15, weight: .medium, design: .rounded))
+                .font(.system(size: 15, weight: .medium))
                 .multilineTextAlignment(.center)
                 .foregroundColor(.secondary)
         }

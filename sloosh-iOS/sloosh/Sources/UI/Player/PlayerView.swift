@@ -116,7 +116,7 @@ struct PlayerView: View {
                         .progressViewStyle(CircularProgressViewStyle(tint: .white))
                         .scaleEffect(1.5)
                     Text("Поиск видео источника...")
-                        .font(.system(size: 16, weight: .medium, design: .rounded))
+                        .font(.system(size: 16, weight: .medium))
                         .foregroundColor(.white.opacity(0.8))
                 }
             } else if let error = viewModel.error {
@@ -125,7 +125,7 @@ struct PlayerView: View {
                         .font(.system(size: 48))
                         .foregroundColor(.red)
                     Text(error)
-                        .font(.system(size: 16, weight: .medium, design: .rounded))
+                        .font(.system(size: 16, weight: .medium))
                         .foregroundColor(.white)
                         .multilineTextAlignment(.center)
                         .padding()
