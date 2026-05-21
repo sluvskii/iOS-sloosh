@@ -12,7 +12,7 @@
           "fill": {
             "solid": "extended-gray:1.00000,1.00000"
           },
-          "glass": false,
+          "glass": true,
           "hidden": false,
           "image-name": "Background.svg",
           "name": "Background Layer",
@@ -23,7 +23,7 @@
           "fill": {
             "solid": "extended-gray:1.00000,1.00000"
           },
-          "glass": true,
+          "glass": false,
           "hidden": false,
           "image-name": "Foreground.svg",
           "name": "Foreground Layer",
