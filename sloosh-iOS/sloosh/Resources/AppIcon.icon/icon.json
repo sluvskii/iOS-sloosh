@@ -12,10 +12,39 @@
     {
       "layers": [
         {
+          "fill-specializations": [
+            {
+              "appearance": "dark",
+              "value": {
+                "solid": "extended-srgb:0.0,0.0,0.0,1.0"
+              }
+            },
+            {
+              "appearance": "tinted",
+              "value": {
+                "solid": "extended-srgb:0.0,0.0,0.0,1.0"
+              }
+            }
+          ],
+          "glass": false,
           "image-name": "Foreground.svg",
-          "name": "Foreground"
+          "name": "Foreground",
+          "opacity-specializations": [
+            {
+              "appearance": "tinted",
+              "value": 1.0
+            }
+          ]
         }
-      ]
+      ],
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.5
+      },
+      "translucency": {
+        "enabled": true,
+        "value": 0.5
+      }
     }
   ],
   "supported-platforms": {
