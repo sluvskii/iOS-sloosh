@@ -102,16 +102,14 @@ struct HomeView: View {
                 }
             }
             .safeAreaInset(edge: .top, spacing: 0) {
-                ZStack {
-                    // Эффект стекла для панели вкладок
-                    Rectangle()
-                        .fill(.ultraThinMaterial)
-                        .ignoresSafeArea()
-                    HomeCategorySegmentedPicker(selectedCategory: $viewModel.selectedCategory)
-                        .padding(.horizontal, 16)
-                        .padding(.top, 8)
-                        .padding(.bottom, 12)
-                }
+                HomeCategorySegmentedPicker(selectedCategory: $viewModel.selectedCategory)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+                    .padding(.bottom, 12)
+                    .frame(maxWidth: .infinity)
+                    .background(.ultraThinMaterial)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .padding(.horizontal, 8)
             }
             .background(Color(UIColor.systemBackground))
             .task {
