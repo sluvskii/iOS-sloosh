@@ -168,10 +168,17 @@ private struct HomeFilterMenu: View {
 
     var body: some View {
         Menu {
-            Picker("Сортировка", selection: $selectedFilter) {
+            Section("Сортировка") {
                 ForEach(HomeFilter.allCases) { filter in
-                    Label(filter.title, systemImage: filter.icon)
-                        .tag(filter)
+                    Button {
+                        selectedFilter = filter
+                    } label: {
+                        if selectedFilter == filter {
+                            Label(filter.title, systemImage: "checkmark")
+                        } else {
+                            Label(filter.title, systemImage: filter.icon)
+                        }
+                    }
                 }
             }
         } label: {
