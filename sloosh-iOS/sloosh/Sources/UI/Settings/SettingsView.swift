@@ -8,37 +8,15 @@ struct SettingsView: View {
                     NavigationLink("Источники") {
                         SourceSettingsView()
                     }
-                    NavigationLink("Настройки плеера") {
-                        PlayerSettingsPlaceholderView()
-                    }
                 }
 
                 Section("О приложении") {
-                    NavigationLink("О sloosh") {
+                    NavigationLink("О приложении") {
                         AboutView()
                     }
                 }
             }
             .navigationTitle("Настройки")
         }
-    }
-}
-
-private struct PlayerSettingsPlaceholderView: View {
-    var body: some View {
-        List {
-            Section("Плеер") {
-                Label("Сейчас используется нативный AVPlayer", systemImage: "play.rectangle.fill")
-                Label("Поддерживается fullscreen и смена ориентации", systemImage: "iphone.landscape")
-                Label("Интерфейс воспроизведения адаптирован под iPhone", systemImage: "network")
-            }
-
-            Section("План развития") {
-                Text("Дальше сюда можно аккуратно добавить сохранение позиции, предпочитаемое качество, автозапуск следующей серии и другие playback-настройки.")
-                    .foregroundColor(.secondary)
-            }
-        }
-        .navigationTitle("Плеер")
-        .navigationBarTitleDisplayMode(.inline)
     }
 }
