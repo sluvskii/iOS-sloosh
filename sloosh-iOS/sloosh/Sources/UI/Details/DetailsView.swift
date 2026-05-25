@@ -147,7 +147,7 @@ struct DetailsView: View {
         .ignoresSafeArea(edges: .top)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(id: "details") {
-            ToolbarItemGroup(placement: .topBarTrailing) {
+            ToolbarItem(id: "favorite", placement: .topBarTrailing) {
                 Button {
                     viewModel.toggleFavorite()
                 } label: {
@@ -155,7 +155,9 @@ struct DetailsView: View {
                         .foregroundColor(.primary)
                 }
                 .disabled(viewModel.details == nil)
-                
+            }
+            
+            ToolbarItem(id: "download", placement: .topBarTrailing) {
                 Button {
                     showDownloadAlert = true
                 } label: {
