@@ -20,9 +20,13 @@ The iOS app is a new standalone product. Do not treat it as a branded clone of t
 
 - Preferred communication language with the user: Russian.
 - Preferred implementation style: native SwiftUI, minimal and verifiable edits.
-- Target platform: iOS 18+ first.
-- Preferred visual style: floating "Liquid Glass", premium look, `ultraThinMaterial`, capsules, squircles, native-feeling motion.
+- Target platform: iOS 26+ first.
+- Preferred visual style: "Liquid Glass", premium look, floating components.
 - Prefer native iOS patterns over literal Android UI copies.
+- **IMPORTANT for iOS 26 UI**: 
+  - Do NOT create custom "floating" components by wrapping views in `.ultraThinMaterial` and `safeAreaInset`.
+  - ALWAYS use native system placement. For top floating components (like segmented controls), place them directly inside `.toolbar` (e.g., `ToolbarItem(placement: .principal)`).
+  - Let the system (iOS 26) handle the Liquid Glass blur and morphing automatically during scroll. Do not add redundant backgrounds or overlays.
 
 ## iOS App Structure
 
