@@ -171,12 +171,30 @@ struct SupportItemDto: Codable {
     let isActive: Bool?
 }
 
-struct FavoriteDto: Codable {
+struct FavoriteDto: Codable, Identifiable {
     let id: String?
     let mediaId: String?
     let type: String?
     let title: String?
     let posterUrl: String?
+    
+    // Mapping to MediaDto for UI reuse
+    func toMediaDto() -> MediaDto {
+        return MediaDto(
+            originalId: .string(mediaId ?? UUID().uuidString),
+            title: title,
+            originalTitle: nil,
+            year: nil,
+            rating: nil, // We don't save rating in favorites locally right now
+            posterUrl: posterUrl,
+            description: nil,
+            type: type,
+            genres: nil,
+            externalIds: nil,
+            name: title,
+            poster_path: posterUrl
+        )
+    }
 }
 
 struct FavoriteCheckDto: Codable {
