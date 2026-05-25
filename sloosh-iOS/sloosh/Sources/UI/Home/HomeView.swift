@@ -58,7 +58,7 @@ struct HomeView: View {
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .principal) {
+                ToolbarItem(placement: .navigationBarLeading) {
                     HomeCategorySegmentedPicker(selectedCategory: $viewModel.selectedCategory)
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -152,7 +152,7 @@ private struct HomeCategorySegmentedPicker: View {
         }
         .pickerStyle(.segmented)
         .fixedSize()
-        .scaleEffect(0.85)
+        .scaleEffect(0.9, anchor: .leading)
     }
 }
 
