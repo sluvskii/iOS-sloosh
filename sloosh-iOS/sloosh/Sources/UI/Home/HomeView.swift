@@ -94,6 +94,21 @@ struct HomeView: View {
                 }
             }
             .scrollIndicators(.hidden)
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 40)
+                    .onEnded { value in
+                        let horizontal = value.translation.width
+                        let vertical = value.translation.height
+                        
+                        if abs(horizontal) > abs(vertical) * 1.5 && abs(horizontal) > 40 {
+                            if horizontal < 0 {
+                                selectNextCategory()
+                            } else {
+                                selectPreviousCategory()
+                            }
+                        }
+                    }
+            )
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -117,6 +132,24 @@ struct HomeView: View {
                 Task {
                     await viewModel.applyCurrentSelection()
                 }
+            }
+        }
+    }
+
+    private func selectNextCategory() {
+        let all = HomeCategory.allCases
+        if let idx = all.firstIndex(of: viewModel.selectedCategory), idx < all.count - 1 {
+            withAnimation {
+                viewModel.selectedCategory = all[idx + 1]
+            }
+        }
+    }
+
+    private func selectPreviousCategory() {
+        let all = HomeCategory.allCases
+        if let idx = all.firstIndex(of: viewModel.selectedCategory), idx > 0 {
+            withAnimation {
+                viewModel.selectedCategory = all[idx - 1]
             }
         }
     }
