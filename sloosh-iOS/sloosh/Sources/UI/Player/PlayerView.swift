@@ -248,10 +248,80 @@ class PlayerViewModel: ObservableObject, AllohaParserDelegate {
             return
         }
         
-        let asset = AVURLAsset(url: parsedUrl)
-        let playerItem = AVPlayerItem(asset: asset)
-        self.player = AVPlayer(playerItem: playerItem)
-        self.isLoading = false
+        let headers = [
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+            "Referer": "https://kinokrad.my/",
+            "Origin": "https://kinokrad.my"
+        ]
+        self.currentHeaders = headers
+        
+        self.currentQualityKey = "Авто"
+        self.availableQualities = [("Авто", parsedUrl)]
+        
+        playVideo(url: parsedUrl, headers: headers)
+        
+        // Fetch playlist to parse qualities
+        Task {
+            do {
+                var request = URLRequest(url: parsedUrl)
+                headers.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
+                let (data, _) = try await URLSession.shared.data(for: request)
+                if let content = String(data: data, encoding: .utf8) {
+                    parseMasterPlaylist(content: content, baseUrl: parsedUrl)
+                }
+            } catch {
+                print("Failed to fetch master playlist: \(error)")
+            }
+        }
+    }
+    
+    private func parseMasterPlaylist(content: String, baseUrl: URL) {
+        var qualities: [(key: String, url: URL)] = []
+        qualities.append(("Авто", baseUrl))
+        
+        let lines = content.components(separatedBy: .newlines)
+        var currentResolution: String?
+        
+        for line in lines {
+            if line.hasPrefix("#EXT-X-STREAM-INF:") {
+                if let range = line.range(of: "RESOLUTION=([^,\\s]+)", options: .regularExpression) {
+                    let match = String(line[range])
+                    let res = match.replacingOccurrences(of: "RESOLUTION=", with: "")
+                    let components = res.components(separatedBy: "x")
+                    if components.count == 2, let height = Int(components[1]) {
+                        currentResolution = "\(height)p"
+                    }
+                }
+            } else if !line.hasPrefix("#") && !line.isEmpty {
+                if let res = currentResolution {
+                    let variantUrl: URL
+                    if line.hasPrefix("http") {
+                        variantUrl = URL(string: line)!
+                    } else {
+                        variantUrl = URL(string: line, relativeTo: baseUrl)!
+                    }
+                    if !qualities.contains(where: { $0.key == res }) {
+                        qualities.append((res, variantUrl))
+                    }
+                    currentResolution = nil
+                }
+            }
+        }
+        
+        if qualities.count > 1 {
+            let autoQuality = qualities.removeFirst()
+            qualities.sort { (a, b) -> Bool in
+                let valA = Int(a.key.replacingOccurrences(of: "p", with: "")) ?? 0
+                let valB = Int(b.key.replacingOccurrences(of: "p", with: "")) ?? 0
+                return valA > valB
+            }
+            qualities.insert(autoQuality, at: 0)
+            
+            DispatchQueue.main.async {
+                self.availableQualities = qualities
+                NotificationCenter.default.post(name: NSNotification.Name("QualitiesUpdated"), object: nil)
+            }
+        }
     }
     
     private func startParsing(iframeUrl: String) {
