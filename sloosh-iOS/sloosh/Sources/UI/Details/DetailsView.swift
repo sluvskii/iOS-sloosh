@@ -86,7 +86,7 @@ struct DetailsView: View {
                     
                     VStack(alignment: .center, spacing: 12) {
                         Text(details.title ?? details.name ?? "Без названия")
-                            .font(.system(size: 34, weight: .heavy, design: .rounded))
+                            .font(.system(size: 34, weight: .heavy))
                             .multilineTextAlignment(.center)
                             .padding(.horizontal)
 
@@ -182,26 +182,35 @@ struct DetailsView: View {
 private struct DetailsPrimaryMetadataRow: View {
     let details: MediaDetailsDto
 
+    private func ratingColor(for rating: Double) -> Color {
+        switch rating {
+        case 7.5...10.0: return .green
+        case 5.0..<7.5: return .yellow
+        case 0.1..<5.0: return .red
+        default: return .secondary
+        }
+    }
+
     var body: some View {
         HStack(spacing: 8) {
             if let rating = details.rating, rating > 0 {
                 Label(String(format: "%.1f", rating), systemImage: "star.fill")
-                    .foregroundColor(.orange)
+                    .foregroundColor(ratingColor(for: rating))
             }
 
             if let year = details.releaseDate?.prefix(4), !year.isEmpty {
                 Text(String(year))
             }
 
-            if let type = details.type?.uppercased(), !type.isEmpty {
-                Text(type == "TV" ? "Сериал" : "Фильм")
+            if let country = details.country, !country.isEmpty {
+                Text(country)
             }
 
             if let duration = details.duration, duration > 0 {
                 Text("\(duration) мин")
             }
         }
-        .font(.system(size: 15, weight: .semibold, design: .rounded))
+        .font(.system(size: 15, weight: .semibold))
         .foregroundColor(.secondary)
         .multilineTextAlignment(.center)
         .padding(.horizontal)
@@ -217,51 +226,17 @@ private struct DetailsInfoSection: View {
             .filter { !$0.isEmpty } ?? []
     }
 
-    private var infoItems: [(String, String)] {
-        var items: [(String, String)] = []
-
-        if let originalTitle = details.originalTitle, !originalTitle.isEmpty, originalTitle != details.title {
-            items.append(("Оригинальное название", originalTitle))
-        }
-
-        if let country = details.country, !country.isEmpty {
-            items.append(("Страна", country))
-        }
-
-        if let language = details.language, !language.isEmpty {
-            items.append(("Язык", language))
-        }
-
-        if let sourceId = details.sourceId, !sourceId.isEmpty {
-            items.append(("ID источника", sourceId))
-        }
-
-        if let imdb = details.externalIds?.imdb, !imdb.isEmpty {
-            items.append(("IMDb", imdb))
-        }
-
-        if let tmdb = details.externalIds?.tmdb {
-            items.append(("TMDb", "\(tmdb)"))
-        }
-
-        if let kp = details.externalIds?.kp {
-            items.append(("Кинопоиск", "\(kp)"))
-        }
-
-        return items
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             if !genres.isEmpty {
                 VStack(alignment: .leading, spacing: 10) {
                     Text("Жанры")
-                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                        .font(.system(size: 18, weight: .bold))
 
                     FlowLayout(spacing: 8) {
                         ForEach(genres, id: \.self) { genre in
                             Text(genre)
-                                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                .font(.system(size: 14, weight: .semibold))
                                 .padding(.horizontal, 14)
                                 .padding(.vertical, 8)
                                 .background(.ultraThinMaterial, in: Capsule())
@@ -276,51 +251,13 @@ private struct DetailsInfoSection: View {
 
             VStack(alignment: .leading, spacing: 10) {
                 Text("Описание")
-                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                    .font(.system(size: 18, weight: .bold))
 
                 Text(details.description ?? "Описание отсутствует.")
-                    .font(.system(size: 16, weight: .regular, design: .rounded))
+                    .font(.system(size: 16, weight: .regular))
                     .foregroundColor(.secondary)
                     .lineSpacing(4)
             }
-
-            if !infoItems.isEmpty {
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Информация")
-                        .font(.system(size: 18, weight: .bold, design: .rounded))
-
-                    VStack(spacing: 10) {
-                        ForEach(infoItems, id: \.0) { item in
-                            HStack(alignment: .top, spacing: 12) {
-                                Text(item.0)
-                                    .font(.system(size: 14, weight: .semibold, design: .rounded))
-                                    .foregroundColor(.secondary)
-                                    .frame(width: 140, alignment: .leading)
-
-                                Text(item.1)
-                                    .font(.system(size: 15, weight: .medium, design: .rounded))
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                    }
-                    .padding(16)
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 20, style: .continuous)
-                            .stroke(Color.primary.opacity(0.06), lineWidth: 1)
-                    )
-                }
-            }
-
-            HStack(spacing: 10) {
-                Label(SourceManager.shared.currentMode.displayName, systemImage: "antenna.radiowaves.left.and.right")
-                if let type = details.type, !type.isEmpty {
-                    Label(type == "tv" ? "Сериал" : "Фильм", systemImage: "film")
-                }
-            }
-            .font(.system(size: 14, weight: .semibold, design: .rounded))
-            .foregroundColor(.secondary)
         }
     }
 }
