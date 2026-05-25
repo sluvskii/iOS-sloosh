@@ -8,8 +8,9 @@ struct SearchView: View {
     ]
 
     var body: some View {
-        Group {
-            if viewModel.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        NavigationStack {
+            Group {
+                if viewModel.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     if viewModel.history.isEmpty {
                         SearchEmptyState(
                             icon: "magnifyingglass",
@@ -133,38 +134,7 @@ struct SearchView: View {
                 }
             }
             .navigationTitle("Поиск")
-            .navigationBarTitleDisplayMode(.inline)
-            .safeAreaInset(edge: .bottom) {
-                VStack(spacing: 0) {
-                    Divider()
-                    HStack(spacing: 12) {
-                        Image(systemName: "magnifyingglass")
-                            .foregroundColor(.secondary)
-                        
-                        TextField("Фильмы и сериалы...", text: $viewModel.searchQuery)
-                            .submitLabel(.search)
-                            .textFieldStyle(.plain)
-                            .font(.system(size: 17))
-                        
-                        if !viewModel.searchQuery.isEmpty {
-                            Button {
-                                viewModel.searchQuery = ""
-                            } label: {
-                                Image(systemName: "xmark.circle.fill")
-                                    .foregroundColor(.secondary)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                    .background(Color(UIColor.secondarySystemBackground))
-                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
-                }
-                .background(.ultraThinMaterial)
-            }
+            .searchable(text: $viewModel.searchQuery, prompt: "Фильмы и сериалы...")
             .onChange(of: viewModel.searchQuery) { oldValue, newValue in
                 Task {
                     await viewModel.setQuery(newValue)
@@ -181,6 +151,7 @@ struct SearchView: View {
             }
         }
     }
+}
 
 struct SearchEmptyState: View {
     let icon: String

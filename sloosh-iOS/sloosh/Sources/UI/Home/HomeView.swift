@@ -42,39 +42,19 @@ struct HomeView: View {
                 set: { if let val = $0 { viewModel.selectedCategory = val } }
             )
 
-            ZStack {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    LazyHStack(spacing: 0) {
-                        ForEach(HomeCategory.allCases, id: \.self) { category in
-                            HomeCategoryContentView(viewModel: viewModel, category: category)
-                                .containerRelativeFrame(.horizontal)
-                                .id(category)
-                        }
-                    }
-                    .scrollTargetLayout()
-                }
-                .scrollTargetBehavior(.paging)
-                .scrollPosition(id: categoryBinding)
-                .animation(.spring(response: 0.3, dampingFraction: 0.8), value: viewModel.selectedCategory)
-
-                VStack {
-                    Spacer()
-                    HStack {
-                        Spacer()
-                        NavigationLink(destination: SearchView()) {
-                            Image(systemName: "magnifyingglass")
-                                .font(.system(size: 24, weight: .semibold))
-                                .foregroundColor(.white)
-                                .frame(width: 60, height: 60)
-                                .background(Color.slooshAccent)
-                                .clipShape(Circle())
-                                .shadow(color: Color.slooshAccent.opacity(0.4), radius: 10, x: 0, y: 5)
-                        }
-                        .padding(.trailing, 20)
-                        .padding(.bottom, 20)
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(spacing: 0) {
+                    ForEach(HomeCategory.allCases, id: \.self) { category in
+                        HomeCategoryContentView(viewModel: viewModel, category: category)
+                            .containerRelativeFrame(.horizontal)
+                            .id(category)
                     }
                 }
+                .scrollTargetLayout()
             }
+            .scrollTargetBehavior(.paging)
+            .scrollPosition(id: categoryBinding)
+            .animation(.spring(response: 0.3, dampingFraction: 0.8), value: viewModel.selectedCategory)
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
