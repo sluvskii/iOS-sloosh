@@ -104,7 +104,8 @@ struct HomeView: View {
             .safeAreaInset(edge: .top) {
                 HomeCategorySegmentedPicker(selectedCategory: $viewModel.selectedCategory)
                     .padding(.horizontal, 16)
-                    .padding(.bottom, 8)
+                    .padding(.vertical, 8)
+                    .background(.bar)
             }
             .background(Color(UIColor.systemBackground))
             .task {
