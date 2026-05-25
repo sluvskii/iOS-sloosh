@@ -60,7 +60,6 @@ struct HomeView: View {
             .toolbar {
                 ToolbarItem(placement: .principal) {
                     HomeCategorySegmentedPicker(selectedCategory: $viewModel.selectedCategory)
-                        .fixedSize()
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     HomeFilterMenu(selectedFilter: $viewModel.selectedFilter)
@@ -152,7 +151,7 @@ private struct HomeCategorySegmentedPicker: View {
             }
         }
         .pickerStyle(.segmented)
-        .controlSize(.small)
+        .controlSize(.mini)
     }
 }
 
