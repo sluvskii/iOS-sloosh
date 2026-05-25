@@ -97,15 +97,12 @@ struct HomeView: View {
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    HomeCategorySegmentedPicker(selectedCategory: $viewModel.selectedCategory)
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     HomeFilterMenu(selectedFilter: $viewModel.selectedFilter)
                 }
-            }
-            .safeAreaInset(edge: .top, spacing: 0) {
-                HomeCategorySegmentedPicker(selectedCategory: $viewModel.selectedCategory)
-                    .padding(.top, 8)
-                    .padding(.bottom, 12)
-                    .background(.ultraThinMaterial)
             }
             .background(Color(UIColor.systemBackground))
             .task {
@@ -136,17 +133,11 @@ private struct HomeCategorySegmentedPicker: View {
             }
         }
         .pickerStyle(.segmented)
-        .padding(.horizontal, 16)
         .onAppear {
-            let appearance = UISegmentedControl.appearance()
-            let normalTextAttributes: [NSAttributedString.Key: Any] = [
-                .font: UIFont.systemFont(ofSize: 14, weight: .medium)
-            ]
-            let selectedTextAttributes: [NSAttributedString.Key: Any] = [
-                .font: UIFont.systemFont(ofSize: 14, weight: .bold)
-            ]
-            appearance.setTitleTextAttributes(normalTextAttributes, for: .normal)
-            appearance.setTitleTextAttributes(selectedTextAttributes, for: .selected)
+            let font = UIFont.systemFont(ofSize: 13, weight: .medium)
+            let selectedFont = UIFont.systemFont(ofSize: 13, weight: .bold)
+            UISegmentedControl.appearance().setTitleTextAttributes([.font: font], for: .normal)
+            UISegmentedControl.appearance().setTitleTextAttributes([.font: selectedFont], for: .selected)
         }
     }
 }
