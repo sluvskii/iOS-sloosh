@@ -181,7 +181,6 @@ struct SearchView: View {
             }
         }
     }
-}
 
 struct SearchEmptyState: View {
     let icon: String
