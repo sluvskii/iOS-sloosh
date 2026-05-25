@@ -57,11 +57,11 @@ struct HomeView: View {
             .animation(.spring(response: 0.3, dampingFraction: 0.8), value: viewModel.selectedCategory)
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .principal) {
+            .toolbar(id: "home") {
+                ToolbarItem(id: "category", placement: .principal) {
                     HomeCategorySegmentedPicker(selectedCategory: $viewModel.selectedCategory)
                 }
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItem(id: "filter", placement: .navigationBarTrailing) {
                     HomeFilterMenu(selectedFilter: $viewModel.selectedFilter)
                 }
             }
@@ -151,7 +151,8 @@ private struct HomeCategorySegmentedPicker: View {
             }
         }
         .pickerStyle(.segmented)
-        .fixedSize(horizontal: true, vertical: false)
+        .fixedSize()
+        .scaleEffect(0.85)
     }
 }
 
@@ -167,10 +168,10 @@ private struct HomeFilterMenu: View {
                 }
             }
         } label: {
-            Image(systemName: "line.3.horizontal.decrease.circle.fill")
-                .symbolRenderingMode(.hierarchical)
-                .font(.system(size: 28))
+            Image(systemName: "line.3.horizontal.decrease.circle")
+                .font(.system(size: 18, weight: .semibold))
                 .foregroundColor(Color(UIColor.label))
+                .frame(width: 32, height: 32)
         }
     }
 }

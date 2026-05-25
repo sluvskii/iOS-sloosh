@@ -146,8 +146,7 @@ struct DetailsView: View {
         }
         .ignoresSafeArea(edges: .top)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(.hidden, for: .navigationBar)
-        .toolbar {
+        .toolbar(id: "details") {
             ToolbarItemGroup(placement: .topBarTrailing) {
                 Button {
                     viewModel.toggleFavorite()
