@@ -147,22 +147,22 @@ struct DetailsView: View {
         .edgesIgnoringSafeArea(.top)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
-            ToolbarItemGroup(placement: .navigationBarTrailing) {
-                if viewModel.details != nil {
-                    Button {
-                        viewModel.toggleFavorite()
-                    } label: {
-                        Image(systemName: viewModel.isFavorite ? "heart.fill" : "heart")
-                            .foregroundColor(viewModel.isFavorite ? .red : .primary)
-                    }
-                    
-                    Button {
-                        showDownloadAlert = true
-                    } label: {
-                        Image(systemName: "arrow.down.circle")
-                            .foregroundColor(.primary)
-                    }
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                Button {
+                    viewModel.toggleFavorite()
+                } label: {
+                    Image(systemName: viewModel.isFavorite ? "heart.fill" : "heart")
+                        .foregroundColor(.primary)
                 }
+                .disabled(viewModel.details == nil)
+                
+                Button {
+                    showDownloadAlert = true
+                } label: {
+                    Image(systemName: "arrow.down.circle")
+                        .foregroundColor(.primary)
+                }
+                .disabled(viewModel.details == nil)
             }
         }
         .alert("В разработке", isPresented: $showDownloadAlert) {
