@@ -185,10 +185,10 @@ private struct HomeEmptyState: View {
                 .foregroundColor(.secondary)
 
             Text("Ничего не найдено")
-                .font(.system(size: 22, weight: .bold, design: .rounded))
+                .font(.system(size: 22, weight: .bold))
 
             Text("Попробуйте выбрать другую вкладку или сменить фильтрацию с `\(filter.title)` на другой режим.")
-                .font(.system(size: 15, weight: .medium, design: .rounded))
+                .font(.system(size: 15, weight: .medium))
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
         }
@@ -274,7 +274,7 @@ struct MoviePosterCard: View {
             
             VStack(alignment: .leading, spacing: 4) {
                 Text(movie.displayTitle)
-                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .font(.system(size: 14, weight: .semibold))
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .multilineTextAlignment(.leading)
@@ -292,7 +292,7 @@ struct MoviePosterCard: View {
                             }))
                             .font(.system(size: 10))
                         Text(String(format: "%.1f", rating))
-                            .font(.system(size: 12, weight: .bold, design: .rounded))
+                            .font(.system(size: 12, weight: .bold))
                             .foregroundColor(.secondary)
                     }
                 }
