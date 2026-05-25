@@ -59,19 +59,8 @@ struct HomeView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Text("sloosh")
-                        .font(.system(size: 24, weight: .bold, design: .rounded))
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: [.accentColor, .accentColor.opacity(0.8)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                }
-                ToolbarItem(placement: .principal) {
                     HomeCategorySegmentedPicker(selectedCategory: $viewModel.selectedCategory)
-                        .scaleEffect(0.9) // Делаем панель чуть меньше (тоньше), чтобы не было обрезки
+                        .scaleEffect(0.9, anchor: .leading) // Делаем панель чуть меньше (тоньше), чтобы не было обрезки, выравниваем по левому краю
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     HomeFilterMenu(selectedFilter: $viewModel.selectedFilter)
