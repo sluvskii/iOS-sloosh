@@ -204,40 +204,73 @@ private struct HomeEmptyState: View {
     }
 }
 
+struct RemotePosterView: View {
+    let url: URL?
+    
+    @State private var image: UIImage?
+    @State private var isLoading = false
+    @State private var hasError = false
+    
+    var body: some View {
+        Group {
+            if let image = image {
+                Image(uiImage: image)
+                    .resizable()
+                    .aspectRatio(2/3, contentMode: .fill)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .stroke(Color.primary.opacity(0.1), lineWidth: 1)
+                    )
+                    .shadow(color: .black.opacity(0.15), radius: 6, x: 0, y: 4)
+            } else if isLoading {
+                Rectangle()
+                    .fill(Color.gray.opacity(0.2))
+                    .aspectRatio(2/3, contentMode: .fill)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .shimmer()
+            } else {
+                FallbackPosterView()
+            }
+        }
+        .task(id: url) {
+            guard let url = url, image == nil else {
+                if url == nil {
+                    isLoading = false
+                    hasError = true
+                }
+                return
+            }
+            
+            isLoading = true
+            hasError = false
+            
+            do {
+                let request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad)
+                let (data, _) = try await URLSession.shared.data(for: request)
+                if let uiImg = UIImage(data: data) {
+                    self.image = uiImg
+                } else {
+                    self.hasError = true
+                }
+            } catch {
+                if !Task.isCancelled {
+                    self.hasError = true
+                }
+            }
+            
+            isLoading = false
+        }
+    }
+}
+
 struct MoviePosterCard: View {
     let movie: MediaDto
     
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             let url = URL(string: movie.displayPosterUrl ?? "")
-            if let url = url {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .empty:
-                        Rectangle()
-                            .fill(Color.gray.opacity(0.2))
-                            .aspectRatio(2/3, contentMode: .fill)
-                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                            .shimmer()
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .aspectRatio(2/3, contentMode: .fill)
-                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                    .stroke(Color.primary.opacity(0.1), lineWidth: 1)
-                            )
-                            .shadow(color: .black.opacity(0.15), radius: 6, x: 0, y: 4)
-                    case .failure:
-                        FallbackPosterView()
-                    @unknown default:
-                        EmptyView()
-                    }
-                }
-            } else {
-                FallbackPosterView()
-            }
+            RemotePosterView(url: url)
             
             VStack(alignment: .leading, spacing: 4) {
                 Text(movie.displayTitle)
