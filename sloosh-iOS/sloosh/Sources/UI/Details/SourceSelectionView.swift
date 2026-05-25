@@ -23,7 +23,7 @@ struct GlassButtonStyle: ButtonStyle {
 
 struct SourceSelectionView: View {
     let result: AllohaApiResult
-    let onPlay: (String) -> Void
+    let onPlay: (AllohaTranslation) -> Void
     @Environment(\.presentationMode) var presentationMode
     
     @State private var selectedSeason: Int?
@@ -152,12 +152,12 @@ struct SourceSelectionView: View {
             guard let seasonObj = result.seasons.first(where: { $0.season == s }),
                   let epObj = seasonObj.episodes.first(where: { $0.episode == e }),
                   let translation = epObj.translations.first(where: { $0.name == tName }) else { return }
-            onPlay(translation.iframeUrl)
+            onPlay(translation)
             presentationMode.wrappedValue.dismiss()
         } else if let movie = result.movie {
             guard let tName = selectedTranslationName,
                   let translation = movie.translations.first(where: { $0.name == tName }) else { return }
-            onPlay(translation.iframeUrl)
+            onPlay(translation)
             presentationMode.wrappedValue.dismiss()
         }
     }

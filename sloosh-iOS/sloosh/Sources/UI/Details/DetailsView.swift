@@ -45,6 +45,7 @@ struct DetailsView: View {
     
     @State private var showPlayer = false
     @State private var selectedIframeUrl: String? = nil
+    @State private var selectedDirectVideoUrl: String? = nil
     @State private var showDownloadAlert = false
     @Namespace private var transition
     
@@ -102,61 +103,34 @@ struct DetailsView: View {
 
                         DetailsPrimaryMetadataRow(details: details)
                         
-                        // Action Row
-                        HStack(spacing: 12) {
-                            // Play Button
-                            Button(action: {
-                                Task {
-                                    if let kpId = details.externalIds?.kp {
-                                        await viewModel.fetchSources(kpId: kpId, title: details.title ?? details.name ?? "")
-                                    }
+                        // Play Button
+                        Button(action: {
+                            Task {
+                                if let kpId = details.externalIds?.kp {
+                                    await viewModel.fetchSources(kpId: kpId, title: details.title ?? details.name ?? "")
                                 }
-                            }) {
-                                HStack {
-                                    if viewModel.isFetchingSources {
-                                        ProgressView()
-                                            .progressViewStyle(CircularProgressViewStyle(tint: Color(UIColor.systemBackground)))
-                                            .padding(.trailing, 8)
-                                    } else {
-                                        Image(systemName: "play.fill")
-                                    }
-                                    Text(viewModel.isFetchingSources ? "Загрузка..." : "Смотреть")
-                                        .font(.system(size: 18, weight: .bold))
+                            }
+                        }) {
+                            HStack {
+                                if viewModel.isFetchingSources {
+                                    ProgressView()
+                                        .progressViewStyle(CircularProgressViewStyle(tint: Color(UIColor.systemBackground)))
+                                        .padding(.trailing, 8)
+                                } else {
+                                    Image(systemName: "play.fill")
                                 }
-                                .frame(maxWidth: .infinity)
-                                .frame(height: 56)
-                                .background(Color.primary)
-                                .foregroundColor(Color(UIColor.systemBackground))
-                                .clipShape(Capsule())
+                                Text(viewModel.isFetchingSources || viewModel.isResolvingAllohaPlayback ? "Подготовка..." : "Смотреть")
+                                    .font(.system(size: 18, weight: .bold))
                             }
-                            .disabled(viewModel.isFetchingSources)
-                            .matchedTransitionSource(id: "playBtn", in: transition)
-                            
-                            // Favorite Button
-                            Button {
-                                viewModel.toggleFavorite()
-                            } label: {
-                                Image(systemName: viewModel.isFavorite ? "heart.fill" : "heart")
-                                    .font(.system(size: 20, weight: .medium))
-                                    .foregroundColor(viewModel.isFavorite ? .red : .primary)
-                                    .frame(width: 56, height: 56)
-                                    .background(.ultraThinMaterial, in: Circle())
-                                    .overlay(Circle().stroke(Color.primary.opacity(0.08), lineWidth: 1))
-                            }
-                            
-                            // Download Button
-                            Button {
-                                showDownloadAlert = true
-                            } label: {
-                                Image(systemName: "arrow.down")
-                                    .font(.system(size: 20, weight: .medium))
-                                    .foregroundColor(.primary)
-                                    .frame(width: 56, height: 56)
-                                    .background(.ultraThinMaterial, in: Circle())
-                                    .overlay(Circle().stroke(Color.primary.opacity(0.08), lineWidth: 1))
-                            }
+                            .frame(maxWidth: .infinity)
+                            .padding()
+                            .background(Color.primary)
+                            .foregroundColor(Color(UIColor.systemBackground))
+                            .clipShape(Capsule())
                         }
-                        .padding(.horizontal, 20)
+                        .disabled(viewModel.isFetchingSources || viewModel.isResolvingAllohaPlayback)
+                        .matchedTransitionSource(id: "playBtn", in: transition)
+                        .padding(.horizontal, 24)
                         .padding(.top, 16)
 
                         DetailsInfoSection(details: details)
@@ -172,20 +146,71 @@ struct DetailsView: View {
             }
         }
         .ignoresSafeArea(edges: .top)
+        .overlay {
+            if viewModel.isResolvingAllohaPlayback {
+                ZStack {
+                    Color.black.opacity(0.35)
+                        .ignoresSafeArea()
+
+                    VStack(spacing: 14) {
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle())
+                        Text("Подготавливаем поток...")
+                            .font(.system(size: 15, weight: .semibold))
+                    }
+                    .padding(.horizontal, 24)
+                    .padding(.vertical, 20)
+                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+                }
+            }
+        }
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(id: "details") {
+            ToolbarItem(id: "favorite", placement: .topBarTrailing) {
+                Button {
+                    viewModel.toggleFavorite()
+                } label: {
+                    Image(systemName: viewModel.isFavorite ? "heart.fill" : "heart")
+                        .foregroundColor(.primary)
+                }
+                .disabled(viewModel.details == nil)
+            }
+            
+            ToolbarItem(id: "download", placement: .topBarTrailing) {
+                Button {
+                    showDownloadAlert = true
+                } label: {
+                    Image(systemName: "arrow.down.circle")
+                        .foregroundColor(.primary)
+                }
+                .disabled(viewModel.details == nil)
+            }
+        }
         .alert("В разработке", isPresented: $showDownloadAlert) {
             Button("OK", role: .cancel) { }
         } message: {
             Text("Функция скачивания появится в будущих обновлениях.")
+        }
+        .alert(
+            "Не удалось открыть видео",
+            isPresented: Binding(
+                get: { viewModel.playbackErrorMessage != nil },
+                set: { if !$0 { viewModel.playbackErrorMessage = nil } }
+            )
+        ) {
+            Button("OK", role: .cancel) {
+                viewModel.playbackErrorMessage = nil
+            }
+        } message: {
+            Text(viewModel.playbackErrorMessage ?? "Попробуйте еще раз.")
         }
         .task {
             await viewModel.loadDetails(id: movieId)
         }
         .sheet(item: $viewModel.sourceResultWrapper) { wrapper in
             if wrapper.mode == .alloha, let result = wrapper.allohaResult {
-                SourceSelectionView(result: result) { iframeUrl in
-                    selectedIframeUrl = iframeUrl
-                    showPlayer = true
+                SourceSelectionView(result: result) { translation in
+                    viewModel.resolveAllohaPlayback(iframeUrl: translation.iframeUrl, translationName: translation.name)
                 }
                 .presentationDetents([.medium, .large])
                 .navigationTransition(.zoom(sourceID: "playBtn", in: transition))
@@ -208,13 +233,33 @@ struct DetailsView: View {
                 Text("Нет доступных источников")
             }
         }
-        .fullScreenCover(isPresented: $showPlayer) {
-            if let url = selectedIframeUrl, let details = viewModel.details {
+        .onChange(of: viewModel.allohaPlaybackUrl) { resolvedUrl in
+            guard let resolvedUrl else { return }
+            selectedDirectVideoUrl = resolvedUrl
+            selectedIframeUrl = nil
+            showPlayer = true
+        }
+        .fullScreenCover(isPresented: $showPlayer, onDismiss: {
+            selectedIframeUrl = nil
+            selectedDirectVideoUrl = nil
+            viewModel.cleanupAllohaSession()
+        }) {
+            if let details = viewModel.details {
                 let mode = SourceManager.shared.currentMode
                 if mode == .alloha {
-                    PlayerView(iframeUrl: url, fallbackTitle: details.title ?? details.name ?? "")
+                    if let directUrl = selectedDirectVideoUrl {
+                        PlayerView(directVideoUrl: directUrl, fallbackTitle: details.title ?? details.name ?? "")
+                    } else if let iframeUrl = selectedIframeUrl {
+                        PlayerView(iframeUrl: iframeUrl, fallbackTitle: details.title ?? details.name ?? "")
+                    } else {
+                        Text("Видео не найдено")
+                    }
+                } else if let directUrl = selectedIframeUrl {
+                    PlayerView(directVideoUrl: directUrl, fallbackTitle: details.title ?? details.name ?? "")
+                } else if let directUrl = selectedDirectVideoUrl {
+                    PlayerView(directVideoUrl: directUrl, fallbackTitle: details.title ?? details.name ?? "")
                 } else {
-                    PlayerView(directVideoUrl: url, fallbackTitle: details.title ?? details.name ?? "")
+                    Text("Видео не найдено")
                 }
             }
         }
@@ -238,14 +283,6 @@ private struct DetailsPrimaryMetadataRow: View {
             if let rating = details.rating, rating > 0 {
                 Label(String(format: "%.1f", rating), systemImage: "star.fill")
                     .foregroundColor(ratingColor(for: rating))
-            }
-
-            if let type = details.type {
-                if type.lowercased() == "tv" || type.lowercased() == "series" {
-                    Text("Сериал")
-                } else {
-                    Text("Фильм")
-                }
             }
 
             if let year = details.releaseDate?.prefix(4), !year.isEmpty {
@@ -289,7 +326,11 @@ private struct DetailsInfoSection: View {
                                 .font(.system(size: 14, weight: .semibold))
                                 .padding(.horizontal, 14)
                                 .padding(.vertical, 8)
-                                .background(Color.primary.opacity(0.06), in: Capsule())
+                                .background(.ultraThinMaterial, in: Capsule())
+                                .overlay(
+                                    Capsule()
+                                        .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                                )
                         }
                     }
                 }
@@ -305,9 +346,6 @@ private struct DetailsInfoSection: View {
                     .lineSpacing(4)
             }
         }
-        .padding(20)
-        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(Color.primary.opacity(0.06), lineWidth: 1))
     }
 }
 
@@ -326,9 +364,16 @@ class DetailsViewModel: ObservableObject {
     @Published var isLoading = true
     
     @Published var isFetchingSources = false
+    @Published var isResolvingAllohaPlayback = false
     @Published var sourceResultWrapper: SourceResultWrapper?
+    @Published var allohaPlaybackUrl: String?
+    @Published var playbackErrorMessage: String?
     
     @Published var isFavorite: Bool = false
+
+    private var allohaSessionManager: AllohaSessionManager?
+    private var allohaTimeoutTask: Task<Void, Never>?
+    private let allohaTranslationPreferenceKey = "alloha_last_translation_name"
     
     func loadDetails(id: String) async {
         if details != nil && (details?.id == id || details?.sourceId == id || details?.externalIds?.kp?.description == id.replacingOccurrences(of: "kp_", with: "")) {
@@ -388,7 +433,12 @@ class DetailsViewModel: ObservableObject {
             switch mode {
             case .alloha:
                 let result = try await AllohaRepository.shared.fetchByKpId(kpId: kpId)
-                self.sourceResultWrapper = SourceResultWrapper(mode: .alloha, allohaResult: result)
+                if let movie = result.movie,
+                   let translation = preferredAllohaTranslation(from: movie) {
+                    resolveAllohaPlayback(iframeUrl: translation.iframeUrl, translationName: translation.name)
+                } else {
+                    self.sourceResultWrapper = SourceResultWrapper(mode: .alloha, allohaResult: result)
+                }
             case .collaps:
                 let seasons = try await CollapsRepository.shared.getSeasonsByKpId(kpId: kpId)
                 if seasons.isEmpty {
@@ -401,5 +451,59 @@ class DetailsViewModel: ObservableObject {
         } catch {
             print("Error fetching sources: \(error)")
         }
+    }
+
+    func resolveAllohaPlayback(iframeUrl: String, translationName: String? = nil) {
+        cleanupAllohaSession()
+
+        if let translationName, !translationName.isEmpty {
+            UserDefaults.standard.set(translationName, forKey: allohaTranslationPreferenceKey)
+        }
+
+        isResolvingAllohaPlayback = true
+        playbackErrorMessage = nil
+        allohaPlaybackUrl = nil
+
+        let sessionManager = AllohaSessionManager()
+        allohaSessionManager = sessionManager
+
+        sessionManager.onStreamReady = { [weak self] _, _ in
+            guard let self = self else { return }
+            self.allohaTimeoutTask?.cancel()
+            self.isResolvingAllohaPlayback = false
+            self.allohaPlaybackUrl = HlsProxyServer.shared.fixedMasterUrl
+        }
+
+        sessionManager.onError = { [weak self] error in
+            guard let self = self else { return }
+            self.allohaTimeoutTask?.cancel()
+            self.cleanupAllohaSession()
+            self.playbackErrorMessage = error
+        }
+
+        allohaTimeoutTask = Task { [weak self] in
+            try? await Task.sleep(nanoseconds: 20_000_000_000)
+            guard let self = self,
+                  !Task.isCancelled,
+                  self.isResolvingAllohaPlayback else { return }
+            self.cleanupAllohaSession()
+            self.playbackErrorMessage = "Источник не ответил вовремя."
+        }
+
+        sessionManager.startSession(iframeUrl: iframeUrl)
+    }
+
+    func cleanupAllohaSession() {
+        allohaTimeoutTask?.cancel()
+        allohaTimeoutTask = nil
+        allohaSessionManager?.release()
+        allohaSessionManager = nil
+        isResolvingAllohaPlayback = false
+        HlsProxyServer.shared.stop()
+    }
+
+    private func preferredAllohaTranslation(from movie: AllohaMovie) -> AllohaTranslation? {
+        let savedName = UserDefaults.standard.string(forKey: allohaTranslationPreferenceKey)
+        return movie.translations.first(where: { $0.name == savedName }) ?? movie.translations.first
     }
 }

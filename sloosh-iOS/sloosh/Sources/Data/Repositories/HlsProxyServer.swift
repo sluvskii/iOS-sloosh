@@ -6,6 +6,7 @@ class HlsProxyServer {
     private var listener: NWListener?
     private let queue = DispatchQueue(label: "com.sloosh.ios.hlsproxy", attributes: .concurrent)
     private var headers: [String: String] = [:]
+    private var currentMasterUrl: URL?
     
     // We use a custom delegate to bypass SSL issues like in Android's buildTrustingClient
     private lazy var session: URLSession = {
@@ -15,6 +16,7 @@ class HlsProxyServer {
     }()
     
     var port: NWEndpoint.Port = 8181
+    var fixedMasterUrl: String { "http://127.0.0.1:\(port.rawValue)/master.m3u8" }
     
     func start(headers: [String: String]) {
         self.headers = headers
@@ -31,10 +33,19 @@ class HlsProxyServer {
             print("Failed to start HlsProxyServer: \(error)")
         }
     }
+
+    func updateHeaders(_ headers: [String: String]) {
+        self.headers = headers
+    }
+
+    func updateMasterUrl(_ urlString: String) {
+        currentMasterUrl = URL(string: urlString)
+    }
     
     func stop() {
         listener?.cancel()
         listener = nil
+        currentMasterUrl = nil
     }
     
     private func handleConnection(_ connection: NWConnection) {
@@ -84,7 +95,14 @@ class HlsProxyServer {
             return
         }
         
-        if urlComponents.path == "/proxy",
+        if urlComponents.path == "/master.m3u8" {
+            guard let currentMasterUrl else {
+                send404(on: connection)
+                return
+            }
+
+            fetchAndServe(realUrl: currentMasterUrl, isPlaylist: true, connection: connection)
+        } else if urlComponents.path == "/proxy",
            let urlQuery = urlComponents.queryItems?.first(where: { $0.name == "url" })?.value {
             
             // Re-pad base64 string if necessary
