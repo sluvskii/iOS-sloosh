@@ -13,7 +13,15 @@ class MoviesApi {
     // Default base URL from android project (would normally be in config)
     private let baseURL = "https://api.neomovies.ru" 
     
-    private init() {}
+    private let session: URLSession
+    
+    private init() {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 15.0
+        config.timeoutIntervalForResource = 30.0
+        config.requestCachePolicy = .returnCacheDataElseLoad
+        self.session = URLSession(configuration: config)
+    }
     
     private func performRequest<T: Codable>(endpoint: String, method: String = "GET", queryItems: [URLQueryItem] = []) async throws -> T {
         var components = URLComponents(string: "\(baseURL)/\(endpoint)")
@@ -29,7 +37,7 @@ class MoviesApi {
         request.httpMethod = method
         // Add auth headers if needed
         
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
         
         guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
             let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 500

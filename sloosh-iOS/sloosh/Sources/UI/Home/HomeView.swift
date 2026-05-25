@@ -209,38 +209,34 @@ struct MoviePosterCard: View {
     
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            AsyncImage(url: URL(string: movie.displayPosterUrl ?? "")) { phase in
-                switch phase {
-                case .empty:
-                    Rectangle()
-                        .fill(Color.gray.opacity(0.2))
-                        .aspectRatio(2/3, contentMode: .fill)
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        .shimmer()
-                case .success(let image):
-                    image
-                        .resizable()
-                        .aspectRatio(2/3, contentMode: .fill)
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        // Native Liquid Glass effect matching SlooshIOS Theme
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .stroke(Color.primary.opacity(0.1), lineWidth: 1)
-                        )
-                        .shadow(color: .black.opacity(0.15), radius: 6, x: 0, y: 4)
-                case .failure:
-                    Rectangle()
-                        .fill(.regularMaterial)
-                        .aspectRatio(2/3, contentMode: .fill)
-                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                        .overlay(
-                            Image(systemName: "film.fill")
-                                .font(.system(size: 30))
-                                .foregroundColor(.gray.opacity(0.5))
-                        )
-                @unknown default:
-                    EmptyView()
+            let url = URL(string: movie.displayPosterUrl ?? "")
+            if let url = url {
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .empty:
+                        Rectangle()
+                            .fill(Color.gray.opacity(0.2))
+                            .aspectRatio(2/3, contentMode: .fill)
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .shimmer()
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .aspectRatio(2/3, contentMode: .fill)
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .stroke(Color.primary.opacity(0.1), lineWidth: 1)
+                            )
+                            .shadow(color: .black.opacity(0.15), radius: 6, x: 0, y: 4)
+                    case .failure:
+                        FallbackPosterView()
+                    @unknown default:
+                        EmptyView()
+                    }
                 }
+            } else {
+                FallbackPosterView()
             }
             
             VStack(alignment: .leading, spacing: 4) {
@@ -269,6 +265,20 @@ struct MoviePosterCard: View {
                 }
             }
         }
+    }
+}
+
+struct FallbackPosterView: View {
+    var body: some View {
+        Rectangle()
+            .fill(.regularMaterial)
+            .aspectRatio(2/3, contentMode: .fill)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(
+                Image(systemName: "film.fill")
+                    .font(.system(size: 30))
+                    .foregroundColor(.gray.opacity(0.5))
+            )
     }
 }
 
@@ -365,7 +375,8 @@ class HomeViewModel: ObservableObject {
                     break
                 }
 
-                newItems.append(contentsOf: filterItemsForSelectedCategory(fetched, category: cat))
+                let validFetched = filterValidItems(fetched)
+                newItems.append(contentsOf: filterItemsForSelectedCategory(validFetched, category: cat))
 
                 page += 1
                 pagesFetched += 1
@@ -404,6 +415,17 @@ class HomeViewModel: ObservableObject {
         }
 
         return baseItems
+    }
+
+    private func filterValidItems(_ items: [MediaDto]) -> [MediaDto] {
+        return items.filter { item in
+            let poster = item.posterUrl ?? item.poster_path ?? ""
+            let hasPoster = !poster.isEmpty && !poster.lowercased().contains("no-poster")
+            let hasTitle = !(item.title ?? item.name ?? "").isEmpty
+            let hasRating = (item.rating ?? 0) > 0.0
+            
+            return hasPoster && hasTitle && hasRating
+        }
     }
 
     private func filterItemsForSelectedCategory(_ items: [MediaDto], category: HomeCategory) -> [MediaDto] {
