@@ -47,68 +47,15 @@ enum HomeFilter: String, CaseIterable, Identifiable {
 struct HomeView: View {
     @StateObject private var viewModel = HomeViewModel()
 
-    let columns = [
-        GridItem(.adaptive(minimum: 105), spacing: 16)
-    ]
-
     var body: some View {
         NavigationStack {
-            ScrollView {
-                if viewModel.isLoading {
-                    LazyVGrid(columns: columns, spacing: 20) {
-                        ForEach(0..<12, id: \.self) { _ in
-                            MoviePosterCardPlaceholder()
-                        }
-                    }
-                    .padding(16)
-                } else if viewModel.items.isEmpty {
-                    HomeEmptyState(
-                        category: viewModel.selectedCategory,
-                        filter: viewModel.selectedFilter
-                    )
-                    .frame(maxWidth: .infinity, minHeight: 300)
-                    .padding(.horizontal, 20)
-                } else {
-                    LazyVGrid(columns: columns, spacing: 20) {
-                        ForEach(viewModel.items) { movie in
-                            NavigationLink(destination: DetailsView(movieId: movie.id)) {
-                                MoviePosterCard(movie: movie)
-                            }
-                            .buttonStyle(.plain)
-                            .onAppear {
-                                if movie.id == viewModel.items.last?.id {
-                                    Task {
-                                        await viewModel.loadData()
-                                    }
-                                }
-                            }
-                        }
-
-                        if viewModel.isLoadingMore {
-                            ForEach(0..<3, id: \.self) { _ in
-                                MoviePosterCardPlaceholder()
-                            }
-                        }
-                    }
-                    .padding(16)
+            TabView(selection: $viewModel.selectedCategory) {
+                ForEach(HomeCategory.allCases, id: \.self) { category in
+                    HomeCategoryContentView(viewModel: viewModel, category: category)
+                        .tag(category)
                 }
             }
-            .scrollIndicators(.hidden)
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 40)
-                    .onEnded { value in
-                        let horizontal = value.translation.width
-                        let vertical = value.translation.height
-                        
-                        if abs(horizontal) > abs(vertical) * 1.5 && abs(horizontal) > 40 {
-                            if horizontal < 0 {
-                                selectNextCategory()
-                            } else {
-                                selectPreviousCategory()
-                            }
-                        }
-                    }
-            )
+            .tabViewStyle(.page(indexDisplayMode: .never))
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -123,35 +70,75 @@ struct HomeView: View {
             .task {
                 await viewModel.applyCurrentSelection(force: true)
             }
-            .onChange(of: viewModel.selectedCategory) { _, newCategory in
+            .onChange(of: viewModel.selectedCategory) { _, _ in
                 Task {
                     await viewModel.applyCurrentSelection()
                 }
             }
-            .onChange(of: viewModel.selectedFilter) { _, newFilter in
+            .onChange(of: viewModel.selectedFilter) { _, _ in
                 Task {
                     await viewModel.applyCurrentSelection()
                 }
             }
         }
     }
+}
 
-    private func selectNextCategory() {
-        let all = HomeCategory.allCases
-        if let idx = all.firstIndex(of: viewModel.selectedCategory), idx < all.count - 1 {
-            withAnimation {
-                viewModel.selectedCategory = all[idx + 1]
+struct HomeCategoryContentView: View {
+    @ObservedObject var viewModel: HomeViewModel
+    let category: HomeCategory
+    
+    let columns = [
+        GridItem(.adaptive(minimum: 105), spacing: 16)
+    ]
+
+    var body: some View {
+        let key = HomeCacheKey(category: category, filter: viewModel.selectedFilter)
+        let items = viewModel.cachedItems[key] ?? []
+        let isLoading = viewModel.isLoading[key] ?? false
+        let isLoadingMore = viewModel.isLoadingMore[key] ?? false
+
+        ScrollView {
+            if isLoading {
+                LazyVGrid(columns: columns, spacing: 20) {
+                    ForEach(0..<12, id: \.self) { _ in
+                        MoviePosterCardPlaceholder()
+                    }
+                }
+                .padding(16)
+            } else if items.isEmpty {
+                HomeEmptyState(
+                    category: category,
+                    filter: viewModel.selectedFilter
+                )
+                .frame(maxWidth: .infinity, minHeight: 300)
+                .padding(.horizontal, 20)
+            } else {
+                LazyVGrid(columns: columns, spacing: 20) {
+                    ForEach(items) { movie in
+                        NavigationLink(destination: DetailsView(movieId: movie.id)) {
+                            MoviePosterCard(movie: movie)
+                        }
+                        .buttonStyle(.plain)
+                        .onAppear {
+                            if movie.id == items.last?.id {
+                                Task {
+                                    await viewModel.loadData(for: category)
+                                }
+                            }
+                        }
+                    }
+
+                    if isLoadingMore {
+                        ForEach(0..<3, id: \.self) { _ in
+                            MoviePosterCardPlaceholder()
+                        }
+                    }
+                }
+                .padding(16)
             }
         }
-    }
-
-    private func selectPreviousCategory() {
-        let all = HomeCategory.allCases
-        if let idx = all.firstIndex(of: viewModel.selectedCategory), idx > 0 {
-            withAnimation {
-                viewModel.selectedCategory = all[idx - 1]
-            }
-        }
+        .scrollIndicators(.hidden)
     }
 }
 
@@ -313,95 +300,95 @@ struct MoviePosterCardPlaceholder: View {
     }
 }
 
+struct HomeCacheKey: Hashable {
+    let category: HomeCategory
+    let filter: HomeFilter
+}
+
 @MainActor
 class HomeViewModel: ObservableObject {
     @Published var selectedCategory: HomeCategory = .all
     @Published var selectedFilter: HomeFilter = .popular
-    @Published var items: [MediaDto] = []
-    @Published var isLoading = false
-    @Published var isLoadingMore = false
+    
+    @Published var cachedItems: [HomeCacheKey: [MediaDto]] = [:]
+    @Published var isLoading: [HomeCacheKey: Bool] = [:]
+    @Published var isLoadingMore: [HomeCacheKey: Bool] = [:]
 
-    private var loadedKey: HomeCacheKey?
-
-    private var currentPage = 1
-    private var canLoadMore = true
-
-    private var cachedItems: [HomeCacheKey: [MediaDto]] = [:]
     private var cachedPages: [HomeCacheKey: Int] = [:]
     private var cachedCanLoadMore: [HomeCacheKey: Bool] = [:]
 
     func applyCurrentSelection(force: Bool = false) async {
         let key = HomeCacheKey(category: selectedCategory, filter: selectedFilter)
 
-        if !force, loadedKey == key && !items.isEmpty {
+        if force {
+            cachedItems[key] = []
+            cachedPages[key] = 1
+            cachedCanLoadMore[key] = true
+        } else if let cached = cachedItems[key], !cached.isEmpty {
             return
         }
 
-        if !force, let cached = cachedItems[key], !cached.isEmpty {
-            items = cached
-            currentPage = cachedPages[key] ?? 1
-            canLoadMore = cachedCanLoadMore[key] ?? true
-            loadedKey = key
-            return
-        }
-
-        items = []
-        currentPage = 1
-        canLoadMore = true
-        await loadData()
-        loadedKey = key
+        await loadData(for: selectedCategory)
     }
 
-    func loadData() async {
-        guard canLoadMore, !isLoading, !isLoadingMore else { return }
+    func loadData(for category: HomeCategory? = nil) async {
+        let cat = category ?? selectedCategory
+        let key = HomeCacheKey(category: cat, filter: selectedFilter)
 
-        let cacheKey = HomeCacheKey(category: selectedCategory, filter: selectedFilter)
+        let currentCanLoadMore = cachedCanLoadMore[key] ?? true
+        guard currentCanLoadMore else { return }
 
-        if items.isEmpty {
-            isLoading = true
+        let isCurrentlyLoading = isLoading[key] ?? false
+        let isCurrentlyLoadingMore = isLoadingMore[key] ?? false
+        guard !isCurrentlyLoading, !isCurrentlyLoadingMore else { return }
+
+        let existingItems = cachedItems[key] ?? []
+        if existingItems.isEmpty {
+            isLoading[key] = true
         } else {
-            isLoadingMore = true
+            isLoadingMore[key] = true
         }
 
         defer {
-            isLoading = false
-            isLoadingMore = false
+            isLoading[key] = false
+            isLoadingMore[key] = false
         }
 
         do {
             var newItems: [MediaDto] = []
             var pagesFetched = 0
+            var page = cachedPages[key] ?? 1
+            var canLoad = currentCanLoadMore
 
-            while newItems.isEmpty && pagesFetched < 3 && canLoadMore {
-                let fetched = try await fetchPage(currentPage)
+            while newItems.isEmpty && pagesFetched < 3 && canLoad {
+                let fetched = try await fetchPage(page, category: cat, filter: selectedFilter)
                 if fetched.isEmpty {
-                    canLoadMore = false
+                    canLoad = false
                     break
                 }
 
-                newItems.append(contentsOf: filterItemsForSelectedCategory(fetched))
+                newItems.append(contentsOf: filterItemsForSelectedCategory(fetched, category: cat))
 
-                currentPage += 1
+                page += 1
                 pagesFetched += 1
             }
 
-            let existingIds = Set(items.map { $0.id })
+            let currentItems = cachedItems[key] ?? []
+            let existingIds = Set(currentItems.map { $0.id })
             let uniqueNewItems = newItems.filter { !existingIds.contains($0.id) }
 
-            items.append(contentsOf: uniqueNewItems)
-
-            cachedItems[cacheKey] = items
-            cachedPages[cacheKey] = currentPage
-            cachedCanLoadMore[cacheKey] = canLoadMore
+            cachedItems[key] = currentItems + uniqueNewItems
+            cachedPages[key] = page
+            cachedCanLoadMore[key] = canLoad
         } catch {
             print("Failed to load category data: \(error)")
         }
     }
 
-    private func fetchPage(_ page: Int) async throws -> [MediaDto] {
+    private func fetchPage(_ page: Int, category: HomeCategory, filter: HomeFilter) async throws -> [MediaDto] {
         let baseItems: [MediaDto]
 
-        switch selectedFilter {
+        switch filter {
         case .popular:
             baseItems = try await MoviesRepository.shared.getPopularMovies(page: page)
         case .latest:
@@ -415,7 +402,7 @@ class HomeViewModel: ObservableObject {
                 return leftYear > rightYear
             }
         case .topRated:
-            switch selectedCategory {
+            switch category {
             case .tvShows:
                 baseItems = try await MoviesRepository.shared.getTopTv(page: page)
             case .movies, .cartoons:
@@ -431,8 +418,8 @@ class HomeViewModel: ObservableObject {
         return baseItems
     }
 
-    private func filterItemsForSelectedCategory(_ items: [MediaDto]) -> [MediaDto] {
-        switch selectedCategory {
+    private func filterItemsForSelectedCategory(_ items: [MediaDto], category: HomeCategory) -> [MediaDto] {
+        switch category {
         case .all:
             return items
         case .movies:
@@ -465,9 +452,4 @@ class HomeViewModel: ObservableObject {
         let raw = item.year?.stringValue ?? ""
         return Int(raw.prefix(4)) ?? 0
     }
-}
-
-private struct HomeCacheKey: Hashable {
-    let category: HomeCategory
-    let filter: HomeFilter
 }
