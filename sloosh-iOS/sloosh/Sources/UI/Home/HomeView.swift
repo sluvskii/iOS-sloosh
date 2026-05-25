@@ -58,9 +58,10 @@ struct HomeView: View {
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
+                ToolbarItem(placement: .principal) {
                     HomeCategorySegmentedPicker(selectedCategory: $viewModel.selectedCategory)
-                        .frame(width: UIScreen.main.bounds.width - 100) // Оставляем место для фильтра
+                        // Немного уменьшаем отступы по краям, чтобы пикер не был слишком высоким и не резался
+                        .padding(.vertical, -4) 
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     HomeFilterMenu(selectedFilter: $viewModel.selectedFilter)
