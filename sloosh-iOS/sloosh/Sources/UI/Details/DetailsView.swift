@@ -45,6 +45,7 @@ struct DetailsView: View {
     
     @State private var showPlayer = false
     @State private var selectedIframeUrl: String? = nil
+    @State private var showDownloadAlert = false
     @Namespace private var transition
     
     var body: some View {
@@ -89,6 +90,15 @@ struct DetailsView: View {
                             .font(.system(size: 34, weight: .heavy))
                             .multilineTextAlignment(.center)
                             .padding(.horizontal)
+
+                        if let originalTitle = details.originalTitle, !originalTitle.isEmpty, originalTitle != (details.title ?? details.name) {
+                            Text(originalTitle)
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundColor(.secondary)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal)
+                                .padding(.top, -8)
+                        }
 
                         DetailsPrimaryMetadataRow(details: details)
                         
@@ -136,6 +146,30 @@ struct DetailsView: View {
         }
         .edgesIgnoringSafeArea(.top)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItemGroup(placement: .navigationBarTrailing) {
+                if viewModel.details != nil {
+                    Button {
+                        viewModel.toggleFavorite()
+                    } label: {
+                        Image(systemName: viewModel.isFavorite ? "heart.fill" : "heart")
+                            .foregroundColor(viewModel.isFavorite ? .red : .primary)
+                    }
+                    
+                    Button {
+                        showDownloadAlert = true
+                    } label: {
+                        Image(systemName: "arrow.down.circle")
+                            .foregroundColor(.primary)
+                    }
+                }
+            }
+        }
+        .alert("В разработке", isPresented: $showDownloadAlert) {
+            Button("OK", role: .cancel) { }
+        } message: {
+            Text("Функция скачивания появится в будущих обновлениях.")
+        }
         .task {
             await viewModel.loadDetails(id: movieId)
         }
@@ -279,6 +313,8 @@ class DetailsViewModel: ObservableObject {
     @Published var isFetchingSources = false
     @Published var sourceResultWrapper: SourceResultWrapper?
     
+    @Published var isFavorite: Bool = false
+    
     func loadDetails(id: String) async {
         if details != nil && (details?.id == id || details?.sourceId == id || details?.externalIds?.kp?.description == id.replacingOccurrences(of: "kp_", with: "")) {
             return
@@ -289,9 +325,43 @@ class DetailsViewModel: ObservableObject {
         
         do {
             details = try await MoviesRepository.shared.getDetails(id: id)
+            checkFavoriteStatus()
         } catch {
             print("Error loading details: \(error)")
         }
+    }
+    
+    func checkFavoriteStatus() {
+        guard let details = details else { return }
+        guard let (mediaId, mediaType) = favoriteKey(for: details) else { return }
+        
+        isFavorite = FavoritesRepository.shared.isFavorite(mediaId: mediaId, mediaType: mediaType)
+    }
+    
+    func toggleFavorite() {
+        guard let details = details else { return }
+        guard let (mediaId, mediaType) = favoriteKey(for: details) else { return }
+        
+        if isFavorite {
+            FavoritesRepository.shared.removeFromFavorites(mediaId: mediaId, mediaType: mediaType)
+        } else {
+            FavoritesRepository.shared.addToFavorites(
+                mediaId: mediaId,
+                mediaType: mediaType,
+                title: details.title ?? details.name,
+                posterUrl: details.posterUrl ?? details.backdropUrl
+            )
+        }
+        isFavorite.toggle()
+    }
+    
+    private func favoriteKey(for details: MediaDetailsDto) -> (String, String)? {
+        // Use KP ID if available, otherwise ID
+        let mediaId = details.externalIds?.kp?.description ?? details.id ?? details.sourceId
+        guard let validId = mediaId, !validId.isEmpty else { return nil }
+        
+        let type = (details.type?.lowercased() == "tv" || details.type?.lowercased() == "series") ? "tv" : "movie"
+        return (validId.replacingOccurrences(of: "kp_", with: ""), type)
     }
     
     func fetchSources(kpId: Int, title: String) async {
