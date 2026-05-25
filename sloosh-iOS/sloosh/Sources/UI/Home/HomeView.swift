@@ -144,6 +144,12 @@ struct HomeCategoryContentView: View {
 private struct HomeCategorySegmentedPicker: View {
     @Binding var selectedCategory: HomeCategory
 
+    init(selectedCategory: Binding<HomeCategory>) {
+        self._selectedCategory = selectedCategory
+        // Настройка UIAppearance для того, чтобы сегменты подстраивались под ширину текста
+        UISegmentedControl.appearance().apportionsSegmentWidthsByContent = true
+    }
+
     var body: some View {
         Picker("Категория", selection: $selectedCategory) {
             ForEach(HomeCategory.allCases, id: \.self) { category in
