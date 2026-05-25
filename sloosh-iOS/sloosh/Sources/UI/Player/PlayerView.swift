@@ -3,9 +3,11 @@ import AVKit
 
 class PlayerPresenterViewController: UIViewController {
     var player: AVPlayer?
+    var viewModel: PlayerViewModel?
     var onDismiss: (() -> Void)?
     private var didPresent = false
     private var checkTimer: Timer?
+    private var qualityButton: UIButton?
     
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
@@ -28,18 +30,69 @@ class PlayerPresenterViewController: UIViewController {
             playerController.showsPlaybackControls = true
             playerController.allowsPictureInPicturePlayback = true
             
-            // ВАЖНО: Используем fullScreen вместо overFullScreen!
-            // overFullScreen заставляет родительский контроллер оставаться в иерархии вьюх, 
-            // что ломает логику SwiftUI .onDisappear. Но если использовать просто fullScreen, 
-            // SwiftUI может вызвать onDisappear слишком рано и убить сервер.
-            // Чтобы этого избежать, мы перенесем cleanup сервера из onDisappear 
-            // непосредственно в логику закрытия плеера (onDismiss).
             playerController.modalPresentationStyle = .fullScreen
             
             self.present(playerController, animated: true) {
                 player.play()
                 self.startDismissalObserver()
+                self.setupQualityButton(in: playerController)
             }
+        }
+    }
+    
+    private func setupQualityButton(in playerController: AVPlayerViewController) {
+        guard let overlay = playerController.contentOverlayView, let viewModel = viewModel else { return }
+        
+        let btn = UIButton(type: .system)
+        btn.setImage(UIImage(systemName: "slider.horizontal.3"), for: .normal)
+        btn.tintColor = .white
+        btn.backgroundColor = UIColor.black.withAlphaComponent(0.5)
+        btn.layer.cornerRadius = 22
+        btn.translatesAutoresizingMaskIntoConstraints = false
+        overlay.addSubview(btn)
+        
+        NSLayoutConstraint.activate([
+            btn.topAnchor.constraint(equalTo: overlay.safeAreaLayoutGuide.topAnchor, constant: 16),
+            btn.trailingAnchor.constraint(equalTo: overlay.safeAreaLayoutGuide.trailingAnchor, constant: -60),
+            btn.widthAnchor.constraint(equalToConstant: 44),
+            btn.heightAnchor.constraint(equalToConstant: 44)
+        ])
+        
+        // Setup menu menu
+        btn.showsMenuAsPrimaryAction = true
+        
+        // Update menu dynamically based on viewModel
+        self.qualityButton = btn
+        updateQualityMenu()
+        
+        // Listen for changes (using a simple timer or combine observer)
+        NotificationCenter.default.addObserver(forName: NSNotification.Name("QualitiesUpdated"), object: nil, queue: .main) { [weak self] _ in
+            self?.updateQualityMenu()
+        }
+    }
+    
+    private func updateQualityMenu() {
+        guard let btn = qualityButton, let viewModel = viewModel else { return }
+        
+        var actions: [UIAction] = []
+        for quality in viewModel.availableQualities {
+            let isSelected = quality.key == viewModel.currentQualityKey
+            let action = UIAction(title: quality.key, state: isSelected ? .on : .off) { _ in
+                viewModel.changeQuality(to: quality.key)
+                // Force menu update for checkmark
+                DispatchQueue.main.async {
+                    self.updateQualityMenu()
+                }
+            }
+            actions.append(action)
+        }
+        
+        if actions.isEmpty {
+            btn.isHidden = true
+        } else {
+            btn.isHidden = false
+            let menu = UIMenu(title: "Качество видео", children: actions)
+            btn.menu = menu
         }
     }
     
@@ -76,18 +129,21 @@ class PlayerPresenterViewController: UIViewController {
 
 struct ModalPlayerPresenter: UIViewControllerRepresentable {
     var player: AVPlayer
+    var viewModel: PlayerViewModel
     var onDismiss: () -> Void
     
     func makeUIViewController(context: Context) -> PlayerPresenterViewController {
         let controller = PlayerPresenterViewController()
         controller.view.backgroundColor = .clear
         controller.player = player
+        controller.viewModel = viewModel
         controller.onDismiss = onDismiss
         return controller
     }
     
     func updateUIViewController(_ uiViewController: PlayerPresenterViewController, context: Context) {
         uiViewController.player = player
+        uiViewController.viewModel = viewModel
         uiViewController.onDismiss = onDismiss
     }
 }
@@ -131,7 +187,7 @@ struct PlayerView: View {
                         .padding()
                 }
             } else if let player = viewModel.player {
-                ModalPlayerPresenter(player: player) {
+                ModalPlayerPresenter(player: player, viewModel: viewModel) {
                     viewModel.cleanup() // Теперь очистка происходит ТОЛЬКО когда плеер реально закрылся
                     presentationMode.wrappedValue.dismiss()
                 }
@@ -165,7 +221,11 @@ class PlayerViewModel: ObservableObject, AllohaParserDelegate {
     @Published var isLoading = true
     @Published var error: String?
     
+    @Published var availableQualities: [(key: String, url: URL)] = []
+    @Published var currentQualityKey: String?
+    
     private var parser: AllohaParser?
+    private var currentHeaders: [String: String] = [:]
     
     func load(iframeUrl: String) {
         if player != nil { return } // Защита от двойного вызова
@@ -216,12 +276,36 @@ class PlayerViewModel: ObservableObject, AllohaParserDelegate {
                let dict = try JSONSerialization.jsonObject(with: data) as? [String: Any],
                let hlsSource = dict["hlsSource"] as? [[String: Any]],
                let firstSource = hlsSource.first,
-               let quality = firstSource["quality"] as? [String: String],
-               let firstQualityKey = quality.keys.first,
-               let urlString = quality[firstQualityKey]?.components(separatedBy: " or ").first,
-               let url = URL(string: urlString) {
+               let quality = firstSource["quality"] as? [String: String] {
                 
-                playVideo(url: url, headers: extraHeaders)
+                self.currentHeaders = extraHeaders
+                
+                // Parse all available qualities
+                var parsedQualities: [(key: String, url: URL)] = []
+                for (key, urlString) in quality {
+                    if let realUrlString = urlString.components(separatedBy: " or ").first,
+                       let url = URL(string: realUrlString) {
+                        parsedQualities.append((key: key, url: url))
+                    }
+                }
+                
+                // Sort qualities descending (e.g. 1080p, 720p, 480p)
+                parsedQualities.sort { (a, b) -> Bool in
+                    let valA = Int(a.key.replacingOccurrences(of: "p", with: "")) ?? 0
+                    let valB = Int(b.key.replacingOccurrences(of: "p", with: "")) ?? 0
+                    return valA > valB
+                }
+                
+                self.availableQualities = parsedQualities
+                
+                if let firstQuality = parsedQualities.first {
+                    self.currentQualityKey = firstQuality.key
+                    playVideo(url: firstQuality.url, headers: extraHeaders)
+                    NotificationCenter.default.post(name: NSNotification.Name("QualitiesUpdated"), object: nil)
+                } else {
+                    self.error = "Не удалось извлечь ссылку на видео"
+                    self.isLoading = false
+                }
             } else {
                 self.error = "Не удалось извлечь ссылку на видео"
                 self.isLoading = false
@@ -229,6 +313,33 @@ class PlayerViewModel: ObservableObject, AllohaParserDelegate {
         } catch {
             self.error = "Ошибка парсинга: \(error.localizedDescription)"
             self.isLoading = false
+        }
+    }
+    
+    func changeQuality(to key: String) {
+        guard let quality = availableQualities.first(where: { $0.key == key }) else { return }
+        self.currentQualityKey = key
+        
+        let currentTime = player?.currentTime() ?? .zero
+        let wasPlaying = player?.timeControlStatus == .playing
+        
+        let absoluteUrlString = quality.url.absoluteString
+        guard let encodedData = absoluteUrlString.data(using: .utf8) else { return }
+        let encoded = encodedData.base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+        
+        // Update the proxy if needed (HlsProxyServer should handle new URL just fine since it's stateless per url parameter)
+        guard let proxyUrl = URL(string: "http://127.0.0.1:\(HlsProxyServer.shared.port.rawValue)/proxy?url=\(encoded)") else { return }
+        
+        let asset = AVURLAsset(url: proxyUrl)
+        let playerItem = AVPlayerItem(asset: asset)
+        
+        self.player?.replaceCurrentItem(with: playerItem)
+        self.player?.seek(to: currentTime)
+        if wasPlaying {
+            self.player?.play()
         }
     }
     
