@@ -263,7 +263,16 @@ class SearchViewModel: ObservableObject {
 
                 let response = try await MoviesRepository.shared.searchMoviesResponse(query: trimmedQuery, page: page)
                 if !Task.isCancelled {
-                    let newResults = response.results ?? []
+                    let rawResults = response.results ?? []
+                    // Filter invalid items like Android does
+                    let newResults = rawResults.filter { item in
+                        let poster = item.posterUrl ?? item.poster_path ?? ""
+                        let hasPoster = !poster.isEmpty && !poster.lowercased().contains("no-poster")
+                        let hasTitle = !(item.title ?? item.name ?? "").isEmpty
+                        let hasRating = (item.rating ?? 0) > 0.0
+                        return hasPoster && hasTitle && hasRating
+                    }
+                    
                     totalPages = max(response.effectiveTotalPages, 1)
                     if page <= 1 || reset {
                         results = newResults

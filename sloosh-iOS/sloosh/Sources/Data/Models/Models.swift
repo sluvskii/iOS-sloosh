@@ -95,37 +95,31 @@ struct MediaDto: Codable, Identifiable {
     }
     
     var displayPosterUrl: String? {
-        normalizeImageUrl(path: posterUrl ?? poster_path)
+        let rawUrl = posterUrl ?? poster_path
+        return normalizeImageUrl(path: rawUrl, id: originalId?.stringValue)
     }
 }
 
-func normalizeImageUrl(path: String?) -> String? {
-    guard let path = path?.trimmingCharacters(in: .whitespacesAndNewlines), !path.isEmpty else { return nil }
+func normalizeImageUrl(path: String?, id: String? = nil) -> String? {
+    let baseUrl = "https://api.neomovies.ru"
     
-    if path.hasPrefix("http://") || path.hasPrefix("https://") {
-        return path
-    }
-    
-    if path.hasPrefix("/") {
-        return "https://api.neomovies.ru" + path
-    }
-    
-    if path.hasPrefix("api/") {
-        return "https://api.neomovies.ru/" + path
-    }
-    
-    var id: String? = nil
-    if path.allSatisfy({ $0.isNumber }) {
-        id = path
-    } else if path.hasPrefix("kp_") {
-        let suffix = String(path.dropFirst(3))
-        if suffix.allSatisfy({ $0.isNumber }) {
-            id = suffix
+    if let val = path?.trimmingCharacters(in: .whitespacesAndNewlines), !val.isEmpty {
+        if val.hasPrefix("http://") || val.hasPrefix("https://") {
+            return val.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? val
+        }
+        if val.hasPrefix("/") {
+            return (baseUrl + val).addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? (baseUrl + val)
+        }
+        if val.hasPrefix("api/") {
+            return (baseUrl + "/" + val).addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? (baseUrl + "/" + val)
         }
     }
     
-    guard let validId = id else { return nil }
-    return "https://api.neomovies.ru/api/v1/images/kp_small/\(validId)?fallback=true"
+    // Fallback to ID-based poster if no valid path was found
+    guard let validId = id, validId.allSatisfy({ $0.isNumber }) else {
+        return nil
+    }
+    return "\(baseUrl)/api/v1/images/kp_small/\(validId)?fallback=true"
 }
 
 struct MediaDetailsDto: Codable {
@@ -147,12 +141,11 @@ struct MediaDetailsDto: Codable {
     let externalIds: ExternalIdsDto?
     
     var displayPosterUrl: String? {
-        normalizeImageUrl(path: posterUrl)
+        normalizeImageUrl(path: posterUrl, id: id)
     }
     
     var displayBackdropUrl: String? {
-        // We can reuse the same normalizer for backdrop, or just check if it's full URL
-        normalizeImageUrl(path: backdropUrl)
+        normalizeImageUrl(path: backdropUrl, id: id)
     }
 }
 
