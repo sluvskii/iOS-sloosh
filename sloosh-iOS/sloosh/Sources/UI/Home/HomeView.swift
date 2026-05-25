@@ -101,12 +101,10 @@ struct HomeView: View {
                     HomeFilterMenu(selectedFilter: $viewModel.selectedFilter)
                 }
             }
-            .safeAreaInset(edge: .top, spacing: 0) {
+            .safeAreaInset(edge: .top) {
                 HomeCategorySegmentedPicker(selectedCategory: $viewModel.selectedCategory)
                     .padding(.horizontal, 16)
-                    .padding(.top, 8)
-                    .padding(.bottom, 12)
-                    .background(.bar)
+                    .padding(.bottom, 8)
             }
             .background(Color(UIColor.systemBackground))
             .task {
@@ -137,7 +135,6 @@ private struct HomeCategorySegmentedPicker: View {
             }
         }
         .pickerStyle(.segmented)
-        .controlSize(.large)
     }
 }
 
@@ -158,7 +155,6 @@ private struct HomeFilterMenu: View {
                 .foregroundColor(Color(UIColor.label))
                 .frame(width: 32, height: 32)
         }
-        .tint(Color(UIColor.label))
     }
 }
 
