@@ -1,5 +1,44 @@
 import SwiftUI
 
+struct RemoteBackdropView: View {
+    let url: URL?
+    let width: CGFloat
+    let height: CGFloat
+    
+    @State private var image: UIImage?
+    @State private var isLoading = false
+    
+    var body: some View {
+        Group {
+            if let image = image {
+                Image(uiImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: width, height: height)
+                    .clipped()
+            } else {
+                Rectangle().fill(Color.gray.opacity(0.2))
+                    .frame(width: width, height: height)
+                    .shimmer()
+            }
+        }
+        .task(id: url) {
+            guard let url = url, image == nil else { return }
+            isLoading = true
+            do {
+                let request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad)
+                let (data, _) = try await URLSession.shared.data(for: request)
+                if let uiImg = UIImage(data: data) {
+                    self.image = uiImg
+                }
+            } catch {
+                // Ignore error, just keep placeholder
+            }
+            isLoading = false
+        }
+    }
+}
+
 struct DetailsView: View {
     let movieId: String
     @StateObject private var viewModel = DetailsViewModel()
@@ -23,18 +62,11 @@ struct DetailsView: View {
                         let height = isScrollingDown ? 450 + minY : 450
                         let offset = isScrollingDown ? -minY : 0
 
-                        AsyncImage(url: URL(string: details.displayBackdropUrl ?? details.displayPosterUrl ?? "")) { phase in
-                            if let image = phase.image {
-                                image.resizable()
-                                    .aspectRatio(contentMode: .fill)
-                                    .frame(width: geometry.size.width, height: height)
-                                    .clipped()
-                            } else {
-                                Rectangle().fill(Color.gray.opacity(0.2))
-                                    .frame(width: geometry.size.width, height: height)
-                                    .shimmer()
-                            }
-                        }
+                        RemoteBackdropView(
+                            url: URL(string: details.displayBackdropUrl ?? details.displayPosterUrl ?? ""),
+                            width: geometry.size.width,
+                            height: height
+                        )
                         .offset(y: offset)
                         .overlay(
                             LinearGradient(
