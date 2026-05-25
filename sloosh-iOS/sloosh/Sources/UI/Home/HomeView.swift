@@ -58,10 +58,8 @@ struct HomeView: View {
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .principal) {
+                ToolbarItem(placement: .topBarLeading) {
                     HomeCategorySegmentedPicker(selectedCategory: $viewModel.selectedCategory)
-                        // Немного уменьшаем отступы по краям, чтобы пикер не был слишком высоким и не резался
-                        .padding(.vertical, -4) 
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     HomeFilterMenu(selectedFilter: $viewModel.selectedFilter)
