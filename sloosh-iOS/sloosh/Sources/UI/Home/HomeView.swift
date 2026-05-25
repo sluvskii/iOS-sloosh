@@ -35,33 +35,6 @@ enum HomeFilter: String, CaseIterable, Identifiable {
 struct HomeView: View {
     @StateObject private var viewModel = HomeViewModel()
 
-    init() {
-        // Кастомизация UISegmentedControl для плавающего вида
-        let clearImage = UIImage()
-        UISegmentedControl.appearance().setBackgroundImage(clearImage, for: .normal, barMetrics: .default)
-        UISegmentedControl.appearance().setDividerImage(clearImage, forLeftSegmentState: .normal, rightSegmentState: .normal, barMetrics: .default)
-        
-        let normalTextAttributes: [NSAttributedString.Key: Any] = [
-            .foregroundColor: UIColor.secondaryLabel,
-            .font: UIFont.systemFont(ofSize: 15, weight: .medium)
-        ]
-        
-        let selectedTextAttributes: [NSAttributedString.Key: Any] = [
-            .foregroundColor: UIColor.label,
-            .font: UIFont.systemFont(ofSize: 15, weight: .bold)
-        ]
-        
-        UISegmentedControl.appearance().setTitleTextAttributes(normalTextAttributes, for: .normal)
-        UISegmentedControl.appearance().setTitleTextAttributes(selectedTextAttributes, for: .selected)
-        
-        // Смещаем текст чуть вверх, если нужно
-        UISegmentedControl.appearance().setContentPositionAdjustment(
-            UIOffset(horizontal: 0, vertical: 0),
-            forSegmentType: .any,
-            barMetrics: .default
-        )
-    }
-
     var body: some View {
         NavigationStack {
             let categoryBinding = Binding<HomeCategory?>(
