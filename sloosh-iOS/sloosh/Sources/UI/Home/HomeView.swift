@@ -151,10 +151,8 @@ private struct HomeCategorySegmentedPicker: View {
             }
         }
         .pickerStyle(.segmented)
-        .fixedSize()
-        .scaleEffect(0.82)
-        .offset(y: 3)
-        .padding(.vertical, 4)
+        .fixedSize(horizontal: true, vertical: false)
+        .frame(height: 32)
     }
 }
 
