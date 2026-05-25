@@ -135,15 +135,7 @@ private struct HomeCategorySegmentedPicker: View {
             }
         }
         .pickerStyle(.segmented)
-        .padding(6)
-        .background(.ultraThinMaterial)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .shadow(color: .black.opacity(0.12), radius: 8, x: 0, y: 4)
         .padding(.horizontal, 16)
-        .onAppear {
-            let appearance = UISegmentedControl.appearance()
-            appearance.backgroundColor = .clear
-        }
     }
 }
 
