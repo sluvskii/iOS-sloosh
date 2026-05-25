@@ -35,6 +35,33 @@ enum HomeFilter: String, CaseIterable, Identifiable {
 struct HomeView: View {
     @StateObject private var viewModel = HomeViewModel()
 
+    init() {
+        // Кастомизация UISegmentedControl для плавающего вида
+        let clearImage = UIImage()
+        UISegmentedControl.appearance().setBackgroundImage(clearImage, for: .normal, barMetrics: .default)
+        UISegmentedControl.appearance().setDividerImage(clearImage, forLeftSegmentState: .normal, rightSegmentState: .normal, barMetrics: .default)
+        
+        let normalTextAttributes: [NSAttributedString.Key: Any] = [
+            .foregroundColor: UIColor.secondaryLabel,
+            .font: UIFont.systemFont(ofSize: 15, weight: .medium)
+        ]
+        
+        let selectedTextAttributes: [NSAttributedString.Key: Any] = [
+            .foregroundColor: UIColor.label,
+            .font: UIFont.systemFont(ofSize: 15, weight: .bold)
+        ]
+        
+        UISegmentedControl.appearance().setTitleTextAttributes(normalTextAttributes, for: .normal)
+        UISegmentedControl.appearance().setTitleTextAttributes(selectedTextAttributes, for: .selected)
+        
+        // Смещаем текст чуть вверх, если нужно
+        UISegmentedControl.appearance().setContentPositionAdjustment(
+            UIOffset(horizontal: 0, vertical: 0),
+            forSegmentType: .any,
+            barMetrics: .default
+        )
+    }
+
     var body: some View {
         NavigationStack {
             let categoryBinding = Binding<HomeCategory?>(
@@ -144,19 +171,6 @@ struct HomeCategoryContentView: View {
 private struct HomeCategorySegmentedPicker: View {
     @Binding var selectedCategory: HomeCategory
 
-    init(selectedCategory: Binding<HomeCategory>) {
-        self._selectedCategory = selectedCategory
-        // Настройка UIAppearance для того, чтобы сегменты подстраивались под ширину текста
-        UISegmentedControl.appearance().apportionsSegmentWidthsByContent = true
-        
-        // Увеличиваем внутренние отступы сегментов (padding) нативно
-        UISegmentedControl.appearance().setContentPositionAdjustment(
-            UIOffset(horizontal: 12, vertical: 0), 
-            forType: .any, 
-            barMetrics: .default
-        )
-    }
-
     var body: some View {
         Picker("Категория", selection: $selectedCategory) {
             ForEach(HomeCategory.allCases, id: \.self) { category in
@@ -165,7 +179,6 @@ private struct HomeCategorySegmentedPicker: View {
             }
         }
         .pickerStyle(.segmented)
-        .fixedSize()
     }
 }
 

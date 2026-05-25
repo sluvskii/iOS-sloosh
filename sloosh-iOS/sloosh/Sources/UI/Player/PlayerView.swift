@@ -41,7 +41,7 @@ class PlayerPresenterViewController: UIViewController {
     }
     
     private func setupQualityButton(in playerController: AVPlayerViewController) {
-        guard let overlay = playerController.contentOverlayView, let viewModel = viewModel else { return }
+        guard let overlay = playerController.contentOverlayView, self.viewModel != nil else { return }
         
         let btn = UIButton(type: .system)
         btn.setImage(UIImage(systemName: "slider.horizontal.3"), for: .normal)
