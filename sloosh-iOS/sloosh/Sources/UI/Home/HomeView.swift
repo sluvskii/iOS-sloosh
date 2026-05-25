@@ -24,24 +24,12 @@ enum HomeCategory: String, CaseIterable {
 }
 
 enum HomeFilter: String, CaseIterable, Identifiable {
-    case popular = "Популярное"
-    case latest = "Свежие"
+    case popular = "Смотрят сейчас"
     case topRated = "По рейтингу"
 
     var id: String { rawValue }
 
     var title: String { rawValue }
-
-    var systemImage: String {
-        switch self {
-        case .popular:
-            return "flame.fill"
-        case .latest:
-            return "sparkles"
-        case .topRated:
-            return "star.fill"
-        }
-    }
 }
 
 struct HomeView: View {
@@ -173,7 +161,7 @@ private struct HomeFilterMenu: View {
         Menu {
             Picker("Сортировка", selection: $selectedFilter) {
                 ForEach(HomeFilter.allCases) { filter in
-                    Label(filter.title, systemImage: filter.systemImage)
+                    Text(filter.title)
                         .tag(filter)
                 }
             }
@@ -401,16 +389,6 @@ class HomeViewModel: ObservableObject {
         switch filter {
         case .popular:
             baseItems = try await MoviesRepository.shared.getPopularMovies(page: page)
-        case .latest:
-            let popular = try await MoviesRepository.shared.getPopularMovies(page: page)
-            baseItems = popular.sorted { lhs, rhs in
-                let leftYear = extractedYear(from: lhs)
-                let rightYear = extractedYear(from: rhs)
-                if leftYear == rightYear {
-                    return (lhs.rating ?? 0) > (rhs.rating ?? 0)
-                }
-                return leftYear > rightYear
-            }
         case .topRated:
             switch category {
             case .tvShows:
