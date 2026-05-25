@@ -42,19 +42,39 @@ struct HomeView: View {
                 set: { if let val = $0 { viewModel.selectedCategory = val } }
             )
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(spacing: 0) {
-                    ForEach(HomeCategory.allCases, id: \.self) { category in
-                        HomeCategoryContentView(viewModel: viewModel, category: category)
-                            .containerRelativeFrame(.horizontal)
-                            .id(category)
+            ZStack {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(spacing: 0) {
+                        ForEach(HomeCategory.allCases, id: \.self) { category in
+                            HomeCategoryContentView(viewModel: viewModel, category: category)
+                                .containerRelativeFrame(.horizontal)
+                                .id(category)
+                        }
+                    }
+                    .scrollTargetLayout()
+                }
+                .scrollTargetBehavior(.paging)
+                .scrollPosition(id: categoryBinding)
+                .animation(.spring(response: 0.3, dampingFraction: 0.8), value: viewModel.selectedCategory)
+
+                VStack {
+                    Spacer()
+                    HStack {
+                        Spacer()
+                        NavigationLink(destination: SearchView()) {
+                            Image(systemName: "magnifyingglass")
+                                .font(.system(size: 24, weight: .semibold))
+                                .foregroundColor(.white)
+                                .frame(width: 60, height: 60)
+                                .background(Color.slooshAccent)
+                                .clipShape(Circle())
+                                .shadow(color: Color.slooshAccent.opacity(0.4), radius: 10, x: 0, y: 5)
+                        }
+                        .padding(.trailing, 20)
+                        .padding(.bottom, 20)
                     }
                 }
-                .scrollTargetLayout()
             }
-            .scrollTargetBehavior(.paging)
-            .scrollPosition(id: categoryBinding)
-            .animation(.spring(response: 0.3, dampingFraction: 0.8), value: viewModel.selectedCategory)
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -156,23 +176,20 @@ private struct HomeCategorySegmentedPicker: View {
 
 private struct HomeFilterMenu: View {
     @Binding var selectedFilter: HomeFilter
-    @State private var isShowingDialog = false
 
     var body: some View {
-        Button {
-            isShowingDialog = true
+        Menu {
+            Picker("Сортировка", selection: $selectedFilter) {
+                ForEach(HomeFilter.allCases) { filter in
+                    Text(filter.title)
+                        .tag(filter)
+                }
+            }
         } label: {
             Image(systemName: "line.3.horizontal.decrease.circle")
                 .font(.system(size: 18, weight: .semibold))
                 .foregroundColor(Color(UIColor.label))
                 .frame(width: 32, height: 32)
-        }
-        .confirmationDialog("Сортировка", isPresented: $isShowingDialog, titleVisibility: .visible) {
-            ForEach(HomeFilter.allCases) { filter in
-                Button(filter.title) {
-                    selectedFilter = filter
-                }
-            }
         }
     }
 }
