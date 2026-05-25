@@ -55,10 +55,11 @@ jobs:
         zip -r sloosh.ipa Payload
 
     - name: Create Release
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       if: github.ref == 'refs/heads/main'
       with:
         tag_name: build-${{ github.run_number }}
+        target_commitish: ${{ github.sha }}
         name: Development Build #${{ github.run_number }}
         body: |
           Auto-generated IPA build from the latest commit.
