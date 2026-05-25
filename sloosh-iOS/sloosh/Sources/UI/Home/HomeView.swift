@@ -103,7 +103,6 @@ struct HomeView: View {
             }
             .safeAreaInset(edge: .top, spacing: 0) {
                 HomeCategorySegmentedPicker(selectedCategory: $viewModel.selectedCategory)
-                    .padding(.horizontal, 16)
                     .padding(.top, 8)
                     .padding(.bottom, 12)
             }
@@ -127,17 +126,47 @@ struct HomeView: View {
 
 private struct HomeCategorySegmentedPicker: View {
     @Binding var selectedCategory: HomeCategory
+    @Namespace private var animation
 
     var body: some View {
-        Picker("Категория", selection: $selectedCategory) {
+        HStack(spacing: 0) {
             ForEach(HomeCategory.allCases, id: \.self) { category in
-                Text(category.segmentedTitle)
-                    .tag(category)
+                Button {
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.7, blendDuration: 0)) {
+                        selectedCategory = category
+                    }
+                } label: {
+                    Text(category.segmentedTitle)
+                        .font(.system(size: 15, weight: selectedCategory == category ? .semibold : .medium, design: .rounded))
+                        .foregroundColor(selectedCategory == category ? .primary : .secondary)
+                        .padding(.vertical, 10)
+                        .padding(.horizontal, 16)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.8)
+                        .background {
+                            if selectedCategory == category {
+                                Capsule()
+                                    .fill(Color(UIColor.systemBackground))
+                                    .shadow(color: .black.opacity(0.08), radius: 4, x: 0, y: 2)
+                                    .matchedGeometryEffect(id: "ACTIVETAB", in: animation)
+                            }
+                        }
+                        .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
             }
         }
-        .pickerStyle(.segmented)
-        .labelsHidden()
-        .controlSize(.large)
+        .padding(4)
+        .background {
+            Capsule()
+                .fill(.ultraThinMaterial)
+                .overlay(
+                    Capsule()
+                        .stroke(Color.primary.opacity(0.08), lineWidth: 0.5)
+                )
+                .shadow(color: .black.opacity(0.12), radius: 12, x: 0, y: 6)
+        }
+        .padding(.horizontal, 16)
     }
 }
 
