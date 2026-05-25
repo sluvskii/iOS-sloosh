@@ -60,7 +60,6 @@ struct HomeView: View {
             .toolbar {
                 ToolbarItem(placement: .principal) {
                     HomeCategorySegmentedPicker(selectedCategory: $viewModel.selectedCategory)
-                        .scaleEffect(0.9) // Делаем панель чуть меньше (тоньше), чтобы не было обрезки
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     HomeFilterMenu(selectedFilter: $viewModel.selectedFilter)
@@ -143,15 +142,39 @@ struct HomeCategoryContentView: View {
 
 private struct HomeCategorySegmentedPicker: View {
     @Binding var selectedCategory: HomeCategory
+    @Namespace private var animation
 
     var body: some View {
-        Picker("Категория", selection: $selectedCategory) {
+        HStack(spacing: 0) {
             ForEach(HomeCategory.allCases, id: \.self) { category in
                 Text(category.segmentedTitle)
-                    .tag(category)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(selectedCategory == category ? .primary : .secondary)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .background {
+                        if selectedCategory == category {
+                            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                .fill(Color(UIColor.systemBackground))
+                                .shadow(color: .black.opacity(0.08), radius: 2, x: 0, y: 1)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                        .stroke(Color.black.opacity(0.04), lineWidth: 0.5)
+                                )
+                                .matchedGeometryEffect(id: "activeTab", in: animation)
+                        }
+                    }
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        withAnimation(.interactiveSpring(response: 0.3, dampingFraction: 0.7, blendDuration: 0.5)) {
+                            selectedCategory = category
+                        }
+                    }
             }
         }
-        .pickerStyle(.segmented)
+        .padding(2)
+        .background(Color(UIColor.tertiarySystemFill))
+        .clipShape(RoundedRectangle(cornerRadius: 9, style: .continuous))
     }
 }
 
