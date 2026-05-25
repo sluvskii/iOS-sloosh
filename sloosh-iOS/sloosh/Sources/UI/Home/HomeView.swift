@@ -126,47 +126,24 @@ struct HomeView: View {
 
 private struct HomeCategorySegmentedPicker: View {
     @Binding var selectedCategory: HomeCategory
-    @Namespace private var animation
 
     var body: some View {
-        HStack(spacing: 0) {
+        Picker("Категория", selection: $selectedCategory) {
             ForEach(HomeCategory.allCases, id: \.self) { category in
-                Button {
-                    withAnimation(.spring(response: 0.4, dampingFraction: 0.7, blendDuration: 0)) {
-                        selectedCategory = category
-                    }
-                } label: {
-                    Text(category.segmentedTitle)
-                        .font(.system(size: 15, weight: selectedCategory == category ? .semibold : .medium, design: .rounded))
-                        .foregroundColor(selectedCategory == category ? .primary : .secondary)
-                        .padding(.vertical, 10)
-                        .padding(.horizontal, 16)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
-                        .background {
-                            if selectedCategory == category {
-                                Capsule()
-                                    .fill(Color(UIColor.systemBackground))
-                                    .shadow(color: .black.opacity(0.08), radius: 4, x: 0, y: 2)
-                                    .matchedGeometryEffect(id: "ACTIVETAB", in: animation)
-                            }
-                        }
-                        .contentShape(Capsule())
-                }
-                .buttonStyle(.plain)
+                Text(category.segmentedTitle)
+                    .tag(category)
             }
         }
-        .padding(4)
-        .background {
-            Capsule()
-                .fill(.ultraThinMaterial)
-                .overlay(
-                    Capsule()
-                        .stroke(Color.primary.opacity(0.08), lineWidth: 0.5)
-                )
-                .shadow(color: .black.opacity(0.12), radius: 12, x: 0, y: 6)
-        }
+        .pickerStyle(.segmented)
+        .padding(6)
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .shadow(color: .black.opacity(0.12), radius: 8, x: 0, y: 4)
         .padding(.horizontal, 16)
+        .onAppear {
+            let appearance = UISegmentedControl.appearance()
+            appearance.backgroundColor = .clear
+        }
     }
 }
 
