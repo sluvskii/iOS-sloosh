@@ -151,7 +151,8 @@ private struct HomeCategorySegmentedPicker: View {
             }
         }
         .pickerStyle(.segmented)
-        .controlSize(.mini)
+        .fixedSize()
+        .scaleEffect(0.85)
     }
 }
 
