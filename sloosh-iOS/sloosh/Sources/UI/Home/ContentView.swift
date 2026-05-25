@@ -8,9 +8,6 @@ struct ContentView: View {
                 Tab("Главная", systemImage: "house.fill") {
                     HomeView()
                 }
-                Tab("Поиск", systemImage: "magnifyingglass") {
-                    SearchView()
-                }
                 Tab("Избранное", systemImage: "heart.fill") {
                     FavoritesView()
                 }
@@ -28,10 +25,6 @@ struct ContentView: View {
                 HomeView()
                     .tabItem {
                         Label("Главная", systemImage: "house.fill")
-                    }
-                SearchView()
-                    .tabItem {
-                        Label("Поиск", systemImage: "magnifyingglass")
                     }
                 FavoritesView()
                     .tabItem {
