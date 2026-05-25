@@ -148,13 +148,19 @@ private struct HomeCategorySegmentedPicker: View {
         self._selectedCategory = selectedCategory
         // Настройка UIAppearance для того, чтобы сегменты подстраивались под ширину текста
         UISegmentedControl.appearance().apportionsSegmentWidthsByContent = true
+        
+        // Увеличиваем внутренние отступы сегментов (padding) нативно
+        UISegmentedControl.appearance().setContentPositionAdjustment(
+            UIOffset(horizontal: 12, vertical: 0), 
+            forType: .any, 
+            barMetrics: .default
+        )
     }
 
     var body: some View {
         Picker("Категория", selection: $selectedCategory) {
             ForEach(HomeCategory.allCases, id: \.self) { category in
-                // Добавляем неразрывные пробелы по краям, чтобы нативно расширить вкладки
-                Text("\u{00A0}\u{00A0}\(category.segmentedTitle)\u{00A0}\u{00A0}")
+                Text(category.segmentedTitle)
                     .tag(category)
             }
         }
