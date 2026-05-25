@@ -30,6 +30,13 @@ enum HomeFilter: String, CaseIterable, Identifiable {
     var id: String { rawValue }
 
     var title: String { rawValue }
+    
+    var icon: String {
+        switch self {
+        case .popular: return "flame"
+        case .topRated: return "star"
+        }
+    }
 }
 
 struct HomeView: View {
@@ -163,7 +170,7 @@ private struct HomeFilterMenu: View {
         Menu {
             Picker("Сортировка", selection: $selectedFilter) {
                 ForEach(HomeFilter.allCases) { filter in
-                    Text(filter.title)
+                    Label(filter.title, systemImage: filter.icon)
                         .tag(filter)
                 }
             }
