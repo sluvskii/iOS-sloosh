@@ -152,7 +152,7 @@ private struct HomeCategorySegmentedPicker: View {
         }
         .pickerStyle(.segmented)
         .fixedSize()
-        .scaleEffect(0.9, anchor: .leading)
+        .scaleEffect(0.95, anchor: .leading)
     }
 }
 
