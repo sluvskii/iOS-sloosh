@@ -49,13 +49,24 @@ struct HomeView: View {
 
     var body: some View {
         NavigationStack {
-            TabView(selection: $viewModel.selectedCategory) {
-                ForEach(HomeCategory.allCases, id: \.self) { category in
-                    HomeCategoryContentView(viewModel: viewModel, category: category)
-                        .tag(category)
+            let categoryBinding = Binding<HomeCategory?>(
+                get: { viewModel.selectedCategory },
+                set: { if let val = $0 { viewModel.selectedCategory = val } }
+            )
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(spacing: 0) {
+                    ForEach(HomeCategory.allCases, id: \.self) { category in
+                        HomeCategoryContentView(viewModel: viewModel, category: category)
+                            .containerRelativeFrame(.horizontal)
+                            .id(category)
+                    }
                 }
+                .scrollTargetLayout()
             }
-            .tabViewStyle(.page(indexDisplayMode: .never))
+            .scrollTargetBehavior(.paging)
+            .scrollPosition(id: categoryBinding)
+            .animation(.spring(response: 0.3, dampingFraction: 0.8), value: viewModel.selectedCategory)
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -66,7 +77,6 @@ struct HomeView: View {
                     HomeFilterMenu(selectedFilter: $viewModel.selectedFilter)
                 }
             }
-            .background(Color(UIColor.systemBackground))
             .task {
                 await viewModel.applyCurrentSelection(force: true)
             }
