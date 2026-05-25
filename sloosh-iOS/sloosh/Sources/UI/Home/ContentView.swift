@@ -3,10 +3,13 @@ import UIKit
 
 struct ContentView: View {
     var body: some View {
-        if #available(iOS 18.0, *) {
+        if #available(iOS 26.0, *) {
             TabView {
                 Tab("Главная", systemImage: "house.fill") {
                     HomeView()
+                }
+                Tab("Поиск", systemImage: "magnifyingglass", role: .search) {
+                    SearchView()
                 }
                 Tab("Избранное", systemImage: "heart.fill") {
                     FavoritesView()
@@ -25,6 +28,10 @@ struct ContentView: View {
                 HomeView()
                     .tabItem {
                         Label("Главная", systemImage: "house.fill")
+                    }
+                SearchView()
+                    .tabItem {
+                        Label("Поиск", systemImage: "magnifyingglass")
                     }
                 FavoritesView()
                     .tabItem {
