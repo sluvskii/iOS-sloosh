@@ -226,6 +226,11 @@ class PlayerViewModel: ObservableObject, AllohaParserDelegate {
     
     private var parser: AllohaParser?
     private var currentHeaders: [String: String] = [:]
+
+    private func isLocalProxyUrl(_ url: URL) -> Bool {
+        guard let host = url.host?.lowercased() else { return false }
+        return host == "127.0.0.1" || host == "localhost"
+    }
     
     func load(iframeUrl: String) {
         if player != nil { return } // Защита от двойного вызова
@@ -245,6 +250,29 @@ class PlayerViewModel: ObservableObject, AllohaParserDelegate {
         guard let parsedUrl = URL(string: url) else {
             self.error = "Некорректный URL"
             self.isLoading = false
+            return
+        }
+
+        if isLocalProxyUrl(parsedUrl) {
+            self.currentHeaders = [:]
+            self.currentQualityKey = "Авто"
+            self.availableQualities = [("Авто", parsedUrl)]
+
+            let asset = AVURLAsset(url: parsedUrl)
+            let playerItem = AVPlayerItem(asset: asset)
+            self.player = AVPlayer(playerItem: playerItem)
+            self.isLoading = false
+
+            Task {
+                do {
+                    let (data, _) = try await URLSession.shared.data(from: parsedUrl)
+                    if let content = String(data: data, encoding: .utf8) {
+                        parseMasterPlaylist(content: content, baseUrl: parsedUrl)
+                    }
+                } catch {
+                    print("Failed to fetch local master playlist: \(error)")
+                }
+            }
             return
         }
         
@@ -393,17 +421,22 @@ class PlayerViewModel: ObservableObject, AllohaParserDelegate {
         let currentTime = player?.currentTime() ?? .zero
         let wasPlaying = player?.timeControlStatus == .playing
         
-        let absoluteUrlString = quality.url.absoluteString
-        guard let encodedData = absoluteUrlString.data(using: .utf8) else { return }
-        let encoded = encodedData.base64EncodedString()
-            .replacingOccurrences(of: "+", with: "-")
-            .replacingOccurrences(of: "/", with: "_")
-            .replacingOccurrences(of: "=", with: "")
-        
-        // Update the proxy if needed (HlsProxyServer should handle new URL just fine since it's stateless per url parameter)
-        guard let proxyUrl = URL(string: "http://127.0.0.1:\(HlsProxyServer.shared.port.rawValue)/proxy?url=\(encoded)") else { return }
-        
-        let asset = AVURLAsset(url: proxyUrl)
+        let playbackUrl: URL
+        if isLocalProxyUrl(quality.url) {
+            playbackUrl = quality.url
+        } else {
+            let absoluteUrlString = quality.url.absoluteString
+            guard let encodedData = absoluteUrlString.data(using: .utf8) else { return }
+            let encoded = encodedData.base64EncodedString()
+                .replacingOccurrences(of: "+", with: "-")
+                .replacingOccurrences(of: "/", with: "_")
+                .replacingOccurrences(of: "=", with: "")
+
+            guard let proxyUrl = URL(string: "http://127.0.0.1:\(HlsProxyServer.shared.port.rawValue)/proxy?url=\(encoded)") else { return }
+            playbackUrl = proxyUrl
+        }
+
+        let asset = AVURLAsset(url: playbackUrl)
         let playerItem = AVPlayerItem(asset: asset)
         
         self.player?.replaceCurrentItem(with: playerItem)
