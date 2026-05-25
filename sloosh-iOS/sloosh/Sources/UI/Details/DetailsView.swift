@@ -102,34 +102,61 @@ struct DetailsView: View {
 
                         DetailsPrimaryMetadataRow(details: details)
                         
-                        // Play Button
-                        Button(action: {
-                            Task {
-                                if let kpId = details.externalIds?.kp {
-                                    await viewModel.fetchSources(kpId: kpId, title: details.title ?? details.name ?? "")
+                        // Action Row
+                        HStack(spacing: 12) {
+                            // Play Button
+                            Button(action: {
+                                Task {
+                                    if let kpId = details.externalIds?.kp {
+                                        await viewModel.fetchSources(kpId: kpId, title: details.title ?? details.name ?? "")
+                                    }
                                 }
-                            }
-                        }) {
-                            HStack {
-                                if viewModel.isFetchingSources {
-                                    ProgressView()
-                                        .progressViewStyle(CircularProgressViewStyle(tint: Color(UIColor.systemBackground)))
-                                        .padding(.trailing, 8)
-                                } else {
-                                    Image(systemName: "play.fill")
+                            }) {
+                                HStack {
+                                    if viewModel.isFetchingSources {
+                                        ProgressView()
+                                            .progressViewStyle(CircularProgressViewStyle(tint: Color(UIColor.systemBackground)))
+                                            .padding(.trailing, 8)
+                                    } else {
+                                        Image(systemName: "play.fill")
+                                    }
+                                    Text(viewModel.isFetchingSources ? "Загрузка..." : "Смотреть")
+                                        .font(.system(size: 18, weight: .bold))
                                 }
-                                Text(viewModel.isFetchingSources ? "Загрузка..." : "Смотреть")
-                                    .font(.system(size: 18, weight: .bold))
+                                .frame(maxWidth: .infinity)
+                                .frame(height: 56)
+                                .background(Color.primary)
+                                .foregroundColor(Color(UIColor.systemBackground))
+                                .clipShape(Capsule())
                             }
-                            .frame(maxWidth: .infinity)
-                            .padding()
-                            .background(Color.primary)
-                            .foregroundColor(Color(UIColor.systemBackground))
-                            .clipShape(Capsule())
+                            .disabled(viewModel.isFetchingSources)
+                            .matchedTransitionSource(id: "playBtn", in: transition)
+                            
+                            // Favorite Button
+                            Button {
+                                viewModel.toggleFavorite()
+                            } label: {
+                                Image(systemName: viewModel.isFavorite ? "heart.fill" : "heart")
+                                    .font(.system(size: 20, weight: .medium))
+                                    .foregroundColor(viewModel.isFavorite ? .red : .primary)
+                                    .frame(width: 56, height: 56)
+                                    .background(.ultraThinMaterial, in: Circle())
+                                    .overlay(Circle().stroke(Color.primary.opacity(0.08), lineWidth: 1))
+                            }
+                            
+                            // Download Button
+                            Button {
+                                showDownloadAlert = true
+                            } label: {
+                                Image(systemName: "arrow.down")
+                                    .font(.system(size: 20, weight: .medium))
+                                    .foregroundColor(.primary)
+                                    .frame(width: 56, height: 56)
+                                    .background(.ultraThinMaterial, in: Circle())
+                                    .overlay(Circle().stroke(Color.primary.opacity(0.08), lineWidth: 1))
+                            }
                         }
-                        .disabled(viewModel.isFetchingSources)
-                        .matchedTransitionSource(id: "playBtn", in: transition)
-                        .padding(.horizontal, 24)
+                        .padding(.horizontal, 20)
                         .padding(.top, 16)
 
                         DetailsInfoSection(details: details)
@@ -146,27 +173,6 @@ struct DetailsView: View {
         }
         .ignoresSafeArea(edges: .top)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbar(id: "details") {
-            ToolbarItem(id: "favorite", placement: .topBarTrailing) {
-                Button {
-                    viewModel.toggleFavorite()
-                } label: {
-                    Image(systemName: viewModel.isFavorite ? "heart.fill" : "heart")
-                        .foregroundColor(.primary)
-                }
-                .disabled(viewModel.details == nil)
-            }
-            
-            ToolbarItem(id: "download", placement: .topBarTrailing) {
-                Button {
-                    showDownloadAlert = true
-                } label: {
-                    Image(systemName: "arrow.down.circle")
-                        .foregroundColor(.primary)
-                }
-                .disabled(viewModel.details == nil)
-            }
-        }
         .alert("В разработке", isPresented: $showDownloadAlert) {
             Button("OK", role: .cancel) { }
         } message: {
@@ -234,6 +240,14 @@ private struct DetailsPrimaryMetadataRow: View {
                     .foregroundColor(ratingColor(for: rating))
             }
 
+            if let type = details.type {
+                if type.lowercased() == "tv" || type.lowercased() == "series" {
+                    Text("Сериал")
+                } else {
+                    Text("Фильм")
+                }
+            }
+
             if let year = details.releaseDate?.prefix(4), !year.isEmpty {
                 Text(String(year))
             }
@@ -275,11 +289,7 @@ private struct DetailsInfoSection: View {
                                 .font(.system(size: 14, weight: .semibold))
                                 .padding(.horizontal, 14)
                                 .padding(.vertical, 8)
-                                .background(.ultraThinMaterial, in: Capsule())
-                                .overlay(
-                                    Capsule()
-                                        .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-                                )
+                                .background(Color.primary.opacity(0.06), in: Capsule())
                         }
                     }
                 }
@@ -295,6 +305,9 @@ private struct DetailsInfoSection: View {
                     .lineSpacing(4)
             }
         }
+        .padding(20)
+        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).stroke(Color.primary.opacity(0.06), lineWidth: 1))
     }
 }
 
