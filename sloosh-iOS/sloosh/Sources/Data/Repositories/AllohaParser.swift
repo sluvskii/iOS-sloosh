@@ -1,5 +1,6 @@
 import Foundation
 import WebKit
+import UIKit
 
 @MainActor
 protocol AllohaParserDelegate: AnyObject {
@@ -15,13 +16,33 @@ class AllohaParser: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
     
     weak var delegate: AllohaParserDelegate?
     private var webView: WKWebView!
+    private weak var hostView: UIView?
+    private var timeoutWorkItem: DispatchWorkItem?
     
-    private let userAgents = [
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4_1) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36"
-    ]
-    private var userAgent: String { userAgents.randomElement()! }
+    private let userAgents = (0...19).map { _ in
+        let osOptions = [
+            "Windows NT 10.0; Win64; x64",
+            "Windows NT 11.0; Win64; x64",
+            "Macintosh; Intel Mac OS X 10_15_7",
+            "Macintosh; Intel Mac OS X 14_4_1",
+            "X11; Linux x86_64",
+            "X11; Ubuntu; Linux x86_64"
+        ]
+        let os = osOptions.randomElement() ?? osOptions[0]
+        let chromeVersion = Int.random(in: 130...135)
+        let firefoxVersion = Int.random(in: 130...136)
+
+        switch Int.random(in: 0...2) {
+        case 0:
+            return "Mozilla/5.0 (\(os)) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/\(chromeVersion).0.0.0 Safari/537.36"
+        case 1:
+            return "Mozilla/5.0 (\(os); rv:\(firefoxVersion).0) Gecko/20100101 Firefox/\(firefoxVersion).0"
+        default:
+            return "Mozilla/5.0 (\(os)) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/\(chromeVersion).0.0.0 Safari/537.36 Edg/\(chromeVersion).0.0.0"
+        }
+    }
+    private var userAgentIndex = Int.random(in: 0...19)
+    private var userAgent: String { userAgents[userAgentIndex] }
     
     override init() {
         super.init()
@@ -32,6 +53,9 @@ class AllohaParser: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
         let config = WKWebViewConfiguration()
         config.allowsInlineMediaPlayback = true
         config.mediaTypesRequiringUserActionForPlayback = []
+        config.defaultWebpagePreferences.allowsContentJavaScript = true
+        config.preferences.javaScriptCanOpenWindowsAutomatically = true
+        config.websiteDataStore = .default()
         
         let userContentController = WKUserContentController()
         userContentController.add(self, name: "AndroidBridge")
@@ -40,20 +64,66 @@ class AllohaParser: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
         webView = WKWebView(frame: .zero, configuration: config)
         webView.customUserAgent = userAgent
         webView.navigationDelegate = self
-        webView.isHidden = true
+        webView.isOpaque = false
+        webView.backgroundColor = .clear
+        webView.scrollView.isScrollEnabled = false
+        webView.isHidden = false
     }
     
     func parse(iframeUrl: String) {
+        rotateUserAgent()
+        attachIfNeeded()
+        timeoutWorkItem?.cancel()
+        webView.stopLoading()
+
         let wrapperHtml = buildWrapperHtml(iframeUrl: iframeUrl)
         if let url = URL(string: iframeUrl), let host = url.host {
             let baseUrl = URL(string: "\(url.scheme ?? "https")://\(host)/")
             webView.loadHTMLString(wrapperHtml, baseURL: baseUrl)
+            let timeoutWorkItem = DispatchWorkItem { [weak self] in
+                self?.delegate?.onError(error: "Таймаут парсинга iframe")
+            }
+            self.timeoutWorkItem = timeoutWorkItem
+            DispatchQueue.main.asyncAfter(deadline: .now() + 45, execute: timeoutWorkItem)
+        } else {
+            delegate?.onError(error: "Некорректный iframe URL")
         }
     }
     
     func release() {
+        timeoutWorkItem?.cancel()
+        timeoutWorkItem = nil
         webView.configuration.userContentController.removeScriptMessageHandler(forName: "AndroidBridge")
+        webView.stopLoading()
+        webView.removeFromSuperview()
+        hostView = nil
         webView = nil
+    }
+
+    private func rotateUserAgent() {
+        userAgentIndex = (userAgentIndex + 1) % userAgents.count
+        webView.customUserAgent = userAgent
+    }
+
+    private func attachIfNeeded() {
+        guard webView.superview == nil else { return }
+        guard let windowScene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first(where: { $0.activationState == .foregroundActive }),
+              let window = windowScene.windows.first(where: \.isKeyWindow) ?? windowScene.windows.first,
+              let rootView = window.rootViewController?.view else {
+            return
+        }
+
+        let host = UIView(frame: CGRect(x: -2, y: -2, width: 1, height: 1))
+        host.isUserInteractionEnabled = false
+        host.alpha = 0.01
+        host.clipsToBounds = true
+        webView.frame = host.bounds
+        webView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        host.addSubview(webView)
+        rootView.addSubview(host)
+        hostView = host
     }
     
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
@@ -61,6 +131,7 @@ class AllohaParser: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
         
         switch method {
         case "onReady":
+            timeoutWorkItem?.cancel()
             if let jsonResponse = dict["jsonResponse"] as? String,
                let headersJson = dict["headersJson"] as? String {
                 delegate?.onHlsLinksReceived(json: jsonResponse, extraHeaders: parseHeaders(headersJson))
@@ -87,6 +158,25 @@ class AllohaParser: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
         default:
             break
         }
+    }
+
+    func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        print("AllohaParser: wrapper loaded")
+    }
+
+    func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
+        timeoutWorkItem?.cancel()
+        delegate?.onError(error: error.localizedDescription)
+    }
+
+    func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
+        timeoutWorkItem?.cancel()
+        delegate?.onError(error: error.localizedDescription)
+    }
+
+    func webViewWebContentProcessDidTerminate(_ webView: WKWebView) {
+        timeoutWorkItem?.cancel()
+        delegate?.onError(error: "Web content process terminated")
     }
     
     private func parseHeaders(_ headersJson: String) -> [String: String] {
@@ -156,13 +246,15 @@ class AllohaParser: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
 
                         function checkDone() {
                             if (isDone) return;
-                            var hasAuth = false, hasAccept = false;
+                            var hasAuth = false, hasAccept = false, hasMaster = !!lastM3u8Url;
                             for (var k in capturedHeaders) {
                                 if (k === 'authorizations') hasAuth = true;
+                                if (k === 'authorization') hasAuth = true;
                                 if (k === 'accepts-controls') hasAccept = true;
                             }
-                            if (bnsiData && hasAuth && hasAccept) {
+                            if (bnsiData && hasAuth && (hasAccept || hasMaster)) {
                                 isDone = true;
+                                try { AndroidBridge.onLog('ready: auth=' + hasAuth + ' accept=' + hasAccept + ' master=' + hasMaster); } catch(e) {}
                                 AndroidBridge.onReady(bnsiData, JSON.stringify(capturedHeaders));
                             }
                         }
@@ -317,6 +409,7 @@ class AllohaParser: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
                                 if (playBtn) playBtn.click();
                                 var video = iframeWin.document.querySelector('video');
                                 if (video) { video.muted = true; if (video.paused) video.play().catch(function(){}); }
+                                try { checkDone(); } catch(e) {}
                             }
                         }, 1500);
 

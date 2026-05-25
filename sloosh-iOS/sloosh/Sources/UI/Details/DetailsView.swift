@@ -482,7 +482,7 @@ class DetailsViewModel: ObservableObject {
         }
 
         allohaTimeoutTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 20_000_000_000)
+            try? await Task.sleep(nanoseconds: 55_000_000_000)
             guard let self = self,
                   !Task.isCancelled,
                   self.isResolvingAllohaPlayback else { return }
