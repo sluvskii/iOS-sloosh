@@ -11,15 +11,15 @@ struct AboutView: View {
         List {
             Section("О приложении") {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("sloosh")
-                        .font(.system(size: 24, weight: .bold, design: .rounded))
-                    Text("Приложение для просмотра фильмов и сериалов с современным iOS-интерфейсом.")
-                        .font(.system(size: 15, weight: .medium, design: .rounded))
-                        .foregroundColor(.secondary)
-                    Text("Версия \(appVersion)")
-                        .font(.system(size: 14, weight: .semibold, design: .rounded))
-                        .foregroundColor(.secondary)
-                }
+                Text("sloosh")
+                    .font(.system(size: 24, weight: .bold))
+                Text("Приложение для просмотра фильмов и сериалов с современным iOS-интерфейсом.")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundColor(.secondary)
+                Text("Версия \(appVersion)")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.secondary)
+            }
                 .padding(.vertical, 6)
             }
 
