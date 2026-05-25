@@ -35,26 +35,6 @@ enum HomeFilter: String, CaseIterable, Identifiable {
 struct HomeView: View {
     @StateObject private var viewModel = HomeViewModel()
 
-    init() {
-        // Кастомизация UISegmentedControl для плавающего вида (возвращаем обратно)
-        let clearImage = UIImage()
-        UISegmentedControl.appearance().setBackgroundImage(clearImage, for: .normal, barMetrics: .default)
-        UISegmentedControl.appearance().setDividerImage(clearImage, forLeftSegmentState: .normal, rightSegmentState: .normal, barMetrics: .default)
-        
-        let normalTextAttributes: [NSAttributedString.Key: Any] = [
-            .foregroundColor: UIColor.secondaryLabel,
-            .font: UIFont.systemFont(ofSize: 15, weight: .medium)
-        ]
-        
-        let selectedTextAttributes: [NSAttributedString.Key: Any] = [
-            .foregroundColor: UIColor.label,
-            .font: UIFont.systemFont(ofSize: 15, weight: .bold)
-        ]
-        
-        UISegmentedControl.appearance().setTitleTextAttributes(normalTextAttributes, for: .normal)
-        UISegmentedControl.appearance().setTitleTextAttributes(selectedTextAttributes, for: .selected)
-    }
-
     var body: some View {
         NavigationStack {
             let categoryBinding = Binding<HomeCategory?>(
@@ -80,9 +60,9 @@ struct HomeView: View {
             .toolbar {
                 ToolbarItem(placement: .principal) {
                     HomeCategorySegmentedPicker(selectedCategory: $viewModel.selectedCategory)
-                        .scaleEffect(0.9) // Делаем панель чуть меньше (тоньше), чтобы не было обрезки
+                        .frame(width: 250) // Задаем фиксированную ширину, чтобы он не конфликтовал с кнопкой сортировки
                 }
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .navigationBarTrailing) {
                     HomeFilterMenu(selectedFilter: $viewModel.selectedFilter)
                 }
             }
