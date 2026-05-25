@@ -156,20 +156,23 @@ private struct HomeCategorySegmentedPicker: View {
 
 private struct HomeFilterMenu: View {
     @Binding var selectedFilter: HomeFilter
+    @State private var isShowingDialog = false
 
     var body: some View {
-        Menu {
-            Picker("Сортировка", selection: $selectedFilter) {
-                ForEach(HomeFilter.allCases) { filter in
-                    Text(filter.title)
-                        .tag(filter)
-                }
-            }
+        Button {
+            isShowingDialog = true
         } label: {
             Image(systemName: "line.3.horizontal.decrease.circle")
                 .font(.system(size: 18, weight: .semibold))
                 .foregroundColor(Color(UIColor.label))
                 .frame(width: 32, height: 32)
+        }
+        .confirmationDialog("Сортировка", isPresented: $isShowingDialog, titleVisibility: .visible) {
+            ForEach(HomeFilter.allCases) { filter in
+                Button(filter.title) {
+                    selectedFilter = filter
+                }
+            }
         }
     }
 }
