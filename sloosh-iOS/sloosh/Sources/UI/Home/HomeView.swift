@@ -153,7 +153,8 @@ private struct HomeCategorySegmentedPicker: View {
     var body: some View {
         Picker("Категория", selection: $selectedCategory) {
             ForEach(HomeCategory.allCases, id: \.self) { category in
-                Text(category.segmentedTitle)
+                // Добавляем неразрывные пробелы по краям, чтобы нативно расширить вкладки
+                Text("\u{00A0}\u{00A0}\(category.segmentedTitle)\u{00A0}\u{00A0}")
                     .tag(category)
             }
         }
