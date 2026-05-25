@@ -152,7 +152,6 @@ private struct HomeCategorySegmentedPicker: View {
         }
         .pickerStyle(.segmented)
         .fixedSize(horizontal: true, vertical: false)
-        .frame(height: 32)
     }
 }
 
@@ -168,10 +167,10 @@ private struct HomeFilterMenu: View {
                 }
             }
         } label: {
-            Image(systemName: "line.3.horizontal.decrease.circle")
-                .font(.system(size: 18, weight: .semibold))
+            Image(systemName: "line.3.horizontal.decrease.circle.fill")
+                .symbolRenderingMode(.hierarchical)
+                .font(.system(size: 28))
                 .foregroundColor(Color(UIColor.label))
-                .frame(width: 32, height: 32)
         }
     }
 }

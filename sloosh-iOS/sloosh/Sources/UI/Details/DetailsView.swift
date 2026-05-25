@@ -144,8 +144,9 @@ struct DetailsView: View {
                 }
             }
         }
-        .edgesIgnoringSafeArea(.top)
+        .ignoresSafeArea(edges: .top)
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
             ToolbarItemGroup(placement: .topBarTrailing) {
                 Button {
