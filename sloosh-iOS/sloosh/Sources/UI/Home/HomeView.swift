@@ -54,10 +54,6 @@ struct HomeView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                HomeCategorySegmentedPicker(selectedCategory: $viewModel.selectedCategory)
-                    .padding(.top, 4)
-                    .padding(.bottom, 12)
-
                 if viewModel.isLoading {
                     LazyVGrid(columns: columns, spacing: 20) {
                         ForEach(0..<12, id: \.self) { _ in
@@ -105,6 +101,13 @@ struct HomeView: View {
                     HomeFilterMenu(selectedFilter: $viewModel.selectedFilter)
                 }
             }
+            .safeAreaInset(edge: .top, spacing: 0) {
+                HomeCategorySegmentedPicker(selectedCategory: $viewModel.selectedCategory)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 8)
+                    .padding(.bottom, 12)
+                    .background(.bar)
+            }
             .background(Color(UIColor.systemBackground))
             .task {
                 await viewModel.applyCurrentSelection(force: true)
@@ -134,7 +137,7 @@ private struct HomeCategorySegmentedPicker: View {
             }
         }
         .pickerStyle(.segmented)
-        .padding(.horizontal, 16)
+        .controlSize(.large)
     }
 }
 
@@ -152,9 +155,10 @@ private struct HomeFilterMenu: View {
         } label: {
             Image(systemName: "line.3.horizontal.decrease.circle")
                 .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(.primary)
+                .foregroundColor(Color(UIColor.label))
                 .frame(width: 32, height: 32)
         }
+        .tint(Color(UIColor.label))
     }
 }
 
