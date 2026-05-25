@@ -54,6 +54,10 @@ struct HomeView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
+                HomeCategorySegmentedPicker(selectedCategory: $viewModel.selectedCategory)
+                    .padding(.top, 4)
+                    .padding(.bottom, 12)
+
                 if viewModel.isLoading {
                     LazyVGrid(columns: columns, spacing: 20) {
                         ForEach(0..<12, id: \.self) { _ in
@@ -97,9 +101,6 @@ struct HomeView: View {
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .principal) {
-                    HomeCategorySegmentedPicker(selectedCategory: $viewModel.selectedCategory)
-                }
                 ToolbarItem(placement: .topBarTrailing) {
                     HomeFilterMenu(selectedFilter: $viewModel.selectedFilter)
                 }
@@ -133,12 +134,7 @@ private struct HomeCategorySegmentedPicker: View {
             }
         }
         .pickerStyle(.segmented)
-        .onAppear {
-            let font = UIFont.systemFont(ofSize: 13, weight: .medium)
-            let selectedFont = UIFont.systemFont(ofSize: 13, weight: .bold)
-            UISegmentedControl.appearance().setTitleTextAttributes([.font: font], for: .normal)
-            UISegmentedControl.appearance().setTitleTextAttributes([.font: selectedFont], for: .selected)
-        }
+        .padding(.horizontal, 16)
     }
 }
 
