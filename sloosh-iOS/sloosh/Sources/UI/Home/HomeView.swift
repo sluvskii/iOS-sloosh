@@ -97,15 +97,12 @@ struct HomeView: View {
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    HomeCategorySegmentedPicker(selectedCategory: $viewModel.selectedCategory)
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     HomeFilterMenu(selectedFilter: $viewModel.selectedFilter)
                 }
-            }
-            .safeAreaInset(edge: .top) {
-                HomeCategorySegmentedPicker(selectedCategory: $viewModel.selectedCategory)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .background(.bar)
             }
             .background(Color(UIColor.systemBackground))
             .task {
