@@ -242,10 +242,9 @@ struct RemotePosterView: View {
                         Image(uiImage: image)
                             .resizable()
                             .aspectRatio(2/3, contentMode: .fill)
-                            .blur(radius: 20)
-                            .opacity(0.5)
-                            .scaleEffect(1.05)
-                            .offset(y: 8)
+                            .blur(radius: 12)
+                            .opacity(0.6)
+                            .offset(y: 6)
                     )
             } else if isLoading {
                 Rectangle()
