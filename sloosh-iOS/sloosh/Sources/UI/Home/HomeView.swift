@@ -238,7 +238,15 @@ struct RemotePosterView: View {
                         RoundedRectangle(cornerRadius: 12, style: .continuous)
                             .stroke(Color.primary.opacity(0.1), lineWidth: 1)
                     )
-                    .shadow(color: .black.opacity(0.15), radius: 6, x: 0, y: 4)
+                    .background(
+                        Image(uiImage: image)
+                            .resizable()
+                            .aspectRatio(2/3, contentMode: .fill)
+                            .blur(radius: 20)
+                            .opacity(0.5)
+                            .scaleEffect(1.05)
+                            .offset(y: 8)
+                    )
             } else if isLoading {
                 Rectangle()
                     .fill(Color.gray.opacity(0.2))
