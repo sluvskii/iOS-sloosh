@@ -68,7 +68,7 @@ struct HomeView: View {
                 ToolbarItem(id: "category", placement: .principal) {
                     HomeCategorySegmentedPicker(selectedCategory: $viewModel.selectedCategory)
                 }
-                ToolbarItem(id: "filter", placement: .navigationBarTrailing) {
+                ToolbarItem(id: "filter", placement: .topBarTrailing) {
                     HomeFilterMenu(selectedFilter: $viewModel.selectedFilter)
                 }
             }
@@ -209,14 +209,7 @@ private struct HomeEmptyState: View {
                 .multilineTextAlignment(.center)
         }
         .padding(24)
-        .background(
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .fill(.ultraThinMaterial)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .stroke(Color.primary.opacity(0.06), lineWidth: 1)
-        )
+        .glassEffect(in: RoundedRectangle(cornerRadius: 28, style: .continuous))
     }
 }
 
@@ -319,15 +312,14 @@ struct MoviePosterCard: View {
 
 struct FallbackPosterView: View {
     var body: some View {
-        Rectangle()
-            .fill(.regularMaterial)
-            .aspectRatio(2/3, contentMode: .fill)
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-            .overlay(
-                Image(systemName: "film.fill")
-                    .font(.system(size: 30))
-                    .foregroundColor(.gray.opacity(0.5))
-            )
+        ZStack {
+            Color.clear
+            Image(systemName: "film.fill")
+                .font(.system(size: 30))
+                .foregroundColor(.secondary.opacity(0.65))
+        }
+        .aspectRatio(2/3, contentMode: .fill)
+        .glassEffect(in: RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }
 

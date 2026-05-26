@@ -3,50 +3,25 @@ import UIKit
 
 struct ContentView: View {
     var body: some View {
-        if #available(iOS 26.0, *) {
-            TabView {
-                Tab("Главная", systemImage: "house.fill") {
-                    HomeView()
-                }
-                Tab("Поиск", systemImage: "magnifyingglass", role: .search) {
-                    SearchView()
-                }
-                Tab("Избранное", systemImage: "heart.fill") {
-                    FavoritesView()
-                }
-                Tab("Загрузки", systemImage: "arrow.down.circle.fill") {
-                    DownloadsView()
-                }
-                Tab("Настройки", systemImage: "gearshape.fill") {
-                    SettingsView()
-                }
-            }
-            .tabViewStyle(.sidebarAdaptable)
-            .tint(Color.slooshAccent)
-        } else {
-            TabView {
+        TabView {
+            Tab("Главная", systemImage: "house.fill") {
                 HomeView()
-                    .tabItem {
-                        Label("Главная", systemImage: "house.fill")
-                    }
-                SearchView()
-                    .tabItem {
-                        Label("Поиск", systemImage: "magnifyingglass")
-                    }
-                FavoritesView()
-                    .tabItem {
-                        Label("Избранное", systemImage: "heart.fill")
-                    }
-                DownloadsView()
-                    .tabItem {
-                        Label("Загрузки", systemImage: "arrow.down.circle.fill")
-                    }
-                SettingsView()
-                    .tabItem {
-                        Label("Настройки", systemImage: "gearshape.fill")
-                    }
             }
-            .tint(Color.slooshAccent)
+            Tab("Поиск", systemImage: "magnifyingglass", role: .search) {
+                SearchView()
+            }
+            Tab("Избранное", systemImage: "heart.fill") {
+                FavoritesView()
+            }
+            Tab("Загрузки", systemImage: "arrow.down.circle.fill") {
+                DownloadsView()
+            }
+            Tab("Настройки", systemImage: "gearshape.fill") {
+                SettingsView()
+            }
         }
+        .tabViewStyle(.sidebarAdaptable)
+        .tabBarMinimizeBehavior(.onScrollDown)
+        .tint(Color.slooshAccent)
     }
 }

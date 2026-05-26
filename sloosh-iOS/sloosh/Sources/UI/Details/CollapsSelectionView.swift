@@ -151,7 +151,7 @@ struct CollapsSelectionView: View {
     }
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ZStack(alignment: .bottom) {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 24) {
@@ -225,7 +225,8 @@ struct CollapsSelectionView: View {
                 }) {
                     Text("Далее")
                 }
-                .buttonStyle(GlassButtonStyle())
+                .buttonStyle(.glassProminent)
+                .tint(Color.slooshAccent)
                 .padding(.horizontal, 32)
                 .padding(.bottom, 8)
             }
@@ -237,7 +238,7 @@ struct CollapsSelectionView: View {
                         .lineLimit(1)
                         .truncationMode(.tail)
                 }
-                ToolbarItem(placement: .navigationBarLeading) {
+                ToolbarItem(placement: .topBarLeading) {
                     Button(action: {
                         presentationMode.wrappedValue.dismiss()
                     }) {

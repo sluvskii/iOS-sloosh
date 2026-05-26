@@ -1,26 +1,5 @@
 import SwiftUI
 
-struct GlassButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .font(.system(size: 18, weight: .bold))
-            .foregroundColor(.black)
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 16)
-            .background(
-                Capsule()
-                    .fill(Color.slooshAccent.opacity(configuration.isPressed ? 0.7 : 1.0))
-            )
-            .overlay(
-                Capsule()
-                    .stroke(Color.white.opacity(configuration.isPressed ? 0.4 : 0.2), lineWidth: 1)
-            )
-            .shadow(color: Color.black.opacity(0.15), radius: 8, x: 0, y: 4)
-            .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
-            .animation(.spring(response: 0.3, dampingFraction: 0.6, blendDuration: 0), value: configuration.isPressed)
-    }
-}
-
 struct SourceSelectionView: View {
     let result: AllohaApiResult
     let onPlay: (AllohaTranslation) -> Void
@@ -163,7 +142,7 @@ struct SourceSelectionView: View {
     }
     
     var body: some View {
-        NavigationView {
+        NavigationStack {
             ZStack(alignment: .bottom) {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 24) {
@@ -239,7 +218,8 @@ struct SourceSelectionView: View {
                 }) {
                     Text("Далее")
                 }
-                .buttonStyle(GlassButtonStyle())
+                .buttonStyle(.glassProminent)
+                .tint(Color.slooshAccent)
                 .padding(.horizontal, 32)
                 .padding(.bottom, 8)
             }
@@ -251,7 +231,7 @@ struct SourceSelectionView: View {
                         .lineLimit(1)
                         .truncationMode(.tail)
                 }
-                ToolbarItem(placement: .navigationBarLeading) {
+                ToolbarItem(placement: .topBarLeading) {
                     Button(action: {
                         presentationMode.wrappedValue.dismiss()
                     }) {
@@ -277,22 +257,14 @@ struct ChipView: View {
     var body: some View {
         Button(action: action) {
             Text(title)
-                .font(.system(size: 16, weight: .medium))
+                .font(.system(size: 16, weight: .semibold))
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
-                .background(
-                    isSelected ? Color.slooshAccent : Color(UIColor.secondarySystemBackground)
-                )
-                .foregroundColor(
-                    isSelected ? .black : (isAvailable ? .primary : .secondary)
-                )
-                .clipShape(Capsule())
-                .opacity(isAvailable ? 1.0 : 0.4)
-                .overlay(
-                    Capsule()
-                        .stroke(isSelected ? Color.clear : Color(UIColor.separator).opacity(0.3), lineWidth: 1)
-                )
         }
+        .buttonStyle(isSelected ? .glassProminent : .glass)
+        .tint(isSelected ? Color.slooshAccent : Color.accentColor)
+        .opacity(isAvailable ? 1.0 : 0.45)
+        .disabled(!isAvailable)
     }
 }
 

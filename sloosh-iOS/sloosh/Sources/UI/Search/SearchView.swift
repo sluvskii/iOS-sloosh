@@ -41,8 +41,7 @@ struct SearchView: View {
                                                 .font(.system(size: 12, weight: .bold))
                                                 .foregroundColor(.secondary)
                                                 .frame(width: 24, height: 24)
-                                                .background(Color(UIColor.secondarySystemBackground))
-                                                .clipShape(Circle())
+                                                .glassEffect(in: Circle())
                                         }
                                         .buttonStyle(.plain)
                                     }
