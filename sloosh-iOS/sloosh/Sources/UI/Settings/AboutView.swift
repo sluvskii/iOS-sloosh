@@ -53,5 +53,6 @@ struct AboutView: View {
         }
         .navigationTitle("О приложении")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
     }
 }

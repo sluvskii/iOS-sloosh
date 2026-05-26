@@ -17,5 +17,6 @@ struct SourceSettingsView: View {
         }
         .navigationTitle("Источники")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
     }
 }
