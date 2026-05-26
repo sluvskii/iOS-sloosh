@@ -255,14 +255,27 @@ struct ChipView: View {
     let action: () -> Void
     
     var body: some View {
-        Button(action: action) {
-            Text(title)
-                .font(.system(size: 16, weight: .semibold))
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
+        Group {
+            if isSelected {
+                Button(action: action) {
+                    Text(title)
+                        .font(.system(size: 16, weight: .semibold))
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                }
+                .buttonStyle(.glassProminent)
+                .tint(Color.slooshAccent)
+            } else {
+                Button(action: action) {
+                    Text(title)
+                        .font(.system(size: 16, weight: .semibold))
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                }
+                .buttonStyle(.glass)
+                .tint(Color.slooshAccent)
+            }
         }
-        .buttonStyle(isSelected ? .glassProminent : .glass)
-        .tint(isSelected ? Color.slooshAccent : Color.accentColor)
         .opacity(isAvailable ? 1.0 : 0.45)
         .disabled(!isAvailable)
     }
