@@ -124,11 +124,10 @@ struct DetailsView: View {
                             }
                             .frame(maxWidth: .infinity)
                             .padding()
-                            .background(Color.primary)
-                            .foregroundColor(Color(UIColor.systemBackground))
-                            .clipShape(Capsule())
                         }
                         .disabled(viewModel.isFetchingSources || viewModel.isResolvingAllohaPlayback)
+                        .buttonStyle(.glassProminent)
+                        .tint(Color.slooshAccent)
                         .matchedTransitionSource(id: "playBtn", in: transition)
                         .padding(.horizontal, 24)
                         .padding(.top, 16)
@@ -160,7 +159,7 @@ struct DetailsView: View {
                     }
                     .padding(.horizontal, 24)
                     .padding(.vertical, 20)
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+                    .glassEffect(in: RoundedRectangle(cornerRadius: 24, style: .continuous))
                 }
             }
         }
@@ -326,11 +325,7 @@ private struct DetailsInfoSection: View {
                                 .font(.system(size: 14, weight: .semibold))
                                 .padding(.horizontal, 14)
                                 .padding(.vertical, 8)
-                                .background(.ultraThinMaterial, in: Capsule())
-                                .overlay(
-                                    Capsule()
-                                        .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-                                )
+                                .glassEffect(in: Capsule())
                         }
                     }
                 }
