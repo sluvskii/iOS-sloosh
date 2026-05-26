@@ -111,23 +111,22 @@ struct DetailsView: View {
                                 }
                             }
                         }) {
-                            HStack {
+                            HStack(spacing: 10) {
                                 if viewModel.isFetchingSources {
                                     ProgressView()
-                                        .progressViewStyle(CircularProgressViewStyle(tint: Color(UIColor.systemBackground)))
-                                        .padding(.trailing, 8)
+                                        .controlSize(.small)
                                 } else {
                                     Image(systemName: "play.fill")
                                 }
                                 Text(viewModel.isFetchingSources || viewModel.isResolvingAllohaPlayback ? "Подготовка..." : "Смотреть")
-                                    .font(.system(size: 18, weight: .bold))
+                                    .font(.system(size: 17, weight: .semibold))
                             }
-                            .frame(maxWidth: .infinity)
-                            .padding()
+                            .padding(.horizontal, 18)
+                            .padding(.vertical, 11)
                         }
                         .disabled(viewModel.isFetchingSources || viewModel.isResolvingAllohaPlayback)
                         .buttonStyle(.glassProminent)
-                        .tint(Color.slooshAccent)
+                        .tint(.primary)
                         .matchedTransitionSource(id: "playBtn", in: transition)
                         .padding(.horizontal, 24)
                         .padding(.top, 16)
@@ -164,6 +163,7 @@ struct DetailsView: View {
             }
         }
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .tabBar)
         .toolbar(id: "details") {
             ToolbarItem(id: "favorite", placement: .topBarTrailing) {
                 Button {
