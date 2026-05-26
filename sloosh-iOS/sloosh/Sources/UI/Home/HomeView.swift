@@ -62,8 +62,8 @@ struct HomeView: View {
             .scrollTargetBehavior(.paging)
             .scrollPosition(id: categoryBinding)
             .animation(.spring(response: 0.3, dampingFraction: 0.8), value: viewModel.selectedCategory)
-            .navigationTitle("")
-            .navigationBarTitleDisplayMode(.inline)
+            .navigationTitle("Главная")
+            .navigationBarTitleDisplayMode(.large)
             .toolbar(id: "home") {
                 ToolbarItem(id: "category", placement: .principal) {
                     HomeCategorySegmentedPicker(selectedCategory: $viewModel.selectedCategory)
