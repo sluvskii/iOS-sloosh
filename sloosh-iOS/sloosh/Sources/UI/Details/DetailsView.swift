@@ -115,14 +115,17 @@ struct DetailsView: View {
                                 if viewModel.isFetchingSources {
                                     ProgressView()
                                         .controlSize(.small)
+                                        .tint(Color(UIColor.systemBackground))
                                 } else {
                                     Image(systemName: "play.fill")
                                 }
                                 Text(viewModel.isFetchingSources || viewModel.isResolvingAllohaPlayback ? "Подготовка..." : "Смотреть")
                                     .font(.system(size: 17, weight: .semibold))
                             }
-                            .padding(.horizontal, 18)
-                            .padding(.vertical, 11)
+                            .foregroundStyle(Color(UIColor.systemBackground))
+                            .frame(maxWidth: .infinity)
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 12)
                         }
                         .disabled(viewModel.isFetchingSources || viewModel.isResolvingAllohaPlayback)
                         .buttonStyle(.glassProminent)
