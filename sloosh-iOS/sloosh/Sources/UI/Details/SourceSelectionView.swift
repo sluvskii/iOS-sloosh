@@ -217,11 +217,15 @@ struct SourceSelectionView: View {
                     playSelected()
                 }) {
                     Text("Далее")
+                        .font(.system(size: 18, weight: .semibold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 16)
                 }
-                .buttonStyle(.glassProminent)
+                .buttonStyle(.borderedProminent)
                 .tint(Color.slooshAccent)
-                .padding(.horizontal, 32)
-                .padding(.bottom, 8)
+                .clipShape(Capsule())
+                .padding(.horizontal, 24)
+                .padding(.bottom, 16)
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -255,27 +259,22 @@ struct ChipView: View {
     let action: () -> Void
     
     var body: some View {
-        Group {
-            if isSelected {
-                Button(action: action) {
-                    Text(title)
-                        .font(.system(size: 16, weight: .semibold))
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                }
-                .buttonStyle(.glassProminent)
-                .tint(Color.slooshAccent)
-            } else {
-                Button(action: action) {
-                    Text(title)
-                        .font(.system(size: 16, weight: .semibold))
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 8)
-                }
-                .buttonStyle(.glass)
-                .tint(Color.slooshAccent)
-            }
+        Button(action: action) {
+            Text(title)
+                .font(.system(size: 14, weight: .medium))
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .foregroundColor(isSelected ? Color.slooshAccent : .primary)
+                .background(
+                    Capsule()
+                        .fill(isSelected ? Color.slooshAccent.opacity(0.15) : Color(UIColor.secondarySystemFill))
+                )
+                .overlay(
+                    Capsule()
+                        .strokeBorder(isSelected ? Color.slooshAccent.opacity(0.3) : Color.clear, lineWidth: 1)
+                )
         }
+        .buttonStyle(.plain)
         .opacity(isAvailable ? 1.0 : 0.45)
         .disabled(!isAvailable)
     }
