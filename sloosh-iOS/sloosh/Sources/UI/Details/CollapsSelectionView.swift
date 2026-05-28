@@ -7,7 +7,7 @@ struct CollapsSelectionView: View {
     let title: String
     let onPlay: (String) -> Void
     
-    @Environment(\.presentationMode) var presentationMode
+    @Environment(\.dismiss) private var dismiss
     
     @State private var selectedSeason: Int?
     @State private var selectedEpisode: Int?
@@ -131,130 +131,130 @@ struct CollapsSelectionView: View {
             guard let seasonObj = result.first(where: { $0.season == s }),
                   let epObj = seasonObj.episodes.first(where: { $0.episode == e }) else { return }
             
-            // Prefer hlsUrl or mpdUrl
             if let hls = epObj.hlsUrl, !hls.isEmpty {
                 onPlay(hls)
-                presentationMode.wrappedValue.dismiss()
+                dismiss()
             } else if let mpd = epObj.mpdUrl, !mpd.isEmpty {
                 onPlay(mpd)
-                presentationMode.wrappedValue.dismiss()
+                dismiss()
             }
         } else if let movie = movieResult {
             if let hls = movie.hlsUrl, !hls.isEmpty {
                 onPlay(hls)
-                presentationMode.wrappedValue.dismiss()
+                dismiss()
             } else if let mpd = movie.mpdUrl, !mpd.isEmpty {
                 onPlay(mpd)
-                presentationMode.wrappedValue.dismiss()
+                dismiss()
             }
         }
     }
     
     var body: some View {
         NavigationStack {
-            ZStack(alignment: .bottom) {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 24) {
-                        if !allTranslations.isEmpty {
-                            VStack(alignment: .leading, spacing: 12) {
-                                Text("Озвучка")
-                                    .font(.headline)
-                                    .foregroundColor(.secondary)
-                                
-                                FlowLayout(spacing: 8) {
-                                    ForEach(allTranslations, id: \.self) { tName in
-                                        ChipView(
-                                            title: tName,
-                                            isSelected: selectedTranslationName == tName,
-                                            isAvailable: isTranslationAvailable(tName)
-                                        ) {
-                                            selectTranslation(tName)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        
-                        if isSerial && !allSeasons.isEmpty {
-                            VStack(alignment: .leading, spacing: 12) {
-                                Text("Сезон")
-                                    .font(.headline)
-                                    .foregroundColor(.secondary)
-                                
-                                FlowLayout(spacing: 8) {
-                                    ForEach(allSeasons, id: \.self) { s in
-                                        ChipView(
-                                            title: "\(s) сезон",
-                                            isSelected: selectedSeason == s,
-                                            isAvailable: isSeasonAvailable(s)
-                                        ) {
-                                            selectSeason(s)
-                                        }
-                                    }
-                                }
-                            }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 28) {
+                    if !allTranslations.isEmpty {
+                        VStack(alignment: .leading, spacing: 14) {
+                            Text("Озвучка")
+                                .font(.system(size: 20, weight: .bold))
+                                .foregroundColor(.primary)
                             
-                            if !allEpisodes.isEmpty {
-                                VStack(alignment: .leading, spacing: 12) {
-                                    Text("Серия")
-                                        .font(.headline)
-                                        .foregroundColor(.secondary)
-                                    
-                                    FlowLayout(spacing: 8) {
-                                        ForEach(allEpisodes, id: \.self) { e in
-                                            ChipView(
-                                                title: "\(e) серия",
-                                                isSelected: selectedEpisode == e,
-                                                isAvailable: isEpisodeAvailable(e)
-                                            ) {
-                                                selectEpisode(e)
-                                            }
-                                        }
+                            FlowLayout(spacing: 10) {
+                                ForEach(allTranslations, id: \.self) { tName in
+                                    WatchSelectorChip(
+                                        title: tName,
+                                        isSelected: selectedTranslationName == tName,
+                                        isAvailable: isTranslationAvailable(tName)
+                                    ) {
+                                        selectTranslation(tName)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    if isSerial && !allSeasons.isEmpty {
+                        VStack(alignment: .leading, spacing: 14) {
+                            Text("Сезон")
+                                .font(.system(size: 20, weight: .bold))
+                                .foregroundColor(.primary)
+                            
+                            FlowLayout(spacing: 10) {
+                                ForEach(allSeasons, id: \.self) { s in
+                                    WatchSelectorChip(
+                                        title: "\(s) сезон",
+                                        isSelected: selectedSeason == s,
+                                        isAvailable: isSeasonAvailable(s)
+                                    ) {
+                                        selectSeason(s)
                                     }
                                 }
                             }
                         }
                         
-                        Color.clear.frame(height: 80)
+                        if !allEpisodes.isEmpty {
+                            VStack(alignment: .leading, spacing: 14) {
+                                Text("Серия")
+                                    .font(.system(size: 20, weight: .bold))
+                                    .foregroundColor(.primary)
+                                
+                                FlowLayout(spacing: 10) {
+                                    ForEach(allEpisodes, id: \.self) { e in
+                                        WatchSelectorChip(
+                                            title: "\(e) серия",
+                                            isSelected: selectedEpisode == e,
+                                            isAvailable: isEpisodeAvailable(e)
+                                        ) {
+                                            selectEpisode(e)
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
-                    .padding()
                 }
-                
-                Button(action: {
-                    playSelected()
-                }) {
-                    Text("Далее")
-                        .font(.system(size: 17, weight: .semibold))
-                        .padding(.horizontal, 48)
-                        .padding(.vertical, 14)
-                        .foregroundColor(Color(UIColor.systemBackground))
-                        .background(
-                            Capsule()
-                                .fill(Color.primary)
-                        )
-                }
-                .buttonStyle(.plain)
-                .padding(.bottom, 16)
+                .padding(20)
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .principal) {
                     Text(title)
-                        .font(.headline)
+                        .font(.system(size: 17, weight: .semibold))
                         .lineLimit(1)
                         .truncationMode(.tail)
                 }
-                ToolbarItem(placement: .topBarLeading) {
+                ToolbarItem(placement: .topBarTrailing) {
                     Button(action: {
-                        presentationMode.wrappedValue.dismiss()
+                        dismiss()
                     }) {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(.primary)
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 24))
+                            .foregroundColor(Color(UIColor.tertiaryLabel))
                     }
+                    .buttonStyle(.plain)
+                }
+                ToolbarItem(placement: .bottomBar) {
+                    Button(action: {
+                        playSelected()
+                    }) {
+                        HStack {
+                            Image(systemName: "play.fill")
+                            Text("Смотреть")
+                        }
+                        .font(.system(size: 17, weight: .bold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .buttonBorderShape(.capsule)
+                    .tint(.primary)
+                    .foregroundStyle(Color(UIColor.systemBackground))
+                    .padding(.horizontal)
                 }
             }
         }
+        .presentationBackground(.regularMaterial)
         .onAppear {
             setupInitialSelection()
         }
