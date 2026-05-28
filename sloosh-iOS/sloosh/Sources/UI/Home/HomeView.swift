@@ -44,13 +44,11 @@ struct HomeView: View {
 
     var body: some View {
         NavigationStack {
-            TabView(selection: $viewModel.selectedCategory) {
-                ForEach(HomeCategory.allCases, id: \.self) { category in
-                    HomeCategoryContentView(viewModel: viewModel, category: category)
-                        .tag(category)
-                }
-            }
-            .tabViewStyle(.page(indexDisplayMode: .never))
+            HomeCategoryContentView(
+                viewModel: viewModel,
+                category: viewModel.selectedCategory
+            )
+            .animation(.spring(response: 0.3, dampingFraction: 0.8), value: viewModel.selectedCategory)
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(id: "home") {
@@ -133,6 +131,28 @@ struct HomeCategoryContentView: View {
             }
         }
         .scrollIndicators(.hidden)
+        .contentShape(Rectangle())
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 20)
+                .onEnded { value in
+                    let dx = value.translation.width
+                    let dy = value.translation.height
+                    guard abs(dx) > abs(dy), abs(dx) > 80 else { return }
+
+                    let categories = HomeCategory.allCases
+                    guard let currentIndex = categories.firstIndex(of: viewModel.selectedCategory) else { return }
+
+                    if dx < 0, currentIndex < categories.count - 1 {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                            viewModel.selectedCategory = categories[currentIndex + 1]
+                        }
+                    } else if dx > 0, currentIndex > 0 {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                            viewModel.selectedCategory = categories[currentIndex - 1]
+                        }
+                    }
+                }
+        )
     }
 }
 
