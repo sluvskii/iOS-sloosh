@@ -44,11 +44,13 @@ struct HomeView: View {
 
     var body: some View {
         NavigationStack {
-            HomeCategoryContentView(
-                viewModel: viewModel,
-                category: viewModel.selectedCategory
-            )
-            .animation(.spring(response: 0.3, dampingFraction: 0.8), value: viewModel.selectedCategory)
+            TabView(selection: $viewModel.selectedCategory) {
+                ForEach(HomeCategory.allCases, id: \.self) { category in
+                    HomeCategoryContentView(viewModel: viewModel, category: category)
+                        .tag(category)
+                }
+            }
+            .tabViewStyle(.page(indexDisplayMode: .never))
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(id: "home") {
@@ -146,7 +148,6 @@ private struct HomeCategorySegmentedPicker: View {
         }
         .pickerStyle(.segmented)
         .fixedSize()
-        .scaleEffect(0.91)
     }
 }
 
