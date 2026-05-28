@@ -44,9 +44,13 @@ struct DetailsView: View {
     @StateObject private var viewModel = DetailsViewModel()
     
     @State private var showPlayer = false
+    @State private var showSourceSheet = false
     @State private var selectedIframeUrl: String? = nil
     @State private var selectedDirectVideoUrl: String? = nil
     @State private var showDownloadAlert = false
+    @State private var sourceSheetMode: SourceMode?
+    @State private var sourceSheetTitle = ""
+    @State private var sourceFetchTask: Task<Void, Never>?
     @State private var sourceSheetDetent: PresentationDetent = .medium
     @Namespace private var transition
     
@@ -106,21 +110,23 @@ struct DetailsView: View {
                         
                         // Play Button
                         Button(action: {
-                            Task {
-                                if let kpId = details.externalIds?.kp {
-                                    await viewModel.fetchSources(kpId: kpId, title: details.title ?? details.name ?? "")
-                                }
+                            guard let kpId = details.externalIds?.kp else { return }
+
+                            let title = details.title ?? details.name ?? ""
+                            sourceSheetMode = SourceManager.shared.currentMode
+                            sourceSheetTitle = title
+                            sourceSheetDetent = .medium
+                            viewModel.resetSourceSheet()
+                            showSourceSheet = true
+
+                            sourceFetchTask?.cancel()
+                            sourceFetchTask = Task {
+                                await viewModel.fetchSources(kpId: kpId, title: title)
                             }
                         }) {
                             HStack {
-                                if viewModel.isFetchingSources {
-                                    ProgressView()
-                                        .progressViewStyle(CircularProgressViewStyle(tint: Color(UIColor.systemBackground)))
-                                        .padding(.trailing, 8)
-                                } else {
-                                    Image(systemName: "play.fill")
-                                }
-                                Text(viewModel.isFetchingSources || viewModel.isResolvingAllohaPlayback ? "Подготовка..." : "Смотреть")
+                                Image(systemName: "play.fill")
+                                Text(viewModel.isResolvingAllohaPlayback ? "Подготовка..." : "Смотреть")
                                     .font(.system(size: 17, weight: .semibold))
                             }
                             .frame(maxWidth: .infinity)
@@ -128,7 +134,7 @@ struct DetailsView: View {
                             .padding(.horizontal, 16)
                             .foregroundStyle(Color(UIColor.systemBackground))
                         }
-                        .disabled(viewModel.isFetchingSources || viewModel.isResolvingAllohaPlayback)
+                        .disabled(viewModel.isResolvingAllohaPlayback)
                         .buttonStyle(.glassProminent)
                         .tint(.primary)
                         .matchedTransitionSource(id: "playBtn", in: transition)
@@ -209,16 +215,30 @@ struct DetailsView: View {
         .task {
             await viewModel.loadDetails(id: movieId)
         }
-        .sheet(item: $viewModel.sourceResultWrapper, onDismiss: {
+        .sheet(isPresented: $showSourceSheet, onDismiss: {
+            sourceFetchTask?.cancel()
+            sourceFetchTask = nil
             sourceSheetDetent = .medium
-        }) { wrapper in
-            if wrapper.mode == .alloha, let result = wrapper.allohaResult {
+            sourceSheetMode = nil
+            sourceSheetTitle = ""
+            viewModel.resetSourceSheet()
+        }) {
+            if viewModel.isFetchingSources, let sourceSheetMode {
+                SourceSelectionLoadingView(
+                    title: sourceSheetTitle,
+                    mode: sourceSheetMode
+                )
+                .presentationDetents([.medium, .large], selection: $sourceSheetDetent)
+                .navigationTransition(.zoom(sourceID: "playBtn", in: transition))
+            } else if let wrapper = viewModel.sourceResultWrapper,
+                      wrapper.mode == .alloha,
+                      let result = wrapper.allohaResult {
                 SourceSelectionView(result: result) { translation in
                     viewModel.resolveAllohaPlayback(iframeUrl: translation.iframeUrl, translationName: translation.name)
                 }
                 .presentationDetents([.medium, .large], selection: $sourceSheetDetent)
                 .navigationTransition(.zoom(sourceID: "playBtn", in: transition))
-            } else if wrapper.mode == .collaps {
+            } else if let wrapper = viewModel.sourceResultWrapper, wrapper.mode == .collaps {
                 let isSerial = wrapper.collapsSeasons != nil && !(wrapper.collapsSeasons?.isEmpty ?? true)
                 CollapsSelectionView(
                     result: wrapper.collapsSeasons ?? [],
@@ -234,14 +254,22 @@ struct DetailsView: View {
                 .presentationDetents([.medium, .large], selection: $sourceSheetDetent)
                 .navigationTransition(.zoom(sourceID: "playBtn", in: transition))
             } else {
-                Text("Нет доступных источников")
+                SourceSelectionEmptyView(title: sourceSheetTitle)
+                    .presentationDetents([.medium, .large], selection: $sourceSheetDetent)
+                    .navigationTransition(.zoom(sourceID: "playBtn", in: transition))
             }
         }
         .onChange(of: viewModel.allohaPlaybackUrl) { resolvedUrl in
             guard let resolvedUrl else { return }
+            showSourceSheet = false
             selectedDirectVideoUrl = resolvedUrl
             selectedIframeUrl = nil
             showPlayer = true
+        }
+        .onChange(of: viewModel.isResolvingAllohaPlayback) { isResolving in
+            if isResolving {
+                showSourceSheet = false
+            }
         }
         .fullScreenCover(isPresented: $showPlayer, onDismiss: {
             selectedIframeUrl = nil
@@ -267,6 +295,104 @@ struct DetailsView: View {
                 }
             }
         }
+    }
+}
+
+private struct SourceSelectionLoadingView: View {
+    let title: String
+    let mode: SourceMode
+
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    SourceSelectionSkeletonSection(titleWidth: 92, chipWidths: [84, 112, 96, 104])
+
+                    if mode == .alloha || mode == .collaps {
+                        SourceSelectionSkeletonSection(titleWidth: 76, chipWidths: [88, 88, 88])
+                        SourceSelectionSkeletonSection(titleWidth: 70, chipWidths: [84, 84, 84, 84])
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .contentMargins(.horizontal, 20, for: .scrollContent)
+            .contentMargins(.top, 16, for: .scrollContent)
+            .contentMargins(.bottom, 28, for: .scrollContent)
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                    }
+                }
+            }
+        }
+        .presentationDragIndicator(.visible)
+    }
+}
+
+private struct SourceSelectionSkeletonSection: View {
+    let titleWidth: CGFloat
+    let chipWidths: [CGFloat]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .fill(Color(UIColor.secondarySystemFill))
+                .frame(width: titleWidth, height: 24)
+
+            FlowLayout(spacing: 10) {
+                ForEach(Array(chipWidths.enumerated()), id: \.offset) { _, width in
+                    Capsule()
+                        .fill(Color(UIColor.secondarySystemFill))
+                        .frame(width: width, height: 34)
+                }
+            }
+        }
+        .shimmer()
+    }
+}
+
+private struct SourceSelectionEmptyView: View {
+    let title: String
+
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            VStack(spacing: 16) {
+                Image(systemName: "exclamationmark.bubble")
+                    .font(.system(size: 34, weight: .semibold))
+                    .foregroundStyle(.secondary)
+
+                Text("Не удалось получить источники")
+                    .font(.system(size: 20, weight: .bold))
+
+                Text("Попробуйте закрыть окно и нажать `Смотреть` еще раз.")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+            }
+            .padding(.horizontal, 24)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .navigationTitle(title)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                    }
+                }
+            }
+        }
+        .presentationDragIndicator(.visible)
     }
 }
 
