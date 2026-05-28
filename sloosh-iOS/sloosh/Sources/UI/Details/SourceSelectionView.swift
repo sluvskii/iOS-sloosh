@@ -217,15 +217,20 @@ struct SourceSelectionView: View {
                     playSelected()
                 }) {
                     Text("Далее")
-                        .font(.system(size: 18, weight: .semibold))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 16)
+                        .font(.system(size: 16, weight: .semibold))
+                        .padding(.horizontal, 32)
+                        .padding(.vertical, 12)
                 }
-                .buttonStyle(.borderedProminent)
-                .tint(Color.slooshAccent)
-                .clipShape(Capsule())
+                .buttonStyle(.plain)
+                .foregroundColor(.primary)
+                .background(Color.slooshAccent.opacity(0.15))
+                .glassEffect(.prominent, in: Capsule(), tint: Color.slooshAccent.opacity(0.1))
+                .overlay(
+                    Capsule()
+                        .strokeBorder(Color.slooshAccent.opacity(0.3), lineWidth: 1)
+                )
                 .padding(.horizontal, 24)
-                .padding(.bottom, 16)
+                .padding(.bottom, 24)
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
