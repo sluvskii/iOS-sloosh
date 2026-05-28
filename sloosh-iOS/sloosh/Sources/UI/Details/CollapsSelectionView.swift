@@ -220,6 +220,7 @@ struct CollapsSelectionView: View {
                     .padding()
                 }
                 
+                // Play Button
                 Button(action: {
                     playSelected()
                 }) {
@@ -231,7 +232,7 @@ struct CollapsSelectionView: View {
                 .buttonStyle(.plain)
                 .foregroundColor(.primary)
                 .background(Color.slooshAccent.opacity(0.15))
-                .glassEffect(.prominent, in: Capsule(), tint: Color.slooshAccent.opacity(0.1))
+                .glassEffect(in: Capsule())
                 .overlay(
                     Capsule()
                         .strokeBorder(Color.slooshAccent.opacity(0.3), lineWidth: 1)

@@ -224,7 +224,7 @@ struct SourceSelectionView: View {
                 .buttonStyle(.plain)
                 .foregroundColor(.primary)
                 .background(Color.slooshAccent.opacity(0.15))
-                .glassEffect(.prominent, in: Capsule(), tint: Color.slooshAccent.opacity(0.1))
+                .glassEffect(in: Capsule())
                 .overlay(
                     Capsule()
                         .strokeBorder(Color.slooshAccent.opacity(0.3), lineWidth: 1)
@@ -272,7 +272,7 @@ struct ChipView: View {
                 .foregroundColor(isSelected ? Color.slooshAccent : .primary)
                 .background(
                     Capsule()
-                        .fill(isSelected ? Color.slooshAccent.opacity(0.15) : Color(UIColor.secondarySystemFill))
+                        .fill(isSelected ? Color.slooshAccent.opacity(0.15) : Color(uiColor: .secondarySystemFill))
                 )
                 .overlay(
                     Capsule()
