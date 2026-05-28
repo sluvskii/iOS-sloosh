@@ -223,15 +223,14 @@ struct CollapsSelectionView: View {
                         .lineLimit(1)
                         .truncationMode(.tail)
                 }
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .topBarLeading) {
                     Button(action: {
                         dismiss()
                     }) {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 24))
-                            .foregroundColor(Color(UIColor.tertiaryLabel))
+                        Image(systemName: "xmark")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(.primary)
                     }
-                    .buttonStyle(.plain)
                 }
                 ToolbarItem(placement: .bottomBar) {
                     Button(action: {
