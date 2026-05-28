@@ -6,18 +6,28 @@ struct WatchSelectorChip: View {
     let isAvailable: Bool
     let action: () -> Void
 
+    @Environment(\.colorScheme) private var colorScheme
+
     var body: some View {
         Button(action: action) {
             Text(title)
                 .font(.system(size: 15, weight: isSelected ? .semibold : .medium))
                 .padding(.horizontal, 16)
                 .padding(.vertical, 9)
-                .foregroundStyle(isSelected ? Color(UIColor.systemBackground) : (isAvailable ? Color.primary : Color.secondary))
+                .foregroundStyle(
+                    isSelected 
+                        ? (colorScheme == .dark ? Color.black : Color.white) 
+                        : (isAvailable ? Color.primary : Color.secondary)
+                )
+                .background(
+                    Capsule()
+                        .fill(
+                            isSelected 
+                                ? Color.primary 
+                                : (isAvailable ? Color(UIColor.secondarySystemFill) : Color(UIColor.tertiarySystemFill))
+                        )
+                )
         }
-        .background(
-            Capsule()
-                .fill(isSelected ? Color.primary : (isAvailable ? Color(UIColor.secondarySystemFill) : Color(UIColor.tertiarySystemFill)))
-        )
         .opacity(isAvailable ? 1.0 : 0.6)
         .buttonStyle(ChipButtonStyle())
     }
