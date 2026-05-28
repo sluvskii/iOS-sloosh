@@ -253,7 +253,6 @@ struct CollapsSelectionView: View {
                 }
             }
         }
-        .presentationBackground(.regularMaterial)
         .onAppear {
             setupInitialSelection()
         }
