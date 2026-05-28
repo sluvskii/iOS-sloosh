@@ -220,7 +220,6 @@ struct CollapsSelectionView: View {
                     .padding()
                 }
                 
-                // Play Button
                 Button(action: {
                     playSelected()
                 }) {
@@ -228,16 +227,13 @@ struct CollapsSelectionView: View {
                         .font(.system(size: 16, weight: .semibold))
                         .padding(.horizontal, 32)
                         .padding(.vertical, 12)
+                        .foregroundColor(Color.slooshAccent)
+                        .background(
+                            Capsule()
+                                .fill(Color.slooshAccent.opacity(0.15))
+                        )
                 }
                 .buttonStyle(.plain)
-                .foregroundColor(.primary)
-                .background(Color.slooshAccent.opacity(0.15))
-                .glassEffect(in: Capsule())
-                .overlay(
-                    Capsule()
-                        .strokeBorder(Color.slooshAccent.opacity(0.3), lineWidth: 1)
-                )
-                .padding(.horizontal, 24)
                 .padding(.bottom, 24)
             }
             .navigationBarTitleDisplayMode(.inline)
