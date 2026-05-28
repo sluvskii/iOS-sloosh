@@ -22,8 +22,8 @@ struct WatchSelectorChip: View {
                 .background(
                     Capsule()
                         .fill(
-                            isSelected 
-                                ? Color.primary 
+                            isSelected
+                                ? (colorScheme == .dark ? Color.white : Color.black)
                                 : (isAvailable ? Color(UIColor.secondarySystemFill) : Color(UIColor.tertiarySystemFill))
                         )
                 )
