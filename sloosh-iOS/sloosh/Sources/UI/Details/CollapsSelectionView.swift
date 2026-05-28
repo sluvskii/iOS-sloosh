@@ -152,9 +152,9 @@ struct CollapsSelectionView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 28) {
+                VStack(alignment: .leading, spacing: 24) {
                     if !allTranslations.isEmpty {
-                        VStack(alignment: .leading, spacing: 14) {
+                        VStack(alignment: .leading, spacing: 12) {
                             Text("Озвучка")
                                 .font(.system(size: 20, weight: .bold))
                                 .foregroundColor(.primary)
@@ -174,7 +174,7 @@ struct CollapsSelectionView: View {
                     }
                     
                     if isSerial && !allSeasons.isEmpty {
-                        VStack(alignment: .leading, spacing: 14) {
+                        VStack(alignment: .leading, spacing: 12) {
                             Text("Сезон")
                                 .font(.system(size: 20, weight: .bold))
                                 .foregroundColor(.primary)
@@ -193,7 +193,7 @@ struct CollapsSelectionView: View {
                         }
                         
                         if !allEpisodes.isEmpty {
-                            VStack(alignment: .leading, spacing: 14) {
+                            VStack(alignment: .leading, spacing: 12) {
                                 Text("Серия")
                                     .font(.system(size: 20, weight: .bold))
                                     .foregroundColor(.primary)
@@ -213,8 +213,11 @@ struct CollapsSelectionView: View {
                         }
                     }
                 }
-                .padding(20)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .contentMargins(.horizontal, 20, for: .scrollContent)
+            .contentMargins(.top, 16, for: .scrollContent)
+            .contentMargins(.bottom, 28, for: .scrollContent)
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
