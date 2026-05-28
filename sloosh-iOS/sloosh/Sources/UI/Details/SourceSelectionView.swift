@@ -245,7 +245,6 @@ struct SourceSelectionView: View {
                 }
             }
         }
-        .presentationBackground(.regularMaterial)
         .onAppear {
             setupInitialSelection()
         }

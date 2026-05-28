@@ -47,6 +47,7 @@ struct DetailsView: View {
     @State private var selectedIframeUrl: String? = nil
     @State private var selectedDirectVideoUrl: String? = nil
     @State private var showDownloadAlert = false
+    @State private var sourceSheetDetent: PresentationDetent = .medium
     @Namespace private var transition
     
     var body: some View {
@@ -208,12 +209,14 @@ struct DetailsView: View {
         .task {
             await viewModel.loadDetails(id: movieId)
         }
-        .sheet(item: $viewModel.sourceResultWrapper) { wrapper in
+        .sheet(item: $viewModel.sourceResultWrapper, onDismiss: {
+            sourceSheetDetent = .medium
+        }) { wrapper in
             if wrapper.mode == .alloha, let result = wrapper.allohaResult {
                 SourceSelectionView(result: result) { translation in
                     viewModel.resolveAllohaPlayback(iframeUrl: translation.iframeUrl, translationName: translation.name)
                 }
-                .presentationDetents([.medium, .large])
+                .presentationDetents([.medium, .large], selection: $sourceSheetDetent)
                 .navigationTransition(.zoom(sourceID: "playBtn", in: transition))
             } else if wrapper.mode == .collaps {
                 let isSerial = wrapper.collapsSeasons != nil && !(wrapper.collapsSeasons?.isEmpty ?? true)
@@ -228,7 +231,7 @@ struct DetailsView: View {
                         showPlayer = true
                     }
                 )
-                .presentationDetents([.medium, .large])
+                .presentationDetents([.medium, .large], selection: $sourceSheetDetent)
                 .navigationTransition(.zoom(sourceID: "playBtn", in: transition))
             } else {
                 Text("Нет доступных источников")
