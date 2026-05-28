@@ -215,21 +215,14 @@ struct CollapsSelectionView: View {
                 }
                 .padding(20)
             }
+            .navigationTitle(title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .principal) {
-                    Text(title)
-                        .font(.system(size: 17, weight: .semibold))
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                }
-                ToolbarItem(placement: .topBarLeading) {
-                    Button(action: {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button {
                         dismiss()
-                    }) {
+                    } label: {
                         Image(systemName: "xmark")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(.primary)
                     }
                 }
                 ToolbarItem(placement: .bottomBar) {
@@ -253,6 +246,7 @@ struct CollapsSelectionView: View {
                 }
             }
         }
+        .presentationDragIndicator(.visible)
         .onAppear {
             setupInitialSelection()
         }

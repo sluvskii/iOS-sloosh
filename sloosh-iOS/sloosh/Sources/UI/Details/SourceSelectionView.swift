@@ -207,21 +207,14 @@ struct SourceSelectionView: View {
                 }
                 .padding(20)
             }
+            .navigationTitle(result.title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .principal) {
-                    Text(result.title)
-                        .font(.system(size: 17, weight: .semibold))
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                }
-                ToolbarItem(placement: .topBarLeading) {
-                    Button(action: {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button {
                         dismiss()
-                    }) {
+                    } label: {
                         Image(systemName: "xmark")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(.primary)
                     }
                 }
                 ToolbarItem(placement: .bottomBar) {
@@ -245,6 +238,7 @@ struct SourceSelectionView: View {
                 }
             }
         }
+        .presentationDragIndicator(.visible)
         .onAppear {
             setupInitialSelection()
         }
