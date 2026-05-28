@@ -3,7 +3,7 @@ import SwiftUI
 struct SourceSelectionView: View {
     let result: AllohaApiResult
     let onPlay: (AllohaTranslation) -> Void
-    @Environment(\.presentationMode) var presentationMode
+    @Environment(\.dismiss) private var dismiss
     
     @State private var selectedSeason: Int?
     @State private var selectedEpisode: Int?
@@ -132,200 +132,123 @@ struct SourceSelectionView: View {
                   let epObj = seasonObj.episodes.first(where: { $0.episode == e }),
                   let translation = epObj.translations.first(where: { $0.name == tName }) else { return }
             onPlay(translation)
-            presentationMode.wrappedValue.dismiss()
+            dismiss()
         } else if let movie = result.movie {
             guard let tName = selectedTranslationName,
                   let translation = movie.translations.first(where: { $0.name == tName }) else { return }
             onPlay(translation)
-            presentationMode.wrappedValue.dismiss()
+            dismiss()
         }
     }
     
     var body: some View {
         NavigationStack {
-            ZStack(alignment: .bottom) {
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 24) {
-                        if !allTranslations.isEmpty {
-                            VStack(alignment: .leading, spacing: 12) {
-                                Text("Озвучка")
-                                    .font(.headline)
-                                    .foregroundColor(.secondary)
-                                
-                                FlowLayout(spacing: 8) {
-                                    ForEach(allTranslations, id: \.self) { tName in
-                                        ChipView(
-                                            title: tName,
-                                            isSelected: selectedTranslationName == tName,
-                                            isAvailable: isTranslationAvailable(tName)
-                                        ) {
-                                            selectTranslation(tName)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        
-                        if result.isSerial && !allSeasons.isEmpty {
-                            VStack(alignment: .leading, spacing: 12) {
-                                Text("Сезон")
-                                    .font(.headline)
-                                    .foregroundColor(.secondary)
-                                
-                                FlowLayout(spacing: 8) {
-                                    ForEach(allSeasons, id: \.self) { s in
-                                        ChipView(
-                                            title: "\(s) сезон",
-                                            isSelected: selectedSeason == s,
-                                            isAvailable: isSeasonAvailable(s)
-                                        ) {
-                                            selectSeason(s)
-                                        }
-                                    }
-                                }
-                            }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 28) {
+                    if !allTranslations.isEmpty {
+                        VStack(alignment: .leading, spacing: 14) {
+                            Text("Озвучка")
+                                .font(.system(size: 20, weight: .bold))
+                                .foregroundColor(.primary)
                             
-                            if !allEpisodes.isEmpty {
-                                VStack(alignment: .leading, spacing: 12) {
-                                    Text("Серия")
-                                        .font(.headline)
-                                        .foregroundColor(.secondary)
-                                    
-                                    FlowLayout(spacing: 8) {
-                                        ForEach(allEpisodes, id: \.self) { e in
-                                            ChipView(
-                                                title: "\(e) серия",
-                                                isSelected: selectedEpisode == e,
-                                                isAvailable: isEpisodeAvailable(e)
-                                            ) {
-                                                selectEpisode(e)
-                                            }
-                                        }
+                            FlowLayout(spacing: 10) {
+                                ForEach(allTranslations, id: \.self) { tName in
+                                    WatchSelectorChip(
+                                        title: tName,
+                                        isSelected: selectedTranslationName == tName,
+                                        isAvailable: isTranslationAvailable(tName)
+                                    ) {
+                                        selectTranslation(tName)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    
+                    if result.isSerial && !allSeasons.isEmpty {
+                        VStack(alignment: .leading, spacing: 14) {
+                            Text("Сезон")
+                                .font(.system(size: 20, weight: .bold))
+                                .foregroundColor(.primary)
+                            
+                            FlowLayout(spacing: 10) {
+                                ForEach(allSeasons, id: \.self) { s in
+                                    WatchSelectorChip(
+                                        title: "\(s) сезон",
+                                        isSelected: selectedSeason == s,
+                                        isAvailable: isSeasonAvailable(s)
+                                    ) {
+                                        selectSeason(s)
                                     }
                                 }
                             }
                         }
                         
-                        // Bottom padding for button
-                        Color.clear.frame(height: 80)
+                        if !allEpisodes.isEmpty {
+                            VStack(alignment: .leading, spacing: 14) {
+                                Text("Серия")
+                                    .font(.system(size: 20, weight: .bold))
+                                    .foregroundColor(.primary)
+                                
+                                FlowLayout(spacing: 10) {
+                                    ForEach(allEpisodes, id: \.self) { e in
+                                        WatchSelectorChip(
+                                            title: "\(e) серия",
+                                            isSelected: selectedEpisode == e,
+                                            isAvailable: isEpisodeAvailable(e)
+                                        ) {
+                                            selectEpisode(e)
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
-                    .padding()
                 }
-                
-                // Play Button
-                Button(action: {
-                    playSelected()
-                }) {
-                    Text("Далее")
-                        .font(.system(size: 17, weight: .semibold))
-                        .padding(.horizontal, 48)
-                        .padding(.vertical, 14)
-                        .foregroundColor(Color(UIColor.systemBackground))
-                        .background(
-                            Capsule()
-                                .fill(Color.primary)
-                        )
-                }
-                .buttonStyle(.plain)
-                .padding(.bottom, 16)
+                .padding(20)
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .principal) {
                     Text(result.title)
-                        .font(.headline)
+                        .font(.system(size: 17, weight: .semibold))
                         .lineLimit(1)
                         .truncationMode(.tail)
                 }
-                ToolbarItem(placement: .topBarLeading) {
+                ToolbarItem(placement: .topBarTrailing) {
                     Button(action: {
-                        presentationMode.wrappedValue.dismiss()
+                        dismiss()
                     }) {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(.primary)
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 24))
+                            .foregroundColor(Color(UIColor.tertiaryLabel))
                     }
+                    .buttonStyle(.plain)
+                }
+                ToolbarItem(placement: .bottomBar) {
+                    Button(action: {
+                        playSelected()
+                    }) {
+                        HStack {
+                            Image(systemName: "play.fill")
+                            Text("Смотреть")
+                        }
+                        .font(.system(size: 17, weight: .bold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .buttonBorderShape(.capsule)
+                    .tint(.primary)
+                    .foregroundStyle(Color(UIColor.systemBackground))
+                    .padding(.horizontal)
                 }
             }
         }
+        .presentationBackground(.regularMaterial)
         .onAppear {
             setupInitialSelection()
-        }
-    }
-}
-
-struct ChipView: View {
-    let title: String
-    let isSelected: Bool
-    let isAvailable: Bool
-    let action: () -> Void
-    
-    var body: some View {
-        Button(action: action) {
-            Text(title)
-                .font(.system(size: 14, weight: .medium))
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-                .foregroundColor(isSelected ? Color(UIColor.systemBackground) : .primary)
-                .background(
-                    Capsule()
-                        .fill(isSelected ? Color.primary : Color(UIColor.secondarySystemFill))
-                )
-                .overlay(
-                    Capsule()
-                        .strokeBorder(isSelected ? Color.clear : Color.clear, lineWidth: 1)
-                )
-        }
-        .buttonStyle(.plain)
-        .opacity(isAvailable ? 1.0 : 0.45)
-        .disabled(!isAvailable)
-    }
-}
-
-@available(iOS 16.0, *)
-struct FlowLayout: Layout {
-    var spacing: CGFloat = 8
-    
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        // Fallback to 300 if width cannot be determined to avoid UIScreen.main warning
-        let width = proposal.width ?? 300
-        let result = FlowResult(in: width, subviews: subviews, spacing: spacing)
-        return result.size
-    }
-    
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        let result = FlowResult(in: bounds.width, subviews: subviews, spacing: spacing)
-        for (index, subview) in subviews.enumerated() {
-            let point = result.points[index]
-            subview.place(at: CGPoint(x: point.x + bounds.minX, y: point.y + bounds.minY), proposal: .unspecified)
-        }
-    }
-    
-    struct FlowResult {
-        var size: CGSize = .zero
-        var points: [CGPoint] = []
-        
-        init(in maxWidth: CGFloat, subviews: Layout.Subviews, spacing: CGFloat) {
-            var currentPoint = CGPoint.zero
-            var rowHeight: CGFloat = 0
-            var points: [CGPoint] = []
-            
-            for subview in subviews {
-                let size = subview.sizeThatFits(.unspecified)
-                
-                if currentPoint.x + size.width > maxWidth, currentPoint.x > 0 {
-                    currentPoint.x = 0
-                    currentPoint.y += rowHeight + spacing
-                    rowHeight = 0
-                }
-                
-                points.append(currentPoint)
-                currentPoint.x += size.width + spacing
-                rowHeight = max(rowHeight, size.height)
-            }
-            
-            self.points = points
-            self.size = CGSize(width: maxWidth, height: currentPoint.y + rowHeight)
         }
     }
 }
