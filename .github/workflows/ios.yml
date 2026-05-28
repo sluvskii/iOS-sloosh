@@ -2,7 +2,7 @@ name: iOS Build
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "trae/**" ]
   pull_request:
     branches: [ "main" ]
   workflow_dispatch:
@@ -56,7 +56,7 @@ jobs:
 
     - name: Create Release
       uses: softprops/action-gh-release@v2
-      if: github.ref == 'refs/heads/main'
+      if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/trae/')
       with:
         tag_name: build-${{ github.run_number }}
         target_commitish: ${{ github.sha }}
