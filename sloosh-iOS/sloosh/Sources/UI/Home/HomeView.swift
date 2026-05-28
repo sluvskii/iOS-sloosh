@@ -44,25 +44,15 @@ struct HomeView: View {
 
     var body: some View {
         NavigationStack {
-            let categoryBinding = Binding<HomeCategory?>(
-                get: { viewModel.selectedCategory },
-                set: { if let val = $0 { viewModel.selectedCategory = val } }
-            )
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(spacing: 0) {
-                    ForEach(HomeCategory.allCases, id: \.self) { category in
-                        HomeCategoryContentView(viewModel: viewModel, category: category)
-                            .containerRelativeFrame(.horizontal)
-                            .id(category)
-                    }
+            TabView(selection: $viewModel.selectedCategory) {
+                ForEach(HomeCategory.allCases, id: \.self) { category in
+                    HomeCategoryContentView(viewModel: viewModel, category: category)
+                        .tag(category)
                 }
-                .scrollTargetLayout()
             }
-            .scrollTargetBehavior(.paging)
-            .scrollPosition(id: categoryBinding)
+            .tabViewStyle(.page(indexDisplayMode: .never))
             .animation(.spring(response: 0.3, dampingFraction: 0.8), value: viewModel.selectedCategory)
-            .navigationTitle("Главная")
+            .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(id: "home") {
                 ToolbarItem(id: "category", placement: .principal) {
