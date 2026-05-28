@@ -44,26 +44,13 @@ struct HomeView: View {
 
     var body: some View {
         NavigationStack {
-            let categoryBinding = Binding<HomeCategory?>(
-                get: { viewModel.selectedCategory },
-                set: { if let val = $0 { viewModel.selectedCategory = val } }
+            HomeCategoryContentView(
+                viewModel: viewModel,
+                category: viewModel.selectedCategory
             )
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(spacing: 0) {
-                    ForEach(HomeCategory.allCases, id: \.self) { category in
-                        HomeCategoryContentView(viewModel: viewModel, category: category)
-                            .containerRelativeFrame(.horizontal)
-                            .id(category)
-                    }
-                }
-                .scrollTargetLayout()
-            }
-            .scrollTargetBehavior(.paging)
-            .scrollPosition(id: categoryBinding)
             .animation(.spring(response: 0.3, dampingFraction: 0.8), value: viewModel.selectedCategory)
-            .navigationTitle("Главная")
-            .navigationBarTitleDisplayMode(.large)
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar(id: "home") {
                 ToolbarItem(id: "category", placement: .principal) {
                     HomeCategorySegmentedPicker(selectedCategory: $viewModel.selectedCategory)
