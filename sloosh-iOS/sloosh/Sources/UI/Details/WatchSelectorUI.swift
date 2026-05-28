@@ -12,10 +12,9 @@ struct WatchSelectorChip: View {
                 .font(.system(size: 15, weight: isSelected ? .semibold : .medium))
         }
         .buttonStyle(.borderedProminent)
-        .tint(isSelected ? .primary : Color(UIColor.tertiarySystemFill))
+        .tint(isSelected ? .primary : Color(UIColor.secondarySystemFill))
         .foregroundStyle(isSelected ? Color(UIColor.systemBackground) : .primary)
         .buttonBorderShape(.capsule)
-        .opacity(isAvailable ? 1.0 : 0.45)
         .disabled(!isAvailable)
     }
 }
