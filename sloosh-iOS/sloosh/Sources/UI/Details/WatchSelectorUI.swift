@@ -5,18 +5,30 @@ struct WatchSelectorChip: View {
     let isSelected: Bool
     let isAvailable: Bool
     let action: () -> Void
-    
+
     var body: some View {
         Button(action: action) {
             Text(title)
                 .font(.system(size: 15, weight: isSelected ? .semibold : .medium))
+                .padding(.horizontal, 16)
+                .padding(.vertical, 9)
+                .foregroundStyle(isSelected ? Color(UIColor.systemBackground) : (isAvailable ? Color.primary : Color.secondary))
         }
-        .buttonStyle(.borderedProminent)
-        .tint(isSelected ? .primary : Color(UIColor.tertiarySystemFill))
-        .foregroundStyle(isSelected ? Color(UIColor.systemBackground) : .primary)
-        .buttonBorderShape(.capsule)
-        .opacity(isAvailable ? 1.0 : 0.45)
-        .disabled(!isAvailable)
+        .background(
+            Capsule()
+                .fill(isSelected ? Color.primary : (isAvailable ? Color(UIColor.secondarySystemFill) : Color(UIColor.tertiarySystemFill)))
+        )
+        .opacity(isAvailable ? 1.0 : 0.6)
+        .buttonStyle(ChipButtonStyle())
+    }
+}
+
+struct ChipButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
+            .opacity(configuration.isPressed ? 0.85 : 1.0)
+            .animation(.easeOut(duration: 0.15), value: configuration.isPressed)
     }
 }
 
