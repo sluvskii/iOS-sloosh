@@ -224,17 +224,17 @@ struct CollapsSelectionView: View {
                     playSelected()
                 }) {
                     Text("Далее")
-                        .font(.system(size: 16, weight: .semibold))
-                        .padding(.horizontal, 32)
-                        .padding(.vertical, 12)
-                        .foregroundColor(Color.slooshAccent)
+                        .font(.system(size: 17, weight: .semibold))
+                        .padding(.horizontal, 48)
+                        .padding(.vertical, 14)
+                        .foregroundColor(Color(UIColor.systemBackground))
                         .background(
                             Capsule()
-                                .fill(Color.slooshAccent.opacity(0.15))
+                                .fill(Color.primary)
                         )
                 }
                 .buttonStyle(.plain)
-                .padding(.bottom, 24)
+                .padding(.bottom, 16)
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

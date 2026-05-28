@@ -217,17 +217,17 @@ struct SourceSelectionView: View {
                     playSelected()
                 }) {
                     Text("Далее")
-                        .font(.system(size: 16, weight: .semibold))
-                        .padding(.horizontal, 32)
-                        .padding(.vertical, 12)
-                        .foregroundColor(Color.slooshAccent)
+                        .font(.system(size: 17, weight: .semibold))
+                        .padding(.horizontal, 48)
+                        .padding(.vertical, 14)
+                        .foregroundColor(Color(UIColor.systemBackground))
                         .background(
                             Capsule()
-                                .fill(Color.slooshAccent.opacity(0.15))
+                                .fill(Color.primary)
                         )
                 }
                 .buttonStyle(.plain)
-                .padding(.bottom, 24)
+                .padding(.bottom, 16)
             }
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -266,14 +266,14 @@ struct ChipView: View {
                 .font(.system(size: 14, weight: .medium))
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
-                .foregroundColor(isSelected ? Color.slooshAccent : .primary)
+                .foregroundColor(isSelected ? Color(UIColor.systemBackground) : .primary)
                 .background(
                     Capsule()
-                        .fill(isSelected ? Color.slooshAccent.opacity(0.15) : Color(UIColor.secondarySystemFill))
+                        .fill(isSelected ? Color.primary : Color(UIColor.secondarySystemFill))
                 )
                 .overlay(
                     Capsule()
-                        .strokeBorder(isSelected ? Color.slooshAccent.opacity(0.3) : Color.clear, lineWidth: 1)
+                        .strokeBorder(isSelected ? Color.clear : Color.clear, lineWidth: 1)
                 )
         }
         .buttonStyle(.plain)
