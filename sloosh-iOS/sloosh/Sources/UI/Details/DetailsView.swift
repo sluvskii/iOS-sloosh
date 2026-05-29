@@ -132,9 +132,12 @@ struct DetailsView: View {
                             .padding(.horizontal, 48)
                             .foregroundStyle(Color(UIColor.systemBackground))
                         }
-                        .background(Color.primary)
-                        .clipShape(Capsule())
-                        .matchedTransitionSource(id: "playBtn", in: transition)
+                        .matchedTransitionSource(id: "playBtn", in: transition) { source in
+                            source
+                                .background(.primary)
+                                .clipShape(RoundedRectangle(cornerRadius: 25, style: .continuous))
+                        }
+                        .contentShape(Capsule())
                         .disabled(viewModel.isResolvingAllohaPlayback)
                         .buttonStyle(.plain)
                         .padding(.top, 16)

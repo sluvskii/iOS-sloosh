@@ -218,8 +218,8 @@ struct SourceSelectionView: View {
                         dismiss()
                     } label: {
                         Image(systemName: "xmark")
-                            .foregroundStyle(.primary)
                     }
+                    .tint(.primary)
                 }
                 ToolbarItem(placement: .bottomBar) {
                     Button(action: {
