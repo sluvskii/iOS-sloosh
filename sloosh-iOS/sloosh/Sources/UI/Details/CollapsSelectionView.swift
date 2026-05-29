@@ -226,6 +226,7 @@ struct CollapsSelectionView: View {
                         dismiss()
                     } label: {
                         Image(systemName: "xmark")
+                            .foregroundStyle(.primary)
                     }
                 }
                 ToolbarItem(placement: .bottomBar) {

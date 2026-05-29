@@ -307,11 +307,11 @@ private struct SourceSelectionLoadingView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
-                    SourceSelectionSkeletonSection(titleWidth: 92, chipWidths: [84, 112, 96, 104])
+                    SourceSelectionSkeletonSection(title: "Озвучка", chipWidths: [84, 112, 96, 104])
 
                     if mode == .alloha || mode == .collaps {
-                        SourceSelectionSkeletonSection(titleWidth: 76, chipWidths: [88, 88, 88])
-                        SourceSelectionSkeletonSection(titleWidth: 70, chipWidths: [84, 84, 84, 84])
+                        SourceSelectionSkeletonSection(title: "Сезон", chipWidths: [88, 88, 88])
+                        SourceSelectionSkeletonSection(title: "Серия", chipWidths: [84, 84, 84, 84])
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -327,6 +327,7 @@ private struct SourceSelectionLoadingView: View {
                         dismiss()
                     } label: {
                         Image(systemName: "xmark")
+                            .foregroundStyle(.primary)
                     }
                 }
             }
@@ -336,14 +337,14 @@ private struct SourceSelectionLoadingView: View {
 }
 
 private struct SourceSelectionSkeletonSection: View {
-    let titleWidth: CGFloat
+    let title: String
     let chipWidths: [CGFloat]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                .fill(Color(UIColor.secondarySystemFill))
-                .frame(width: titleWidth, height: 24)
+            Text(title)
+                .font(.system(size: 20, weight: .bold))
+                .foregroundStyle(.primary)
 
             FlowLayout(spacing: 10) {
                 ForEach(Array(chipWidths.enumerated()), id: \.offset) { _, width in
@@ -387,6 +388,7 @@ private struct SourceSelectionEmptyView: View {
                         dismiss()
                     } label: {
                         Image(systemName: "xmark")
+                            .foregroundStyle(.primary)
                     }
                 }
             }
