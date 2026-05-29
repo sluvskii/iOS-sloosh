@@ -224,43 +224,28 @@ struct DetailsView: View {
             sourceSheetTitle = ""
             viewModel.resetSourceSheet()
         }) {
-            ZStack {
-                if viewModel.isFetchingSources, let sourceSheetMode {
-                    SourceSelectionLoadingView(
-                        title: sourceSheetTitle,
-                        mode: sourceSheetMode
-                    )
-                } else if let wrapper = viewModel.sourceResultWrapper,
-                          wrapper.mode == .alloha,
-                          let result = wrapper.allohaResult {
-                    SourceSelectionView(result: result) { translation in
-                        viewModel.resolveAllohaPlayback(iframeUrl: translation.iframeUrl, translationName: translation.name)
-                    }
-                } else if let wrapper = viewModel.sourceResultWrapper, wrapper.mode == .collaps {
-                    let isSerial = wrapper.collapsSeasons != nil && !(wrapper.collapsSeasons?.isEmpty ?? true)
-                    CollapsSelectionView(
-                        result: wrapper.collapsSeasons ?? [],
-                        movieResult: wrapper.collapsMovie,
-                        isSerial: isSerial,
-                        title: viewModel.details?.title ?? viewModel.details?.name ?? "",
-                        onPlay: { url in
-                            // Collaps returns direct HLS/MPD urls
-                            selectedIframeUrl = url // we use this state variable for the URL
-                            showPlayer = true
-                        }
-                    )
-                } else {
-                    SourceSelectionEmptyView(title: sourceSheetTitle)
-                }
+            if let details = viewModel.details {
+                WatchSelectorView(
+                    viewModel: viewModel,
+                    kpId: details.externalIds?.kp ?? 0,
+                    title: details.title ?? details.name ?? ""
+                )
+                .presentationDetents([.medium, .large], selection: $sourceSheetDetent)
+                .navigationTransition(.zoom(sourceID: "playBtn", in: transition))
             }
-            .presentationDetents([.medium, .large], selection: $sourceSheetDetent)
-            .navigationTransition(.zoom(sourceID: "playBtn", in: transition))
         }
         .onChange(of: viewModel.allohaPlaybackUrl) { resolvedUrl in
             guard let resolvedUrl else { return }
             showSourceSheet = false
             selectedDirectVideoUrl = resolvedUrl
             selectedIframeUrl = nil
+            showPlayer = true
+        }
+        .onChange(of: viewModel.directPlaybackUrl) { url in
+            guard let url else { return }
+            showSourceSheet = false
+            selectedIframeUrl = url
+            selectedDirectVideoUrl = nil
             showPlayer = true
         }
         .onChange(of: viewModel.isResolvingAllohaPlayback) { isResolving in
@@ -292,110 +277,6 @@ struct DetailsView: View {
                 }
             }
         }
-    }
-}
-
-private struct SourceSelectionLoadingView: View {
-    let title: String
-    let mode: SourceMode
-
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    SourceSelectionSkeletonSection(title: "Озвучка", chipWidths: [84, 112, 96, 104])
-
-                    if mode == .alloha || mode == .collaps {
-                        SourceSelectionSkeletonSection(title: "Сезон", chipWidths: [88, 88, 88])
-                        SourceSelectionSkeletonSection(title: "Серия", chipWidths: [84, 84, 84, 84])
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .contentMargins(.horizontal, 20, for: .scrollContent)
-            .contentMargins(.top, 16, for: .scrollContent)
-            .contentMargins(.bottom, 28, for: .scrollContent)
-            .navigationTitle(title)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .foregroundStyle(.primary)
-                    }
-                    .tint(.primary)
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-        .presentationDragIndicator(.visible)
-    }
-}
-
-private struct SourceSelectionSkeletonSection: View {
-    let title: String
-    let chipWidths: [CGFloat]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(title)
-                .font(.system(size: 20, weight: .bold))
-                .foregroundStyle(.primary)
-
-            FlowLayout(spacing: 10) {
-                ForEach(Array(chipWidths.enumerated()), id: \.offset) { _, width in
-                    Capsule()
-                        .fill(Color(UIColor.secondarySystemFill))
-                        .frame(width: width, height: 34)
-                }
-            }
-        }
-        .shimmer()
-    }
-}
-
-private struct SourceSelectionEmptyView: View {
-    let title: String
-
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        NavigationStack {
-            VStack(spacing: 16) {
-                Image(systemName: "exclamationmark.bubble")
-                    .font(.system(size: 34, weight: .semibold))
-                    .foregroundStyle(.secondary)
-
-                Text("Не удалось получить источники")
-                    .font(.system(size: 20, weight: .bold))
-
-                Text("Попробуйте закрыть окно и нажать `Смотреть` еще раз.")
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-            }
-            .padding(.horizontal, 24)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .navigationTitle(title)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .foregroundStyle(.primary)
-                    }
-                    .tint(.primary)
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-        .presentationDragIndicator(.visible)
     }
 }
 
@@ -496,6 +377,7 @@ class DetailsViewModel: ObservableObject {
     @Published var isResolvingAllohaPlayback = false
     @Published var sourceResultWrapper: SourceResultWrapper?
     @Published var allohaPlaybackUrl: String?
+    @Published var directPlaybackUrl: String?
     @Published var playbackErrorMessage: String?
     
     @Published var isFavorite: Bool = false
@@ -506,6 +388,11 @@ class DetailsViewModel: ObservableObject {
 
     func resetSourceSheet() {
         sourceResultWrapper = nil
+        directPlaybackUrl = nil
+    }
+    
+    func playDirectUrl(_ url: String) {
+        directPlaybackUrl = url
     }
     
     func loadDetails(id: String) async {
