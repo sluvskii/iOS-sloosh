@@ -327,6 +327,8 @@ private struct SourceSelectionLoadingView: View {
                         Image(systemName: "xmark")
                             .foregroundStyle(.primary)
                     }
+                    .tint(.primary)
+                    .buttonStyle(.plain)
                 }
             }
         }
@@ -388,6 +390,8 @@ private struct SourceSelectionEmptyView: View {
                         Image(systemName: "xmark")
                             .foregroundStyle(.primary)
                     }
+                    .tint(.primary)
+                    .buttonStyle(.plain)
                 }
             }
         }

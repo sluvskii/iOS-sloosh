@@ -221,6 +221,7 @@ struct SourceSelectionView: View {
                             .symbolRenderingMode(.monochrome)
                             .foregroundStyle(.primary)
                     }
+                    .tint(.primary)
                     .buttonStyle(.plain)
                 }
                 ToolbarItem(placement: .bottomBar) {

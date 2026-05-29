@@ -228,6 +228,8 @@ struct CollapsSelectionView: View {
                         Image(systemName: "xmark")
                             .foregroundStyle(.primary)
                     }
+                    .tint(.primary)
+                    .buttonStyle(.plain)
                 }
                 ToolbarItem(placement: .bottomBar) {
                     Button(action: {
