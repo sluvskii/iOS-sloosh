@@ -128,7 +128,7 @@ struct DetailsView: View {
                                 Text(viewModel.isResolvingAllohaPlayback ? "Подготовка..." : "Смотреть")
                                     .font(.system(size: 17, weight: .semibold))
                             }
-                            .padding(.vertical, 14)
+                            .frame(height: 50)
                             .padding(.horizontal, 48)
                             .foregroundStyle(Color(UIColor.systemBackground))
                         }
