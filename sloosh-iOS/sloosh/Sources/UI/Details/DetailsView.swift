@@ -52,6 +52,7 @@ struct DetailsView: View {
     @State private var sourceSheetTitle = ""
     @State private var sourceFetchTask: Task<Void, Never>?
     @State private var sourceSheetDetent: PresentationDetent = .medium
+    @Namespace private var transition
     
     var body: some View {
         ScrollView {
@@ -130,11 +131,10 @@ struct DetailsView: View {
                             .padding(.vertical, 14)
                             .padding(.horizontal, 48)
                             .foregroundStyle(Color(UIColor.systemBackground))
-                            .background(
-                                Capsule()
-                                    .fill(Color.primary)
-                            )
                         }
+                        .background(Color.primary)
+                        .clipShape(Capsule())
+                        .matchedTransitionSource(id: "playBtn", in: transition)
                         .disabled(viewModel.isResolvingAllohaPlayback)
                         .buttonStyle(.plain)
                         .padding(.top, 16)
@@ -221,37 +221,37 @@ struct DetailsView: View {
             sourceSheetTitle = ""
             viewModel.resetSourceSheet()
         }) {
-            if viewModel.isFetchingSources, let sourceSheetMode {
-                SourceSelectionLoadingView(
-                    title: sourceSheetTitle,
-                    mode: sourceSheetMode
-                )
-                .presentationDetents([.medium, .large], selection: $sourceSheetDetent)
-            } else if let wrapper = viewModel.sourceResultWrapper,
-                      wrapper.mode == .alloha,
-                      let result = wrapper.allohaResult {
-                SourceSelectionView(result: result) { translation in
-                    viewModel.resolveAllohaPlayback(iframeUrl: translation.iframeUrl, translationName: translation.name)
-                }
-                .presentationDetents([.medium, .large], selection: $sourceSheetDetent)
-            } else if let wrapper = viewModel.sourceResultWrapper, wrapper.mode == .collaps {
-                let isSerial = wrapper.collapsSeasons != nil && !(wrapper.collapsSeasons?.isEmpty ?? true)
-                CollapsSelectionView(
-                    result: wrapper.collapsSeasons ?? [],
-                    movieResult: wrapper.collapsMovie,
-                    isSerial: isSerial,
-                    title: viewModel.details?.title ?? viewModel.details?.name ?? "",
-                    onPlay: { url in
-                        // Collaps returns direct HLS/MPD urls
-                        selectedIframeUrl = url // we use this state variable for the URL
-                        showPlayer = true
+            ZStack {
+                if viewModel.isFetchingSources, let sourceSheetMode {
+                    SourceSelectionLoadingView(
+                        title: sourceSheetTitle,
+                        mode: sourceSheetMode
+                    )
+                } else if let wrapper = viewModel.sourceResultWrapper,
+                          wrapper.mode == .alloha,
+                          let result = wrapper.allohaResult {
+                    SourceSelectionView(result: result) { translation in
+                        viewModel.resolveAllohaPlayback(iframeUrl: translation.iframeUrl, translationName: translation.name)
                     }
-                )
-                .presentationDetents([.medium, .large], selection: $sourceSheetDetent)
-            } else {
-                SourceSelectionEmptyView(title: sourceSheetTitle)
-                    .presentationDetents([.medium, .large], selection: $sourceSheetDetent)
+                } else if let wrapper = viewModel.sourceResultWrapper, wrapper.mode == .collaps {
+                    let isSerial = wrapper.collapsSeasons != nil && !(wrapper.collapsSeasons?.isEmpty ?? true)
+                    CollapsSelectionView(
+                        result: wrapper.collapsSeasons ?? [],
+                        movieResult: wrapper.collapsMovie,
+                        isSerial: isSerial,
+                        title: viewModel.details?.title ?? viewModel.details?.name ?? "",
+                        onPlay: { url in
+                            // Collaps returns direct HLS/MPD urls
+                            selectedIframeUrl = url // we use this state variable for the URL
+                            showPlayer = true
+                        }
+                    )
+                } else {
+                    SourceSelectionEmptyView(title: sourceSheetTitle)
+                }
             }
+            .presentationDetents([.medium, .large], selection: $sourceSheetDetent)
+            .navigationTransition(.zoom(sourceID: "playBtn", in: transition))
         }
         .onChange(of: viewModel.allohaPlaybackUrl) { resolvedUrl in
             guard let resolvedUrl else { return }
