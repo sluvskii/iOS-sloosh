@@ -52,7 +52,6 @@ struct DetailsView: View {
     @State private var sourceSheetTitle = ""
     @State private var sourceFetchTask: Task<Void, Never>?
     @State private var sourceSheetDetent: PresentationDetent = .medium
-    @Namespace private var transition
     
     var body: some View {
         ScrollView {
@@ -128,16 +127,16 @@ struct DetailsView: View {
                                 Text(viewModel.isResolvingAllohaPlayback ? "Подготовка..." : "Смотреть")
                                     .font(.system(size: 17, weight: .semibold))
                             }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 12)
-                            .padding(.horizontal, 16)
+                            .padding(.vertical, 14)
+                            .padding(.horizontal, 48)
                             .foregroundStyle(Color(UIColor.systemBackground))
+                            .background(
+                                Capsule()
+                                    .fill(Color.primary)
+                            )
                         }
                         .disabled(viewModel.isResolvingAllohaPlayback)
-                        .buttonStyle(.glassProminent)
-                        .tint(.primary)
-                        .matchedTransitionSource(id: "playBtn", in: transition)
-                        .padding(.horizontal, 24)
+                        .buttonStyle(.plain)
                         .padding(.top, 16)
 
                         DetailsInfoSection(details: details)
@@ -228,7 +227,6 @@ struct DetailsView: View {
                     mode: sourceSheetMode
                 )
                 .presentationDetents([.medium, .large], selection: $sourceSheetDetent)
-                .navigationTransition(.zoom(sourceID: "playBtn", in: transition))
             } else if let wrapper = viewModel.sourceResultWrapper,
                       wrapper.mode == .alloha,
                       let result = wrapper.allohaResult {
@@ -236,7 +234,6 @@ struct DetailsView: View {
                     viewModel.resolveAllohaPlayback(iframeUrl: translation.iframeUrl, translationName: translation.name)
                 }
                 .presentationDetents([.medium, .large], selection: $sourceSheetDetent)
-                .navigationTransition(.zoom(sourceID: "playBtn", in: transition))
             } else if let wrapper = viewModel.sourceResultWrapper, wrapper.mode == .collaps {
                 let isSerial = wrapper.collapsSeasons != nil && !(wrapper.collapsSeasons?.isEmpty ?? true)
                 CollapsSelectionView(
@@ -251,11 +248,9 @@ struct DetailsView: View {
                     }
                 )
                 .presentationDetents([.medium, .large], selection: $sourceSheetDetent)
-                .navigationTransition(.zoom(sourceID: "playBtn", in: transition))
             } else {
                 SourceSelectionEmptyView(title: sourceSheetTitle)
                     .presentationDetents([.medium, .large], selection: $sourceSheetDetent)
-                    .navigationTransition(.zoom(sourceID: "playBtn", in: transition))
             }
         }
         .onChange(of: viewModel.allohaPlaybackUrl) { resolvedUrl in
