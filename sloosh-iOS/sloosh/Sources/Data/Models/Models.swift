@@ -200,14 +200,3 @@ struct FavoriteDto: Codable, Identifiable {
 struct FavoriteCheckDto: Codable {
     let isFavorite: Bool
 }
-
-enum VideoQualityPreference: String, CaseIterable, Identifiable {
-    case ask = "Спрашивать каждый раз"
-    case auto = "Авто"
-    case q1080 = "1080p"
-    case q720 = "720p"
-    case q480 = "480p"
-    case q360 = "360p"
-    
-    var id: String { self.rawValue }
-}

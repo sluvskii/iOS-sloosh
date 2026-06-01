@@ -3,15 +3,12 @@ import SwiftUI
 struct SourceSelectionView: View {
     let result: AllohaApiResult
     let kpId: Int?
-    let onPlay: (AllohaTranslation, Int?, Int?, VideoQualityPreference) -> Void
+    let onPlay: (AllohaTranslation, Int?, Int?) -> Void
     @Environment(\.dismiss) private var dismiss
     
     @State private var selectedSeason: Int?
     @State private var selectedEpisode: Int?
     @State private var selectedTranslationName: String?
-    
-    @AppStorage("preferredVideoQuality") private var preferredQuality: VideoQualityPreference = .ask
-    @State private var showQualitySelection = false
     
     // Computed properties for ALL unique values
     var allTranslations: [String] {
@@ -149,14 +146,6 @@ struct SourceSelectionView: View {
     }
     
     func playSelected() {
-        if preferredQuality == .ask {
-            showQualitySelection = true
-        } else {
-            finishPlay(quality: preferredQuality)
-        }
-    }
-    
-    func finishPlay(quality: VideoQualityPreference) {
         if result.isSerial {
             guard let s = selectedSeason, let e = selectedEpisode, let tName = selectedTranslationName else { return }
             guard let seasonObj = result.seasons.first(where: { $0.season == s }),
@@ -167,7 +156,7 @@ struct SourceSelectionView: View {
                 CollapsPlaybackProgressStore.shared.saveLastPlayed(kpId: kpId, season: s, episode: e)
             }
             
-            onPlay(translation, s, e, quality)
+            onPlay(translation, s, e)
             dismiss()
         } else if let movie = result.movie {
             guard let tName = selectedTranslationName,
@@ -177,7 +166,7 @@ struct SourceSelectionView: View {
                 CollapsPlaybackProgressStore.shared.saveLastPlayed(kpId: kpId, season: nil, episode: nil)
             }
             
-            onPlay(translation, nil, nil, quality)
+            onPlay(translation, nil, nil)
             dismiss()
         }
     }
@@ -289,12 +278,6 @@ struct SourceSelectionView: View {
         .presentationDragIndicator(.visible)
         .onAppear {
             setupInitialSelection()
-        }
-        .sheet(isPresented: $showQualitySelection) {
-            QualitySelectionSheet { selectedQuality in
-                showQualitySelection = false
-                finishPlay(quality: selectedQuality)
-            }
         }
     }
 }

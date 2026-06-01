@@ -6,16 +6,13 @@ struct CollapsSelectionView: View {
     let kpId: Int?
     let isSerial: Bool
     let title: String
-    let onPlay: (String, Int?, Int?, String?, [String], [CollapsSubtitle], VideoQualityPreference) -> Void
+    let onPlay: (String, Int?, Int?, String?, [String], [CollapsSubtitle]) -> Void
     
     @Environment(\.dismiss) private var dismiss
     
     @State private var selectedSeason: Int?
     @State private var selectedEpisode: Int?
     @State private var selectedTranslationName: String?
-    
-    @AppStorage("preferredVideoQuality") private var preferredQuality: VideoQualityPreference = .ask
-    @State private var showQualitySelection = false
     
     var allTranslations: [String] {
         if isSerial {
@@ -149,14 +146,6 @@ struct CollapsSelectionView: View {
     }
     
     func playSelected() {
-        if preferredQuality == .ask {
-            showQualitySelection = true
-        } else {
-            finishPlay(quality: preferredQuality)
-        }
-    }
-    
-    func finishPlay(quality: VideoQualityPreference) {
         if isSerial {
             guard let s = selectedSeason, let e = selectedEpisode else { return }
             guard let seasonObj = result.first(where: { $0.season == s }),
@@ -170,10 +159,10 @@ struct CollapsSelectionView: View {
             let voices = epObj.voices
             let subtitles = epObj.subtitles
             if let hls = epObj.hlsUrl, !hls.isEmpty {
-                onPlay(hls, s, e, tName, voices, subtitles, quality)
+                onPlay(hls, s, e, tName, voices, subtitles)
                 dismiss()
             } else if let mpd = epObj.mpdUrl, !mpd.isEmpty {
-                onPlay(mpd, s, e, tName, voices, subtitles, quality)
+                onPlay(mpd, s, e, tName, voices, subtitles)
                 dismiss()
             }
         } else if let movie = movieResult {
@@ -185,10 +174,10 @@ struct CollapsSelectionView: View {
             let voices = movie.voices
             let subtitles = movie.subtitles
             if let hls = movie.hlsUrl, !hls.isEmpty {
-                onPlay(hls, nil, nil, tName, voices, subtitles, quality)
+                onPlay(hls, nil, nil, tName, voices, subtitles)
                 dismiss()
             } else if let mpd = movie.mpdUrl, !mpd.isEmpty {
-                onPlay(mpd, nil, nil, tName, voices, subtitles, quality)
+                onPlay(mpd, nil, nil, tName, voices, subtitles)
                 dismiss()
             }
         }
@@ -300,12 +289,6 @@ struct CollapsSelectionView: View {
         .presentationDragIndicator(.visible)
         .onAppear {
             setupInitialSelection()
-        }
-        .sheet(isPresented: $showQualitySelection) {
-            QualitySelectionSheet { selectedQuality in
-                showQualitySelection = false
-                finishPlay(quality: selectedQuality)
-            }
         }
     }
 }
