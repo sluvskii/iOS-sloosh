@@ -1,263 +1,143 @@
 import Foundation
+import os.log
 
-enum CollapsCatalogResult {
-    case movie(CollapsMovie)
-    case series([CollapsSeason])
-}
-
-enum CollapsParser {
-    static func parseCatalog(embedHtml: String) -> CollapsCatalogResult? {
-        let html = embedHtml.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !html.isEmpty else { return nil }
-
-        if let seasonsJson = extractSeasonsJson(from: html),
-           let seasons = parseSeries(seasonsJson: seasonsJson),
-           !seasons.isEmpty {
-            return .series(seasons)
+public class CollapsParser {
+    private static let logger = OSLog(subsystem: "com.neo.neomovies", category: "CollapsParser")
+    
+    public static func parseCollapsCatalog(embedHtml: String) -> [String: Any] {
+        guard !embedHtml.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            os_log("Empty HTML", log: logger, type: .error)
+            return [:]
         }
-
-        if let movie = parseMovie(from: html) {
-            return .movie(movie)
+        
+        os_log("HTML length: %d", log: logger, type: .info, embedHtml.count)
+        os_log("HTML preview (first 500 chars): %@", log: logger, type: .info, String(embedHtml.prefix(500)))
+        
+        // Extract seasons JSON from embed HTML
+        if let seasonsJson = extractSeasonsJson(from: embedHtml) {
+            os_log("Found seasons JSON, length: %d", log: logger, type: .info, seasonsJson.count)
+            os_log("Seasons JSON preview: %@", log: logger, type: .info, String(seasonsJson.prefix(500)))
+            return parseSeries(seasonsJson: seasonsJson, source: "collaps")
         }
-
-        return nil
+        
+        os_log("No seasons JSON found, trying as movie", log: logger, type: .info)
+        
+        // Try to parse as movie
+        if let movieData = extractMovieData(from: embedHtml) {
+            os_log("Found movie data: %@", log: logger, type: .info, movieData)
+            return parseMovie(movieData: movieData, source: "collaps")
+        }
+        
+        os_log("No movie data found, returning HTML for debugging", log: logger, type: .error)
+        return [
+            "kind": "debug",
+            "html": embedHtml
+        ]
     }
-
+    
     private static func extractSeasonsJson(from html: String) -> String? {
-        guard let pattern = try? NSRegularExpression(pattern: #"(?i)\bseasons\s*:"#),
-              let match = pattern.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)),
+        // Look for seasons: and extract until end of line (matching Android implementation)
+        os_log("Searching for 'seasons:' in HTML (case-insensitive)", log: logger, type: .info)
+        
+        // Use regex for case-insensitive search with flexible spacing
+        guard let pattern = try? NSRegularExpression(pattern: #"(?i)\bseasons\s*:"#, options: []),
+              let match = pattern.firstMatch(in: html, options: [], range: NSRange(html.startIndex..., in: html)),
               let matchRange = Range(match.range, in: html) else {
+            os_log("'seasons:' not found in HTML", log: logger, type: .error)
             return nil
         }
-
+        
+        os_log("Found 'seasons:' at position", log: logger, type: .info)
+        
+        // Start exactly after "seasons:"; do not skip the first JSON character.
         let start = matchRange.upperBound
         var end = start
+        
         while end < html.endIndex {
-            let character = html[end]
-            if character == "\n" || character == "\r" {
+            let char = html[end]
+            if char == "\n" || char == "\r" {
                 break
             }
             end = html.index(after: end)
         }
+        
+        let jsonStr = String(html[start..<end]).trimmingCharacters(in: .whitespacesAndNewlines)
+        os_log("Extracted JSON string: %@", log: logger, type: .info, jsonStr)
+        
+        return jsonStr.hasPrefix("[") ? jsonStr : nil
+    }
+    
+    private static func extractMovieData(from html: String) -> [String: Any]? {
+        // Extract movie playlist data (matching Android implementation)
+        var data: [String: Any] = [:]
+        
+        os_log("Searching for dasha/dash: pattern with .mpd suffix", log: logger, type: .info)
+        
+        // Extract DASH URL (dasha or dash with .mpd suffix)
+        if let dashPattern = try? NSRegularExpression(pattern: #"(?i)\b(dasha|dash)\s*:\s*['\"]([^'\"]+\.mpd[^'\"]*)['\"]"#, options: []),
+           let dashMatch = dashPattern.firstMatch(in: html, options: [], range: NSRange(html.startIndex..., in: html)),
+           let dashRange = Range(dashMatch.range(at: 2), in: html) {
+            let dash = String(html[dashRange])
+            os_log("Found dash: %@", log: logger, type: .info, dash)
+            data["dash"] = dash
+        } else {
+            os_log("dash: pattern not found", log: logger, type: .error)
+        }
+        
+        os_log("Searching for hls: pattern with .m3u8 suffix", log: logger, type: .info)
+        
+        // Extract HLS URL (hls with .m3u8 suffix)
+        if let hlsPattern = try? NSRegularExpression(pattern: #"(?i)\bhls\s*:\s*['\"]([^'\"]+\.m3u8[^'\"]*)['\"]"#, options: []),
+           let hlsMatch = hlsPattern.firstMatch(in: html, options: [], range: NSRange(html.startIndex..., in: html)),
+           let hlsRange = Range(hlsMatch.range(at: 1), in: html) {
+            let hls = String(html[hlsRange])
+            os_log("Found hls: %@", log: logger, type: .info, hls)
+            data["hls"] = hls
+        } else {
+            os_log("hls: pattern not found", log: logger, type: .error)
+        }
+        
+        os_log("Movie data extracted: %@", log: logger, type: .info, data)
+        if data.isEmpty, let payloadData = extractHlsSourcePayload(from: html) {
+            let hls = payloadData["hls"] ?? ""
+            if !hls.isEmpty {
+                data["hls"] = hls
+            }
+            let dash = payloadData["dash"] ?? ""
+            if !dash.isEmpty {
+                data["dash"] = dash
+            }
+        }
 
-        let json = String(html[start..<end]).trimmingCharacters(in: .whitespacesAndNewlines)
-        return json.hasPrefix("[") ? json : nil
+        if data["hls"] == nil,
+           let fallback = firstPreferredStreamURLString(in: html) {
+            data["hls"] = fallback
+        }
+
+        return data.isEmpty ? nil : data
     }
 
-    private static func parseSeries(seasonsJson: String) -> [CollapsSeason]? {
-        guard let jsonData = seasonsJson.data(using: .utf8),
-              let seasonsArray = try? JSONSerialization.jsonObject(with: jsonData) as? [[String: Any]] else {
-            return nil
-        }
+    private static func firstPreferredStreamURLString(in payload: String) -> String? {
+        let patterns = [
+            #"https?:\\/\\/[^\"'\s>]+\\.m3u8[^\"'\s>]*"#,
+            #"https?:\\/\\/[^\"'\s>]+\\.mpd[^\"'\s>]*"#,
+            #"(?:\"|')((?:https?:)?//[^\"'\s>]+(?:m3u8|mpd)[^\"'\s>]*)"#
+        ]
 
-        var seasons: [CollapsSeason] = []
-
-        for seasonObject in seasonsArray {
-            let seasonNum: Int
-            if let value = seasonObject["season"] as? Int {
-                seasonNum = value
-            } else if let value = seasonObject["season"] as? String, let parsed = Int(value) {
-                seasonNum = parsed
-            } else {
-                continue
+        for pattern in patterns {
+            guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { continue }
+            let range = NSRange(payload.startIndex..<payload.endIndex, in: payload)
+            guard let match = regex.firstMatch(in: payload, options: [], range: range) else { continue }
+            let targetRange = match.numberOfRanges > 1 ? match.range(at: 1) : match.range(at: 0)
+            guard let valueRange = Range(targetRange, in: payload) else { continue }
+            var value = String(payload[valueRange])
+            value = value.replacingOccurrences(of: "\\/", with: "/")
+            if value.hasPrefix("//") {
+                value = "https:" + value
             }
-
-            guard seasonNum > 0,
-                  let episodesArray = seasonObject["episodes"] as? [[String: Any]] else {
-                continue
-            }
-
-            var episodes: [CollapsEpisode] = []
-
-            for episodeObject in episodesArray {
-                let episodeNum: Int
-                if let value = episodeObject["episode"] as? Int {
-                    episodeNum = value
-                } else if let value = episodeObject["episode"] as? String, let parsed = Int(value) {
-                    episodeNum = parsed
-                } else {
-                    continue
-                }
-
-                let hls = normalizedURLString(episodeObject["hls"] as? String)
-                let dasha = normalizedURLString(episodeObject["dasha"] as? String)
-                let dash = normalizedURLString(episodeObject["dash"] as? String)
-                let mpd = dasha ?? dash
-
-                let voices = parseVoiceNames(from: episodeObject)
-                let subtitles = parseSubtitles(from: episodeObject["cc"])
-
-                episodes.append(
-                    CollapsEpisode(
-                        season: seasonNum,
-                        episode: episodeNum,
-                        mpdUrl: mpd,
-                        hlsUrl: hls,
-                        voices: voices,
-                        subtitles: subtitles
-                    )
-                )
-            }
-
-            if !episodes.isEmpty {
-                episodes.sort { $0.episode < $1.episode }
-                seasons.append(CollapsSeason(season: seasonNum, episodes: episodes))
-            }
-        }
-
-        seasons.sort { $0.season < $1.season }
-        return seasons
-    }
-
-    private static func parseMovie(from html: String) -> CollapsMovie? {
-        var hls = extractFirstUrl(in: html, keys: ["hls"], suffix: ".m3u8")
-        let dash = extractFirstUrl(in: html, keys: ["dasha", "dash"], suffix: ".mpd")
-
-        if hls == nil,
-           let payloadData = extractHlsSourcePayload(from: html) {
-            hls = payloadData["hls"]
-        }
-
-        let resolvedHls = hls ?? firstPreferredStreamURLString(in: html)
-        let voices = extractVoiceNames(from: html)
-        let subtitles = extractSubtitles(in: html)
-
-        if (dash?.isEmpty ?? true) && (resolvedHls?.isEmpty ?? true) {
-            return nil
-        }
-
-        return CollapsMovie(
-            mpdUrl: dash,
-            hlsUrl: resolvedHls,
-            voices: voices,
-            subtitles: subtitles
-        )
-    }
-
-    private static func extractFirstUrl(in html: String, keys: [String], suffix: String) -> String? {
-        for key in keys {
-            let pattern = #"(?is)\b\#(NSRegularExpression.escapedPattern(for: key))\s*:\s*['"]([^'"]+\#(NSRegularExpression.escapedPattern(for: suffix))[^'"]*)['"]"#
-            if let regex = try? NSRegularExpression(pattern: pattern),
-               let match = regex.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)),
-               let range = Range(match.range(at: 1), in: html) {
-                return normalizedURLString(String(html[range]))
-            }
+            return value
         }
         return nil
-    }
-
-    private static func extractVoiceNames(from html: String) -> [String] {
-        let directNames = extractStringArrayFromObject(html: html, objectKey: "audio", arrayKey: "names")
-        if !directNames.isEmpty {
-            return directNames
-        }
-
-        let patterns = [
-            #"(?is)\btranslations\s*:\s*(\[[\s\S]*?\])"#,
-            #"(?is)\"translations\"\s*:\s*(\[[\s\S]*?\])"#
-        ]
-
-        for pattern in patterns {
-            if let regex = try? NSRegularExpression(pattern: pattern),
-               let match = regex.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)),
-               let range = Range(match.range(at: 1), in: html) {
-                let raw = String(html[range]).trimmingCharacters(in: .whitespacesAndNewlines)
-                if raw.hasPrefix("["),
-                   let data = raw.data(using: .utf8),
-                   let array = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
-                    return array.compactMap { object in
-                        let name = (object["name"] as? String ?? object["title"] as? String ?? "")
-                            .trimmingCharacters(in: .whitespacesAndNewlines)
-                        return name.isEmpty ? nil : name
-                    }
-                }
-            }
-        }
-
-        return []
-    }
-
-    private static func extractStringArrayFromObject(html: String, objectKey: String, arrayKey: String) -> [String] {
-        let key1 = NSRegularExpression.escapedPattern(for: objectKey)
-        let key2 = NSRegularExpression.escapedPattern(for: arrayKey)
-        let patterns = [
-            "(?is)\\b\(key1)\\s*:\\s*\\{.*?\\b\(key2)\\s*:\\s*(\\[[\\s\\S]*?\\])",
-            "(?is)\\\"\(key1)\\\"\\s*:\\s*\\{.*?\\\"\(key2)\\\"\\s*:\\s*(\\[[\\s\\S]*?\\])"
-        ]
-
-        for pattern in patterns {
-            if let regex = try? NSRegularExpression(pattern: pattern),
-               let match = regex.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)),
-               let range = Range(match.range(at: 1), in: html) {
-                let raw = String(html[range]).trimmingCharacters(in: .whitespacesAndNewlines)
-                if raw.hasPrefix("["),
-                   let data = raw.data(using: .utf8),
-                   let array = try? JSONSerialization.jsonObject(with: data) as? [String] {
-                    return array
-                        .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                        .filter { !$0.isEmpty }
-                }
-            }
-        }
-
-        return []
-    }
-
-    private static func extractSubtitles(in html: String) -> [CollapsSubtitle] {
-        let pattern = #"(?is)\bcc\s*:\s*(\[[^\]]*\])"#
-        guard let regex = try? NSRegularExpression(pattern: pattern),
-              let match = regex.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)),
-              let range = Range(match.range(at: 1), in: html) else {
-            return []
-        }
-
-        let raw = String(html[range]).trimmingCharacters(in: .whitespacesAndNewlines)
-        guard raw.hasPrefix("["),
-              let data = raw.data(using: .utf8),
-              let array = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
-            return []
-        }
-
-        return array.compactMap { item in
-            subtitle(from: item)
-        }
-    }
-
-    private static func parseSubtitles(from rawValue: Any?) -> [CollapsSubtitle] {
-        guard let array = rawValue as? [[String: Any]] else { return [] }
-        return array.compactMap { subtitle(from: $0) }
-    }
-
-    private static func subtitle(from object: [String: Any]) -> CollapsSubtitle? {
-        let url = normalizedURLString((object["url"] as? String) ?? (object["src"] as? String))
-        guard let url, !url.isEmpty else { return nil }
-
-        let rawLabel = (object["name"] as? String ?? object["label"] as? String ?? "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        let label = rawLabel.isEmpty ? "Subtitle" : rawLabel
-
-        let rawLanguage = (object["lang"] as? String ?? object["language"] as? String ?? "")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        let language: String
-        if !rawLanguage.isEmpty {
-            language = rawLanguage
-        } else if label.lowercased().contains("eng") || label.lowercased().contains("original") {
-            language = "en"
-        } else {
-            language = "ru"
-        }
-
-        return CollapsSubtitle(url: url, label: label, lang: language)
-    }
-
-    private static func parseVoiceNames(from episodeObject: [String: Any]) -> [String] {
-        guard let audio = episodeObject["audio"] as? [String: Any],
-              let names = audio["names"] as? [String] else {
-            return []
-        }
-        return names
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
     }
 
     private static func extractHlsSourcePayload(from payload: String) -> [String: String]? {
@@ -278,10 +158,10 @@ enum CollapsParser {
                     for value in values {
                         let decoded = value.replacingOccurrences(of: "\\/", with: "/")
                         if resolvedHls == nil && decoded.lowercased().contains(".m3u8") {
-                            resolvedHls = normalizedURLString(decoded)
+                            resolvedHls = decoded
                         }
                         if resolvedDash == nil && decoded.lowercased().contains(".mpd") {
-                            resolvedDash = normalizedURLString(decoded)
+                            resolvedDash = decoded
                         }
                     }
                 }
@@ -355,34 +235,136 @@ enum CollapsParser {
         }
         return nil
     }
-
-    private static func firstPreferredStreamURLString(in payload: String) -> String? {
-        let patterns = [
-            #"https?:\\/\\/[^\"'\s>]+\\.m3u8[^\"'\s>]*"#,
-            #"https?:\\/\\/[^\"'\s>]+\\.mpd[^\"'\s>]*"#,
-            #"(?:\"|')((?:https?:)?//[^\"'\s>]+(?:m3u8|mpd)[^\"'\s>]*)"#
+    
+    private static func parseSeries(seasonsJson: String, source: String) -> [String: Any] {
+        guard let jsonData = seasonsJson.data(using: .utf8),
+              let seasonsArray = try? JSONSerialization.jsonObject(with: jsonData) as? [[String: Any]] else {
+            return [:]
+        }
+        
+        var seasons: [[String: Any]] = []
+        
+        for seasonObj in seasonsArray {
+            let seasonNum: Int
+            if let value = seasonObj["season"] as? Int {
+                seasonNum = value
+            } else if let value = seasonObj["season"] as? String, let parsed = Int(value) {
+                seasonNum = parsed
+            } else {
+                continue
+            }
+            
+            guard seasonNum > 0,
+                  let episodesArray = seasonObj["episodes"] as? [[String: Any]] else {
+                continue
+            }
+            
+            var episodes: [[String: Any]] = []
+            
+            for episodeObj in episodesArray {
+                let episodeNum: Int
+                if let value = episodeObj["episode"] as? Int {
+                    episodeNum = value
+                } else if let value = episodeObj["episode"] as? String, let parsed = Int(value) {
+                    episodeNum = parsed
+                } else {
+                    continue
+                }
+                
+                let hls = (episodeObj["hls"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                let dasha = (episodeObj["dasha"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                let dash = (episodeObj["dash"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                let mpd = dasha ?? dash
+                
+                var voices: [String] = []
+                if let audio = episodeObj["audio"] as? [String: Any],
+                   let names = audio["names"] as? [String] {
+                    voices = names.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+                }
+                
+                var subtitles: [[String: String]] = []
+                if let cc = episodeObj["cc"] as? [[String: Any]] {
+                    for subObj in cc {
+                        let url = (subObj["url"] as? String ?? subObj["src"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                        guard !url.isEmpty else { continue }
+                        
+                        let label = (subObj["name"] as? String ?? subObj["label"] as? String ?? "Subtitle").trimmingCharacters(in: .whitespacesAndNewlines)
+                        let langRaw = (subObj["lang"] as? String ?? subObj["language"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                        let lang = langRaw.isEmpty
+                            ? ((label.lowercased().contains("eng") || label.lowercased().contains("original")) ? "en" : "ru")
+                            : langRaw
+                        
+                        subtitles.append([
+                            "url": url,
+                            "label": label.isEmpty ? "Subtitle" : label,
+                            "language": lang.isEmpty ? "ru" : lang
+                        ])
+                    }
+                }
+                
+                let primaryUrl = hls ?? mpd ?? ""
+                
+                let playlist: [String: Any] = [
+                    "primaryUrl": primaryUrl,
+                    "hlsUrl": hls as Any,
+                    "dashUrl": mpd as Any,
+                    "voiceovers": voices,
+                    "subtitles": subtitles
+                ]
+                
+                episodes.append([
+                    "season": seasonNum,
+                    "episode": episodeNum,
+                    "title": "Episode \(episodeNum)",
+                    "playlist": playlist
+                ])
+            }
+            
+            if !episodes.isEmpty {
+                episodes.sort { (lhs, rhs) in
+                    let lhsEpisode = lhs["episode"] as? Int ?? Int.max
+                    let rhsEpisode = rhs["episode"] as? Int ?? Int.max
+                    return lhsEpisode < rhsEpisode
+                }
+                
+                seasons.append([
+                    "season": seasonNum,
+                    "title": "Season \(seasonNum)",
+                    "episodes": episodes
+                ])
+            }
+        }
+        
+        seasons.sort { (lhs, rhs) in
+            let lhsSeason = lhs["season"] as? Int ?? Int.max
+            let rhsSeason = rhs["season"] as? Int ?? Int.max
+            return lhsSeason < rhsSeason
+        }
+        
+        return [
+            "kind": "series",
+            "source": source,
+            "seasons": seasons
         ]
-
-        for pattern in patterns {
-            guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { continue }
-            let range = NSRange(payload.startIndex..<payload.endIndex, in: payload)
-            guard let match = regex.firstMatch(in: payload, range: range) else { continue }
-            let targetRange = match.numberOfRanges > 1 ? match.range(at: 1) : match.range(at: 0)
-            guard let valueRange = Range(targetRange, in: payload) else { continue }
-            return normalizedURLString(String(payload[valueRange]))
-        }
-        return nil
     }
-
-    private static func normalizedURLString(_ value: String?) -> String? {
-        guard let value else { return nil }
-        let cleaned = value
-            .replacingOccurrences(of: "\\/", with: "/")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !cleaned.isEmpty else { return nil }
-        if cleaned.hasPrefix("//") {
-            return "https:" + cleaned
-        }
-        return cleaned
+    
+    private static func parseMovie(movieData: [String: Any], source: String) -> [String: Any] {
+        let hls = movieData["hls"] as? String
+        let dash = movieData["dash"] as? String
+        let primaryUrl = hls ?? dash ?? ""
+        
+        let playlist: [String: Any] = [
+            "primaryUrl": primaryUrl,
+            "hlsUrl": hls as Any,
+            "dashUrl": dash as Any,
+            "voiceovers": [],
+            "subtitles": []
+        ]
+        
+        return [
+            "kind": "movie",
+            "source": source,
+            "playlist": playlist
+        ]
     }
 }
