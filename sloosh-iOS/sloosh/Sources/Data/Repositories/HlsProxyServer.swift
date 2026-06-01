@@ -108,7 +108,7 @@ class HlsProxyServer {
             }
 
             fetchAndServe(realUrl: currentMasterUrl, isPlaylist: true, connection: connection)
-        } else if urlComponents.path == "/proxy",
+        } else if urlComponents.path.hasPrefix("/proxy"),
            let urlQuery = urlComponents.queryItems?.first(where: { $0.name == "url" })?.value {
             
             // Re-pad base64 string if necessary
@@ -215,13 +215,17 @@ class HlsProxyServer {
             return urlString
         }
         
-        // URL Safe Base64 without padding (similar to Android Base64.URL_SAFE or Base64.NO_WRAP)
+        // URL Safe Base64 without padding
         let encoded = encodedData.base64EncodedString()
             .replacingOccurrences(of: "+", with: "-")
             .replacingOccurrences(of: "/", with: "_")
             .replacingOccurrences(of: "=", with: "")
         
-        return "http://127.0.0.1:\(port.rawValue)/proxy?url=\(encoded)"
+        let urlObj = URL(string: absoluteUrlString)
+        let ext = urlObj?.pathExtension ?? ""
+        let pathSuffix = ext.isEmpty ? "stream.m3u8" : "stream.\(ext)"
+        
+        return "http://127.0.0.1:\(port.rawValue)/proxy/\(pathSuffix)?url=\(encoded)"
     }
     
     private func sendResponse(data: Data, contentType: String, connection: NWConnection) {

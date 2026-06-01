@@ -162,24 +162,6 @@ struct DetailsView: View {
             }
         }
         .ignoresSafeArea(edges: .top)
-        .overlay {
-            if viewModel.isResolvingAllohaPlayback {
-                ZStack {
-                    Color.black.opacity(0.35)
-                        .ignoresSafeArea()
-
-                    VStack(spacing: 14) {
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle())
-                        Text("Подготавливаем поток...")
-                            .font(.system(size: 15, weight: .semibold))
-                    }
-                    .padding(.horizontal, 24)
-                    .padding(.vertical, 20)
-                    .glassEffect(in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-                }
-            }
-        }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(id: "details") {
             ToolbarItem(id: "favorite", placement: .topBarTrailing) {
@@ -207,19 +189,6 @@ struct DetailsView: View {
         } message: {
             Text("Функция скачивания появится в будущих обновлениях.")
         }
-        .alert(
-            "Не удалось открыть видео",
-            isPresented: Binding(
-                get: { viewModel.playbackErrorMessage != nil },
-                set: { if !$0 { viewModel.playbackErrorMessage = nil } }
-            )
-        ) {
-            Button("OK", role: .cancel) {
-                viewModel.playbackErrorMessage = nil
-            }
-        } message: {
-            Text(viewModel.playbackErrorMessage ?? "Попробуйте еще раз.")
-        }
         .task {
             await viewModel.loadDetails(id: movieId)
         }
@@ -244,7 +213,10 @@ struct DetailsView: View {
                         playerKpId = wrapper.kpId
                         playerSeason = season
                         playerEpisode = episode
-                        viewModel.resolveAllohaPlayback(iframeUrl: translation.iframeUrl, translationName: translation.name)
+                        selectedIframeUrl = translation.iframeUrl
+                        showPlayer = true
+                        showSourceSheet = false
+                        viewModel.saveAllohaTranslation(translation.name)
                     }
                 } else if let wrapper = viewModel.sourceResultWrapper, wrapper.mode == .collaps {
                     let isSerial = wrapper.collapsSeasons != nil && !(wrapper.collapsSeasons?.isEmpty ?? true)
@@ -264,6 +236,7 @@ struct DetailsView: View {
                             playerVoices = voices
                             playerSubtitles = subtitles
                             showPlayer = true
+                            showSourceSheet = false
                         }
                     )
                 } else {
@@ -272,18 +245,6 @@ struct DetailsView: View {
             }
             .presentationDetents([.medium, .large], selection: $sourceSheetDetent)
             .navigationTransition(.zoom(sourceID: "playBtn", in: transition))
-        }
-        .onChange(of: viewModel.allohaPlaybackUrl) { _, resolvedUrl in
-            guard let resolvedUrl else { return }
-            showSourceSheet = false
-            selectedDirectVideoUrl = resolvedUrl
-            selectedIframeUrl = nil
-            showPlayer = true
-        }
-        .onChange(of: viewModel.isResolvingAllohaPlayback) { _, isResolving in
-            if isResolving {
-                showSourceSheet = false
-            }
         }
         .fullScreenCover(isPresented: $showPlayer, onDismiss: {
             selectedIframeUrl = nil
@@ -294,24 +255,21 @@ struct DetailsView: View {
             playerVoiceover = nil
             playerVoices = []
             playerSubtitles = []
-            viewModel.cleanupAllohaSession()
         }) {
             if let details = viewModel.details {
                 let mode = SourceManager.shared.currentMode
                 if mode == .alloha {
-                    if let directUrl = selectedDirectVideoUrl {
-                        PlayerView(directVideoUrl: directUrl, fallbackTitle: details.title ?? details.name ?? "", kpId: playerKpId, season: playerSeason, episode: playerEpisode, selectedVoiceover: playerVoiceover, voices: playerVoices, subtitles: playerSubtitles)
-                    } else if let iframeUrl = selectedIframeUrl {
+                    if let iframeUrl = selectedIframeUrl {
                         PlayerView(iframeUrl: iframeUrl, fallbackTitle: details.title ?? details.name ?? "", kpId: playerKpId, season: playerSeason, episode: playerEpisode, selectedVoiceover: playerVoiceover, voices: playerVoices, subtitles: playerSubtitles)
                     } else {
                         Text("Видео не найдено")
                     }
-                } else if let directUrl = selectedIframeUrl {
-                    PlayerView(directVideoUrl: directUrl, fallbackTitle: details.title ?? details.name ?? "", kpId: playerKpId, season: playerSeason, episode: playerEpisode, selectedVoiceover: playerVoiceover, voices: playerVoices, subtitles: playerSubtitles)
-                } else if let directUrl = selectedDirectVideoUrl {
-                    PlayerView(directVideoUrl: directUrl, fallbackTitle: details.title ?? details.name ?? "", kpId: playerKpId, season: playerSeason, episode: playerEpisode, selectedVoiceover: playerVoiceover, voices: playerVoices, subtitles: playerSubtitles)
                 } else {
-                    Text("Видео не найдено")
+                    if let directUrl = selectedIframeUrl ?? selectedDirectVideoUrl {
+                        PlayerView(directVideoUrl: directUrl, fallbackTitle: details.title ?? details.name ?? "", kpId: playerKpId, season: playerSeason, episode: playerEpisode, selectedVoiceover: playerVoiceover, voices: playerVoices, subtitles: playerSubtitles)
+                    } else {
+                        Text("Видео не найдено")
+                    }
                 }
             }
         }
@@ -517,19 +475,19 @@ class DetailsViewModel: ObservableObject {
     @Published var isLoading = true
     
     @Published var isFetchingSources = false
-    @Published var isResolvingAllohaPlayback = false
     @Published var sourceResultWrapper: SourceResultWrapper?
-    @Published var allohaPlaybackUrl: String?
-    @Published var playbackErrorMessage: String?
     
     @Published var isFavorite: Bool = false
 
-    private var allohaSessionManager: AllohaSessionManager?
-    private var allohaTimeoutTask: Task<Void, Never>?
     private let allohaTranslationPreferenceKey = "alloha_last_translation_name"
 
     func resetSourceSheet() {
         sourceResultWrapper = nil
+    }
+    
+    func saveAllohaTranslation(_ name: String?) {
+        guard let name = name, !name.isEmpty else { return }
+        UserDefaults.standard.set(name, forKey: allohaTranslationPreferenceKey)
     }
     
     func loadDetails(id: String) async {
@@ -591,13 +549,7 @@ class DetailsViewModel: ObservableObject {
             switch mode {
             case .alloha:
                 let result = try await AllohaRepository.shared.fetchByKpId(kpId: kpId)
-                if let movie = result.movie,
-                   let translation = preferredAllohaTranslation(from: movie) {
-                    self.sourceResultWrapper = SourceResultWrapper(mode: .alloha, allohaResult: result, kpId: kpId)
-                    resolveAllohaPlayback(iframeUrl: translation.iframeUrl, translationName: translation.name)
-                } else {
-                    self.sourceResultWrapper = SourceResultWrapper(mode: .alloha, allohaResult: result, kpId: kpId)
-                }
+                self.sourceResultWrapper = SourceResultWrapper(mode: .alloha, allohaResult: result, kpId: kpId)
             case .collaps:
                 let seasons = try await CollapsRepository.shared.getSeasonsByKpId(kpId: kpId)
                 if seasons.isEmpty {
@@ -610,55 +562,6 @@ class DetailsViewModel: ObservableObject {
         } catch {
             print("Error fetching sources: \(error)")
         }
-    }
-
-    func resolveAllohaPlayback(iframeUrl: String, translationName: String? = nil) {
-        cleanupAllohaSession()
-
-        if let translationName, !translationName.isEmpty {
-            UserDefaults.standard.set(translationName, forKey: allohaTranslationPreferenceKey)
-        }
-
-        isResolvingAllohaPlayback = true
-        playbackErrorMessage = nil
-        allohaPlaybackUrl = nil
-
-        let sessionManager = AllohaSessionManager()
-        allohaSessionManager = sessionManager
-
-        sessionManager.onStreamReady = { [weak self] _, _ in
-            guard let self = self else { return }
-            self.allohaTimeoutTask?.cancel()
-            self.isResolvingAllohaPlayback = false
-            self.allohaPlaybackUrl = HlsProxyServer.shared.fixedMasterUrl
-        }
-
-        sessionManager.onError = { [weak self] error in
-            guard let self = self else { return }
-            self.allohaTimeoutTask?.cancel()
-            self.cleanupAllohaSession()
-            self.playbackErrorMessage = error
-        }
-
-        allohaTimeoutTask = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 55_000_000_000)
-            guard let self = self,
-                  !Task.isCancelled,
-                  self.isResolvingAllohaPlayback else { return }
-            self.cleanupAllohaSession()
-            self.playbackErrorMessage = "Источник не ответил вовремя."
-        }
-
-        sessionManager.startSession(iframeUrl: iframeUrl)
-    }
-
-    func cleanupAllohaSession() {
-        allohaTimeoutTask?.cancel()
-        allohaTimeoutTask = nil
-        allohaSessionManager?.release()
-        allohaSessionManager = nil
-        isResolvingAllohaPlayback = false
-        HlsProxyServer.shared.stop()
     }
 
     private func preferredAllohaTranslation(from movie: AllohaMovie) -> AllohaTranslation? {

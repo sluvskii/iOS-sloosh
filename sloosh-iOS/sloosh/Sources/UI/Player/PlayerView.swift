@@ -514,7 +514,7 @@ class PlayerViewModel: ObservableObject {
                 .replacingOccurrences(of: "/", with: "_")
                 .replacingOccurrences(of: "=", with: "")
 
-            guard let proxyUrl = URL(string: "http://127.0.0.1:\(HlsProxyServer.shared.port.rawValue)/proxy?url=\(encoded)") else { return }
+            guard let proxyUrl = URL(string: "http://127.0.0.1:\(HlsProxyServer.shared.port.rawValue)/proxy/stream.m3u8?url=\(encoded)") else { return }
             playbackUrl = proxyUrl
         }
 
@@ -616,7 +616,7 @@ class PlayerViewModel: ObservableObject {
         
         HlsProxyServer.shared.start(headers: headers, voices: voices, subtitles: subtitles, mediaId: mediaId)
         
-        guard let proxyUrl = URL(string: "http://127.0.0.1:\(HlsProxyServer.shared.port.rawValue)/proxy?url=\(encoded)") else {
+        guard let proxyUrl = URL(string: "http://127.0.0.1:\(HlsProxyServer.shared.port.rawValue)/proxy/stream.m3u8?url=\(encoded)") else {
             self.error = "Ошибка формирования URL"
             self.isLoading = false
             return
