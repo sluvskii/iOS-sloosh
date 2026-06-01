@@ -164,8 +164,8 @@ struct DetailsView: View {
                     VStack(alignment: .center, spacing: 12) {
                         RemoteLogoView(
                             url: URL(string: details.displayLogoUrl ?? ""),
-                            maxWidth: UIScreen.main.bounds.width - 48,
-                            maxHeight: 92,
+                            maxWidth: UIScreen.main.bounds.width - 72,
+                            maxHeight: 76,
                             fallbackTitle: details.title ?? details.name ?? "Без названия"
                         )
                         .padding(.horizontal)
