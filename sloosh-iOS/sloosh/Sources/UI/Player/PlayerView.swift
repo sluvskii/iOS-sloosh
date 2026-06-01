@@ -45,18 +45,21 @@ class PlayerPresenterViewController: UIViewController {
             }
             
             // Watch for dismissal directly on the presented view controller
-            // Not strictly needed since viewDidDisappear handles it now, but good as a fallback
-            self.observation = pc.observe(\.isBeingDismissed, options: [.new]) { [weak self] _, change in
-                if change.newValue == true {
-                    self?.handleDismissal()
-                }
-            }
+        // Not strictly needed since viewDidDisappear handles it now, but good as a fallback
+        // self.observation = pc.observe(\.isBeingDismissed, options: [.new]) { [weak self] _, change in
+        //     if change.newValue == true {
+        //         self?.handleDismissal()
+        //     }
+        // }
         }
     }
     
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
-        if presentedViewController == nil {
+        
+        // Ensure dismiss is called only when the view controller is ACTUALLY being dismissed from SwiftUI
+        // or when the child AVPlayerViewController has been fully dismissed
+        if self.isBeingDismissed || self.isMovingFromParent || (self.presentedViewController == nil && self.didPresent) {
             handleDismissal()
         }
     }
@@ -99,9 +102,11 @@ struct ModalPlayerPresenter: UIViewControllerRepresentable {
         controller.player = player
         controller.viewModel = viewModel
         controller.onDismiss = {
-            if !context.coordinator.didDismiss {
-                context.coordinator.didDismiss = true
-                onDismiss()
+            DispatchQueue.main.async {
+                if !context.coordinator.didDismiss {
+                    context.coordinator.didDismiss = true
+                    onDismiss()
+                }
             }
         }
         return controller
