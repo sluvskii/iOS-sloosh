@@ -45,14 +45,11 @@ class PlayerPresenterViewController: UIViewController {
             self.present(pc, animated: true) {
                 self.player?.play()
             }
-            
-            // Watch for dismissal directly on the presented view controller
-        // Not strictly needed since viewDidDisappear handles it now, but good as a fallback
-        // self.observation = pc.observe(\.isBeingDismissed, options: [.new]) { [weak self] _, change in
-        //     if change.newValue == true {
-        //         self?.handleDismissal()
-        //     }
-        // }
+        } else {
+            // Если мы вернулись на этот экран и плеера больше нет (смахнули вниз)
+            if self.presentedViewController == nil {
+                handleDismissal()
+            }
         }
     }
     
@@ -163,6 +160,16 @@ struct PlayerView: View {
                         .foregroundColor(.white)
                         .multilineTextAlignment(.center)
                         .padding()
+                    
+                    Text("Нажмите, чтобы закрыть")
+                        .font(.system(size: 14, weight: .regular))
+                        .foregroundColor(.white.opacity(0.6))
+                        .padding(.top, 8)
+                }
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    viewModel.cleanup()
+                    presentationMode.wrappedValue.dismiss()
                 }
             } else if viewModel.isLoading {
                 ProgressView()
@@ -172,26 +179,6 @@ struct PlayerView: View {
                 ModalPlayerPresenter(player: viewModel.player, viewModel: viewModel) {
                     viewModel.cleanup() // Теперь очистка происходит ТОЛЬКО когда плеер реально закрылся
                     presentationMode.wrappedValue.dismiss()
-                }
-                .edgesIgnoringSafeArea(.all)
-            }
-            
-            if viewModel.error != nil || viewModel.isLoading {
-                VStack {
-                    HStack {
-                        Button(action: {
-                            viewModel.cleanup()
-                            presentationMode.wrappedValue.dismiss()
-                        }) {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 30))
-                                .foregroundColor(.white.opacity(0.8))
-                        }
-                        .padding(.top, 50)
-                        .padding(.leading, 20)
-                        Spacer()
-                    }
-                    Spacer()
                 }
                 .edgesIgnoringSafeArea(.all)
             }
