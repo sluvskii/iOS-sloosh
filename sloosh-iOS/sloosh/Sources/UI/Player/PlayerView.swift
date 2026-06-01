@@ -218,6 +218,8 @@ class PlayerViewModel: ObservableObject {
     private var currentHeaders: [String: String] = [:]
     private var timeObserver: Any?
     private var itemObservation: NSKeyValueObservation?
+    private var audioObservation: NSKeyValueObservation?
+    private var subtitleObservation: NSKeyValueObservation?
     
     private var currentKpId: Int?
     private var currentSeason: Int?
@@ -284,6 +286,7 @@ class PlayerViewModel: ObservableObject {
                 if item.status == .readyToPlay {
                     Task { @MainActor in
                         self.extractAudioTracks(from: item)
+                        self.extractSubtitles(from: item)
                     }
                 }
             }
@@ -515,6 +518,7 @@ class PlayerViewModel: ObservableObject {
             if item.status == .readyToPlay {
                 Task { @MainActor in
                     self.extractAudioTracks(from: item)
+                    self.extractSubtitles(from: item)
                 }
             }
         }
@@ -525,12 +529,53 @@ class PlayerViewModel: ObservableObject {
             guard let group = try? await item.asset.loadMediaSelectionGroup(for: .audible) else { return }
             
             DispatchQueue.main.async {
-                // Auto-select if targetVoiceover matches any track
-                if let voiceover = self.targetVoiceover, !voiceover.isEmpty {
-                    // Find best match (ignore case)
+                // Восстанавливаем сохраненную озвучку или ту, что передали из UI
+                let globalVoiceoverPref = UserDefaults.standard.string(forKey: "preferredVoiceover")
+                let voiceoverToSelect = self.targetVoiceover ?? globalVoiceoverPref
+                
+                if let voiceover = voiceoverToSelect, !voiceover.isEmpty {
+                    // Ищем лучшее совпадение по имени (без учета регистра)
                     if let match = group.options.first(where: { $0.displayName.lowercased().contains(voiceover.lowercased()) }) {
                         item.select(match, in: group)
-                        self.targetVoiceover = nil // Only apply once per initial load or quality change if needed, but it's safe to clear
+                        self.targetVoiceover = nil // Очищаем после успешного применения
+                        
+                        // Сохраняем как предпочитаемую
+                        UserDefaults.standard.set(match.displayName, forKey: "preferredVoiceover")
+                    }
+                }
+                
+                // Наблюдаем за ручным выбором аудиодорожки пользователем
+                self.audioObservation = item.observe(\.currentMediaSelection) { [weak self] item, _ in
+                    guard let self = self, let group = try? item.asset.loadMediaSelectionGroup(for: .audible) else { return }
+                    if let selectedOption = item.currentMediaSelection.selectedMediaOption(in: group) {
+                        UserDefaults.standard.set(selectedOption.displayName, forKey: "preferredVoiceover")
+                    }
+                }
+            }
+        }
+    }
+    
+    private func extractSubtitles(from item: AVPlayerItem) {
+        Task {
+            guard let group = try? await item.asset.loadMediaSelectionGroup(for: .legible) else { return }
+            
+            DispatchQueue.main.async {
+                let globalSubtitlePref = UserDefaults.standard.string(forKey: "preferredSubtitle")
+                
+                if let subtitle = globalSubtitlePref, !subtitle.isEmpty {
+                    if subtitle == "Выкл" || subtitle == "Off" {
+                        item.select(nil, in: group)
+                    } else if let match = group.options.first(where: { $0.displayName.lowercased().contains(subtitle.lowercased()) }) {
+                        item.select(match, in: group)
+                    }
+                }
+                
+                self.subtitleObservation = item.observe(\.currentMediaSelection) { [weak self] item, _ in
+                    guard let self = self, let group = try? item.asset.loadMediaSelectionGroup(for: .legible) else { return }
+                    if let selectedOption = item.currentMediaSelection.selectedMediaOption(in: group) {
+                        UserDefaults.standard.set(selectedOption.displayName, forKey: "preferredSubtitle")
+                    } else {
+                        UserDefaults.standard.set("Выкл", forKey: "preferredSubtitle")
                     }
                 }
             }
@@ -584,6 +629,7 @@ class PlayerViewModel: ObservableObject {
             if item.status == .readyToPlay {
                 Task { @MainActor in
                     self.extractAudioTracks(from: item)
+                    self.extractSubtitles(from: item)
                 }
             }
         }
