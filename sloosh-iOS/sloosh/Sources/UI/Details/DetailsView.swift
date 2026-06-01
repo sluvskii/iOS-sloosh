@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct RemoteBackdropView: View {
-    let url: URL?
+    let urls: [URL?]
     let width: CGFloat
     let height: CGFloat
     
@@ -22,18 +22,26 @@ struct RemoteBackdropView: View {
                     .shimmer()
             }
         }
-        .task(id: url) {
-            guard let url = url, image == nil else { return }
+        .task(id: urls.compactMap { $0?.absoluteString }.joined(separator: "|")) {
+            image = nil
             isLoading = true
-            do {
-                let request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad)
-                let (data, _) = try await URLSession.shared.data(for: request)
-                if let uiImg = UIImage(data: data) {
+
+            for url in urls.compactMap({ $0 }) {
+                do {
+                    let request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad)
+                    let (data, response) = try await URLSession.shared.data(for: request)
+                    guard let httpResponse = response as? HTTPURLResponse,
+                          (200...299).contains(httpResponse.statusCode),
+                          let uiImg = UIImage(data: data) else {
+                        continue
+                    }
                     self.image = uiImg
+                    break
+                } catch {
+                    // Try the next candidate image.
                 }
-            } catch {
-                // Ignore error, just keep placeholder
             }
+
             isLoading = false
         }
     }
@@ -44,6 +52,7 @@ struct RemoteLogoView: View {
     let maxWidth: CGFloat
     let maxHeight: CGFloat
     let fallbackTitle: String
+    let onAvailabilityChange: ((Bool) -> Void)?
 
     @State private var image: UIImage?
     @State private var isLoading = false
@@ -72,6 +81,7 @@ struct RemoteLogoView: View {
             image = nil
             didFail = false
             isLoading = false
+            onAvailabilityChange?(false)
 
             guard let url else {
                 didFail = true
@@ -90,6 +100,7 @@ struct RemoteLogoView: View {
                     return
                 }
                 image = uiImage
+                onAvailabilityChange?(true)
             } catch {
                 if !Task.isCancelled {
                     didFail = true
@@ -123,6 +134,7 @@ struct DetailsView: View {
     @State private var playerVoices: [String] = []
     @State private var playerSubtitles: [CollapsSubtitle] = []
     @State private var playerQuality: VideoQualityPreference? = nil
+    @State private var hasResolvedLogoAsset = false
     
     var body: some View {
         ScrollView {
@@ -132,6 +144,20 @@ struct DetailsView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .padding(.top, 100)
                 } else if let details = viewModel.details {
+                    let heroImageUrls: [URL?] = {
+                        let cleanSources: [URL?] = [
+                            URL(string: details.displayBackdropPageUrl ?? ""),
+                            URL(string: details.displayBackdropImageUrl ?? ""),
+                            URL(string: details.displayBackdropUrl ?? "")
+                        ]
+
+                        if hasResolvedLogoAsset {
+                            return cleanSources
+                        }
+
+                        return cleanSources + [URL(string: details.displayPosterUrl ?? "")]
+                    }()
+
                     // Stretchy Backdrop
                     GeometryReader { geometry in
                         let minY = geometry.frame(in: .global).minY
@@ -140,7 +166,7 @@ struct DetailsView: View {
                         let offset = isScrollingDown ? -minY : 0
 
                         RemoteBackdropView(
-                            url: URL(string: details.displayBackdropUrl ?? details.displayPosterUrl ?? ""),
+                            urls: heroImageUrls,
                             width: geometry.size.width,
                             height: height
                         )
@@ -166,7 +192,10 @@ struct DetailsView: View {
                             url: URL(string: details.displayLogoUrl ?? ""),
                             maxWidth: UIScreen.main.bounds.width - 72,
                             maxHeight: 76,
-                            fallbackTitle: details.title ?? details.name ?? "Без названия"
+                            fallbackTitle: details.title ?? details.name ?? "Без названия",
+                            onAvailabilityChange: { isAvailable in
+                                hasResolvedLogoAsset = isAvailable
+                            }
                         )
                         .padding(.horizontal)
                         .accessibilityLabel(details.title ?? details.name ?? "Без названия")

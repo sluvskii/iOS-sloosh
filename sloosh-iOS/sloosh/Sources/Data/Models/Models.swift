@@ -131,6 +131,24 @@ func normalizeLogoUrl(id: String?, size: String = "w500") -> String? {
     return "\(baseUrl)/api/v1/images/logos/\(rawId)/\(size)"
 }
 
+func normalizeBackdropUrl(id: String?, size: String = "large") -> String? {
+    let baseUrl = "https://api.neomovies.ru"
+    guard let rawId = id?.replacingOccurrences(of: "kp_", with: "").trimmingCharacters(in: .whitespacesAndNewlines),
+          !rawId.isEmpty else {
+        return nil
+    }
+    return "\(baseUrl)/api/v1/images/backdrops/\(rawId)/\(size)"
+}
+
+func normalizeBackdropPageUrl(id: String?, size: String = "large") -> String? {
+    let baseUrl = "https://api.neomovies.ru"
+    guard let rawId = id?.replacingOccurrences(of: "kp_", with: "").trimmingCharacters(in: .whitespacesAndNewlines),
+          !rawId.isEmpty else {
+        return nil
+    }
+    return "\(baseUrl)/api/v1/images/backdrops/page/\(rawId)/\(size)"
+}
+
 struct MediaDetailsDto: Codable {
     let id: String?
     let sourceId: String?
@@ -154,7 +172,15 @@ struct MediaDetailsDto: Codable {
     }
     
     var displayBackdropUrl: String? {
-        normalizeImageUrl(path: backdropUrl, id: id)
+        normalizeImageUrl(path: backdropUrl)
+    }
+
+    var displayBackdropImageUrl: String? {
+        normalizeBackdropUrl(id: id ?? sourceId ?? externalIds?.kp?.description)
+    }
+
+    var displayBackdropPageUrl: String? {
+        normalizeBackdropPageUrl(id: id ?? sourceId ?? externalIds?.kp?.description)
     }
 
     var displayLogoUrl: String? {
