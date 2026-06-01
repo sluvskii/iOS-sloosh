@@ -142,8 +142,8 @@ struct DetailsView: View {
                 } else if let details = viewModel.details {
                     let heroImageUrls: [URL?] = {
                         [
-                            URL(string: details.displayBackdropImageUrl ?? ""),
                             URL(string: details.displayBackdropUrl ?? ""),
+                            URL(string: details.displayBackdropImageUrl ?? ""),
                             URL(string: details.displayPosterUrl ?? "")
                         ]
                     }()
