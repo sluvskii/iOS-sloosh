@@ -1,0 +1,12 @@
+{
+  "name": "neomovies-core",
+  "version": "1.0.0",
+  "main": "index.ts",
+  "files": [
+    "index.ts",
+    "*.types.ts",
+    "ios/",
+    "android/",
+    "expo-module.config.json"
+  ]
+}

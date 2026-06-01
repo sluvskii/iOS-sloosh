@@ -216,7 +216,7 @@ struct PlayerView: View {
 }
 
 @MainActor
-class PlayerViewModel: ObservableObject, AllohaParserDelegate {
+class PlayerViewModel: ObservableObject {
     @Published var player: AVPlayer?
     @Published var isLoading = true
     @Published var error: String?
@@ -224,7 +224,8 @@ class PlayerViewModel: ObservableObject, AllohaParserDelegate {
     @Published var availableQualities: [(key: String, url: URL)] = []
     @Published var currentQualityKey: String?
     
-    private var parser: AllohaParser?
+    private var resolver: AllohaRuntimeResolver?
+    private var resolveTask: Task<Void, Never>?
     private var currentHeaders: [String: String] = [:]
 
     private func isLocalProxyUrl(_ url: URL) -> Bool {
@@ -353,65 +354,35 @@ class PlayerViewModel: ObservableObject, AllohaParserDelegate {
     }
     
     private func startParsing(iframeUrl: String) {
-        parser = AllohaParser()
-        parser?.delegate = self
-        parser?.parse(iframeUrl: iframeUrl)
+        resolveTask?.cancel()
+        resolver?.cancel()
+
+        let resolver = AllohaRuntimeResolver()
+        self.resolver = resolver
+
+        resolveTask = Task { [weak self] in
+            do {
+                let resolved = try await resolver.resolve(iframeUrl: iframeUrl)
+                guard let self, !Task.isCancelled else { return }
+                self.applyResolvedAllohaStream(resolved)
+            } catch is CancellationError {
+                return
+            } catch {
+                guard let self, !Task.isCancelled else { return }
+                self.error = error.localizedDescription
+                self.isLoading = false
+            }
+        }
     }
     
     func cleanup() {
+        resolveTask?.cancel()
+        resolveTask = nil
+        resolver?.cancel()
+        resolver = nil
         player?.pause()
         player = nil
-        parser?.release()
-        parser = nil
         HlsProxyServer.shared.stop()
-    }
-    
-    // MARK: - AllohaParserDelegate
-    
-    func onHlsLinksReceived(json: String, extraHeaders: [String : String]) {
-        do {
-            if let data = json.data(using: .utf8),
-               let dict = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-               let hlsSource = dict["hlsSource"] as? [[String: Any]],
-               let firstSource = hlsSource.first,
-               let quality = firstSource["quality"] as? [String: String] {
-                
-                self.currentHeaders = extraHeaders
-                
-                // Parse all available qualities
-                var parsedQualities: [(key: String, url: URL)] = []
-                for (key, urlString) in quality {
-                    if let realUrlString = urlString.components(separatedBy: " or ").first,
-                       let url = URL(string: realUrlString) {
-                        parsedQualities.append((key: key, url: url))
-                    }
-                }
-                
-                // Sort qualities descending (e.g. 1080p, 720p, 480p)
-                parsedQualities.sort { (a, b) -> Bool in
-                    let valA = Int(a.key.replacingOccurrences(of: "p", with: "")) ?? 0
-                    let valB = Int(b.key.replacingOccurrences(of: "p", with: "")) ?? 0
-                    return valA > valB
-                }
-                
-                self.availableQualities = parsedQualities
-                
-                if let firstQuality = parsedQualities.first {
-                    self.currentQualityKey = firstQuality.key
-                    playVideo(url: firstQuality.url, headers: extraHeaders)
-                    NotificationCenter.default.post(name: NSNotification.Name("QualitiesUpdated"), object: nil)
-                } else {
-                    self.error = "Не удалось извлечь ссылку на видео"
-                    self.isLoading = false
-                }
-            } else {
-                self.error = "Не удалось извлечь ссылку на видео"
-                self.isLoading = false
-            }
-        } catch {
-            self.error = "Ошибка парсинга: \(error.localizedDescription)"
-            self.isLoading = false
-        }
     }
     
     func changeQuality(to key: String) {
@@ -446,23 +417,6 @@ class PlayerViewModel: ObservableObject, AllohaParserDelegate {
         }
     }
     
-    func onConfigUpdate(edgeHash: String, ttlSeconds: Int, extraHeaders: [String : String]) {
-        // Ignored for simple AVPlayer, AVPlayer handles streams automatically
-    }
-    
-    func onM3u8Refreshed(url: String, extraHeaders: [String : String]) {
-        // Ignored for simple AVPlayer
-    }
-    
-    func onStreamHeadersUpdated(extraHeaders: [String : String]) {
-        // Ignored for simple AVPlayer
-    }
-    
-    func onError(error: String) {
-        self.error = error
-        self.isLoading = false
-    }
-    
     private func playVideo(url: URL, headers: [String: String]) {
         let absoluteUrlString = url.absoluteString
         guard let encodedData = absoluteUrlString.data(using: .utf8) else {
@@ -488,5 +442,66 @@ class PlayerViewModel: ObservableObject, AllohaParserDelegate {
         let playerItem = AVPlayerItem(asset: asset)
         self.player = AVPlayer(playerItem: playerItem)
         self.isLoading = false
+    }
+
+    private func applyResolvedAllohaStream(_ resolved: [String: Any]) {
+        guard let resolvedUrlString = (resolved["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              let resolvedUrl = URL(string: resolvedUrlString) else {
+            self.error = "Не удалось извлечь ссылку на видео"
+            self.isLoading = false
+            return
+        }
+
+        let headers = (resolved["headers"] as? [String: String]) ?? [:]
+        currentHeaders = headers
+
+        var qualities = [(key: "Авто", url: resolvedUrl)]
+        var seenKeys = Set<String>(["Авто"])
+
+        let qualityVariants = (resolved["qualityVariants"] as? [[String: Any]]) ?? []
+        appendQualityVariants(qualityVariants, to: &qualities, seenKeys: &seenKeys)
+
+        if qualities.count == 1,
+           let audioVariants = resolved["audioVariants"] as? [[String: Any]],
+           let firstAudio = audioVariants.first,
+           let nestedQualityVariants = firstAudio["qualityVariants"] as? [[String: Any]] {
+            appendQualityVariants(nestedQualityVariants, to: &qualities, seenKeys: &seenKeys)
+        }
+
+        if qualities.count > 1 {
+            let autoQuality = qualities.removeFirst()
+            qualities.sort { (a, b) -> Bool in
+                let valA = Int(a.key.replacingOccurrences(of: "p", with: "")) ?? 0
+                let valB = Int(b.key.replacingOccurrences(of: "p", with: "")) ?? 0
+                return valA > valB
+            }
+            qualities.insert(autoQuality, at: 0)
+        }
+
+        availableQualities = qualities
+        currentQualityKey = "Авто"
+        playVideo(url: resolvedUrl, headers: headers)
+        NotificationCenter.default.post(name: NSNotification.Name("QualitiesUpdated"), object: nil)
+    }
+
+    private func appendQualityVariants(_ variants: [[String: Any]], to qualities: inout [(key: String, url: URL)], seenKeys: inout Set<String>) {
+        for variant in variants {
+            guard let urlString = variant["url"] as? String,
+                  let url = URL(string: urlString),
+                  !urlString.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                continue
+            }
+            let label = normalizedQualityLabel(from: variant["label"] as? String)
+            guard seenKeys.insert(label).inserted else { continue }
+            qualities.append((key: label, url: url))
+        }
+    }
+
+    private func normalizedQualityLabel(from rawLabel: String?) -> String {
+        let label = (rawLabel ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !label.isEmpty else { return "Поток" }
+        if label.lowercased().hasSuffix("p") { return label }
+        if Int(label) != nil { return "\(label)p" }
+        return label
     }
 }

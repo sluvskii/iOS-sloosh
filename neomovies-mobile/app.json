@@ -1,0 +1,66 @@
+{
+  "expo": {
+    "name": "NeoMovies",
+    "slug": "neomovies",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "icon": "./assets/icons/android/ic_launcher-web.png",
+    "scheme": "neomovies",
+    "userInterfaceStyle": "automatic",
+    "backgroundColor": "#131212",
+    "ios": {
+      "bundleIdentifier": "com.neo.neomovies",
+      "buildNumber": "7",
+      "icon": "./assets/icons/ios/iTunesArtwork@2x.png",
+      "infoPlist": {
+        "NSAppTransportSecurity": {
+          "NSAllowsArbitraryLoads": true
+        },
+        "UISupportedInterfaceOrientations": [
+          "UIInterfaceOrientationPortrait"
+        ]
+      }
+    },
+    "android": {
+      "package": "com.neo.neomovies",
+      "versionCode": 7,
+      "adaptiveIcon": {
+        "backgroundColor": "#131212",
+        "foregroundImage": "./assets/icons/android/mipmap-xxxhdpi/ic_launcher_foreground.png",
+        "monochromeImage": "./assets/icons/android/mipmap-xxxhdpi/ic_launcher_monochrome.png"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "output": "static",
+      "favicon": "./assets/images/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-splash-screen",
+        {
+          "backgroundColor": "#131212",
+          "image": "./assets/icons/splash-icon.png",
+          "imageWidth": 200,
+          "resizeMode": "contain"
+        }
+      ],
+      "expo-secure-store",
+      "expo-font",
+      "./plugins/withSwift5Pods"
+    ],
+    "extra": {
+      "branch": "prerelease",
+      "build": "pre7",
+      "router": {},
+      "eas": {
+        "projectId": "93c3388a-0813-45cf-8a6e-d728b781f2f9"
+      }
+    },
+    "experiments": {
+      "typedRoutes": true,
+      "reactCompiler": true
+    }
+  }
+}

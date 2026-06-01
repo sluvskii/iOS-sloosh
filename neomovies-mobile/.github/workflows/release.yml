@@ -1,0 +1,708 @@
+name: Build Release
+
+on:
+  release:
+    types:
+      - published
+
+  workflow_dispatch:
+    inputs:
+      platform:
+        description: Platform to build
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - android
+          - ios
+
+      tag:
+        description: Git tag to build, example v0.0.2. Leave empty to use current ref.
+        required: false
+        type: string
+
+      release_type:
+        description: Release type
+        required: true
+        default: prerelease
+        type: choice
+        options:
+          - prerelease
+          - release
+
+      upload_to_github_release:
+        description: Upload files to GitHub Release
+        required: true
+        default: true
+        type: boolean
+
+      upload_to_forgejo_release:
+        description: Upload files to Forgejo Release
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+
+env:
+  NODE_VERSION: 20
+  PNPM_VERSION: 9
+  XCODE_PATH: /Applications/Xcode_26.5.app/Contents/Developer
+
+  FORGEJO_API_URL: https://git.disroot.org/api/v1
+  FORGEJO_OWNER: Neo
+  FORGEJO_REPO: neomovies-mobile
+
+jobs:
+  meta:
+    runs-on: ubuntu-latest
+
+    outputs:
+      tag_name: ${{ steps.meta.outputs.tag_name }}
+      version: ${{ steps.meta.outputs.version }}
+      release_type: ${{ steps.meta.outputs.release_type }}
+      is_prerelease: ${{ steps.meta.outputs.is_prerelease }}
+      upload_to_github_release: ${{ steps.meta.outputs.upload_to_github_release }}
+      upload_to_forgejo_release: ${{ steps.meta.outputs.upload_to_forgejo_release }}
+
+    steps:
+      - name: Detect release metadata
+        id: meta
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "release" ]]; then
+            TAG_NAME="${{ github.event.release.tag_name }}"
+            IS_PRERELEASE="${{ github.event.release.prerelease }}"
+            UPLOAD_TO_GITHUB_RELEASE=true
+            UPLOAD_TO_FORGEJO_RELEASE=true
+          else
+            TAG_NAME="${{ inputs.tag }}"
+            if [[ -z "$TAG_NAME" ]]; then
+              TAG_NAME="${{ github.ref_name }}"
+            fi
+
+            if [[ "${{ inputs.release_type }}" == "prerelease" ]]; then
+              IS_PRERELEASE=true
+            else
+              IS_PRERELEASE=false
+            fi
+
+            UPLOAD_TO_GITHUB_RELEASE="${{ inputs.upload_to_github_release }}"
+            UPLOAD_TO_FORGEJO_RELEASE="${{ inputs.upload_to_forgejo_release }}"
+          fi
+
+          VERSION="${TAG_NAME#v}"
+
+          if [[ "$IS_PRERELEASE" == "true" ]]; then
+            RELEASE_TYPE="prerelease"
+          else
+            RELEASE_TYPE="release"
+          fi
+
+          echo "tag_name=$TAG_NAME" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "release_type=$RELEASE_TYPE" >> "$GITHUB_OUTPUT"
+          echo "is_prerelease=$IS_PRERELEASE" >> "$GITHUB_OUTPUT"
+          echo "upload_to_github_release=$UPLOAD_TO_GITHUB_RELEASE" >> "$GITHUB_OUTPUT"
+          echo "upload_to_forgejo_release=$UPLOAD_TO_FORGEJO_RELEASE" >> "$GITHUB_OUTPUT"
+
+          echo "Tag: $TAG_NAME"
+          echo "Version: $VERSION"
+          echo "Release type: $RELEASE_TYPE"
+          echo "Prerelease: $IS_PRERELEASE"
+          echo "Upload to GitHub: $UPLOAD_TO_GITHUB_RELEASE"
+          echo "Upload to Forgejo: $UPLOAD_TO_FORGEJO_RELEASE"
+
+  build-android:
+    runs-on: ubuntu-latest
+    needs: meta
+    if: ${{ inputs.platform == 'all' || inputs.platform == 'android' || github.event_name == 'release' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.meta.outputs.tag_name }}
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Patch app.json releaseType
+        run: |
+          node - <<'NODE'
+          const fs = require('fs')
+          const cfg = JSON.parse(fs.readFileSync('app.json', 'utf8'))
+          cfg.expo ??= {}
+          cfg.expo.extra ??= {}
+          cfg.expo.extra.releaseType = '${{ needs.meta.outputs.release_type }}'
+          fs.writeFileSync('app.json', JSON.stringify(cfg, null, 2))
+          NODE
+
+      - uses: expo/expo-github-action@v8
+        with:
+          expo-version: latest
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Generate native Android project
+        run: pnpm exec expo prebuild --platform android --no-install
+
+      - name: Fix gradlew permissions
+        run: chmod +x android/gradlew
+
+      - name: Patch Android ABI split APKs
+        run: |
+          node - <<'NODE'
+          const fs = require('fs')
+          const path = 'android/app/build.gradle'
+
+          let s = fs.readFileSync(path, 'utf8')
+
+          const splitsBlock = `
+              splits {
+                  abi {
+                      reset()
+                      enable true
+                      universalApk true
+                      include "armeabi-v7a", "arm64-v8a", "x86", "x86_64"
+                  }
+              }
+          `
+
+          if (s.includes('splits {') && s.includes('abi {')) {
+            s = s.replace(/enable\s+enableSeparateBuildPerCPUArchitecture/g, 'enable true')
+            s = s.replace(/enableSeparateBuildPerCPUArchitecture\s*=\s*false/g, 'enableSeparateBuildPerCPUArchitecture = true')
+            s = s.replace(/universalApk\s+false/g, 'universalApk true')
+            s = s.replace(/include\s+["']armeabi-v7a["'],\s*["']x86["'],\s*["']arm64-v8a["'],\s*["']x86_64["']/g, 'include "armeabi-v7a", "arm64-v8a", "x86", "x86_64"')
+          } else {
+            s = s.replace(/android\s*\{/, match => `${match}\n${splitsBlock}`)
+          }
+
+          fs.writeFileSync(path, s)
+          NODE
+
+      - name: Setup Android release keystore
+        env:
+          KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+        run: |
+          if [ -z "${KEYSTORE_BASE64:-}" ]; then
+            echo "RELEASE_KEYSTORE_BASE64 is not set. APKs will use project default signing if available."
+            exit 0
+          fi
+
+          echo "$KEYSTORE_BASE64" | tr -d '\n\r ' | base64 -d > android/app/release.keystore
+
+          cat >> android/gradle.properties <<EOF
+
+          MYAPP_UPLOAD_STORE_FILE=release.keystore
+          MYAPP_UPLOAD_STORE_PASSWORD=$KEYSTORE_PASSWORD
+          MYAPP_UPLOAD_KEY_ALIAS=$KEY_ALIAS
+          MYAPP_UPLOAD_KEY_PASSWORD=$KEY_PASSWORD
+          EOF
+
+          node - <<'NODE'
+          const fs = require('fs')
+          const path = 'android/app/build.gradle'
+          let s = fs.readFileSync(path, 'utf8')
+
+          if (!s.includes('MYAPP_UPLOAD_STORE_FILE')) {
+            s = s.replace(
+              /signingConfigs\s*\{/,
+              `signingConfigs {
+                  release {
+                      if (project.hasProperty('MYAPP_UPLOAD_STORE_FILE')) {
+                          storeFile file(MYAPP_UPLOAD_STORE_FILE)
+                          storePassword MYAPP_UPLOAD_STORE_PASSWORD
+                          keyAlias MYAPP_UPLOAD_KEY_ALIAS
+                          keyPassword MYAPP_UPLOAD_KEY_PASSWORD
+                      }
+                  }`
+            )
+          }
+
+          s = s.replace(/signingConfig\s+signingConfigs\.debug/g, 'signingConfig signingConfigs.release')
+
+          fs.writeFileSync(path, s)
+          NODE
+
+      - name: Build Android APKs
+        working-directory: android
+        env:
+          CI: "true"
+          APP_VERSION: ${{ needs.meta.outputs.version }}
+        run: |
+          ./gradlew :app:assembleRelease \
+            --build-cache \
+            --no-daemon \
+            --console=plain \
+            --warning-mode=summary
+
+      - name: Rename APKs
+        id: android_files
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          VERSION="${{ needs.meta.outputs.version }}"
+          RELEASE_TYPE="${{ needs.meta.outputs.release_type }}"
+          OUT_DIR="dist/android"
+
+          mkdir -p "$OUT_DIR"
+
+          find android/app/build/outputs/apk/release -name "*.apk" -type f -print
+
+          for f in android/app/build/outputs/apk/release/*.apk; do
+            b="$(basename "$f")"
+            abi="universal"
+
+            if [[ "$b" == *"arm64-v8a"* ]]; then
+              abi="arm64-v8a"
+            elif [[ "$b" == *"armeabi-v7a"* ]]; then
+              abi="armeabi-v7a"
+            elif [[ "$b" == *"x86_64"* ]]; then
+              abi="x86_64"
+            elif [[ "$b" == *"x86"* ]]; then
+              abi="x86"
+            elif [[ "$b" == *"universal"* ]]; then
+              abi="universal"
+            fi
+
+            cp -f "$f" "$OUT_DIR/neomovies-android-${RELEASE_TYPE}-${VERSION}-${abi}.apk"
+          done
+
+          echo "out_dir=$OUT_DIR" >> "$GITHUB_OUTPUT"
+
+          echo "Generated APKs:"
+          ls -lah "$OUT_DIR"
+
+      - name: Upload universal APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-universal-apk
+          path: dist/android/*-universal.apk
+          retention-days: 7
+
+      - name: Upload ABI APK artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-abi-apks
+          path: |
+            dist/android/*-armeabi-v7a.apk
+            dist/android/*-arm64-v8a.apk
+            dist/android/*-x86.apk
+            dist/android/*-x86_64.apk
+          retention-days: 7
+
+  build-ios:
+    runs-on: macos-26
+    needs: meta
+    if: ${{ inputs.platform == 'all' || inputs.platform == 'ios' || github.event_name == 'release' }}
+
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.5.app/Contents/Developer
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ needs.meta.outputs.tag_name }}
+
+      - name: Select Xcode 26.5
+        run: |
+          sudo xcode-select -s "$DEVELOPER_DIR"
+          xcodebuild -version
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Patch app.json releaseType
+        run: |
+          node - <<'NODE'
+          const fs = require('fs')
+          const cfg = JSON.parse(fs.readFileSync('app.json', 'utf8'))
+          cfg.expo ??= {}
+          cfg.expo.extra ??= {}
+          cfg.expo.extra.releaseType = '${{ needs.meta.outputs.release_type }}'
+          fs.writeFileSync('app.json', JSON.stringify(cfg, null, 2))
+          NODE
+
+      - uses: expo/expo-github-action@v8
+        with:
+          expo-version: latest
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+
+      - name: Generate native iOS project
+        run: pnpm exec expo prebuild --platform ios --no-install
+
+      - name: Install CocoaPods
+        run: |
+          cd ios
+          pod install --silent
+
+      - name: Detect Xcode workspace and scheme
+        id: xcode
+        shell: bash
+        run: |
+          WORKSPACE=$(find ios -maxdepth 1 -name "*.xcworkspace" -type d | head -n 1)
+
+          if [ -z "$WORKSPACE" ]; then
+            echo "No .xcworkspace found in ios/"
+            ls -la ios
+            exit 1
+          fi
+
+          SCHEME=$(basename "$WORKSPACE" .xcworkspace)
+
+          echo "workspace=$WORKSPACE" >> "$GITHUB_OUTPUT"
+          echo "scheme=$SCHEME" >> "$GITHUB_OUTPUT"
+
+          echo "Workspace: $WORKSPACE"
+          echo "Scheme: $SCHEME"
+
+      - name: Build unsigned iOS app
+        shell: bash
+        run: |
+          set -o pipefail
+
+          xcodebuild \
+            -workspace "${{ steps.xcode.outputs.workspace }}" \
+            -scheme "${{ steps.xcode.outputs.scheme }}" \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath ios/build \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            DEVELOPMENT_TEAM="" \
+            clean build \
+            -quiet 2>&1 | tee xcodebuild.log | grep -E '(error|warning|note):' || true
+
+          # Check if build succeeded
+          if [ ! -d "ios/build/Build/Products/Release-iphoneos" ]; then
+            echo "Build failed, showing full log:"
+            cat xcodebuild.log
+            exit 1
+          fi
+
+      - name: Upload Xcode log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcodebuild-log
+          path: xcodebuild.log
+          retention-days: 3
+
+      - name: Pack unsigned IPA
+        id: ios_file
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          APP_PATH=$(find ios/build -path "*/Release-iphoneos/*.app" -type d | head -n 1)
+
+          if [ -z "$APP_PATH" ]; then
+            echo "No .app found"
+            find ios/build -maxdepth 6
+            exit 1
+          fi
+
+          echo "Found app: $APP_PATH"
+
+          rm -rf Payload dist/ios
+          mkdir -p Payload dist/ios
+          cp -R "$APP_PATH" Payload/
+
+          VERSION="${{ needs.meta.outputs.version }}"
+          RELEASE_TYPE="${{ needs.meta.outputs.release_type }}"
+          NAME="neomovies-ios-unsigned-${RELEASE_TYPE}-${VERSION}.ipa"
+
+          zip -qry "dist/ios/$NAME" Payload
+
+          echo "ipa=dist/ios/$NAME" >> "$GITHUB_OUTPUT"
+
+          echo "Generated IPA:"
+          ls -lah dist/ios
+
+      - name: Verify IPA platform
+        shell: bash
+        run: |
+          rm -rf ipa-check
+          mkdir ipa-check
+          unzip -q "${{ steps.ios_file.outputs.ipa }}" -d ipa-check
+
+          echo "IPA Info.plist platform:"
+          plutil -p ipa-check/Payload/*.app/Info.plist | grep DTPlatformName || true
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-unsigned-ipa
+          path: dist/ios/*.ipa
+          retention-days: 7
+
+      - name: Update AltStore manifest
+        if: github.event_name == 'release'
+        shell: bash
+        run: |
+          VERSION="${{ needs.meta.outputs.version }}"
+          DATE=$(date -u +"%Y-%m-%d")
+          IPA_PATH="${{ steps.ios_file.outputs.ipa }}"
+          IPA_SIZE=$(stat -f%z "$IPA_PATH" 2>/dev/null || stat -c%s "$IPA_PATH")
+          RELEASE_TYPE="${{ needs.meta.outputs.release_type }}"
+
+          # Determine download URL based on release type
+          if [ "$RELEASE_TYPE" = "prerelease" ]; then
+            DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/download/${{ needs.meta.outputs.tag_name }}/neomovies-ios-unsigned-${RELEASE_TYPE}-${VERSION}.ipa"
+          else
+            DOWNLOAD_URL="https://github.com/${{ github.repository }}/releases/latest/download/neomovies-ios-unsigned-${RELEASE_TYPE}-${VERSION}.ipa"
+          fi
+
+          # Update manifest
+          cat altstore-source.json | jq \
+            --arg ver "$VERSION" \
+            --arg date "$DATE" \
+            --arg size "$IPA_SIZE" \
+            --arg url "$DOWNLOAD_URL" \
+            --argjson beta "${{ needs.meta.outputs.is_prerelease }}" \
+            '.apps[0].version = $ver |
+             .apps[0].versionDate = $date |
+             .apps[0].size = ($size | tonumber) |
+             .apps[0].downloadURL = $url |
+             .apps[0].beta = $beta' \
+            > altstore-source.tmp.json
+
+          mv altstore-source.tmp.json altstore-source.json
+
+          echo "Updated AltStore manifest:"
+          cat altstore-source.json | jq '.apps[0] | {version, versionDate, size, downloadURL, beta}'
+
+      - name: Commit AltStore manifest
+        if: github.event_name == 'release'
+        shell: bash
+        env:
+          FORGEJO_TOKEN: ${{ secrets.FORGEJO_TOKEN }}
+        run: |
+          VERSION="${{ needs.meta.outputs.version }}"
+
+          if [ -z "${FORGEJO_TOKEN:-}" ]; then
+            echo "FORGEJO_TOKEN is not set, skipping manifest update"
+            exit 0
+          fi
+
+          # Clone Forgejo repo with token
+          git clone "https://oauth2:${FORGEJO_TOKEN}@git.disroot.org/Neo/neomovies-mobile.git" forgejo-repo
+          cd forgejo-repo
+
+          # Copy updated manifest
+          cp ../altstore-source.json .
+
+          # Configure git
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Commit and push to Forgejo
+          git add altstore-source.json
+
+          if git diff --staged --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "Update AltStore manifest to $VERSION"
+            git push origin main || echo "Failed to push manifest update to Forgejo"
+          fi
+
+          cd ..
+          rm -rf forgejo-repo
+
+  publish:
+    runs-on: ubuntu-latest
+    needs:
+      - meta
+      - build-android
+      - build-ios
+
+    if: >-
+      ${{
+        always() &&
+        (needs.build-android.result == 'success' || needs.build-ios.result == 'success') &&
+        (needs.meta.outputs.upload_to_github_release == 'true' || needs.meta.outputs.upload_to_forgejo_release == 'true')
+      }}
+
+    steps:
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-files
+          merge-multiple: true
+
+      - name: Show release files
+        run: |
+          find release-files -type f -maxdepth 3 -print
+          ls -lah release-files
+
+      - name: Upload files to GitHub Release
+        if: ${{ needs.meta.outputs.upload_to_github_release == 'true' }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.meta.outputs.tag_name }}
+          name: ${{ needs.meta.outputs.tag_name }}
+          prerelease: ${{ needs.meta.outputs.is_prerelease }}
+          files: |
+            release-files/*.apk
+            release-files/*.ipa
+
+      - name: Create or find Forgejo Release
+        id: forgejo_release
+        if: ${{ needs.meta.outputs.upload_to_forgejo_release == 'true' }}
+        env:
+          FORGEJO_TOKEN: ${{ secrets.FORGEJO_TOKEN }}
+          TAG_NAME: ${{ needs.meta.outputs.tag_name }}
+          IS_PRERELEASE: ${{ needs.meta.outputs.is_prerelease }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -z "${FORGEJO_TOKEN:-}" ]; then
+            echo "FORGEJO_TOKEN secret is not set"
+            exit 1
+          fi
+
+          RELEASE_URL="$FORGEJO_API_URL/repos/$FORGEJO_OWNER/$FORGEJO_REPO/releases/tags/$TAG_NAME"
+
+          HTTP_CODE=$(curl -sS -o /tmp/forgejo-release.json -w "%{http_code}" \
+            -H "Authorization: token $FORGEJO_TOKEN" \
+            "$RELEASE_URL")
+
+          if [ "$HTTP_CODE" = "200" ]; then
+            echo "Forgejo release already exists"
+          else
+            echo "Creating Forgejo release"
+
+            jq -n \
+              --arg tag "$TAG_NAME" \
+              --arg name "$TAG_NAME" \
+              --argjson prerelease "$IS_PRERELEASE" \
+              '{
+                tag_name: $tag,
+                name: $name,
+                body: "",
+                draft: false,
+                prerelease: $prerelease
+              }' > /tmp/forgejo-create-release.json
+
+            curl -sS -f \
+              -X POST \
+              -H "Authorization: token $FORGEJO_TOKEN" \
+              -H "Content-Type: application/json" \
+              "$FORGEJO_API_URL/repos/$FORGEJO_OWNER/$FORGEJO_REPO/releases" \
+              --data @/tmp/forgejo-create-release.json \
+              > /tmp/forgejo-release.json
+          fi
+
+          RELEASE_ID=$(jq -r '.id' /tmp/forgejo-release.json)
+
+          if [ -z "$RELEASE_ID" ] || [ "$RELEASE_ID" = "null" ]; then
+            echo "Failed to get Forgejo release id"
+            cat /tmp/forgejo-release.json
+            exit 1
+          fi
+
+          echo "id=$RELEASE_ID" >> "$GITHUB_OUTPUT"
+
+      - name: Upload files to Forgejo Release
+        if: ${{ needs.meta.outputs.upload_to_forgejo_release == 'true' }}
+        env:
+          FORGEJO_TOKEN: ${{ secrets.FORGEJO_TOKEN }}
+          RELEASE_ID: ${{ steps.forgejo_release.outputs.id }}
+          TAG_NAME: ${{ needs.meta.outputs.tag_name }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          upload_asset() {
+            local file="$1"
+            local name
+            name="$(basename "$file")"
+
+            echo "Uploading $name to Forgejo..."
+
+            local size
+            size=$(stat -f%z "$file" 2>/dev/null || stat -c%s "$file")
+            local size_mb=$((size / 1024 / 1024))
+
+            # Try Forgejo Releases API first (has size limit ~100MB)
+            if [ "$size_mb" -lt 90 ]; then
+              if curl -sS -f \
+                -X POST \
+                -H "Authorization: token $FORGEJO_TOKEN" \
+                -F "attachment=@$file" \
+                "$FORGEJO_API_URL/repos/$FORGEJO_OWNER/$FORGEJO_REPO/releases/$RELEASE_ID/assets?name=$name" \
+                > /dev/null 2>&1; then
+                echo "✅ Uploaded $name to Forgejo Releases"
+                return 0
+              fi
+            fi
+
+            # For large files, use Forgejo Generic Packages
+            echo "Uploading $name to Forgejo Packages (${size_mb}MB)..."
+            if curl -sS -f \
+              -X PUT \
+              -H "Authorization: token $FORGEJO_TOKEN" \
+              --upload-file "$file" \
+              "https://git.disroot.org/api/packages/$FORGEJO_OWNER/generic/neomovies-mobile/$TAG_NAME/$name" \
+              > /dev/null 2>&1; then
+              echo "✅ Uploaded $name to Forgejo Packages"
+              return 0
+            fi
+
+            echo "⚠️  Failed to upload $name (available on GitHub Releases)"
+          }
+
+          shopt -s nullglob
+
+          for f in release-files/*.apk; do
+            upload_asset "$f"
+          done
+
+          for f in release-files/*.ipa; do
+            upload_asset "$f"
+          done
+
+          echo ""
+          echo "Files uploaded to:"
+          echo "  - Forgejo Releases: https://git.disroot.org/$FORGEJO_OWNER/$FORGEJO_REPO/releases/tag/$TAG_NAME"
+          echo "  - Forgejo Packages: https://git.disroot.org/$FORGEJO_OWNER/-/packages/generic/neomovies-mobile/$TAG_NAME"
+          echo "  - GitHub Releases: https://github.com/${{ github.repository }}/releases/tag/$TAG_NAME"

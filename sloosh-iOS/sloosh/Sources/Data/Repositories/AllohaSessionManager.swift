@@ -1,12 +1,12 @@
 import Foundation
 
 @MainActor
-final class AllohaSessionManager: NSObject, AllohaParserDelegate {
-    private var parser: AllohaParser?
+final class AllohaSessionManager {
+    private var resolver: AllohaRuntimeResolver?
+    private var resolveTask: Task<Void, Never>?
     private var proactiveRestartTask: Task<Void, Never>?
     private var lastIframeUrl: String = ""
     private var currentSessionIsRestart = false
-    private var configUpdateReceived = false
 
     private(set) var currentM3u8Url: String = ""
     private(set) var lastQualityMap: [String: String] = [:]
@@ -16,33 +16,40 @@ final class AllohaSessionManager: NSObject, AllohaParserDelegate {
     var onError: ((String) -> Void)?
 
     func startSession(iframeUrl: String, isRestart: Bool = false) {
-        ensureInitialized()
+        resolveTask?.cancel()
+        resolver?.cancel()
+        resolver = AllohaRuntimeResolver()
 
         lastIframeUrl = iframeUrl
         currentSessionIsRestart = isRestart
-        configUpdateReceived = false
         currentM3u8Url = ""
         lastQualityMap = [:]
         lastSelectedQuality = ""
 
         HlsProxyServer.shared.start(headers: [:])
+        guard let resolver else { return }
 
-        parser?.parse(iframeUrl: iframeUrl)
+        resolveTask = Task { [weak self] in
+            do {
+                let resolved = try await resolver.resolve(iframeUrl: iframeUrl)
+                guard let self, !Task.isCancelled else { return }
+                self.applyResolvedStream(resolved)
+            } catch is CancellationError {
+                return
+            } catch {
+                guard let self, !Task.isCancelled else { return }
+                self.onError?(error.localizedDescription)
+            }
+        }
     }
 
     func release() {
+        resolveTask?.cancel()
+        resolveTask = nil
         proactiveRestartTask?.cancel()
         proactiveRestartTask = nil
-        parser?.release()
-        parser = nil
-    }
-
-    private func ensureInitialized() {
-        if parser == nil {
-            let parser = AllohaParser()
-            parser.delegate = self
-            self.parser = parser
-        }
+        resolver?.cancel()
+        resolver = nil
     }
 
     private func scheduleProactiveRestart(ttlSeconds: Int) {
@@ -59,86 +66,73 @@ final class AllohaSessionManager: NSObject, AllohaParserDelegate {
         }
     }
 
-    private func parseQualities(from json: String) throws -> [String: String] {
-        guard let data = json.data(using: .utf8),
-              let dict = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let hlsSource = dict["hlsSource"] as? [[String: Any]],
-              let firstSource = hlsSource.first,
-              let quality = firstSource["quality"] as? [String: String] else {
-            throw NSError(domain: "AllohaSessionManager", code: 1, userInfo: [NSLocalizedDescriptionKey: "Не удалось получить поток"])
+    private func applyResolvedStream(_ resolved: [String: Any]) {
+        guard let resolvedUrl = (resolved["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !resolvedUrl.isEmpty else {
+            onError?("Не удалось получить поток")
+            return
         }
 
-        var parsed: [String: String] = [:]
-        for (key, value) in quality {
-            let link = value.components(separatedBy: " or ").first?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            guard !link.isEmpty else { continue }
-            parsed[key] = link.hasPrefix("//") ? "https:\(link)" : link
+        let headers = (resolved["headers"] as? [String: String]) ?? [:]
+        let qualities = parseQualities(from: resolved, fallbackUrl: resolvedUrl)
+
+        currentM3u8Url = resolvedUrl
+        lastQualityMap = qualities
+        lastSelectedQuality = qualities.first(where: { $0.value == resolvedUrl })?.key ?? "Авто"
+
+        HlsProxyServer.shared.updateHeaders(headers)
+        HlsProxyServer.shared.updateMasterUrl(resolvedUrl)
+
+        if let ttl = playbackTTL(from: headers) {
+            scheduleProactiveRestart(ttlSeconds: ttl)
         }
 
-        if parsed.isEmpty {
-            throw NSError(domain: "AllohaSessionManager", code: 2, userInfo: [NSLocalizedDescriptionKey: "Не удалось получить качества потока"])
+        if !currentSessionIsRestart {
+            onStreamReady?("", resolvedUrl)
+        }
+    }
+
+    private func parseQualities(from resolved: [String: Any], fallbackUrl: String) -> [String: String] {
+        var parsed: [String: String] = ["Авто": fallbackUrl]
+
+        let qualityVariants = (resolved["qualityVariants"] as? [[String: Any]]) ?? []
+        for variant in qualityVariants {
+            guard let url = variant["url"] as? String,
+                  !url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                continue
+            }
+            let label = normalizedQualityLabel(from: variant["label"] as? String)
+            parsed[label] = url
+        }
+
+        if parsed.count == 1,
+           let audioVariants = resolved["audioVariants"] as? [[String: Any]],
+           let firstAudio = audioVariants.first,
+           let nestedVariants = firstAudio["qualityVariants"] as? [[String: Any]] {
+            for variant in nestedVariants {
+                guard let url = variant["url"] as? String,
+                      !url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                    continue
+                }
+                let label = normalizedQualityLabel(from: variant["label"] as? String)
+                parsed[label] = url
+            }
         }
 
         return parsed
     }
 
-    private func pickBestQuality(from qualities: [String: String]) -> String {
-        let ordered = ["1080", "720", "480", "360", "1440", "2160"]
-        return ordered.first(where: { qualities[$0] != nil }) ?? qualities.keys.sorted().first ?? ""
+    private func normalizedQualityLabel(from rawLabel: String?) -> String {
+        let label = (rawLabel ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !label.isEmpty else { return "Поток" }
+        if label.lowercased().hasSuffix("p") { return label }
+        if Int(label) != nil { return "\(label)p" }
+        return label
     }
 
-    func onHlsLinksReceived(json: String, extraHeaders: [String: String]) {
-        do {
-            let qualities = try parseQualities(from: json)
-            let bestKey = pickBestQuality(from: qualities)
-            guard let bestUrl = qualities[bestKey] ?? qualities.values.sorted().first else {
-                throw NSError(domain: "AllohaSessionManager", code: 3, userInfo: [NSLocalizedDescriptionKey: "Не удалось выбрать поток"])
-            }
-
-            lastQualityMap = qualities
-            lastSelectedQuality = bestKey
-            currentM3u8Url = bestUrl
-
-            HlsProxyServer.shared.updateHeaders(extraHeaders)
-
-            if !currentSessionIsRestart {
-                HlsProxyServer.shared.updateMasterUrl(bestUrl)
-                onStreamReady?(json, bestUrl)
-            }
-        } catch {
-            onError?(error.localizedDescription)
-        }
-    }
-
-    func onConfigUpdate(edgeHash: String, ttlSeconds: Int, extraHeaders: [String: String]) {
-        var mergedHeaders = extraHeaders
-        mergedHeaders["accepts-controls"] = edgeHash
-        HlsProxyServer.shared.updateHeaders(mergedHeaders)
-
-        scheduleProactiveRestart(ttlSeconds: ttlSeconds)
-
-        if !configUpdateReceived {
-            configUpdateReceived = true
-            if !currentM3u8Url.isEmpty {
-                HlsProxyServer.shared.updateMasterUrl(currentM3u8Url)
-            }
-        }
-    }
-
-    func onM3u8Refreshed(url: String, extraHeaders: [String: String]) {
-        currentM3u8Url = url
-        HlsProxyServer.shared.updateHeaders(extraHeaders)
-
-        if configUpdateReceived || currentSessionIsRestart {
-            HlsProxyServer.shared.updateMasterUrl(url)
-        }
-    }
-
-    func onStreamHeadersUpdated(extraHeaders: [String: String]) {
-        HlsProxyServer.shared.updateHeaders(extraHeaders)
-    }
-
-    func onError(error: String) {
-        onError?(error)
+    private func playbackTTL(from headers: [String: String]) -> Int? {
+        let ttlValue = headers["x-neo-config-ttl"] ?? headers["X-Neo-Config-Ttl"]
+        guard let ttlValue, let ttl = Int(ttlValue), ttl > 0 else { return nil }
+        return ttl
     }
 }
