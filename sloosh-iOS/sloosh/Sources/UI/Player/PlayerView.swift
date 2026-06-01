@@ -208,11 +208,13 @@ struct PlayerView: View {
     let season: Int?
     let episode: Int?
     let selectedVoiceover: String?
+    let voices: [String]
+    let subtitles: [CollapsSubtitle]
     
     @StateObject private var viewModel = PlayerViewModel()
     @Environment(\.presentationMode) var presentationMode
     
-    init(iframeUrl: String? = nil, directVideoUrl: String? = nil, fallbackTitle: String, kpId: Int? = nil, season: Int? = nil, episode: Int? = nil, selectedVoiceover: String? = nil) {
+    init(iframeUrl: String? = nil, directVideoUrl: String? = nil, fallbackTitle: String, kpId: Int? = nil, season: Int? = nil, episode: Int? = nil, selectedVoiceover: String? = nil, voices: [String] = [], subtitles: [CollapsSubtitle] = []) {
         self.iframeUrl = iframeUrl
         self.directVideoUrl = directVideoUrl
         self.fallbackTitle = fallbackTitle
@@ -220,6 +222,8 @@ struct PlayerView: View {
         self.season = season
         self.episode = episode
         self.selectedVoiceover = selectedVoiceover
+        self.voices = voices
+        self.subtitles = subtitles
     }
     
     var body: some View {
@@ -260,9 +264,9 @@ struct PlayerView: View {
         .onAppear {
             if viewModel.player == nil { // Избегаем повторной загрузки при перерисовках
                 if let directUrl = directVideoUrl {
-                    viewModel.loadDirect(url: directUrl, kpId: kpId, season: season, episode: episode, selectedVoiceover: selectedVoiceover)
+                    viewModel.loadDirect(url: directUrl, kpId: kpId, season: season, episode: episode, selectedVoiceover: selectedVoiceover, voices: voices, subtitles: subtitles)
                 } else if let iframe = iframeUrl {
-                    viewModel.load(iframeUrl: iframe, kpId: kpId, season: season, episode: episode, selectedVoiceover: selectedVoiceover)
+                    viewModel.load(iframeUrl: iframe, kpId: kpId, season: season, episode: episode, selectedVoiceover: selectedVoiceover, voices: voices, subtitles: subtitles)
                 } else {
                     viewModel.error = "Нет URL для воспроизведения"
                     viewModel.isLoading = false
@@ -303,7 +307,7 @@ class PlayerViewModel: ObservableObject {
         return host == "127.0.0.1" || host == "localhost"
     }
     
-    func load(iframeUrl: String, kpId: Int?, season: Int?, episode: Int?, selectedVoiceover: String?) {
+    func load(iframeUrl: String, kpId: Int?, season: Int?, episode: Int?, selectedVoiceover: String?, voices: [String] = [], subtitles: [CollapsSubtitle] = []) {
         if player != nil { return } // Защита от двойного вызова
         
         self.currentKpId = kpId
@@ -314,10 +318,10 @@ class PlayerViewModel: ObservableObject {
         isLoading = true
         error = nil
         
-        startParsing(iframeUrl: iframeUrl)
+        startParsing(iframeUrl: iframeUrl, voices: voices, subtitles: subtitles)
     }
     
-    func loadDirect(url: String, kpId: Int?, season: Int?, episode: Int?, selectedVoiceover: String?) {
+    func loadDirect(url: String, kpId: Int?, season: Int?, episode: Int?, selectedVoiceover: String?, voices: [String] = [], subtitles: [CollapsSubtitle] = []) {
         if player != nil { return }
         
         self.currentKpId = kpId
@@ -377,7 +381,7 @@ class PlayerViewModel: ObservableObject {
         self.currentQualityKey = "Авто"
         self.availableQualities = [("Авто", parsedUrl)]
         
-        playVideo(url: parsedUrl, headers: headers)
+        playVideo(url: parsedUrl, headers: headers, voices: voices, subtitles: subtitles)
         
         // Fetch playlist to parse qualities
         Task {
