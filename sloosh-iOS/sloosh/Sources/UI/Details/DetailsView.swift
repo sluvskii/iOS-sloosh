@@ -58,6 +58,8 @@ struct DetailsView: View {
     @State private var playerSeason: Int?
     @State private var playerEpisode: Int?
     @State private var playerVoiceover: String?
+    @State private var playerVoices: [String] = []
+    @State private var playerSubtitles: [CollapsSubtitle] = []
     
     var body: some View {
         ScrollView {
@@ -252,13 +254,15 @@ struct DetailsView: View {
                         kpId: wrapper.kpId,
                         isSerial: isSerial,
                         title: viewModel.details?.title ?? viewModel.details?.name ?? "",
-                        onPlay: { url, season, episode, voiceover in
+                        onPlay: { url, season, episode, voiceover, voices, subtitles in
                             // Collaps returns direct HLS/MPD urls
                             selectedIframeUrl = url // we use this state variable for the URL
                             playerKpId = wrapper.kpId
                             playerSeason = season
                             playerEpisode = episode
                             playerVoiceover = voiceover
+                            playerVoices = voices
+                            playerSubtitles = subtitles
                             showPlayer = true
                         }
                     )
@@ -288,22 +292,24 @@ struct DetailsView: View {
             playerSeason = nil
             playerEpisode = nil
             playerVoiceover = nil
+            playerVoices = []
+            playerSubtitles = []
             viewModel.cleanupAllohaSession()
         }) {
             if let details = viewModel.details {
                 let mode = SourceManager.shared.currentMode
                 if mode == .alloha {
                     if let directUrl = selectedDirectVideoUrl {
-                        PlayerView(directVideoUrl: directUrl, fallbackTitle: details.title ?? details.name ?? "", kpId: playerKpId, season: playerSeason, episode: playerEpisode, selectedVoiceover: playerVoiceover)
+                        PlayerView(directVideoUrl: directUrl, fallbackTitle: details.title ?? details.name ?? "", kpId: playerKpId, season: playerSeason, episode: playerEpisode, selectedVoiceover: playerVoiceover, voices: playerVoices, subtitles: playerSubtitles)
                     } else if let iframeUrl = selectedIframeUrl {
-                        PlayerView(iframeUrl: iframeUrl, fallbackTitle: details.title ?? details.name ?? "", kpId: playerKpId, season: playerSeason, episode: playerEpisode, selectedVoiceover: playerVoiceover)
+                        PlayerView(iframeUrl: iframeUrl, fallbackTitle: details.title ?? details.name ?? "", kpId: playerKpId, season: playerSeason, episode: playerEpisode, selectedVoiceover: playerVoiceover, voices: playerVoices, subtitles: playerSubtitles)
                     } else {
                         Text("Видео не найдено")
                     }
                 } else if let directUrl = selectedIframeUrl {
-                    PlayerView(directVideoUrl: directUrl, fallbackTitle: details.title ?? details.name ?? "", kpId: playerKpId, season: playerSeason, episode: playerEpisode, selectedVoiceover: playerVoiceover)
+                    PlayerView(directVideoUrl: directUrl, fallbackTitle: details.title ?? details.name ?? "", kpId: playerKpId, season: playerSeason, episode: playerEpisode, selectedVoiceover: playerVoiceover, voices: playerVoices, subtitles: playerSubtitles)
                 } else if let directUrl = selectedDirectVideoUrl {
-                    PlayerView(directVideoUrl: directUrl, fallbackTitle: details.title ?? details.name ?? "", kpId: playerKpId, season: playerSeason, episode: playerEpisode, selectedVoiceover: playerVoiceover)
+                    PlayerView(directVideoUrl: directUrl, fallbackTitle: details.title ?? details.name ?? "", kpId: playerKpId, season: playerSeason, episode: playerEpisode, selectedVoiceover: playerVoiceover, voices: playerVoices, subtitles: playerSubtitles)
                 } else {
                     Text("Видео не найдено")
                 }

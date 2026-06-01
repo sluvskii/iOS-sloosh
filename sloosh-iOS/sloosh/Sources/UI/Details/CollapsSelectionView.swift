@@ -6,7 +6,7 @@ struct CollapsSelectionView: View {
     let kpId: Int?
     let isSerial: Bool
     let title: String
-    let onPlay: (String, Int?, Int?, String?) -> Void
+    let onPlay: (String, Int?, Int?, String?, [String], [CollapsSubtitle]) -> Void
     
     @Environment(\.dismiss) private var dismiss
     
@@ -156,11 +156,13 @@ struct CollapsSelectionView: View {
             }
             
             let tName = selectedTranslationName
+            let voices = epObj.voices
+            let subtitles = epObj.subtitles
             if let hls = epObj.hlsUrl, !hls.isEmpty {
-                onPlay(hls, s, e, tName)
+                onPlay(hls, s, e, tName, voices, subtitles)
                 dismiss()
             } else if let mpd = epObj.mpdUrl, !mpd.isEmpty {
-                onPlay(mpd, s, e, tName)
+                onPlay(mpd, s, e, tName, voices, subtitles)
                 dismiss()
             }
         } else if let movie = movieResult {
@@ -169,11 +171,13 @@ struct CollapsSelectionView: View {
             }
             
             let tName = selectedTranslationName
+            let voices = movie.voices
+            let subtitles = movie.subtitles
             if let hls = movie.hlsUrl, !hls.isEmpty {
-                onPlay(hls, nil, nil, tName)
+                onPlay(hls, nil, nil, tName, voices, subtitles)
                 dismiss()
             } else if let mpd = movie.mpdUrl, !mpd.isEmpty {
-                onPlay(mpd, nil, nil, tName)
+                onPlay(mpd, nil, nil, tName, voices, subtitles)
                 dismiss()
             }
         }
