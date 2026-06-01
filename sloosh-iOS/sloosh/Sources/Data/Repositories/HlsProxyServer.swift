@@ -6,6 +6,9 @@ class HlsProxyServer {
     private var listener: NWListener?
     private let queue = DispatchQueue(label: "com.sloosh.ios.hlsproxy", attributes: .concurrent)
     private var headers: [String: String] = [:]
+    private var voices: [String] = []
+    private var subtitles: [CollapsSubtitle] = []
+    private var mediaId: String = ""
     private var currentMasterUrl: URL?
     
     // We use a custom delegate to bypass SSL issues like in Android's buildTrustingClient
@@ -18,8 +21,11 @@ class HlsProxyServer {
     var port: NWEndpoint.Port = 8181
     var fixedMasterUrl: String { "http://127.0.0.1:\(port.rawValue)/master.m3u8" }
     
-    func start(headers: [String: String]) {
+    func start(headers: [String: String], voices: [String] = [], subtitles: [CollapsSubtitle] = [], mediaId: String = "") {
         self.headers = headers
+        self.voices = voices
+        self.subtitles = subtitles
+        self.mediaId = mediaId
         if listener != nil { return }
         
         do {
@@ -140,7 +146,19 @@ class HlsProxyServer {
             }
             
             if isPlaylist, let content = String(data: data, encoding: .utf8) {
-                let rewritten = self.rewriteM3u8(content: content, baseUrl: realUrl)
+                let rewritten: String
+                if content.contains("#EXT-X-STREAM-INF") && (!self.voices.isEmpty || !self.subtitles.isEmpty) {
+                    let collapsRewritten = CollapsHlsRewriter.rewrite(
+                        master: content,
+                        voices: self.voices,
+                        subtitles: self.subtitles,
+                        mediaId: self.mediaId
+                    )
+                    rewritten = self.rewriteM3u8(content: collapsRewritten, baseUrl: realUrl)
+                } else {
+                    rewritten = self.rewriteM3u8(content: content, baseUrl: realUrl)
+                }
+                
                 let rewrittenData = rewritten.data(using: .utf8)!
                 self.sendResponse(data: rewrittenData, contentType: "application/vnd.apple.mpegurl", connection: connection)
             } else {
