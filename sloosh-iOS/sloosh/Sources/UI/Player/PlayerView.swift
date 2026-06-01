@@ -17,7 +17,7 @@ class PlayerPresenterViewController: UIViewController {
     var onDismiss: (() -> Void)?
     private var didPresent = false
     private var playerController: AVPlayerViewController?
-    private var observation: NSKeyValueObservation?
+    private var checkTimer: Timer?
     
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
@@ -44,25 +44,22 @@ class PlayerPresenterViewController: UIViewController {
             
             self.present(pc, animated: true) {
                 self.player?.play()
+                self.startDismissalObserver()
             }
-            
-            // Watch for dismissal directly on the presented view controller
-        // Not strictly needed since viewDidDisappear handles it now, but good as a fallback
-        // self.observation = pc.observe(\.isBeingDismissed, options: [.new]) { [weak self] _, change in
-        //     if change.newValue == true {
-        //         self?.handleDismissal()
-        //     }
-        // }
         }
     }
     
-    override func viewDidDisappear(_ animated: Bool) {
-        super.viewDidDisappear(animated)
-        
-        // Ensure dismiss is called only when the view controller is ACTUALLY being dismissed from SwiftUI
-        // or when the child AVPlayerViewController has been fully dismissed
-        if self.isBeingDismissed || self.isMovingFromParent || (self.presentedViewController == nil && self.didPresent) {
-            handleDismissal()
+    private func startDismissalObserver() {
+        checkTimer?.invalidate()
+        checkTimer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] timer in
+            guard let self = self else {
+                timer.invalidate()
+                return
+            }
+            if self.presentedViewController == nil {
+                timer.invalidate()
+                self.handleDismissal()
+            }
         }
     }
     
