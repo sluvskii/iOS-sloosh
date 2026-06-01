@@ -4,7 +4,9 @@ import AVKit
 class PlayerPresenterViewController: UIViewController {
     var player: AVPlayer? {
         didSet {
-            playerController?.player = player
+            if playerController?.player !== player {
+                playerController?.player = player
+            }
             if player != nil && player?.timeControlStatus != .playing {
                 player?.play()
             }
@@ -172,6 +174,7 @@ struct PlayerView: View {
         }
         .onAppear {
             if viewModel.player == nil { // Избегаем повторной загрузки при перерисовках
+                viewModel.player = AVPlayer() // СРАЗУ СОЗДАЕМ ПЛЕЕР, ЧТОБЫ AVPlayerViewController ПОЛУЧИЛ ЕГО ПРИ СТАРТЕ
                 viewModel.targetQualityPreference = initialQuality
                 
                 if let directUrl = directVideoUrl {
@@ -254,9 +257,13 @@ class PlayerViewModel: ObservableObject {
 
             let asset = AVURLAsset(url: parsedUrl)
             let playerItem = AVPlayerItem(asset: asset)
-            self.player = AVPlayer(playerItem: playerItem)
+            
+            if self.player == nil { self.player = AVPlayer() }
+            self.player?.replaceCurrentItem(with: playerItem)
+            
             self.isLoading = false
             self.startTrackingProgress()
+            self.player?.play()
             
             self.itemObservation = playerItem.observe(\.status) { [weak self] item, _ in
                 guard let self = self else { return }
@@ -549,9 +556,13 @@ class PlayerViewModel: ObservableObject {
         
         let asset = AVURLAsset(url: proxyUrl)
         let playerItem = AVPlayerItem(asset: asset)
-        self.player = AVPlayer(playerItem: playerItem)
+        
+        if self.player == nil { self.player = AVPlayer() }
+        self.player?.replaceCurrentItem(with: playerItem)
+        
         self.isLoading = false
         self.startTrackingProgress()
+        self.player?.play()
         
         self.itemObservation = playerItem.observe(\.status) { [weak self] item, _ in
             guard let self = self else { return }
