@@ -296,7 +296,7 @@ enum CollapsParser {
 
     private static func qualityURLStrings(from value: Any) -> [String] {
         if let text = value as? String {
-            return splitURLParts(text)
+            return [text.trimmingCharacters(in: .whitespacesAndNewlines)]
         }
         if let nested = value as? [Any] {
             return nested.flatMap { qualityURLStrings(from: $0) }
@@ -305,13 +305,6 @@ enum CollapsParser {
             return nestedDict.values.flatMap { qualityURLStrings(from: $0) }
         }
         return []
-    }
-
-    private static func splitURLParts(_ text: String) -> [String] {
-        text
-            .split(separator: ",")
-            .map { String($0).trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
     }
 
     private static func embeddedJSONObjectCandidates(in payload: String) -> [String] {
