@@ -1,0 +1,14 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <application
+        android:usesCleartextTraffic="true">
+        <activity
+            android:name=".PlayerActivity"
+            android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|smallestScreenSize"
+            android:supportsPictureInPicture="true"
+            android:resizeableActivity="true"
+            android:theme="@style/Theme.Player"
+            android:exported="false" />
+    </application>
+</manifest>

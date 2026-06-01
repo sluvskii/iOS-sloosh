@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Player controls -->
+    <string name="select_playback_speed">Абярыце хуткасць прайгравання</string>
+    <string name="select_audio_track">Абярыце аўдыядарожку</string>
+    <string name="select_subtitle_track">Абярыце субтытры</string>
+    <string name="select_video_quality">Абярыце якасць</string>
+    <string name="none">Няма</string>
+    
+    <!-- Player UI -->
+    <string name="player_trickplay">Папярэдні прагляд</string>
+    <string name="player_controls_progress">Перамотка</string>
+    <string name="player_controls_exit">Выхад</string>
+    <string name="player_controls_lock">Заблакаваць кіраванне</string>
+    <string name="player_controls_play_pause">Адтварэнне/Паўза</string>
+    <string name="player_controls_pip">Карцінка ў карцінцы</string>
+    <string name="player_controls_aspect_ratio">Суадносіны бакоў</string>
+    <string name="player_skip">Прапусціць ⏭</string>
+    <string name="player_controls_rewind">Перамотка назад</string>
+    <string name="player_controls_fast_forward">Перамотка уперад</string>
+    <string name="player_controls_skip_back">Назад</string>
+    <string name="player_controls_skip_forward">Уперад</string>
+    <string name="alloha_sheet_audio">Агучка</string>
+    <string name="alloha_sheet_quality">Якасць</string>
+</resources>

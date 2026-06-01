@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Player controls -->
+    <string name="select_playback_speed">Select playback speed</string>
+    <string name="select_audio_track">Select audio track</string>
+    <string name="select_subtitle_track">Select subtitle track</string>
+    <string name="select_video_quality">Select quality</string>
+    <string name="none">None</string>
+    
+    <!-- Player UI -->
+    <string name="player_trickplay">Trickplay preview</string>
+    <string name="player_controls_progress">Seek</string>
+    <string name="player_controls_exit">Exit</string>
+    <string name="player_controls_lock">Lock controls</string>
+    <string name="player_controls_play_pause">Play/Pause</string>
+    <string name="player_controls_pip">Picture in picture</string>
+    <string name="player_controls_aspect_ratio">Aspect ratio</string>
+    <string name="player_skip">Skip ⏭</string>
+    <string name="player_controls_rewind">Rewind</string>
+    <string name="player_controls_fast_forward">Fast forward</string>
+    <string name="player_controls_skip_back">Skip back</string>
+    <string name="player_controls_skip_forward">Skip forward</string>
+    
+    <!-- Quality and voiceover -->
+    <string name="quality_auto">Auto</string>
+    <string name="lumex_select_quality">Select quality</string>
+    <string name="lumex_select_voiceover">Select voiceover</string>
+    <string name="alloha_parsing_stream">Capturing stream session…</string>
+    <string name="alloha_sheet_audio">Voiceover</string>
+    <string name="alloha_sheet_quality">Quality</string>
+</resources>
