@@ -159,9 +159,10 @@ struct DetailsView: View {
                         let blurMask = LinearGradient(
                             stops: [
                                 .init(color: .clear, location: 0.0),
-                                .init(color: .clear, location: 0.38),
-                                .init(color: .black.opacity(0.22), location: 0.62),
-                                .init(color: .black.opacity(0.56), location: 0.82),
+                                .init(color: .black.opacity(0.04), location: 0.28),
+                                .init(color: .black.opacity(0.10), location: 0.46),
+                                .init(color: .black.opacity(0.22), location: 0.64),
+                                .init(color: .black.opacity(0.48), location: 0.82),
                                 .init(color: .black, location: 1.0)
                             ],
                             startPoint: .top,
@@ -170,10 +171,12 @@ struct DetailsView: View {
                         let tintGradient = LinearGradient(
                             stops: [
                                 .init(color: .clear, location: 0.0),
-                                .init(color: .clear, location: 0.34),
-                                .init(color: Color(UIColor.systemBackground).opacity(0.12), location: 0.62),
-                                .init(color: Color(UIColor.systemBackground).opacity(0.45), location: 0.84),
-                                .init(color: Color(UIColor.systemBackground).opacity(0.94), location: 1.0)
+                                .init(color: Color(UIColor.systemBackground).opacity(0.03), location: 0.26),
+                                .init(color: Color(UIColor.systemBackground).opacity(0.08), location: 0.44),
+                                .init(color: Color(UIColor.systemBackground).opacity(0.18), location: 0.62),
+                                .init(color: Color(UIColor.systemBackground).opacity(0.42), location: 0.82),
+                                .init(color: Color(UIColor.systemBackground).opacity(0.82), location: 0.94),
+                                .init(color: Color(UIColor.systemBackground), location: 1.0)
                             ],
                             startPoint: .top,
                             endPoint: .bottom
