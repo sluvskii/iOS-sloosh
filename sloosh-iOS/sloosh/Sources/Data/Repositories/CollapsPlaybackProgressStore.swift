@@ -10,6 +10,7 @@ public final class CollapsPlaybackProgressStore {
     private let updatedAtPrefix = "neomovies.collaps.updatedAt."
     private let lastSeasonPrefix  = "neomovies.collaps.lastSeason."
     private let lastEpisodePrefix = "neomovies.collaps.lastEpisode."
+    private let lastVoiceoverPrefix = "neomovies.collaps.lastVoiceover."
 
     private init() {}
 
@@ -68,9 +69,14 @@ public final class CollapsPlaybackProgressStore {
 
     // MARK: - Last-played tracking (per kpId)
 
-    public func saveLastPlayed(kpId: Int, season: Int?, episode: Int?) {
+    public func saveLastPlayed(kpId: Int, season: Int?, episode: Int?, voiceover: String? = nil, source: String? = nil) {
         if let s = season { defaults.set(s, forKey: lastSeasonPrefix + "kp_\(kpId)") }
         if let e = episode { defaults.set(e, forKey: lastEpisodePrefix + "kp_\(kpId)") }
+        if let source,
+           let voiceover = voiceover?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !voiceover.isEmpty {
+            defaults.set(voiceover, forKey: lastVoiceoverPrefix + source + ".kp_\(kpId)")
+        }
     }
 
     public func loadLastSeason(kpId: Int) -> Int? {
@@ -81,6 +87,21 @@ public final class CollapsPlaybackProgressStore {
     public func loadLastEpisode(kpId: Int) -> Int? {
         let v = defaults.integer(forKey: lastEpisodePrefix + "kp_\(kpId)")
         return v > 0 ? v : nil
+    }
+
+    public func saveLastVoiceover(kpId: Int, source: String, voiceover: String?) {
+        let normalizedSource = source.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let normalizedVoiceover = voiceover?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !normalizedSource.isEmpty, !normalizedVoiceover.isEmpty else { return }
+        defaults.set(normalizedVoiceover, forKey: lastVoiceoverPrefix + normalizedSource + ".kp_\(kpId)")
+    }
+
+    public func loadLastVoiceover(kpId: Int, source: String) -> String? {
+        let normalizedSource = source.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !normalizedSource.isEmpty else { return nil }
+        let value = defaults.string(forKey: lastVoiceoverPrefix + normalizedSource + ".kp_\(kpId)")
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines)
+        return (trimmed?.isEmpty == false) ? trimmed : nil
     }
 
     // MARK: - Key prefix exposure (for scanning in module)
