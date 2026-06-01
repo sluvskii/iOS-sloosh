@@ -39,6 +39,68 @@ struct RemoteBackdropView: View {
     }
 }
 
+struct RemoteLogoView: View {
+    let url: URL?
+    let maxWidth: CGFloat
+    let maxHeight: CGFloat
+    let fallbackTitle: String
+
+    @State private var image: UIImage?
+    @State private var isLoading = false
+    @State private var didFail = false
+
+    var body: some View {
+        Group {
+            if let image {
+                Image(uiImage: image)
+                    .resizable()
+                    .renderingMode(.original)
+                    .aspectRatio(contentMode: .fit)
+                    .frame(maxWidth: maxWidth, maxHeight: maxHeight)
+            } else if didFail && !fallbackTitle.isEmpty {
+                Text(fallbackTitle)
+                    .font(.system(size: 34, weight: .heavy))
+                    .multilineTextAlignment(.center)
+                    .frame(maxWidth: maxWidth)
+            } else if isLoading || url != nil {
+                Color.clear
+                    .frame(maxWidth: maxWidth, minHeight: maxHeight, maxHeight: maxHeight)
+            }
+        }
+        .frame(maxWidth: maxWidth)
+        .task(id: url) {
+            image = nil
+            didFail = false
+            isLoading = false
+
+            guard let url else {
+                didFail = true
+                return
+            }
+
+            isLoading = true
+            do {
+                let request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad)
+                let (data, response) = try await URLSession.shared.data(for: request)
+                guard let httpResponse = response as? HTTPURLResponse,
+                      (200...299).contains(httpResponse.statusCode),
+                      let uiImage = UIImage(data: data) else {
+                    didFail = true
+                    isLoading = false
+                    return
+                }
+                image = uiImage
+            } catch {
+                if !Task.isCancelled {
+                    didFail = true
+                }
+            }
+            isLoading = false
+        }
+        .animation(.easeOut(duration: 0.2), value: image != nil)
+    }
+}
+
 struct DetailsView: View {
     let movieId: String
     @StateObject private var viewModel = DetailsViewModel()
@@ -100,10 +162,14 @@ struct DetailsView: View {
                     .frame(height: 450)
                     
                     VStack(alignment: .center, spacing: 12) {
-                        Text(details.title ?? details.name ?? "Без названия")
-                            .font(.system(size: 34, weight: .heavy))
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal)
+                        RemoteLogoView(
+                            url: URL(string: details.displayLogoUrl ?? ""),
+                            maxWidth: UIScreen.main.bounds.width - 48,
+                            maxHeight: 92,
+                            fallbackTitle: details.title ?? details.name ?? "Без названия"
+                        )
+                        .padding(.horizontal)
+                        .accessibilityLabel(details.title ?? details.name ?? "Без названия")
 
                         if let originalTitle = details.originalTitle, !originalTitle.isEmpty, originalTitle != (details.title ?? details.name) {
                             Text(originalTitle)

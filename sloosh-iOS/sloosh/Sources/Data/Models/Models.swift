@@ -122,6 +122,15 @@ func normalizeImageUrl(path: String?, id: String? = nil) -> String? {
     return "\(baseUrl)/api/v1/images/kp_small/\(validId)?fallback=true"
 }
 
+func normalizeLogoUrl(id: String?, size: String = "w500") -> String? {
+    let baseUrl = "https://api.neomovies.ru"
+    guard let rawId = id?.replacingOccurrences(of: "kp_", with: "").trimmingCharacters(in: .whitespacesAndNewlines),
+          !rawId.isEmpty else {
+        return nil
+    }
+    return "\(baseUrl)/api/v1/images/logos/\(rawId)/\(size)"
+}
+
 struct MediaDetailsDto: Codable {
     let id: String?
     let sourceId: String?
@@ -146,6 +155,10 @@ struct MediaDetailsDto: Codable {
     
     var displayBackdropUrl: String? {
         normalizeImageUrl(path: backdropUrl, id: id)
+    }
+
+    var displayLogoUrl: String? {
+        normalizeLogoUrl(id: id ?? sourceId ?? externalIds?.kp?.description)
     }
 }
 
