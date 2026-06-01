@@ -95,6 +95,14 @@ class HlsProxyServer {
             return
         }
         
+        var incomingHeaders: [String: String] = [:]
+        for line in lines.dropFirst() {
+            guard !line.isEmpty else { break }
+            let split = line.split(separator: ":", maxSplits: 1).map(String.init)
+            guard split.count == 2 else { continue }
+            incomingHeaders[split[0].lowercased()] = split[1].trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        
         let path = parts[1]
         guard let urlComponents = URLComponents(string: path) else {
             send404(on: connection)
@@ -107,7 +115,7 @@ class HlsProxyServer {
                 return
             }
 
-            fetchAndServe(realUrl: currentMasterUrl, isPlaylist: true, connection: connection)
+            fetchAndServe(realUrl: currentMasterUrl, isPlaylist: true, incomingHeaders: incomingHeaders, connection: connection)
         } else if urlComponents.path.hasPrefix("/proxy"),
            let urlQuery = urlComponents.queryItems?.first(where: { $0.name == "url" })?.value {
             
@@ -124,7 +132,7 @@ class HlsProxyServer {
                let decodedString = String(data: decodedData, encoding: .utf8),
                let realUrl = URL(string: decodedString) {
                 
-                fetchAndServe(realUrl: realUrl, isPlaylist: decodedString.contains(".m3u8"), connection: connection)
+                fetchAndServe(realUrl: realUrl, isPlaylist: decodedString.contains(".m3u8"), incomingHeaders: incomingHeaders, connection: connection)
             } else {
                 send404(on: connection)
             }
@@ -133,10 +141,13 @@ class HlsProxyServer {
         }
     }
     
-    private func fetchAndServe(realUrl: URL, isPlaylist: Bool, connection: NWConnection) {
+    private func fetchAndServe(realUrl: URL, isPlaylist: Bool, incomingHeaders: [String: String], connection: NWConnection) {
         var request = URLRequest(url: realUrl)
         for (k, v) in headers {
             request.setValue(v, forHTTPHeaderField: k)
+        }
+        if let range = incomingHeaders["range"] {
+            request.setValue(range, forHTTPHeaderField: "Range")
         }
         
         let task = session.dataTask(with: request) { [weak self] data, response, error in
@@ -144,6 +155,9 @@ class HlsProxyServer {
                 self?.send404(on: connection)
                 return
             }
+            
+            let statusCode = httpResponse.statusCode
+            let contentRange = httpResponse.value(forHTTPHeaderField: "Content-Range")
             
             if isPlaylist, let content = String(data: data, encoding: .utf8) {
                 let rewritten: String
@@ -160,10 +174,10 @@ class HlsProxyServer {
                 }
                 
                 let rewrittenData = rewritten.data(using: .utf8)!
-                self.sendResponse(data: rewrittenData, contentType: "application/vnd.apple.mpegurl", connection: connection)
+                self.sendResponse(data: rewrittenData, statusCode: 200, contentType: "application/vnd.apple.mpegurl", contentRange: nil, connection: connection)
             } else {
                 let contentType = httpResponse.mimeType ?? "video/MP2T"
-                self.sendResponse(data: data, contentType: contentType, connection: connection)
+                self.sendResponse(data: data, statusCode: statusCode, contentType: contentType, contentRange: contentRange, connection: connection)
             }
         }
         task.resume()
@@ -228,8 +242,13 @@ class HlsProxyServer {
         return "http://127.0.0.1:\(port.rawValue)/proxy/\(pathSuffix)?url=\(encoded)"
     }
     
-    private func sendResponse(data: Data, contentType: String, connection: NWConnection) {
-        let header = "HTTP/1.1 200 OK\r\nContent-Type: \(contentType)\r\nContent-Length: \(data.count)\r\nConnection: close\r\n\r\n"
+    private func sendResponse(data: Data, statusCode: Int, contentType: String, contentRange: String?, connection: NWConnection) {
+        let reason = statusCode == 206 ? "Partial Content" : "OK"
+        var header = "HTTP/1.1 \(statusCode) \(reason)\r\nContent-Type: \(contentType)\r\nContent-Length: \(data.count)\r\nConnection: close\r\n"
+        if let cr = contentRange {
+            header += "Content-Range: \(cr)\r\n"
+        }
+        header += "Accept-Ranges: bytes\r\n\r\n"
         let headerData = header.data(using: .utf8)!
         
         connection.send(content: headerData, completion: .contentProcessed({ _ in
