@@ -45,6 +45,10 @@ struct DetailsView: View {
     
     @State private var showPlayer = false
     @State private var showSourceSheet = false
+    @State private var showQualitySheet = false
+    @State private var availableQualities: [(key: String, url: URL)] = []
+    @State private var resolvedHeaders: [String: String]? = nil
+    @State private var isResolvingStream = false
     @State private var selectedIframeUrl: String? = nil
     @State private var selectedDirectVideoUrl: String? = nil
     @State private var showDownloadAlert = false
@@ -212,10 +216,40 @@ struct DetailsView: View {
                         playerKpId = wrapper.kpId
                         playerSeason = season
                         playerEpisode = episode
-                        selectedIframeUrl = translation.iframeUrl
-                        showPlayer = true
-                        showSourceSheet = false
                         viewModel.saveAllohaTranslation(translation.name)
+                        
+                        Task {
+                            isResolvingStream = true
+                            do {
+                                let res = try await PlaybackResolver.resolveAlloha(iframeUrl: translation.iframeUrl)
+                                resolvedHeaders = res.headers
+                                availableQualities = res.qualities
+                                selectedIframeUrl = nil
+                                selectedDirectVideoUrl = res.originalUrl.absoluteString
+                                isResolvingStream = false
+                                showSourceSheet = false
+                                if res.qualities.count > 1 {
+                                    showQualitySheet = true
+                                } else {
+                                    showPlayer = true
+                                }
+                            } catch {
+                                isResolvingStream = false
+                                // Fallback if resolving fails
+                                selectedIframeUrl = translation.iframeUrl
+                                showSourceSheet = false
+                                showPlayer = true
+                            }
+                        }
+                    }
+                    .overlay {
+                        if isResolvingStream {
+                            Color.black.opacity(0.4).ignoresSafeArea()
+                            ProgressView("Подготовка видео...")
+                                .padding()
+                                .background(Color(UIColor.secondarySystemBackground))
+                                .cornerRadius(12)
+                        }
                     }
                 } else if let wrapper = viewModel.sourceResultWrapper, wrapper.mode == .collaps {
                     let isSerial = wrapper.collapsSeasons != nil && !(wrapper.collapsSeasons?.isEmpty ?? true)
@@ -226,24 +260,60 @@ struct DetailsView: View {
                         isSerial: isSerial,
                         title: viewModel.details?.title ?? viewModel.details?.name ?? "",
                         onPlay: { url, season, episode, voiceover, voices, subtitles in
-                            // Collaps returns direct HLS/MPD urls
-                            selectedIframeUrl = url // we use this state variable for the URL
                             playerKpId = wrapper.kpId
                             playerSeason = season
                             playerEpisode = episode
                             playerVoiceover = voiceover
                             playerVoices = voices
                             playerSubtitles = subtitles
-                            showPlayer = true
-                            showSourceSheet = false
+                            
+                            Task {
+                                isResolvingStream = true
+                                do {
+                                    let res = try await PlaybackResolver.resolveDirect(url: url)
+                                    resolvedHeaders = res.headers
+                                    availableQualities = res.qualities
+                                    selectedIframeUrl = nil
+                                    selectedDirectVideoUrl = url
+                                    isResolvingStream = false
+                                    showSourceSheet = false
+                                    if res.qualities.count > 1 {
+                                        showQualitySheet = true
+                                    } else {
+                                        showPlayer = true
+                                    }
+                                } catch {
+                                    isResolvingStream = false
+                                    selectedIframeUrl = nil
+                                    selectedDirectVideoUrl = url
+                                    showSourceSheet = false
+                                    showPlayer = true
+                                }
+                            }
                         }
                     )
+                    .overlay {
+                        if isResolvingStream {
+                            Color.black.opacity(0.4).ignoresSafeArea()
+                            ProgressView("Подготовка видео...")
+                                .padding()
+                                .background(Color(UIColor.secondarySystemBackground))
+                                .cornerRadius(12)
+                        }
+                    }
                 } else {
                     SourceSelectionEmptyView(title: sourceSheetTitle)
                 }
             }
             .presentationDetents([.medium, .large], selection: $sourceSheetDetent)
             .navigationTransition(.zoom(sourceID: "playBtn", in: transition))
+        }
+        .sheet(isPresented: $showQualitySheet) {
+            QualitySelectionView(qualities: availableQualities) { selectedUrl in
+                selectedDirectVideoUrl = selectedUrl.absoluteString
+                showQualitySheet = false
+                showPlayer = true
+            }
         }
         .fullScreenCover(isPresented: $showPlayer, onDismiss: {
             selectedIframeUrl = nil
@@ -259,13 +329,15 @@ struct DetailsView: View {
                 let mode = SourceManager.shared.currentMode
                 if mode == .alloha {
                     if let iframeUrl = selectedIframeUrl {
-                        PlayerView(iframeUrl: iframeUrl, fallbackTitle: details.title ?? details.name ?? "", kpId: playerKpId, season: playerSeason, episode: playerEpisode, selectedVoiceover: playerVoiceover, voices: playerVoices, subtitles: playerSubtitles)
+                        PlayerView(iframeUrl: iframeUrl, headers: resolvedHeaders, fallbackTitle: details.title ?? details.name ?? "", kpId: playerKpId, season: playerSeason, episode: playerEpisode, selectedVoiceover: playerVoiceover, voices: playerVoices, subtitles: playerSubtitles)
+                    } else if let directUrl = selectedDirectVideoUrl {
+                        PlayerView(directVideoUrl: directUrl, headers: resolvedHeaders, fallbackTitle: details.title ?? details.name ?? "", kpId: playerKpId, season: playerSeason, episode: playerEpisode, selectedVoiceover: playerVoiceover, voices: playerVoices, subtitles: playerSubtitles)
                     } else {
                         Text("Видео не найдено")
                     }
                 } else {
-                    if let directUrl = selectedIframeUrl ?? selectedDirectVideoUrl {
-                        PlayerView(directVideoUrl: directUrl, fallbackTitle: details.title ?? details.name ?? "", kpId: playerKpId, season: playerSeason, episode: playerEpisode, selectedVoiceover: playerVoiceover, voices: playerVoices, subtitles: playerSubtitles)
+                    if let directUrl = selectedDirectVideoUrl ?? selectedIframeUrl {
+                        PlayerView(directVideoUrl: directUrl, headers: resolvedHeaders, fallbackTitle: details.title ?? details.name ?? "", kpId: playerKpId, season: playerSeason, episode: playerEpisode, selectedVoiceover: playerVoiceover, voices: playerVoices, subtitles: playerSubtitles)
                     } else {
                         Text("Видео не найдено")
                     }
@@ -455,6 +527,37 @@ private struct DetailsInfoSection: View {
                     .lineSpacing(4)
             }
         }
+    }
+}
+
+private struct QualitySelectionView: View {
+    let qualities: [(key: String, url: URL)]
+    let onSelect: (URL) -> Void
+    @Environment(\.dismiss) private var dismiss
+    
+    var body: some View {
+        NavigationStack {
+            List(qualities, id: \.key) { quality in
+                Button(action: {
+                    onSelect(quality.url)
+                }) {
+                    Text(quality.key)
+                        .font(.system(size: 17, weight: .medium))
+                        .foregroundColor(.primary)
+                }
+            }
+            .navigationTitle("Выберите качество")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Отмена") {
+                        dismiss()
+                    }
+                    .foregroundColor(.primary)
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
     }
 }
 

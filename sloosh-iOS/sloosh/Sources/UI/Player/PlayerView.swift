@@ -10,16 +10,11 @@ class PlayerPresenterViewController: UIViewController {
             }
         }
     }
-    var viewModel: PlayerViewModel? {
-        didSet {
-            updateQualityMenu()
-        }
-    }
+    var viewModel: PlayerViewModel?
     var onDismiss: (() -> Void)?
     private var didPresent = false
     private var checkTimer: Timer?
     private var playerController: AVPlayerViewController?
-    private var qualityButton: UIButton?
     
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
@@ -47,56 +42,7 @@ class PlayerPresenterViewController: UIViewController {
             self.present(pc, animated: true) {
                 self.player?.play()
                 self.startDismissalObserver()
-                self.setupQualityButton(in: pc)
             }
-            
-            NotificationCenter.default.addObserver(forName: NSNotification.Name("QualitiesUpdated"), object: nil, queue: .main) { [weak self] _ in
-                self?.updateQualityMenu()
-            }
-        }
-    }
-    
-    private func setupQualityButton(in playerController: AVPlayerViewController) {
-        guard let overlay = playerController.contentOverlayView, self.viewModel != nil else { return }
-        
-        let btn = UIButton(type: .system)
-        btn.setImage(UIImage(systemName: "slider.horizontal.3"), for: .normal)
-        btn.tintColor = .white
-        btn.backgroundColor = UIColor.black.withAlphaComponent(0.5)
-        btn.layer.cornerRadius = 22
-        btn.translatesAutoresizingMaskIntoConstraints = false
-        overlay.addSubview(btn)
-        
-        NSLayoutConstraint.activate([
-            btn.topAnchor.constraint(equalTo: overlay.safeAreaLayoutGuide.topAnchor, constant: 16),
-            btn.trailingAnchor.constraint(equalTo: overlay.safeAreaLayoutGuide.trailingAnchor, constant: -60),
-            btn.widthAnchor.constraint(equalToConstant: 44),
-            btn.heightAnchor.constraint(equalToConstant: 44)
-        ])
-        
-        btn.showsMenuAsPrimaryAction = true
-        self.qualityButton = btn
-        updateQualityMenu()
-    }
-    
-    private func updateQualityMenu() {
-        guard let btn = qualityButton, let viewModel = viewModel else { return }
-        
-        var actions: [UIAction] = []
-        for quality in viewModel.availableQualities {
-            let isSelected = quality.key == viewModel.currentQualityKey
-            let action = UIAction(title: quality.key, state: isSelected ? .on : .off) { [weak viewModel] _ in
-                viewModel?.changeQuality(to: quality.key)
-            }
-            actions.append(action)
-        }
-        
-        if actions.isEmpty {
-            btn.isHidden = true
-        } else {
-            btn.isHidden = false
-            let menu = UIMenu(title: "Качество видео", children: actions)
-            btn.menu = menu
         }
     }
     
@@ -155,6 +101,7 @@ struct ModalPlayerPresenter: UIViewControllerRepresentable {
 struct PlayerView: View {
     let iframeUrl: String?
     let directVideoUrl: String?
+    let headers: [String: String]?
     let fallbackTitle: String
     let kpId: Int?
     let season: Int?
@@ -166,9 +113,10 @@ struct PlayerView: View {
     @StateObject private var viewModel = PlayerViewModel()
     @Environment(\.presentationMode) var presentationMode
     
-    init(iframeUrl: String? = nil, directVideoUrl: String? = nil, fallbackTitle: String, kpId: Int? = nil, season: Int? = nil, episode: Int? = nil, selectedVoiceover: String? = nil, voices: [String] = [], subtitles: [CollapsSubtitle] = []) {
+    init(iframeUrl: String? = nil, directVideoUrl: String? = nil, headers: [String: String]? = nil, fallbackTitle: String, kpId: Int? = nil, season: Int? = nil, episode: Int? = nil, selectedVoiceover: String? = nil, voices: [String] = [], subtitles: [CollapsSubtitle] = []) {
         self.iframeUrl = iframeUrl
         self.directVideoUrl = directVideoUrl
+        self.headers = headers
         self.fallbackTitle = fallbackTitle
         self.kpId = kpId
         self.season = season
@@ -204,7 +152,7 @@ struct PlayerView: View {
         .onAppear {
             if viewModel.player == nil { // Избегаем повторной загрузки при перерисовках
                 if let directUrl = directVideoUrl {
-                    viewModel.loadDirect(url: directUrl, kpId: kpId, season: season, episode: episode, selectedVoiceover: selectedVoiceover, voices: voices, subtitles: subtitles)
+                    viewModel.loadDirect(url: directUrl, headers: headers, kpId: kpId, season: season, episode: episode, selectedVoiceover: selectedVoiceover, voices: voices, subtitles: subtitles)
                 } else if let iframe = iframeUrl {
                     viewModel.load(iframeUrl: iframe, kpId: kpId, season: season, episode: episode, selectedVoiceover: selectedVoiceover, voices: voices, subtitles: subtitles)
                 } else {
@@ -258,7 +206,7 @@ class PlayerViewModel: ObservableObject {
         startParsing(iframeUrl: iframeUrl, voices: voices, subtitles: subtitles)
     }
     
-    func loadDirect(url: String, kpId: Int?, season: Int?, episode: Int?, selectedVoiceover: String?, voices: [String] = [], subtitles: [CollapsSubtitle] = []) {
+    func loadDirect(url: String, headers: [String: String]?, kpId: Int?, season: Int?, episode: Int?, selectedVoiceover: String?, voices: [String] = [], subtitles: [CollapsSubtitle] = []) {
         if player != nil { return }
         
         self.currentKpId = kpId
@@ -308,23 +256,23 @@ class PlayerViewModel: ObservableObject {
             return
         }
         
-        let headers = [
+        let targetHeaders = headers ?? [
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
             "Referer": "https://kinokrad.my/",
             "Origin": "https://kinokrad.my"
         ]
-        self.currentHeaders = headers
+        self.currentHeaders = targetHeaders
         
         self.currentQualityKey = "Авто"
         self.availableQualities = [("Авто", parsedUrl)]
         
-        playVideo(url: parsedUrl, headers: headers, voices: voices, subtitles: subtitles)
+        playVideo(url: parsedUrl, headers: targetHeaders, voices: voices, subtitles: subtitles)
         
         // Fetch playlist to parse qualities
         Task {
             do {
                 var request = URLRequest(url: parsedUrl)
-                headers.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
+                targetHeaders.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
                 let (data, _) = try await URLSession.shared.data(for: request)
                 if let content = String(data: data, encoding: .utf8) {
                     parseMasterPlaylist(content: content, baseUrl: parsedUrl)
