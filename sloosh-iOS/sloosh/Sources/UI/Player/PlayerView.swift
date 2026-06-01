@@ -19,7 +19,6 @@ class PlayerPresenterViewController: UIViewController {
     private var didPresent = false
     private var checkTimer: Timer?
     private var playerController: AVPlayerViewController?
-    private var qualityButton: UIButton?
     
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
@@ -47,7 +46,7 @@ class PlayerPresenterViewController: UIViewController {
             self.present(pc, animated: true) {
                 self.player?.play()
                 self.startDismissalObserver()
-                self.setupQualityButton(in: pc)
+                self.updateQualityMenu()
             }
             
             NotificationCenter.default.addObserver(forName: NSNotification.Name("QualitiesUpdated"), object: nil, queue: .main) { [weak self] _ in
@@ -56,31 +55,8 @@ class PlayerPresenterViewController: UIViewController {
         }
     }
     
-    private func setupQualityButton(in playerController: AVPlayerViewController) {
-        guard let overlay = playerController.contentOverlayView, self.viewModel != nil else { return }
-        
-        let btn = UIButton(type: .system)
-        btn.setImage(UIImage(systemName: "slider.horizontal.3"), for: .normal)
-        btn.tintColor = .white
-        btn.backgroundColor = UIColor.black.withAlphaComponent(0.5)
-        btn.layer.cornerRadius = 22
-        btn.translatesAutoresizingMaskIntoConstraints = false
-        overlay.addSubview(btn)
-        
-        NSLayoutConstraint.activate([
-            btn.topAnchor.constraint(equalTo: overlay.safeAreaLayoutGuide.topAnchor, constant: 16),
-            btn.trailingAnchor.constraint(equalTo: overlay.safeAreaLayoutGuide.trailingAnchor, constant: -60),
-            btn.widthAnchor.constraint(equalToConstant: 44),
-            btn.heightAnchor.constraint(equalToConstant: 44)
-        ])
-        
-        btn.showsMenuAsPrimaryAction = true
-        self.qualityButton = btn
-        updateQualityMenu()
-    }
-    
     private func updateQualityMenu() {
-        guard let btn = qualityButton, let viewModel = viewModel else { return }
+        guard let viewModel = viewModel else { return }
         
         var actions: [UIAction] = []
         for quality in viewModel.availableQualities {
@@ -91,12 +67,13 @@ class PlayerPresenterViewController: UIViewController {
             actions.append(action)
         }
         
-        if actions.isEmpty {
-            btn.isHidden = true
-        } else {
-            btn.isHidden = false
-            let menu = UIMenu(title: "Качество видео", children: actions)
-            btn.menu = menu
+        if #available(iOS 16.0, *) {
+            if actions.isEmpty {
+                self.playerController?.transportBarCustomMenuItems = []
+            } else {
+                let menu = UIMenu(title: "Качество", image: UIImage(systemName: "slider.horizontal.3"), children: actions)
+                self.playerController?.transportBarCustomMenuItems = [menu]
+            }
         }
     }
     
