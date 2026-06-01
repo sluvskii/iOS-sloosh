@@ -12,13 +12,14 @@ class PlayerPresenterViewController: UIViewController {
     }
     var viewModel: PlayerViewModel? {
         didSet {
-            updateSystemQualityMenu()
+            updateQualityMenu()
         }
     }
     var onDismiss: (() -> Void)?
     private var didPresent = false
     private var checkTimer: Timer?
     private var playerController: AVPlayerViewController?
+    private var qualityButton: UIButton?
     
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
@@ -46,34 +47,56 @@ class PlayerPresenterViewController: UIViewController {
             self.present(pc, animated: true) {
                 self.player?.play()
                 self.startDismissalObserver()
-                self.updateSystemQualityMenu()
+                self.setupQualityButton(in: pc)
             }
             
             NotificationCenter.default.addObserver(forName: NSNotification.Name("QualitiesUpdated"), object: nil, queue: .main) { [weak self] _ in
-                self?.updateSystemQualityMenu()
+                self?.updateQualityMenu()
             }
         }
     }
     
-    private func updateSystemQualityMenu() {
-        guard let pc = playerController, let viewModel = viewModel else { return }
+    private func setupQualityButton(in playerController: AVPlayerViewController) {
+        guard let overlay = playerController.contentOverlayView, self.viewModel != nil else { return }
         
-        if #available(iOS 16.0, *) {
-            var actions: [UIAction] = []
-            for quality in viewModel.availableQualities {
-                let isSelected = quality.key == viewModel.currentQualityKey
-                let action = UIAction(title: quality.key, state: isSelected ? .on : .off) { [weak viewModel] _ in
-                    viewModel?.changeQuality(to: quality.key)
-                }
-                actions.append(action)
+        let btn = UIButton(type: .system)
+        btn.setImage(UIImage(systemName: "slider.horizontal.3"), for: .normal)
+        btn.tintColor = .white
+        btn.backgroundColor = UIColor.black.withAlphaComponent(0.5)
+        btn.layer.cornerRadius = 22
+        btn.translatesAutoresizingMaskIntoConstraints = false
+        overlay.addSubview(btn)
+        
+        NSLayoutConstraint.activate([
+            btn.topAnchor.constraint(equalTo: overlay.safeAreaLayoutGuide.topAnchor, constant: 16),
+            btn.trailingAnchor.constraint(equalTo: overlay.safeAreaLayoutGuide.trailingAnchor, constant: -60),
+            btn.widthAnchor.constraint(equalToConstant: 44),
+            btn.heightAnchor.constraint(equalToConstant: 44)
+        ])
+        
+        btn.showsMenuAsPrimaryAction = true
+        self.qualityButton = btn
+        updateQualityMenu()
+    }
+    
+    private func updateQualityMenu() {
+        guard let btn = qualityButton, let viewModel = viewModel else { return }
+        
+        var actions: [UIAction] = []
+        for quality in viewModel.availableQualities {
+            let isSelected = quality.key == viewModel.currentQualityKey
+            let action = UIAction(title: quality.key, state: isSelected ? .on : .off) { [weak viewModel] _ in
+                viewModel?.changeQuality(to: quality.key)
             }
-            
-            if !actions.isEmpty {
-                let menu = UIMenu(title: "Качество", image: UIImage(systemName: "slider.horizontal.3"), children: actions)
-                pc.transportBarCustomMenuItems = [menu]
-            } else {
-                pc.transportBarCustomMenuItems = []
-            }
+            actions.append(action)
+        }
+        
+        if actions.isEmpty {
+            btn.isHidden = true
+        } else {
+            btn.isHidden = false
+            let menu = UIMenu(title: "Качество видео", children: actions)
+            btn.menu = menu
         }
     }
     
