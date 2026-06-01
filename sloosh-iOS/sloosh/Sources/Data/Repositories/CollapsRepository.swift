@@ -33,91 +33,28 @@ class CollapsRepository {
     
     func getSeasonsByKpId(kpId: Int) async throws -> [CollapsSeason] {
         let html = try await fetchEmbedHtml(url: "\(base)/embed/kp/\(kpId)")
-        guard let seasonsJson = extractSeasonsJson(html: html) else {
+        guard let result = CollapsParser.parseCatalog(embedHtml: html) else {
             return []
         }
-        
-        guard let data = seasonsJson.data(using: .utf8),
-              let jsonArray = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
+        switch result {
+        case .series(let seasons):
+            return seasons
+        case .movie:
             return []
         }
-        
-        var seasons: [CollapsSeason] = []
-        
-        for sObj in jsonArray {
-            guard let seasonNum = sObj["season"] as? Int, seasonNum > 0,
-                  let epsArr = sObj["episodes"] as? [[String: Any]] else { continue }
-            
-            var episodes: [CollapsEpisode] = []
-            
-            for eObj in epsArr {
-                let epStr = eObj["episode"] as? String ?? ""
-                guard let epNum = Int(epStr) else { continue }
-                
-                let hls = (eObj["hls"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
-                let dasha = (eObj["dasha"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
-                let dash = (eObj["dash"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
-                
-                let mpd = (dasha?.isEmpty == false ? dasha : dash)?.isEmpty == false ? (dasha?.isEmpty == false ? dasha : dash) : nil
-                let finalHls = hls?.isEmpty == false ? hls : nil
-                
-                var voices: [String] = []
-                if let audio = eObj["audio"] as? [String: Any], let names = audio["names"] as? [String] {
-                    voices = names.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
-                }
-                
-                var subtitles: [CollapsSubtitle] = []
-                if let cc = eObj["cc"] as? [[String: Any]] {
-                    for sObj in cc {
-                        let urlRaw = (sObj["url"] as? String ?? sObj["src"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-                        if urlRaw.isEmpty { continue }
-                        
-                        var label = (sObj["name"] as? String ?? sObj["label"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-                        if label.isEmpty { label = "Subtitle" }
-                        
-                        let langRaw = (sObj["lang"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-                        let lang: String
-                        if !langRaw.isEmpty {
-                            lang = langRaw
-                        } else if label.lowercased().contains("eng") || label.lowercased().contains("original") {
-                            lang = "en"
-                        } else {
-                            lang = "ru"
-                        }
-                        
-                        subtitles.append(CollapsSubtitle(url: urlRaw, label: label, lang: lang))
-                    }
-                }
-                
-                episodes.append(CollapsEpisode(season: seasonNum, episode: epNum, mpdUrl: mpd, hlsUrl: finalHls, voices: voices, subtitles: subtitles))
-            }
-            
-            episodes.sort { $0.episode < $1.episode }
-            seasons.append(CollapsSeason(season: seasonNum, episodes: episodes))
-        }
-        
-        seasons.sort { $0.season < $1.season }
-        return seasons
     }
     
     func getMovieByKpId(kpId: Int) async throws -> CollapsMovie? {
         let html = try await fetchEmbedHtml(url: "\(base)/embed/kp/\(kpId)")
-        
-        let mpdUrl = extractFirstUrl(html: html, keys: ["dasha", "dash"], suffix: ".mpd")
-        let hlsUrl = extractFirstUrl(html: html, keys: ["hls"], suffix: ".m3u8")
-        
-        var voices = extractStringArrayFromObject(html: html, objectKey: "audio", arrayKey: "names")
-        if voices.isEmpty {
-            voices = extractVoiceNamesFromTranslations(html: html)
-        }
-        
-        let subtitles = extractSubtitlesArray(html: html)
-        
-        if (mpdUrl?.isEmpty ?? true) && (hlsUrl?.isEmpty ?? true) {
+        guard let result = CollapsParser.parseCatalog(embedHtml: html) else {
             return nil
         }
-        
-        return CollapsMovie(mpdUrl: mpdUrl, hlsUrl: hlsUrl, voices: voices, subtitles: subtitles)
+        switch result {
+        case .movie(let movie):
+            return movie
+        case .series:
+            return nil
+        }
     }
     
     private func fetchEmbedHtml(url: String) async throws -> String {
