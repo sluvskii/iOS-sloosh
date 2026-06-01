@@ -4,9 +4,7 @@ import AVKit
 class PlayerPresenterViewController: UIViewController {
     var player: AVPlayer? {
         didSet {
-            if playerController?.player !== player {
-                playerController?.player = player
-            }
+            playerController?.player = player
             if player != nil && player?.timeControlStatus != .playing {
                 player?.play()
             }
@@ -17,7 +15,7 @@ class PlayerPresenterViewController: UIViewController {
     var onDismiss: (() -> Void)?
     private var didPresent = false
     private var playerController: AVPlayerViewController?
-    private var checkTimer: Timer?
+    private var observation: NSKeyValueObservation?
     
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
@@ -44,22 +42,22 @@ class PlayerPresenterViewController: UIViewController {
             
             self.present(pc, animated: true) {
                 self.player?.play()
-                self.startDismissalObserver()
+            }
+            
+            // Watch for dismissal directly on the presented view controller
+            // Not strictly needed since viewDidDisappear handles it now, but good as a fallback
+            self.observation = pc.observe(\.isBeingDismissed, options: [.new]) { [weak self] _, change in
+                if change.newValue == true {
+                    self?.handleDismissal()
+                }
             }
         }
     }
     
-    private func startDismissalObserver() {
-        checkTimer?.invalidate()
-        checkTimer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] timer in
-            guard let self = self else {
-                timer.invalidate()
-                return
-            }
-            if self.presentedViewController == nil {
-                timer.invalidate()
-                self.handleDismissal()
-            }
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        if presentedViewController == nil {
+            handleDismissal()
         }
     }
     
@@ -101,11 +99,9 @@ struct ModalPlayerPresenter: UIViewControllerRepresentable {
         controller.player = player
         controller.viewModel = viewModel
         controller.onDismiss = {
-            DispatchQueue.main.async {
-                if !context.coordinator.didDismiss {
-                    context.coordinator.didDismiss = true
-                    onDismiss()
-                }
+            if !context.coordinator.didDismiss {
+                context.coordinator.didDismiss = true
+                onDismiss()
             }
         }
         return controller
@@ -171,7 +167,6 @@ struct PlayerView: View {
         }
         .onAppear {
             if viewModel.player == nil { // Избегаем повторной загрузки при перерисовках
-                viewModel.player = AVPlayer() // СРАЗУ СОЗДАЕМ ПЛЕЕР, ЧТОБЫ AVPlayerViewController ПОЛУЧИЛ ЕГО ПРИ СТАРТЕ
                 viewModel.targetQualityPreference = initialQuality
                 
                 if let directUrl = directVideoUrl {
@@ -254,13 +249,9 @@ class PlayerViewModel: ObservableObject {
 
             let asset = AVURLAsset(url: parsedUrl)
             let playerItem = AVPlayerItem(asset: asset)
-            
-            if self.player == nil { self.player = AVPlayer() }
-            self.player?.replaceCurrentItem(with: playerItem)
-            
+            self.player = AVPlayer(playerItem: playerItem)
             self.isLoading = false
             self.startTrackingProgress()
-            self.player?.play()
             
             self.itemObservation = playerItem.observe(\.status) { [weak self] item, _ in
                 guard let self = self else { return }
@@ -553,13 +544,9 @@ class PlayerViewModel: ObservableObject {
         
         let asset = AVURLAsset(url: proxyUrl)
         let playerItem = AVPlayerItem(asset: asset)
-        
-        if self.player == nil { self.player = AVPlayer() }
-        self.player?.replaceCurrentItem(with: playerItem)
-        
+        self.player = AVPlayer(playerItem: playerItem)
         self.isLoading = false
         self.startTrackingProgress()
-        self.player?.play()
         
         self.itemObservation = playerItem.observe(\.status) { [weak self] item, _ in
             guard let self = self else { return }
