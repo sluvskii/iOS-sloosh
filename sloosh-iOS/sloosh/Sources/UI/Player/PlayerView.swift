@@ -164,10 +164,34 @@ struct PlayerView: View {
                         .multilineTextAlignment(.center)
                         .padding()
                 }
+            } else if viewModel.isLoading {
+                ProgressView()
+                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                    .scaleEffect(1.5)
             } else {
                 ModalPlayerPresenter(player: viewModel.player, viewModel: viewModel) {
                     viewModel.cleanup() // Теперь очистка происходит ТОЛЬКО когда плеер реально закрылся
                     presentationMode.wrappedValue.dismiss()
+                }
+                .edgesIgnoringSafeArea(.all)
+            }
+            
+            if viewModel.error != nil || viewModel.isLoading {
+                VStack {
+                    HStack {
+                        Button(action: {
+                            viewModel.cleanup()
+                            presentationMode.wrappedValue.dismiss()
+                        }) {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 30))
+                                .foregroundColor(.white.opacity(0.8))
+                        }
+                        .padding(.top, 50)
+                        .padding(.leading, 20)
+                        Spacer()
+                    }
+                    Spacer()
                 }
                 .edgesIgnoringSafeArea(.all)
             }
