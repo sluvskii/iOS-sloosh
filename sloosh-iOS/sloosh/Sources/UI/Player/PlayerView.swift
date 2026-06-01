@@ -14,8 +14,8 @@ class PlayerPresenterViewController: UIViewController {
     
     var onDismiss: (() -> Void)?
     private var didPresent = false
-    private var checkTimer: Timer?
     private var playerController: AVPlayerViewController?
+    private var observation: NSKeyValueObservation?
     
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
@@ -42,39 +42,41 @@ class PlayerPresenterViewController: UIViewController {
             
             self.present(pc, animated: true) {
                 self.player?.play()
-                self.startDismissalObserver()
+            }
+            
+            // Watch for dismissal directly on the presented view controller
+            // Not strictly needed since viewDidDisappear handles it now, but good as a fallback
+            self.observation = pc.observe(\.isBeingDismissed, options: [.new]) { [weak self] _, change in
+                if change.newValue == true {
+                    self?.handleDismissal()
+                }
             }
         }
     }
     
-    // 2. Таймер нужен для отлова "жеста смахивания вниз", потому что overFullScreen
-    // не вызывает viewDidAppear повторно при закрытии дочернего контроллера
-    private func startDismissalObserver() {
-        checkTimer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] timer in
-            guard let self = self else {
-                timer.invalidate()
-                return
-            }
-            if self.presentedViewController == nil {
-                timer.invalidate()
-                
-                // Возвращаем ориентацию обратно
-                AppDelegate.orientationLock = .all
-                if #available(iOS 16.0, *) {
-                    if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
-                        windowScene.requestGeometryUpdate(.iOS(interfaceOrientations: .portrait))
-                    }
-                } else {
-                    UIDevice.current.setValue(UIInterfaceOrientation.portrait.rawValue, forKey: "orientation")
-                }
-                
-                self.onDismiss?()
-            }
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        if presentedViewController == nil {
+            handleDismissal()
         }
+    }
+    
+    private func handleDismissal() {
+        // Restore orientation
+        AppDelegate.orientationLock = .all
+        if #available(iOS 16.0, *) {
+            if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+                windowScene.requestGeometryUpdate(.iOS(interfaceOrientations: .portrait))
+            }
+        } else {
+            UIDevice.current.setValue(UIInterfaceOrientation.portrait.rawValue, forKey: "orientation")
+        }
+        
+        onDismiss?()
     }
     
     deinit {
-        checkTimer?.invalidate()
+        observation?.invalidate()
     }
 }
 
@@ -83,19 +85,31 @@ struct ModalPlayerPresenter: UIViewControllerRepresentable {
     var viewModel: PlayerViewModel
     var onDismiss: () -> Void
     
+    class Coordinator: NSObject {
+        var didDismiss = false
+    }
+    
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+    
     func makeUIViewController(context: Context) -> PlayerPresenterViewController {
         let controller = PlayerPresenterViewController()
         controller.view.backgroundColor = .clear
         controller.player = player
         controller.viewModel = viewModel
-        controller.onDismiss = onDismiss
+        controller.onDismiss = {
+            if !context.coordinator.didDismiss {
+                context.coordinator.didDismiss = true
+                onDismiss()
+            }
+        }
         return controller
     }
     
     func updateUIViewController(_ uiViewController: PlayerPresenterViewController, context: Context) {
         uiViewController.player = player
         uiViewController.viewModel = viewModel
-        uiViewController.onDismiss = onDismiss
     }
 }
 
