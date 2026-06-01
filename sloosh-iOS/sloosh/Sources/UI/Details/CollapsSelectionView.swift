@@ -3,9 +3,10 @@ import SwiftUI
 struct CollapsSelectionView: View {
     let result: [CollapsSeason]
     let movieResult: CollapsMovie?
+    let kpId: Int?
     let isSerial: Bool
     let title: String
-    let onPlay: (String) -> Void
+    let onPlay: (String, Int?, Int?, String?) -> Void
     
     @Environment(\.dismiss) private var dismiss
     
@@ -113,11 +114,30 @@ struct CollapsSelectionView: View {
     
     private func setupInitialSelection() {
         if isSerial {
-            if let firstSeason = result.first {
-                selectedSeason = firstSeason.season
-                if let firstEpisode = firstSeason.episodes.first {
-                    selectedEpisode = firstEpisode.episode
-                    selectedTranslationName = firstEpisode.voices.first
+            var initialSeason = result.first?.season
+            var initialEpisode: Int? = nil
+            
+            if let kpId = kpId {
+                if let lastSeason = CollapsPlaybackProgressStore.shared.loadLastSeason(kpId: kpId),
+                   result.contains(where: { $0.season == lastSeason }) {
+                    initialSeason = lastSeason
+                }
+                
+                if let lastEpisode = CollapsPlaybackProgressStore.shared.loadLastEpisode(kpId: kpId) {
+                    initialEpisode = lastEpisode
+                }
+            }
+            
+            if let seasonNum = initialSeason, let season = result.first(where: { $0.season == seasonNum }) {
+                selectedSeason = seasonNum
+                
+                let episodeToSelect = initialEpisode.flatMap { epNum in
+                    season.episodes.first(where: { $0.episode == epNum })
+                } ?? season.episodes.first
+                
+                if let episode = episodeToSelect {
+                    selectedEpisode = episode.episode
+                    selectedTranslationName = episode.voices.first
                 }
             }
         } else if let movie = movieResult {
@@ -131,19 +151,28 @@ struct CollapsSelectionView: View {
             guard let seasonObj = result.first(where: { $0.season == s }),
                   let epObj = seasonObj.episodes.first(where: { $0.episode == e }) else { return }
             
+            if let kpId = kpId {
+                CollapsPlaybackProgressStore.shared.saveLastPlayed(kpId: kpId, season: s, episode: e)
+            }
+            
             if let hls = epObj.hlsUrl, !hls.isEmpty {
-                onPlay(hls)
+                onPlay(hls, s, e, tName)
                 dismiss()
             } else if let mpd = epObj.mpdUrl, !mpd.isEmpty {
-                onPlay(mpd)
+                onPlay(mpd, s, e, tName)
                 dismiss()
             }
         } else if let movie = movieResult {
+            if let kpId = kpId {
+                CollapsPlaybackProgressStore.shared.saveLastPlayed(kpId: kpId, season: nil, episode: nil)
+            }
+            
+            let tName = selectedTranslationName
             if let hls = movie.hlsUrl, !hls.isEmpty {
-                onPlay(hls)
+                onPlay(hls, nil, nil, tName)
                 dismiss()
             } else if let mpd = movie.mpdUrl, !mpd.isEmpty {
-                onPlay(mpd)
+                onPlay(mpd, nil, nil, tName)
                 dismiss()
             }
         }

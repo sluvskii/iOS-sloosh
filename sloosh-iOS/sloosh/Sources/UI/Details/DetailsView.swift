@@ -54,6 +54,11 @@ struct DetailsView: View {
     @State private var sourceSheetDetent: PresentationDetent = .medium
     @Namespace private var transition
     
+    @State private var playerKpId: Int?
+    @State private var playerSeason: Int?
+    @State private var playerEpisode: Int?
+    @State private var playerVoiceover: String?
+    
     var body: some View {
         ScrollView {
             VStack(spacing: 0) {
@@ -233,7 +238,10 @@ struct DetailsView: View {
                 } else if let wrapper = viewModel.sourceResultWrapper,
                           wrapper.mode == .alloha,
                           let result = wrapper.allohaResult {
-                    SourceSelectionView(result: result) { translation in
+                    SourceSelectionView(result: result, kpId: wrapper.kpId) { translation, season, episode in
+                        playerKpId = wrapper.kpId
+                        playerSeason = season
+                        playerEpisode = episode
                         viewModel.resolveAllohaPlayback(iframeUrl: translation.iframeUrl, translationName: translation.name)
                     }
                 } else if let wrapper = viewModel.sourceResultWrapper, wrapper.mode == .collaps {
@@ -241,11 +249,16 @@ struct DetailsView: View {
                     CollapsSelectionView(
                         result: wrapper.collapsSeasons ?? [],
                         movieResult: wrapper.collapsMovie,
+                        kpId: wrapper.kpId,
                         isSerial: isSerial,
                         title: viewModel.details?.title ?? viewModel.details?.name ?? "",
-                        onPlay: { url in
+                        onPlay: { url, season, episode, voiceover in
                             // Collaps returns direct HLS/MPD urls
                             selectedIframeUrl = url // we use this state variable for the URL
+                            playerKpId = wrapper.kpId
+                            playerSeason = season
+                            playerEpisode = episode
+                            playerVoiceover = voiceover
                             showPlayer = true
                         }
                     )
@@ -271,22 +284,26 @@ struct DetailsView: View {
         .fullScreenCover(isPresented: $showPlayer, onDismiss: {
             selectedIframeUrl = nil
             selectedDirectVideoUrl = nil
+            playerKpId = nil
+            playerSeason = nil
+            playerEpisode = nil
+            playerVoiceover = nil
             viewModel.cleanupAllohaSession()
         }) {
             if let details = viewModel.details {
                 let mode = SourceManager.shared.currentMode
                 if mode == .alloha {
                     if let directUrl = selectedDirectVideoUrl {
-                        PlayerView(directVideoUrl: directUrl, fallbackTitle: details.title ?? details.name ?? "")
+                        PlayerView(directVideoUrl: directUrl, fallbackTitle: details.title ?? details.name ?? "", kpId: playerKpId, season: playerSeason, episode: playerEpisode, selectedVoiceover: playerVoiceover)
                     } else if let iframeUrl = selectedIframeUrl {
-                        PlayerView(iframeUrl: iframeUrl, fallbackTitle: details.title ?? details.name ?? "")
+                        PlayerView(iframeUrl: iframeUrl, fallbackTitle: details.title ?? details.name ?? "", kpId: playerKpId, season: playerSeason, episode: playerEpisode, selectedVoiceover: playerVoiceover)
                     } else {
                         Text("Видео не найдено")
                     }
                 } else if let directUrl = selectedIframeUrl {
-                    PlayerView(directVideoUrl: directUrl, fallbackTitle: details.title ?? details.name ?? "")
+                    PlayerView(directVideoUrl: directUrl, fallbackTitle: details.title ?? details.name ?? "", kpId: playerKpId, season: playerSeason, episode: playerEpisode, selectedVoiceover: playerVoiceover)
                 } else if let directUrl = selectedDirectVideoUrl {
-                    PlayerView(directVideoUrl: directUrl, fallbackTitle: details.title ?? details.name ?? "")
+                    PlayerView(directVideoUrl: directUrl, fallbackTitle: details.title ?? details.name ?? "", kpId: playerKpId, season: playerSeason, episode: playerEpisode, selectedVoiceover: playerVoiceover)
                 } else {
                     Text("Видео не найдено")
                 }
@@ -485,6 +502,7 @@ struct SourceResultWrapper: Identifiable {
     var allohaResult: AllohaApiResult?
     var collapsSeasons: [CollapsSeason]?
     var collapsMovie: CollapsMovie?
+    var kpId: Int?
 }
 
 @MainActor
@@ -569,17 +587,18 @@ class DetailsViewModel: ObservableObject {
                 let result = try await AllohaRepository.shared.fetchByKpId(kpId: kpId)
                 if let movie = result.movie,
                    let translation = preferredAllohaTranslation(from: movie) {
+                    self.sourceResultWrapper = SourceResultWrapper(mode: .alloha, allohaResult: result, kpId: kpId)
                     resolveAllohaPlayback(iframeUrl: translation.iframeUrl, translationName: translation.name)
                 } else {
-                    self.sourceResultWrapper = SourceResultWrapper(mode: .alloha, allohaResult: result)
+                    self.sourceResultWrapper = SourceResultWrapper(mode: .alloha, allohaResult: result, kpId: kpId)
                 }
             case .collaps:
                 let seasons = try await CollapsRepository.shared.getSeasonsByKpId(kpId: kpId)
                 if seasons.isEmpty {
                     let movie = try await CollapsRepository.shared.getMovieByKpId(kpId: kpId)
-                    self.sourceResultWrapper = SourceResultWrapper(mode: .collaps, collapsMovie: movie)
+                    self.sourceResultWrapper = SourceResultWrapper(mode: .collaps, collapsMovie: movie, kpId: kpId)
                 } else {
-                    self.sourceResultWrapper = SourceResultWrapper(mode: .collaps, collapsSeasons: seasons)
+                    self.sourceResultWrapper = SourceResultWrapper(mode: .collaps, collapsSeasons: seasons, kpId: kpId)
                 }
             }
         } catch {

@@ -36,7 +36,59 @@ class PlayerPresenterViewController: UIViewController {
                 player.play()
                 self.startDismissalObserver()
                 self.setupQualityButton(in: playerController)
+                self.setupAudioButton(in: playerController)
             }
+        }
+    }
+    
+    private func setupAudioButton(in playerController: AVPlayerViewController) {
+        guard let overlay = playerController.contentOverlayView, self.viewModel != nil else { return }
+        
+        let btn = UIButton(type: .system)
+        btn.setImage(UIImage(systemName: "waveform"), for: .normal)
+        btn.tintColor = .white
+        btn.backgroundColor = UIColor.black.withAlphaComponent(0.5)
+        btn.layer.cornerRadius = 22
+        btn.translatesAutoresizingMaskIntoConstraints = false
+        overlay.addSubview(btn)
+        
+        NSLayoutConstraint.activate([
+            btn.topAnchor.constraint(equalTo: overlay.safeAreaLayoutGuide.topAnchor, constant: 16),
+            btn.trailingAnchor.constraint(equalTo: overlay.safeAreaLayoutGuide.trailingAnchor, constant: -112), // To the left of quality button
+            btn.widthAnchor.constraint(equalToConstant: 44),
+            btn.heightAnchor.constraint(equalToConstant: 44)
+        ])
+        
+        btn.showsMenuAsPrimaryAction = true
+        
+        // Use an associated object or similar to store the button reference, or just update directly via Notification
+        // Since we don't have a property for it, we can just find it later or store it in a closure
+        let updateAudioMenu: () -> Void = { [weak btn, weak viewModel] in
+            guard let btn = btn, let viewModel = viewModel else { return }
+            
+            var actions: [UIAction] = []
+            for track in viewModel.availableAudioTracks {
+                let isSelected = track.id == viewModel.currentAudioTrackId
+                let action = UIAction(title: track.name, state: isSelected ? .on : .off) { _ in
+                    viewModel.changeAudioTrack(to: track.id)
+                    // Notification will trigger re-render
+                }
+                actions.append(action)
+            }
+            
+            if actions.isEmpty {
+                btn.isHidden = true
+            } else {
+                btn.isHidden = false
+                let menu = UIMenu(title: "Озвучка", children: actions)
+                btn.menu = menu
+            }
+        }
+        
+        updateAudioMenu()
+        
+        NotificationCenter.default.addObserver(forName: NSNotification.Name("AudioTracksUpdated"), object: nil, queue: .main) { _ in
+            updateAudioMenu()
         }
     }
     
@@ -152,14 +204,22 @@ struct PlayerView: View {
     let iframeUrl: String?
     let directVideoUrl: String?
     let fallbackTitle: String
+    let kpId: Int?
+    let season: Int?
+    let episode: Int?
+    let selectedVoiceover: String?
     
     @StateObject private var viewModel = PlayerViewModel()
     @Environment(\.presentationMode) var presentationMode
     
-    init(iframeUrl: String? = nil, directVideoUrl: String? = nil, fallbackTitle: String) {
+    init(iframeUrl: String? = nil, directVideoUrl: String? = nil, fallbackTitle: String, kpId: Int? = nil, season: Int? = nil, episode: Int? = nil, selectedVoiceover: String? = nil) {
         self.iframeUrl = iframeUrl
         self.directVideoUrl = directVideoUrl
         self.fallbackTitle = fallbackTitle
+        self.kpId = kpId
+        self.season = season
+        self.episode = episode
+        self.selectedVoiceover = selectedVoiceover
     }
     
     var body: some View {
@@ -200,9 +260,9 @@ struct PlayerView: View {
         .onAppear {
             if viewModel.player == nil { // Избегаем повторной загрузки при перерисовках
                 if let directUrl = directVideoUrl {
-                    viewModel.loadDirect(url: directUrl)
+                    viewModel.loadDirect(url: directUrl, kpId: kpId, season: season, episode: episode, selectedVoiceover: selectedVoiceover)
                 } else if let iframe = iframeUrl {
-                    viewModel.load(iframeUrl: iframe)
+                    viewModel.load(iframeUrl: iframe, kpId: kpId, season: season, episode: episode, selectedVoiceover: selectedVoiceover)
                 } else {
                     viewModel.error = "Нет URL для воспроизведения"
                     viewModel.isLoading = false
@@ -224,17 +284,32 @@ class PlayerViewModel: ObservableObject {
     @Published var availableQualities: [(key: String, url: URL)] = []
     @Published var currentQualityKey: String?
     
+    @Published var availableAudioTracks: [(id: String, name: String)] = []
+    @Published var currentAudioTrackId: String?
+    
     private var resolver: AllohaRuntimeResolver?
     private var resolveTask: Task<Void, Never>?
     private var currentHeaders: [String: String] = [:]
+    private var timeObserver: Any?
+    private var itemObservation: NSKeyValueObservation?
+    
+    private var currentKpId: Int?
+    private var currentSeason: Int?
+    private var currentEpisode: Int?
+    private var targetVoiceover: String?
 
     private func isLocalProxyUrl(_ url: URL) -> Bool {
         guard let host = url.host?.lowercased() else { return false }
         return host == "127.0.0.1" || host == "localhost"
     }
     
-    func load(iframeUrl: String) {
+    func load(iframeUrl: String, kpId: Int?, season: Int?, episode: Int?, selectedVoiceover: String?) {
         if player != nil { return } // Защита от двойного вызова
+        
+        self.currentKpId = kpId
+        self.currentSeason = season
+        self.currentEpisode = episode
+        self.targetVoiceover = selectedVoiceover
         
         isLoading = true
         error = nil
@@ -242,8 +317,13 @@ class PlayerViewModel: ObservableObject {
         startParsing(iframeUrl: iframeUrl)
     }
     
-    func loadDirect(url: String) {
+    func loadDirect(url: String, kpId: Int?, season: Int?, episode: Int?, selectedVoiceover: String?) {
         if player != nil { return }
+        
+        self.currentKpId = kpId
+        self.currentSeason = season
+        self.currentEpisode = episode
+        self.targetVoiceover = selectedVoiceover
         
         isLoading = true
         error = nil
@@ -263,6 +343,14 @@ class PlayerViewModel: ObservableObject {
             let playerItem = AVPlayerItem(asset: asset)
             self.player = AVPlayer(playerItem: playerItem)
             self.isLoading = false
+            self.startTrackingProgress()
+            
+            self.itemObservation = playerItem.observe(\.status) { [weak self] item, _ in
+                guard let self = self else { return }
+                if item.status == .readyToPlay {
+                    self.extractAudioTracks(from: item)
+                }
+            }
 
             Task {
                 do {
@@ -376,6 +464,23 @@ class PlayerViewModel: ObservableObject {
     }
     
     func cleanup() {
+        if let observer = timeObserver {
+            player?.removeTimeObserver(observer)
+            timeObserver = nil
+        }
+        
+        // Final progress save before cleanup
+        if let player = player, let currentKpId = currentKpId {
+            let mediaId: String
+            if let season = currentSeason, let episode = currentEpisode {
+                mediaId = "kp_\(currentKpId)_s\(season)_e\(episode)"
+            } else {
+                mediaId = "kp_\(currentKpId)"
+            }
+            let duration = player.currentItem?.duration.seconds
+            CollapsPlaybackProgressStore.shared.save(mediaId: mediaId, positionSec: player.currentTime().seconds, durationSec: duration?.isNaN == false ? duration : nil)
+        }
+
         resolveTask?.cancel()
         resolveTask = nil
         resolver?.cancel()
@@ -415,6 +520,59 @@ class PlayerViewModel: ObservableObject {
         if wasPlaying {
             self.player?.play()
         }
+        
+        // Re-extract audio tracks for new item and restore selection
+        self.itemObservation = playerItem.observe(\.status) { [weak self] item, _ in
+            guard let self = self else { return }
+            if item.status == .readyToPlay {
+                self.extractAudioTracks(from: item)
+            }
+        }
+    }
+    
+    private func extractAudioTracks(from item: AVPlayerItem) {
+        guard let group = item.asset.mediaSelectionGroup(forMediaCharacteristic: .audible) else { return }
+        
+        var tracks: [(id: String, name: String)] = []
+        for (index, option) in group.options.enumerated() {
+            let id = option.extendedLanguageTag ?? option.locale?.identifier ?? "\(index)"
+            tracks.append((id: id, name: option.displayName))
+        }
+        
+        DispatchQueue.main.async {
+            self.availableAudioTracks = tracks
+            if let current = item.currentMediaSelection.selectedMediaOption(in: group) {
+                self.currentAudioTrackId = current.extendedLanguageTag ?? current.locale?.identifier ?? ""
+            }
+            
+            // Auto-select if targetVoiceover matches any track
+            if let voiceover = self.targetVoiceover, !voiceover.isEmpty {
+                // Find best match (ignore case)
+                if let match = group.options.first(where: { $0.displayName.lowercased().contains(voiceover.lowercased()) }) {
+                    item.select(match, in: group)
+                    self.currentAudioTrackId = match.extendedLanguageTag ?? match.locale?.identifier ?? ""
+                    self.targetVoiceover = nil // Only apply once per initial load or quality change if needed, but it's safe to clear
+                }
+            } else if let currentTrackId = self.currentAudioTrackId, !currentTrackId.isEmpty {
+                // Restore user selection after quality change
+                if let match = group.options.first(where: { ($0.extendedLanguageTag ?? $0.locale?.identifier ?? "") == currentTrackId }) {
+                    item.select(match, in: group)
+                }
+            }
+            NotificationCenter.default.post(name: NSNotification.Name("AudioTracksUpdated"), object: nil)
+        }
+    }
+    
+    func changeAudioTrack(to id: String) {
+        guard let item = player?.currentItem,
+              let group = item.asset.mediaSelectionGroup(forMediaCharacteristic: .audible) else { return }
+              
+        if let match = group.options.first(where: { ($0.extendedLanguageTag ?? $0.locale?.identifier ?? "") == id }) {
+            item.select(match, in: group)
+            self.currentAudioTrackId = id
+            // Update the target voiceover so it persists across quality changes
+            self.targetVoiceover = match.displayName
+        }
     }
     
     private func playVideo(url: URL, headers: [String: String]) {
@@ -442,6 +600,40 @@ class PlayerViewModel: ObservableObject {
         let playerItem = AVPlayerItem(asset: asset)
         self.player = AVPlayer(playerItem: playerItem)
         self.isLoading = false
+        self.startTrackingProgress()
+        
+        self.itemObservation = playerItem.observe(\.status) { [weak self] item, _ in
+            guard let self = self else { return }
+            if item.status == .readyToPlay {
+                self.extractAudioTracks(from: item)
+            }
+        }
+    }
+    
+    private func startTrackingProgress() {
+        guard let player = player else { return }
+        
+        let mediaId: String
+        if let kpId = currentKpId {
+            if let season = currentSeason, let episode = currentEpisode {
+                mediaId = "kp_\(kpId)_s\(season)_e\(episode)"
+            } else {
+                mediaId = "kp_\(kpId)"
+            }
+        } else {
+            return
+        }
+        
+        let savedPosition = CollapsPlaybackProgressStore.shared.load(mediaId: mediaId)
+        if savedPosition > 0 {
+            player.seek(to: CMTime(seconds: savedPosition, preferredTimescale: 600))
+        }
+        
+        timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 5, preferredTimescale: 600), queue: .main) { [weak self, weak player] time in
+            guard let _ = self, let player = player else { return }
+            let duration = player.currentItem?.duration.seconds
+            CollapsPlaybackProgressStore.shared.save(mediaId: mediaId, positionSec: time.seconds, durationSec: duration?.isNaN == false ? duration : nil)
+        }
     }
 
     private func applyResolvedAllohaStream(_ resolved: [String: Any]) {
