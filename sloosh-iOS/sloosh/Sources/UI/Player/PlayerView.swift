@@ -2,17 +2,28 @@ import SwiftUI
 import AVKit
 
 class PlayerPresenterViewController: UIViewController {
-    var player: AVPlayer?
-    var viewModel: PlayerViewModel?
+    var player: AVPlayer? {
+        didSet {
+            playerController?.player = player
+            if player != nil && player?.timeControlStatus != .playing {
+                player?.play()
+            }
+        }
+    }
+    var viewModel: PlayerViewModel? {
+        didSet {
+            updateSystemQualityMenu()
+        }
+    }
     var onDismiss: (() -> Void)?
     private var didPresent = false
     private var checkTimer: Timer?
-    private var qualityButton: UIButton?
+    private var playerController: AVPlayerViewController?
     
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         
-        if !didPresent, let player = player {
+        if !didPresent {
             didPresent = true
             
             // 1. Плавно переводим ориентацию в горизонтальную ТОЛЬКО перед показом самого видео
@@ -25,126 +36,44 @@ class PlayerPresenterViewController: UIViewController {
                 UIDevice.current.setValue(UIInterfaceOrientation.landscapeRight.rawValue, forKey: "orientation")
             }
             
-            let playerController = AVPlayerViewController()
-            playerController.player = player
-            playerController.showsPlaybackControls = true
-            playerController.allowsPictureInPicturePlayback = true
+            let pc = AVPlayerViewController()
+            pc.player = player
+            pc.showsPlaybackControls = true
+            pc.allowsPictureInPicturePlayback = true
+            pc.modalPresentationStyle = .fullScreen
+            self.playerController = pc
             
-            playerController.modalPresentationStyle = .fullScreen
-            
-            self.present(playerController, animated: true) {
-                player.play()
+            self.present(pc, animated: true) {
+                self.player?.play()
                 self.startDismissalObserver()
-                self.setupQualityButton(in: playerController)
-                self.setupAudioButton(in: playerController)
+                self.updateSystemQualityMenu()
+            }
+            
+            NotificationCenter.default.addObserver(forName: NSNotification.Name("QualitiesUpdated"), object: nil, queue: .main) { [weak self] _ in
+                self?.updateSystemQualityMenu()
             }
         }
     }
     
-    private func setupAudioButton(in playerController: AVPlayerViewController) {
-        guard let overlay = playerController.contentOverlayView, self.viewModel != nil else { return }
+    private func updateSystemQualityMenu() {
+        guard let pc = playerController, let viewModel = viewModel else { return }
         
-        let btn = UIButton(type: .system)
-        btn.setImage(UIImage(systemName: "waveform"), for: .normal)
-        btn.tintColor = .white
-        btn.backgroundColor = UIColor.black.withAlphaComponent(0.5)
-        btn.layer.cornerRadius = 22
-        btn.translatesAutoresizingMaskIntoConstraints = false
-        overlay.addSubview(btn)
-        
-        NSLayoutConstraint.activate([
-            btn.topAnchor.constraint(equalTo: overlay.safeAreaLayoutGuide.topAnchor, constant: 16),
-            btn.trailingAnchor.constraint(equalTo: overlay.safeAreaLayoutGuide.trailingAnchor, constant: -112), // To the left of quality button
-            btn.widthAnchor.constraint(equalToConstant: 44),
-            btn.heightAnchor.constraint(equalToConstant: 44)
-        ])
-        
-        btn.showsMenuAsPrimaryAction = true
-        
-        // Use an associated object or similar to store the button reference, or just update directly via Notification
-        // Since we don't have a property for it, we can just find it later or store it in a closure
-        let updateAudioMenu: () -> Void = { [weak btn, weak viewModel] in
-            guard let btn = btn, let viewModel = viewModel else { return }
-            
+        if #available(iOS 16.0, *) {
             var actions: [UIAction] = []
-            for track in viewModel.availableAudioTracks {
-                let isSelected = track.id == viewModel.currentAudioTrackId
-                let action = UIAction(title: track.name, state: isSelected ? .on : .off) { _ in
-                    viewModel.changeAudioTrack(to: track.id)
-                    // Notification will trigger re-render
+            for quality in viewModel.availableQualities {
+                let isSelected = quality.key == viewModel.currentQualityKey
+                let action = UIAction(title: quality.key, state: isSelected ? .on : .off) { [weak viewModel] _ in
+                    viewModel?.changeQuality(to: quality.key)
                 }
                 actions.append(action)
             }
             
-            if actions.isEmpty {
-                btn.isHidden = true
+            if !actions.isEmpty {
+                let menu = UIMenu(title: "Качество", image: UIImage(systemName: "slider.horizontal.3"), children: actions)
+                pc.transportBarCustomMenuItems = [menu]
             } else {
-                btn.isHidden = false
-                let menu = UIMenu(title: "Озвучка", children: actions)
-                btn.menu = menu
+                pc.transportBarCustomMenuItems = []
             }
-        }
-        
-        updateAudioMenu()
-        
-        NotificationCenter.default.addObserver(forName: NSNotification.Name("AudioTracksUpdated"), object: nil, queue: .main) { _ in
-            updateAudioMenu()
-        }
-    }
-    
-    private func setupQualityButton(in playerController: AVPlayerViewController) {
-        guard let overlay = playerController.contentOverlayView, self.viewModel != nil else { return }
-        
-        let btn = UIButton(type: .system)
-        btn.setImage(UIImage(systemName: "slider.horizontal.3"), for: .normal)
-        btn.tintColor = .white
-        btn.backgroundColor = UIColor.black.withAlphaComponent(0.5)
-        btn.layer.cornerRadius = 22
-        btn.translatesAutoresizingMaskIntoConstraints = false
-        overlay.addSubview(btn)
-        
-        NSLayoutConstraint.activate([
-            btn.topAnchor.constraint(equalTo: overlay.safeAreaLayoutGuide.topAnchor, constant: 16),
-            btn.trailingAnchor.constraint(equalTo: overlay.safeAreaLayoutGuide.trailingAnchor, constant: -60),
-            btn.widthAnchor.constraint(equalToConstant: 44),
-            btn.heightAnchor.constraint(equalToConstant: 44)
-        ])
-        
-        // Setup menu menu
-        btn.showsMenuAsPrimaryAction = true
-        
-        // Update menu dynamically based on viewModel
-        self.qualityButton = btn
-        updateQualityMenu()
-        
-        // Listen for changes (using a simple timer or combine observer)
-        NotificationCenter.default.addObserver(forName: NSNotification.Name("QualitiesUpdated"), object: nil, queue: .main) { [weak self] _ in
-            self?.updateQualityMenu()
-        }
-    }
-    
-    private func updateQualityMenu() {
-        guard let btn = qualityButton, let viewModel = viewModel else { return }
-        
-        var actions: [UIAction] = []
-        for quality in viewModel.availableQualities {
-            let isSelected = quality.key == viewModel.currentQualityKey
-            let action = UIAction(title: quality.key, state: isSelected ? .on : .off) { _ in
-                viewModel.changeQuality(to: quality.key)
-                // Force menu update for checkmark
-                DispatchQueue.main.async {
-                    self.updateQualityMenu()
-                }
-            }
-            actions.append(action)
-        }
-        
-        if actions.isEmpty {
-            btn.isHidden = true
-        } else {
-            btn.isHidden = false
-            let menu = UIMenu(title: "Качество видео", children: actions)
-            btn.menu = menu
         }
     }
     
@@ -180,7 +109,7 @@ class PlayerPresenterViewController: UIViewController {
 }
 
 struct ModalPlayerPresenter: UIViewControllerRepresentable {
-    var player: AVPlayer
+    var player: AVPlayer?
     var viewModel: PlayerViewModel
     var onDismiss: () -> Void
     
@@ -230,16 +159,7 @@ struct PlayerView: View {
         ZStack {
             Color.black.edgesIgnoringSafeArea(.all)
             
-            if viewModel.isLoading {
-                VStack(spacing: 16) {
-                    ProgressView()
-                        .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                        .scaleEffect(1.5)
-                    Text("Поиск видео источника...")
-                        .font(.system(size: 16, weight: .medium, design: .rounded))
-                        .foregroundColor(.white.opacity(0.8))
-                }
-            } else if let error = viewModel.error {
+            if let error = viewModel.error {
                 VStack(spacing: 16) {
                     Image(systemName: "exclamationmark.triangle.fill")
                         .font(.system(size: 48))
@@ -250,15 +170,12 @@ struct PlayerView: View {
                         .multilineTextAlignment(.center)
                         .padding()
                 }
-            } else if let player = viewModel.player {
-                ModalPlayerPresenter(player: player, viewModel: viewModel) {
+            } else {
+                ModalPlayerPresenter(player: viewModel.player, viewModel: viewModel) {
                     viewModel.cleanup() // Теперь очистка происходит ТОЛЬКО когда плеер реально закрылся
                     presentationMode.wrappedValue.dismiss()
                 }
                 .edgesIgnoringSafeArea(.all)
-            } else {
-                Text("Видео не найдено")
-                    .foregroundColor(.white)
             }
         }
         .onAppear {
@@ -287,9 +204,6 @@ class PlayerViewModel: ObservableObject {
     
     @Published var availableQualities: [(key: String, url: URL)] = []
     @Published var currentQualityKey: String?
-    
-    @Published var availableAudioTracks: [(id: String, name: String)] = []
-    @Published var currentAudioTrackId: String?
     
     private var resolver: AllohaRuntimeResolver?
     private var resolveTask: Task<Void, Never>?
@@ -542,49 +456,14 @@ class PlayerViewModel: ObservableObject {
         Task {
             guard let group = try? await item.asset.loadMediaSelectionGroup(for: .audible) else { return }
             
-            var tracks: [(id: String, name: String)] = []
-            for (index, option) in group.options.enumerated() {
-                let id = option.extendedLanguageTag ?? option.locale?.identifier ?? "\(index)"
-                tracks.append((id: id, name: option.displayName))
-            }
-            
             DispatchQueue.main.async {
-                self.availableAudioTracks = tracks
-                if let current = item.currentMediaSelection.selectedMediaOption(in: group) {
-                    self.currentAudioTrackId = current.extendedLanguageTag ?? current.locale?.identifier ?? ""
-                }
-                
                 // Auto-select if targetVoiceover matches any track
                 if let voiceover = self.targetVoiceover, !voiceover.isEmpty {
                     // Find best match (ignore case)
                     if let match = group.options.first(where: { $0.displayName.lowercased().contains(voiceover.lowercased()) }) {
                         item.select(match, in: group)
-                        self.currentAudioTrackId = match.extendedLanguageTag ?? match.locale?.identifier ?? ""
                         self.targetVoiceover = nil // Only apply once per initial load or quality change if needed, but it's safe to clear
                     }
-                } else if let currentTrackId = self.currentAudioTrackId, !currentTrackId.isEmpty {
-                    // Restore user selection after quality change
-                    if let match = group.options.first(where: { ($0.extendedLanguageTag ?? $0.locale?.identifier ?? "") == currentTrackId }) {
-                        item.select(match, in: group)
-                    }
-                }
-                NotificationCenter.default.post(name: NSNotification.Name("AudioTracksUpdated"), object: nil)
-            }
-        }
-    }
-    
-    func changeAudioTrack(to id: String) {
-        guard let item = player?.currentItem else { return }
-        
-        Task {
-            guard let group = try? await item.asset.loadMediaSelectionGroup(for: .audible) else { return }
-            
-            DispatchQueue.main.async {
-                if let match = group.options.first(where: { ($0.extendedLanguageTag ?? $0.locale?.identifier ?? "") == id }) {
-                    item.select(match, in: group)
-                    self.currentAudioTrackId = id
-                    // Update the target voiceover so it persists across quality changes
-                    self.targetVoiceover = match.displayName
                 }
             }
         }
