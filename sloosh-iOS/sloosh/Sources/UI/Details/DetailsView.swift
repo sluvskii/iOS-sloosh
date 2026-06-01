@@ -65,6 +65,8 @@ struct RemoteLogoView: View {
                     .renderingMode(.original)
                     .aspectRatio(contentMode: .fit)
                     .frame(maxWidth: maxWidth, maxHeight: maxHeight)
+                    .shadow(color: Color.black.opacity(0.24), radius: 22, x: 0, y: 10)
+                    .shadow(color: Color.black.opacity(0.16), radius: 6, x: 0, y: 2)
             } else if didFail && !fallbackTitle.isEmpty {
                 Text(fallbackTitle)
                     .font(.system(size: 34, weight: .heavy))
@@ -154,6 +156,28 @@ struct DetailsView: View {
                         let isScrollingDown = minY > 0
                         let height = isScrollingDown ? 450 + minY : 450
                         let offset = isScrollingDown ? -minY : 0
+                        let blurMask = LinearGradient(
+                            stops: [
+                                .init(color: .clear, location: 0.0),
+                                .init(color: .clear, location: 0.38),
+                                .init(color: .black.opacity(0.22), location: 0.62),
+                                .init(color: .black.opacity(0.56), location: 0.82),
+                                .init(color: .black, location: 1.0)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                        let tintGradient = LinearGradient(
+                            stops: [
+                                .init(color: .clear, location: 0.0),
+                                .init(color: .clear, location: 0.34),
+                                .init(color: Color(UIColor.systemBackground).opacity(0.12), location: 0.62),
+                                .init(color: Color(UIColor.systemBackground).opacity(0.45), location: 0.84),
+                                .init(color: Color(UIColor.systemBackground).opacity(0.94), location: 1.0)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
 
                         RemoteBackdropView(
                             urls: heroImageUrls,
@@ -162,16 +186,13 @@ struct DetailsView: View {
                         )
                         .offset(y: offset)
                         .overlay(
-                            LinearGradient(
-                                gradient: Gradient(colors: [
-                                    .clear,
-                                    .clear,
-                                    Color(UIColor.systemBackground).opacity(0.6),
-                                    Color(UIColor.systemBackground)
-                                ]),
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
+                            ZStack {
+                                Rectangle()
+                                    .fill(.ultraThinMaterial)
+                                    .mask(blurMask)
+
+                                tintGradient
+                            }
                             .offset(y: offset)
                         )
                     }
