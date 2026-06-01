@@ -132,7 +132,7 @@ struct DetailsView: View {
                         }) {
                             HStack {
                                 Image(systemName: "play.fill")
-                                Text(viewModel.isResolvingAllohaPlayback ? "Подготовка..." : "Смотреть")
+                                Text("Смотреть")
                                     .font(.system(size: 17, weight: .semibold))
                             }
                             .frame(height: 50)
@@ -145,7 +145,6 @@ struct DetailsView: View {
                                 .clipShape(RoundedRectangle(cornerRadius: 25, style: .continuous))
                         }
                         .contentShape(Capsule())
-                        .disabled(viewModel.isResolvingAllohaPlayback)
                         .buttonStyle(.plain)
                         .padding(.top, 16)
 
