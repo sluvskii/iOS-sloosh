@@ -447,7 +447,7 @@ class PlayerViewModel: ObservableObject {
         }
     }
     
-    private func startParsing(iframeUrl: String) {
+    private func startParsing(iframeUrl: String, voices: [String] = [], subtitles: [CollapsSubtitle] = []) {
         resolveTask?.cancel()
         resolver?.cancel()
 
@@ -590,7 +590,7 @@ class PlayerViewModel: ObservableObject {
         }
     }
     
-    private func playVideo(url: URL, headers: [String: String]) {
+    private func playVideo(url: URL, headers: [String: String], voices: [String] = [], subtitles: [CollapsSubtitle] = []) {
         let absoluteUrlString = url.absoluteString
         guard let encodedData = absoluteUrlString.data(using: .utf8) else {
             self.error = "Ошибка формирования URL"
@@ -603,7 +603,18 @@ class PlayerViewModel: ObservableObject {
             .replacingOccurrences(of: "/", with: "_")
             .replacingOccurrences(of: "=", with: "")
         
-        HlsProxyServer.shared.start(headers: headers)
+        let mediaId: String
+        if let kpId = currentKpId {
+            if let season = currentSeason, let episode = currentEpisode {
+                mediaId = "kp_\(kpId)_s\(season)_e\(episode)"
+            } else {
+                mediaId = "kp_\(kpId)"
+            }
+        } else {
+            mediaId = "unknown"
+        }
+        
+        HlsProxyServer.shared.start(headers: headers, voices: voices, subtitles: subtitles, mediaId: mediaId)
         
         guard let proxyUrl = URL(string: "http://127.0.0.1:\(HlsProxyServer.shared.port.rawValue)/proxy?url=\(encoded)") else {
             self.error = "Ошибка формирования URL"

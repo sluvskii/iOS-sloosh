@@ -1,7 +1,7 @@
 import Foundation
 
-public class CollapsHlsRewriter {
-    public static func rewrite(
+class CollapsHlsRewriter {
+    static func rewrite(
         master: String,
         voices: [String],
         subtitles: [CollapsSubtitle] = [],

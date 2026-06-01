@@ -1,9 +1,9 @@
 import Foundation
 
-struct CollapsSubtitle: Codable, Hashable, Equatable {
-    let url: String
-    let label: String
-    let lang: String
+public struct CollapsSubtitle: Codable, Hashable, Equatable {
+    public let url: String
+    public let label: String
+    public let lang: String
 }
 
 struct CollapsEpisode: Codable, Hashable, Equatable {
