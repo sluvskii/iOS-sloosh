@@ -237,6 +237,7 @@ class PlayerViewModel: ObservableObject {
     private var currentEpisode: Int?
     private var targetVoiceover: String?
     var targetQualityPreference: VideoQualityPreference?
+    private var hasStartedLoading = false
 
     private func isLocalProxyUrl(_ url: URL) -> Bool {
         guard let host = url.host?.lowercased() else { return false }
@@ -244,7 +245,8 @@ class PlayerViewModel: ObservableObject {
     }
     
     func load(iframeUrl: String, kpId: Int?, season: Int?, episode: Int?, selectedVoiceover: String?, voices: [String] = [], subtitles: [CollapsSubtitle] = []) {
-        if player != nil { return } // Защита от двойного вызова
+        if hasStartedLoading { return } // Защита от двойного вызова
+        hasStartedLoading = true
         
         self.currentKpId = kpId
         self.currentSeason = season
@@ -258,7 +260,8 @@ class PlayerViewModel: ObservableObject {
     }
     
     func loadDirect(url: String, kpId: Int?, season: Int?, episode: Int?, selectedVoiceover: String?, voices: [String] = [], subtitles: [CollapsSubtitle] = []) {
-        if player != nil { return }
+        if hasStartedLoading { return }
+        hasStartedLoading = true
         
         self.currentKpId = kpId
         self.currentSeason = season
@@ -461,6 +464,7 @@ class PlayerViewModel: ObservableObject {
     }
     
     func cleanup() {
+        hasStartedLoading = false
         if let observer = timeObserver {
             player?.removeTimeObserver(observer)
             timeObserver = nil
