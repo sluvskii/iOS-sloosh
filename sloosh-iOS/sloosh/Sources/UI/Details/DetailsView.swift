@@ -213,11 +213,13 @@ struct DetailsView: View {
                         playerKpId = wrapper.kpId
                         playerSeason = season
                         playerEpisode = episode
+                        playerVoiceover = translation.name
+                        playerVoices = [translation.name]
+                        playerSubtitles = []
                         playerQuality = quality
                         selectedIframeUrl = translation.iframeUrl
                         showPlayer = true
                         showSourceSheet = false
-                        viewModel.saveAllohaTranslation(translation.name)
                     }
                 } else if let wrapper = viewModel.sourceResultWrapper, wrapper.mode == .collaps {
                     let isSerial = wrapper.collapsSeasons != nil && !(wrapper.collapsSeasons?.isEmpty ?? true)
@@ -482,15 +484,8 @@ class DetailsViewModel: ObservableObject {
     
     @Published var isFavorite: Bool = false
 
-    private let allohaTranslationPreferenceKey = "alloha_last_translation_name"
-
     func resetSourceSheet() {
         sourceResultWrapper = nil
-    }
-    
-    func saveAllohaTranslation(_ name: String?) {
-        guard let name = name, !name.isEmpty else { return }
-        UserDefaults.standard.set(name, forKey: allohaTranslationPreferenceKey)
     }
     
     func loadDetails(id: String) async {
@@ -565,10 +560,5 @@ class DetailsViewModel: ObservableObject {
         } catch {
             print("Error fetching sources: \(error)")
         }
-    }
-
-    private func preferredAllohaTranslation(from movie: AllohaMovie) -> AllohaTranslation? {
-        let savedName = UserDefaults.standard.string(forKey: allohaTranslationPreferenceKey)
-        return movie.translations.first(where: { $0.name == savedName }) ?? movie.translations.first
     }
 }

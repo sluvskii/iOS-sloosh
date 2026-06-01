@@ -222,6 +222,7 @@ class PlayerViewModel: ObservableObject {
     private var currentKpId: Int?
     private var currentSeason: Int?
     private var currentEpisode: Int?
+    private var currentSourcePreferenceKey: String?
     private var targetVoiceover: String?
     var targetQualityPreference: VideoQualityPreference?
     private var hasStartedLoading = false
@@ -238,6 +239,7 @@ class PlayerViewModel: ObservableObject {
         self.currentKpId = kpId
         self.currentSeason = season
         self.currentEpisode = episode
+        self.currentSourcePreferenceKey = "alloha"
         self.targetVoiceover = selectedVoiceover
         
         isLoading = true
@@ -253,6 +255,7 @@ class PlayerViewModel: ObservableObject {
         self.currentKpId = kpId
         self.currentSeason = season
         self.currentEpisode = episode
+        self.currentSourcePreferenceKey = "collaps"
         self.targetVoiceover = selectedVoiceover
         
         isLoading = true
@@ -530,9 +533,12 @@ class PlayerViewModel: ObservableObject {
                     // Find best match (ignore case)
                     if let match = group.options.first(where: { $0.displayName.lowercased().contains(voiceover.lowercased()) }) {
                         item.select(match, in: group)
+                        self.persistVoiceoverSelection(match.displayName)
                         self.targetVoiceover = nil // Only apply once per initial load or quality change if needed, but it's safe to clear
                     }
                 }
+
+                self.persistCurrentVoiceoverSelection(from: item)
             }
         }
     }
@@ -609,9 +615,12 @@ class PlayerViewModel: ObservableObject {
         }
         
         timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 5, preferredTimescale: 600), queue: .main) { [weak self, weak player] time in
-            guard let _ = self, let player = player else { return }
+            guard let self = self, let player = player else { return }
             let duration = player.currentItem?.duration.seconds
             CollapsPlaybackProgressStore.shared.save(mediaId: mediaId, positionSec: time.seconds, durationSec: duration?.isNaN == false ? duration : nil)
+            if let item = player.currentItem {
+                self.persistCurrentVoiceoverSelection(from: item)
+            }
         }
     }
 
@@ -625,6 +634,8 @@ class PlayerViewModel: ObservableObject {
 
         let headers = (resolved["headers"] as? [String: String]) ?? [:]
         currentHeaders = headers
+        let resolvedVoices = resolvedVoiceovers(from: resolved)
+        let resolvedSubtitles = resolvedSubtitles(from: resolved)
 
         var qualities = [(key: "Авто", url: resolvedUrl)]
         var seenKeys = Set<String>(["Авто"])
@@ -651,9 +662,52 @@ class PlayerViewModel: ObservableObject {
 
         availableQualities = qualities
         currentQualityKey = "Авто"
-        playVideo(url: resolvedUrl, headers: headers)
+        playVideo(url: resolvedUrl, headers: headers, voices: resolvedVoices, subtitles: resolvedSubtitles)
         NotificationCenter.default.post(name: NSNotification.Name("QualitiesUpdated"), object: nil)
         applyInitialQuality()
+    }
+
+    private func resolvedVoiceovers(from resolved: [String: Any]) -> [String] {
+        let variants = (resolved["audioVariants"] as? [[String: Any]]) ?? []
+        var seen = Set<String>()
+        return variants.compactMap { variant in
+            let title = (variant["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard !title.isEmpty else { return nil }
+            return seen.insert(title).inserted ? title : nil
+        }
+    }
+
+    private func resolvedSubtitles(from resolved: [String: Any]) -> [CollapsSubtitle] {
+        let subtitles = (resolved["subtitles"] as? [[String: Any]]) ?? []
+        return subtitles.compactMap { item in
+            let url = ((item["url"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !url.isEmpty else { return nil }
+            let label = ((item["label"] as? String) ?? (item["name"] as? String) ?? "Субтитры")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            let language = ((item["language"] as? String) ?? (item["lang"] as? String) ?? "ru")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return CollapsSubtitle(
+                url: url,
+                label: label.isEmpty ? "Субтитры" : label,
+                lang: language.isEmpty ? "ru" : language
+            )
+        }
+    }
+
+    private func persistCurrentVoiceoverSelection(from item: AVPlayerItem) {
+        guard let group = item.asset.mediaSelectionGroup(forMediaCharacteristic: .audible),
+              let selectedOption = item.currentMediaSelection.selectedMediaOption(in: group) else {
+            return
+        }
+        persistVoiceoverSelection(selectedOption.displayName)
+    }
+
+    private func persistVoiceoverSelection(_ name: String?) {
+        guard let kpId = currentKpId,
+              let source = currentSourcePreferenceKey else {
+            return
+        }
+        CollapsPlaybackProgressStore.shared.saveLastVoiceover(kpId: kpId, source: source, voiceover: name)
     }
 
     private func appendQualityVariants(_ variants: [[String: Any]], to qualities: inout [(key: String, url: URL)], seenKeys: inout Set<String>) {
