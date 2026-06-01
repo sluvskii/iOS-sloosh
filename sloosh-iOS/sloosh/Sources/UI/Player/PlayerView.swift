@@ -10,16 +10,12 @@ class PlayerPresenterViewController: UIViewController {
             }
         }
     }
-    var viewModel: PlayerViewModel? {
-        didSet {
-            updateQualityMenu()
-        }
-    }
+    var viewModel: PlayerViewModel?
+    
     var onDismiss: (() -> Void)?
     private var didPresent = false
     private var checkTimer: Timer?
     private var playerController: AVPlayerViewController?
-    private var qualityButton: UIButton?
     
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
@@ -47,56 +43,7 @@ class PlayerPresenterViewController: UIViewController {
             self.present(pc, animated: true) {
                 self.player?.play()
                 self.startDismissalObserver()
-                self.setupQualityButton(in: pc)
             }
-            
-            NotificationCenter.default.addObserver(forName: NSNotification.Name("QualitiesUpdated"), object: nil, queue: .main) { [weak self] _ in
-                self?.updateQualityMenu()
-            }
-        }
-    }
-    
-    private func setupQualityButton(in playerController: AVPlayerViewController) {
-        guard let overlay = playerController.contentOverlayView, self.viewModel != nil else { return }
-        
-        let btn = UIButton(type: .system)
-        btn.setImage(UIImage(systemName: "slider.horizontal.3"), for: .normal)
-        btn.tintColor = .white
-        btn.backgroundColor = UIColor.black.withAlphaComponent(0.5)
-        btn.layer.cornerRadius = 22
-        btn.translatesAutoresizingMaskIntoConstraints = false
-        overlay.addSubview(btn)
-        
-        NSLayoutConstraint.activate([
-            btn.topAnchor.constraint(equalTo: overlay.safeAreaLayoutGuide.topAnchor, constant: 16),
-            btn.trailingAnchor.constraint(equalTo: overlay.safeAreaLayoutGuide.trailingAnchor, constant: -60),
-            btn.widthAnchor.constraint(equalToConstant: 44),
-            btn.heightAnchor.constraint(equalToConstant: 44)
-        ])
-        
-        btn.showsMenuAsPrimaryAction = true
-        self.qualityButton = btn
-        updateQualityMenu()
-    }
-    
-    private func updateQualityMenu() {
-        guard let btn = qualityButton, let viewModel = viewModel else { return }
-        
-        var actions: [UIAction] = []
-        for quality in viewModel.availableQualities {
-            let isSelected = quality.key == viewModel.currentQualityKey
-            let action = UIAction(title: quality.key, state: isSelected ? .on : .off) { [weak viewModel] _ in
-                viewModel?.changeQuality(to: quality.key)
-            }
-            actions.append(action)
-        }
-        
-        if actions.isEmpty {
-            btn.isHidden = true
-        } else {
-            btn.isHidden = false
-            let menu = UIMenu(title: "Качество видео", children: actions)
-            btn.menu = menu
         }
     }
     
@@ -163,10 +110,12 @@ struct PlayerView: View {
     let voices: [String]
     let subtitles: [CollapsSubtitle]
     
+    let initialQuality: VideoQualityPreference?
+    
     @StateObject private var viewModel = PlayerViewModel()
     @Environment(\.presentationMode) var presentationMode
     
-    init(iframeUrl: String? = nil, directVideoUrl: String? = nil, fallbackTitle: String, kpId: Int? = nil, season: Int? = nil, episode: Int? = nil, selectedVoiceover: String? = nil, voices: [String] = [], subtitles: [CollapsSubtitle] = []) {
+    init(iframeUrl: String? = nil, directVideoUrl: String? = nil, fallbackTitle: String, kpId: Int? = nil, season: Int? = nil, episode: Int? = nil, selectedVoiceover: String? = nil, voices: [String] = [], subtitles: [CollapsSubtitle] = [], initialQuality: VideoQualityPreference? = nil) {
         self.iframeUrl = iframeUrl
         self.directVideoUrl = directVideoUrl
         self.fallbackTitle = fallbackTitle
@@ -176,6 +125,7 @@ struct PlayerView: View {
         self.selectedVoiceover = selectedVoiceover
         self.voices = voices
         self.subtitles = subtitles
+        self.initialQuality = initialQuality
     }
     
     var body: some View {
@@ -203,6 +153,8 @@ struct PlayerView: View {
         }
         .onAppear {
             if viewModel.player == nil { // Избегаем повторной загрузки при перерисовках
+                viewModel.targetQualityPreference = initialQuality
+                
                 if let directUrl = directVideoUrl {
                     viewModel.loadDirect(url: directUrl, kpId: kpId, season: season, episode: episode, selectedVoiceover: selectedVoiceover, voices: voices, subtitles: subtitles)
                 } else if let iframe = iframeUrl {
@@ -238,6 +190,7 @@ class PlayerViewModel: ObservableObject {
     private var currentSeason: Int?
     private var currentEpisode: Int?
     private var targetVoiceover: String?
+    var targetQualityPreference: VideoQualityPreference?
 
     private func isLocalProxyUrl(_ url: URL) -> Bool {
         guard let host = url.host?.lowercased() else { return false }
@@ -392,7 +345,46 @@ class PlayerViewModel: ObservableObject {
             DispatchQueue.main.async {
                 self.availableQualities = qualities
                 NotificationCenter.default.post(name: NSNotification.Name("QualitiesUpdated"), object: nil)
+                self.applyInitialQuality()
             }
+        }
+    }
+    
+    private func applyInitialQuality() {
+        // Read global preference or the one passed from the sheet
+        let prefRaw = UserDefaults.standard.string(forKey: "preferredVideoQuality") ?? VideoQualityPreference.ask.rawValue
+        let globalPref = VideoQualityPreference(rawValue: prefRaw) ?? .ask
+        let targetQuality = self.targetQualityPreference ?? globalPref
+        
+        guard targetQuality != .ask && targetQuality != .auto else { return }
+        
+        let targetKey = targetQuality.rawValue
+        
+        // Exact match (1080p -> 1080p)
+        if let exact = availableQualities.first(where: { $0.key.hasPrefix(targetKey) }) {
+            changeQuality(to: exact.key)
+            return
+        }
+        
+        // Find closest resolution
+        let prefVal = Int(targetKey.replacingOccurrences(of: "p", with: "")) ?? 0
+        guard prefVal > 0 else { return }
+        
+        var closest: String?
+        var minDiff = Int.max
+        for q in availableQualities {
+            let val = Int(q.key.replacingOccurrences(of: "p", with: "")) ?? 0
+            if val > 0 {
+                let diff = abs(val - prefVal)
+                if diff < minDiff {
+                    minDiff = diff
+                    closest = q.key
+                }
+            }
+        }
+        
+        if let closestKey = closest {
+            changeQuality(to: closestKey)
         }
     }
     
@@ -616,6 +608,7 @@ class PlayerViewModel: ObservableObject {
         currentQualityKey = "Авто"
         playVideo(url: resolvedUrl, headers: headers)
         NotificationCenter.default.post(name: NSNotification.Name("QualitiesUpdated"), object: nil)
+        applyInitialQuality()
     }
 
     private func appendQualityVariants(_ variants: [[String: Any]], to qualities: inout [(key: String, url: URL)], seenKeys: inout Set<String>) {
