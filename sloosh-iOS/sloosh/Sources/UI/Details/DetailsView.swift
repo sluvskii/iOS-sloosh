@@ -60,7 +60,6 @@ struct DetailsView: View {
     @State private var playerVoiceover: String?
     @State private var playerVoices: [String] = []
     @State private var playerSubtitles: [CollapsSubtitle] = []
-    @State private var playerQuality: VideoQualityPreference? = nil
     
     var body: some View {
         ScrollView {
@@ -209,11 +208,10 @@ struct DetailsView: View {
                 } else if let wrapper = viewModel.sourceResultWrapper,
                           wrapper.mode == .alloha,
                           let result = wrapper.allohaResult {
-                    SourceSelectionView(result: result, kpId: wrapper.kpId) { translation, season, episode, quality in
+                    SourceSelectionView(result: result, kpId: wrapper.kpId) { translation, season, episode in
                         playerKpId = wrapper.kpId
                         playerSeason = season
                         playerEpisode = episode
-                        playerQuality = quality
                         selectedIframeUrl = translation.iframeUrl
                         showPlayer = true
                         showSourceSheet = false
@@ -227,7 +225,7 @@ struct DetailsView: View {
                         kpId: wrapper.kpId,
                         isSerial: isSerial,
                         title: viewModel.details?.title ?? viewModel.details?.name ?? "",
-                        onPlay: { url, season, episode, voiceover, voices, subtitles, quality in
+                        onPlay: { url, season, episode, voiceover, voices, subtitles in
                             // Collaps returns direct HLS/MPD urls
                             selectedIframeUrl = url // we use this state variable for the URL
                             playerKpId = wrapper.kpId
@@ -236,7 +234,6 @@ struct DetailsView: View {
                             playerVoiceover = voiceover
                             playerVoices = voices
                             playerSubtitles = subtitles
-                            playerQuality = quality
                             showPlayer = true
                             showSourceSheet = false
                         }
@@ -257,19 +254,18 @@ struct DetailsView: View {
             playerVoiceover = nil
             playerVoices = []
             playerSubtitles = []
-            playerQuality = nil
         }) {
             if let details = viewModel.details {
                 let mode = SourceManager.shared.currentMode
                 if mode == .alloha {
                     if let iframeUrl = selectedIframeUrl {
-                        PlayerView(iframeUrl: iframeUrl, fallbackTitle: details.title ?? details.name ?? "", kpId: playerKpId, season: playerSeason, episode: playerEpisode, selectedVoiceover: playerVoiceover, voices: playerVoices, subtitles: playerSubtitles, initialQuality: playerQuality)
+                        PlayerView(iframeUrl: iframeUrl, fallbackTitle: details.title ?? details.name ?? "", kpId: playerKpId, season: playerSeason, episode: playerEpisode, selectedVoiceover: playerVoiceover, voices: playerVoices, subtitles: playerSubtitles)
                     } else {
                         Text("Видео не найдено")
                     }
                 } else {
                     if let directUrl = selectedIframeUrl ?? selectedDirectVideoUrl {
-                        PlayerView(directVideoUrl: directUrl, fallbackTitle: details.title ?? details.name ?? "", kpId: playerKpId, season: playerSeason, episode: playerEpisode, selectedVoiceover: playerVoiceover, voices: playerVoices, subtitles: playerSubtitles, initialQuality: playerQuality)
+                        PlayerView(directVideoUrl: directUrl, fallbackTitle: details.title ?? details.name ?? "", kpId: playerKpId, season: playerSeason, episode: playerEpisode, selectedVoiceover: playerVoiceover, voices: playerVoices, subtitles: playerSubtitles)
                     } else {
                         Text("Видео не найдено")
                     }

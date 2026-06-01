@@ -10,12 +10,16 @@ class PlayerPresenterViewController: UIViewController {
             }
         }
     }
-    var viewModel: PlayerViewModel?
-    
+    var viewModel: PlayerViewModel? {
+        didSet {
+            updateQualityMenu()
+        }
+    }
     var onDismiss: (() -> Void)?
     private var didPresent = false
+    private var checkTimer: Timer?
     private var playerController: AVPlayerViewController?
-    private var observation: NSKeyValueObservation?
+    private var qualityButton: UIButton?
     
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
@@ -42,41 +46,88 @@ class PlayerPresenterViewController: UIViewController {
             
             self.present(pc, animated: true) {
                 self.player?.play()
+                self.startDismissalObserver()
+                self.setupQualityButton(in: pc)
             }
             
-            // Watch for dismissal directly on the presented view controller
-            // Not strictly needed since viewDidDisappear handles it now, but good as a fallback
-            self.observation = pc.observe(\.isBeingDismissed, options: [.new]) { [weak self] _, change in
-                if change.newValue == true {
-                    self?.handleDismissal()
-                }
+            NotificationCenter.default.addObserver(forName: NSNotification.Name("QualitiesUpdated"), object: nil, queue: .main) { [weak self] _ in
+                self?.updateQualityMenu()
             }
         }
     }
     
-    override func viewDidDisappear(_ animated: Bool) {
-        super.viewDidDisappear(animated)
-        if presentedViewController == nil {
-            handleDismissal()
-        }
+    private func setupQualityButton(in playerController: AVPlayerViewController) {
+        guard let overlay = playerController.contentOverlayView, self.viewModel != nil else { return }
+        
+        let btn = UIButton(type: .system)
+        btn.setImage(UIImage(systemName: "slider.horizontal.3"), for: .normal)
+        btn.tintColor = .white
+        btn.backgroundColor = UIColor.black.withAlphaComponent(0.5)
+        btn.layer.cornerRadius = 22
+        btn.translatesAutoresizingMaskIntoConstraints = false
+        overlay.addSubview(btn)
+        
+        NSLayoutConstraint.activate([
+            btn.topAnchor.constraint(equalTo: overlay.safeAreaLayoutGuide.topAnchor, constant: 16),
+            btn.trailingAnchor.constraint(equalTo: overlay.safeAreaLayoutGuide.trailingAnchor, constant: -60),
+            btn.widthAnchor.constraint(equalToConstant: 44),
+            btn.heightAnchor.constraint(equalToConstant: 44)
+        ])
+        
+        btn.showsMenuAsPrimaryAction = true
+        self.qualityButton = btn
+        updateQualityMenu()
     }
     
-    private func handleDismissal() {
-        // Restore orientation
-        AppDelegate.orientationLock = .all
-        if #available(iOS 16.0, *) {
-            if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
-                windowScene.requestGeometryUpdate(.iOS(interfaceOrientations: .portrait))
+    private func updateQualityMenu() {
+        guard let btn = qualityButton, let viewModel = viewModel else { return }
+        
+        var actions: [UIAction] = []
+        for quality in viewModel.availableQualities {
+            let isSelected = quality.key == viewModel.currentQualityKey
+            let action = UIAction(title: quality.key, state: isSelected ? .on : .off) { [weak viewModel] _ in
+                viewModel?.changeQuality(to: quality.key)
             }
-        } else {
-            UIDevice.current.setValue(UIInterfaceOrientation.portrait.rawValue, forKey: "orientation")
+            actions.append(action)
         }
         
-        onDismiss?()
+        if actions.isEmpty {
+            btn.isHidden = true
+        } else {
+            btn.isHidden = false
+            let menu = UIMenu(title: "Качество видео", children: actions)
+            btn.menu = menu
+        }
+    }
+    
+    // 2. Таймер нужен для отлова "жеста смахивания вниз", потому что overFullScreen
+    // не вызывает viewDidAppear повторно при закрытии дочернего контроллера
+    private func startDismissalObserver() {
+        checkTimer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { [weak self] timer in
+            guard let self = self else {
+                timer.invalidate()
+                return
+            }
+            if self.presentedViewController == nil {
+                timer.invalidate()
+                
+                // Возвращаем ориентацию обратно
+                AppDelegate.orientationLock = .all
+                if #available(iOS 16.0, *) {
+                    if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+                        windowScene.requestGeometryUpdate(.iOS(interfaceOrientations: .portrait))
+                    }
+                } else {
+                    UIDevice.current.setValue(UIInterfaceOrientation.portrait.rawValue, forKey: "orientation")
+                }
+                
+                self.onDismiss?()
+            }
+        }
     }
     
     deinit {
-        observation?.invalidate()
+        checkTimer?.invalidate()
     }
 }
 
@@ -85,31 +136,19 @@ struct ModalPlayerPresenter: UIViewControllerRepresentable {
     var viewModel: PlayerViewModel
     var onDismiss: () -> Void
     
-    class Coordinator: NSObject {
-        var didDismiss = false
-    }
-    
-    func makeCoordinator() -> Coordinator {
-        Coordinator()
-    }
-    
     func makeUIViewController(context: Context) -> PlayerPresenterViewController {
         let controller = PlayerPresenterViewController()
         controller.view.backgroundColor = .clear
         controller.player = player
         controller.viewModel = viewModel
-        controller.onDismiss = {
-            if !context.coordinator.didDismiss {
-                context.coordinator.didDismiss = true
-                onDismiss()
-            }
-        }
+        controller.onDismiss = onDismiss
         return controller
     }
     
     func updateUIViewController(_ uiViewController: PlayerPresenterViewController, context: Context) {
         uiViewController.player = player
         uiViewController.viewModel = viewModel
+        uiViewController.onDismiss = onDismiss
     }
 }
 
@@ -124,12 +163,10 @@ struct PlayerView: View {
     let voices: [String]
     let subtitles: [CollapsSubtitle]
     
-    let initialQuality: VideoQualityPreference?
-    
     @StateObject private var viewModel = PlayerViewModel()
     @Environment(\.presentationMode) var presentationMode
     
-    init(iframeUrl: String? = nil, directVideoUrl: String? = nil, fallbackTitle: String, kpId: Int? = nil, season: Int? = nil, episode: Int? = nil, selectedVoiceover: String? = nil, voices: [String] = [], subtitles: [CollapsSubtitle] = [], initialQuality: VideoQualityPreference? = nil) {
+    init(iframeUrl: String? = nil, directVideoUrl: String? = nil, fallbackTitle: String, kpId: Int? = nil, season: Int? = nil, episode: Int? = nil, selectedVoiceover: String? = nil, voices: [String] = [], subtitles: [CollapsSubtitle] = []) {
         self.iframeUrl = iframeUrl
         self.directVideoUrl = directVideoUrl
         self.fallbackTitle = fallbackTitle
@@ -139,7 +176,6 @@ struct PlayerView: View {
         self.selectedVoiceover = selectedVoiceover
         self.voices = voices
         self.subtitles = subtitles
-        self.initialQuality = initialQuality
     }
     
     var body: some View {
@@ -167,8 +203,6 @@ struct PlayerView: View {
         }
         .onAppear {
             if viewModel.player == nil { // Избегаем повторной загрузки при перерисовках
-                viewModel.targetQualityPreference = initialQuality
-                
                 if let directUrl = directVideoUrl {
                     viewModel.loadDirect(url: directUrl, kpId: kpId, season: season, episode: episode, selectedVoiceover: selectedVoiceover, voices: voices, subtitles: subtitles)
                 } else if let iframe = iframeUrl {
@@ -204,7 +238,6 @@ class PlayerViewModel: ObservableObject {
     private var currentSeason: Int?
     private var currentEpisode: Int?
     private var targetVoiceover: String?
-    var targetQualityPreference: VideoQualityPreference?
 
     private func isLocalProxyUrl(_ url: URL) -> Bool {
         guard let host = url.host?.lowercased() else { return false }
@@ -359,46 +392,7 @@ class PlayerViewModel: ObservableObject {
             DispatchQueue.main.async {
                 self.availableQualities = qualities
                 NotificationCenter.default.post(name: NSNotification.Name("QualitiesUpdated"), object: nil)
-                self.applyInitialQuality()
             }
-        }
-    }
-    
-    private func applyInitialQuality() {
-        // Read global preference or the one passed from the sheet
-        let prefRaw = UserDefaults.standard.string(forKey: "preferredVideoQuality") ?? VideoQualityPreference.ask.rawValue
-        let globalPref = VideoQualityPreference(rawValue: prefRaw) ?? .ask
-        let targetQuality = self.targetQualityPreference ?? globalPref
-        
-        guard targetQuality != .ask && targetQuality != .auto else { return }
-        
-        let targetKey = targetQuality.rawValue
-        
-        // Exact match (1080p -> 1080p)
-        if let exact = availableQualities.first(where: { $0.key.hasPrefix(targetKey) }) {
-            changeQuality(to: exact.key)
-            return
-        }
-        
-        // Find closest resolution
-        let prefVal = Int(targetKey.replacingOccurrences(of: "p", with: "")) ?? 0
-        guard prefVal > 0 else { return }
-        
-        var closest: String?
-        var minDiff = Int.max
-        for q in availableQualities {
-            let val = Int(q.key.replacingOccurrences(of: "p", with: "")) ?? 0
-            if val > 0 {
-                let diff = abs(val - prefVal)
-                if diff < minDiff {
-                    minDiff = diff
-                    closest = q.key
-                }
-            }
-        }
-        
-        if let closestKey = closest {
-            changeQuality(to: closestKey)
         }
     }
     
@@ -622,7 +616,6 @@ class PlayerViewModel: ObservableObject {
         currentQualityKey = "Авто"
         playVideo(url: resolvedUrl, headers: headers)
         NotificationCenter.default.post(name: NSNotification.Name("QualitiesUpdated"), object: nil)
-        applyInitialQuality()
     }
 
     private func appendQualityVariants(_ variants: [[String: Any]], to qualities: inout [(key: String, url: URL)], seenKeys: inout Set<String>) {
