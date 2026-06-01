@@ -155,6 +155,7 @@ struct CollapsSelectionView: View {
                 CollapsPlaybackProgressStore.shared.saveLastPlayed(kpId: kpId, season: s, episode: e)
             }
             
+            let tName = selectedTranslationName
             if let hls = epObj.hlsUrl, !hls.isEmpty {
                 onPlay(hls, s, e, tName)
                 dismiss()

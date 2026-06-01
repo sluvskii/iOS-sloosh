@@ -269,14 +269,14 @@ struct DetailsView: View {
             .presentationDetents([.medium, .large], selection: $sourceSheetDetent)
             .navigationTransition(.zoom(sourceID: "playBtn", in: transition))
         }
-        .onChange(of: viewModel.allohaPlaybackUrl) { resolvedUrl in
+        .onChange(of: viewModel.allohaPlaybackUrl) { _, resolvedUrl in
             guard let resolvedUrl else { return }
             showSourceSheet = false
             selectedDirectVideoUrl = resolvedUrl
             selectedIframeUrl = nil
             showPlayer = true
         }
-        .onChange(of: viewModel.isResolvingAllohaPlayback) { isResolving in
+        .onChange(of: viewModel.isResolvingAllohaPlayback) { _, isResolving in
             if isResolving {
                 showSourceSheet = false
             }

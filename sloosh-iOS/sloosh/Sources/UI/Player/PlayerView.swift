@@ -348,7 +348,9 @@ class PlayerViewModel: ObservableObject {
             self.itemObservation = playerItem.observe(\.status) { [weak self] item, _ in
                 guard let self = self else { return }
                 if item.status == .readyToPlay {
-                    self.extractAudioTracks(from: item)
+                    Task { @MainActor in
+                        self.extractAudioTracks(from: item)
+                    }
                 }
             }
 
@@ -525,53 +527,62 @@ class PlayerViewModel: ObservableObject {
         self.itemObservation = playerItem.observe(\.status) { [weak self] item, _ in
             guard let self = self else { return }
             if item.status == .readyToPlay {
-                self.extractAudioTracks(from: item)
+                Task { @MainActor in
+                    self.extractAudioTracks(from: item)
+                }
             }
         }
     }
     
     private func extractAudioTracks(from item: AVPlayerItem) {
-        guard let group = item.asset.mediaSelectionGroup(forMediaCharacteristic: .audible) else { return }
-        
-        var tracks: [(id: String, name: String)] = []
-        for (index, option) in group.options.enumerated() {
-            let id = option.extendedLanguageTag ?? option.locale?.identifier ?? "\(index)"
-            tracks.append((id: id, name: option.displayName))
-        }
-        
-        DispatchQueue.main.async {
-            self.availableAudioTracks = tracks
-            if let current = item.currentMediaSelection.selectedMediaOption(in: group) {
-                self.currentAudioTrackId = current.extendedLanguageTag ?? current.locale?.identifier ?? ""
+        Task {
+            guard let group = try? await item.asset.loadMediaSelectionGroup(for: .audible) else { return }
+            
+            var tracks: [(id: String, name: String)] = []
+            for (index, option) in group.options.enumerated() {
+                let id = option.extendedLanguageTag ?? option.locale?.identifier ?? "\(index)"
+                tracks.append((id: id, name: option.displayName))
             }
             
-            // Auto-select if targetVoiceover matches any track
-            if let voiceover = self.targetVoiceover, !voiceover.isEmpty {
-                // Find best match (ignore case)
-                if let match = group.options.first(where: { $0.displayName.lowercased().contains(voiceover.lowercased()) }) {
-                    item.select(match, in: group)
-                    self.currentAudioTrackId = match.extendedLanguageTag ?? match.locale?.identifier ?? ""
-                    self.targetVoiceover = nil // Only apply once per initial load or quality change if needed, but it's safe to clear
+            DispatchQueue.main.async {
+                self.availableAudioTracks = tracks
+                if let current = item.currentMediaSelection.selectedMediaOption(in: group) {
+                    self.currentAudioTrackId = current.extendedLanguageTag ?? current.locale?.identifier ?? ""
                 }
-            } else if let currentTrackId = self.currentAudioTrackId, !currentTrackId.isEmpty {
-                // Restore user selection after quality change
-                if let match = group.options.first(where: { ($0.extendedLanguageTag ?? $0.locale?.identifier ?? "") == currentTrackId }) {
-                    item.select(match, in: group)
+                
+                // Auto-select if targetVoiceover matches any track
+                if let voiceover = self.targetVoiceover, !voiceover.isEmpty {
+                    // Find best match (ignore case)
+                    if let match = group.options.first(where: { $0.displayName.lowercased().contains(voiceover.lowercased()) }) {
+                        item.select(match, in: group)
+                        self.currentAudioTrackId = match.extendedLanguageTag ?? match.locale?.identifier ?? ""
+                        self.targetVoiceover = nil // Only apply once per initial load or quality change if needed, but it's safe to clear
+                    }
+                } else if let currentTrackId = self.currentAudioTrackId, !currentTrackId.isEmpty {
+                    // Restore user selection after quality change
+                    if let match = group.options.first(where: { ($0.extendedLanguageTag ?? $0.locale?.identifier ?? "") == currentTrackId }) {
+                        item.select(match, in: group)
+                    }
                 }
+                NotificationCenter.default.post(name: NSNotification.Name("AudioTracksUpdated"), object: nil)
             }
-            NotificationCenter.default.post(name: NSNotification.Name("AudioTracksUpdated"), object: nil)
         }
     }
     
     func changeAudioTrack(to id: String) {
-        guard let item = player?.currentItem,
-              let group = item.asset.mediaSelectionGroup(forMediaCharacteristic: .audible) else { return }
-              
-        if let match = group.options.first(where: { ($0.extendedLanguageTag ?? $0.locale?.identifier ?? "") == id }) {
-            item.select(match, in: group)
-            self.currentAudioTrackId = id
-            // Update the target voiceover so it persists across quality changes
-            self.targetVoiceover = match.displayName
+        guard let item = player?.currentItem else { return }
+        
+        Task {
+            guard let group = try? await item.asset.loadMediaSelectionGroup(for: .audible) else { return }
+            
+            DispatchQueue.main.async {
+                if let match = group.options.first(where: { ($0.extendedLanguageTag ?? $0.locale?.identifier ?? "") == id }) {
+                    item.select(match, in: group)
+                    self.currentAudioTrackId = id
+                    // Update the target voiceover so it persists across quality changes
+                    self.targetVoiceover = match.displayName
+                }
+            }
         }
     }
     
@@ -605,7 +616,9 @@ class PlayerViewModel: ObservableObject {
         self.itemObservation = playerItem.observe(\.status) { [weak self] item, _ in
             guard let self = self else { return }
             if item.status == .readyToPlay {
-                self.extractAudioTracks(from: item)
+                Task { @MainActor in
+                    self.extractAudioTracks(from: item)
+                }
             }
         }
     }

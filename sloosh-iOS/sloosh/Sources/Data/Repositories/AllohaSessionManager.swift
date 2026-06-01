@@ -57,8 +57,12 @@ final class AllohaSessionManager {
         proactiveRestartTask = Task { [weak self] in
             guard let self = self else { return }
             let ttlNanoseconds = UInt64(max(ttlSeconds, 1)) * 1_000_000_000
-            let leadNanoseconds = min<UInt64>(20_000_000_000, ttlNanoseconds / 2)
-            let delayNanoseconds = max<UInt64>(1_000_000_000, ttlNanoseconds - leadNanoseconds)
+            // Ensure we request an update well before TTL expires, but not constantly
+            let minDelay: UInt64 = 1_000_000_000 // 1 second min
+            let leadNanoseconds = ttlNanoseconds / 2
+            let safeLead = leadNanoseconds < 20_000_000_000 ? leadNanoseconds : 20_000_000_000
+            let targetDelay = ttlNanoseconds > safeLead ? (ttlNanoseconds - safeLead) : 0
+            let delayNanoseconds = targetDelay > minDelay ? targetDelay : minDelay
 
             try? await Task.sleep(nanoseconds: delayNanoseconds)
             guard !Task.isCancelled, !self.lastIframeUrl.isEmpty else { return }
