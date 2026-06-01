@@ -344,14 +344,22 @@ class PlayerViewModel: ObservableObject {
         
         for line in lines {
             if line.hasPrefix("#EXT-X-STREAM-INF:") {
+                var resStr = "Поток"
                 if let range = line.range(of: "RESOLUTION=([^,\\s]+)", options: .regularExpression) {
                     let match = String(line[range])
                     let res = match.replacingOccurrences(of: "RESOLUTION=", with: "")
                     let components = res.components(separatedBy: "x")
                     if components.count == 2, let height = Int(components[1]) {
-                        currentResolution = "\(height)p"
+                        resStr = "\(height)p"
+                    }
+                } else if let range = line.range(of: "BANDWIDTH=([^,\\s]+)", options: .regularExpression) {
+                    let match = String(line[range])
+                    let bw = match.replacingOccurrences(of: "BANDWIDTH=", with: "")
+                    if let bandwidth = Int(bw) {
+                        resStr = "\(bandwidth / 1000) kbps"
                     }
                 }
+                currentResolution = resStr
             } else if !line.hasPrefix("#") && !line.isEmpty {
                 if let res = currentResolution {
                     let variantUrl: URL
@@ -362,6 +370,10 @@ class PlayerViewModel: ObservableObject {
                     }
                     if !qualities.contains(where: { $0.key == res }) {
                         qualities.append((res, variantUrl))
+                    } else {
+                        // Prevent duplicate keys
+                        let uniqueRes = "\(res) (\(qualities.count))"
+                        qualities.append((uniqueRes, variantUrl))
                     }
                     currentResolution = nil
                 }
