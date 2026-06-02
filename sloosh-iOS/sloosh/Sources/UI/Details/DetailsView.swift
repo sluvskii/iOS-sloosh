@@ -677,8 +677,9 @@ struct EpisodeCellView: View {
             }
         }
         .task(id: "\(season)-\(episode)") {
-            guard meta == nil && !isLoading else { return }
+            if isLoading { return }
             isLoading = true
+            meta = nil
             do {
                 meta = try await MoviesRepository.shared.getEpisodeDetails(id: movieId, season: season, episode: episode)
             } catch {
@@ -754,9 +755,7 @@ struct InlineEpisodesSection: View {
                                 let generator = UIImpactFeedbackGenerator(style: .light)
                                 generator.prepare()
                                 generator.impactOccurred()
-                                withAnimation {
-                                    selectedSeason = season
-                                }
+                                selectedSeason = season
                             }) {
                                 Text("\(season) сезон")
                                     .font(.system(size: 15, weight: .semibold))
@@ -785,6 +784,7 @@ struct InlineEpisodesSection: View {
                                 EpisodeCellView(movieId: rawId, season: selectedSeason, episode: episode, fallbackTitle: "Серия")
                             }
                             .buttonStyle(.plain)
+                            .id("\(selectedSeason)-\(episode)")
                         }
                     }
                     .padding(.horizontal)
