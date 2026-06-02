@@ -2,6 +2,7 @@ import SwiftUI
 
 struct RemoteBackdropView: View {
     let url: URL?
+    let fallbackUrl: URL?
     let width: CGFloat
     let height: CGFloat
     
@@ -25,14 +26,84 @@ struct RemoteBackdropView: View {
         .task(id: url) {
             guard let url = url, image == nil else { return }
             isLoading = true
+            
+            var fetchedImage: UIImage? = nil
             do {
                 let request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad)
-                let (data, _) = try await URLSession.shared.data(for: request)
-                if let uiImg = UIImage(data: data) {
+                let (data, response) = try await URLSession.shared.data(for: request)
+                if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200, let uiImg = UIImage(data: data) {
+                    fetchedImage = uiImg
+                }
+            } catch {}
+            
+            if fetchedImage == nil, let fallback = fallbackUrl {
+                do {
+                    let request = URLRequest(url: fallback, cachePolicy: .returnCacheDataElseLoad)
+                    let (data, response) = try await URLSession.shared.data(for: request)
+                    if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200, let uiImg = UIImage(data: data) {
+                        fetchedImage = uiImg
+                    }
+                } catch {}
+            }
+            
+            if let fetchedImage = fetchedImage {
+                self.image = fetchedImage
+            }
+            
+            isLoading = false
+        }
+    }
+}
+
+struct RemoteLogoView: View {
+    let url: URL?
+    let fallbackTitle: String
+    
+    @State private var image: UIImage?
+    @State private var isLoading = false
+    @State private var hasError = false
+    
+    var body: some View {
+        Group {
+            if let image = image {
+                Image(uiImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(maxWidth: 300, maxHeight: 100)
+                    .padding(.horizontal)
+            } else if isLoading {
+                Rectangle().fill(Color.gray.opacity(0.2))
+                    .frame(width: 200, height: 60)
+                    .cornerRadius(8)
+                    .shimmer()
+                    .padding(.horizontal)
+            } else {
+                Text(fallbackTitle)
+                    .font(.system(size: 34, weight: .heavy))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+            }
+        }
+        .task(id: url) {
+            guard let url = url, image == nil else {
+                if url == nil {
+                    hasError = true
+                    isLoading = false
+                }
+                return
+            }
+            isLoading = true
+            hasError = false
+            do {
+                let request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad)
+                let (data, response) = try await URLSession.shared.data(for: request)
+                if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200, let uiImg = UIImage(data: data) {
                     self.image = uiImg
+                } else {
+                    self.hasError = true
                 }
             } catch {
-                // Ignore error, just keep placeholder
+                self.hasError = true
             }
             isLoading = false
         }
@@ -78,7 +149,8 @@ struct DetailsView: View {
                         let offset = isScrollingDown ? -minY : 0
 
                         RemoteBackdropView(
-                            url: URL(string: details.displayBackdropUrl ?? details.displayPosterUrl ?? ""),
+                            url: URL(string: details.displayBackdropUrl ?? ""),
+                            fallbackUrl: URL(string: details.displayPosterUrl ?? ""),
                             width: geometry.size.width,
                             height: height
                         )
@@ -100,10 +172,10 @@ struct DetailsView: View {
                     .frame(height: 450)
                     
                     VStack(alignment: .center, spacing: 12) {
-                        Text(details.title ?? details.name ?? "Без названия")
-                            .font(.system(size: 34, weight: .heavy))
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal)
+                        RemoteLogoView(
+                            url: URL(string: details.displayLogoUrl ?? ""),
+                            fallbackTitle: details.title ?? details.name ?? "Без названия"
+                        )
 
                         if let originalTitle = details.originalTitle, !originalTitle.isEmpty, originalTitle != (details.title ?? details.name) {
                             Text(originalTitle)

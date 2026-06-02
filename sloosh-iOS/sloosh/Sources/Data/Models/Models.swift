@@ -145,7 +145,13 @@ struct MediaDetailsDto: Codable {
     }
     
     var displayBackdropUrl: String? {
-        normalizeImageUrl(path: backdropUrl, id: id)
+        guard let validId = id?.replacingOccurrences(of: "kp_", with: ""), !validId.isEmpty else { return nil }
+        return "https://api.neomovies.ru/api/v1/images/backdrops/\(validId)/large"
+    }
+    
+    var displayLogoUrl: String? {
+        guard let validId = id?.replacingOccurrences(of: "kp_", with: ""), !validId.isEmpty else { return nil }
+        return "https://api.neomovies.ru/api/v1/images/logos/\(validId)/w500"
     }
 }
 
