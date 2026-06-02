@@ -1,4 +1,86 @@
 import SwiftUI
+import UIKit
+
+private final class GradientView: UIView {
+    override class var layerClass: AnyClass { CAGradientLayer.self }
+
+    var gradientLayer: CAGradientLayer { layer as! CAGradientLayer }
+}
+
+private final class ProgressiveBlurEffectView: UIVisualEffectView {
+    private let tintView = GradientView()
+    private let maskGradientView = GradientView()
+
+    override init(effect: UIVisualEffect?) {
+        super.init(effect: effect)
+        commonInit()
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        commonInit()
+    }
+
+    private func commonInit() {
+        clipsToBounds = true
+
+        tintView.isUserInteractionEnabled = false
+        tintView.backgroundColor = .clear
+        contentView.addSubview(tintView)
+        mask = maskGradientView
+    }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        tintView.frame = bounds
+        maskGradientView.frame = bounds
+    }
+
+    func configure(style: UIBlurEffect.Style, backgroundColor: UIColor) {
+        effect = UIBlurEffect(style: style)
+
+        tintView.gradientLayer.colors = [
+            UIColor.clear.cgColor,
+            backgroundColor.withAlphaComponent(0.03).cgColor,
+            backgroundColor.withAlphaComponent(0.08).cgColor,
+            backgroundColor.withAlphaComponent(0.18).cgColor,
+            backgroundColor.withAlphaComponent(0.42).cgColor,
+            backgroundColor.withAlphaComponent(0.82).cgColor,
+            backgroundColor.cgColor,
+        ]
+        tintView.gradientLayer.locations = [0.0, 0.26, 0.44, 0.62, 0.82, 0.94, 1.0]
+        tintView.gradientLayer.startPoint = CGPoint(x: 0.5, y: 0.0)
+        tintView.gradientLayer.endPoint = CGPoint(x: 0.5, y: 1.0)
+
+        maskGradientView.gradientLayer.colors = [
+            UIColor.clear.cgColor,
+            UIColor.black.withAlphaComponent(0.06).cgColor,
+            UIColor.black.withAlphaComponent(0.16).cgColor,
+            UIColor.black.withAlphaComponent(0.34).cgColor,
+            UIColor.black.withAlphaComponent(0.62).cgColor,
+            UIColor.black.cgColor,
+        ]
+        maskGradientView.gradientLayer.locations = [0.0, 0.32, 0.52, 0.7, 0.86, 1.0]
+        maskGradientView.gradientLayer.startPoint = CGPoint(x: 0.5, y: 0.0)
+        maskGradientView.gradientLayer.endPoint = CGPoint(x: 0.5, y: 1.0)
+    }
+}
+
+private struct ProgressiveHeroBlurOverlay: UIViewRepresentable {
+    let blurStyle: UIBlurEffect.Style
+    let backgroundColor: UIColor
+
+    func makeUIView(context: Context) -> ProgressiveBlurEffectView {
+        let view = ProgressiveBlurEffectView(effect: UIBlurEffect(style: blurStyle))
+        view.isUserInteractionEnabled = false
+        view.configure(style: blurStyle, backgroundColor: backgroundColor)
+        return view
+    }
+
+    func updateUIView(_ uiView: ProgressiveBlurEffectView, context: Context) {
+        uiView.configure(style: blurStyle, backgroundColor: backgroundColor)
+    }
+}
 
 struct RemoteBackdropView: View {
     let urls: [URL?]
@@ -156,31 +238,6 @@ struct DetailsView: View {
                         let isScrollingDown = minY > 0
                         let height = isScrollingDown ? 450 + minY : 450
                         let offset = isScrollingDown ? -minY : 0
-                        let blurMask = LinearGradient(
-                            stops: [
-                                .init(color: .clear, location: 0.0),
-                                .init(color: .black.opacity(0.03), location: 0.32),
-                                .init(color: .black.opacity(0.10), location: 0.50),
-                                .init(color: .black.opacity(0.24), location: 0.68),
-                                .init(color: .black.opacity(0.52), location: 0.84),
-                                .init(color: .black, location: 1.0)
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                        let tintGradient = LinearGradient(
-                            stops: [
-                                .init(color: .clear, location: 0.0),
-                                .init(color: Color(UIColor.systemBackground).opacity(0.03), location: 0.26),
-                                .init(color: Color(UIColor.systemBackground).opacity(0.08), location: 0.44),
-                                .init(color: Color(UIColor.systemBackground).opacity(0.18), location: 0.62),
-                                .init(color: Color(UIColor.systemBackground).opacity(0.42), location: 0.82),
-                                .init(color: Color(UIColor.systemBackground).opacity(0.82), location: 0.94),
-                                .init(color: Color(UIColor.systemBackground), location: 1.0)
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
 
                         RemoteBackdropView(
                             urls: heroImageUrls,
@@ -189,17 +246,10 @@ struct DetailsView: View {
                         )
                         .offset(y: offset)
                         .overlay(
-                            ZStack {
-                                RemoteBackdropView(
-                                    urls: heroImageUrls,
-                                    width: geometry.size.width,
-                                    height: height
-                                )
-                                .blur(radius: 24)
-                                    .mask(blurMask)
-
-                                tintGradient
-                            }
+                            ProgressiveHeroBlurOverlay(
+                                blurStyle: .systemUltraThinMaterial,
+                                backgroundColor: UIColor.systemBackground
+                            )
                             .offset(y: offset)
                         )
                     }
