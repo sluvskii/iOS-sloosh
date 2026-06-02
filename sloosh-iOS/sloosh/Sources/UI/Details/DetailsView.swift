@@ -206,11 +206,12 @@ struct DetailsView: View {
                         }) {
                             HStack {
                                 Image(systemName: "play.fill")
+                                    .font(.system(size: 18, weight: .black))
                                 Text("Смотреть")
-                                    .font(.system(size: 17, weight: .semibold))
+                                    .font(.system(size: 19, weight: .heavy))
                             }
                             .frame(height: 50)
-                            .padding(.horizontal, 48)
+                            .padding(.horizontal, 32)
                             .foregroundStyle(Color(UIColor.systemBackground))
                         }
                         .matchedTransitionSource(id: "playBtn", in: transition) { source in
@@ -220,7 +221,8 @@ struct DetailsView: View {
                         }
                         .contentShape(Capsule())
                         .buttonStyle(.plain)
-                        .padding(.top, 16)
+                        .padding(.top, 8)
+                        .padding(.bottom, -4)
 
                         DetailsInfoSection(details: details)
                             .padding(.top, 20)
