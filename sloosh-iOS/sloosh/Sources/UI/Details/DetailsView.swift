@@ -71,6 +71,7 @@ struct RemoteLogoView: View {
                     .aspectRatio(contentMode: .fit)
                     .frame(maxWidth: 280, maxHeight: 110)
                     .padding(.horizontal)
+                    .shadow(color: .black.opacity(0.3), radius: 8, x: 0, y: 4)
             } else if isLoading {
                 Rectangle().fill(Color.gray.opacity(0.2))
                     .frame(width: 200, height: 60)
