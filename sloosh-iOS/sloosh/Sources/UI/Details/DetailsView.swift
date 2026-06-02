@@ -132,6 +132,7 @@ struct DetailsView: View {
     @State private var playerVoices: [String] = []
     @State private var playerSubtitles: [CollapsSubtitle] = []
     @State private var playerQuality: VideoQualityPreference? = nil
+    @State private var favoriteBounce = false
     
     var body: some View {
         ScrollView {
@@ -277,13 +278,14 @@ struct DetailsView: View {
                     let generator = UIImpactFeedbackGenerator(style: .light)
                     generator.prepare()
                     generator.impactOccurred()
+                    favoriteBounce.toggle()
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.5, blendDuration: 0.5)) {
                         viewModel.toggleFavorite()
                     }
                 } label: {
                     Image(systemName: viewModel.isFavorite ? "heart.fill" : "heart")
-                        .foregroundColor(viewModel.isFavorite ? .red : .primary)
-                        .scaleEffect(viewModel.isFavorite ? 1.15 : 1.0)
+                        .foregroundColor(.primary)
+                        .symbolEffect(.bounce, value: favoriteBounce)
                 }
                 .disabled(viewModel.details == nil)
             }
@@ -608,6 +610,83 @@ private struct DetailsInfoSection: View {
     }
 }
 
+struct EpisodeCellView: View {
+    let movieId: String
+    let season: Int
+    let episode: Int
+    let fallbackTitle: String
+    
+    @State private var meta: TvEpisodeDetailsDto?
+    @State private var isLoading = false
+    
+    var previewUrl: URL? {
+        URL(string: "https://api.neomovies.ru/api/v1/images/screens/\(movieId)/\(season)/\(episode)/large")
+    }
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ZStack {
+                Rectangle()
+                    .fill(Color(UIColor.tertiarySystemFill))
+                    .frame(width: 150, height: 85)
+                    .cornerRadius(12)
+                
+                AsyncImage(url: previewUrl) { phase in
+                    if let image = phase.image {
+                        image.resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: 150, height: 85)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                    }
+                }
+                
+                Image(systemName: "play.circle.fill")
+                    .font(.system(size: 32))
+                    .foregroundColor(.white.opacity(0.8))
+                    .shadow(radius: 2)
+            }
+            
+            VStack(alignment: .leading, spacing: 2) {
+                Text(meta?.name ?? fallbackTitle)
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundColor(.primary)
+                    .lineLimit(1)
+                    .frame(width: 150, alignment: .leading)
+                
+                if let rating = meta?.ratings?.imdb, rating > 0 {
+                    HStack(spacing: 4) {
+                        Image(systemName: "star.fill")
+                            .font(.system(size: 10))
+                            .foregroundColor(.yellow)
+                        Text(String(format: "%.1f", rating))
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(.secondary)
+                    }
+                } else if let rating = meta?.ratings?.tmdb, rating > 0 {
+                    HStack(spacing: 4) {
+                        Image(systemName: "star.fill")
+                            .font(.system(size: 10))
+                            .foregroundColor(.yellow)
+                        Text(String(format: "%.1f", rating))
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
+        }
+        .task(id: "\(season)-\(episode)") {
+            guard meta == nil && !isLoading else { return }
+            isLoading = true
+            do {
+                meta = try await MoviesRepository.shared.getEpisodeDetails(id: movieId, season: season, episode: episode)
+            } catch {
+                // Ignore
+            }
+            isLoading = false
+        }
+    }
+}
+
 struct InlineEpisodesSection: View {
     @ObservedObject var viewModel: DetailsViewModel
     let details: MediaDetailsDto
@@ -700,22 +779,8 @@ struct InlineEpisodesSection: View {
                                 generator.impactOccurred()
                                 onEpisodeTap(selectedSeason, episode)
                             }) {
-                                VStack(alignment: .leading, spacing: 8) {
-                                    ZStack {
-                                        Rectangle()
-                                            .fill(Color(UIColor.tertiarySystemFill))
-                                            .frame(width: 150, height: 85)
-                                            .cornerRadius(12)
-                                        
-                                        Image(systemName: "play.circle.fill")
-                                            .font(.system(size: 32))
-                                            .foregroundColor(.white.opacity(0.8))
-                                    }
-                                    
-                                    Text("\(episode) серия")
-                                        .font(.system(size: 15, weight: .bold))
-                                        .foregroundColor(.primary)
-                                }
+                                let rawId = details.externalIds?.kp?.description ?? details.id?.replacingOccurrences(of: "kp_", with: "") ?? ""
+                                EpisodeCellView(movieId: rawId, season: selectedSeason, episode: episode, fallbackTitle: "\(episode) серия")
                             }
                             .buttonStyle(.plain)
                         }
