@@ -69,7 +69,7 @@ struct RemoteLogoView: View {
                 Image(uiImage: image)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
-                    .frame(maxWidth: 300, maxHeight: 100)
+                    .frame(maxWidth: 280, maxHeight: 110)
                     .padding(.horizontal)
             } else if isLoading {
                 Rectangle().fill(Color.gray.opacity(0.2))
@@ -176,6 +176,7 @@ struct DetailsView: View {
                             url: URL(string: details.displayLogoUrl ?? ""),
                             fallbackTitle: details.title ?? details.name ?? "Без названия"
                         )
+                        .padding(.bottom, 8)
 
                         if let originalTitle = details.originalTitle, !originalTitle.isEmpty, originalTitle != (details.title ?? details.name) {
                             Text(originalTitle)
