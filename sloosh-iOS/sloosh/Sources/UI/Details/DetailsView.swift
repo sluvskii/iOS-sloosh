@@ -164,24 +164,24 @@ struct DetailsView: View {
                             height: height
                         )
                         .offset(y: offset)
-                        .overlay(
+                        .overlay(alignment: .bottom) {
                             LinearGradient(
                                 stops: [
                                     .init(color: .clear, location: 0.0),
-                                    .init(color: Color(UIColor.systemBackground).opacity(0.00), location: 0.50),
-                                    .init(color: Color(UIColor.systemBackground).opacity(0.02), location: 0.64),
-                                    .init(color: Color(UIColor.systemBackground).opacity(0.06), location: 0.74),
-                                    .init(color: Color(UIColor.systemBackground).opacity(0.12), location: 0.82),
-                                    .init(color: Color(UIColor.systemBackground).opacity(0.24), location: 0.88),
-                                    .init(color: Color(UIColor.systemBackground).opacity(0.42), location: 0.93),
-                                    .init(color: Color(UIColor.systemBackground).opacity(0.68), location: 0.975),
+                                    .init(color: .clear, location: 0.42),
+                                    .init(color: Color(UIColor.systemBackground).opacity(0.03), location: 0.58),
+                                    .init(color: Color(UIColor.systemBackground).opacity(0.10), location: 0.72),
+                                    .init(color: Color(UIColor.systemBackground).opacity(0.24), location: 0.84),
+                                    .init(color: Color(UIColor.systemBackground).opacity(0.52), location: 0.93),
+                                    .init(color: Color(UIColor.systemBackground).opacity(0.82), location: 0.98),
                                     .init(color: Color(UIColor.systemBackground), location: 1.0)
                                 ],
                                 startPoint: .top,
                                 endPoint: .bottom
                             )
+                            .frame(height: max(height * 0.78, 300))
                             .offset(y: offset)
-                        )
+                        }
                     }
                     .frame(height: 450)
                     
