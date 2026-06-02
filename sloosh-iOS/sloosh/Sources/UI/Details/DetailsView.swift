@@ -168,12 +168,13 @@ struct DetailsView: View {
                             LinearGradient(
                                 stops: [
                                     .init(color: .clear, location: 0.0),
-                                    .init(color: Color(UIColor.systemBackground).opacity(0.02), location: 0.28),
-                                    .init(color: Color(UIColor.systemBackground).opacity(0.06), location: 0.46),
-                                    .init(color: Color(UIColor.systemBackground).opacity(0.14), location: 0.62),
-                                    .init(color: Color(UIColor.systemBackground).opacity(0.30), location: 0.78),
-                                    .init(color: Color(UIColor.systemBackground).opacity(0.58), location: 0.90),
-                                    .init(color: Color(UIColor.systemBackground).opacity(0.82), location: 0.97),
+                                    .init(color: Color(UIColor.systemBackground).opacity(0.00), location: 0.50),
+                                    .init(color: Color(UIColor.systemBackground).opacity(0.02), location: 0.64),
+                                    .init(color: Color(UIColor.systemBackground).opacity(0.06), location: 0.74),
+                                    .init(color: Color(UIColor.systemBackground).opacity(0.12), location: 0.82),
+                                    .init(color: Color(UIColor.systemBackground).opacity(0.24), location: 0.88),
+                                    .init(color: Color(UIColor.systemBackground).opacity(0.42), location: 0.93),
+                                    .init(color: Color(UIColor.systemBackground).opacity(0.68), location: 0.975),
                                     .init(color: Color(UIColor.systemBackground), location: 1.0)
                                 ],
                                 startPoint: .top,
