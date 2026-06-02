@@ -625,6 +625,15 @@ struct EpisodeCellView: View {
         URL(string: "https://api.neomovies.ru/api/v1/images/screens/\(movieId)/\(season)/\(episode)/large")
     }
     
+    private func ratingColor(for rating: Double) -> Color {
+        switch rating {
+        case 7.5...10.0: return .green
+        case 5.0..<7.5: return .yellow
+        case 0.1..<5.0: return .red
+        default: return .secondary
+        }
+    }
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             ZStack {
@@ -661,19 +670,19 @@ struct EpisodeCellView: View {
                     HStack(spacing: 4) {
                         Image(systemName: "star.fill")
                             .font(.system(size: 10))
-                            .foregroundColor(.yellow)
+                            .foregroundColor(ratingColor(for: rating))
                         Text(String(format: "%.1f", rating))
                             .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(.secondary)
+                            .foregroundColor(ratingColor(for: rating))
                     }
                 } else if let rating = meta?.ratings?.imdb, rating > 0 {
                     HStack(spacing: 4) {
                         Image(systemName: "star.fill")
                             .font(.system(size: 10))
-                            .foregroundColor(.yellow)
+                            .foregroundColor(ratingColor(for: rating))
                         Text(String(format: "%.1f", rating))
                             .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(.secondary)
+                            .foregroundColor(ratingColor(for: rating))
                     }
                 }
             }
