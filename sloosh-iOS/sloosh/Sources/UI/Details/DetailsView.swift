@@ -159,10 +159,10 @@ struct DetailsView: View {
                         let blurMask = LinearGradient(
                             stops: [
                                 .init(color: .clear, location: 0.0),
-                                .init(color: .black.opacity(0.04), location: 0.28),
-                                .init(color: .black.opacity(0.10), location: 0.46),
-                                .init(color: .black.opacity(0.22), location: 0.64),
-                                .init(color: .black.opacity(0.48), location: 0.82),
+                                .init(color: .black.opacity(0.03), location: 0.32),
+                                .init(color: .black.opacity(0.10), location: 0.50),
+                                .init(color: .black.opacity(0.24), location: 0.68),
+                                .init(color: .black.opacity(0.52), location: 0.84),
                                 .init(color: .black, location: 1.0)
                             ],
                             startPoint: .top,
@@ -190,8 +190,12 @@ struct DetailsView: View {
                         .offset(y: offset)
                         .overlay(
                             ZStack {
-                                Rectangle()
-                                    .fill(.ultraThinMaterial)
+                                RemoteBackdropView(
+                                    urls: heroImageUrls,
+                                    width: geometry.size.width,
+                                    height: height
+                                )
+                                .blur(radius: 24)
                                     .mask(blurMask)
 
                                 tintGradient
