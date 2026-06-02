@@ -190,6 +190,7 @@ struct TvEpisodeDetailsDto: Codable {
 }
 
 struct EpisodeRatingsDto: Codable {
+    let kp: Double?
     let tmdb: Double?
     let imdb: Double?
 }
