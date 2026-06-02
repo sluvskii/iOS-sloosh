@@ -177,6 +177,23 @@ struct SupportItemDto: Codable {
     let isActive: Bool?
 }
 
+struct TvEpisodeDetailsDto: Codable {
+    let id: Int?
+    let name: String?
+    let overview: String?
+    let airDate: String?
+    let seasonNumber: Int?
+    let episodeNumber: Int?
+    let stillPath: String?
+    let language: String?
+    let ratings: EpisodeRatingsDto?
+}
+
+struct EpisodeRatingsDto: Codable {
+    let tmdb: Double?
+    let imdb: Double?
+}
+
 struct FavoriteDto: Codable, Identifiable {
     let id: String?
     let mediaId: String?

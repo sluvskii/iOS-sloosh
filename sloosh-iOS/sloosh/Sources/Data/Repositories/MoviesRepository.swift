@@ -43,6 +43,11 @@ class MoviesRepository: ObservableObject {
         return response.data
     }
     
+    func getEpisodeDetails(id: String, season: Int, episode: Int) async throws -> TvEpisodeDetailsDto? {
+        let response = try await MoviesApi.shared.getEpisodeDetails(id: id, season: season, episode: episode)
+        return response.data
+    }
+    
     func searchMovies(query: String, page: Int = 1) async throws -> [MediaDto] {
         let response = try await MoviesApi.shared.searchMovies(query: query, page: page)
         return response.data?.results ?? []
