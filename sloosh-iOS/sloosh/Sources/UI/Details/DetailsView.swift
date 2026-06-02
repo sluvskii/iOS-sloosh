@@ -5,6 +5,7 @@ struct RemoteBackdropView: View {
     let fallbackUrl: URL?
     let width: CGFloat
     let height: CGFloat
+    var onImageLoaded: ((UIImage) -> Void)? = nil
     
     @State private var image: UIImage?
     @State private var isLoading = false
@@ -48,6 +49,7 @@ struct RemoteBackdropView: View {
             
             if let fetchedImage = fetchedImage {
                 self.image = fetchedImage
+                self.onImageLoaded?(fetchedImage)
             }
             
             isLoading = false
@@ -134,6 +136,7 @@ struct DetailsView: View {
     @State private var playerSubtitles: [CollapsSubtitle] = []
     @State private var playerQuality: VideoQualityPreference? = nil
     @State private var favoriteBounce = false
+    @State private var backdropColor: Color = .clear
     
     var body: some View {
         ScrollView {
@@ -154,17 +157,19 @@ struct DetailsView: View {
                             url: URL(string: details.displayBackdropUrl ?? ""),
                             fallbackUrl: URL(string: details.displayPosterUrl ?? ""),
                             width: geometry.size.width,
-                            height: height
+                            height: height,
+                            onImageLoaded: { img in
+                                withAnimation(.easeInOut(duration: 0.8)) {
+                                    if let color = img.averageColor() {
+                                        backdropColor = color
+                                    }
+                                }
+                            }
                         )
                         .offset(y: offset)
-                        .overlay(
+                        .mask(
                             LinearGradient(
-                                gradient: Gradient(colors: [
-                                    .clear,
-                                    .clear,
-                                    Color(UIColor.systemBackground).opacity(0.6),
-                                    Color(UIColor.systemBackground)
-                                ]),
+                                gradient: Gradient(colors: [.black, .black, .black.opacity(0.8), .clear]),
                                 startPoint: .top,
                                 endPoint: .bottom
                             )
@@ -271,6 +276,14 @@ struct DetailsView: View {
                 }
             }
         }
+        .background(
+            LinearGradient(
+                gradient: Gradient(colors: [backdropColor.opacity(0.4), Color(UIColor.systemBackground)]),
+                startPoint: .top,
+                endPoint: .center
+            )
+            .ignoresSafeArea()
+        )
         .ignoresSafeArea(edges: .top)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(id: "details") {
@@ -966,5 +979,29 @@ class DetailsViewModel: ObservableObject {
         } catch {
             print("Error fetching sources: \(error)")
         }
+    }
+}
+
+extension UIImage {
+    func averageColor() -> Color? {
+        guard let cgImage = cgImage else { return nil }
+        let size = CGSize(width: 1, height: 1)
+        var bitmap = [UInt8](repeating: 0, count: 4)
+        let context = CGContext(
+            data: &bitmap,
+            width: 1,
+            height: 1,
+            bitsPerComponent: 8,
+            bytesPerRow: 4,
+            space: CGColorSpaceCreateDeviceRGB(),
+            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        )
+        context?.draw(cgImage, in: CGRect(origin: .zero, size: size))
+        return Color(UIColor(
+            red: CGFloat(bitmap[0]) / 255.0,
+            green: CGFloat(bitmap[1]) / 255.0,
+            blue: CGFloat(bitmap[2]) / 255.0,
+            alpha: 1.0
+        ))
     }
 }
