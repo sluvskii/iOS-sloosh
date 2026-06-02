@@ -619,6 +619,8 @@ struct EpisodeCellView: View {
     @State private var meta: TvEpisodeDetailsDto?
     @State private var isLoading = false
     
+    @EnvironmentObject private var viewModel: DetailsViewModel
+    
     var previewUrl: URL? {
         URL(string: "https://api.neomovies.ru/api/v1/images/screens/\(movieId)/\(season)/\(episode)/large")
     }
@@ -655,7 +657,7 @@ struct EpisodeCellView: View {
                     .lineLimit(1)
                     .frame(width: 150, alignment: .leading)
                 
-                if let rating = meta?.ratings?.imdb, rating > 0 {
+                if let rating = meta?.ratings?.tmdb, rating > 0 {
                     HStack(spacing: 4) {
                         Image(systemName: "star.fill")
                             .font(.system(size: 10))
@@ -664,7 +666,7 @@ struct EpisodeCellView: View {
                             .font(.system(size: 12, weight: .medium))
                             .foregroundColor(.secondary)
                     }
-                } else if let rating = meta?.ratings?.tmdb, rating > 0 {
+                } else if let rating = meta?.ratings?.imdb, rating > 0 {
                     HStack(spacing: 4) {
                         Image(systemName: "star.fill")
                             .font(.system(size: 10))
@@ -681,7 +683,28 @@ struct EpisodeCellView: View {
             isLoading = true
             meta = nil
             do {
-                meta = try await MoviesRepository.shared.getEpisodeDetails(id: movieId, season: season, episode: episode)
+                // Пытаемся получить данные по ID (внутреннему) или по SourceId
+                var fetchedMeta: TvEpisodeDetailsDto? = nil
+                let candidateIds = [movieId, viewModel.details?.sourceId].compactMap { $0 }.filter { !$0.isEmpty }
+                
+                for candidateId in candidateIds {
+                    do {
+                        let result = try await MoviesRepository.shared.getEpisodeDetails(id: candidateId, season: season, episode: episode)
+                        if result?.name != nil || result?.overview != nil || result?.ratings?.tmdb != nil || result?.ratings?.imdb != nil {
+                            fetchedMeta = result
+                            break
+                        }
+                    } catch {
+                        continue
+                    }
+                }
+                
+                if let fetchedMeta = fetchedMeta {
+                    meta = fetchedMeta
+                } else {
+                    // Fallback to basic fetch if loop failed to find useful data
+                    meta = try await MoviesRepository.shared.getEpisodeDetails(id: movieId, season: season, episode: episode)
+                }
             } catch {
                 // Ignore
             }
@@ -782,6 +805,7 @@ struct InlineEpisodesSection: View {
                             }) {
                                 let rawId = details.externalIds?.kp?.description ?? details.id?.replacingOccurrences(of: "kp_", with: "") ?? ""
                                 EpisodeCellView(movieId: rawId, season: selectedSeason, episode: episode, fallbackTitle: "Серия")
+                                    .environmentObject(viewModel)
                             }
                             .buttonStyle(.plain)
                             .id("\(selectedSeason)-\(episode)")
