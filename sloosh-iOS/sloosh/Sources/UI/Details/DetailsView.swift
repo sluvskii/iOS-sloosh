@@ -157,14 +157,7 @@ struct DetailsView: View {
                             url: URL(string: details.displayBackdropUrl ?? ""),
                             fallbackUrl: URL(string: details.displayPosterUrl ?? ""),
                             width: geometry.size.width,
-                            height: height,
-                            onImageLoaded: { img in
-                                withAnimation(.easeInOut(duration: 0.8)) {
-                                    if let color = img.averageColor() {
-                                        backdropColor = color
-                                    }
-                                }
-                            }
+                            height: height
                         )
                         .offset(y: offset)
                         .overlay(
@@ -327,6 +320,9 @@ struct DetailsView: View {
         .task {
             await viewModel.loadDetails(id: movieId)
         }
+        .task(id: viewModel.details?.displayPosterUrl ?? viewModel.details?.posterUrl) {
+            await updateBackdropColorFromPoster()
+        }
         .sheet(isPresented: $showSourceSheet, onDismiss: {
             sourceFetchTask?.cancel()
             sourceFetchTask = nil
@@ -412,6 +408,37 @@ struct DetailsView: View {
                     }
                 }
             }
+        }
+    }
+    
+    private func updateBackdropColorFromPoster() async {
+        guard let posterPath = viewModel.details?.displayPosterUrl ?? viewModel.details?.posterUrl,
+              let posterURL = URL(string: posterPath) else {
+            await MainActor.run {
+                withAnimation(.easeInOut(duration: 0.35)) {
+                    backdropColor = .clear
+                }
+            }
+            return
+        }
+        
+        do {
+            let request = URLRequest(url: posterURL, cachePolicy: .returnCacheDataElseLoad)
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse,
+                  httpResponse.statusCode == 200,
+                  let image = UIImage(data: data),
+                  let paletteColor = image.averageUIColor()?.detailsBackgroundTint else {
+                return
+            }
+            
+            await MainActor.run {
+                withAnimation(.easeInOut(duration: 0.7)) {
+                    backdropColor = Color(uiColor: paletteColor)
+                }
+            }
+        } catch {
+            // Keep the current background if the poster color cannot be resolved.
         }
     }
 }
@@ -988,7 +1015,7 @@ class DetailsViewModel: ObservableObject {
 }
 
 extension UIImage {
-    func averageColor() -> Color? {
+    func averageUIColor() -> UIColor? {
         guard let cgImage = cgImage else { return nil }
         let size = CGSize(width: 1, height: 1)
         var bitmap = [UInt8](repeating: 0, count: 4)
@@ -1002,11 +1029,38 @@ extension UIImage {
             bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
         )
         context?.draw(cgImage, in: CGRect(origin: .zero, size: size))
-        return Color(UIColor(
+        return UIColor(
             red: CGFloat(bitmap[0]) / 255.0,
             green: CGFloat(bitmap[1]) / 255.0,
             blue: CGFloat(bitmap[2]) / 255.0,
             alpha: 1.0
-        ))
+        )
+    }
+    
+    func averageColor() -> Color? {
+        guard let color = averageUIColor() else { return nil }
+        return Color(uiColor: color)
+    }
+}
+
+private extension UIColor {
+    var detailsBackgroundTint: UIColor {
+        var hue: CGFloat = 0
+        var saturation: CGFloat = 0
+        var brightness: CGFloat = 0
+        var alpha: CGFloat = 0
+        
+        guard getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: &alpha) else {
+            return self
+        }
+        
+        // Keep the poster hue, but increase saturation a bit and cap brightness
+        // so light-theme logos still sit on a readable accent background.
+        return UIColor(
+            hue: hue,
+            saturation: min(max(saturation, 0.35), 0.85),
+            brightness: min(brightness, 0.72),
+            alpha: 1.0
+        )
     }
 }
