@@ -647,7 +647,9 @@ struct EpisodeCellView: View {
             }
             
             VStack(alignment: .leading, spacing: 2) {
-                Text(meta?.name ?? fallbackTitle)
+                let title = meta?.name ?? fallbackTitle
+                let displayTitle = title.hasPrefix("\(episode).") ? title : "\(episode). \(title)"
+                Text(displayTitle)
                     .font(.system(size: 15, weight: .bold))
                     .foregroundColor(.primary)
                     .lineLimit(1)
@@ -780,7 +782,7 @@ struct InlineEpisodesSection: View {
                                 onEpisodeTap(selectedSeason, episode)
                             }) {
                                 let rawId = details.externalIds?.kp?.description ?? details.id?.replacingOccurrences(of: "kp_", with: "") ?? ""
-                                EpisodeCellView(movieId: rawId, season: selectedSeason, episode: episode, fallbackTitle: "\(episode) серия")
+                                EpisodeCellView(movieId: rawId, season: selectedSeason, episode: episode, fallbackTitle: "Серия")
                             }
                             .buttonStyle(.plain)
                         }
