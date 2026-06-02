@@ -9,6 +9,7 @@ class MoviesRepository: ObservableObject {
     private var topMoviesCache: [Int: [MediaDto]] = [:]
     private var topTvCache: [Int: [MediaDto]] = [:]
     private var detailsCache: [String: MediaDetailsDto] = [:]
+    private var episodeCache: [String: TvEpisodeDetailsDto] = [:]
     
     func getPopularMovies(page: Int = 1) async throws -> [MediaDto] {
         if let cached = popularCache[page] { return cached }
@@ -44,7 +45,13 @@ class MoviesRepository: ObservableObject {
     }
     
     func getEpisodeDetails(id: String, season: Int, episode: Int) async throws -> TvEpisodeDetailsDto? {
+        let cacheKey = "\(id)-\(season)-\(episode)"
+        if let cached = episodeCache[cacheKey] { return cached }
+        
         let response = try await MoviesApi.shared.getEpisodeDetails(id: id, season: season, episode: episode)
+        if let data = response.data {
+            episodeCache[cacheKey] = data
+        }
         return response.data
     }
     
