@@ -167,9 +167,14 @@ struct DetailsView: View {
                             }
                         )
                         .offset(y: offset)
-                        .mask(
+                        .overlay(
                             LinearGradient(
-                                gradient: Gradient(colors: [.black, .black, .black.opacity(0.8), .clear]),
+                                gradient: Gradient(colors: [
+                                    .clear,
+                                    .clear,
+                                    backdropColor.opacity(0.8),
+                                    backdropColor
+                                ]),
                                 startPoint: .top,
                                 endPoint: .bottom
                             )
