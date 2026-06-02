@@ -1,87 +1,6 @@
 import SwiftUI
 import UIKit
 
-private final class GradientView: UIView {
-    override class var layerClass: AnyClass { CAGradientLayer.self }
-
-    var gradientLayer: CAGradientLayer { layer as! CAGradientLayer }
-}
-
-private final class ProgressiveBlurEffectView: UIVisualEffectView {
-    private let tintView = GradientView()
-    private let maskGradientView = GradientView()
-
-    override init(effect: UIVisualEffect?) {
-        super.init(effect: effect)
-        commonInit()
-    }
-
-    required init?(coder: NSCoder) {
-        super.init(coder: coder)
-        commonInit()
-    }
-
-    private func commonInit() {
-        clipsToBounds = true
-
-        tintView.isUserInteractionEnabled = false
-        tintView.backgroundColor = .clear
-        contentView.addSubview(tintView)
-        mask = maskGradientView
-    }
-
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        tintView.frame = bounds
-        maskGradientView.frame = bounds
-    }
-
-    func configure(style: UIBlurEffect.Style, backgroundColor: UIColor) {
-        effect = UIBlurEffect(style: style)
-
-        tintView.gradientLayer.colors = [
-            UIColor.clear.cgColor,
-            backgroundColor.withAlphaComponent(0.03).cgColor,
-            backgroundColor.withAlphaComponent(0.08).cgColor,
-            backgroundColor.withAlphaComponent(0.18).cgColor,
-            backgroundColor.withAlphaComponent(0.42).cgColor,
-            backgroundColor.withAlphaComponent(0.82).cgColor,
-            backgroundColor.cgColor,
-        ]
-        tintView.gradientLayer.locations = [0.0, 0.26, 0.44, 0.62, 0.82, 0.94, 1.0]
-        tintView.gradientLayer.startPoint = CGPoint(x: 0.5, y: 0.0)
-        tintView.gradientLayer.endPoint = CGPoint(x: 0.5, y: 1.0)
-
-        maskGradientView.gradientLayer.colors = [
-            UIColor.clear.cgColor,
-            UIColor.black.withAlphaComponent(0.06).cgColor,
-            UIColor.black.withAlphaComponent(0.16).cgColor,
-            UIColor.black.withAlphaComponent(0.34).cgColor,
-            UIColor.black.withAlphaComponent(0.62).cgColor,
-            UIColor.black.cgColor,
-        ]
-        maskGradientView.gradientLayer.locations = [0.0, 0.32, 0.52, 0.7, 0.86, 1.0]
-        maskGradientView.gradientLayer.startPoint = CGPoint(x: 0.5, y: 0.0)
-        maskGradientView.gradientLayer.endPoint = CGPoint(x: 0.5, y: 1.0)
-    }
-}
-
-private struct ProgressiveHeroBlurOverlay: UIViewRepresentable {
-    let blurStyle: UIBlurEffect.Style
-    let backgroundColor: UIColor
-
-    func makeUIView(context: Context) -> ProgressiveBlurEffectView {
-        let view = ProgressiveBlurEffectView(effect: UIBlurEffect(style: blurStyle))
-        view.isUserInteractionEnabled = false
-        view.configure(style: blurStyle, backgroundColor: backgroundColor)
-        return view
-    }
-
-    func updateUIView(_ uiView: ProgressiveBlurEffectView, context: Context) {
-        uiView.configure(style: blurStyle, backgroundColor: backgroundColor)
-    }
-}
-
 struct RemoteBackdropView: View {
     let urls: [URL?]
     let width: CGFloat
@@ -246,9 +165,19 @@ struct DetailsView: View {
                         )
                         .offset(y: offset)
                         .overlay(
-                            ProgressiveHeroBlurOverlay(
-                                blurStyle: .systemUltraThinMaterial,
-                                backgroundColor: UIColor.systemBackground
+                            LinearGradient(
+                                stops: [
+                                    .init(color: .clear, location: 0.0),
+                                    .init(color: Color(UIColor.systemBackground).opacity(0.02), location: 0.28),
+                                    .init(color: Color(UIColor.systemBackground).opacity(0.06), location: 0.46),
+                                    .init(color: Color(UIColor.systemBackground).opacity(0.14), location: 0.62),
+                                    .init(color: Color(UIColor.systemBackground).opacity(0.30), location: 0.78),
+                                    .init(color: Color(UIColor.systemBackground).opacity(0.58), location: 0.90),
+                                    .init(color: Color(UIColor.systemBackground).opacity(0.82), location: 0.97),
+                                    .init(color: Color(UIColor.systemBackground), location: 1.0)
+                                ],
+                                startPoint: .top,
+                                endPoint: .bottom
                             )
                             .offset(y: offset)
                         )
