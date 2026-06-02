@@ -2,6 +2,7 @@ import SwiftUI
 
 struct RemoteBackdropView: View {
     let url: URL?
+    let fallbackUrl: URL?
     let width: CGFloat
     let height: CGFloat
     
@@ -25,14 +26,84 @@ struct RemoteBackdropView: View {
         .task(id: url) {
             guard let url = url, image == nil else { return }
             isLoading = true
+            
+            var fetchedImage: UIImage? = nil
             do {
                 let request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad)
-                let (data, _) = try await URLSession.shared.data(for: request)
-                if let uiImg = UIImage(data: data) {
+                let (data, response) = try await URLSession.shared.data(for: request)
+                if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200, let uiImg = UIImage(data: data) {
+                    fetchedImage = uiImg
+                }
+            } catch {}
+            
+            if fetchedImage == nil, let fallback = fallbackUrl {
+                do {
+                    let request = URLRequest(url: fallback, cachePolicy: .returnCacheDataElseLoad)
+                    let (data, response) = try await URLSession.shared.data(for: request)
+                    if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200, let uiImg = UIImage(data: data) {
+                        fetchedImage = uiImg
+                    }
+                } catch {}
+            }
+            
+            if let fetchedImage = fetchedImage {
+                self.image = fetchedImage
+            }
+            
+            isLoading = false
+        }
+    }
+}
+
+struct RemoteLogoView: View {
+    let url: URL?
+    let fallbackTitle: String
+    
+    @State private var image: UIImage?
+    @State private var isLoading = false
+    @State private var hasError = false
+    
+    var body: some View {
+        Group {
+            if let image = image {
+                Image(uiImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(maxWidth: 280, maxHeight: 110)
+                    .padding(.horizontal)
+            } else if isLoading {
+                Rectangle().fill(Color.gray.opacity(0.2))
+                    .frame(width: 200, height: 60)
+                    .cornerRadius(8)
+                    .shimmer()
+                    .padding(.horizontal)
+            } else {
+                Text(fallbackTitle)
+                    .font(.system(size: 34, weight: .heavy))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal)
+            }
+        }
+        .task(id: url) {
+            guard let url = url, image == nil else {
+                if url == nil {
+                    hasError = true
+                    isLoading = false
+                }
+                return
+            }
+            isLoading = true
+            hasError = false
+            do {
+                let request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad)
+                let (data, response) = try await URLSession.shared.data(for: request)
+                if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200, let uiImg = UIImage(data: data) {
                     self.image = uiImg
+                } else {
+                    self.hasError = true
                 }
             } catch {
-                // Ignore error, just keep placeholder
+                self.hasError = true
             }
             isLoading = false
         }
@@ -78,7 +149,8 @@ struct DetailsView: View {
                         let offset = isScrollingDown ? -minY : 0
 
                         RemoteBackdropView(
-                            url: URL(string: details.displayBackdropUrl ?? details.displayPosterUrl ?? ""),
+                            url: URL(string: details.displayBackdropUrl ?? ""),
+                            fallbackUrl: URL(string: details.displayPosterUrl ?? ""),
                             width: geometry.size.width,
                             height: height
                         )
@@ -100,10 +172,11 @@ struct DetailsView: View {
                     .frame(height: 450)
                     
                     VStack(alignment: .center, spacing: 12) {
-                        Text(details.title ?? details.name ?? "Без названия")
-                            .font(.system(size: 34, weight: .heavy))
-                            .multilineTextAlignment(.center)
-                            .padding(.horizontal)
+                        RemoteLogoView(
+                            url: URL(string: details.displayLogoUrl ?? ""),
+                            fallbackTitle: details.title ?? details.name ?? "Без названия"
+                        )
+                        .padding(.bottom, 8)
 
                         if let originalTitle = details.originalTitle, !originalTitle.isEmpty, originalTitle != (details.title ?? details.name) {
                             Text(originalTitle)
@@ -118,6 +191,10 @@ struct DetailsView: View {
                         
                         // Play Button
                         Button(action: {
+                            let generator = UIImpactFeedbackGenerator(style: .medium)
+                            generator.prepare()
+                            generator.impactOccurred()
+                            
                             guard let kpId = details.externalIds?.kp else { return }
                             
                             sourceSheetMode = SourceManager.shared.currentMode
@@ -133,11 +210,12 @@ struct DetailsView: View {
                         }) {
                             HStack {
                                 Image(systemName: "play.fill")
+                                    .font(.system(size: 18, weight: .black))
                                 Text("Смотреть")
-                                    .font(.system(size: 17, weight: .semibold))
+                                    .font(.system(size: 19, weight: .heavy))
                             }
                             .frame(height: 50)
-                            .padding(.horizontal, 48)
+                            .padding(.horizontal, 32)
                             .foregroundStyle(Color(UIColor.systemBackground))
                         }
                         .matchedTransitionSource(id: "playBtn", in: transition) { source in
@@ -147,11 +225,41 @@ struct DetailsView: View {
                         }
                         .contentShape(Capsule())
                         .buttonStyle(.plain)
-                        .padding(.top, 16)
+                        .padding(.top, 8)
+                        .padding(.bottom, -4)
 
                         DetailsInfoSection(details: details)
                             .padding(.top, 20)
                             .padding(.horizontal)
+
+                        if details.type == "tv" {
+                            InlineEpisodesSection(viewModel: viewModel, details: details) { season, episode in
+                                guard let kpId = details.externalIds?.kp else { return }
+                                
+                                // To handle pre-selection, we can use a new state property in DetailsView or just save to progress store
+                                // CollapsPlaybackProgressStore reads from store when opened, so let's temporarily save it there to auto-select
+                                CollapsPlaybackProgressStore.shared.saveLastPlayed(
+                                    kpId: kpId,
+                                    season: season,
+                                    episode: episode,
+                                    voiceover: nil,
+                                    source: "collaps" // This affects initial selection in SourceSelection as well, if we use the same store
+                                )
+                                
+                                sourceSheetMode = SourceManager.shared.currentMode
+                                sourceSheetTitle = details.title ?? details.name ?? ""
+                                sourceSheetDetent = .medium
+                                viewModel.resetSourceSheet()
+                                showSourceSheet = true
+                                
+                                sourceFetchTask?.cancel()
+                                sourceFetchTask = Task {
+                                    await viewModel.fetchSources(kpId: kpId, title: sourceSheetTitle)
+                                }
+                            }
+                            .padding(.top, 24)
+                            .padding(.bottom, 20)
+                        }
                     }
                     .offset(y: -80)
                 } else {
@@ -166,10 +274,16 @@ struct DetailsView: View {
         .toolbar(id: "details") {
             ToolbarItem(id: "favorite", placement: .topBarTrailing) {
                 Button {
-                    viewModel.toggleFavorite()
+                    let generator = UIImpactFeedbackGenerator(style: .light)
+                    generator.prepare()
+                    generator.impactOccurred()
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.5, blendDuration: 0.5)) {
+                        viewModel.toggleFavorite()
+                    }
                 } label: {
                     Image(systemName: viewModel.isFavorite ? "heart.fill" : "heart")
-                        .foregroundColor(.primary)
+                        .foregroundColor(viewModel.isFavorite ? .red : .primary)
+                        .scaleEffect(viewModel.isFavorite ? 1.15 : 1.0)
                 }
                 .disabled(viewModel.details == nil)
             }
@@ -425,6 +539,7 @@ private struct DetailsPrimaryMetadataRow: View {
 
 private struct DetailsInfoSection: View {
     let details: MediaDetailsDto
+    @State private var isDescriptionExpanded = false
 
     private var genres: [String] {
         details.genres?
@@ -451,14 +566,172 @@ private struct DetailsInfoSection: View {
                 }
             }
 
-            VStack(alignment: .leading, spacing: 10) {
-                Text("Описание")
-                    .font(.system(size: 18, weight: .bold))
+            if let description = details.description, !description.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("Описание")
+                        .font(.system(size: 18, weight: .bold))
 
-                Text(details.description ?? "Описание отсутствует.")
-                    .font(.system(size: 16, weight: .regular))
+                    ZStack(alignment: .bottom) {
+                        Text(description)
+                            .font(.system(size: 16, weight: .regular))
+                            .foregroundColor(.secondary)
+                            .lineSpacing(4)
+                            .lineLimit(isDescriptionExpanded ? nil : 4)
+                            .animation(.spring(response: 0.4, dampingFraction: 0.8), value: isDescriptionExpanded)
+
+                        if !isDescriptionExpanded {
+                            LinearGradient(
+                                gradient: Gradient(colors: [.clear, Color(UIColor.systemBackground)]),
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                            .frame(height: 40)
+                            .allowsHitTesting(false)
+                        }
+                    }
+
+                    Button(action: {
+                        let generator = UIImpactFeedbackGenerator(style: .light)
+                        generator.prepare()
+                        generator.impactOccurred()
+                        withAnimation {
+                            isDescriptionExpanded.toggle()
+                        }
+                    }) {
+                        Text(isDescriptionExpanded ? "Свернуть" : "Читать далее...")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(Color.slooshAccent)
+                    }
+                }
+            }
+        }
+    }
+}
+
+struct InlineEpisodesSection: View {
+    @ObservedObject var viewModel: DetailsViewModel
+    let details: MediaDetailsDto
+    let onEpisodeTap: (Int, Int) -> Void
+
+    @State private var selectedSeason: Int = 1
+
+    var allSeasons: [Int] {
+        if let wrapper = viewModel.inlineSourceWrapper {
+            if wrapper.mode == .collaps, let collapsSeasons = wrapper.collapsSeasons {
+                return collapsSeasons.map { $0.season }.sorted()
+            } else if wrapper.mode == .alloha, let allohaResult = wrapper.allohaResult {
+                return allohaResult.seasons.map { $0.season }.sorted()
+            }
+        }
+        return []
+    }
+
+    var episodesForSelectedSeason: [Int] {
+        if let wrapper = viewModel.inlineSourceWrapper {
+            if wrapper.mode == .collaps, let collapsSeasons = wrapper.collapsSeasons {
+                if let season = collapsSeasons.first(where: { $0.season == selectedSeason }) {
+                    return season.episodes.map { $0.episode }.sorted()
+                }
+            } else if wrapper.mode == .alloha, let allohaResult = wrapper.allohaResult {
+                if let season = allohaResult.seasons.first(where: { $0.season == selectedSeason }) {
+                    return season.episodes.map { $0.episode }.sorted()
+                }
+            }
+        }
+        return []
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Сезоны и серии")
+                .font(.system(size: 18, weight: .bold))
+                .padding(.horizontal)
+
+            if viewModel.isFetchingInlineSeasons {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 12) {
+                        ForEach(0..<4) { _ in
+                            RoundedRectangle(cornerRadius: 12)
+                                .fill(Color.gray.opacity(0.2))
+                                .frame(width: 140, height: 80)
+                                .shimmer()
+                        }
+                    }
+                    .padding(.horizontal)
+                }
+            } else if allSeasons.isEmpty {
+                Text("Эпизоды не найдены")
+                    .font(.system(size: 15))
                     .foregroundColor(.secondary)
-                    .lineSpacing(4)
+                    .padding(.horizontal)
+            } else {
+                // Season Picker
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 12) {
+                        ForEach(allSeasons, id: \.self) { season in
+                            Button(action: {
+                                let generator = UIImpactFeedbackGenerator(style: .light)
+                                generator.prepare()
+                                generator.impactOccurred()
+                                withAnimation {
+                                    selectedSeason = season
+                                }
+                            }) {
+                                Text("\(season) сезон")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 8)
+                                    .background(selectedSeason == season ? Color.primary : Color(UIColor.secondarySystemFill))
+                                    .foregroundColor(selectedSeason == season ? Color(UIColor.systemBackground) : .primary)
+                                    .clipShape(Capsule())
+                            }
+                        }
+                    }
+                    .padding(.horizontal)
+                }
+
+                // Episodes List
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 12) {
+                        ForEach(episodesForSelectedSeason, id: \.self) { episode in
+                            Button(action: {
+                                let generator = UIImpactFeedbackGenerator(style: .medium)
+                                generator.prepare()
+                                generator.impactOccurred()
+                                onEpisodeTap(selectedSeason, episode)
+                            }) {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    ZStack {
+                                        Rectangle()
+                                            .fill(Color(UIColor.tertiarySystemFill))
+                                            .frame(width: 150, height: 85)
+                                            .cornerRadius(12)
+                                        
+                                        Image(systemName: "play.circle.fill")
+                                            .font(.system(size: 32))
+                                            .foregroundColor(.white.opacity(0.8))
+                                    }
+                                    
+                                    Text("\(episode) серия")
+                                        .font(.system(size: 15, weight: .bold))
+                                        .foregroundColor(.primary)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal)
+                }
+            }
+        }
+        .onAppear {
+            if let firstSeason = allSeasons.first {
+                selectedSeason = firstSeason
+            }
+        }
+        .onChange(of: allSeasons) { _, newSeasons in
+            if !newSeasons.contains(selectedSeason), let first = newSeasons.first {
+                selectedSeason = first
             }
         }
     }
@@ -482,6 +755,11 @@ class DetailsViewModel: ObservableObject {
     @Published var isFetchingSources = false
     @Published var sourceResultWrapper: SourceResultWrapper?
     
+    @Published var inlineSeasons: [CollapsSeason]? // Or AllohaSeason mapped to a common model? Let's use SourceResultWrapper for inline too.
+    @Published var inlineSourceWrapper: SourceResultWrapper?
+    @Published var selectedInlineSeason: Int = 1
+    @Published var isFetchingInlineSeasons = false
+    
     @Published var isFavorite: Bool = false
 
     func resetSourceSheet() {
@@ -492,15 +770,42 @@ class DetailsViewModel: ObservableObject {
         if details != nil && (details?.id == id || details?.sourceId == id || details?.externalIds?.kp?.description == id.replacingOccurrences(of: "kp_", with: "")) {
             return
         }
-        
+
         isLoading = true
         defer { isLoading = false }
-        
+
         do {
             details = try await MoviesRepository.shared.getDetails(id: id)
             checkFavoriteStatus()
+            
+            if details?.type == "tv", let kpId = details?.externalIds?.kp {
+                await fetchInlineSeasons(kpId: kpId)
+            }
         } catch {
             print("Error loading details: \(error)")
+        }
+    }
+    
+    func fetchInlineSeasons(kpId: Int) async {
+        isFetchingInlineSeasons = true
+        defer { isFetchingInlineSeasons = false }
+        
+        let mode = SourceManager.shared.currentMode
+        do {
+            switch mode {
+            case .alloha:
+                let result = try await AllohaRepository.shared.fetchByKpId(kpId: kpId)
+                if result.isSerial {
+                    self.inlineSourceWrapper = SourceResultWrapper(mode: .alloha, allohaResult: result, kpId: kpId)
+                }
+            case .collaps:
+                let seasons = try await CollapsRepository.shared.getSeasonsByKpId(kpId: kpId)
+                if !seasons.isEmpty {
+                    self.inlineSourceWrapper = SourceResultWrapper(mode: .collaps, collapsSeasons: seasons, kpId: kpId)
+                }
+            }
+        } catch {
+            print("Error fetching inline seasons: \(error)")
         }
     }
     
