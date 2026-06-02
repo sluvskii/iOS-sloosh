@@ -5,6 +5,7 @@ struct RemoteBackdropView: View {
     let fallbackUrl: URL?
     let width: CGFloat
     let height: CGFloat
+    var onImageLoaded: ((UIImage) -> Void)? = nil
     
     @State private var image: UIImage?
     @State private var isLoading = false
@@ -48,6 +49,9 @@ struct RemoteBackdropView: View {
             
             if let fetchedImage = fetchedImage {
                 self.image = fetchedImage
+                Task { @MainActor in
+                    onImageLoaded?(fetchedImage)
+                }
             }
             
             isLoading = false
@@ -135,6 +139,19 @@ struct DetailsView: View {
     @State private var playerQuality: VideoQualityPreference? = nil
     @State private var favoriteBounce = false
     
+    @State private var dominantUIColor: UIColor? = nil
+    
+    private var effectiveBackgroundColor: Color {
+        if let dominant = dominantUIColor {
+            return Color(UIColor { traitCollection in
+                let bg = UIColor.systemBackground.resolvedColor(with: traitCollection)
+                return dominant.blended(with: bg, fraction: 0.35)
+            })
+        } else {
+            return Color(UIColor.systemBackground)
+        }
+    }
+    
     var body: some View {
         ScrollView {
             VStack(spacing: 0) {
@@ -154,7 +171,12 @@ struct DetailsView: View {
                             url: URL(string: details.displayBackdropUrl ?? ""),
                             fallbackUrl: URL(string: details.displayPosterUrl ?? ""),
                             width: geometry.size.width,
-                            height: height
+                            height: height,
+                            onImageLoaded: { img in
+                                withAnimation(.easeInOut(duration: 0.8)) {
+                                    self.dominantUIColor = img.averageColor
+                                }
+                            }
                         )
                         .offset(y: offset)
                         .overlay(
@@ -162,8 +184,8 @@ struct DetailsView: View {
                                 gradient: Gradient(colors: [
                                     .clear,
                                     .clear,
-                                    Color(UIColor.systemBackground).opacity(0.6),
-                                    Color(UIColor.systemBackground)
+                                    effectiveBackgroundColor.opacity(0.6),
+                                    effectiveBackgroundColor
                                 ]),
                                 startPoint: .top,
                                 endPoint: .bottom
@@ -230,7 +252,7 @@ struct DetailsView: View {
                         .padding(.top, 8)
                         .padding(.bottom, -4)
 
-                        DetailsInfoSection(details: details)
+                        DetailsInfoSection(details: details, backgroundColor: effectiveBackgroundColor)
                             .padding(.top, 20)
                             .padding(.horizontal)
 
@@ -271,6 +293,7 @@ struct DetailsView: View {
                 }
             }
         }
+        .background(effectiveBackgroundColor)
         .ignoresSafeArea(edges: .top)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(id: "details") {
@@ -542,6 +565,7 @@ private struct DetailsPrimaryMetadataRow: View {
 
 private struct DetailsInfoSection: View {
     let details: MediaDetailsDto
+    let backgroundColor: Color
     @State private var isDescriptionExpanded = false
 
     private var genres: [String] {
@@ -584,7 +608,7 @@ private struct DetailsInfoSection: View {
 
                         if !isDescriptionExpanded {
                             LinearGradient(
-                                gradient: Gradient(colors: [.clear, Color(UIColor.systemBackground)]),
+                                gradient: Gradient(colors: [.clear, backgroundColor]),
                                 startPoint: .top,
                                 endPoint: .bottom
                             )
