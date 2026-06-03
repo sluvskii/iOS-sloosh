@@ -117,6 +117,8 @@ struct RemoteLogoView: View {
 
 struct DetailsView: View {
     let movieId: String
+    let navigationTransitionID: String?
+    let navigationTransitionNamespace: Namespace.ID?
     @StateObject private var viewModel = DetailsViewModel()
     
     @State private var showPlayer = false
@@ -194,6 +196,10 @@ struct DetailsView: View {
         ZStack {
             detailsContent
         }
+            .optionalMovieNavigationTransition(
+                sourceID: navigationTransitionID,
+                in: navigationTransitionNamespace
+            )
             .environment(\.colorScheme, .dark)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .ignoresSafeArea(edges: .top)
@@ -472,6 +478,26 @@ struct DetailsView: View {
             }
         }
         .background(effectiveBackgroundColor)
+    }
+}
+
+private struct OptionalMovieNavigationTransitionModifier: ViewModifier {
+    let sourceID: String?
+    let namespace: Namespace.ID?
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if let sourceID, let namespace {
+            content.navigationTransition(.zoom(sourceID: sourceID, in: namespace))
+        } else {
+            content
+        }
+    }
+}
+
+private extension View {
+    func optionalMovieNavigationTransition(sourceID: String?, in namespace: Namespace.ID?) -> some View {
+        modifier(OptionalMovieNavigationTransitionModifier(sourceID: sourceID, namespace: namespace))
     }
 }
 

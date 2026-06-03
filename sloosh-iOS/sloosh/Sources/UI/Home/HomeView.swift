@@ -41,12 +41,14 @@ enum HomeFilter: String, CaseIterable, Identifiable {
 
 struct HomeView: View {
     @StateObject private var viewModel = HomeViewModel()
+    @Namespace private var navigationTransition
 
     var body: some View {
         NavigationStack {
             HomeCategoryContentView(
                 viewModel: viewModel,
-                category: viewModel.selectedCategory
+                category: viewModel.selectedCategory,
+                navigationTransition: navigationTransition
             )
             .animation(.spring(response: 0.3, dampingFraction: 0.8), value: viewModel.selectedCategory)
             .navigationTitle("")
@@ -79,6 +81,7 @@ struct HomeView: View {
 struct HomeCategoryContentView: View {
     @ObservedObject var viewModel: HomeViewModel
     let category: HomeCategory
+    let navigationTransition: Namespace.ID
     
     let columns = [
         GridItem(.adaptive(minimum: 105), spacing: 16)
@@ -108,10 +111,7 @@ struct HomeCategoryContentView: View {
             } else {
                 LazyVGrid(columns: columns, spacing: 20) {
                     ForEach(items) { movie in
-                        NavigationLink(destination: DetailsView(movieId: movie.id)) {
-                            MoviePosterCard(movie: movie)
-                        }
-                        .buttonStyle(.plain)
+                        MovieDetailsNavigationLink(movie: movie, navigationTransition: navigationTransition)
                         .onAppear {
                             if movie.id == items.last?.id {
                                 Task {
@@ -131,6 +131,40 @@ struct HomeCategoryContentView: View {
             }
         }
         .scrollIndicators(.hidden)
+    }
+}
+
+struct MovieDetailsNavigationLink<Label: View>: View {
+    let movieId: String
+    let transitionID: String
+    let navigationTransition: Namespace.ID
+    @ViewBuilder let label: () -> Label
+
+    init(movieId: String, transitionID: String? = nil, navigationTransition: Namespace.ID, @ViewBuilder label: @escaping () -> Label) {
+        self.movieId = movieId
+        self.transitionID = transitionID ?? "movie-card-\(movieId)"
+        self.navigationTransition = navigationTransition
+        self.label = label
+    }
+
+    init(movie: MediaDto, navigationTransition: Namespace.ID) where Label == MoviePosterCard {
+        self.init(movieId: movie.id, navigationTransition: navigationTransition) {
+            MoviePosterCard(movie: movie)
+        }
+    }
+
+    var body: some View {
+        NavigationLink(
+            destination: DetailsView(
+                movieId: movieId,
+                navigationTransitionID: transitionID,
+                navigationTransitionNamespace: navigationTransition
+            )
+        ) {
+            label()
+                .matchedTransitionSource(id: transitionID, in: navigationTransition)
+        }
+        .buttonStyle(.plain)
     }
 }
 
