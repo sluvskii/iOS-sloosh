@@ -246,7 +246,8 @@ struct DetailsView: View {
                         }
                         .matchedTransitionSource(id: "playBtn", in: transition) { source in
                             source
-                                .clipShape(Capsule())
+                                .background(.primary)
+                                .clipShape(RoundedRectangle(cornerRadius: 25, style: .continuous))
                         }
                         .contentShape(Capsule())
                         .buttonStyle(.plain)
