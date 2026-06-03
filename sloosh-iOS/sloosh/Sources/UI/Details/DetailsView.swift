@@ -238,12 +238,15 @@ struct DetailsView: View {
                             }
                             .frame(height: 50)
                             .padding(.horizontal, 32)
-                            .foregroundStyle(Color(UIColor.systemBackground))
+                            .foregroundStyle(.white)
+                            .background(
+                                Capsule()
+                                    .fill(.regularMaterial)
+                            )
                         }
                         .matchedTransitionSource(id: "playBtn", in: transition) { source in
                             source
-                                .background(.primary)
-                                .clipShape(RoundedRectangle(cornerRadius: 25, style: .continuous))
+                                .clipShape(Capsule())
                         }
                         .contentShape(Capsule())
                         .buttonStyle(.plain)
@@ -291,6 +294,7 @@ struct DetailsView: View {
                 }
             }
         }
+        .environment(\.colorScheme, .dark)
         .background(effectiveBackgroundColor)
         .ignoresSafeArea(edges: .top)
         .navigationBarTitleDisplayMode(.inline)
@@ -306,7 +310,7 @@ struct DetailsView: View {
                     }
                 } label: {
                     Image(systemName: viewModel.isFavorite ? "heart.fill" : "heart")
-                        .foregroundColor(.primary)
+                        .foregroundColor(.white)
                         .symbolEffect(.bounce, value: favoriteBounce)
                 }
                 .disabled(viewModel.details == nil)
@@ -317,7 +321,7 @@ struct DetailsView: View {
                     showDownloadAlert = true
                 } label: {
                     Image(systemName: "arrow.down.circle")
-                        .foregroundColor(.primary)
+                        .foregroundColor(.white)
                 }
                 .disabled(viewModel.details == nil)
             }
