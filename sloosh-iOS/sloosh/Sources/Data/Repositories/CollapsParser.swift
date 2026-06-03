@@ -79,9 +79,9 @@ enum CollapsParser {
                     continue
                 }
 
-                let hls = normalizedURLString(episodeObject["hls"] as? String).map { CollapsStreamEncoder.encodeUri($0) }
-                let dasha = normalizedURLString(episodeObject["dasha"] as? String).map { CollapsStreamEncoder.encodeUri($0) }
-                let dash = normalizedURLString(episodeObject["dash"] as? String).map { CollapsStreamEncoder.encodeUri($0) }
+                let hls = normalizedURLString(episodeObject["hls"] as? String)
+                let dasha = normalizedURLString(episodeObject["dasha"] as? String)
+                let dash = normalizedURLString(episodeObject["dash"] as? String)
                 let mpd = dasha ?? dash
 
                 let voices = parseVoiceNames(from: episodeObject)
@@ -110,15 +110,15 @@ enum CollapsParser {
     }
 
     private static func parseMovie(from html: String) -> CollapsMovie? {
-        var hls = extractFirstUrl(in: html, keys: ["hls"], suffix: ".m3u8").map { CollapsStreamEncoder.encodeUri($0) }
-        let dash = extractFirstUrl(in: html, keys: ["dasha", "dash"], suffix: ".mpd").map { CollapsStreamEncoder.encodeUri($0) }
+        var hls = extractFirstUrl(in: html, keys: ["hls"], suffix: ".m3u8")
+        let dash = extractFirstUrl(in: html, keys: ["dasha", "dash"], suffix: ".mpd")
 
         if hls == nil,
            let payloadData = extractHlsSourcePayload(from: html) {
-            hls = payloadData["hls"].map { CollapsStreamEncoder.encodeUri($0) }
+            hls = payloadData["hls"]
         }
 
-        let resolvedHls = hls ?? firstPreferredStreamURLString(in: html).map { CollapsStreamEncoder.encodeUri($0) }
+        let resolvedHls = hls ?? firstPreferredStreamURLString(in: html)
         let voices = extractVoiceNames(from: html)
         let subtitles = extractSubtitles(in: html)
 
@@ -230,7 +230,6 @@ enum CollapsParser {
 
     private static func subtitle(from object: [String: Any]) -> CollapsSubtitle? {
         let url = normalizedURLString((object["url"] as? String) ?? (object["src"] as? String))
-            .map { CollapsStreamEncoder.encodeUri($0) }
         guard let url, !url.isEmpty else { return nil }
 
         let rawLabel = (object["name"] as? String ?? object["label"] as? String ?? "")

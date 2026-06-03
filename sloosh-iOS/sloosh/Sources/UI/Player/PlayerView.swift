@@ -275,7 +275,17 @@ class PlayerViewModel: ObservableObject {
 
         Task {
             do {
-                let (data, _) = try await URLSession.shared.data(from: parsedUrl)
+                let fetchUrl: URL
+                if currentSourcePreferenceKey == "collaps", let encodedString = CollapsStreamEncoder.encodeUri(url).addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed), let encodedUrl = URL(string: encodedString) {
+                    fetchUrl = encodedUrl
+                } else {
+                    fetchUrl = parsedUrl
+                }
+                
+                var request = URLRequest(url: fetchUrl)
+                request.setValue("Mozilla/5.0 (Windows NT 10.0; Win64; x64)", forHTTPHeaderField: "User-Agent")
+                
+                let (data, _) = try await URLSession.shared.data(for: request)
                 if let content = String(data: data, encoding: .utf8) {
                     parseMasterPlaylist(content: content, baseUrl: parsedUrl)
                 }
@@ -438,6 +448,29 @@ class PlayerViewModel: ObservableObject {
     func changeQuality(to key: String) {
         guard let quality = availableQualities.first(where: { $0.key == key }) else { return }
         self.currentQualityKey = key
+        
+        let isHls = quality.url.pathExtension.lowercased() == "m3u8" || quality.url.absoluteString.contains(".m3u8")
+        
+        if isHls, let currentItem = self.player?.currentItem {
+            // For HLS, we use preferredPeakBitRate on the master playlist instead of swapping URLs.
+            // Swapping to a variant URL directly causes loss of separate audio/subtitle tracks!
+            if key == "Авто" {
+                currentItem.preferredPeakBitRate = 0 // 0 means auto
+            } else {
+                let height = Int(key.replacingOccurrences(of: "p", with: "")) ?? 0
+                let bitrate: Double
+                switch height {
+                case 1080...: bitrate = 8_000_000
+                case 720..<1080: bitrate = 4_000_000
+                case 480..<720: bitrate = 2_000_000
+                case 360..<480: bitrate = 1_000_000
+                case 1..<360: bitrate = 700_000
+                default: bitrate = 0 // fallback to auto if unknown
+                }
+                currentItem.preferredPeakBitRate = bitrate
+            }
+            return
+        }
         
         let currentTime = player?.currentTime() ?? .zero
         let wasPlaying = player?.timeControlStatus == .playing
