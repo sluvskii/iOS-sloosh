@@ -157,37 +157,85 @@ class HlsProxyServer {
             request.setValue(range, forHTTPHeaderField: "Range")
         }
         
-        let task = session.dataTask(with: request) { [weak self] data, response, error in
-            guard let self = self, let data = data, let httpResponse = response as? HTTPURLResponse else {
-                self?.send404(on: connection)
-                return
-            }
-            
-            let statusCode = httpResponse.statusCode
-            let contentRange = httpResponse.value(forHTTPHeaderField: "Content-Range")
-            
-            if isPlaylist, let content = String(data: data, encoding: .utf8) {
-                let rewritten: String
-                if content.contains("#EXT-X-STREAM-INF") && (!self.voices.isEmpty || !self.subtitles.isEmpty) {
-                    let collapsRewritten = CollapsHlsRewriter.rewrite(
-                        master: content,
-                        voices: self.voices,
-                        subtitles: self.subtitles,
-                        mediaId: self.mediaId
-                    )
-                    rewritten = self.rewriteM3u8(content: collapsRewritten, baseUrl: realUrl)
-                } else {
-                    rewritten = self.rewriteM3u8(content: content, baseUrl: realUrl)
+        Task {
+            do {
+                let (asyncBytes, response) = try await session.bytes(for: request)
+                guard let httpResponse = response as? HTTPURLResponse else {
+                    send404(on: connection)
+                    return
                 }
                 
-                let rewrittenData = rewritten.data(using: .utf8)!
-                self.sendResponse(data: rewrittenData, statusCode: 200, contentType: "application/vnd.apple.mpegurl", contentRange: nil, connection: connection)
-            } else {
+                let statusCode = httpResponse.statusCode
+                let contentRange = httpResponse.value(forHTTPHeaderField: "Content-Range")
                 let contentType = httpResponse.mimeType ?? "video/MP2T"
-                self.sendResponse(data: data, statusCode: statusCode, contentType: contentType, contentRange: contentRange, connection: connection)
+                
+                if isPlaylist {
+                    // For playlists, we need the whole content to rewrite it
+                    var data = Data()
+                    for try await byte in asyncBytes {
+                        data.append(byte)
+                    }
+                    if let content = String(data: data, encoding: .utf8) {
+                        let rewritten: String
+                        if content.contains("#EXT-X-STREAM-INF") && (!self.voices.isEmpty || !self.subtitles.isEmpty) {
+                            let collapsRewritten = CollapsHlsRewriter.rewrite(
+                                master: content,
+                                voices: self.voices,
+                                subtitles: self.subtitles,
+                                mediaId: self.mediaId
+                            )
+                            rewritten = self.rewriteM3u8(content: collapsRewritten, baseUrl: realUrl)
+                        } else {
+                            rewritten = self.rewriteM3u8(content: content, baseUrl: realUrl)
+                        }
+                        
+                        let rewrittenData = rewritten.data(using: .utf8)!
+                        self.sendResponse(data: rewrittenData, statusCode: 200, contentType: "application/vnd.apple.mpegurl", contentRange: nil, connection: connection)
+                    } else {
+                        send404(on: connection)
+                    }
+                } else {
+                    // Stream media segments!
+                    let reason = statusCode == 206 ? "Partial Content" : "OK"
+                    let contentLength = httpResponse.expectedContentLength
+                    var header = "HTTP/1.1 \(statusCode) \(reason)\r\nContent-Type: \(contentType)\r\n"
+                    if contentLength > 0 {
+                        header += "Content-Length: \(contentLength)\r\n"
+                    }
+                    header += "Connection: close\r\n"
+                    if let cr = contentRange {
+                        header += "Content-Range: \(cr)\r\n"
+                    }
+                    header += "Accept-Ranges: bytes\r\n\r\n"
+                    let headerData = header.data(using: .utf8)!
+                    
+                    connection.send(content: headerData, completion: .contentProcessed({ _ in }))
+                    
+                    // Read in chunks and send
+                    var iterator = asyncBytes.makeAsyncIterator()
+                    var buffer = Data()
+                    buffer.reserveCapacity(32768)
+                    
+                    while let byte = try await iterator.next() {
+                        buffer.append(byte)
+                        if buffer.count >= 32768 { // 32KB chunks
+                            let chunk = buffer
+                            buffer = Data()
+                            buffer.reserveCapacity(32768)
+                            connection.send(content: chunk, completion: .contentProcessed({ _ in }))
+                        }
+                    }
+                    if !buffer.isEmpty {
+                        connection.send(content: buffer, completion: .contentProcessed({ _ in }))
+                    }
+                    connection.send(content: nil, contentContext: .defaultMessage, isComplete: true, completion: .contentProcessed({ _ in
+                        connection.cancel()
+                    }))
+                }
+            } catch {
+                send404(on: connection)
             }
         }
-        task.resume()
     }
     
     private func rewriteM3u8(content: String, baseUrl: URL) -> String {
@@ -230,12 +278,6 @@ class HlsProxyServer {
                 return urlString
             }
             absoluteUrlString = resolvedUrl.absoluteString
-        }
-        
-        // ONLY proxy playlists. Media segments (.ts, .mp4, etc) should be loaded natively by AVPlayer.
-        // This completely eliminates the 10-30s buffering delay!
-        if !absoluteUrlString.contains(".m3u8") {
-            return absoluteUrlString
         }
         
         guard let encodedData = absoluteUrlString.data(using: .utf8) else {
