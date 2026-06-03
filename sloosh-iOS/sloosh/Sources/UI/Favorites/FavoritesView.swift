@@ -2,6 +2,7 @@ import SwiftUI
 
 struct FavoritesView: View {
     @StateObject private var favoritesRepo = FavoritesRepository.shared
+    @Namespace private var navigationTransition
     
     let columns = [
         GridItem(.adaptive(minimum: 105), spacing: 16)
@@ -31,10 +32,7 @@ struct FavoritesView: View {
                         LazyVGrid(columns: columns, spacing: 20) {
                             ForEach(favoritesRepo.favorites) { favorite in
                                 let media = favorite.toMediaDto()
-                                NavigationLink(destination: DetailsView(movieId: media.id)) {
-                                    MoviePosterCard(movie: media)
-                                }
-                                .buttonStyle(.plain)
+                                MovieDetailsNavigationLink(movie: media, navigationTransition: navigationTransition)
                                 .contextMenu {
                                     Button(role: .destructive) {
                                         if let mediaId = favorite.mediaId, let type = favorite.type {

@@ -117,6 +117,8 @@ struct RemoteLogoView: View {
 
 struct DetailsView: View {
     let movieId: String
+    let navigationTransitionID: String?
+    let navigationTransitionNamespace: Namespace.ID?
     @StateObject private var viewModel = DetailsViewModel()
     
     @State private var showPlayer = false
@@ -138,21 +140,203 @@ struct DetailsView: View {
     @State private var playerSubtitles: [CollapsSubtitle] = []
     @State private var playerQuality: VideoQualityPreference? = nil
     @State private var favoriteBounce = false
-    
+
     @State private var dominantUIColor: UIColor? = nil
-    
+
+    private var detailsBaseBackgroundColor: UIColor {
+        UIColor.systemBackground.resolvedColor(with: UITraitCollection(userInterfaceStyle: .dark))
+    }
+
     private var effectiveBackgroundColor: Color {
+        let background = detailsBaseBackgroundColor
         if let dominant = dominantUIColor {
-            return Color(UIColor { traitCollection in
-                let bg = UIColor.systemBackground.resolvedColor(with: traitCollection)
-                return dominant.blended(with: bg, fraction: 0.35)
-            })
+            return Color(dominant.blended(with: background, fraction: 0.35))
         } else {
-            return Color(UIColor.systemBackground)
+            return Color(background)
+        }
+    }
+
+    private func fetchAverageColor(from url: URL?) async -> UIColor? {
+        guard let url else { return nil }
+
+        do {
+            let request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad)
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200,
+                  let image = UIImage(data: data) else {
+                return nil
+            }
+            return image.averageColor
+        } catch {
+            return nil
+        }
+    }
+
+    private func preloadDominantColor(for details: MediaDetailsDto) async {
+        let candidateUrls = [
+            details.previewBackdropUrl,
+            details.displayPosterUrl
+        ].compactMap { URL(string: $0 ?? "") }
+
+        for url in candidateUrls {
+            if Task.isCancelled { return }
+            if let color = await fetchAverageColor(from: url) {
+                await MainActor.run {
+                    guard dominantUIColor == nil else { return }
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        dominantUIColor = color
+                    }
+                }
+                return
+            }
         }
     }
     
     var body: some View {
+        ZStack {
+            detailsContent
+        }
+            .optionalMovieNavigationTransition(
+                sourceID: navigationTransitionID,
+                in: navigationTransitionNamespace
+            )
+            .environment(\.colorScheme, .dark)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .ignoresSafeArea(edges: .top)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar(id: "details") {
+                ToolbarItem(id: "favorite", placement: .topBarTrailing) {
+                    Button {
+                        let generator = UIImpactFeedbackGenerator(style: .light)
+                        generator.prepare()
+                        generator.impactOccurred()
+                        favoriteBounce.toggle()
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.5, blendDuration: 0.5)) {
+                            viewModel.toggleFavorite()
+                        }
+                    } label: {
+                        Image(systemName: viewModel.isFavorite ? "heart.fill" : "heart")
+                            .foregroundStyle(.white)
+                            .symbolEffect(.bounce, value: favoriteBounce)
+                    }
+                    .disabled(viewModel.details == nil)
+                }
+
+                ToolbarItem(id: "download", placement: .topBarTrailing) {
+                    Button {
+                        showDownloadAlert = true
+                    } label: {
+                        Image(systemName: "arrow.down.circle")
+                            .foregroundStyle(.white)
+                    }
+                    .disabled(viewModel.details == nil)
+                }
+            }
+            .alert("В разработке", isPresented: $showDownloadAlert) {
+                Button("OK", role: .cancel) { }
+            } message: {
+                Text("Функция скачивания появится в будущих обновлениях.")
+            }
+            .task {
+                await viewModel.loadDetails(id: movieId)
+            }
+            .task(id: viewModel.details?.id) {
+                await MainActor.run {
+                    dominantUIColor = nil
+                }
+
+                guard let details = viewModel.details else { return }
+                await preloadDominantColor(for: details)
+            }
+            .sheet(isPresented: $showSourceSheet, onDismiss: {
+                sourceFetchTask?.cancel()
+                sourceFetchTask = nil
+                sourceSheetDetent = .medium
+                sourceSheetMode = nil
+                sourceSheetTitle = ""
+                viewModel.resetSourceSheet()
+            }) {
+                ZStack {
+                    if viewModel.isFetchingSources, let sourceSheetMode {
+                        SourceSelectionLoadingView(
+                            title: sourceSheetTitle,
+                            mode: sourceSheetMode
+                        )
+                    } else if let wrapper = viewModel.sourceResultWrapper,
+                              wrapper.mode == .alloha,
+                              let result = wrapper.allohaResult {
+                        SourceSelectionView(result: result, kpId: wrapper.kpId) { translation, season, episode, quality in
+                            playerKpId = wrapper.kpId
+                            playerSeason = season
+                            playerEpisode = episode
+                            playerVoiceover = translation.name
+                            playerVoices = [translation.name]
+                            playerSubtitles = []
+                            playerQuality = quality
+                            selectedIframeUrl = translation.iframeUrl
+                            showPlayer = true
+                            showSourceSheet = false
+                        }
+                    } else if let wrapper = viewModel.sourceResultWrapper, wrapper.mode == .collaps {
+                        let isSerial = wrapper.collapsSeasons != nil && !(wrapper.collapsSeasons?.isEmpty ?? true)
+                        CollapsSelectionView(
+                            result: wrapper.collapsSeasons ?? [],
+                            movieResult: wrapper.collapsMovie,
+                            kpId: wrapper.kpId,
+                            isSerial: isSerial,
+                            title: viewModel.details?.title ?? viewModel.details?.name ?? "",
+                            onPlay: { url, season, episode, voiceover, voices, subtitles, quality in
+                                // Collaps returns direct HLS/MPD urls
+                                selectedIframeUrl = url // we use this state variable for the URL
+                                playerKpId = wrapper.kpId
+                                playerSeason = season
+                                playerEpisode = episode
+                                playerVoiceover = voiceover
+                                playerVoices = voices
+                                playerSubtitles = subtitles
+                                playerQuality = quality
+                                showPlayer = true
+                                showSourceSheet = false
+                            }
+                        )
+                    } else {
+                        SourceSelectionEmptyView(title: sourceSheetTitle)
+                    }
+                }
+                .presentationDetents([.medium, .large], selection: $sourceSheetDetent)
+                .navigationTransition(.zoom(sourceID: "playBtn", in: transition))
+            }
+            .fullScreenCover(isPresented: $showPlayer, onDismiss: {
+                selectedIframeUrl = nil
+                selectedDirectVideoUrl = nil
+                playerKpId = nil
+                playerSeason = nil
+                playerEpisode = nil
+                playerVoiceover = nil
+                playerVoices = []
+                playerSubtitles = []
+                playerQuality = nil
+            }) {
+                if let details = viewModel.details {
+                    let mode = SourceManager.shared.currentMode
+                    if mode == .alloha {
+                        if let iframeUrl = selectedIframeUrl {
+                            PlayerView(iframeUrl: iframeUrl, fallbackTitle: details.title ?? details.name ?? "", kpId: playerKpId, season: playerSeason, episode: playerEpisode, selectedVoiceover: playerVoiceover, voices: playerVoices, subtitles: playerSubtitles, initialQuality: playerQuality)
+                        } else {
+                            Text("Видео не найдено")
+                        }
+                    } else {
+                        if let directUrl = selectedIframeUrl ?? selectedDirectVideoUrl {
+                            PlayerView(directVideoUrl: directUrl, fallbackTitle: details.title ?? details.name ?? "", kpId: playerKpId, season: playerSeason, episode: playerEpisode, selectedVoiceover: playerVoiceover, voices: playerVoices, subtitles: playerSubtitles, initialQuality: playerQuality)
+                        } else {
+                            Text("Видео не найдено")
+                        }
+                    }
+                }
+            }
+    }
+
+    private var detailsContent: some View {
         ScrollView {
             VStack(spacing: 0) {
                 if viewModel.isLoading {
@@ -194,7 +378,7 @@ struct DetailsView: View {
                         )
                     }
                     .frame(height: 450)
-                    
+
                     VStack(alignment: .center, spacing: 12) {
                         RemoteLogoView(
                             url: URL(string: details.displayLogoUrl ?? ""),
@@ -212,21 +396,21 @@ struct DetailsView: View {
                         }
 
                         DetailsPrimaryMetadataRow(details: details)
-                        
+
                         // Play Button
                         Button(action: {
                             let generator = UIImpactFeedbackGenerator(style: .medium)
                             generator.prepare()
                             generator.impactOccurred()
-                            
+
                             guard let kpId = details.externalIds?.kp else { return }
-                            
+
                             sourceSheetMode = SourceManager.shared.currentMode
                             sourceSheetTitle = details.title ?? details.name ?? ""
                             sourceSheetDetent = .medium
                             viewModel.resetSourceSheet()
                             showSourceSheet = true
-                            
+
                             sourceFetchTask?.cancel()
                             sourceFetchTask = Task {
                                 await viewModel.fetchSources(kpId: kpId, title: sourceSheetTitle)
@@ -259,7 +443,7 @@ struct DetailsView: View {
                         if details.type == "tv" {
                             InlineEpisodesSection(viewModel: viewModel, details: details) { season, episode in
                                 guard let kpId = details.externalIds?.kp else { return }
-                                
+
                                 // To handle pre-selection, we can use a new state property in DetailsView or just save to progress store
                                 // CollapsPlaybackProgressStore reads from store when opened, so let's temporarily save it there to auto-select
                                 CollapsPlaybackProgressStore.shared.saveLastPlayed(
@@ -269,13 +453,13 @@ struct DetailsView: View {
                                     voiceover: nil,
                                     source: "collaps" // This affects initial selection in SourceSelection as well, if we use the same store
                                 )
-                                
+
                                 sourceSheetMode = SourceManager.shared.currentMode
                                 sourceSheetTitle = details.title ?? details.name ?? ""
                                 sourceSheetDetent = .medium
                                 viewModel.resetSourceSheet()
                                 showSourceSheet = true
-                                
+
                                 sourceFetchTask?.cancel()
                                 sourceFetchTask = Task {
                                     await viewModel.fetchSources(kpId: kpId, title: sourceSheetTitle)
@@ -293,131 +477,28 @@ struct DetailsView: View {
                 }
             }
         }
+        .scrollIndicators(.hidden)
         .background(effectiveBackgroundColor)
-        .ignoresSafeArea(edges: .top)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar(id: "details") {
-            ToolbarItem(id: "favorite", placement: .topBarTrailing) {
-                Button {
-                    let generator = UIImpactFeedbackGenerator(style: .light)
-                    generator.prepare()
-                    generator.impactOccurred()
-                    favoriteBounce.toggle()
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.5, blendDuration: 0.5)) {
-                        viewModel.toggleFavorite()
-                    }
-                } label: {
-                    Image(systemName: viewModel.isFavorite ? "heart.fill" : "heart")
-                        .foregroundColor(.primary)
-                        .symbolEffect(.bounce, value: favoriteBounce)
-                }
-                .disabled(viewModel.details == nil)
-            }
-            
-            ToolbarItem(id: "download", placement: .topBarTrailing) {
-                Button {
-                    showDownloadAlert = true
-                } label: {
-                    Image(systemName: "arrow.down.circle")
-                        .foregroundColor(.primary)
-                }
-                .disabled(viewModel.details == nil)
-            }
+    }
+}
+
+private struct OptionalMovieNavigationTransitionModifier: ViewModifier {
+    let sourceID: String?
+    let namespace: Namespace.ID?
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if let sourceID, let namespace {
+            content.navigationTransition(.zoom(sourceID: sourceID, in: namespace))
+        } else {
+            content
         }
-        .alert("В разработке", isPresented: $showDownloadAlert) {
-            Button("OK", role: .cancel) { }
-        } message: {
-            Text("Функция скачивания появится в будущих обновлениях.")
-        }
-        .task {
-            await viewModel.loadDetails(id: movieId)
-        }
-        .sheet(isPresented: $showSourceSheet, onDismiss: {
-            sourceFetchTask?.cancel()
-            sourceFetchTask = nil
-            sourceSheetDetent = .medium
-            sourceSheetMode = nil
-            sourceSheetTitle = ""
-            viewModel.resetSourceSheet()
-        }) {
-            ZStack {
-                if viewModel.isFetchingSources, let sourceSheetMode {
-                    SourceSelectionLoadingView(
-                        title: sourceSheetTitle,
-                        mode: sourceSheetMode
-                    )
-                } else if let wrapper = viewModel.sourceResultWrapper,
-                          wrapper.mode == .alloha,
-                          let result = wrapper.allohaResult {
-                    SourceSelectionView(result: result, kpId: wrapper.kpId) { translation, season, episode, quality in
-                        playerKpId = wrapper.kpId
-                        playerSeason = season
-                        playerEpisode = episode
-                        playerVoiceover = translation.name
-                        playerVoices = [translation.name]
-                        playerSubtitles = []
-                        playerQuality = quality
-                        selectedIframeUrl = translation.iframeUrl
-                        showPlayer = true
-                        showSourceSheet = false
-                    }
-                } else if let wrapper = viewModel.sourceResultWrapper, wrapper.mode == .collaps {
-                    let isSerial = wrapper.collapsSeasons != nil && !(wrapper.collapsSeasons?.isEmpty ?? true)
-                    CollapsSelectionView(
-                        result: wrapper.collapsSeasons ?? [],
-                        movieResult: wrapper.collapsMovie,
-                        kpId: wrapper.kpId,
-                        isSerial: isSerial,
-                        title: viewModel.details?.title ?? viewModel.details?.name ?? "",
-                        onPlay: { url, season, episode, voiceover, voices, subtitles, quality in
-                            // Collaps returns direct HLS/MPD urls
-                            selectedIframeUrl = url // we use this state variable for the URL
-                            playerKpId = wrapper.kpId
-                            playerSeason = season
-                            playerEpisode = episode
-                            playerVoiceover = voiceover
-                            playerVoices = voices
-                            playerSubtitles = subtitles
-                            playerQuality = quality
-                            showPlayer = true
-                            showSourceSheet = false
-                        }
-                    )
-                } else {
-                    SourceSelectionEmptyView(title: sourceSheetTitle)
-                }
-            }
-            .presentationDetents([.medium, .large], selection: $sourceSheetDetent)
-            .navigationTransition(.zoom(sourceID: "playBtn", in: transition))
-        }
-        .fullScreenCover(isPresented: $showPlayer, onDismiss: {
-            selectedIframeUrl = nil
-            selectedDirectVideoUrl = nil
-            playerKpId = nil
-            playerSeason = nil
-            playerEpisode = nil
-            playerVoiceover = nil
-            playerVoices = []
-            playerSubtitles = []
-            playerQuality = nil
-        }) {
-            if let details = viewModel.details {
-                let mode = SourceManager.shared.currentMode
-                if mode == .alloha {
-                    if let iframeUrl = selectedIframeUrl {
-                        PlayerView(iframeUrl: iframeUrl, fallbackTitle: details.title ?? details.name ?? "", kpId: playerKpId, season: playerSeason, episode: playerEpisode, selectedVoiceover: playerVoiceover, voices: playerVoices, subtitles: playerSubtitles, initialQuality: playerQuality)
-                    } else {
-                        Text("Видео не найдено")
-                    }
-                } else {
-                    if let directUrl = selectedIframeUrl ?? selectedDirectVideoUrl {
-                        PlayerView(directVideoUrl: directUrl, fallbackTitle: details.title ?? details.name ?? "", kpId: playerKpId, season: playerSeason, episode: playerEpisode, selectedVoiceover: playerVoiceover, voices: playerVoices, subtitles: playerSubtitles, initialQuality: playerQuality)
-                    } else {
-                        Text("Видео не найдено")
-                    }
-                }
-            }
-        }
+    }
+}
+
+private extension View {
+    func optionalMovieNavigationTransition(sourceID: String?, in namespace: Namespace.ID?) -> some View {
+        modifier(OptionalMovieNavigationTransitionModifier(sourceID: sourceID, namespace: namespace))
     }
 }
 

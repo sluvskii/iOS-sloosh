@@ -87,7 +87,20 @@ struct MediaDto: Codable, Identifiable {
     
     // Identifiable requirement helper
     var identifier: String {
-        originalId?.stringValue ?? UUID().uuidString
+        if let originalId = originalId?.stringValue, !originalId.isEmpty {
+            return originalId
+        }
+
+        let titlePart = (title ?? name ?? originalTitle ?? "unknown")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        let yearPart = year?.stringValue ?? ""
+        let posterPart = (posterUrl ?? poster_path ?? "")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        let typePart = (type ?? "unknown").lowercased()
+
+        return "fallback|\(typePart)|\(titlePart)|\(yearPart)|\(posterPart)"
     }
     
     var displayTitle: String {
@@ -149,6 +162,11 @@ struct MediaDetailsDto: Codable {
         return "https://api.neomovies.ru/api/v1/images/backdrops/\(validId)/original"
     }
     
+    var previewBackdropUrl: String? {
+        guard let validId = id?.replacingOccurrences(of: "kp_", with: ""), !validId.isEmpty else { return nil }
+        return "https://api.neomovies.ru/api/v1/images/backdrops/\(validId)/small"
+    }
+
     var displayLogoUrl: String? {
         guard let validId = id?.replacingOccurrences(of: "kp_", with: ""), !validId.isEmpty else { return nil }
         return "https://api.neomovies.ru/api/v1/images/logos/\(validId)/original"
