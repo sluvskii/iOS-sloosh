@@ -123,7 +123,7 @@ struct SourceSelectionView: View {
 
         if result.isSerial {
             var initialSeason = result.seasons.first?.season
-            var initialEpisode: Int? = nil
+            var initialEpisode: Int?
             
             if let kpId = kpId {
                 if let lastSeason = CollapsPlaybackProgressStore.shared.loadLastSeason(kpId: kpId),
