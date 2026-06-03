@@ -462,7 +462,7 @@ class PlayerViewModel: ObservableObject {
         let absoluteUrlString = quality.url.absoluteString
         
         // When using Collaps, we may be playing from a local file, so check the scheme
-        if quality.url.isFileURL {
+        if quality.url.absoluteString.contains(HlsProxyServer.shared.fixedMasterUrl) {
             playbackUrl = quality.url
         } else {
             guard let encodedData = absoluteUrlString.data(using: .utf8) else { return }
@@ -541,7 +541,8 @@ class PlayerViewModel: ObservableObject {
             if trimmed.isEmpty || trimmed.hasPrefix("#") {
                 result.append(line)
             } else {
-                if trimmed.hasPrefix("http") {
+                // Ignore lines that are already absolute
+                if trimmed.hasPrefix("http://") || trimmed.hasPrefix("https://") {
                     result.append(line)
                 } else if let absoluteUrl = URL(string: trimmed, relativeTo: baseUrl) {
                     result.append(absoluteUrl.absoluteString)
@@ -588,20 +589,27 @@ class PlayerViewModel: ObservableObject {
                     let localUrl = tempDir.appendingPathComponent("\(mediaId).m3u8")
                     try finalHls.write(to: localUrl, atomically: true, encoding: .utf8)
                     
-                    // We must pass headers along with localUrl for AVPlayer to fetch absolute URLs properly
-                    var avHeaders = headers
-                    if avHeaders["User-Agent"] == nil {
-                        avHeaders["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
+                    // Start proxy for segments/keys that AVPlayer will fetch based on the absolute URLs
+                    // AVPlayer sometimes struggles with absolute URLs in local files if headers are required,
+                    // so we proxy the master through our local server instead of using file:// directly.
+                    
+                    var proxyHeaders = headers
+                    if proxyHeaders["User-Agent"] == nil {
+                        proxyHeaders["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
                     }
-                    if avHeaders["Origin"] == nil {
-                        avHeaders["Origin"] = "https://api.neomovies.ru"
+                    if proxyHeaders["Origin"] == nil {
+                        proxyHeaders["Origin"] = "https://api.neomovies.ru"
                     }
-                    if avHeaders["Referer"] == nil {
-                        avHeaders["Referer"] = "https://api.neomovies.ru/"
+                    if proxyHeaders["Referer"] == nil {
+                        proxyHeaders["Referer"] = "https://api.neomovies.ru/"
                     }
                     
+                    HlsProxyServer.shared.start(headers: proxyHeaders, voices: voices, subtitles: subtitles, mediaId: mediaId)
+                    HlsProxyServer.shared.updateMasterUrl(localUrl.absoluteString)
+                    
                     await MainActor.run {
-                        let asset = AVURLAsset(url: localUrl, options: ["AVURLAssetHTTPHeaderFieldsKey": avHeaders])
+                        guard let proxyUrl = URL(string: HlsProxyServer.shared.fixedMasterUrl) else { return }
+                        let asset = AVURLAsset(url: proxyUrl)
                         let playerItem = AVPlayerItem(asset: asset)
                         
                         if self.player == nil { self.player = AVPlayer() }
