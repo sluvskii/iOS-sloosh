@@ -443,11 +443,7 @@ class PlayerViewModel: ObservableObject {
         let wasPlaying = player?.timeControlStatus == .playing
         
         let playbackUrl: URL
-        var absoluteUrlString = quality.url.absoluteString
-        
-        if currentSourcePreferenceKey == "collaps" {
-            absoluteUrlString = CollapsStreamEncoder.encodeUri(absoluteUrlString)
-        }
+        let absoluteUrlString = quality.url.absoluteString
         
         guard let encodedData = absoluteUrlString.data(using: .utf8) else { return }
         let encoded = encodedData.base64EncodedString()
