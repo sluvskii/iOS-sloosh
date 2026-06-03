@@ -146,17 +146,7 @@ class HlsProxyServer {
                 self.send404(on: connection)
                 return
             }
-            
-            if currentMasterUrl.isFileURL {
-                do {
-                    let data = try Data(contentsOf: currentMasterUrl)
-                    self.sendResponse(data: data, statusCode: 200, contentType: "application/vnd.apple.mpegurl", contentRange: nil, connection: connection)
-                } catch {
-                    self.send404(on: connection)
-                }
-            } else {
-                await fetchAndServe(realUrl: currentMasterUrl, isPlaylist: true, incomingHeaders: incomingHeaders, connection: connection)
-            }
+            await fetchAndServe(realUrl: currentMasterUrl, isPlaylist: true, incomingHeaders: incomingHeaders, connection: connection)
         } else if urlComponents.path.hasPrefix("/proxy"),
            let urlQuery = urlComponents.queryItems?.first(where: { $0.name == "url" })?.value {
             
@@ -230,12 +220,7 @@ class HlsProxyServer {
                 let rewrittenData = rewritten.data(using: .utf8)!
                 self.sendResponse(data: rewrittenData, statusCode: 200, contentType: "application/vnd.apple.mpegurl", contentRange: nil, connection: connection)
             } else {
-                var contentType = httpResponse.mimeType ?? "video/MP2T"
-                let path = realUrl.path.lowercased()
-                if path.contains(".vtt") || path.contains(".webvtt") { contentType = "text/vtt" }
-                else if path.contains(".m4s") || path.contains(".mp4") { contentType = "video/mp4" }
-                else if path.contains(".aac") { contentType = "audio/aac" }
-                
+                let contentType = httpResponse.mimeType ?? "video/MP2T"
                 self.sendResponse(data: data, statusCode: statusCode, contentType: contentType, contentRange: contentRange, connection: connection)
             }
         } catch {

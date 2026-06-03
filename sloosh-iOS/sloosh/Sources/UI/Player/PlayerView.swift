@@ -248,7 +248,7 @@ class PlayerViewModel: ObservableObject {
         startParsing(iframeUrl: iframeUrl, voices: voices, subtitles: subtitles)
     }
     
-    func loadDirect(url: String, kpId: Int?, season: Int?, episode: Int?, selectedVoiceover: String?, voices: [String] = [], subtitles: [CollapsSubtitle] = [], headers: [String: String] = [:]) {
+    func loadDirect(url: String, kpId: Int?, season: Int?, episode: Int?, selectedVoiceover: String?, voices: [String] = [], subtitles: [CollapsSubtitle] = []) {
         if hasStartedLoading { return }
         hasStartedLoading = true
         
@@ -267,31 +267,15 @@ class PlayerViewModel: ObservableObject {
             return
         }
 
-        var proxyHeaders = headers
-        if proxyHeaders["User-Agent"] == nil {
-            proxyHeaders["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
-        }
-        if proxyHeaders["Origin"] == nil {
-            proxyHeaders["Origin"] = "https://api.neomovies.ru"
-        }
-        if proxyHeaders["Referer"] == nil {
-            proxyHeaders["Referer"] = "https://api.neomovies.ru/"
-        }
-        
-        self.currentHeaders = proxyHeaders
+        self.currentHeaders = [:]
         self.currentQualityKey = "Авто"
         self.availableQualities = [("Авто", parsedUrl)]
 
-        playVideo(url: parsedUrl, headers: proxyHeaders, voices: voices, subtitles: subtitles)
+        playVideo(url: parsedUrl, headers: [:], voices: voices, subtitles: subtitles)
 
         Task {
             do {
-                var request = URLRequest(url: parsedUrl)
-                for (k, v) in proxyHeaders {
-                    request.setValue(v, forHTTPHeaderField: k)
-                }
-                
-                let (data, _) = try await URLSession.shared.data(for: request)
+                let (data, _) = try await URLSession.shared.data(from: parsedUrl)
                 if let content = String(data: data, encoding: .utf8) {
                     parseMasterPlaylist(content: content, baseUrl: parsedUrl)
                 }
@@ -460,25 +444,19 @@ class PlayerViewModel: ObservableObject {
         
         let playbackUrl: URL
         let absoluteUrlString = quality.url.absoluteString
-        
-        // When using Collaps, we may be playing from a local file, so check the scheme
-        if quality.url.absoluteString.contains(HlsProxyServer.shared.fixedMasterUrl) {
-            playbackUrl = quality.url
-        } else {
-            guard let encodedData = absoluteUrlString.data(using: .utf8) else { return }
-            let encoded = encodedData.base64EncodedString()
-                .replacingOccurrences(of: "+", with: "-")
-                .replacingOccurrences(of: "/", with: "_")
-                .replacingOccurrences(of: "=", with: "")
+        guard let encodedData = absoluteUrlString.data(using: .utf8) else { return }
+        let encoded = encodedData.base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
 
-            let ext = quality.url.pathExtension
-            let pathSuffix = ext.isEmpty ? "stream.m3u8" : "stream.\(ext)"
+        let ext = quality.url.pathExtension
+        let pathSuffix = ext.isEmpty ? "stream.m3u8" : "stream.\(ext)"
 
-            guard let proxyUrl = URL(string: "http://127.0.0.1:\(HlsProxyServer.shared.port.rawValue)/proxy/\(pathSuffix)?url=\(encoded)") else { return }
-            playbackUrl = proxyUrl
-        }
+        guard let proxyUrl = URL(string: "http://127.0.0.1:\(HlsProxyServer.shared.port.rawValue)/proxy/\(pathSuffix)?url=\(encoded)") else { return }
+        playbackUrl = proxyUrl
 
-        let asset = AVURLAsset(url: playbackUrl, options: ["AVURLAssetHTTPHeaderFieldsKey": currentHeaders])
+        let asset = AVURLAsset(url: playbackUrl)
         let playerItem = AVPlayerItem(asset: asset)
         
         self.player?.replaceCurrentItem(with: playerItem)
@@ -532,140 +510,12 @@ class PlayerViewModel: ObservableObject {
         return CollapsPlaybackProgressStore.shared.loadLastVoiceover(kpId: kpId, source: source)
     }
     
-    private func absolutizeHlsManifestUris(manifest: String, manifestUrl: String) -> String {
-        guard let baseUrl = URL(string: manifestUrl) else { return manifest }
-        let lines = manifest.components(separatedBy: .newlines)
-        var result = [String]()
-        for line in lines {
-            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
-            if trimmed.isEmpty || trimmed.hasPrefix("#") {
-                result.append(line)
-            } else {
-                // Ignore lines that are already absolute
-                if trimmed.hasPrefix("http://") || trimmed.hasPrefix("https://") {
-                    result.append(line)
-                } else if let absoluteUrl = URL(string: trimmed, relativeTo: baseUrl) {
-                    result.append(absoluteUrl.absoluteString)
-                } else {
-                    result.append(line)
-                }
-            }
-        }
-        return result.joined(separator: "\n")
-    }
-
     private func playVideo(url: URL, headers: [String: String], voices: [String] = [], subtitles: [CollapsSubtitle] = []) {
-        if currentSourcePreferenceKey == "collaps" {
-            Task {
-                do {
-                    var request = URLRequest(url: url)
-                    for (k, v) in headers { request.setValue(v, forHTTPHeaderField: k) }
-                    request.setValue("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36", forHTTPHeaderField: "User-Agent")
-                    if request.value(forHTTPHeaderField: "Origin") == nil {
-                        request.setValue("https://api.neomovies.ru", forHTTPHeaderField: "Origin")
-                    }
-                    if request.value(forHTTPHeaderField: "Referer") == nil {
-                        request.setValue("https://api.neomovies.ru/", forHTTPHeaderField: "Referer")
-                    }
-                    
-                    let (data, _) = try await URLSession.shared.data(for: request)
-                    guard let content = String(data: data, encoding: .utf8) else { throw URLError(.badServerResponse) }
-                    
-                    let mediaId: String
-                    if let kpId = currentKpId {
-                        if let season = currentSeason, let episode = currentEpisode {
-                            mediaId = "kp_\(kpId)_s\(season)_e\(episode)"
-                        } else {
-                            mediaId = "kp_\(kpId)"
-                        }
-                    } else {
-                        mediaId = "unknown"
-                    }
-                    
-                    let rewritten = CollapsHlsRewriter.rewrite(master: content, voices: voices, subtitles: subtitles, mediaId: mediaId)
-                    let finalHls = self.absolutizeHlsManifestUris(manifest: rewritten, manifestUrl: url.absoluteString)
-                    
-                    let tempDir = FileManager.default.temporaryDirectory
-                    let localUrl = tempDir.appendingPathComponent("\(mediaId).m3u8")
-                    try finalHls.write(to: localUrl, atomically: true, encoding: .utf8)
-                    
-                    // Start proxy for segments/keys that AVPlayer will fetch based on the absolute URLs
-                    // AVPlayer sometimes struggles with absolute URLs in local files if headers are required,
-                    // so we proxy the master through our local server instead of using file:// directly.
-                    
-                    var proxyHeaders = headers
-                    if proxyHeaders["User-Agent"] == nil {
-                        proxyHeaders["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
-                    }
-                    if proxyHeaders["Origin"] == nil {
-                        proxyHeaders["Origin"] = "https://api.neomovies.ru"
-                    }
-                    if proxyHeaders["Referer"] == nil {
-                        proxyHeaders["Referer"] = "https://api.neomovies.ru/"
-                    }
-                    
-                    HlsProxyServer.shared.start(headers: proxyHeaders, voices: voices, subtitles: subtitles, mediaId: mediaId)
-                    HlsProxyServer.shared.updateMasterUrl(localUrl.absoluteString)
-                    
-                    await MainActor.run {
-                        guard let proxyUrl = URL(string: HlsProxyServer.shared.fixedMasterUrl) else { return }
-                        let asset = AVURLAsset(url: proxyUrl)
-                        let playerItem = AVPlayerItem(asset: asset)
-                        
-                        if self.player == nil { self.player = AVPlayer() }
-                        self.player?.replaceCurrentItem(with: playerItem)
-                        self.player?.automaticallyWaitsToMinimizeStalling = true
-                        
-                        self.isLoading = false
-                        self.startTrackingProgress()
-                        self.player?.play()
-                        
-                        self.itemObservation = playerItem.observe(\.status) { [weak self] item, _ in
-                            guard let self = self else { return }
-                            if item.status == .readyToPlay {
-                                Task { @MainActor in
-                                    self.extractAudioTracks(from: item)
-                                }
-                            } else if item.status == .failed {
-                                if let error = item.error as? NSError {
-                                    if let underlyingError = error.userInfo[NSUnderlyingErrorKey] as? NSError {
-                                        self.error = "Ошибка HLS: \(underlyingError.localizedDescription)"
-                                    } else {
-                                        self.error = "Ошибка HLS: \(error.localizedDescription)"
-                                    }
-                                } else {
-                                    self.error = "Неизвестная ошибка воспроизведения"
-                                }
-                                self.isLoading = false
-                            }
-                        }
-                    }
-                } catch {
-                    await MainActor.run {
-                        self.error = "Ошибка загрузки HLS"
-                        self.isLoading = false
-                    }
-                }
-            }
-            return
-        }
-
         let absoluteUrlString = url.absoluteString
         guard let encodedData = absoluteUrlString.data(using: .utf8) else {
             self.error = "Ошибка формирования URL"
             self.isLoading = false
             return
-        }
-        
-        var proxyHeaders = headers
-        if proxyHeaders["User-Agent"] == nil {
-            proxyHeaders["User-Agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/133.0.0.0 Safari/537.36"
-        }
-        if proxyHeaders["Origin"] == nil {
-            proxyHeaders["Origin"] = "https://api.neomovies.ru"
-        }
-        if proxyHeaders["Referer"] == nil {
-            proxyHeaders["Referer"] = "https://api.neomovies.ru/"
         }
         
         // Use URL Safe Base64 without padding (same as proxy implementation)
@@ -685,7 +535,7 @@ class PlayerViewModel: ObservableObject {
             mediaId = "unknown"
         }
         
-        HlsProxyServer.shared.start(headers: proxyHeaders, voices: voices, subtitles: subtitles, mediaId: mediaId)
+        HlsProxyServer.shared.start(headers: headers, voices: voices, subtitles: subtitles, mediaId: mediaId)
         
         let ext = url.pathExtension
         let pathSuffix = ext.isEmpty ? "stream.m3u8" : "stream.\(ext)"
