@@ -6,6 +6,7 @@ class HlsProxyServer {
     static let shared = HlsProxyServer()
     private var listener: NWListener?
     private let queue = DispatchQueue(label: "com.sloosh.ios.hlsproxy", attributes: .concurrent)
+    private let stateLock = NSLock()
     private var headers: [String: String] = [:]
     private var voices: [String] = []
     private var subtitles: [CollapsSubtitle] = []
@@ -17,24 +18,35 @@ class HlsProxyServer {
     
     // We use a custom delegate to bypass SSL issues like in Android's buildTrustingClient
     private lazy var session: URLSession = {
-        let config = URLSessionConfiguration.default
+        let config = URLSessionConfiguration.ephemeral
+        config.httpMaximumConnectionsPerHost = 20
+        config.timeoutIntervalForRequest = 15
         let delegate = TrustAllSessionDelegate()
         return URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
     }()
     
     func start(headers: [String: String], voices: [String] = [], subtitles: [CollapsSubtitle] = [], mediaId: String = "") {
+        stateLock.lock()
         self.headers = headers
         self.voices = voices
         self.subtitles = subtitles
         self.mediaId = mediaId
-        if listener != nil { return }
+        let isRunning = listener != nil
+        stateLock.unlock()
+        
+        if isRunning { return }
         
         do {
-            listener = try NWListener(using: .tcp, on: port)
-            listener?.newConnectionHandler = { [weak self] connection in
+            let newListener = try NWListener(using: .tcp, on: port)
+            newListener.newConnectionHandler = { [weak self] connection in
                 self?.handleConnection(connection)
             }
-            listener?.start(queue: queue)
+            newListener.start(queue: queue)
+            
+            stateLock.lock()
+            self.listener = newListener
+            stateLock.unlock()
+            
             print("HlsProxyServer started on port \(port)")
         } catch {
             print("Failed to start HlsProxyServer: \(error)")
@@ -42,17 +54,23 @@ class HlsProxyServer {
     }
 
     func updateHeaders(_ headers: [String: String]) {
-        self.headers = headers
+        stateLock.lock()
+        self.headers.merge(headers) { _, new in new }
+        stateLock.unlock()
     }
 
     func updateMasterUrl(_ urlString: String) {
+        stateLock.lock()
         currentMasterUrl = URL(string: urlString)
+        stateLock.unlock()
     }
     
     func stop() {
+        stateLock.lock()
         listener?.cancel()
         listener = nil
         currentMasterUrl = nil
+        stateLock.unlock()
     }
     
     private func handleConnection(_ connection: NWConnection) {
@@ -120,7 +138,11 @@ class HlsProxyServer {
         }
         
         if urlComponents.path == "/master.m3u8" {
-            guard let currentMasterUrl = self.currentMasterUrl else {
+            stateLock.lock()
+            let masterUrl = self.currentMasterUrl
+            stateLock.unlock()
+            
+            guard let currentMasterUrl = masterUrl else {
                 self.send404(on: connection)
                 return
             }
@@ -150,7 +172,15 @@ class HlsProxyServer {
     
     private func fetchAndServe(realUrl: URL, isPlaylist: Bool, incomingHeaders: [String: String], connection: NWConnection) async {
         var request = URLRequest(url: realUrl)
-        for (k, v) in headers {
+        
+        stateLock.lock()
+        let currentHeaders = self.headers
+        let currentVoices = self.voices
+        let currentSubtitles = self.subtitles
+        let currentMediaId = self.mediaId
+        stateLock.unlock()
+        
+        for (k, v) in currentHeaders {
             request.setValue(v, forHTTPHeaderField: k)
         }
         if let range = incomingHeaders["range"] {
@@ -175,12 +205,12 @@ class HlsProxyServer {
             
             if isPlaylist, let content = String(data: data, encoding: .utf8) {
                 let rewritten: String
-                if content.contains("#EXT-X-STREAM-INF") && (!self.voices.isEmpty || !self.subtitles.isEmpty) {
+                if content.contains("#EXT-X-STREAM-INF") && (!currentVoices.isEmpty || !currentSubtitles.isEmpty) {
                     let collapsRewritten = CollapsHlsRewriter.rewrite(
                         master: content,
-                        voices: self.voices,
-                        subtitles: self.subtitles,
-                        mediaId: self.mediaId
+                        voices: currentVoices,
+                        subtitles: currentSubtitles,
+                        mediaId: currentMediaId
                     )
                     rewritten = self.rewriteM3u8(content: collapsRewritten, baseUrl: realUrl)
                 } else {
