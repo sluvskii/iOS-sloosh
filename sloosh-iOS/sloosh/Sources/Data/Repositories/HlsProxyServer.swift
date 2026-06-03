@@ -173,8 +173,6 @@ class HlsProxyServer {
     }
     
     private func fetchAndServe(realUrl: URL, isPlaylist: Bool, incomingHeaders: [String: String], connection: NWConnection) async {
-        var request = URLRequest(url: realUrl)
-        
         stateLock.lock()
         let currentHeaders = self.headers
         let currentVoices = self.voices
@@ -182,6 +180,16 @@ class HlsProxyServer {
         let currentMediaId = self.mediaId
         let currentIsCollaps = self.isCollaps
         stateLock.unlock()
+        
+        let targetUrl: URL
+        if currentIsCollaps {
+            let encodedString = CollapsStreamEncoder.encodeUri(realUrl.absoluteString)
+            targetUrl = URL(string: encodedString) ?? realUrl
+        } else {
+            targetUrl = realUrl
+        }
+        
+        var request = URLRequest(url: targetUrl)
         
         for (k, v) in currentHeaders {
             request.setValue(v, forHTTPHeaderField: k)
@@ -274,9 +282,7 @@ class HlsProxyServer {
             absoluteUrlString = resolvedUrl.absoluteString
         }
         
-        let targetUrlString = isCollaps ? CollapsStreamEncoder.encodeUri(absoluteUrlString) : absoluteUrlString
-        
-        guard let encodedData = targetUrlString.data(using: .utf8) else {
+        guard let encodedData = absoluteUrlString.data(using: .utf8) else {
             return urlString
         }
         
@@ -286,7 +292,7 @@ class HlsProxyServer {
             .replacingOccurrences(of: "/", with: "_")
             .replacingOccurrences(of: "=", with: "")
         
-        let urlObj = URL(string: targetUrlString)
+        let urlObj = URL(string: absoluteUrlString)
         let ext = urlObj?.pathExtension ?? ""
         let pathSuffix = ext.isEmpty ? "stream.m3u8" : "stream.\(ext)"
         
