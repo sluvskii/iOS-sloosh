@@ -587,6 +587,7 @@ class PlayerViewModel: ObservableObject {
         
         if self.player == nil { self.player = AVPlayer() }
         self.player?.replaceCurrentItem(with: playerItem)
+        self.player?.automaticallyWaitsToMinimizeStalling = true
         
         self.isLoading = false
         self.startTrackingProgress()
