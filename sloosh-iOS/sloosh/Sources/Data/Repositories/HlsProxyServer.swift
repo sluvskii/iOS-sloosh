@@ -11,6 +11,7 @@ class HlsProxyServer {
     private var voices: [String] = []
     private var subtitles: [CollapsSubtitle] = []
     private var mediaId: String = ""
+    private var isCollaps: Bool = false
     private var currentMasterUrl: URL?
     
     var port: NWEndpoint.Port = 8181
@@ -25,12 +26,13 @@ class HlsProxyServer {
         return URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
     }()
     
-    func start(headers: [String: String], voices: [String] = [], subtitles: [CollapsSubtitle] = [], mediaId: String = "") {
+    func start(headers: [String: String], voices: [String] = [], subtitles: [CollapsSubtitle] = [], mediaId: String = "", isCollaps: Bool = false) {
         stateLock.lock()
         self.headers = headers
         self.voices = voices
         self.subtitles = subtitles
         self.mediaId = mediaId
+        self.isCollaps = isCollaps
         let isRunning = listener != nil
         stateLock.unlock()
         
@@ -178,6 +180,7 @@ class HlsProxyServer {
         let currentVoices = self.voices
         let currentSubtitles = self.subtitles
         let currentMediaId = self.mediaId
+        let currentIsCollaps = self.isCollaps
         stateLock.unlock()
         
         for (k, v) in currentHeaders {
@@ -212,9 +215,9 @@ class HlsProxyServer {
                         subtitles: currentSubtitles,
                         mediaId: currentMediaId
                     )
-                    rewritten = self.rewriteM3u8(content: collapsRewritten, baseUrl: realUrl)
+                    rewritten = self.rewriteM3u8(content: collapsRewritten, baseUrl: realUrl, isCollaps: currentIsCollaps)
                 } else {
-                    rewritten = self.rewriteM3u8(content: content, baseUrl: realUrl)
+                    rewritten = self.rewriteM3u8(content: content, baseUrl: realUrl, isCollaps: currentIsCollaps)
                 }
                 
                 let rewrittenData = rewritten.data(using: .utf8)!
@@ -229,7 +232,7 @@ class HlsProxyServer {
         }
     }
     
-    private func rewriteM3u8(content: String, baseUrl: URL) -> String {
+    private func rewriteM3u8(content: String, baseUrl: URL, isCollaps: Bool) -> String {
         let lines = content.components(separatedBy: .newlines)
         var result = [String]()
         
@@ -245,7 +248,7 @@ class HlsProxyServer {
                         let match = String(modifiedLine[range])
                         let uriString = match.replacingOccurrences(of: "URI=\"", with: "").replacingOccurrences(of: "\"", with: "")
                         if !uriString.isEmpty && uriString != "none" {
-                            let proxied = proxyUrl(uriString, baseUrl: baseUrl)
+                            let proxied = proxyUrl(uriString, baseUrl: baseUrl, isCollaps: isCollaps)
                             modifiedLine.replaceSubrange(range, with: "URI=\"\(proxied)\"")
                         }
                     }
@@ -254,13 +257,13 @@ class HlsProxyServer {
                     result.append(line)
                 }
             } else {
-                result.append(proxyUrl(line, baseUrl: baseUrl))
+                result.append(proxyUrl(line, baseUrl: baseUrl, isCollaps: isCollaps))
             }
         }
         return result.joined(separator: "\n")
     }
     
-    private func proxyUrl(_ urlString: String, baseUrl: URL) -> String {
+    private func proxyUrl(_ urlString: String, baseUrl: URL, isCollaps: Bool) -> String {
         let absoluteUrlString: String
         if urlString.hasPrefix("http") {
             absoluteUrlString = urlString
@@ -271,7 +274,9 @@ class HlsProxyServer {
             absoluteUrlString = resolvedUrl.absoluteString
         }
         
-        guard let encodedData = absoluteUrlString.data(using: .utf8) else {
+        let targetUrlString = isCollaps ? CollapsStreamEncoder.encodeUri(absoluteUrlString) : absoluteUrlString
+        
+        guard let encodedData = targetUrlString.data(using: .utf8) else {
             return urlString
         }
         
@@ -281,7 +286,7 @@ class HlsProxyServer {
             .replacingOccurrences(of: "/", with: "_")
             .replacingOccurrences(of: "=", with: "")
         
-        let urlObj = URL(string: absoluteUrlString)
+        let urlObj = URL(string: targetUrlString)
         let ext = urlObj?.pathExtension ?? ""
         let pathSuffix = ext.isEmpty ? "stream.m3u8" : "stream.\(ext)"
         

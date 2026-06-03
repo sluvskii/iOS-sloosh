@@ -443,7 +443,12 @@ class PlayerViewModel: ObservableObject {
         let wasPlaying = player?.timeControlStatus == .playing
         
         let playbackUrl: URL
-        let absoluteUrlString = quality.url.absoluteString
+        var absoluteUrlString = quality.url.absoluteString
+        
+        if currentSourcePreferenceKey == "collaps" {
+            absoluteUrlString = CollapsStreamEncoder.encodeUri(absoluteUrlString)
+        }
+        
         guard let encodedData = absoluteUrlString.data(using: .utf8) else { return }
         let encoded = encodedData.base64EncodedString()
             .replacingOccurrences(of: "+", with: "-")
@@ -535,7 +540,8 @@ class PlayerViewModel: ObservableObject {
             mediaId = "unknown"
         }
         
-        HlsProxyServer.shared.start(headers: headers, voices: voices, subtitles: subtitles, mediaId: mediaId)
+        let isCollaps = currentSourcePreferenceKey == "collaps"
+        HlsProxyServer.shared.start(headers: headers, voices: voices, subtitles: subtitles, mediaId: mediaId, isCollaps: isCollaps)
         
         let ext = url.pathExtension
         let pathSuffix = ext.isEmpty ? "stream.m3u8" : "stream.\(ext)"
