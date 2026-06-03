@@ -146,7 +146,17 @@ class HlsProxyServer {
                 self.send404(on: connection)
                 return
             }
-            await fetchAndServe(realUrl: currentMasterUrl, isPlaylist: true, incomingHeaders: incomingHeaders, connection: connection)
+            
+            if currentMasterUrl.isFileURL {
+                do {
+                    let data = try Data(contentsOf: currentMasterUrl)
+                    self.sendResponse(data: data, statusCode: 200, contentType: "application/vnd.apple.mpegurl", contentRange: nil, connection: connection)
+                } catch {
+                    self.send404(on: connection)
+                }
+            } else {
+                await fetchAndServe(realUrl: currentMasterUrl, isPlaylist: true, incomingHeaders: incomingHeaders, connection: connection)
+            }
         } else if urlComponents.path.hasPrefix("/proxy"),
            let urlQuery = urlComponents.queryItems?.first(where: { $0.name == "url" })?.value {
             
