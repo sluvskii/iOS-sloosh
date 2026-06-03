@@ -282,12 +282,16 @@ class PlayerViewModel: ObservableObject {
             let asset = AVURLAsset(url: parsedUrl)
             let playerItem = AVPlayerItem(asset: asset)
             
-            if self.player == nil { self.player = AVPlayer() }
-            self.player?.replaceCurrentItem(with: playerItem)
-            
-            self.isLoading = false
-            self.startTrackingProgress()
-            self.player?.play()
+            // Важно: нужно создавать плеер на Main-потоке, 
+            // иначе UI плеера может повиснуть в неинициализированном состоянии
+            DispatchQueue.main.async {
+                if self.player == nil { self.player = AVPlayer() }
+                self.player?.replaceCurrentItem(with: playerItem)
+                
+                self.isLoading = false
+                self.startTrackingProgress()
+                self.player?.play()
+            }
             
             self.itemObservation = playerItem.observe(\.status) { [weak self] item, _ in
                 guard let self = self else { return }
@@ -483,8 +487,12 @@ class PlayerViewModel: ObservableObject {
         resolveTask = nil
         resolver?.cancel()
         resolver = nil
-        player?.pause()
-        player = nil
+        
+        DispatchQueue.main.async {
+            self.player?.pause()
+            self.player = nil
+        }
+        
         HlsProxyServer.shared.stop()
     }
     
@@ -513,10 +521,12 @@ class PlayerViewModel: ObservableObject {
         let asset = AVURLAsset(url: playbackUrl)
         let playerItem = AVPlayerItem(asset: asset)
         
-        self.player?.replaceCurrentItem(with: playerItem)
-        self.player?.seek(to: currentTime)
-        if wasPlaying {
-            self.player?.play()
+        DispatchQueue.main.async {
+            self.player?.replaceCurrentItem(with: playerItem)
+            self.player?.seek(to: currentTime)
+            if wasPlaying {
+                self.player?.play()
+            }
         }
         
         // Re-extract audio tracks for new item and restore selection
@@ -585,12 +595,14 @@ class PlayerViewModel: ObservableObject {
         let asset = AVURLAsset(url: proxyUrl)
         let playerItem = AVPlayerItem(asset: asset)
         
-        if self.player == nil { self.player = AVPlayer() }
-        self.player?.replaceCurrentItem(with: playerItem)
-        
-        self.isLoading = false
-        self.startTrackingProgress()
-        self.player?.play()
+        DispatchQueue.main.async {
+            if self.player == nil { self.player = AVPlayer() }
+            self.player?.replaceCurrentItem(with: playerItem)
+            
+            self.isLoading = false
+            self.startTrackingProgress()
+            self.player?.play()
+        }
         
         self.itemObservation = playerItem.observe(\.status) { [weak self] item, _ in
             guard let self = self else { return }
