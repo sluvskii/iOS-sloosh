@@ -19,21 +19,24 @@ class PlayerPresenterViewController: UIViewController {
     private var playerController: AVPlayerViewController?
     private var observation: NSKeyValueObservation?
     
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        
+        AppDelegate.orientationLock = .landscape
+        if #available(iOS 16.0, *) {
+            if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+                windowScene.requestGeometryUpdate(.iOS(interfaceOrientations: .landscape))
+            }
+        } else {
+            UIDevice.current.setValue(UIInterfaceOrientation.landscapeRight.rawValue, forKey: "orientation")
+        }
+    }
+
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         
         if !didPresent {
             didPresent = true
-            
-            // 1. Плавно переводим ориентацию в горизонтальную ТОЛЬКО перед показом самого видео
-            AppDelegate.orientationLock = .landscape
-            if #available(iOS 16.0, *) {
-                if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
-                    windowScene.requestGeometryUpdate(.iOS(interfaceOrientations: .landscape))
-                }
-            } else {
-                UIDevice.current.setValue(UIInterfaceOrientation.landscapeRight.rawValue, forKey: "orientation")
-            }
             
             let pc = AVPlayerViewController()
             pc.player = player
@@ -42,8 +45,12 @@ class PlayerPresenterViewController: UIViewController {
             pc.modalPresentationStyle = .fullScreen
             self.playerController = pc
             
-            self.present(pc, animated: true) {
-                self.player?.play()
+            // Небольшая задержка, чтобы анимация SwiftUI fullScreenCover успела завершиться.
+            // Иначе происходит конфликт анимаций, из-за которого ломается иерархия view и кнопки плеера не нажимаются.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                self.present(pc, animated: true) {
+                    self.player?.play()
+                }
             }
         } else {
             // Если мы вернулись на этот экран и плеера больше нет (смахнули вниз)
