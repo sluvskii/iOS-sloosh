@@ -267,66 +267,20 @@ class PlayerViewModel: ObservableObject {
             return
         }
 
-        if isLocalProxyUrl(parsedUrl) {
-            self.currentHeaders = [:]
-            self.currentQualityKey = "Авто"
-            self.availableQualities = [("Авто", parsedUrl)]
-
-            let asset = AVURLAsset(url: parsedUrl)
-            let playerItem = AVPlayerItem(asset: asset)
-            
-            if self.player == nil { self.player = AVPlayer() }
-            self.player?.replaceCurrentItem(with: playerItem)
-            
-            self.isLoading = false
-            self.startTrackingProgress()
-            self.player?.play()
-            
-            self.itemObservation = playerItem.observe(\.status) { [weak self] item, _ in
-                guard let self = self else { return }
-                if item.status == .readyToPlay {
-                    Task { @MainActor in
-                        self.extractAudioTracks(from: item)
-                    }
-                }
-            }
-
-            Task {
-                do {
-                    let (data, _) = try await URLSession.shared.data(from: parsedUrl)
-                    if let content = String(data: data, encoding: .utf8) {
-                        parseMasterPlaylist(content: content, baseUrl: parsedUrl)
-                    }
-                } catch {
-                    print("Failed to fetch local master playlist: \(error)")
-                }
-            }
-            return
-        }
-        
-        let headers = [
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
-            "Referer": "https://kinokrad.my/",
-            "Origin": "https://kinokrad.my"
-        ]
-        self.currentHeaders = headers
-        
+        self.currentHeaders = [:]
         self.currentQualityKey = "Авто"
         self.availableQualities = [("Авто", parsedUrl)]
-        
-        playVideo(url: parsedUrl, headers: headers, voices: voices, subtitles: subtitles)
-        
-        // Fetch playlist to parse qualities
+
+        playVideo(url: parsedUrl, headers: [:], voices: voices, subtitles: subtitles)
+
         Task {
             do {
-                var request = URLRequest(url: parsedUrl)
-                headers.forEach { request.setValue($0.value, forHTTPHeaderField: $0.key) }
-                let (data, _) = try await URLSession.shared.data(for: request)
+                let (data, _) = try await URLSession.shared.data(from: parsedUrl)
                 if let content = String(data: data, encoding: .utf8) {
                     parseMasterPlaylist(content: content, baseUrl: parsedUrl)
                 }
             } catch {
-                print("Failed to fetch master playlist: \(error)")
+                print("Failed to fetch local master playlist: \(error)")
             }
         }
     }
@@ -489,7 +443,7 @@ class PlayerViewModel: ObservableObject {
         let wasPlaying = player?.timeControlStatus == .playing
         
         let playbackUrl: URL
-        if isLocalProxyUrl(quality.url) {
+        if currentSourcePreferenceKey == "collaps" {
             playbackUrl = quality.url
         } else {
             let absoluteUrlString = quality.url.absoluteString
@@ -531,22 +485,59 @@ class PlayerViewModel: ObservableObject {
             guard let group = try? await item.asset.loadMediaSelectionGroup(for: .audible) else { return }
             
             DispatchQueue.main.async {
-                // Auto-select if targetVoiceover matches any track
-                if let voiceover = self.targetVoiceover, !voiceover.isEmpty {
-                    // Find best match (ignore case)
-                    if let match = group.options.first(where: { $0.displayName.lowercased().contains(voiceover.lowercased()) }) {
+                if let targetVoice = self.targetVoiceover, !targetVoice.isEmpty {
+                    if let match = group.options.first(where: { $0.displayName.lowercased() == targetVoice.lowercased() }) {
                         item.select(match, in: group)
                         self.persistVoiceoverSelection(match.displayName)
-                        self.targetVoiceover = nil // Only apply once per initial load or quality change if needed, but it's safe to clear
+                        return
                     }
                 }
-
+                
+                let savedVoiceover = self.loadSavedVoiceover()
+                if let saved = savedVoiceover, !saved.isEmpty {
+                    if let match = group.options.first(where: { $0.displayName.lowercased() == saved.lowercased() }) {
+                        item.select(match, in: group)
+                        return
+                    }
+                }
+                
                 self.persistCurrentVoiceoverSelection(from: item)
             }
         }
     }
     
+    private func loadSavedVoiceover() -> String? {
+        guard let kpId = currentKpId,
+              let source = currentSourcePreferenceKey else {
+            return nil
+        }
+        return CollapsPlaybackProgressStore.shared.loadLastVoiceover(kpId: kpId, source: source)
+    }
+    
     private func playVideo(url: URL, headers: [String: String], voices: [String] = [], subtitles: [CollapsSubtitle] = []) {
+        if currentSourcePreferenceKey == "collaps" {
+            let asset = AVURLAsset(url: url)
+            let playerItem = AVPlayerItem(asset: asset)
+            
+            if self.player == nil { self.player = AVPlayer() }
+            self.player?.replaceCurrentItem(with: playerItem)
+            self.player?.automaticallyWaitsToMinimizeStalling = true
+            
+            self.isLoading = false
+            self.startTrackingProgress()
+            self.player?.play()
+            
+            self.itemObservation = playerItem.observe(\.status) { [weak self] item, _ in
+                guard let self = self else { return }
+                if item.status == .readyToPlay {
+                    Task { @MainActor in
+                        self.extractAudioTracks(from: item)
+                    }
+                }
+            }
+            return
+        }
+
         let absoluteUrlString = url.absoluteString
         guard let encodedData = absoluteUrlString.data(using: .utf8) else {
             self.error = "Ошибка формирования URL"
