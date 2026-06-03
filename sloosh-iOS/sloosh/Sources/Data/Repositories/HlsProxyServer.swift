@@ -95,6 +95,13 @@ class HlsProxyServer {
             return
         }
         
+        let method = parts[0].uppercased()
+        
+        if method == "HEAD" {
+            sendResponse(data: Data(), statusCode: 200, contentType: "application/octet-stream", contentRange: nil, connection: connection)
+            return
+        }
+        
         var incomingHeaders: [String: String] = [:]
         for line in lines.dropFirst() {
             guard !line.isEmpty else { break }
