@@ -43,7 +43,18 @@ class HlsProxyServer {
             newListener.newConnectionHandler = { [weak self] connection in
                 self?.handleConnection(connection)
             }
+            let readySemaphore = DispatchSemaphore(value: 0)
+            newListener.stateUpdateHandler = { state in
+                switch state {
+                case .ready, .failed, .cancelled:
+                    readySemaphore.signal()
+                default:
+                    break
+                }
+            }
             newListener.start(queue: queue)
+            // Ждём готовности listener'а, иначе первый запрос от AVPlayer прилетит до того, как порт реально слушается.
+            _ = readySemaphore.wait(timeout: .now() + 2.0)
             
             stateLock.lock()
             self.listener = newListener

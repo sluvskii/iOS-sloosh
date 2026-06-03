@@ -273,26 +273,8 @@ class PlayerViewModel: ObservableObject {
 
         playVideo(url: parsedUrl, headers: [:], voices: voices, subtitles: subtitles)
 
-        Task {
-            do {
-                let fetchUrl: URL
-                if currentSourcePreferenceKey == "collaps", let encodedString = CollapsStreamEncoder.encodeUri(url).addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed), let encodedUrl = URL(string: encodedString) {
-                    fetchUrl = encodedUrl
-                } else {
-                    fetchUrl = parsedUrl
-                }
-                
-                var request = URLRequest(url: fetchUrl)
-                request.setValue("Mozilla/5.0 (Windows NT 10.0; Win64; x64)", forHTTPHeaderField: "User-Agent")
-                
-                let (data, _) = try await URLSession.shared.data(for: request)
-                if let content = String(data: data, encoding: .utf8) {
-                    parseMasterPlaylist(content: content, baseUrl: parsedUrl)
-                }
-            } catch {
-                print("Failed to fetch local master playlist: \(error)")
-            }
-        }
+        // Качество будет извлечено из master-плейлиста в момент его загрузки AVPlayer'ом.
+        // Отдельный fetch через URLSession не нужен: он ломал URL фрагментом #.m3u8 из-за percent-encoding.
     }
     
     private func parseMasterPlaylist(content: String, baseUrl: URL) {
