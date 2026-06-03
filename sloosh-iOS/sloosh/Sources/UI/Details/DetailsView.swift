@@ -238,12 +238,15 @@ struct DetailsView: View {
                             }
                             .frame(height: 50)
                             .padding(.horizontal, 32)
-                            .foregroundStyle(Color(UIColor.systemBackground))
+                            .foregroundStyle(.white)
+                            .background(
+                                Capsule()
+                                    .fill(.regularMaterial)
+                            )
                         }
                         .matchedTransitionSource(id: "playBtn", in: transition) { source in
                             source
-                                .background(.primary)
-                                .clipShape(RoundedRectangle(cornerRadius: 25, style: .continuous))
+                                .clipShape(Capsule())
                         }
                         .contentShape(Capsule())
                         .buttonStyle(.plain)
@@ -291,6 +294,7 @@ struct DetailsView: View {
                 }
             }
         }
+        .environment(\.colorScheme, .dark)
         .background(effectiveBackgroundColor)
         .ignoresSafeArea(edges: .top)
         .navigationBarTitleDisplayMode(.inline)
