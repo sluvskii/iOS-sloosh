@@ -238,12 +238,16 @@ struct DetailsView: View {
                             }
                             .frame(height: 50)
                             .padding(.horizontal, 32)
-                            .foregroundStyle(Color(UIColor.systemBackground))
+                            .foregroundStyle(.white)
+                            .background(
+                                Capsule()
+                                    .fill(.regularMaterial)
+                                    .environment(\.colorScheme, .dark)
+                            )
                         }
                         .matchedTransitionSource(id: "playBtn", in: transition) { source in
                             source
-                                .background(.primary)
-                                .clipShape(RoundedRectangle(cornerRadius: 25, style: .continuous))
+                                .clipShape(Capsule())
                         }
                         .contentShape(Capsule())
                         .buttonStyle(.plain)
