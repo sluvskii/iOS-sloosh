@@ -220,7 +220,12 @@ class HlsProxyServer {
                 let rewrittenData = rewritten.data(using: .utf8)!
                 self.sendResponse(data: rewrittenData, statusCode: 200, contentType: "application/vnd.apple.mpegurl", contentRange: nil, connection: connection)
             } else {
-                let contentType = httpResponse.mimeType ?? "video/MP2T"
+                var contentType = httpResponse.mimeType ?? "video/MP2T"
+                let path = realUrl.path.lowercased()
+                if path.contains(".vtt") || path.contains(".webvtt") { contentType = "text/vtt" }
+                else if path.contains(".m4s") || path.contains(".mp4") { contentType = "video/mp4" }
+                else if path.contains(".aac") { contentType = "audio/aac" }
+                
                 self.sendResponse(data: data, statusCode: statusCode, contentType: contentType, contentRange: contentRange, connection: connection)
             }
         } catch {
