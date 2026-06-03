@@ -232,6 +232,12 @@ class HlsProxyServer {
             absoluteUrlString = resolvedUrl.absoluteString
         }
         
+        // ONLY proxy playlists. Media segments (.ts, .mp4, etc) should be loaded natively by AVPlayer.
+        // This completely eliminates the 10-30s buffering delay!
+        if !absoluteUrlString.contains(".m3u8") {
+            return absoluteUrlString
+        }
+        
         guard let encodedData = absoluteUrlString.data(using: .utf8) else {
             return urlString
         }

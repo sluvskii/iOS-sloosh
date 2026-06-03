@@ -1,126 +1,21 @@
 import SwiftUI
 import AVKit
 
-class PlayerPresenterViewController: UIViewController {
-    var player: AVPlayer? {
-        didSet {
-            if playerController?.player !== player {
-                playerController?.player = player
-            }
-            if player != nil && player?.timeControlStatus != .playing {
-                player?.play()
-            }
-        }
-    }
-    var viewModel: PlayerViewModel?
-    
-    var onDismiss: (() -> Void)?
-    private var didPresent = false
-    private var playerController: AVPlayerViewController?
-    private var observation: NSKeyValueObservation?
-    
-    override func viewWillAppear(_ animated: Bool) {
-        super.viewWillAppear(animated)
-        
-        AppDelegate.orientationLock = .landscape
-        if #available(iOS 16.0, *) {
-            if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
-                windowScene.requestGeometryUpdate(.iOS(interfaceOrientations: .landscape))
-            }
-        } else {
-            UIDevice.current.setValue(UIInterfaceOrientation.landscapeRight.rawValue, forKey: "orientation")
-        }
-    }
-
-    override func viewDidAppear(_ animated: Bool) {
-        super.viewDidAppear(animated)
-        
-        if !didPresent {
-            didPresent = true
-            
-            let pc = AVPlayerViewController()
-            pc.player = player
-            pc.showsPlaybackControls = true
-            pc.allowsPictureInPicturePlayback = true
-            pc.modalPresentationStyle = .fullScreen
-            self.playerController = pc
-            
-            // Небольшая задержка, чтобы анимация SwiftUI fullScreenCover успела завершиться.
-            // Иначе происходит конфликт анимаций, из-за которого ломается иерархия view и кнопки плеера не нажимаются.
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                self.present(pc, animated: true) {
-                    self.player?.play()
-                }
-            }
-        } else {
-            // Если мы вернулись на этот экран и плеера больше нет (смахнули вниз)
-            if self.presentedViewController == nil {
-                handleDismissal()
-            }
-        }
-    }
-    
-    override func viewDidDisappear(_ animated: Bool) {
-        super.viewDidDisappear(animated)
-        
-        // Ensure dismiss is called only when the view controller is ACTUALLY being dismissed from SwiftUI
-        // or when the child AVPlayerViewController has been fully dismissed
-        if self.isBeingDismissed || self.isMovingFromParent || (self.presentedViewController == nil && self.didPresent) {
-            handleDismissal()
-        }
-    }
-    
-    private func handleDismissal() {
-        // Restore orientation
-        AppDelegate.orientationLock = .all
-        if #available(iOS 16.0, *) {
-            if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
-                windowScene.requestGeometryUpdate(.iOS(interfaceOrientations: .portrait))
-            }
-        } else {
-            UIDevice.current.setValue(UIInterfaceOrientation.portrait.rawValue, forKey: "orientation")
-        }
-        
-        onDismiss?()
-    }
-    
-    deinit {
-        observation?.invalidate()
-    }
-}
-
-struct ModalPlayerPresenter: UIViewControllerRepresentable {
+struct NativePlayer: UIViewControllerRepresentable {
     var player: AVPlayer?
-    var viewModel: PlayerViewModel
-    var onDismiss: () -> Void
     
-    class Coordinator: NSObject {
-        var didDismiss = false
-    }
-    
-    func makeCoordinator() -> Coordinator {
-        Coordinator()
-    }
-    
-    func makeUIViewController(context: Context) -> PlayerPresenterViewController {
-        let controller = PlayerPresenterViewController()
-        controller.view.backgroundColor = .clear
+    func makeUIViewController(context: Context) -> AVPlayerViewController {
+        let controller = AVPlayerViewController()
         controller.player = player
-        controller.viewModel = viewModel
-        controller.onDismiss = {
-            DispatchQueue.main.async {
-                if !context.coordinator.didDismiss {
-                    context.coordinator.didDismiss = true
-                    onDismiss()
-                }
-            }
-        }
+        controller.showsPlaybackControls = true
+        controller.allowsPictureInPicturePlayback = true
         return controller
     }
     
-    func updateUIViewController(_ uiViewController: PlayerPresenterViewController, context: Context) {
-        uiViewController.player = player
-        uiViewController.viewModel = viewModel
+    func updateUIViewController(_ uiViewController: AVPlayerViewController, context: Context) {
+        if uiViewController.player !== player {
+            uiViewController.player = player
+        }
     }
 }
 
@@ -183,14 +78,38 @@ struct PlayerView: View {
                     .progressViewStyle(CircularProgressViewStyle(tint: .white))
                     .scaleEffect(1.5)
             } else {
-                ModalPlayerPresenter(player: viewModel.player, viewModel: viewModel) {
-                    viewModel.cleanup() // Теперь очистка происходит ТОЛЬКО когда плеер реально закрылся
-                    presentationMode.wrappedValue.dismiss()
+                ZStack(alignment: .topLeading) {
+                    NativePlayer(player: viewModel.player)
+                        .edgesIgnoringSafeArea(.all)
+                    
+                    // Кнопка закрытия
+                    Button(action: {
+                        viewModel.cleanup()
+                        presentationMode.wrappedValue.dismiss()
+                    }) {
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 20, weight: .bold))
+                            .foregroundColor(.white)
+                            .padding(12)
+                            .background(Color.black.opacity(0.5))
+                            .clipShape(Circle())
+                    }
+                    .padding(.top, 44)
+                    .padding(.leading, 16)
                 }
                 .edgesIgnoringSafeArea(.all)
             }
         }
         .onAppear {
+            AppDelegate.orientationLock = .landscape
+            if #available(iOS 16.0, *) {
+                if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+                    windowScene.requestGeometryUpdate(.iOS(interfaceOrientations: .landscape))
+                }
+            } else {
+                UIDevice.current.setValue(UIInterfaceOrientation.landscapeRight.rawValue, forKey: "orientation")
+            }
+            
             if viewModel.player == nil { // Избегаем повторной загрузки при перерисовках
                 viewModel.player = AVPlayer() // СРАЗУ СОЗДАЕМ ПЛЕЕР, ЧТОБЫ AVPlayerViewController ПОЛУЧИЛ ЕГО ПРИ СТАРТЕ
                 viewModel.targetQualityPreference = initialQuality
@@ -205,7 +124,17 @@ struct PlayerView: View {
                 }
             }
         }
-        // Убрали .onDisappear с cleanup, чтобы он не убивал видео при показе плеера
+        .onDisappear {
+            AppDelegate.orientationLock = .all
+            if #available(iOS 16.0, *) {
+                if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+                    windowScene.requestGeometryUpdate(.iOS(interfaceOrientations: .portrait))
+                }
+            } else {
+                UIDevice.current.setValue(UIInterfaceOrientation.portrait.rawValue, forKey: "orientation")
+            }
+            viewModel.cleanup()
+        }
         .navigationBarHidden(true)
         .navigationBarBackButtonHidden(true)
     }
@@ -279,7 +208,8 @@ class PlayerViewModel: ObservableObject {
             self.currentQualityKey = "Авто"
             self.availableQualities = [("Авто", parsedUrl)]
 
-            let asset = AVURLAsset(url: parsedUrl)
+            let options = ["AVURLAssetHTTPHeaderFieldsKey": self.currentHeaders]
+            let asset = AVURLAsset(url: parsedUrl, options: options)
             let playerItem = AVPlayerItem(asset: asset)
             
             // Важно: нужно создавать плеер на Main-потоке, 
@@ -518,7 +448,8 @@ class PlayerViewModel: ObservableObject {
             playbackUrl = proxyUrl
         }
 
-        let asset = AVURLAsset(url: playbackUrl)
+        let options = ["AVURLAssetHTTPHeaderFieldsKey": self.currentHeaders]
+        let asset = AVURLAsset(url: playbackUrl, options: options)
         let playerItem = AVPlayerItem(asset: asset)
         
         DispatchQueue.main.async {
@@ -592,7 +523,8 @@ class PlayerViewModel: ObservableObject {
             return
         }
         
-        let asset = AVURLAsset(url: proxyUrl)
+        let options = ["AVURLAssetHTTPHeaderFieldsKey": headers]
+        let asset = AVURLAsset(url: proxyUrl, options: options)
         let playerItem = AVPlayerItem(asset: asset)
         
         DispatchQueue.main.async {
