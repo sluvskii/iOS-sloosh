@@ -194,7 +194,7 @@ struct DetailsView: View {
         ZStack {
             detailsContent
         }
-            .preferredColorScheme(.dark)
+            .environment(\.colorScheme, .dark)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .ignoresSafeArea(edges: .top)
             .navigationBarTitleDisplayMode(.inline)
