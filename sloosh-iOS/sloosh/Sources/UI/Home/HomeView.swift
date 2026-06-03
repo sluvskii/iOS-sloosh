@@ -60,7 +60,7 @@ struct HomeView: View {
                 }
             }
             .task {
-                await viewModel.applyCurrentSelection(force: true)
+                await viewModel.applyCurrentSelection()
             }
             .onChange(of: viewModel.selectedCategory) { _, _ in
                 Task {
@@ -352,6 +352,7 @@ class HomeViewModel: ObservableObject {
 
     private var cachedPages: [HomeCacheKey: Int] = [:]
     private var cachedCanLoadMore: [HomeCacheKey: Bool] = [:]
+    private var hasPerformedInitialLoad = false
 
     func applyCurrentSelection(force: Bool = false) async {
         let key = HomeCacheKey(category: selectedCategory, filter: selectedFilter)
@@ -360,6 +361,8 @@ class HomeViewModel: ObservableObject {
             cachedItems[key] = []
             cachedPages[key] = 1
             cachedCanLoadMore[key] = true
+        } else if !hasPerformedInitialLoad {
+            hasPerformedInitialLoad = true
         } else if let cached = cachedItems[key], !cached.isEmpty {
             return
         }
