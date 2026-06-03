@@ -143,12 +143,10 @@ struct DetailsView: View {
     
     private var effectiveBackgroundColor: Color {
         if let dominant = dominantUIColor {
-            return Color(UIColor { traitCollection in
-                let bg = UIColor.systemBackground.resolvedColor(with: traitCollection)
-                return dominant.blended(with: bg, fraction: 0.35)
-            })
+            // Принудительно смешиваем с черным, так как экран всегда в темной теме
+            return Color(dominant.blended(with: .black, fraction: 0.35))
         } else {
-            return Color(UIColor.systemBackground)
+            return Color.black
         }
     }
     
@@ -296,6 +294,9 @@ struct DetailsView: View {
         .background(effectiveBackgroundColor)
         .ignoresSafeArea(edges: .top)
         .navigationBarTitleDisplayMode(.inline)
+        .environment(\.colorScheme, .dark)
+        .preferredColorScheme(.dark)
+        .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbar(id: "details") {
             ToolbarItem(id: "favorite", placement: .topBarTrailing) {
                 Button {
