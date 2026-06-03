@@ -142,10 +142,6 @@ struct DetailsView: View {
     @State private var favoriteBounce = false
 
     @State private var dominantUIColor: UIColor? = nil
-    @State private var detailsScrollOffset: CGFloat = 0
-
-    private let heroHeight: CGFloat = 450
-    private let heroOverlapHeight: CGFloat = 96
 
     private var detailsBaseBackgroundColor: UIColor {
         UIColor.systemBackground.resolvedColor(with: UITraitCollection(userInterfaceStyle: .dark))
@@ -197,13 +193,7 @@ struct DetailsView: View {
     }
     
     var body: some View {
-        ZStack(alignment: .top) {
-            effectiveBackgroundColor
-
-            if let details = viewModel.details {
-                detailsHeroView(details: details)
-            }
-
+        ZStack {
             detailsContent
         }
             .optionalMovieNavigationTransition(
@@ -346,62 +336,48 @@ struct DetailsView: View {
             }
     }
 
-    private func detailsHeroView(details: MediaDetailsDto) -> some View {
-        let pullDownOffset = max(detailsScrollOffset, 0)
-        let scrollUpOffset = min(detailsScrollOffset, 0)
-        let height = heroHeight + pullDownOffset
-        let imageOffset = -pullDownOffset + (scrollUpOffset * 0.18)
-
-        return GeometryReader { geometry in
-            RemoteBackdropView(
-                url: URL(string: details.displayBackdropUrl ?? ""),
-                fallbackUrl: URL(string: details.displayPosterUrl ?? ""),
-                width: geometry.size.width,
-                height: height,
-                onImageLoaded: { img in
-                    withAnimation(.easeInOut(duration: 0.8)) {
-                        self.dominantUIColor = img.averageColor
-                    }
-                }
-            )
-            .offset(y: imageOffset)
-            .overlay(
-                LinearGradient(
-                    gradient: Gradient(colors: [
-                        .clear,
-                        .clear,
-                        effectiveBackgroundColor.opacity(0.55),
-                        effectiveBackgroundColor
-                    ]),
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .offset(y: imageOffset)
-            )
-        }
-        .frame(height: heroHeight + pullDownOffset)
-        .clipped()
-    }
-
     private var detailsContent: some View {
         ScrollView {
             VStack(spacing: 0) {
-                GeometryReader { geometry in
-                    Color.clear
-                        .preference(
-                            key: DetailsScrollOffsetPreferenceKey.self,
-                            value: geometry.frame(in: .named("detailsScroll")).minY
-                        )
-                }
-                .frame(height: 0)
-
                 if viewModel.isLoading {
                     ProgressView("Загрузка...")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .padding(.top, 100)
                 } else if let details = viewModel.details {
-                    Color.clear
-                        .frame(height: heroHeight - heroOverlapHeight)
+                    // Stretchy Backdrop
+                    GeometryReader { geometry in
+                        let minY = geometry.frame(in: .global).minY
+                        let isScrollingDown = minY > 0
+                        let height = isScrollingDown ? 450 + minY : 450
+                        let offset = isScrollingDown ? -minY : 0
+
+                        RemoteBackdropView(
+                            url: URL(string: details.displayBackdropUrl ?? ""),
+                            fallbackUrl: URL(string: details.displayPosterUrl ?? ""),
+                            width: geometry.size.width,
+                            height: height,
+                            onImageLoaded: { img in
+                                withAnimation(.easeInOut(duration: 0.8)) {
+                                    self.dominantUIColor = img.averageColor
+                                }
+                            }
+                        )
+                        .offset(y: offset)
+                        .overlay(
+                            LinearGradient(
+                                gradient: Gradient(colors: [
+                                    .clear,
+                                    .clear,
+                                    effectiveBackgroundColor.opacity(0.6),
+                                    effectiveBackgroundColor
+                                ]),
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                            .offset(y: offset)
+                        )
+                    }
+                    .frame(height: 450)
 
                     VStack(alignment: .center, spacing: 12) {
                         RemoteLogoView(
@@ -460,42 +436,40 @@ struct DetailsView: View {
                         .padding(.top, 8)
                         .padding(.bottom, -4)
 
-                        VStack(spacing: 0) {
-                            DetailsInfoSection(details: details, backgroundColor: effectiveBackgroundColor)
-                                .padding(.top, 20)
-                                .padding(.horizontal)
+                        DetailsInfoSection(details: details, backgroundColor: effectiveBackgroundColor)
+                            .padding(.top, 20)
+                            .padding(.horizontal)
 
-                            if details.type == "tv" {
-                                InlineEpisodesSection(viewModel: viewModel, details: details) { season, episode in
-                                    guard let kpId = details.externalIds?.kp else { return }
+                        if details.type == "tv" {
+                            InlineEpisodesSection(viewModel: viewModel, details: details) { season, episode in
+                                guard let kpId = details.externalIds?.kp else { return }
 
-                                    // To handle pre-selection, we can use a new state property in DetailsView or just save to progress store
-                                    // CollapsPlaybackProgressStore reads from store when opened, so let's temporarily save it there to auto-select
-                                    CollapsPlaybackProgressStore.shared.saveLastPlayed(
-                                        kpId: kpId,
-                                        season: season,
-                                        episode: episode,
-                                        voiceover: nil,
-                                        source: "collaps" // This affects initial selection in SourceSelection as well, if we use the same store
-                                    )
+                                // To handle pre-selection, we can use a new state property in DetailsView or just save to progress store
+                                // CollapsPlaybackProgressStore reads from store when opened, so let's temporarily save it there to auto-select
+                                CollapsPlaybackProgressStore.shared.saveLastPlayed(
+                                    kpId: kpId,
+                                    season: season,
+                                    episode: episode,
+                                    voiceover: nil,
+                                    source: "collaps" // This affects initial selection in SourceSelection as well, if we use the same store
+                                )
 
-                                    sourceSheetMode = SourceManager.shared.currentMode
-                                    sourceSheetTitle = details.title ?? details.name ?? ""
-                                    sourceSheetDetent = .medium
-                                    viewModel.resetSourceSheet()
-                                    showSourceSheet = true
+                                sourceSheetMode = SourceManager.shared.currentMode
+                                sourceSheetTitle = details.title ?? details.name ?? ""
+                                sourceSheetDetent = .medium
+                                viewModel.resetSourceSheet()
+                                showSourceSheet = true
 
-                                    sourceFetchTask?.cancel()
-                                    sourceFetchTask = Task {
-                                        await viewModel.fetchSources(kpId: kpId, title: sourceSheetTitle)
-                                    }
+                                sourceFetchTask?.cancel()
+                                sourceFetchTask = Task {
+                                    await viewModel.fetchSources(kpId: kpId, title: sourceSheetTitle)
                                 }
-                                .padding(.top, 24)
-                                .padding(.bottom, 20)
                             }
+                            .padding(.top, 24)
+                            .padding(.bottom, 20)
                         }
-                        .background(effectiveBackgroundColor)
                     }
+                    .offset(y: -80)
                 } else {
                     Text("Не удалось загрузить данные.")
                         .frame(maxWidth: .infinity, alignment: .center)
@@ -503,19 +477,8 @@ struct DetailsView: View {
                 }
             }
         }
-        .coordinateSpace(name: "detailsScroll")
-        .onPreferenceChange(DetailsScrollOffsetPreferenceKey.self) { value in
-            detailsScrollOffset = value
-        }
         .scrollIndicators(.hidden)
-    }
-}
-
-private struct DetailsScrollOffsetPreferenceKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
+        .background(effectiveBackgroundColor)
     }
 }
 
