@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SearchView: View {
     @StateObject private var viewModel = SearchViewModel()
+    @Namespace private var navigationTransition
 
     private let columns = [
         GridItem(.adaptive(minimum: 120), spacing: 16)
@@ -82,10 +83,7 @@ struct SearchView: View {
                     ScrollView {
                         LazyVGrid(columns: columns, spacing: 20) {
                             ForEach(viewModel.results) { movie in
-                                NavigationLink(destination: DetailsView(movieId: movie.id)) {
-                                    MoviePosterCard(movie: movie)
-                                }
-                                .buttonStyle(.plain)
+                                MovieDetailsNavigationLink(movie: movie, navigationTransition: navigationTransition)
                                 .onAppear {
                                     if movie.id == viewModel.results.last?.id {
                                         Task {
