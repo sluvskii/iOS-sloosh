@@ -238,16 +238,12 @@ struct DetailsView: View {
                             }
                             .frame(height: 50)
                             .padding(.horizontal, 32)
-                            .foregroundStyle(.white)
-                            .background(
-                                Capsule()
-                                    .fill(.regularMaterial)
-                                    .environment(\.colorScheme, .dark)
-                            )
+                            .foregroundStyle(Color(UIColor.systemBackground))
                         }
                         .matchedTransitionSource(id: "playBtn", in: transition) { source in
                             source
-                                .clipShape(Capsule())
+                                .background(.primary)
+                                .clipShape(RoundedRectangle(cornerRadius: 25, style: .continuous))
                         }
                         .contentShape(Capsule())
                         .buttonStyle(.plain)
@@ -298,9 +294,6 @@ struct DetailsView: View {
         .background(effectiveBackgroundColor)
         .ignoresSafeArea(edges: .top)
         .navigationBarTitleDisplayMode(.inline)
-        .environment(\.colorScheme, .dark)
-        .preferredColorScheme(.dark)
-        .toolbarColorScheme(.dark, for: .navigationBar)
         .toolbar(id: "details") {
             ToolbarItem(id: "favorite", placement: .topBarTrailing) {
                 Button {
