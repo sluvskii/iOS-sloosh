@@ -443,22 +443,18 @@ class PlayerViewModel: ObservableObject {
         let wasPlaying = player?.timeControlStatus == .playing
         
         let playbackUrl: URL
-        if currentSourcePreferenceKey == "collaps" {
-            playbackUrl = quality.url
-        } else {
-            let absoluteUrlString = quality.url.absoluteString
-            guard let encodedData = absoluteUrlString.data(using: .utf8) else { return }
-            let encoded = encodedData.base64EncodedString()
-                .replacingOccurrences(of: "+", with: "-")
-                .replacingOccurrences(of: "/", with: "_")
-                .replacingOccurrences(of: "=", with: "")
+        let absoluteUrlString = quality.url.absoluteString
+        guard let encodedData = absoluteUrlString.data(using: .utf8) else { return }
+        let encoded = encodedData.base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
 
-            let ext = quality.url.pathExtension
-            let pathSuffix = ext.isEmpty ? "stream.m3u8" : "stream.\(ext)"
+        let ext = quality.url.pathExtension
+        let pathSuffix = ext.isEmpty ? "stream.m3u8" : "stream.\(ext)"
 
-            guard let proxyUrl = URL(string: "http://127.0.0.1:\(HlsProxyServer.shared.port.rawValue)/proxy/\(pathSuffix)?url=\(encoded)") else { return }
-            playbackUrl = proxyUrl
-        }
+        guard let proxyUrl = URL(string: "http://127.0.0.1:\(HlsProxyServer.shared.port.rawValue)/proxy/\(pathSuffix)?url=\(encoded)") else { return }
+        playbackUrl = proxyUrl
 
         let asset = AVURLAsset(url: playbackUrl)
         let playerItem = AVPlayerItem(asset: asset)
@@ -515,29 +511,6 @@ class PlayerViewModel: ObservableObject {
     }
     
     private func playVideo(url: URL, headers: [String: String], voices: [String] = [], subtitles: [CollapsSubtitle] = []) {
-        if currentSourcePreferenceKey == "collaps" {
-            let asset = AVURLAsset(url: url)
-            let playerItem = AVPlayerItem(asset: asset)
-            
-            if self.player == nil { self.player = AVPlayer() }
-            self.player?.replaceCurrentItem(with: playerItem)
-            self.player?.automaticallyWaitsToMinimizeStalling = true
-            
-            self.isLoading = false
-            self.startTrackingProgress()
-            self.player?.play()
-            
-            self.itemObservation = playerItem.observe(\.status) { [weak self] item, _ in
-                guard let self = self else { return }
-                if item.status == .readyToPlay {
-                    Task { @MainActor in
-                        self.extractAudioTracks(from: item)
-                    }
-                }
-            }
-            return
-        }
-
         let absoluteUrlString = url.absoluteString
         guard let encodedData = absoluteUrlString.data(using: .utf8) else {
             self.error = "Ошибка формирования URL"
