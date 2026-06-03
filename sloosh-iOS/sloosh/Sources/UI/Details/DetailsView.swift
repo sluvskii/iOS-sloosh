@@ -118,7 +118,6 @@ struct RemoteLogoView: View {
 struct DetailsView: View {
     let movieId: String
     @StateObject private var viewModel = DetailsViewModel()
-    @Environment(\.colorScheme) private var appColorScheme
     
     @State private var showPlayer = false
     @State private var showSourceSheet = false
@@ -141,12 +140,6 @@ struct DetailsView: View {
     @State private var favoriteBounce = false
     
     @State private var dominantUIColor: UIColor? = nil
-    
-    private var entryBackgroundColor: UIColor {
-        UIColor.systemBackground.resolvedColor(
-            with: UITraitCollection(userInterfaceStyle: appColorScheme == .dark ? .dark : .light)
-        )
-    }
 
     private var detailsBaseBackgroundColor: UIColor {
         UIColor.systemBackground.resolvedColor(with: UITraitCollection(userInterfaceStyle: .dark))
@@ -157,7 +150,7 @@ struct DetailsView: View {
         if let dominant = dominantUIColor {
             return Color(dominant.blended(with: background, fraction: 0.35))
         } else {
-            return Color(entryBackgroundColor)
+            return Color(background)
         }
     }
 
@@ -200,8 +193,8 @@ struct DetailsView: View {
     var body: some View {
         ZStack {
             detailsContent
-                .environment(\.colorScheme, .dark)
         }
+            .preferredColorScheme(.dark)
             .toolbarColorScheme(.dark, for: .navigationBar)
             .ignoresSafeArea(edges: .top)
             .navigationBarTitleDisplayMode(.inline)
