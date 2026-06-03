@@ -35,11 +35,17 @@ final class AllohaRuntimeResolver: NSObject, WKNavigationDelegate, WKScriptMessa
         guard let url = URL(string: iframeUrl) else {
             throw NSError(domain: "SlooshCore", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid iframe URL"])
         }
-        return try await withCheckedThrowingContinuation { continuation in
-            self.continuation = continuation
-            Task { @MainActor in
-                self.baseURL = url
-                self.start(with: url)
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                self.continuation = continuation
+                Task { @MainActor in
+                    self.baseURL = url
+                    self.start(with: url)
+                }
+            }
+        } onCancel: {
+            Task { @MainActor [weak self] in
+                self?.cancel()
             }
         }
     }
@@ -76,10 +82,8 @@ final class AllohaRuntimeResolver: NSObject, WKNavigationDelegate, WKScriptMessa
         self.webView = webView
 
         if let rootView = UIApplication.shared.connectedScenes
-            .compactMap({ $0 as? UIWindowScene })
-            .first(where: { $0.activationState == .foregroundActive })?
-            .windows
-            .first(where: \.isKeyWindow)?
+            .compactMap({ ($0 as? UIWindowScene)?.windows.first(where: \.isKeyWindow) })
+            .first?
             .rootViewController?
             .view {
             let host = UIView(frame: .zero)

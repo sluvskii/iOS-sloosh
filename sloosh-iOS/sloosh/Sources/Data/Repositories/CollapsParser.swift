@@ -278,10 +278,10 @@ enum CollapsParser {
                     for value in values {
                         let decoded = value.replacingOccurrences(of: "\\/", with: "/")
                         if resolvedHls == nil && decoded.lowercased().contains(".m3u8") {
-                            resolvedHls = normalizedURLString(decoded)
+                            resolvedHls = decoded
                         }
                         if resolvedDash == nil && decoded.lowercased().contains(".mpd") {
-                            resolvedDash = normalizedURLString(decoded)
+                            resolvedDash = decoded
                         }
                     }
                 }
@@ -366,10 +366,15 @@ enum CollapsParser {
         for pattern in patterns {
             guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { continue }
             let range = NSRange(payload.startIndex..<payload.endIndex, in: payload)
-            guard let match = regex.firstMatch(in: payload, range: range) else { continue }
+            guard let match = regex.firstMatch(in: payload, options: [], range: range) else { continue }
             let targetRange = match.numberOfRanges > 1 ? match.range(at: 1) : match.range(at: 0)
             guard let valueRange = Range(targetRange, in: payload) else { continue }
-            return normalizedURLString(String(payload[valueRange]))
+            var value = String(payload[valueRange])
+            value = value.replacingOccurrences(of: "\\/", with: "/")
+            if value.hasPrefix("//") {
+                value = "https:" + value
+            }
+            return value
         }
         return nil
     }

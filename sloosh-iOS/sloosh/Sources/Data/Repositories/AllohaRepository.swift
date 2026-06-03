@@ -31,18 +31,13 @@ struct AllohaApiResult: Codable, Hashable, Equatable {
 }
 
 class TrustAllSessionDelegate: NSObject, URLSessionDelegate, @unchecked Sendable {
-    func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge, completionHandler: @escaping @MainActor @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+    func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge, completionHandler: @escaping @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
         if challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
            let serverTrust = challenge.protectionSpace.serverTrust {
-            // Bypass SSL certificate validation for Alloha API
-            Task { @MainActor in
-                completionHandler(.useCredential, URLCredential(trust: serverTrust))
-            }
+            completionHandler(.useCredential, URLCredential(trust: serverTrust))
             return
         }
-        Task { @MainActor in
-            completionHandler(.performDefaultHandling, nil)
-        }
+        completionHandler(.performDefaultHandling, nil)
     }
 }
 
