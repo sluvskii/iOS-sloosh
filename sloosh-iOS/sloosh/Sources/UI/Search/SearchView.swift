@@ -134,7 +134,7 @@ struct SearchView: View {
             }
             .navigationTitle("Поиск")
             .searchable(text: $viewModel.searchQuery, prompt: "Фильмы и сериалы...")
-            .onChange(of: viewModel.searchQuery) { oldValue, newValue in
+            .onChange(of: viewModel.searchQuery) { _, newValue in
                 Task {
                     await viewModel.setQuery(newValue)
                 }

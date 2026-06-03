@@ -5,7 +5,7 @@ struct RemoteBackdropView: View {
     let fallbackUrl: URL?
     let width: CGFloat
     let height: CGFloat
-    var onImageLoaded: ((UIImage) -> Void)? = nil
+    var onImageLoaded: ((UIImage) -> Void)?
     
     @State private var image: UIImage?
     @State private var isLoading = false
@@ -28,7 +28,7 @@ struct RemoteBackdropView: View {
             guard let url = url, image == nil else { return }
             isLoading = true
             
-            var fetchedImage: UIImage? = nil
+            var fetchedImage: UIImage?
             do {
                 let request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad)
                 let (data, response) = try await URLSession.shared.data(for: request)
@@ -121,8 +121,8 @@ struct DetailsView: View {
     
     @State private var showPlayer = false
     @State private var showSourceSheet = false
-    @State private var selectedIframeUrl: String? = nil
-    @State private var selectedDirectVideoUrl: String? = nil
+    @State private var selectedIframeUrl: String?
+    @State private var selectedDirectVideoUrl: String?
     @State private var showDownloadAlert = false
     @State private var sourceSheetMode: SourceMode?
     @State private var sourceSheetTitle = ""
@@ -136,10 +136,10 @@ struct DetailsView: View {
     @State private var playerVoiceover: String?
     @State private var playerVoices: [String] = []
     @State private var playerSubtitles: [CollapsSubtitle] = []
-    @State private var playerQuality: VideoQualityPreference? = nil
+    @State private var playerQuality: VideoQualityPreference?
     @State private var favoriteBounce = false
     
-    @State private var dominantUIColor: UIColor? = nil
+    @State private var dominantUIColor: UIColor?
     
     private var effectiveBackgroundColor: Color {
         if let dominant = dominantUIColor {
@@ -238,11 +238,7 @@ struct DetailsView: View {
                             }
                             .frame(height: 50)
                             .padding(.horizontal, 32)
-                            .foregroundStyle(.white)
-                            .background(
-                                Capsule()
-                                    .fill(.regularMaterial)
-                            )
+                            .foregroundStyle(Color(UIColor.systemBackground))
                         }
                         .matchedTransitionSource(id: "playBtn", in: transition) { source in
                             source
@@ -295,7 +291,6 @@ struct DetailsView: View {
                 }
             }
         }
-        .environment(\.colorScheme, .dark)
         .background(effectiveBackgroundColor)
         .ignoresSafeArea(edges: .top)
         .navigationBarTitleDisplayMode(.inline)
