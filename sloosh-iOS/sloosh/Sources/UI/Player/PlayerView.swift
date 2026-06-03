@@ -510,7 +510,85 @@ class PlayerViewModel: ObservableObject {
         return CollapsPlaybackProgressStore.shared.loadLastVoiceover(kpId: kpId, source: source)
     }
     
+    private func absolutizeHlsManifestUris(manifest: String, manifestUrl: String) -> String {
+        guard let baseUrl = URL(string: manifestUrl) else { return manifest }
+        let lines = manifest.components(separatedBy: .newlines)
+        var result = [String]()
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            if trimmed.isEmpty || trimmed.hasPrefix("#") {
+                result.append(line)
+            } else {
+                if let absoluteUrl = URL(string: trimmed, relativeTo: baseUrl) {
+                    result.append(absoluteUrl.absoluteString)
+                } else {
+                    result.append(line)
+                }
+            }
+        }
+        return result.joined(separator: "\n")
+    }
+
     private func playVideo(url: URL, headers: [String: String], voices: [String] = [], subtitles: [CollapsSubtitle] = []) {
+        if currentSourcePreferenceKey == "collaps" {
+            Task {
+                do {
+                    var request = URLRequest(url: url)
+                    for (k, v) in headers { request.setValue(v, forHTTPHeaderField: k) }
+                    request.setValue("Mozilla/5.0 (Windows NT 10.0; Win64; x64)", forHTTPHeaderField: "User-Agent")
+                    
+                    let (data, _) = try await URLSession.shared.data(for: request)
+                    guard let content = String(data: data, encoding: .utf8) else { throw URLError(.badServerResponse) }
+                    
+                    let mediaId: String
+                    if let kpId = currentKpId {
+                        if let season = currentSeason, let episode = currentEpisode {
+                            mediaId = "kp_\(kpId)_s\(season)_e\(episode)"
+                        } else {
+                            mediaId = "kp_\(kpId)"
+                        }
+                    } else {
+                        mediaId = "unknown"
+                    }
+                    
+                    let rewritten = CollapsHlsRewriter.rewrite(master: content, voices: voices, subtitles: subtitles, mediaId: mediaId)
+                    let finalHls = self.absolutizeHlsManifestUris(manifest: rewritten, manifestUrl: url.absoluteString)
+                    
+                    let tempDir = FileManager.default.temporaryDirectory
+                    let localUrl = tempDir.appendingPathComponent("\(mediaId).m3u8")
+                    try finalHls.write(to: localUrl, atomically: true, encoding: .utf8)
+                    
+                    await MainActor.run {
+                        let asset = AVURLAsset(url: localUrl)
+                        let playerItem = AVPlayerItem(asset: asset)
+                        
+                        if self.player == nil { self.player = AVPlayer() }
+                        self.player?.replaceCurrentItem(with: playerItem)
+                        self.player?.automaticallyWaitsToMinimizeStalling = true
+                        
+                        self.isLoading = false
+                        self.startTrackingProgress()
+                        self.player?.play()
+                        
+                        self.itemObservation = playerItem.observe(\.status) { [weak self] item, _ in
+                            guard let self = self else { return }
+                            if item.status == .readyToPlay {
+                                Task { @MainActor in
+                                    self.extractAudioTracks(from: item)
+                                }
+                            }
+                        }
+                    }
+                } catch {
+                    await MainActor.run {
+                        self.error = "Ошибка загрузки HLS"
+                        self.isLoading = false
+                    }
+                }
+            }
+            return
+        }
+
         let absoluteUrlString = url.absoluteString
         guard let encodedData = absoluteUrlString.data(using: .utf8) else {
             self.error = "Ошибка формирования URL"
