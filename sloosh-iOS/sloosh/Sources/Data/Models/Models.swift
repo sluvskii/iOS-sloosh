@@ -149,6 +149,11 @@ struct MediaDetailsDto: Codable {
         return "https://api.neomovies.ru/api/v1/images/backdrops/\(validId)/original"
     }
     
+    var previewBackdropUrl: String? {
+        guard let validId = id?.replacingOccurrences(of: "kp_", with: ""), !validId.isEmpty else { return nil }
+        return "https://api.neomovies.ru/api/v1/images/backdrops/\(validId)/small"
+    }
+
     var displayLogoUrl: String? {
         guard let validId = id?.replacingOccurrences(of: "kp_", with: ""), !validId.isEmpty else { return nil }
         return "https://api.neomovies.ru/api/v1/images/logos/\(validId)/original"

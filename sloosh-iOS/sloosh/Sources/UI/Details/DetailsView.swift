@@ -118,6 +118,7 @@ struct RemoteLogoView: View {
 struct DetailsView: View {
     let movieId: String
     @StateObject private var viewModel = DetailsViewModel()
+    @Environment(\.colorScheme) private var appColorScheme
     
     @State private var showPlayer = false
     @State private var showSourceSheet = false
@@ -141,6 +142,12 @@ struct DetailsView: View {
     
     @State private var dominantUIColor: UIColor? = nil
     
+    private var entryBackgroundColor: UIColor {
+        UIColor.systemBackground.resolvedColor(
+            with: UITraitCollection(userInterfaceStyle: appColorScheme == .dark ? .dark : .light)
+        )
+    }
+
     private var detailsBaseBackgroundColor: UIColor {
         UIColor.systemBackground.resolvedColor(with: UITraitCollection(userInterfaceStyle: .dark))
     }
@@ -150,7 +157,43 @@ struct DetailsView: View {
         if let dominant = dominantUIColor {
             return Color(dominant.blended(with: background, fraction: 0.35))
         } else {
-            return Color(background)
+            return Color(entryBackgroundColor)
+        }
+    }
+
+    private func fetchAverageColor(from url: URL?) async -> UIColor? {
+        guard let url else { return nil }
+
+        do {
+            let request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad)
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200,
+                  let image = UIImage(data: data) else {
+                return nil
+            }
+            return image.averageColor
+        } catch {
+            return nil
+        }
+    }
+
+    private func preloadDominantColor(for details: MediaDetailsDto) async {
+        let candidateUrls = [
+            details.previewBackdropUrl,
+            details.displayPosterUrl
+        ].compactMap { URL(string: $0 ?? "") }
+
+        for url in candidateUrls {
+            if Task.isCancelled { return }
+            if let color = await fetchAverageColor(from: url) {
+                await MainActor.run {
+                    guard dominantUIColor == nil else { return }
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        dominantUIColor = color
+                    }
+                }
+                return
+            }
         }
     }
     
@@ -197,6 +240,14 @@ struct DetailsView: View {
             }
             .task {
                 await viewModel.loadDetails(id: movieId)
+            }
+            .task(id: viewModel.details?.id) {
+                await MainActor.run {
+                    dominantUIColor = nil
+                }
+
+                guard let details = viewModel.details else { return }
+                await preloadDominantColor(for: details)
             }
             .sheet(isPresented: $showSourceSheet, onDismiss: {
                 sourceFetchTask?.cancel()
