@@ -317,8 +317,8 @@ enum AllohaRuntimeParser {
     }
 
     private static func isPlayable(_ url: URL) -> Bool {
-        let path = url.absoluteString.lowercased()
-        return path.contains(".m3u8") || path.contains(".mpd") || path.contains(".mp4")
+        let urlString = url.absoluteString.lowercased()
+        return urlString.contains(".m3u8") || urlString.contains(".mpd") || urlString.contains(".mp4")
     }
 
     private static func firstCapture(in text: String, pattern: String, captureGroup: Int = 1) -> String? {

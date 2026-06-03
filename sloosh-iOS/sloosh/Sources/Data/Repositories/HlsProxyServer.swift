@@ -1,5 +1,6 @@
 import Foundation
 import Network
+import os.log
 
 class HlsProxyServer {
     static let shared = HlsProxyServer()
@@ -11,15 +12,15 @@ class HlsProxyServer {
     private var mediaId: String = ""
     private var currentMasterUrl: URL?
     
+    var port: NWEndpoint.Port = 8181
+    var fixedMasterUrl: String { "http://127.0.0.1:\(port.rawValue)/master.m3u8" }
+    
     // We use a custom delegate to bypass SSL issues like in Android's buildTrustingClient
     private lazy var session: URLSession = {
         let config = URLSessionConfiguration.default
         let delegate = TrustAllSessionDelegate()
         return URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
     }()
-    
-    var port: NWEndpoint.Port = 8181
-    var fixedMasterUrl: String { "http://127.0.0.1:\(port.rawValue)/master.m3u8" }
     
     func start(headers: [String: String], voices: [String] = [], subtitles: [CollapsSubtitle] = [], mediaId: String = "") {
         self.headers = headers
@@ -60,7 +61,7 @@ class HlsProxyServer {
     }
     
     private func receiveRequest(on connection: NWConnection, data: Data) {
-        connection.receive(minimumIncompleteLength: 1, maximumLength: 8192) { [weak self] newData, _, isComplete, error in
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 64 * 1024) { [weak self] newData, _, isComplete, error in
             guard let self = self else { return }
             if error != nil {
                 connection.cancel()
@@ -74,7 +75,9 @@ class HlsProxyServer {
             
             if let requestString = String(data: currentData, encoding: .utf8),
                requestString.contains("\r\n\r\n") {
-                self.processRequest(requestString, on: connection)
+                Task {
+                    await self.processRequest(requestString, on: connection)
+                }
             } else if !isComplete {
                 self.receiveRequest(on: connection, data: currentData)
             } else {
@@ -83,15 +86,22 @@ class HlsProxyServer {
         }
     }
     
-    private func processRequest(_ requestString: String, on connection: NWConnection) {
+    private func processRequest(_ requestString: String, on connection: NWConnection) async {
         let lines = requestString.components(separatedBy: "\r\n")
         guard let firstLine = lines.first else {
-            connection.cancel()
+            self.send404(on: connection)
             return
         }
         let parts = firstLine.components(separatedBy: " ")
         guard parts.count >= 2 else {
-            connection.cancel()
+            self.send404(on: connection)
+            return
+        }
+        
+        let method = parts[0].uppercased()
+        if method == "HEAD" {
+            let header = "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nAccept-Ranges: bytes\r\nConnection: close\r\n\r\n"
+            connection.send(content: header.data(using: .utf8)!, completion: .contentProcessed({ _ in connection.cancel() }))
             return
         }
         
@@ -105,43 +115,40 @@ class HlsProxyServer {
         
         let path = parts[1]
         guard let urlComponents = URLComponents(string: path) else {
-            send404(on: connection)
+            self.send404(on: connection)
             return
         }
         
         if urlComponents.path == "/master.m3u8" {
-            guard let currentMasterUrl else {
-                send404(on: connection)
+            guard let currentMasterUrl = self.currentMasterUrl else {
+                self.send404(on: connection)
                 return
             }
-
-            fetchAndServe(realUrl: currentMasterUrl, isPlaylist: true, incomingHeaders: incomingHeaders, connection: connection)
+            await fetchAndServe(realUrl: currentMasterUrl, isPlaylist: true, incomingHeaders: incomingHeaders, connection: connection)
         } else if urlComponents.path.hasPrefix("/proxy"),
            let urlQuery = urlComponents.queryItems?.first(where: { $0.name == "url" })?.value {
             
-            // Re-pad base64 string if necessary
             var base64String = urlQuery
             let remainder = base64String.count % 4
             if remainder > 0 {
                 base64String = base64String.padding(toLength: base64String.count + 4 - remainder, withPad: "=", startingAt: 0)
             }
-            // Replace url safe characters if they were used
             base64String = base64String.replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
             
             if let decodedData = Data(base64Encoded: base64String),
                let decodedString = String(data: decodedData, encoding: .utf8),
                let realUrl = URL(string: decodedString) {
                 
-                fetchAndServe(realUrl: realUrl, isPlaylist: decodedString.contains(".m3u8"), incomingHeaders: incomingHeaders, connection: connection)
+                await fetchAndServe(realUrl: realUrl, isPlaylist: decodedString.contains(".m3u8"), incomingHeaders: incomingHeaders, connection: connection)
             } else {
-                send404(on: connection)
+                self.send404(on: connection)
             }
         } else {
-            send404(on: connection)
+            self.send404(on: connection)
         }
     }
     
-    private func fetchAndServe(realUrl: URL, isPlaylist: Bool, incomingHeaders: [String: String], connection: NWConnection) {
+    private func fetchAndServe(realUrl: URL, isPlaylist: Bool, incomingHeaders: [String: String], connection: NWConnection) async {
         var request = URLRequest(url: realUrl)
         for (k, v) in headers {
             request.setValue(v, forHTTPHeaderField: k)
@@ -149,10 +156,17 @@ class HlsProxyServer {
         if let range = incomingHeaders["range"] {
             request.setValue(range, forHTTPHeaderField: "Range")
         }
+        if request.value(forHTTPHeaderField: "User-Agent") == nil {
+            request.setValue("Mozilla/5.0 (Windows NT 10.0; Win64; x64)", forHTTPHeaderField: "User-Agent")
+        }
+        if request.value(forHTTPHeaderField: "Accept") == nil {
+            request.setValue("*/*", forHTTPHeaderField: "Accept")
+        }
         
-        let task = session.dataTask(with: request) { [weak self] data, response, error in
-            guard let self = self, let data = data, let httpResponse = response as? HTTPURLResponse else {
-                self?.send404(on: connection)
+        do {
+            let (data, response) = try await session.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse else {
+                self.send404(on: connection)
                 return
             }
             
@@ -179,8 +193,10 @@ class HlsProxyServer {
                 let contentType = httpResponse.mimeType ?? "video/MP2T"
                 self.sendResponse(data: data, statusCode: statusCode, contentType: contentType, contentRange: contentRange, connection: connection)
             }
+        } catch {
+            print("HlsProxyServer fetch failed: \(error)")
+            self.send404(on: connection)
         }
-        task.resume()
     }
     
     private func rewriteM3u8(content: String, baseUrl: URL) -> String {
@@ -243,7 +259,7 @@ class HlsProxyServer {
     }
     
     private func sendResponse(data: Data, statusCode: Int, contentType: String, contentRange: String?, connection: NWConnection) {
-        let reason = statusCode == 206 ? "Partial Content" : "OK"
+        let reason = statusCode == 206 ? "Partial Content" : (statusCode == 200 ? "OK" : "Error")
         var header = "HTTP/1.1 \(statusCode) \(reason)\r\nContent-Type: \(contentType)\r\nContent-Length: \(data.count)\r\nConnection: close\r\n"
         if let cr = contentRange {
             header += "Content-Range: \(cr)\r\n"

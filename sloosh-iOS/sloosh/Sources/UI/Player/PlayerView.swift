@@ -499,7 +499,10 @@ class PlayerViewModel: ObservableObject {
                 .replacingOccurrences(of: "/", with: "_")
                 .replacingOccurrences(of: "=", with: "")
 
-            guard let proxyUrl = URL(string: "http://127.0.0.1:\(HlsProxyServer.shared.port.rawValue)/proxy/stream.m3u8?url=\(encoded)") else { return }
+            let ext = quality.url.pathExtension
+            let pathSuffix = ext.isEmpty ? "stream.m3u8" : "stream.\(ext)"
+
+            guard let proxyUrl = URL(string: "http://127.0.0.1:\(HlsProxyServer.shared.port.rawValue)/proxy/\(pathSuffix)?url=\(encoded)") else { return }
             playbackUrl = proxyUrl
         }
 
@@ -551,6 +554,7 @@ class PlayerViewModel: ObservableObject {
             return
         }
         
+        // Use URL Safe Base64 without padding (same as proxy implementation)
         let encoded = encodedData.base64EncodedString()
             .replacingOccurrences(of: "+", with: "-")
             .replacingOccurrences(of: "/", with: "_")
@@ -569,7 +573,10 @@ class PlayerViewModel: ObservableObject {
         
         HlsProxyServer.shared.start(headers: headers, voices: voices, subtitles: subtitles, mediaId: mediaId)
         
-        guard let proxyUrl = URL(string: "http://127.0.0.1:\(HlsProxyServer.shared.port.rawValue)/proxy/stream.m3u8?url=\(encoded)") else {
+        let ext = url.pathExtension
+        let pathSuffix = ext.isEmpty ? "stream.m3u8" : "stream.\(ext)"
+        
+        guard let proxyUrl = URL(string: "http://127.0.0.1:\(HlsProxyServer.shared.port.rawValue)/proxy/\(pathSuffix)?url=\(encoded)") else {
             self.error = "Ошибка формирования URL"
             self.isLoading = false
             return
