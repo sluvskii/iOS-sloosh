@@ -447,9 +447,12 @@ struct DetailsView: View {
                                 CollapsPlaybackProgressStore.shared.saveLastPlayed(
                                     kpId: kpId,
                                     season: season,
-                                    episode: episode,
-                                    voiceover: nil,
-                                    source: "collaps" // This affects initial selection in SourceSelection as well, if we use the same store
+                                    episode: episode
+                                )
+                                CollapsPlaybackProgressStore.shared.saveLastVoiceover(
+                                    kpId: kpId,
+                                    source: "collaps",
+                                    voiceover: nil
                                 )
 
                                 sourceSheetMode = SourceManager.shared.currentMode

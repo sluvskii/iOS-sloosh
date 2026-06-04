@@ -703,11 +703,15 @@ class PlayerViewModel: ObservableObject {
     }
 
     private func persistCurrentVoiceoverSelection(from item: AVPlayerItem) {
-        guard let group = item.asset.mediaSelectionGroup(forMediaCharacteristic: .audible),
-              let selectedOption = item.currentMediaSelection.selectedMediaOption(in: group) else {
-            return
+        Task {
+            guard let group = try? await item.asset.loadMediaSelectionGroup(for: .audible),
+                  let selectedOption = item.currentMediaSelection.selectedMediaOption(in: group) else {
+                return
+            }
+            await MainActor.run {
+                persistVoiceoverSelection(selectedOption.displayName)
+            }
         }
-        persistVoiceoverSelection(selectedOption.displayName)
     }
 
     private func persistVoiceoverSelection(_ name: String?) {

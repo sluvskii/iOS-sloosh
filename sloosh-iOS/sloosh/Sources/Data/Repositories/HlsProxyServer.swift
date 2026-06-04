@@ -27,14 +27,14 @@ class HlsProxyServer {
     }()
     
     func start(headers: [String: String], voices: [String] = [], subtitles: [CollapsSubtitle] = [], mediaId: String = "", isCollaps: Bool = false) {
-        stateLock.lock()
-        self.headers = headers
-        self.voices = voices
-        self.subtitles = subtitles
-        self.mediaId = mediaId
-        self.isCollaps = isCollaps
-        let isRunning = listener != nil
-        stateLock.unlock()
+        let isRunning = stateLock.withLock {
+            self.headers = headers
+            self.voices = voices
+            self.subtitles = subtitles
+            self.mediaId = mediaId
+            self.isCollaps = isCollaps
+            return listener != nil
+        }
         
         if isRunning { return }
         
@@ -68,11 +68,16 @@ class HlsProxyServer {
     }
     
     func stop() {
-        stateLock.lock()
-        listener?.cancel()
-        listener = nil
-        currentMasterUrl = nil
-        stateLock.unlock()
+        stateLock.withLock {
+            listener?.cancel()
+            listener = nil
+            currentMasterUrl = nil
+            self.voices = []
+            self.subtitles = []
+            self.mediaId = ""
+            self.isCollaps = false
+            self.headers = [:]
+        }
     }
     
     private func handleConnection(_ connection: NWConnection) {
@@ -173,13 +178,9 @@ class HlsProxyServer {
     }
     
     private func fetchAndServe(realUrl: URL, isPlaylist: Bool, incomingHeaders: [String: String], connection: NWConnection) async {
-        stateLock.lock()
-        let currentHeaders = self.headers
-        let currentVoices = self.voices
-        let currentSubtitles = self.subtitles
-        let currentMediaId = self.mediaId
-        let currentIsCollaps = self.isCollaps
-        stateLock.unlock()
+        let (currentHeaders, currentVoices, currentSubtitles, currentMediaId, currentIsCollaps) = stateLock.withLock {
+            (self.headers, self.voices, self.subtitles, self.mediaId, self.isCollaps)
+        }
         
         let targetUrl: URL
         if currentIsCollaps {

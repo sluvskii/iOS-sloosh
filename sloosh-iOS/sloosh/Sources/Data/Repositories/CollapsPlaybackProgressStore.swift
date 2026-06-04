@@ -66,6 +66,20 @@ public final class CollapsPlaybackProgressStore {
         return defaults.integer(forKey: updatedAtPrefix + mediaId)
     }
 
+    public func saveLastVoiceover(kpId: Int, source: String, voiceover: String?) {
+        let key = "neomovies.\(source).lastVoiceover.kp_\(kpId)"
+        if let v = voiceover {
+            defaults.set(v, forKey: key)
+        } else {
+            defaults.removeObject(forKey: key)
+        }
+    }
+
+    public func loadLastVoiceover(kpId: Int, source: String) -> String? {
+        let key = "neomovies.\(source).lastVoiceover.kp_\(kpId)"
+        return defaults.string(forKey: key)
+    }
+
     // MARK: - Last-played tracking (per kpId)
 
     public func saveLastPlayed(kpId: Int, season: Int?, episode: Int?) {
