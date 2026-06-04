@@ -4,6 +4,7 @@ import SwiftUI
 enum SourceMode: String, CaseIterable, Identifiable {
     case collaps = "COLLAPS"
     case alloha = "ALLOHA"
+    case cdn = "CDN"
     
     var id: String { self.rawValue }
     
@@ -11,6 +12,7 @@ enum SourceMode: String, CaseIterable, Identifiable {
         switch self {
         case .collaps: return "Collaps"
         case .alloha: return "Alloha"
+        case .cdn: return "Основной"
         }
     }
 }

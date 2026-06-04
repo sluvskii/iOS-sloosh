@@ -301,6 +301,21 @@ struct DetailsView: View {
                         } else {
                             SourceSelectionEmptyView(title: sourceSheetTitle)
                         }
+                    } else if let wrapper = viewModel.sourceResultWrapper, wrapper.mode == .cdn, let data = wrapper.cdnData {
+                        CdnSelectionView(
+                            data: data,
+                            kpId: wrapper.kpId,
+                            title: viewModel.details?.title ?? viewModel.details?.name ?? "",
+                            onPlay: { url, season, episode, quality in
+                                selectedIframeUrl = url
+                                playerKpId = wrapper.kpId
+                                playerSeason = season
+                                playerEpisode = episode
+                                playerQuality = quality
+                                showPlayer = true
+                                showSourceSheet = false
+                            }
+                        )
                     } else {
                         SourceSelectionEmptyView(title: sourceSheetTitle)
                     }
@@ -517,9 +532,11 @@ private struct SourceSelectionLoadingView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
-                    SourceSelectionSkeletonSection(title: "Озвучка", chipWidths: [84, 112, 96, 104])
-
                     if mode == .alloha || mode == .collaps {
+                        SourceSelectionSkeletonSection(title: "Озвучка", chipWidths: [84, 112, 96, 104])
+                    }
+
+                    if mode == .alloha || mode == .collaps || mode == .cdn {
                         SourceSelectionSkeletonSection(title: "Сезон", chipWidths: [88, 88, 88])
                         SourceSelectionSkeletonSection(title: "Серия", chipWidths: [84, 84, 84, 84])
                     }
@@ -846,6 +863,8 @@ struct InlineEpisodesSection: View {
                 return collapsSeasons.map { $0.season }.sorted()
             } else if wrapper.mode == .alloha, let allohaResult = wrapper.allohaResult {
                 return allohaResult.seasons.map { $0.season }.sorted()
+            } else if wrapper.mode == .cdn, let cdnData = wrapper.cdnData {
+                return cdnData.seasons?.map { $0.season }.sorted() ?? []
             }
         }
         return []
@@ -859,6 +878,10 @@ struct InlineEpisodesSection: View {
                 }
             } else if wrapper.mode == .alloha, let allohaResult = wrapper.allohaResult {
                 if let season = allohaResult.seasons.first(where: { $0.season == selectedSeason }) {
+                    return season.episodes.map { $0.episode }.sorted()
+                }
+            } else if wrapper.mode == .cdn, let cdnData = wrapper.cdnData {
+                if let season = cdnData.seasons?.first(where: { $0.season == selectedSeason }) {
                     return season.episodes.map { $0.episode }.sorted()
                 }
             }
@@ -955,6 +978,7 @@ struct SourceResultWrapper: Identifiable {
     var allohaResult: AllohaApiResult?
     var collapsSeasons: [CollapsSeason]?
     var collapsMovie: CollapsMovie?
+    var cdnData: CdnPlayerData?
     var kpId: Int?
 }
 
@@ -1021,6 +1045,11 @@ class DetailsViewModel: ObservableObject {
                 if !seasons.isEmpty {
                     self.inlineSourceWrapper = SourceResultWrapper(mode: .collaps, collapsSeasons: seasons, kpId: kpId)
                 }
+            case .cdn:
+                let data = try await CdnRepository.shared.getPlayerData(kpId: kpId)
+                if data.isSeries {
+                    self.inlineSourceWrapper = SourceResultWrapper(mode: .cdn, cdnData: data, kpId: kpId)
+                }
             }
         } catch {
             print("Error fetching inline seasons: \(error)")
@@ -1079,6 +1108,9 @@ class DetailsViewModel: ObservableObject {
                 } else {
                     self.sourceResultWrapper = SourceResultWrapper(mode: .collaps, collapsSeasons: seasons, kpId: kpId)
                 }
+            case .cdn:
+                let data = try await CdnRepository.shared.getPlayerData(kpId: kpId)
+                self.sourceResultWrapper = SourceResultWrapper(mode: .cdn, cdnData: data, kpId: kpId)
             }
         } catch {
             print("Error fetching sources: \(error)")
