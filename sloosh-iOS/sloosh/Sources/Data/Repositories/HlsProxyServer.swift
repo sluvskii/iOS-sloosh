@@ -120,16 +120,21 @@ class HlsProxyServer {
     private func processRequest(_ requestString: String, on connection: NWConnection) async {
         let lines = requestString.components(separatedBy: "\r\n")
         guard let firstLine = lines.first else {
+            print("[HlsProxyServer] ERROR: Empty request line")
             self.send404(on: connection)
             return
         }
         let parts = firstLine.components(separatedBy: " ")
         guard parts.count >= 2 else {
+            print("[HlsProxyServer] ERROR: Invalid request format: \(firstLine)")
             self.send404(on: connection)
             return
         }
         
         let method = parts[0].uppercased()
+        let path = parts[1]
+        print("[HlsProxyServer] \(method) \(path)")
+        
         if method == "HEAD" {
             let header = "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nAccept-Ranges: bytes\r\nConnection: close\r\n\r\n"
             connection.send(content: header.data(using: .utf8)!, completion: .contentProcessed({ _ in connection.cancel() }))
@@ -144,8 +149,8 @@ class HlsProxyServer {
             incomingHeaders[split[0].lowercased()] = split[1].trimmingCharacters(in: .whitespacesAndNewlines)
         }
         
-        let path = parts[1]
         guard let urlComponents = URLComponents(string: path) else {
+            print("[HlsProxyServer] ERROR: Failed to parse URL components: \(path)")
             self.send404(on: connection)
             return
         }
@@ -156,9 +161,11 @@ class HlsProxyServer {
             stateLock.unlock()
             
             guard let currentMasterUrl = masterUrl else {
+                print("[HlsProxyServer] ERROR: master.m3u8 requested but currentMasterUrl is nil")
                 self.send404(on: connection)
                 return
             }
+            print("[HlsProxyServer] Fetching master: \(currentMasterUrl)")
             await fetchAndServe(realUrl: currentMasterUrl, isPlaylist: true, incomingHeaders: incomingHeaders, connection: connection)
         } else if urlComponents.path.hasPrefix("/proxy"),
            let urlQuery = urlComponents.queryItems?.first(where: { $0.name == "url" })?.value {
@@ -173,12 +180,14 @@ class HlsProxyServer {
             if let decodedData = Data(base64Encoded: base64String),
                let decodedString = String(data: decodedData, encoding: .utf8),
                let realUrl = URL(string: decodedString) {
-                
+                print("[HlsProxyServer] Proxying: \(realUrl.absoluteString.prefix(100))...")
                 await fetchAndServe(realUrl: realUrl, isPlaylist: decodedString.contains(".m3u8"), incomingHeaders: incomingHeaders, connection: connection)
             } else {
+                print("[HlsProxyServer] ERROR: Failed to decode base64 URL: \(urlQuery.prefix(50))...")
                 self.send404(on: connection)
             }
         } else {
+            print("[HlsProxyServer] ERROR: Unknown path: \(urlComponents.path)")
             self.send404(on: connection)
         }
     }

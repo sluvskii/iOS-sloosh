@@ -484,9 +484,17 @@ class PlayerViewModel: ObservableObject {
         // Re-extract audio tracks for new item and restore selection
         self.itemObservation = playerItem.observe(\.status) { [weak self] item, _ in
             guard let self = self else { return }
+            print("[PlayerView] PlayerItem status: \(item.status.rawValue) (0=unknown, 1=ready, 2=failed)")
             if item.status == .readyToPlay {
                 Task { @MainActor in
                     self.extractAudioTracks(from: item)
+                }
+            } else if item.status == .failed {
+                let error = item.error?.localizedDescription ?? "Unknown error"
+                print("[PlayerView] PlayerItem failed: \(error)")
+                Task { @MainActor in
+                    self.error = "Ошибка воспроизведения: \(error)"
+                    self.isLoading = false
                 }
             }
         }
@@ -576,9 +584,17 @@ class PlayerViewModel: ObservableObject {
         
         self.itemObservation = playerItem.observe(\.status) { [weak self] item, _ in
             guard let self = self else { return }
+            print("[PlayerView] PlayerItem status: \(item.status.rawValue) (0=unknown, 1=ready, 2=failed)")
             if item.status == .readyToPlay {
                 Task { @MainActor in
                     self.extractAudioTracks(from: item)
+                }
+            } else if item.status == .failed {
+                let error = item.error?.localizedDescription ?? "Unknown error"
+                print("[PlayerView] PlayerItem failed: \(error)")
+                Task { @MainActor in
+                    self.error = "Ошибка воспроизведения: \(error)"
+                    self.isLoading = false
                 }
             }
         }
