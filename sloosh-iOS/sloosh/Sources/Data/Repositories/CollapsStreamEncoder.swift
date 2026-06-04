@@ -9,9 +9,10 @@ enum CollapsStreamEncoder {
         }
 
         let n = Int(round(Date().timeIntervalSince1970 / 3600.0))
-        let absolutePath = url.path.isEmpty ? "/" : url.path
+        var absolutePath = url.path
+        if !absolutePath.hasPrefix("/") { absolutePath = "/" + absolutePath }
         let query = url.query.map { "?\($0)" } ?? ""
-        let payload = "\(n)/\(absolutePath)\(query)"
+        let payload = "\(n)\(absolutePath)\(query)"
 
         guard let payloadData = payload.data(using: .utf8) else {
             return urlString

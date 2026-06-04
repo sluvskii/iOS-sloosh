@@ -234,6 +234,12 @@ class HlsProxyServer {
             let statusCode = httpResponse.statusCode
             let contentRange = httpResponse.value(forHTTPHeaderField: "Content-Range")
             
+            if statusCode < 200 || statusCode >= 300 {
+                print("[HlsProxyServer] ERROR: Collaps returned status \(statusCode) for \(realUrl)")
+                self.sendResponse(data: data, statusCode: statusCode, contentType: httpResponse.mimeType ?? "text/plain", contentRange: contentRange, connection: connection)
+                return
+            }
+            
             if isPlaylist, let content = String(data: data, encoding: .utf8) {
                 let rewritten: String
                 if content.contains("#EXT-X-STREAM-INF") && (!currentVoices.isEmpty || !currentSubtitles.isEmpty) {
