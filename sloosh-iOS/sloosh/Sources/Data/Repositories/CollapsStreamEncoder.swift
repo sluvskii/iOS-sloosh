@@ -12,7 +12,9 @@ enum CollapsStreamEncoder {
         var absolutePath = url.path
         if !absolutePath.hasPrefix("/") { absolutePath = "/" + absolutePath }
         let query = url.query.map { "?\($0)" } ?? ""
-        let payload = "\(n)\(absolutePath)\(query)"
+        // ВАЖНО: C# (lampac) делает $"{n}/{uri.AbsolutePath}", что даёт двойной слеш, например "123456//hls/...". 
+        // Бекенд Collaps, видимо, ожидает именно этот формат.
+        let payload = "\(n)/\(absolutePath)\(query)"
 
         guard let payloadData = payload.data(using: .utf8) else {
             return urlString

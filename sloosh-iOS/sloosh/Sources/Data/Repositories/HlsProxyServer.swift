@@ -218,7 +218,7 @@ class HlsProxyServer {
             request.setValue(range, forHTTPHeaderField: "Range")
         }
         if request.value(forHTTPHeaderField: "User-Agent") == nil {
-            request.setValue("Mozilla/5.0 (Windows NT 10.0; Win64; x64)", forHTTPHeaderField: "User-Agent")
+            request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Safari/605.1.15", forHTTPHeaderField: "User-Agent")
         }
         if request.value(forHTTPHeaderField: "Accept") == nil {
             request.setValue("*/*", forHTTPHeaderField: "Accept")

@@ -60,7 +60,7 @@ class CollapsRepository {
     private func fetchEmbedHtml(url: String) async throws -> String {
         guard let fetchUrl = URL(string: url) else { throw URLError(.badURL) }
         var request = URLRequest(url: fetchUrl)
-        request.setValue("Mozilla/5.0 (Windows NT 10.0; Win64; x64)", forHTTPHeaderField: "User-Agent")
+        request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Safari/605.1.15", forHTTPHeaderField: "User-Agent")
         
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {

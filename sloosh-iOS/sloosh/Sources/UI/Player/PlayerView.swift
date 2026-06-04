@@ -267,11 +267,14 @@ class PlayerViewModel: ObservableObject {
             return
         }
 
-        self.currentHeaders = [:]
+        self.currentHeaders = [
+            "Referer": "https://collaps.org/",
+            "Origin": "https://collaps.org"
+        ]
         self.currentQualityKey = "Авто"
         self.availableQualities = [("Авто", parsedUrl)]
 
-        playVideo(url: parsedUrl, headers: [:], voices: voices, subtitles: subtitles)
+        playVideo(url: parsedUrl, headers: self.currentHeaders, voices: voices, subtitles: subtitles)
 
         // Качество будет извлечено из master-плейлиста в момент его загрузки AVPlayer'ом.
         // Отдельный fetch через URLSession не нужен: он ломал URL фрагментом #.m3u8 из-за percent-encoding.
