@@ -519,6 +519,7 @@ class PlayerViewModel: ObservableObject {
                     if let match = group.options.first(where: { $0.displayName.lowercased() == targetVoice.lowercased() }) {
                         item.select(match, in: group)
                         self.persistVoiceoverSelection(match.displayName)
+                        self.targetVoiceover = nil // Only apply once per initial load or quality change if needed, but it's safe to clear
                         return
                     }
                 }

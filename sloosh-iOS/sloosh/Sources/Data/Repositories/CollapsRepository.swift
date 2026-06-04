@@ -29,7 +29,7 @@ struct CollapsMovie: Codable, Hashable, Equatable {
 
 class CollapsRepository {
     static let shared = CollapsRepository()
-    private let base = "https://api.luxembd.ws"
+    private let base = "https://api.bhcesh.me"
     
     func getSeasonsByKpId(kpId: Int) async throws -> [CollapsSeason] {
         let html = try await fetchEmbedHtml(url: "\(base)/embed/kp/\(kpId)")
@@ -60,7 +60,9 @@ class CollapsRepository {
     private func fetchEmbedHtml(url: String) async throws -> String {
         guard let fetchUrl = URL(string: url) else { throw URLError(.badURL) }
         var request = URLRequest(url: fetchUrl)
-        request.setValue("Mozilla/5.0 (Windows NT 10.0; Win64; x64)", forHTTPHeaderField: "User-Agent")
+        request.setValue("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36", forHTTPHeaderField: "User-Agent")
+        request.setValue("https://kinokrad.my", forHTTPHeaderField: "Origin")
+        request.setValue("https://kinokrad.my/", forHTTPHeaderField: "Referer")
         
         let (data, response) = try await URLSession.shared.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {

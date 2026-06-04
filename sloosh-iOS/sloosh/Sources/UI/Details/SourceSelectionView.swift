@@ -1,7 +1,6 @@
 import SwiftUI
 
 struct SourceSelectionView: View {
-    private let sourcePreferenceKey = "alloha"
     let result: AllohaApiResult
     let kpId: Int?
     let onPlay: (AllohaTranslation, Int?, Int?, VideoQualityPreference) -> Void
@@ -117,10 +116,6 @@ struct SourceSelectionView: View {
     }
     
     private func setupInitialSelection() {
-        let preferredVoiceover = kpId.flatMap {
-            CollapsPlaybackProgressStore.shared.loadLastVoiceover(kpId: $0, source: sourcePreferenceKey)
-        }
-
         if result.isSerial {
             var initialSeason = result.seasons.first?.season
             var initialEpisode: Int? = nil
@@ -145,28 +140,12 @@ struct SourceSelectionView: View {
                 
                 if let episode = episodeToSelect {
                     selectedEpisode = episode.episode
-                    selectedTranslationName = preferredTranslationName(
-                        from: episode.translations,
-                        preferredVoiceover: preferredVoiceover
-                    )
+                    selectedTranslationName = episode.translations.first?.name
                 }
             }
         } else if let movie = result.movie {
-            selectedTranslationName = preferredTranslationName(
-                from: movie.translations,
-                preferredVoiceover: preferredVoiceover
-            )
+            selectedTranslationName = movie.translations.first?.name
         }
-    }
-
-    private func preferredTranslationName(from translations: [AllohaTranslation], preferredVoiceover: String?) -> String? {
-        guard !translations.isEmpty else { return nil }
-        guard let preferredVoiceover = preferredVoiceover?.lowercased(), !preferredVoiceover.isEmpty else {
-            return translations.first?.name
-        }
-        return translations.first(where: { $0.name.lowercased() == preferredVoiceover })?.name
-            ?? translations.first(where: { $0.name.lowercased().contains(preferredVoiceover) || preferredVoiceover.contains($0.name.lowercased()) })?.name
-            ?? translations.first?.name
     }
     
     func playSelected() {
@@ -185,13 +164,7 @@ struct SourceSelectionView: View {
                   let translation = epObj.translations.first(where: { $0.name == tName }) else { return }
             
             if let kpId = kpId {
-                CollapsPlaybackProgressStore.shared.saveLastPlayed(
-                    kpId: kpId,
-                    season: s,
-                    episode: e,
-                    voiceover: translation.name,
-                    source: sourcePreferenceKey
-                )
+                CollapsPlaybackProgressStore.shared.saveLastPlayed(kpId: kpId, season: s, episode: e)
             }
             
             onPlay(translation, s, e, quality)
@@ -201,13 +174,7 @@ struct SourceSelectionView: View {
                   let translation = movie.translations.first(where: { $0.name == tName }) else { return }
             
             if let kpId = kpId {
-                CollapsPlaybackProgressStore.shared.saveLastPlayed(
-                    kpId: kpId,
-                    season: nil,
-                    episode: nil,
-                    voiceover: translation.name,
-                    source: sourcePreferenceKey
-                )
+                CollapsPlaybackProgressStore.shared.saveLastPlayed(kpId: kpId, season: nil, episode: nil)
             }
             
             onPlay(translation, nil, nil, quality)

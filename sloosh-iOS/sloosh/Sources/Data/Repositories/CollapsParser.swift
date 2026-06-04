@@ -40,7 +40,11 @@ enum CollapsParser {
             end = html.index(after: end)
         }
 
-        let json = String(html[start..<end]).trimmingCharacters(in: .whitespacesAndNewlines)
+        var json = String(html[start..<end]).trimmingCharacters(in: .whitespacesAndNewlines)
+        if json.hasSuffix(",") {
+            json.removeLast()
+            json = json.trimmingCharacters(in: .whitespacesAndNewlines)
+        }
         return json.hasPrefix("[") ? json : nil
     }
 
@@ -110,8 +114,8 @@ enum CollapsParser {
     }
 
     private static func parseMovie(from html: String) -> CollapsMovie? {
-        var hls = extractFirstUrl(in: html, keys: ["hls"], suffix: ".m3u8")
-        let dash = extractFirstUrl(in: html, keys: ["dasha", "dash"], suffix: ".mpd")
+        var hls = extractRegexGroup(in: html, pattern: #"hls:\s+['"](https?:\/\/[^\"']+\.m3u[^\"']*)['"]"#)
+        let dash = extractRegexGroup(in: html, pattern: #"dasha?:\s+['"](https?:\/\/[^\"']+\.mp[^\"']*)['"]"#)
 
         if hls == nil,
            let payloadData = extractHlsSourcePayload(from: html) {
@@ -119,7 +123,14 @@ enum CollapsParser {
         }
 
         let resolvedHls = hls ?? firstPreferredStreamURLString(in: html)
-        let voices = extractVoiceNames(from: html)
+        
+        let voices: [String]
+        if let voiceStr = extractRegexGroup(in: html, pattern: #"audio:\s+\{"names":\["([^"]+)"\]"#) {
+            voices = voiceStr.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        } else {
+            voices = extractVoiceNames(from: html)
+        }
+        
         let subtitles = extractSubtitles(in: html)
 
         if (dash?.isEmpty ?? true) && (resolvedHls?.isEmpty ?? true) {
@@ -132,6 +143,14 @@ enum CollapsParser {
             voices: voices,
             subtitles: subtitles
         )
+    }
+
+    private static func extractRegexGroup(in html: String, pattern: String) -> String? {
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { return nil }
+        guard let match = regex.firstMatch(in: html, options: [], range: NSRange(html.startIndex..., in: html)) else { return nil }
+        guard let range = Range(match.range(at: 1), in: html) else { return nil }
+        let value = String(html[range])
+        return value.replacingOccurrences(of: "\\/", with: "/")
     }
 
     private static func extractFirstUrl(in html: String, keys: [String], suffix: String) -> String? {
