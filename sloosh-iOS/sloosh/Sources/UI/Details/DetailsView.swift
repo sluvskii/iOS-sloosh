@@ -277,26 +277,30 @@ struct DetailsView: View {
                         }
                     } else if let wrapper = viewModel.sourceResultWrapper, wrapper.mode == .collaps {
                         let isSerial = wrapper.collapsSeasons != nil && !(wrapper.collapsSeasons?.isEmpty ?? true)
-                        CollapsSelectionView(
-                            result: wrapper.collapsSeasons ?? [],
-                            movieResult: wrapper.collapsMovie,
-                            kpId: wrapper.kpId,
-                            isSerial: isSerial,
-                            title: viewModel.details?.title ?? viewModel.details?.name ?? "",
-                            onPlay: { url, season, episode, voiceover, voices, subtitles, quality in
-                                // Collaps returns direct HLS/MPD urls
-                                selectedIframeUrl = url // we use this state variable for the URL
-                                playerKpId = wrapper.kpId
-                                playerSeason = season
-                                playerEpisode = episode
-                                playerVoiceover = voiceover
-                                playerVoices = voices
-                                playerSubtitles = subtitles
-                                playerQuality = quality
-                                showPlayer = true
-                                showSourceSheet = false
-                            }
-                        )
+                        if isSerial || wrapper.collapsMovie != nil {
+                            CollapsSelectionView(
+                                result: wrapper.collapsSeasons ?? [],
+                                movieResult: wrapper.collapsMovie,
+                                kpId: wrapper.kpId,
+                                isSerial: isSerial,
+                                title: viewModel.details?.title ?? viewModel.details?.name ?? "",
+                                onPlay: { url, season, episode, voiceover, voices, subtitles, quality in
+                                    // Collaps returns direct HLS/MPD urls
+                                    selectedIframeUrl = url // we use this state variable for the URL
+                                    playerKpId = wrapper.kpId
+                                    playerSeason = season
+                                    playerEpisode = episode
+                                    playerVoiceover = voiceover
+                                    playerVoices = voices
+                                    playerSubtitles = subtitles
+                                    playerQuality = quality
+                                    showPlayer = true
+                                    showSourceSheet = false
+                                }
+                            )
+                        } else {
+                            SourceSelectionEmptyView(title: sourceSheetTitle)
+                        }
                     } else {
                         SourceSelectionEmptyView(title: sourceSheetTitle)
                     }
