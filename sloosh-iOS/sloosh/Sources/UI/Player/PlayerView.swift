@@ -255,7 +255,7 @@ class PlayerViewModel: ObservableObject {
         self.currentKpId = kpId
         self.currentSeason = season
         self.currentEpisode = episode
-        self.currentSourcePreferenceKey = "collaps"
+        self.currentSourcePreferenceKey = SourceManager.shared.currentMode.rawValue.lowercased()
         self.targetVoiceover = selectedVoiceover
         
         isLoading = true
