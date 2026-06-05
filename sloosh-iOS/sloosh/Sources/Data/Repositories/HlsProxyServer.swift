@@ -9,7 +9,7 @@ class HlsProxyServer {
     private let stateLock = NSLock()
     private var headers: [String: String] = [:]
     private var voices: [String] = []
-    private var subtitles: [CollapsSubtitle] = []
+    private var subtitles: [MediaSubtitle] = []
     private var mediaId: String = ""
     private var isCollaps: Bool = false
     private var currentMasterUrl: URL?
@@ -26,7 +26,7 @@ class HlsProxyServer {
         return URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
     }()
     
-    func start(headers: [String: String], voices: [String] = [], subtitles: [CollapsSubtitle] = [], mediaId: String = "", isCollaps: Bool = false) {
+    func start(headers: [String: String], voices: [String] = [], subtitles: [MediaSubtitle] = [], mediaId: String = "", isCollaps: Bool = false) {
         let isRunning = stateLock.withLock {
             self.headers = headers
             self.voices = voices
@@ -182,13 +182,7 @@ class HlsProxyServer {
             (self.headers, self.voices, self.subtitles, self.mediaId, self.isCollaps)
         }
         
-        let targetUrl: URL
-        if currentIsCollaps {
-            let encodedString = CollapsStreamEncoder.encodeUri(realUrl.absoluteString)
-            targetUrl = URL(string: encodedString) ?? realUrl
-        } else {
-            targetUrl = realUrl
-        }
+        let targetUrl: URL = realUrl
         
         var request = URLRequest(url: targetUrl)
         
@@ -218,13 +212,7 @@ class HlsProxyServer {
             if isPlaylist, let content = String(data: data, encoding: .utf8) {
                 let rewritten: String
                 if content.contains("#EXT-X-STREAM-INF") && (!currentVoices.isEmpty || !currentSubtitles.isEmpty) {
-                    let collapsRewritten = CollapsHlsRewriter.rewrite(
-                        master: content,
-                        voices: currentVoices,
-                        subtitles: currentSubtitles,
-                        mediaId: currentMediaId
-                    )
-                    rewritten = self.rewriteM3u8(content: collapsRewritten, baseUrl: realUrl, isCollaps: currentIsCollaps)
+                    rewritten = self.rewriteM3u8(content: content, baseUrl: realUrl, isCollaps: currentIsCollaps)
                 } else {
                     rewritten = self.rewriteM3u8(content: content, baseUrl: realUrl, isCollaps: currentIsCollaps)
                 }
