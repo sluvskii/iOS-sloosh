@@ -30,8 +30,9 @@ struct RemoteBackdropView: View {
             LinearGradient(
                 gradient: Gradient(colors: [
                     .black,
-                    .black,
+                    .black.opacity(0.8),
                     .black.opacity(0.4),
+                    .black.opacity(0.1),
                     .clear
                 ]),
                 startPoint: .top,
@@ -566,8 +567,9 @@ private struct DetailsSkeletonView: View {
                     LinearGradient(
                         gradient: Gradient(colors: [
                             .black,
-                            .black,
+                            .black.opacity(0.8),
                             .black.opacity(0.4),
+                            .black.opacity(0.1),
                             .clear
                         ]),
                         startPoint: .top,
