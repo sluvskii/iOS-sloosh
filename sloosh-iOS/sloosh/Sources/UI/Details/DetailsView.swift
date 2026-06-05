@@ -11,19 +11,22 @@ struct RemoteBackdropView: View {
     @State private var isLoading = false
     
     var body: some View {
-        Group {
+        ZStack {
             if let image = image {
                 Image(uiImage: image)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
                     .frame(width: width, height: height)
                     .clipped()
+                    .transition(.opacity)
             } else {
                 Rectangle().fill(Color.gray.opacity(0.2))
                     .frame(width: width, height: height)
                     .shimmer()
+                    .transition(.opacity)
             }
         }
+        .animation(.easeInOut(duration: 0.35), value: image != nil)
         .task(id: url) {
             guard let url = url, image == nil else { return }
             isLoading = true
@@ -68,7 +71,7 @@ struct RemoteLogoView: View {
     @State private var hasError = false
     
     var body: some View {
-        Group {
+        ZStack {
             if let image = image {
                 Image(uiImage: image)
                     .resizable()
@@ -76,7 +79,7 @@ struct RemoteLogoView: View {
                     .frame(maxWidth: 280, maxHeight: 110)
                     .padding(.horizontal)
                     .shadow(color: .black.opacity(0.3), radius: 8, x: 0, y: 4)
-                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                    .transition(.opacity)
             } else if isLoading {
                 Rectangle().fill(Color.gray.opacity(0.2))
                     .frame(width: 200, height: 60)
@@ -92,8 +95,8 @@ struct RemoteLogoView: View {
                     .transition(.opacity)
             }
         }
-        .animation(.easeOut(duration: 0.3), value: image != nil)
-        .animation(.easeOut(duration: 0.3), value: isLoading)
+        .animation(.easeInOut(duration: 0.35), value: image != nil)
+        .animation(.easeInOut(duration: 0.35), value: isLoading)
         .task(id: url) {
             guard let url = url, image == nil else {
                 if url == nil {
