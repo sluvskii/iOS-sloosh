@@ -577,9 +577,9 @@ private struct DetailsSkeletonView: View {
                 Capsule()
                     .fill(Color.gray.opacity(0.2))
                     .frame(width: 180, height: 50)
+                    .shimmer()
                     .padding(.top, 8)
                     .padding(.bottom, -4)
-                    .shimmer()
                 
                 // Info Section placeholder
                 VStack(alignment: .leading, spacing: 18) {
