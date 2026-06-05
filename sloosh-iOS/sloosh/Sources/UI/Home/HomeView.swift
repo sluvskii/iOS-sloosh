@@ -55,7 +55,18 @@ struct HomeView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(id: "home") {
                 ToolbarItem(id: "category", placement: .principal) {
-                    HomeCategorySegmentedPicker(selectedCategory: $viewModel.selectedCategory)
+                    VStack(spacing: 6) {
+                        ZStack {
+                            Image("LogoBg")
+                                .resizable()
+                                .frame(width: 108, height: 30)
+                            Image("LogoText")
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 62, height: 15)
+                        }
+                        HomeCategorySegmentedPicker(selectedCategory: $viewModel.selectedCategory)
+                    }
                 }
                 ToolbarItem(id: "filter", placement: .topBarTrailing) {
                     HomeFilterMenu(selectedFilter: $viewModel.selectedFilter)
