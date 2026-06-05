@@ -297,6 +297,15 @@ struct RemotePosterView: View {
 struct MoviePosterCard: View {
     let movie: MediaDto
     
+    private func ratingColor(for rating: Double) -> Color {
+        switch rating {
+        case 7.5...10.0: return .green
+        case 5.0..<7.5: return .yellow
+        case 0.1..<5.0: return .red
+        default: return .secondary
+        }
+    }
+    
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             let url = URL(string: movie.displayPosterUrl ?? "")
@@ -313,17 +322,11 @@ struct MoviePosterCard: View {
                 if let rating = movie.rating, rating > 0 {
                     HStack(spacing: 4) {
                         Image(systemName: "star.fill")
-                            .foregroundColor(Color(UIColor { traitCollection in
-                                if traitCollection.userInterfaceStyle == .dark {
-                                    return UIColor(red: 0.70, green: 1.0, blue: 0.0, alpha: 1.0)
-                                } else {
-                                    return UIColor(red: 0.45, green: 0.80, blue: 0.0, alpha: 1.0)
-                                }
-                            }))
+                            .foregroundColor(ratingColor(for: rating))
                             .font(.system(size: 10))
                         Text(String(format: "%.1f", rating))
                             .font(.system(size: 12, weight: .bold))
-                            .foregroundColor(.secondary)
+                            .foregroundColor(ratingColor(for: rating))
                     }
                 }
             }
