@@ -67,8 +67,32 @@ struct RemoteLogoView: View {
     let fallbackTitle: String
     
     @State private var image: UIImage?
-    @State private var isLoading = false
-    @State private var hasError = false
+    @State private var isLoading: Bool
+    @State private var hasError: Bool
+    
+    init(url: URL?, fallbackTitle: String) {
+        self.url = url
+        self.fallbackTitle = fallbackTitle
+        
+        // Синхронно проверяем кэш URLSession перед рендером, чтобы избежать мигания для уже загруженных картинок
+        if let url = url {
+            let request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad)
+            if let cachedResponse = URLCache.shared.cachedResponse(for: request),
+               let uiImg = UIImage(data: cachedResponse.data) {
+                _image = State(initialValue: uiImg)
+                _isLoading = State(initialValue: false)
+                _hasError = State(initialValue: false)
+            } else {
+                _image = State(initialValue: nil)
+                _isLoading = State(initialValue: true)
+                _hasError = State(initialValue: false)
+            }
+        } else {
+            _image = State(initialValue: nil)
+            _isLoading = State(initialValue: false)
+            _hasError = State(initialValue: true)
+        }
+    }
     
     var body: some View {
         ZStack {
