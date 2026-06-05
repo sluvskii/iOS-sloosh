@@ -342,9 +342,7 @@ struct DetailsView: View {
         ScrollView {
             VStack(spacing: 0) {
                 if viewModel.isLoading {
-                    ProgressView("Загрузка...")
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .padding(.top, 100)
+                    DetailsSkeletonView(backgroundColor: effectiveBackgroundColor)
                 } else if let details = viewModel.details {
                     // Stretchy Backdrop
                     GeometryReader { geometry in
@@ -504,6 +502,112 @@ private struct OptionalMovieNavigationTransitionModifier: ViewModifier {
 private extension View {
     func optionalMovieNavigationTransition(sourceID: String?, in namespace: Namespace.ID?) -> some View {
         modifier(OptionalMovieNavigationTransitionModifier(sourceID: sourceID, namespace: namespace))
+    }
+}
+
+private struct DetailsSkeletonView: View {
+    let backgroundColor: Color
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            // Backdrop
+            Rectangle()
+                .fill(Color.gray.opacity(0.2))
+                .frame(height: 450)
+                .overlay(
+                    LinearGradient(
+                        gradient: Gradient(colors: [
+                            .clear,
+                            .clear,
+                            backgroundColor.opacity(0.6),
+                            backgroundColor
+                        ]),
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .shimmer()
+            
+            VStack(alignment: .center, spacing: 12) {
+                // Logo placeholder
+                Rectangle()
+                    .fill(Color.gray.opacity(0.2))
+                    .frame(width: 200, height: 60)
+                    .cornerRadius(8)
+                    .padding(.bottom, 8)
+                    .shimmer()
+                
+                // Metadata row placeholder
+                HStack(spacing: 16) {
+                    ForEach(0..<4) { _ in
+                        Rectangle()
+                            .fill(Color.gray.opacity(0.2))
+                            .frame(width: 40, height: 16)
+                            .cornerRadius(4)
+                    }
+                }
+                .shimmer()
+                .padding(.bottom, 4)
+                
+                // Play Button placeholder
+                Capsule()
+                    .fill(Color.gray.opacity(0.2))
+                    .frame(width: 180, height: 50)
+                    .padding(.top, 8)
+                    .padding(.bottom, -4)
+                    .shimmer()
+                
+                // Info Section placeholder
+                VStack(alignment: .leading, spacing: 18) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Rectangle()
+                            .fill(Color.gray.opacity(0.2))
+                            .frame(width: 80, height: 20)
+                            .cornerRadius(4)
+                        
+                        HStack(spacing: 8) {
+                            ForEach(0..<3) { i in
+                                Capsule()
+                                    .fill(Color.gray.opacity(0.2))
+                                    .frame(width: CGFloat(60 + i * 20), height: 32)
+                            }
+                        }
+                    }
+                    .shimmer()
+                    
+                    VStack(alignment: .leading, spacing: 10) {
+                        Rectangle()
+                            .fill(Color.gray.opacity(0.2))
+                            .frame(width: 100, height: 20)
+                            .cornerRadius(4)
+                        
+                        VStack(alignment: .leading, spacing: 6) {
+                            Rectangle()
+                                .fill(Color.gray.opacity(0.2))
+                                .frame(height: 16)
+                                .cornerRadius(4)
+                            Rectangle()
+                                .fill(Color.gray.opacity(0.2))
+                                .frame(height: 16)
+                                .cornerRadius(4)
+                            Rectangle()
+                                .fill(Color.gray.opacity(0.2))
+                                .frame(height: 16)
+                                .cornerRadius(4)
+                            Rectangle()
+                                .fill(Color.gray.opacity(0.2))
+                                .frame(width: 200, height: 16)
+                                .cornerRadius(4)
+                        }
+                    }
+                    .shimmer()
+                }
+                .padding(.top, 20)
+                .padding(.horizontal)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .offset(y: -80)
+        }
     }
 }
 
