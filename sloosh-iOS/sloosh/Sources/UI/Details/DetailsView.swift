@@ -76,19 +76,24 @@ struct RemoteLogoView: View {
                     .frame(maxWidth: 280, maxHeight: 110)
                     .padding(.horizontal)
                     .shadow(color: .black.opacity(0.3), radius: 8, x: 0, y: 4)
+                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
             } else if isLoading {
                 Rectangle().fill(Color.gray.opacity(0.2))
                     .frame(width: 200, height: 60)
                     .cornerRadius(8)
                     .shimmer()
                     .padding(.horizontal)
+                    .transition(.opacity)
             } else {
                 Text(fallbackTitle)
                     .font(.system(size: 34, weight: .heavy))
                     .multilineTextAlignment(.center)
                     .padding(.horizontal)
+                    .transition(.opacity)
             }
         }
+        .animation(.easeOut(duration: 0.3), value: image != nil)
+        .animation(.easeOut(duration: 0.3), value: isLoading)
         .task(id: url) {
             guard let url = url, image == nil else {
                 if url == nil {
@@ -343,7 +348,7 @@ struct DetailsView: View {
             VStack(spacing: 0) {
                 if viewModel.isLoading {
                     DetailsSkeletonView(backgroundColor: effectiveBackgroundColor)
-                        .transition(.opacity.combined(with: .scale(scale: 0.98)))
+                        .transition(.opacity)
                 } else if let details = viewModel.details {
                     // Stretchy Backdrop
                     GeometryReader { geometry in
@@ -474,15 +479,15 @@ struct DetailsView: View {
                         }
                     }
                     .offset(y: -80)
-                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+                    .transition(.opacity)
                 } else {
                     Text("Не удалось загрузить данные.")
                         .frame(maxWidth: .infinity, alignment: .center)
                         .padding(.top, 100)
+                        .transition(.opacity)
                 }
             }
-            .animation(.spring(response: 0.5, dampingFraction: 0.8), value: viewModel.isLoading)
-            .animation(.spring(response: 0.5, dampingFraction: 0.8), value: viewModel.details?.id)
+            .animation(.easeInOut(duration: 0.35), value: viewModel.isLoading)
         }
         .scrollIndicators(.hidden)
         .background(effectiveBackgroundColor)
