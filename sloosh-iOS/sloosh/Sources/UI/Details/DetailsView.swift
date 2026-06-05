@@ -343,6 +343,7 @@ struct DetailsView: View {
             VStack(spacing: 0) {
                 if viewModel.isLoading {
                     DetailsSkeletonView(backgroundColor: effectiveBackgroundColor)
+                        .transition(.opacity.combined(with: .scale(scale: 0.98)))
                 } else if let details = viewModel.details {
                     // Stretchy Backdrop
                     GeometryReader { geometry in
@@ -473,12 +474,15 @@ struct DetailsView: View {
                         }
                     }
                     .offset(y: -80)
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
                 } else {
                     Text("Не удалось загрузить данные.")
                         .frame(maxWidth: .infinity, alignment: .center)
                         .padding(.top, 100)
                 }
             }
+            .animation(.spring(response: 0.5, dampingFraction: 0.8), value: viewModel.isLoading)
+            .animation(.spring(response: 0.5, dampingFraction: 0.8), value: viewModel.details?.id)
         }
         .scrollIndicators(.hidden)
         .background(effectiveBackgroundColor)
