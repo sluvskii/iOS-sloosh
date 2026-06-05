@@ -92,35 +92,45 @@ struct RemoteLogoView: View {
                     .font(.system(size: 34, weight: .heavy))
                     .multilineTextAlignment(.center)
                     .padding(.horizontal)
-                    .frame(minHeight: 60)
                     .transition(.opacity)
             }
         }
-        .frame(height: 110, alignment: .bottom) // Fix the container height so elements don't jump
         .animation(.easeInOut(duration: 0.35), value: image)
         .animation(.easeInOut(duration: 0.35), value: isLoading)
         .task(id: url) {
             guard let url = url, image == nil else {
                 if url == nil {
-                    hasError = true
-                    isLoading = false
+                    withAnimation(.easeInOut(duration: 0.35)) {
+                        hasError = true
+                        isLoading = false
+                    }
                 }
                 return
             }
-            isLoading = true
-            hasError = false
+            withAnimation(.easeInOut(duration: 0.35)) {
+                isLoading = true
+                hasError = false
+            }
             do {
                 let request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad)
                 let (data, response) = try await URLSession.shared.data(for: request)
                 if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200, let uiImg = UIImage(data: data) {
-                    self.image = uiImg
+                    withAnimation(.easeInOut(duration: 0.35)) {
+                        self.image = uiImg
+                    }
                 } else {
-                    self.hasError = true
+                    withAnimation(.easeInOut(duration: 0.35)) {
+                        self.hasError = true
+                    }
                 }
             } catch {
-                self.hasError = true
+                withAnimation(.easeInOut(duration: 0.35)) {
+                    self.hasError = true
+                }
             }
-            isLoading = false
+            withAnimation(.easeInOut(duration: 0.35)) {
+                isLoading = false
+            }
         }
     }
 }
@@ -550,7 +560,6 @@ private struct DetailsSkeletonView: View {
                     .cornerRadius(8)
                     .padding(.bottom, 8)
                     .shimmer()
-                    .frame(height: 110, alignment: .bottom) // Match the fixed height of RemoteLogoView
                 
                 // Metadata row placeholder
                 HStack(spacing: 16) {
