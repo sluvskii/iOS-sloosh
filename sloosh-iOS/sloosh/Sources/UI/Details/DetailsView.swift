@@ -26,6 +26,18 @@ struct RemoteBackdropView: View {
                     .transition(.opacity)
             }
         }
+        .mask(
+            LinearGradient(
+                gradient: Gradient(colors: [
+                    .black,
+                    .black,
+                    .black.opacity(0.4),
+                    .clear
+                ]),
+                startPoint: .top,
+                endPoint: .bottom
+            )
+        )
         .animation(.easeInOut(duration: 0.35), value: image != nil)
         .task(id: url) {
             guard let url = url, image == nil else { return }
@@ -409,19 +421,6 @@ struct DetailsView: View {
                             }
                         )
                         .offset(y: offset)
-                        .overlay(
-                            LinearGradient(
-                                gradient: Gradient(colors: [
-                                    .clear,
-                                    .clear,
-                                    effectiveBackgroundColor.opacity(0.6),
-                                    effectiveBackgroundColor
-                                ]),
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                            .offset(y: offset)
-                        )
                     }
                     .frame(height: 450)
 
@@ -563,13 +562,13 @@ private struct DetailsSkeletonView: View {
             Rectangle()
                 .fill(Color.gray.opacity(0.2))
                 .frame(height: 450)
-                .overlay(
+                .mask(
                     LinearGradient(
                         gradient: Gradient(colors: [
-                            .clear,
-                            .clear,
-                            backgroundColor.opacity(0.6),
-                            backgroundColor
+                            .black,
+                            .black,
+                            .black.opacity(0.4),
+                            .clear
                         ]),
                         startPoint: .top,
                         endPoint: .bottom
