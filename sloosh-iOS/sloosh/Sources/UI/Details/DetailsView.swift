@@ -92,10 +92,12 @@ struct RemoteLogoView: View {
                     .font(.system(size: 34, weight: .heavy))
                     .multilineTextAlignment(.center)
                     .padding(.horizontal)
+                    .frame(minHeight: 60)
                     .transition(.opacity)
             }
         }
-        .animation(.easeInOut(duration: 0.35), value: image != nil)
+        .frame(height: 110, alignment: .bottom) // Fix the container height so elements don't jump
+        .animation(.easeInOut(duration: 0.35), value: image)
         .animation(.easeInOut(duration: 0.35), value: isLoading)
         .task(id: url) {
             guard let url = url, image == nil else {
@@ -548,6 +550,7 @@ private struct DetailsSkeletonView: View {
                     .cornerRadius(8)
                     .padding(.bottom, 8)
                     .shimmer()
+                    .frame(height: 110, alignment: .bottom) // Match the fixed height of RemoteLogoView
                 
                 // Metadata row placeholder
                 HStack(spacing: 16) {
