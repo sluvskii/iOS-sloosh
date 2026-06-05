@@ -1075,7 +1075,6 @@ class DetailsViewModel: ObservableObject {
     @Published var isFetchingSources = false
     @Published var sourceResultWrapper: SourceResultWrapper?
     
-    @Published var inlineSeasons: [CollapsSeason]? // Or AllohaSeason mapped to a common model? Let's use SourceResultWrapper for inline too.
     @Published var inlineSourceWrapper: SourceResultWrapper?
     @Published var selectedInlineSeason: Int = 1
     @Published var isFetchingInlineSeasons = false
