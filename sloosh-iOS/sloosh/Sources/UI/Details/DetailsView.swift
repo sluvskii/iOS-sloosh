@@ -81,11 +81,12 @@ struct RemoteLogoView: View {
                     .shadow(color: .black.opacity(0.3), radius: 8, x: 0, y: 4)
                     .transition(.opacity)
             } else if isLoading {
-                Rectangle().fill(Color.gray.opacity(0.2))
-                    .frame(width: 200, height: 60)
-                    .cornerRadius(8)
-                    .shimmer()
+                // Во время загрузки показываем текстовое название вместо серого прямоугольника
+                Text(fallbackTitle)
+                    .font(.system(size: 34, weight: .heavy))
+                    .multilineTextAlignment(.center)
                     .padding(.horizontal)
+                    .shimmer() // Добавляем шиммер на текст, чтобы показать, что это состояние загрузки
                     .transition(.opacity)
             } else {
                 Text(fallbackTitle)
@@ -553,10 +554,10 @@ private struct DetailsSkeletonView: View {
                 .shimmer()
             
             VStack(alignment: .center, spacing: 12) {
-                // Logo placeholder
+                // Logo placeholder: replaced with a textual representation of loading to match RemoteLogoView
                 Rectangle()
                     .fill(Color.gray.opacity(0.2))
-                    .frame(width: 200, height: 60)
+                    .frame(width: 240, height: 40)
                     .cornerRadius(8)
                     .padding(.bottom, 8)
                     .shimmer()
