@@ -12,14 +12,11 @@ struct ContentView: View {
                     Tab("Поиск", systemImage: "magnifyingglass", role: .search) {
                         SearchView()
                     }
-                    Tab("Избранное", systemImage: "heart.fill") {
-                        FavoritesView()
+                    Tab("Продолжить", systemImage: "clock.arrow.circlepath") {
+                        ContinueView()
                     }
-                    Tab("Загрузки", systemImage: "arrow.down.circle.fill") {
-                        DownloadsView()
-                    }
-                    Tab("Настройки", systemImage: "gearshape.fill") {
-                        SettingsView()
+                    Tab("Профиль", systemImage: "person.fill") {
+                        ProfileView()
                     }
                 }
                 .tabViewStyle(.sidebarAdaptable)
