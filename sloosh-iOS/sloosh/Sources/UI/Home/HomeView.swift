@@ -137,6 +137,13 @@ struct HomeCategoryContentView: View {
                 .padding(16)
             }
         }
+        .background(alignment: .top) {
+            Rectangle()
+                .fill(Color(uiColor: .systemBackground))
+                .frame(height: 140)
+                .backgroundExtensionEffect()
+                .allowsHitTesting(false)
+        }
         .scrollIndicators(.hidden)
     }
 }
@@ -178,15 +185,6 @@ struct MovieDetailsNavigationLink<Label: View>: View {
 private struct HomeCategoryGlassTabs: View {
     @Binding var selectedCategory: HomeCategory
     let namespace: Namespace.ID
-    @Environment(\.colorScheme) private var colorScheme
-
-    private var railGlass: Glass {
-        colorScheme == .light ? .regular.tint(.white.opacity(0.08)) : .regular
-    }
-
-    private var selectedGlass: Glass {
-        colorScheme == .light ? .regular.tint(.white.opacity(0.2)) : .regular
-    }
 
     var body: some View {
         GlassEffectContainer(spacing: 6) {
@@ -209,7 +207,7 @@ private struct HomeCategoryGlassTabs: View {
                     }
                     .buttonStyle(.plain)
                     .glassEffect(
-                        selectedCategory == category ? selectedGlass : .identity,
+                        selectedCategory == category ? .regular : .identity,
                         in: Capsule()
                     )
                     .glassEffectID("home-category-\(category.rawValue)", in: namespace)
@@ -218,7 +216,7 @@ private struct HomeCategoryGlassTabs: View {
             }
             .padding(3)
             .frame(maxWidth: .infinity, minHeight: 42)
-            .glassEffect(railGlass, in: Capsule())
+            .glassEffect(.regular, in: Capsule())
         }
     }
 }
