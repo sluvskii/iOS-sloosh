@@ -913,8 +913,22 @@ struct EpisodeCellView: View {
                             .aspectRatio(contentMode: .fill)
                             .frame(width: 150, height: 85)
                             .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .transition(.opacity)
+                    } else if phase.error != nil {
+                        // Fallback image if error
+                        Image(systemName: "photo")
+                            .font(.system(size: 24))
+                            .foregroundColor(.secondary)
+                    } else {
+                        // Loading state
+                        Rectangle()
+                            .fill(Color.gray.opacity(0.2))
+                            .frame(width: 150, height: 85)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .shimmer()
                     }
                 }
+                .animation(.easeInOut(duration: 0.3), value: previewUrl)
                 
                 Image(systemName: "play.circle.fill")
                     .font(.system(size: 32))
@@ -923,35 +937,50 @@ struct EpisodeCellView: View {
             }
             
             VStack(alignment: .leading, spacing: 2) {
-                let title = meta?.name ?? fallbackTitle
-                let displayTitle = title.hasPrefix("\(episode).") ? title : "\(episode). \(title)"
-                Text(displayTitle)
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundColor(.primary)
-                    .lineLimit(1)
-                    .frame(width: 150, alignment: .leading)
-                
-                if let rating = meta?.ratings?.tmdb, rating > 0 {
-                    HStack(spacing: 4) {
-                        Image(systemName: "star.fill")
-                            .font(.system(size: 10))
-                            .foregroundColor(ratingColor(for: rating))
-                        Text(String(format: "%.1f", rating))
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(ratingColor(for: rating))
-                    }
-                } else if let rating = meta?.ratings?.imdb, rating > 0 {
-                    HStack(spacing: 4) {
-                        Image(systemName: "star.fill")
-                            .font(.system(size: 10))
-                            .foregroundColor(ratingColor(for: rating))
-                        Text(String(format: "%.1f", rating))
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(ratingColor(for: rating))
+                if isLoading {
+                    Rectangle()
+                        .fill(Color.gray.opacity(0.2))
+                        .frame(width: 100, height: 16)
+                        .cornerRadius(4)
+                        .shimmer()
+                    
+                    Rectangle()
+                        .fill(Color.gray.opacity(0.2))
+                        .frame(width: 60, height: 14)
+                        .cornerRadius(4)
+                        .shimmer()
+                } else {
+                    let title = meta?.name ?? fallbackTitle
+                    let displayTitle = title.hasPrefix("\(episode).") ? title : "\(episode). \(title)"
+                    Text(displayTitle)
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundColor(.primary)
+                        .lineLimit(1)
+                        .frame(width: 150, alignment: .leading)
+                    
+                    if let rating = meta?.ratings?.tmdb, rating > 0 {
+                        HStack(spacing: 4) {
+                            Image(systemName: "star.fill")
+                                .font(.system(size: 10))
+                                .foregroundColor(ratingColor(for: rating))
+                            Text(String(format: "%.1f", rating))
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(ratingColor(for: rating))
+                        }
+                    } else if let rating = meta?.ratings?.imdb, rating > 0 {
+                        HStack(spacing: 4) {
+                            Image(systemName: "star.fill")
+                                .font(.system(size: 10))
+                                .foregroundColor(ratingColor(for: rating))
+                            Text(String(format: "%.1f", rating))
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(ratingColor(for: rating))
+                        }
                     }
                 }
             }
         }
+        .animation(.easeInOut(duration: 0.3), value: isLoading)
         .task(id: "\(season)-\(episode)") {
             if isLoading { return }
             isLoading = true
