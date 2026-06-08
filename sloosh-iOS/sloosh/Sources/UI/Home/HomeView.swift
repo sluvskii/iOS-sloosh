@@ -54,13 +54,16 @@ struct HomeView: View {
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(id: "home") {
-                ToolbarItem(id: "category", placement: .principal) {
-                    HomeCategorySegmentedPicker(selectedCategory: $viewModel.selectedCategory)
-                }
                 ToolbarItem(id: "filter", placement: .topBarTrailing) {
                     HomeFilterMenu(selectedFilter: $viewModel.selectedFilter)
                 }
             }
+            .safeAreaBar(edge: .top, spacing: 0) {
+                HomeCategorySegmentedPicker(selectedCategory: $viewModel.selectedCategory)
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 8)
+            }
+            .scrollEdgeEffectStyle(.soft, for: .top)
             .task {
                 await viewModel.applyCurrentSelection()
             }
@@ -179,8 +182,7 @@ private struct HomeCategorySegmentedPicker: View {
             }
         }
         .pickerStyle(.segmented)
-        .fixedSize()
-        .scaleEffect(0.91)
+        .frame(maxWidth: .infinity)
     }
 }
 
