@@ -1,14 +1,98 @@
 import SwiftUI
 
+enum FavoriteCategory: String, CaseIterable {
+    case all = "Все"
+    case movies = "Фильмы"
+    case tvShows = "Сериалы"
+
+    var title: String { rawValue }
+    
+    var filterType: String? {
+        switch self {
+        case .all: return nil
+        case .movies: return "movie"
+        case .tvShows: return "tv"
+        }
+    }
+}
+
 struct ProfileView: View {
+    @StateObject private var favoritesRepo = FavoritesRepository.shared
+    @State private var selectedCategory: FavoriteCategory = .all
+    @Namespace private var navigationTransition
+    
+    let columns = [
+        GridItem(.adaptive(minimum: 105), spacing: 16)
+    ]
+    
+    var filteredFavorites: [FavoriteDto] {
+        if let type = selectedCategory.filterType {
+            return favoritesRepo.favorites.filter { $0.type == type }
+        }
+        return favoritesRepo.favorites
+    }
+
     var body: some View {
         NavigationStack {
-            VStack {
-                Text("Здесь будут папки избранного")
-                    .foregroundColor(.secondary)
+            Group {
+                if favoritesRepo.favorites.isEmpty {
+                    VStack {
+                        Image(systemName: "folder.fill")
+                            .font(.system(size: 64))
+                            .foregroundColor(.gray.opacity(0.5))
+                            .padding(.bottom, 8)
+                        Text("Пусто")
+                            .font(.system(size: 20, weight: .bold, design: .rounded))
+                            .foregroundColor(.primary)
+                        Text("Здесь будут ваши избранные фильмы и сериалы")
+                            .font(.system(size: 16, weight: .regular, design: .rounded))
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.top, 4)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if filteredFavorites.isEmpty {
+                    VStack {
+                        Text("В этой папке пока пусто")
+                            .font(.system(size: 16, weight: .regular, design: .rounded))
+                            .foregroundColor(.secondary)
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    ScrollView {
+                        LazyVGrid(columns: columns, spacing: 20) {
+                            ForEach(filteredFavorites) { favorite in
+                                let media = favorite.toMediaDto()
+                                MovieDetailsNavigationLink(movie: media, navigationTransition: navigationTransition)
+                                .contextMenu {
+                                    Button(role: .destructive) {
+                                        if let mediaId = favorite.mediaId, let type = favorite.type {
+                                            favoritesRepo.removeFromFavorites(mediaId: mediaId, mediaType: type)
+                                        }
+                                    } label: {
+                                        Label("Удалить", systemImage: "trash")
+                                    }
+                                }
+                            }
+                        }
+                        .padding(16)
+                    }
+                }
             }
-            .navigationTitle("Профиль")
+            .navigationTitle("")
+            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Picker("Папка", selection: $selectedCategory) {
+                        ForEach(FavoriteCategory.allCases, id: \.self) { category in
+                            Text(category.title).tag(category)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .fixedSize()
+                    .scaleEffect(0.91)
+                }
+                
                 ToolbarItem(placement: .topBarTrailing) {
                     NavigationLink(destination: SettingsView()) {
                         Image(systemName: "gearshape.fill")

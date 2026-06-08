@@ -12,6 +12,9 @@ struct ContentView: View {
                     Tab("Поиск", systemImage: "magnifyingglass", role: .search) {
                         SearchView()
                     }
+                    Tab("Загрузки", systemImage: "arrow.down.circle.fill") {
+                        DownloadsView()
+                    }
                     Tab("Продолжить", systemImage: "clock.arrow.circlepath") {
                         ContinueView()
                     }
