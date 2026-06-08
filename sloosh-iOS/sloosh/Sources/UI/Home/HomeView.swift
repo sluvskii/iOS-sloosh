@@ -45,21 +45,46 @@ struct HomeView: View {
 
     var body: some View {
         NavigationStack {
-            HomeCategoryContentView(
-                viewModel: viewModel,
-                category: viewModel.selectedCategory,
-                navigationTransition: navigationTransition
-            )
+            VStack(spacing: 0) {
+                // Верхняя панель: кнопка фильтра
+                HStack {
+                    Spacer()
+                    HomeFilterMenu(selectedFilter: $viewModel.selectedFilter)
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+                
+                // Панель с категориями
+                HomeCategorySegmentedPicker(selectedCategory: $viewModel.selectedCategory)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .background {
+                        Capsule()
+                            .fill(
+                                EllipticalGradient(
+                                    stops: [
+                                        .init(color: .white.opacity(0.15), location: 0.0),
+                                        .init(color: Color(red: 182/255, green: 255/255, blue: 12/255).opacity(0.3), location: 0.7)
+                                    ],
+                                    center: .center
+                                )
+                            )
+                            .glassEffect()
+                    }
+                    .padding(.horizontal, 16)
+                
+                HomeCategoryContentView(
+                    viewModel: viewModel,
+                    category: viewModel.selectedCategory,
+                    navigationTransition: navigationTransition
+                )
+            }
             .animation(.spring(response: 0.3, dampingFraction: 0.8), value: viewModel.selectedCategory)
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar(id: "home") {
-                ToolbarItem(id: "category", placement: .principal) {
-                    HomeCategorySegmentedPicker(selectedCategory: $viewModel.selectedCategory)
-                }
-                ToolbarItem(id: "filter", placement: .topBarTrailing) {
-                    HomeFilterMenu(selectedFilter: $viewModel.selectedFilter)
-                }
+            .toolbar(.hidden, for: .navigationBar)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                Color.clear.frame(height: 8)
             }
             .task {
                 await viewModel.applyCurrentSelection()
@@ -179,8 +204,6 @@ private struct HomeCategorySegmentedPicker: View {
             }
         }
         .pickerStyle(.segmented)
-        .fixedSize()
-        .scaleEffect(0.91)
     }
 }
 
