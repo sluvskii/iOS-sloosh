@@ -65,7 +65,7 @@ struct HomeView: View {
                     namespace: categoryTabsGlassNamespace
                 )
                     .padding(.horizontal, 16)
-                    .padding(.bottom, 8)
+                    .padding(.bottom, 6)
             }
             .scrollEdgeEffectStyle(.soft, for: .top)
             .task {
@@ -180,8 +180,8 @@ private struct HomeCategoryGlassTabs: View {
     let namespace: Namespace.ID
 
     var body: some View {
-        GlassEffectContainer(spacing: 12) {
-            HStack(spacing: 8) {
+        GlassEffectContainer(spacing: 8) {
+            HStack(spacing: 6) {
                 ForEach(HomeCategory.allCases, id: \.self) { category in
                     Button {
                         guard selectedCategory != category else { return }
@@ -190,26 +190,26 @@ private struct HomeCategoryGlassTabs: View {
                         }
                     } label: {
                         Text(category.segmentedTitle)
-                            .font(.system(size: 18, weight: selectedCategory == category ? .semibold : .medium))
+                            .font(.system(size: 17, weight: selectedCategory == category ? .semibold : .medium))
                             .foregroundStyle(.primary)
                             .lineLimit(1)
                             .minimumScaleFactor(0.8)
                             .frame(maxWidth: .infinity)
-                            .frame(height: 46)
+                            .frame(height: 40)
                             .contentShape(Capsule())
                     }
                     .buttonStyle(.plain)
                     .glassEffect(
                         selectedCategory == category ? .regular.interactive() : .identity,
-                        in: RoundedRectangle(cornerRadius: 23, style: .continuous)
+                        in: Capsule()
                     )
                     .glassEffectID("home-category-\(category.rawValue)", in: namespace)
                     .accessibilityAddTraits(selectedCategory == category ? .isSelected : [])
                 }
             }
-            .padding(6)
-            .frame(maxWidth: .infinity, minHeight: 58)
-            .glassEffect(in: RoundedRectangle(cornerRadius: 30, style: .continuous))
+            .padding(4)
+            .frame(maxWidth: .infinity, minHeight: 48)
+            .glassEffect(.clear, in: Capsule())
         }
     }
 }
