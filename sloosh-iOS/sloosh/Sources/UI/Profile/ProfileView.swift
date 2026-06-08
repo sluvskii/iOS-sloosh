@@ -120,6 +120,9 @@ struct ProfileView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     NavigationLink(destination: SettingsView()) {
                         Image(systemName: "gearshape.fill")
+                            .font(.system(size: 16, weight: .semibold))
+                            .frame(width: 30, height: 30)
+                            .contentShape(Circle())
                     }
                     .tint(.primary)
                 }
