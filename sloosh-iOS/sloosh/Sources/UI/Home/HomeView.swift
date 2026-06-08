@@ -42,6 +42,7 @@ enum HomeFilter: String, CaseIterable, Identifiable {
 struct HomeView: View {
     @StateObject private var viewModel = HomeViewModel()
     @Namespace private var navigationTransition
+    @Namespace private var categoryTabsGlassNamespace
 
     var body: some View {
         NavigationStack {
@@ -59,7 +60,10 @@ struct HomeView: View {
                 }
             }
             .safeAreaBar(edge: .top, spacing: 0) {
-                HomeCategorySegmentedPicker(selectedCategory: $viewModel.selectedCategory)
+                HomeCategoryGlassTabs(
+                    selectedCategory: $viewModel.selectedCategory,
+                    namespace: categoryTabsGlassNamespace
+                )
                     .padding(.horizontal, 16)
                     .padding(.bottom, 8)
             }
@@ -171,18 +175,42 @@ struct MovieDetailsNavigationLink<Label: View>: View {
     }
 }
 
-private struct HomeCategorySegmentedPicker: View {
+private struct HomeCategoryGlassTabs: View {
     @Binding var selectedCategory: HomeCategory
+    let namespace: Namespace.ID
 
     var body: some View {
-        Picker("Категория", selection: $selectedCategory) {
-            ForEach(HomeCategory.allCases, id: \.self) { category in
-                Text(category.segmentedTitle)
-                    .tag(category)
+        GlassEffectContainer(spacing: 12) {
+            HStack(spacing: 8) {
+                ForEach(HomeCategory.allCases, id: \.self) { category in
+                    Button {
+                        guard selectedCategory != category else { return }
+                        withAnimation(.snappy(duration: 0.32, extraBounce: 0.06)) {
+                            selectedCategory = category
+                        }
+                    } label: {
+                        Text(category.segmentedTitle)
+                            .font(.system(size: 18, weight: selectedCategory == category ? .semibold : .medium))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.8)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 46)
+                            .contentShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                    .glassEffect(
+                        selectedCategory == category ? .regular.interactive() : .identity,
+                        in: RoundedRectangle(cornerRadius: 23, style: .continuous)
+                    )
+                    .glassEffectID("home-category-\(category.rawValue)", in: namespace)
+                    .accessibilityAddTraits(selectedCategory == category ? .isSelected : [])
+                }
             }
+            .padding(6)
+            .frame(maxWidth: .infinity, minHeight: 58)
+            .glassEffect(in: RoundedRectangle(cornerRadius: 30, style: .continuous))
         }
-        .pickerStyle(.segmented)
-        .frame(maxWidth: .infinity)
     }
 }
 
