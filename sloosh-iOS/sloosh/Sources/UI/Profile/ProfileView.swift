@@ -88,19 +88,17 @@ struct ProfileView: View {
                             .padding(16)
                         }
                     } header: {
-                        HStack {
-                            Spacer()
-                            Picker("Папка", selection: $selectedCategory) {
-                                ForEach(FavoriteCategory.allCases, id: \.self) { category in
-                                    Text(category.title).tag(category)
-                                }
+                        Picker("Папка", selection: $selectedCategory) {
+                            ForEach(FavoriteCategory.allCases, id: \.self) { category in
+                                Text(category.title).tag(category)
                             }
-                            .pickerStyle(.segmented)
-                            .fixedSize()
-                            .scaleEffect(0.91)
-                            Spacer()
                         }
-                        .padding(.vertical, 8)
+                        .pickerStyle(.segmented)
+                        .fixedSize()
+                        .scaleEffect(0.91)
+                        .padding(.vertical, 10)
+                        .frame(maxWidth: .infinity)
+                        .background(Color(UIColor.systemBackground).opacity(0.01)) // Невидимая подложка для корректного хит-теста и работы pinnedViews на всю ширину
                     }
                 }
             }
