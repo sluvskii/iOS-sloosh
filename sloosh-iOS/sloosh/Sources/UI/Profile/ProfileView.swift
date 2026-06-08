@@ -35,84 +35,72 @@ struct ProfileView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                LazyVStack(pinnedViews: [.sectionHeaders]) {
-                    
-                    // В будущем здесь будет шапка профиля (аватарка, ник пользователя)
+                // В будущем здесь будет шапка профиля (аватарка, ник пользователя)
+                
+                if favoritesRepo.favorites.isEmpty {
                     VStack {
-                        // Заглушка для высоты
+                        Image(systemName: "folder.fill")
+                            .font(.system(size: 64))
+                            .foregroundColor(.gray.opacity(0.5))
+                            .padding(.bottom, 8)
+                        Text("Пусто")
+                            .font(.system(size: 20, weight: .bold, design: .rounded))
+                            .foregroundColor(.primary)
+                        Text("Здесь будут ваши избранные фильмы и сериалы")
+                            .font(.system(size: 16, weight: .regular, design: .rounded))
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.top, 4)
                     }
-                    .frame(height: 40)
-                    
-                    Section {
-                        if favoritesRepo.favorites.isEmpty {
-                            VStack {
-                                Image(systemName: "folder.fill")
-                                    .font(.system(size: 64))
-                                    .foregroundColor(.gray.opacity(0.5))
-                                    .padding(.bottom, 8)
-                                Text("Пусто")
-                                    .font(.system(size: 20, weight: .bold, design: .rounded))
-                                    .foregroundColor(.primary)
-                                Text("Здесь будут ваши избранные фильмы и сериалы")
-                                    .font(.system(size: 16, weight: .regular, design: .rounded))
-                                    .foregroundColor(.secondary)
-                                    .multilineTextAlignment(.center)
-                                    .padding(.top, 4)
-                            }
-                            .padding(.top, 100)
-                            .frame(maxWidth: .infinity)
-                        } else if filteredFavorites.isEmpty {
-                            VStack {
-                                Text("В этой папке пока пусто")
-                                    .font(.system(size: 16, weight: .regular, design: .rounded))
-                                    .foregroundColor(.secondary)
-                            }
-                            .padding(.top, 100)
-                            .frame(maxWidth: .infinity)
-                        } else {
-                            LazyVGrid(columns: columns, spacing: 20) {
-                                ForEach(filteredFavorites) { favorite in
-                                    let media = favorite.toMediaDto()
-                                    MovieDetailsNavigationLink(movie: media, navigationTransition: navigationTransition)
-                                    .contextMenu {
-                                        Button(role: .destructive) {
-                                            if let mediaId = favorite.mediaId, let type = favorite.type {
-                                                favoritesRepo.removeFromFavorites(mediaId: mediaId, mediaType: type)
-                                            }
-                                        } label: {
-                                            Label("Удалить", systemImage: "trash")
-                                        }
+                    .padding(.top, 40)
+                    .frame(maxWidth: .infinity)
+                } else if filteredFavorites.isEmpty {
+                    VStack {
+                        Text("В этой папке пока пусто")
+                            .font(.system(size: 16, weight: .regular, design: .rounded))
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(.top, 40)
+                    .frame(maxWidth: .infinity)
+                } else {
+                    LazyVGrid(columns: columns, spacing: 20) {
+                        ForEach(filteredFavorites) { favorite in
+                            let media = favorite.toMediaDto()
+                            MovieDetailsNavigationLink(movie: media, navigationTransition: navigationTransition)
+                            .contextMenu {
+                                Button(role: .destructive) {
+                                    if let mediaId = favorite.mediaId, let type = favorite.type {
+                                        favoritesRepo.removeFromFavorites(mediaId: mediaId, mediaType: type)
                                     }
+                                } label: {
+                                    Label("Удалить", systemImage: "trash")
                                 }
                             }
-                            .padding(16)
                         }
-                    } header: {
-                        Picker("Папка", selection: $selectedCategory) {
-                            ForEach(FavoriteCategory.allCases, id: \.self) { category in
-                                Text(category.title).tag(category)
-                            }
-                        }
-                        .pickerStyle(.segmented)
-                        .fixedSize()
-                        .scaleEffect(0.91)
-                        .padding(.vertical, 10)
-                        .frame(maxWidth: .infinity)
-                        .background(Color(UIColor.systemBackground).opacity(0.01)) // Невидимая подложка для корректного хит-теста и работы pinnedViews на всю ширину
                     }
+                    .padding(16)
                 }
             }
-            .navigationTitle("Профиль")
+            .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
+                ToolbarItem(placement: .principal) {
+                    Picker("Папка", selection: $selectedCategory) {
+                        ForEach(FavoriteCategory.allCases, id: \.self) { category in
+                            Text(category.title).tag(category)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                    .fixedSize()
+                    .scaleEffect(0.91)
+                }
+                
                 ToolbarItem(placement: .topBarTrailing) {
                     NavigationLink(destination: SettingsView()) {
                         Image(systemName: "gearshape.fill")
-                            .font(.system(size: 18))
-                            .foregroundColor(.primary)
-                            .frame(width: 32, height: 32)
-                            .contentShape(Circle())
+                            .imageScale(.large)
                     }
+                    .buttonBorderShape(.circle)
                 }
             }
         }
