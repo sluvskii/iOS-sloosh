@@ -178,6 +178,11 @@ struct MovieDetailsNavigationLink<Label: View>: View {
 private struct HomeCategoryGlassTabs: View {
     @Binding var selectedCategory: HomeCategory
     let namespace: Namespace.ID
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var railGlass: Glass {
+        colorScheme == .light ? .regular.tint(.white.opacity(0.12)) : .regular
+    }
 
     var body: some View {
         GlassEffectContainer(spacing: 6) {
@@ -209,7 +214,7 @@ private struct HomeCategoryGlassTabs: View {
             }
             .padding(3)
             .frame(maxWidth: .infinity, minHeight: 42)
-            .glassEffect(.regular, in: Capsule())
+            .glassEffect(railGlass, in: Capsule())
         }
     }
 }
