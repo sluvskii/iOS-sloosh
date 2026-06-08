@@ -54,12 +54,20 @@ struct HomeView: View {
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(id: "home") {
-                ToolbarItem(id: "category", placement: .principal) {
-                    HomeCategorySegmentedPicker(selectedCategory: $viewModel.selectedCategory)
-                }
                 ToolbarItem(id: "filter", placement: .topBarTrailing) {
                     HomeFilterMenu(selectedFilter: $viewModel.selectedFilter)
                 }
+            }
+            .safeAreaInset(edge: .top, spacing: 0) {
+                HStack {
+                    Spacer()
+                    HomeCategorySegmentedPicker(selectedCategory: $viewModel.selectedCategory)
+                        .fixedSize()
+                    Spacer()
+                }
+                .padding(.vertical, 8)
+                .padding(.horizontal, 16)
+                .glassBackground()
             }
             .task {
                 await viewModel.applyCurrentSelection()
