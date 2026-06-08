@@ -181,7 +181,11 @@ private struct HomeCategoryGlassTabs: View {
     @Environment(\.colorScheme) private var colorScheme
 
     private var railGlass: Glass {
-        colorScheme == .light ? .regular.tint(.white.opacity(0.12)) : .regular
+        colorScheme == .light ? .regular.tint(.white.opacity(0.08)) : .regular
+    }
+
+    private var selectedGlass: Glass {
+        colorScheme == .light ? .regular.tint(.white.opacity(0.2)) : .regular
     }
 
     var body: some View {
@@ -205,7 +209,7 @@ private struct HomeCategoryGlassTabs: View {
                     }
                     .buttonStyle(.plain)
                     .glassEffect(
-                        selectedCategory == category ? .regular : .identity,
+                        selectedCategory == category ? selectedGlass : .identity,
                         in: Capsule()
                     )
                     .glassEffectID("home-category-\(category.rawValue)", in: namespace)
