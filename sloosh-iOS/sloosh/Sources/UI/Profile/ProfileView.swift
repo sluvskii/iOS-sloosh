@@ -4,14 +4,16 @@ enum FavoriteCategory: String, CaseIterable {
     case all = "Все"
     case movies = "Фильмы"
     case tvShows = "Сериалы"
+    case cartoons = "Мульты"
 
     var title: String { rawValue }
     
     var filterType: String? {
         switch self {
         case .all: return nil
-        case .movies: return "movie"
-        case .tvShows: return "tv"
+        case .movies: return "movie" // Здесь нужна дополнительная фильтрация, чтобы исключить мультфильмы, если сервер отдает их как type "movie"
+        case .tvShows: return "tv"   // Аналогично для сериалов
+        case .cartoons: return "cartoon" // Заглушка, позже реализуем правильный фильтр мультфильмов
         }
     }
 }
@@ -26,10 +28,30 @@ struct ProfileView: View {
     ]
     
     var filteredFavorites: [FavoriteDto] {
-        if let type = selectedCategory.filterType {
-            return favoritesRepo.favorites.filter { $0.type == type }
+        switch selectedCategory {
+        case .all:
+            return favoritesRepo.favorites
+        case .movies:
+            return favoritesRepo.favorites.filter { fav in
+                guard fav.type == "movie" else { return false }
+                // Пытаемся определить, не мультфильм ли это
+                // Поскольку в FavoriteDto нет жанров, пока просто фильтруем по type
+                // В идеале нужно сохранять isCartoon флаг при добавлении в избранное
+                let title = (fav.title ?? "").lowercased()
+                return !title.contains("мульт") && !title.contains("анимац")
+            }
+        case .tvShows:
+            return favoritesRepo.favorites.filter { fav in
+                guard fav.type == "tv" else { return false }
+                let title = (fav.title ?? "").lowercased()
+                return !title.contains("мульт") && !title.contains("анимац")
+            }
+        case .cartoons:
+            return favoritesRepo.favorites.filter { fav in
+                let title = (fav.title ?? "").lowercased()
+                return title.contains("мульт") || title.contains("анимац") || title.contains("anime")
+            }
         }
-        return favoritesRepo.favorites
     }
 
     var body: some View {
