@@ -38,6 +38,10 @@ struct ProfileView: View {
                 LazyVStack(pinnedViews: [.sectionHeaders]) {
                     
                     // В будущем здесь будет шапка профиля (аватарка, ник пользователя)
+                    VStack {
+                        // Заглушка для высоты
+                    }
+                    .frame(height: 40)
                     
                     Section {
                         if favoritesRepo.favorites.isEmpty {
@@ -56,6 +60,7 @@ struct ProfileView: View {
                                     .padding(.top, 4)
                             }
                             .padding(.top, 100)
+                            .frame(maxWidth: .infinity)
                         } else if filteredFavorites.isEmpty {
                             VStack {
                                 Text("В этой папке пока пусто")
@@ -63,6 +68,7 @@ struct ProfileView: View {
                                     .foregroundColor(.secondary)
                             }
                             .padding(.top, 100)
+                            .frame(maxWidth: .infinity)
                         } else {
                             LazyVGrid(columns: columns, spacing: 20) {
                                 ForEach(filteredFavorites) { favorite in
@@ -82,14 +88,18 @@ struct ProfileView: View {
                             .padding(16)
                         }
                     } header: {
-                        Picker("Папка", selection: $selectedCategory) {
-                            ForEach(FavoriteCategory.allCases, id: \.self) { category in
-                                Text(category.title).tag(category)
+                        HStack {
+                            Spacer()
+                            Picker("Папка", selection: $selectedCategory) {
+                                ForEach(FavoriteCategory.allCases, id: \.self) { category in
+                                    Text(category.title).tag(category)
+                                }
                             }
+                            .pickerStyle(.segmented)
+                            .fixedSize()
+                            .scaleEffect(0.91)
+                            Spacer()
                         }
-                        .pickerStyle(.segmented)
-                        .fixedSize()
-                        .scaleEffect(0.91)
                         .padding(.vertical, 8)
                     }
                 }
