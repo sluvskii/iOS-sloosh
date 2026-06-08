@@ -88,9 +88,9 @@ struct ProfileView: View {
                             }
                         }
                         .pickerStyle(.segmented)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
-                        .background(Color(UIColor.systemBackground))
+                        .fixedSize()
+                        .scaleEffect(0.91)
+                        .padding(.vertical, 8)
                     }
                 }
             }
