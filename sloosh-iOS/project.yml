@@ -1,0 +1,24 @@
+name: sloosh
+options:
+  bundleIdPrefix: com
+targets:
+  sloosh:
+    type: application
+    platform: iOS
+    deploymentTarget: "26.0"
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.sloosh.ios
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    sources:
+      - path: sloosh/Sources
+      - path: sloosh/Resources
+    info:
+      path: sloosh/Info.plist
+      properties:
+        UILaunchStoryboardName: LaunchScreen
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+          UISceneConfigurations: {}
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
