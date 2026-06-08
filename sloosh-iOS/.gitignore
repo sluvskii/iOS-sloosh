@@ -1,0 +1,15 @@
+# Xcode
+.DS_Store
+build/
+*.pbxproj
+*.xcworkspace
+xcuserdata/
+DerivedData/
+
+# XcodeGen
+NeoMovies.xcodeproj/
+
+# Swift Package Manager
+.build/
+Packages/
+Package.resolved
