@@ -182,6 +182,11 @@ private struct HomeCategoryTextTabs: View {
     @Environment(\.colorScheme) private var colorScheme
 
     private let titleHeight: CGFloat = 28
+    private let filterHeight: CGFloat = 16
+
+    private var tabHeight: CGFloat {
+        titleHeight + filterHeight
+    }
 
     private var filterLabel: String {
         selectedFilter.title.lowercased()
@@ -260,9 +265,11 @@ private struct HomeCategoryTextTabs: View {
                                     .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
+                            .frame(height: filterHeight, alignment: .top)
                             .transition(.opacity.combined(with: .move(edge: .top)))
                         }
                     }
+                    .frame(height: tabHeight, alignment: isSelected ? .top : .center)
                     .animation(.snappy(duration: 0.32, extraBounce: 0.06), value: isSelected)
                 }
             }
