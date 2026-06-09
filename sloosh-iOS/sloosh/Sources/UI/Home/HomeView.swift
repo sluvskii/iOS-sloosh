@@ -42,7 +42,6 @@ enum HomeFilter: String, CaseIterable, Identifiable {
 struct HomeView: View {
     @StateObject private var viewModel = HomeViewModel()
     @Namespace private var navigationTransition
-    @Namespace private var categoryTabsGlassNamespace
 
     var body: some View {
         NavigationStack {
@@ -54,18 +53,14 @@ struct HomeView: View {
             .animation(.spring(response: 0.3, dampingFraction: 0.8), value: viewModel.selectedCategory)
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar(id: "home") {
-                ToolbarItem(id: "filter", placement: .topBarTrailing) {
-                    HomeFilterMenu(selectedFilter: $viewModel.selectedFilter)
-                }
-            }
             .safeAreaBar(edge: .top, spacing: 0) {
-                HomeCategoryGlassTabs(
+                HomeCategoryTextTabs(
                     selectedCategory: $viewModel.selectedCategory,
-                    namespace: categoryTabsGlassNamespace
+                    selectedFilter: viewModel.selectedFilter
                 )
                     .padding(.horizontal, 16)
-                    .padding(.bottom, 4)
+                    .padding(.top, 6)
+                    .padding(.bottom, 8)
             }
             .scrollEdgeEffectStyle(.soft, for: .top)
             .task {
@@ -182,13 +177,13 @@ struct MovieDetailsNavigationLink<Label: View>: View {
     }
 }
 
-private struct HomeCategoryGlassTabs: View {
+private struct HomeCategoryTextTabs: View {
     @Binding var selectedCategory: HomeCategory
-    let namespace: Namespace.ID
+    let selectedFilter: HomeFilter
 
     var body: some View {
-        GlassEffectContainer(spacing: 6) {
-            HStack(spacing: 4) {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(alignment: .top, spacing: 24) {
                 ForEach(HomeCategory.allCases, id: \.self) { category in
                     Button {
                         guard selectedCategory != category else { return }
@@ -196,54 +191,27 @@ private struct HomeCategoryGlassTabs: View {
                             selectedCategory = category
                         }
                     } label: {
-                        Text(category.segmentedTitle)
-                            .font(.system(size: 16, weight: .medium))
-                            .foregroundStyle(.primary)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.8)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 36)
-                            .contentShape(Capsule())
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text(category.segmentedTitle)
+                                .font(.system(size: 19, weight: selectedCategory == category ? .bold : .semibold))
+                                .foregroundStyle(selectedCategory == category ? .primary : .secondary)
+                                .lineLimit(1)
+                                .fixedSize(horizontal: true, vertical: false)
+
+                            Text(selectedCategory == category ? selectedFilter.title.lowercased() : " ")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .fixedSize(horizontal: true, vertical: false)
+                                .padding(.top, -2)
+                        }
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .glassEffect(
-                        selectedCategory == category ? .regular : .identity,
-                        in: Capsule()
-                    )
-                    .glassEffectID("home-category-\(category.rawValue)", in: namespace)
                     .accessibilityAddTraits(selectedCategory == category ? .isSelected : [])
                 }
             }
-            .padding(3)
-            .frame(maxWidth: .infinity, minHeight: 42)
-            .glassEffect(.regular, in: Capsule())
-        }
-    }
-}
-
-private struct HomeFilterMenu: View {
-    @Binding var selectedFilter: HomeFilter
-
-    var body: some View {
-        Menu {
-            Section("Сортировка") {
-                ForEach(HomeFilter.allCases) { filter in
-                    Button {
-                        selectedFilter = filter
-                    } label: {
-                        if selectedFilter == filter {
-                            Label(filter.title, systemImage: "checkmark")
-                        } else {
-                            Label(filter.title, systemImage: filter.icon)
-                        }
-                    }
-                }
-            }
-        } label: {
-            Image(systemName: "line.3.horizontal.decrease.circle")
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundColor(Color(UIColor.label))
-                .frame(width: 32, height: 32)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 }
