@@ -205,66 +205,79 @@ private struct HomeCategoryTextTabs: View {
     }
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(alignment: .top, spacing: 24) {
-                ForEach(HomeCategory.allCases, id: \.self) { category in
-                    let isSelected = selectedCategory == category
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(alignment: .top, spacing: 24) {
+                    ForEach(HomeCategory.allCases, id: \.self) { category in
+                        let isSelected = selectedCategory == category
 
-                    VStack(alignment: .center, spacing: 0) {
-                        Button {
-                            guard !isSelected else { return }
-                            withAnimation(.snappy(duration: 0.32, extraBounce: 0.06)) {
-                                selectedCategory = category
-                            }
-                        } label: {
-                            layeredText(
-                                category.segmentedTitle,
-                                size: 22,
-                                weight: isSelected ? .bold : .semibold,
-                                baseColor: isSelected ? .primary : .secondary
-                            )
-                                .lineLimit(1)
-                                .fixedSize(horizontal: true, vertical: false)
-                                .frame(height: titleHeight, alignment: .center)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityAddTraits(isSelected ? .isSelected : [])
-
-                        if isSelected {
-                            Menu {
-                                ForEach(HomeFilter.allCases) { filter in
-                                    Button {
-                                        selectedFilter = filter
-                                    } label: {
-                                        if selectedFilter == filter {
-                                            Label(filter.title, systemImage: "checkmark")
-                                        } else {
-                                            Text(filter.title)
-                                        }
-                                    }
+                        VStack(alignment: .center, spacing: 0) {
+                            Button {
+                                guard !isSelected else { return }
+                                withAnimation(.snappy(duration: 0.32, extraBounce: 0.06)) {
+                                    selectedCategory = category
                                 }
                             } label: {
                                 layeredText(
-                                    filterLabel,
-                                    size: 12,
-                                    weight: .semibold,
-                                    baseColor: .secondary
+                                    category.segmentedTitle,
+                                    size: 22,
+                                    weight: isSelected ? .bold : .semibold,
+                                    baseColor: isSelected ? .primary : .secondary
                                 )
                                     .lineLimit(1)
                                     .fixedSize(horizontal: true, vertical: false)
-                                    .contentShape(Rectangle())
+                                    .frame(height: titleHeight, alignment: .center)
                             }
                             .buttonStyle(.plain)
-                            .frame(height: filterHeight, alignment: .top)
-                            .transition(.opacity.combined(with: .move(edge: .top)))
+                            .accessibilityAddTraits(isSelected ? .isSelected : [])
+
+                            if isSelected {
+                                Menu {
+                                    ForEach(HomeFilter.allCases) { filter in
+                                        Button {
+                                            selectedFilter = filter
+                                        } label: {
+                                            if selectedFilter == filter {
+                                                Label(filter.title, systemImage: "checkmark")
+                                            } else {
+                                                Text(filter.title)
+                                            }
+                                        }
+                                    }
+                                } label: {
+                                    layeredText(
+                                        filterLabel,
+                                        size: 12,
+                                        weight: .semibold,
+                                        baseColor: .secondary
+                                    )
+                                        .lineLimit(1)
+                                        .fixedSize(horizontal: true, vertical: false)
+                                        .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                .frame(height: filterHeight, alignment: .top)
+                                .transition(.opacity.combined(with: .move(edge: .top)))
+                            }
                         }
+                        .id(category)
+                        .frame(height: tabHeight, alignment: isSelected ? .top : .center)
+                        .animation(.snappy(duration: 0.32, extraBounce: 0.06), value: isSelected)
                     }
-                    .frame(height: tabHeight, alignment: isSelected ? .top : .center)
-                    .animation(.snappy(duration: 0.32, extraBounce: 0.06), value: isSelected)
+                }
+                .contentMargins(.horizontal, 16, for: .scrollContent)
+            }
+            .onAppear {
+                proxy.scrollTo(selectedCategory, anchor: .center)
+            }
+            .onChange(of: selectedCategory) { _, newCategory in
+                withAnimation(.snappy(duration: 0.32, extraBounce: 0.06)) {
+                    proxy.scrollTo(newCategory, anchor: .center)
                 }
             }
-            .padding(.horizontal, 16)
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .onChange(of: selectedFilter) { _, _ in
+                proxy.scrollTo(selectedCategory, anchor: .center)
+            }
         }
     }
 }
