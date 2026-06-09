@@ -53,13 +53,15 @@ struct HomeView: View {
             .animation(.spring(response: 0.3, dampingFraction: 0.8), value: viewModel.selectedCategory)
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
-            .safeAreaBar(edge: .top, spacing: 0) {
-                HomeCategoryTextTabs(
-                    selectedCategory: $viewModel.selectedCategory,
-                    selectedFilter: $viewModel.selectedFilter
-                )
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    HomeCategoryTextTabs(
+                        selectedCategory: $viewModel.selectedCategory,
+                        selectedFilter: $viewModel.selectedFilter
+                    )
                     .padding(.top, 6)
                     .padding(.bottom, 8)
+                }
             }
             .scrollEdgeEffectStyle(.soft, for: .top)
             .task {
@@ -179,7 +181,6 @@ struct MovieDetailsNavigationLink<Label: View>: View {
 private struct HomeCategoryTextTabs: View {
     @Binding var selectedCategory: HomeCategory
     @Binding var selectedFilter: HomeFilter
-    @Environment(\.colorScheme) private var colorScheme
 
     private let titleHeight: CGFloat = 28
     private let filterHeight: CGFloat = 16
@@ -196,20 +197,11 @@ private struct HomeCategoryTextTabs: View {
         _ text: String,
         size: CGFloat,
         weight: Font.Weight,
-        baseColor: Color,
-        isSelected: Bool
+        baseColor: Color
     ) -> some View {
-        let font = Font.system(size: size, weight: weight)
-        let blendMode: BlendMode = {
-            guard isSelected else { return .normal }
-            return colorScheme == .dark ? .plusLighter : .overlay
-        }()
-
         return Text(text)
-            .font(font)
+            .font(.system(size: size, weight: weight))
             .foregroundStyle(baseColor)
-            .compositingGroup()
-            .blendMode(blendMode)
     }
 
     var body: some View {
@@ -229,8 +221,7 @@ private struct HomeCategoryTextTabs: View {
                                 category.segmentedTitle,
                                 size: 22,
                                 weight: isSelected ? .bold : .semibold,
-                                baseColor: isSelected ? .primary : .secondary,
-                                isSelected: isSelected
+                                baseColor: isSelected ? .primary : .secondary
                             )
                                 .lineLimit(1)
                                 .fixedSize(horizontal: true, vertical: false)
@@ -257,8 +248,7 @@ private struct HomeCategoryTextTabs: View {
                                     filterLabel,
                                     size: 12,
                                     weight: .semibold,
-                                    baseColor: .secondary,
-                                    isSelected: true
+                                    baseColor: .secondary
                                 )
                                     .lineLimit(1)
                                     .fixedSize(horizontal: true, vertical: false)
