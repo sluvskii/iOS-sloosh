@@ -58,6 +58,7 @@ struct HomeView: View {
                     selectedCategory: $viewModel.selectedCategory,
                     selectedFilter: $viewModel.selectedFilter
                 )
+                    .padding(.horizontal, 12)
                     .padding(.top, 6)
                     .padding(.bottom, 8)
             }
@@ -214,17 +215,13 @@ private struct HomeCategoryTextTabs: View {
                                     }
                                 }
                             } label: {
-                                HStack(spacing: 4) {
-                                    Text(selectedFilter.title.lowercased())
-                                    Image(systemName: "chevron.down")
-                                        .font(.system(size: 9, weight: .bold))
-                                }
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                                .fixedSize(horizontal: true, vertical: false)
-                                .padding(.top, -2)
-                                .contentShape(Rectangle())
+                                Text(selectedFilter.title.lowercased())
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                                    .fixedSize(horizontal: true, vertical: false)
+                                    .padding(.top, -2)
+                                    .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
                         } else {
