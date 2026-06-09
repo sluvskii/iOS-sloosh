@@ -58,7 +58,6 @@ struct HomeView: View {
                     selectedCategory: $viewModel.selectedCategory,
                     selectedFilter: $viewModel.selectedFilter
                 )
-                    .padding(.horizontal, 12)
                     .padding(.top, 6)
                     .padding(.bottom, 8)
             }
@@ -181,6 +180,10 @@ private struct HomeCategoryTextTabs: View {
     @Binding var selectedCategory: HomeCategory
     @Binding var selectedFilter: HomeFilter
 
+    private var filterLabel: String {
+        selectedFilter.title.lowercased()
+    }
+
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(alignment: .top, spacing: 24) {
@@ -193,10 +196,11 @@ private struct HomeCategoryTextTabs: View {
                             }
                         } label: {
                             Text(category.segmentedTitle)
-                                .font(.system(size: 19, weight: selectedCategory == category ? .bold : .semibold))
+                                .font(.system(size: 22, weight: selectedCategory == category ? .bold : .semibold))
                                 .foregroundStyle(selectedCategory == category ? .primary : .secondary)
                                 .lineLimit(1)
                                 .fixedSize(horizontal: true, vertical: false)
+                                .frame(minHeight: 28, alignment: .center)
                         }
                         .buttonStyle(.plain)
                         .accessibilityAddTraits(selectedCategory == category ? .isSelected : [])
@@ -215,7 +219,7 @@ private struct HomeCategoryTextTabs: View {
                                     }
                                 }
                             } label: {
-                                Text(selectedFilter.title.lowercased())
+                                Text(filterLabel)
                                     .font(.system(size: 12, weight: .semibold))
                                     .foregroundStyle(.secondary)
                                     .lineLimit(1)
@@ -225,13 +229,17 @@ private struct HomeCategoryTextTabs: View {
                             }
                             .buttonStyle(.plain)
                         } else {
-                            Color.clear
-                                .frame(height: 14)
+                            Text(filterLabel)
+                                .font(.system(size: 12, weight: .semibold))
+                                .lineLimit(1)
+                                .fixedSize(horizontal: true, vertical: false)
+                                .padding(.top, -2)
+                                .hidden()
                         }
                     }
                 }
             }
-            .padding(.horizontal, 2)
+            .padding(.horizontal, 16)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
