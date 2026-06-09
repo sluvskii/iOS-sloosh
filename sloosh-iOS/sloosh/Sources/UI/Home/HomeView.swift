@@ -181,19 +181,9 @@ private struct HomeCategoryTextTabs: View {
     @Binding var selectedFilter: HomeFilter
 
     private let titleHeight: CGFloat = 28
-    private let subtitleHeight: CGFloat = 14
-    private let subtitleTopOffset: CGFloat = -2
 
     private var filterLabel: String {
         selectedFilter.title.lowercased()
-    }
-
-    private var tabBlockHeight: CGFloat {
-        titleHeight + subtitleHeight + subtitleTopOffset
-    }
-
-    private var inactiveTitleOffset: CGFloat {
-        (subtitleHeight + subtitleTopOffset) / 2
     }
 
     var body: some View {
@@ -215,39 +205,35 @@ private struct HomeCategoryTextTabs: View {
                                 .lineLimit(1)
                                 .fixedSize(horizontal: true, vertical: false)
                                 .frame(height: titleHeight, alignment: .center)
-                                .offset(y: isSelected ? 0 : inactiveTitleOffset)
                         }
                         .buttonStyle(.plain)
                         .accessibilityAddTraits(isSelected ? .isSelected : [])
 
-                        Menu {
-                            ForEach(HomeFilter.allCases) { filter in
-                                Button {
-                                    selectedFilter = filter
-                                } label: {
-                                    if selectedFilter == filter {
-                                        Label(filter.title, systemImage: "checkmark")
-                                    } else {
-                                        Text(filter.title)
+                        if isSelected {
+                            Menu {
+                                ForEach(HomeFilter.allCases) { filter in
+                                    Button {
+                                        selectedFilter = filter
+                                    } label: {
+                                        if selectedFilter == filter {
+                                            Label(filter.title, systemImage: "checkmark")
+                                        } else {
+                                            Text(filter.title)
+                                        }
                                     }
                                 }
+                            } label: {
+                                Text(filterLabel)
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                                    .fixedSize(horizontal: true, vertical: false)
+                                    .contentShape(Rectangle())
                             }
-                        } label: {
-                            Text(filterLabel)
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
-                                .fixedSize(horizontal: true, vertical: false)
-                                .padding(.top, subtitleTopOffset)
-                                .opacity(isSelected ? 1 : 0)
-                                .offset(y: isSelected ? 0 : -inactiveTitleOffset)
-                                .contentShape(Rectangle())
+                            .buttonStyle(.plain)
+                            .transition(.opacity.combined(with: .move(edge: .top)))
                         }
-                        .buttonStyle(.plain)
-                        .allowsHitTesting(isSelected)
-                        .accessibilityHidden(!isSelected)
                     }
-                    .frame(height: tabBlockHeight, alignment: .top)
                     .animation(.snappy(duration: 0.32, extraBounce: 0.06), value: isSelected)
                 }
             }
