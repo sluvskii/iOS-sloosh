@@ -192,70 +192,63 @@ private struct HomeCategoryTextTabs: View {
         titleHeight + subtitleHeight + subtitleTopOffset
     }
 
+    private var inactiveTitleOffset: CGFloat {
+        (subtitleHeight + subtitleTopOffset) / 2
+    }
+
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(alignment: .top, spacing: 24) {
                 ForEach(HomeCategory.allCases, id: \.self) { category in
-                    Group {
-                        if selectedCategory == category {
-                            VStack(alignment: .center, spacing: 0) {
-                                Button {
-                                    guard selectedCategory != category else { return }
-                                    withAnimation(.snappy(duration: 0.32, extraBounce: 0.06)) {
-                                        selectedCategory = category
-                                    }
-                                } label: {
-                                    Text(category.segmentedTitle)
-                                        .font(.system(size: 22, weight: .bold))
-                                        .foregroundStyle(.primary)
-                                        .lineLimit(1)
-                                        .fixedSize(horizontal: true, vertical: false)
-                                        .frame(height: titleHeight, alignment: .center)
-                                }
-                                .buttonStyle(.plain)
-                                .accessibilityAddTraits(.isSelected)
+                    let isSelected = selectedCategory == category
 
-                                Menu {
-                                    ForEach(HomeFilter.allCases) { filter in
-                                        Button {
-                                            selectedFilter = filter
-                                        } label: {
-                                            if selectedFilter == filter {
-                                                Label(filter.title, systemImage: "checkmark")
-                                            } else {
-                                                Text(filter.title)
-                                            }
-                                        }
-                                    }
-                                } label: {
-                                    Text(filterLabel)
-                                        .font(.system(size: 12, weight: .semibold))
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
-                                        .fixedSize(horizontal: true, vertical: false)
-                                        .padding(.top, subtitleTopOffset)
-                                        .contentShape(Rectangle())
-                                }
-                                .buttonStyle(.plain)
+                    VStack(alignment: .center, spacing: 0) {
+                        Button {
+                            guard !isSelected else { return }
+                            withAnimation(.snappy(duration: 0.32, extraBounce: 0.06)) {
+                                selectedCategory = category
                             }
-                            .frame(height: tabBlockHeight, alignment: .top)
-                        } else {
-                            Button {
-                                withAnimation(.snappy(duration: 0.32, extraBounce: 0.06)) {
-                                    selectedCategory = category
-                                }
-                            } label: {
-                                Text(category.segmentedTitle)
-                                    .font(.system(size: 22, weight: .semibold))
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                                    .fixedSize(horizontal: true, vertical: false)
-                                    .frame(height: tabBlockHeight, alignment: .center)
-                                    .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
+                        } label: {
+                            Text(category.segmentedTitle)
+                                .font(.system(size: 22, weight: isSelected ? .bold : .semibold))
+                                .foregroundStyle(isSelected ? .primary : .secondary)
+                                .lineLimit(1)
+                                .fixedSize(horizontal: true, vertical: false)
+                                .frame(height: titleHeight, alignment: .center)
+                                .offset(y: isSelected ? 0 : inactiveTitleOffset)
                         }
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(isSelected ? .isSelected : [])
+
+                        Menu {
+                            ForEach(HomeFilter.allCases) { filter in
+                                Button {
+                                    selectedFilter = filter
+                                } label: {
+                                    if selectedFilter == filter {
+                                        Label(filter.title, systemImage: "checkmark")
+                                    } else {
+                                        Text(filter.title)
+                                    }
+                                }
+                            }
+                        } label: {
+                            Text(filterLabel)
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                                .fixedSize(horizontal: true, vertical: false)
+                                .padding(.top, subtitleTopOffset)
+                                .opacity(isSelected ? 1 : 0)
+                                .offset(y: isSelected ? 0 : -inactiveTitleOffset)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .allowsHitTesting(isSelected)
+                        .accessibilityHidden(!isSelected)
                     }
+                    .frame(height: tabBlockHeight, alignment: .top)
+                    .animation(.snappy(duration: 0.32, extraBounce: 0.06), value: isSelected)
                 }
             }
             .padding(.horizontal, 16)
