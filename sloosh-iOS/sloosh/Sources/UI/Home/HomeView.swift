@@ -180,61 +180,80 @@ private struct HomeCategoryTextTabs: View {
     @Binding var selectedCategory: HomeCategory
     @Binding var selectedFilter: HomeFilter
 
+    private let titleHeight: CGFloat = 28
+    private let subtitleHeight: CGFloat = 14
+    private let subtitleTopOffset: CGFloat = -2
+
     private var filterLabel: String {
         selectedFilter.title.lowercased()
+    }
+
+    private var tabBlockHeight: CGFloat {
+        titleHeight + subtitleHeight + subtitleTopOffset
     }
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(alignment: .top, spacing: 24) {
                 ForEach(HomeCategory.allCases, id: \.self) { category in
-                    VStack(alignment: .center, spacing: 0) {
-                        Button {
-                            guard selectedCategory != category else { return }
-                            withAnimation(.snappy(duration: 0.32, extraBounce: 0.06)) {
-                                selectedCategory = category
-                            }
-                        } label: {
-                            Text(category.segmentedTitle)
-                                .font(.system(size: 22, weight: selectedCategory == category ? .bold : .semibold))
-                                .foregroundStyle(selectedCategory == category ? .primary : .secondary)
-                                .lineLimit(1)
-                                .fixedSize(horizontal: true, vertical: false)
-                                .frame(minHeight: 28, alignment: .center)
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityAddTraits(selectedCategory == category ? .isSelected : [])
-
+                    Group {
                         if selectedCategory == category {
-                            Menu {
-                                ForEach(HomeFilter.allCases) { filter in
-                                    Button {
-                                        selectedFilter = filter
-                                    } label: {
-                                        if selectedFilter == filter {
-                                            Label(filter.title, systemImage: "checkmark")
-                                        } else {
-                                            Text(filter.title)
+                            VStack(alignment: .center, spacing: 0) {
+                                Button {
+                                    guard selectedCategory != category else { return }
+                                    withAnimation(.snappy(duration: 0.32, extraBounce: 0.06)) {
+                                        selectedCategory = category
+                                    }
+                                } label: {
+                                    Text(category.segmentedTitle)
+                                        .font(.system(size: 22, weight: .bold))
+                                        .foregroundStyle(.primary)
+                                        .lineLimit(1)
+                                        .fixedSize(horizontal: true, vertical: false)
+                                        .frame(height: titleHeight, alignment: .center)
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityAddTraits(.isSelected)
+
+                                Menu {
+                                    ForEach(HomeFilter.allCases) { filter in
+                                        Button {
+                                            selectedFilter = filter
+                                        } label: {
+                                            if selectedFilter == filter {
+                                                Label(filter.title, systemImage: "checkmark")
+                                            } else {
+                                                Text(filter.title)
+                                            }
                                         }
                                     }
+                                } label: {
+                                    Text(filterLabel)
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                        .fixedSize(horizontal: true, vertical: false)
+                                        .padding(.top, subtitleTopOffset)
+                                        .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            .frame(height: tabBlockHeight, alignment: .top)
+                        } else {
+                            Button {
+                                withAnimation(.snappy(duration: 0.32, extraBounce: 0.06)) {
+                                    selectedCategory = category
                                 }
                             } label: {
-                                Text(filterLabel)
-                                    .font(.system(size: 12, weight: .semibold))
+                                Text(category.segmentedTitle)
+                                    .font(.system(size: 22, weight: .semibold))
                                     .foregroundStyle(.secondary)
                                     .lineLimit(1)
                                     .fixedSize(horizontal: true, vertical: false)
-                                    .padding(.top, -2)
+                                    .frame(height: tabBlockHeight, alignment: .center)
                                     .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
-                        } else {
-                            Text(filterLabel)
-                                .font(.system(size: 12, weight: .semibold))
-                                .lineLimit(1)
-                                .fixedSize(horizontal: true, vertical: false)
-                                .padding(.top, -2)
-                                .hidden()
                         }
                     }
                 }
