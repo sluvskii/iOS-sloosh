@@ -179,11 +179,49 @@ struct MovieDetailsNavigationLink<Label: View>: View {
 private struct HomeCategoryTextTabs: View {
     @Binding var selectedCategory: HomeCategory
     @Binding var selectedFilter: HomeFilter
+    @Environment(\.colorScheme) private var colorScheme
 
     private let titleHeight: CGFloat = 28
 
     private var filterLabel: String {
         selectedFilter.title.lowercased()
+    }
+
+    private func layeredText(
+        _ text: String,
+        size: CGFloat,
+        weight: Font.Weight,
+        baseColor: Color,
+        isSelected: Bool
+    ) -> some View {
+        let font = Font.system(size: size, weight: weight)
+        let highlightOpacity = isSelected
+            ? (colorScheme == .dark ? 0.42 : 0.26)
+            : (colorScheme == .dark ? 0.18 : 0.10)
+        let accentOpacity = isSelected
+            ? (colorScheme == .dark ? 0.18 : 0.12)
+            : (colorScheme == .dark ? 0.08 : 0.05)
+
+        return Text(text)
+            .font(font)
+            .foregroundStyle(baseColor)
+            .overlay {
+                LinearGradient(
+                    colors: [
+                        .white.opacity(highlightOpacity),
+                        Color.slooshAccent.opacity(accentOpacity),
+                        .white.opacity(highlightOpacity * 0.5)
+                    ],
+                    startPoint: .topLeading,
+                    endPoint: .bottomTrailing
+                )
+                .blendMode(colorScheme == .dark ? .screen : .overlay)
+                .mask {
+                    Text(text)
+                        .font(font)
+                }
+            }
+            .compositingGroup()
     }
 
     var body: some View {
@@ -199,9 +237,13 @@ private struct HomeCategoryTextTabs: View {
                                 selectedCategory = category
                             }
                         } label: {
-                            Text(category.segmentedTitle)
-                                .font(.system(size: 22, weight: isSelected ? .bold : .semibold))
-                                .foregroundStyle(isSelected ? .primary : .secondary)
+                            layeredText(
+                                category.segmentedTitle,
+                                size: 22,
+                                weight: isSelected ? .bold : .semibold,
+                                baseColor: isSelected ? .primary : .secondary,
+                                isSelected: isSelected
+                            )
                                 .lineLimit(1)
                                 .fixedSize(horizontal: true, vertical: false)
                                 .frame(height: titleHeight, alignment: .center)
@@ -223,9 +265,13 @@ private struct HomeCategoryTextTabs: View {
                                     }
                                 }
                             } label: {
-                                Text(filterLabel)
-                                    .font(.system(size: 12, weight: .semibold))
-                                    .foregroundStyle(.secondary)
+                                layeredText(
+                                    filterLabel,
+                                    size: 12,
+                                    weight: .semibold,
+                                    baseColor: .secondary,
+                                    isSelected: true
+                                )
                                     .lineLimit(1)
                                     .fixedSize(horizontal: true, vertical: false)
                                     .contentShape(Rectangle())
