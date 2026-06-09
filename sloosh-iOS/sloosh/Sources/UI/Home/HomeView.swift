@@ -56,9 +56,8 @@ struct HomeView: View {
             .safeAreaBar(edge: .top, spacing: 0) {
                 HomeCategoryTextTabs(
                     selectedCategory: $viewModel.selectedCategory,
-                    selectedFilter: viewModel.selectedFilter
+                    selectedFilter: $viewModel.selectedFilter
                 )
-                    .padding(.horizontal, 16)
                     .padding(.top, 6)
                     .padding(.bottom, 8)
             }
@@ -179,38 +178,63 @@ struct MovieDetailsNavigationLink<Label: View>: View {
 
 private struct HomeCategoryTextTabs: View {
     @Binding var selectedCategory: HomeCategory
-    let selectedFilter: HomeFilter
+    @Binding var selectedFilter: HomeFilter
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(alignment: .top, spacing: 24) {
                 ForEach(HomeCategory.allCases, id: \.self) { category in
-                    Button {
-                        guard selectedCategory != category else { return }
-                        withAnimation(.snappy(duration: 0.32, extraBounce: 0.06)) {
-                            selectedCategory = category
-                        }
-                    } label: {
-                        VStack(alignment: .leading, spacing: 0) {
+                    VStack(alignment: .center, spacing: 0) {
+                        Button {
+                            guard selectedCategory != category else { return }
+                            withAnimation(.snappy(duration: 0.32, extraBounce: 0.06)) {
+                                selectedCategory = category
+                            }
+                        } label: {
                             Text(category.segmentedTitle)
                                 .font(.system(size: 19, weight: selectedCategory == category ? .bold : .semibold))
                                 .foregroundStyle(selectedCategory == category ? .primary : .secondary)
                                 .lineLimit(1)
                                 .fixedSize(horizontal: true, vertical: false)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(selectedCategory == category ? .isSelected : [])
 
-                            Text(selectedCategory == category ? selectedFilter.title.lowercased() : " ")
+                        if selectedCategory == category {
+                            Menu {
+                                ForEach(HomeFilter.allCases) { filter in
+                                    Button {
+                                        selectedFilter = filter
+                                    } label: {
+                                        if selectedFilter == filter {
+                                            Label(filter.title, systemImage: "checkmark")
+                                        } else {
+                                            Text(filter.title)
+                                        }
+                                    }
+                                }
+                            } label: {
+                                HStack(spacing: 4) {
+                                    Text(selectedFilter.title.lowercased())
+                                    Image(systemName: "chevron.down")
+                                        .font(.system(size: 9, weight: .bold))
+                                }
                                 .font(.system(size: 12, weight: .semibold))
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
                                 .fixedSize(horizontal: true, vertical: false)
                                 .padding(.top, -2)
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                        } else {
+                            Color.clear
+                                .frame(height: 14)
                         }
-                        .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
-                    .accessibilityAddTraits(selectedCategory == category ? .isSelected : [])
                 }
             }
+            .padding(.horizontal, 2)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
