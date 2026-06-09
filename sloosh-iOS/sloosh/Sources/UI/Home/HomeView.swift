@@ -53,14 +53,14 @@ struct HomeView: View {
             .animation(.spring(response: 0.3, dampingFraction: 0.8), value: viewModel.selectedCategory)
             .navigationTitle("")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarRole(.editor)
             .toolbar {
-                ToolbarItem(placement: .principal) {
+                ToolbarItem(placement: .topBarLeading) {
                     HomeCategoryTextTabs(
                         selectedCategory: $viewModel.selectedCategory,
                         selectedFilter: $viewModel.selectedFilter
                     )
-                    .padding(.top, 6)
-                    .padding(.bottom, 8)
+                    .padding(.vertical, 8)
                 }
             }
             .scrollEdgeEffectStyle(.soft, for: .top)
@@ -267,6 +267,7 @@ private struct HomeCategoryTextTabs: View {
                 }
                 .contentMargins(.horizontal, 16, for: .scrollContent)
             }
+            .scrollClipDisabled()
             .onAppear {
                 proxy.scrollTo(selectedCategory, anchor: .center)
             }
