@@ -195,33 +195,16 @@ private struct HomeCategoryTextTabs: View {
         isSelected: Bool
     ) -> some View {
         let font = Font.system(size: size, weight: weight)
-        let highlightOpacity = isSelected
-            ? (colorScheme == .dark ? 0.42 : 0.26)
-            : (colorScheme == .dark ? 0.18 : 0.10)
-        let accentOpacity = isSelected
-            ? (colorScheme == .dark ? 0.18 : 0.12)
-            : (colorScheme == .dark ? 0.08 : 0.05)
+        let blendMode: BlendMode = {
+            guard isSelected else { return .normal }
+            return colorScheme == .dark ? .plusLighter : .overlay
+        }()
 
         return Text(text)
             .font(font)
             .foregroundStyle(baseColor)
-            .overlay {
-                LinearGradient(
-                    colors: [
-                        .white.opacity(highlightOpacity),
-                        Color.slooshAccent.opacity(accentOpacity),
-                        .white.opacity(highlightOpacity * 0.5)
-                    ],
-                    startPoint: .topLeading,
-                    endPoint: .bottomTrailing
-                )
-                .blendMode(colorScheme == .dark ? .screen : .overlay)
-                .mask {
-                    Text(text)
-                        .font(font)
-                }
-            }
             .compositingGroup()
+            .blendMode(blendMode)
     }
 
     var body: some View {
