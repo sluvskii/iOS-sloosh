@@ -42,11 +42,6 @@ enum HomeFilter: String, CaseIterable, Identifiable {
 struct HomeView: View {
     @StateObject private var viewModel = HomeViewModel()
     @Namespace private var navigationTransition
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-
-    private var toolbarHorizontalBleed: CGFloat {
-        horizontalSizeClass == .regular ? -18 : -10
-    }
 
     var body: some View {
         NavigationStack {
@@ -65,7 +60,6 @@ struct HomeView: View {
                         selectedFilter: $viewModel.selectedFilter
                     )
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, toolbarHorizontalBleed)
                     .padding(.top, 6)
                     .padding(.bottom, 8)
                 }
@@ -250,6 +244,7 @@ private struct HomeCategoryTextTabs: View {
                                     .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
+                            .padding(.horizontal, 4)
                             .padding(.vertical, 2)
                             .accessibilityAddTraits(isSelected ? .isSelected : [])
 
