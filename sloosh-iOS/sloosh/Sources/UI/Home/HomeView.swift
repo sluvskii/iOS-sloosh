@@ -198,7 +198,11 @@ private struct HomeCategoryTextTabs: View {
     }
 
     private var edgeContentInset: CGFloat {
-        horizontalSizeClass == .regular ? 16 : 14
+        horizontalSizeClass == .regular ? 10 : 8
+    }
+
+    private var tabScrollAnimation: Animation {
+        .easeInOut(duration: 0.28)
     }
 
     private var filterLabel: String {
@@ -228,9 +232,7 @@ private struct HomeCategoryTextTabs: View {
                         VStack(alignment: .center, spacing: 0) {
                             Button {
                                 guard !isSelected else { return }
-                                withAnimation(.snappy(duration: 0.32, extraBounce: 0.06)) {
-                                    selectedCategory = category
-                                }
+                                selectedCategory = category
                             } label: {
                                 layeredText(
                                     category.segmentedTitle,
@@ -281,7 +283,7 @@ private struct HomeCategoryTextTabs: View {
                         .frame(height: tabHeight, alignment: isSelected ? .top : .center)
                         .padding(.leading, isFirst ? edgeContentInset : 0)
                         .padding(.trailing, isLast ? edgeContentInset : 0)
-                        .animation(.snappy(duration: 0.32, extraBounce: 0.06), value: isSelected)
+                        .animation(tabScrollAnimation, value: isSelected)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -292,7 +294,7 @@ private struct HomeCategoryTextTabs: View {
                 proxy.scrollTo(selectedCategory, anchor: .center)
             }
             .onChange(of: selectedCategory) { _, newCategory in
-                withAnimation(.snappy(duration: 0.32, extraBounce: 0.06)) {
+                withAnimation(tabScrollAnimation) {
                     proxy.scrollTo(newCategory, anchor: .center)
                 }
             }
