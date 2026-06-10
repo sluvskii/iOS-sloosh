@@ -188,7 +188,7 @@ private struct HomeCategoryTextTabs: View {
     }
 
     private var edgeContentInset: CGFloat {
-        horizontalSizeClass == .regular ? 10 : 8
+        horizontalSizeClass == .regular ? 18 : 16
     }
 
     private var tabScrollAnimation: Animation {
