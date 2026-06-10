@@ -303,11 +303,6 @@ private struct HomeCategoryTextTabs: View {
                 scrollPosition = newCategory
             }
         }
-        .onChange(of: selectedFilter) { _, _ in
-            withAnimation(tabScrollAnimation) {
-                scrollPosition = selectedCategory
-            }
-        }
     }
 }
 
