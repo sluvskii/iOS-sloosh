@@ -202,7 +202,7 @@ private struct HomeCategoryTextTabs: View {
     }
 
     private var tabScrollAnimation: Animation {
-        .easeInOut(duration: 0.28)
+        .easeInOut(duration: 0.35)
     }
 
     private var filterLabel: String {
@@ -218,6 +218,19 @@ private struct HomeCategoryTextTabs: View {
         return Text(text)
             .font(.system(size: size, weight: weight))
             .foregroundStyle(baseColor)
+    }
+
+    @MainActor
+    private func animateScroll(
+        to category: HomeCategory,
+        with proxy: ScrollViewProxy
+    ) {
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 16_000_000)
+            withAnimation(tabScrollAnimation) {
+                proxy.scrollTo(category, anchor: .center)
+            }
+        }
     }
 
     var body: some View {
@@ -294,12 +307,10 @@ private struct HomeCategoryTextTabs: View {
                 proxy.scrollTo(selectedCategory, anchor: .center)
             }
             .onChange(of: selectedCategory) { _, newCategory in
-                withAnimation(tabScrollAnimation) {
-                    proxy.scrollTo(newCategory, anchor: .center)
-                }
+                animateScroll(to: newCategory, with: proxy)
             }
             .onChange(of: selectedFilter) { _, _ in
-                proxy.scrollTo(selectedCategory, anchor: .center)
+                animateScroll(to: selectedCategory, with: proxy)
             }
         }
     }
