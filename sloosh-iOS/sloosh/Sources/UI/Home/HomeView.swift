@@ -51,7 +51,7 @@ struct HomeView: View {
                 navigationTransition: navigationTransition
             )
             .animation(.spring(response: 0.3, dampingFraction: 0.8), value: viewModel.selectedCategory)
-            .safeAreaInset(edge: .top, spacing: 0) {
+            .safeAreaBar(edge: .top, spacing: 0) {
                 HomeCategoryTextTabs(
                     selectedCategory: $viewModel.selectedCategory,
                     selectedFilter: $viewModel.selectedFilter
@@ -59,6 +59,7 @@ struct HomeView: View {
                 .padding(.top, 4)
                 .padding(.bottom, 2)
             }
+            .scrollEdgeEffectStyle(.soft, for: .top)
             .toolbar(.hidden, for: .navigationBar)
             .task {
                 await viewModel.applyCurrentSelection()
