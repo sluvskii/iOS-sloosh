@@ -42,6 +42,11 @@ enum HomeFilter: String, CaseIterable, Identifiable {
 struct HomeView: View {
     @StateObject private var viewModel = HomeViewModel()
     @Namespace private var navigationTransition
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+
+    private var toolbarHorizontalBleed: CGFloat {
+        horizontalSizeClass == .regular ? -20 : -12
+    }
 
     var body: some View {
         NavigationStack {
@@ -59,6 +64,8 @@ struct HomeView: View {
                         selectedCategory: $viewModel.selectedCategory,
                         selectedFilter: $viewModel.selectedFilter
                     )
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, toolbarHorizontalBleed)
                     .padding(.top, 6)
                     .padding(.bottom, 8)
                 }
@@ -181,12 +188,23 @@ struct MovieDetailsNavigationLink<Label: View>: View {
 private struct HomeCategoryTextTabs: View {
     @Binding var selectedCategory: HomeCategory
     @Binding var selectedFilter: HomeFilter
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @ScaledMetric(relativeTo: .headline) private var titleSize: CGFloat = 22
+    @ScaledMetric(relativeTo: .caption) private var filterSize: CGFloat = 12
 
     private let titleHeight: CGFloat = 28
     private let filterHeight: CGFloat = 16
 
     private var tabHeight: CGFloat {
         titleHeight + filterHeight
+    }
+
+    private var tabSpacing: CGFloat {
+        horizontalSizeClass == .regular ? 28 : 22
+    }
+
+    private var scrollEdgePadding: CGFloat {
+        horizontalSizeClass == .regular ? 6 : 2
     }
 
     private var filterLabel: String {
@@ -207,7 +225,7 @@ private struct HomeCategoryTextTabs: View {
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(alignment: .top, spacing: 24) {
+                HStack(alignment: .top, spacing: tabSpacing) {
                     ForEach(HomeCategory.allCases, id: \.self) { category in
                         let isSelected = selectedCategory == category
 
@@ -220,15 +238,17 @@ private struct HomeCategoryTextTabs: View {
                             } label: {
                                 layeredText(
                                     category.segmentedTitle,
-                                    size: 22,
+                                    size: titleSize,
                                     weight: isSelected ? .bold : .semibold,
                                     baseColor: isSelected ? .primary : .secondary
                                 )
                                     .lineLimit(1)
                                     .fixedSize(horizontal: true, vertical: false)
                                     .frame(height: titleHeight, alignment: .center)
+                                    .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
+                            .padding(.vertical, 2)
                             .accessibilityAddTraits(isSelected ? .isSelected : [])
 
                             if isSelected {
@@ -247,7 +267,7 @@ private struct HomeCategoryTextTabs: View {
                                 } label: {
                                     layeredText(
                                         filterLabel,
-                                        size: 12,
+                                        size: filterSize,
                                         weight: .semibold,
                                         baseColor: .secondary
                                     )
@@ -265,8 +285,11 @@ private struct HomeCategoryTextTabs: View {
                         .animation(.snappy(duration: 0.32, extraBounce: 0.06), value: isSelected)
                     }
                 }
-                .contentMargins(.horizontal, 16, for: .scrollContent)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, scrollEdgePadding)
             }
+            .scrollClipDisabled()
+            .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
             .onAppear {
                 proxy.scrollTo(selectedCategory, anchor: .center)
             }
