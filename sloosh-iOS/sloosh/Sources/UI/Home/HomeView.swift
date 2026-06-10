@@ -204,7 +204,7 @@ private struct HomeCategoryTextTabs: View {
     }
 
     private var edgeContentInset: CGFloat {
-        horizontalSizeClass == .regular ? 20 : 16
+        horizontalSizeClass == .regular ? 16 : 14
     }
 
     private var filterLabel: String {
