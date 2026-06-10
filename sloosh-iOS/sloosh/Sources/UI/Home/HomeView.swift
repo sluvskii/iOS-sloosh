@@ -190,7 +190,7 @@ private struct HomeCategoryTextTabs: View {
     @Binding var selectedFilter: HomeFilter
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @ScaledMetric(relativeTo: .headline) private var titleSize: CGFloat = 22
-    @ScaledMetric(relativeTo: .caption) private var filterSize: CGFloat = 12
+    private let filterSize: CGFloat = 11
 
     private let titleHeight: CGFloat = 28
     private let filterHeight: CGFloat = 16
