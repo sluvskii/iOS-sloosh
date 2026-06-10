@@ -51,20 +51,21 @@ struct HomeView: View {
                 navigationTransition: navigationTransition
             )
             .animation(.spring(response: 0.3, dampingFraction: 0.8), value: viewModel.selectedCategory)
-            .navigationTitle("")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    HomeCategoryTextTabs(
-                        selectedCategory: $viewModel.selectedCategory,
-                        selectedFilter: $viewModel.selectedFilter
-                    )
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.top, 3)
-                    .padding(.bottom, 3)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                HomeCategoryTextTabs(
+                    selectedCategory: $viewModel.selectedCategory,
+                    selectedFilter: $viewModel.selectedFilter
+                )
+                .padding(.top, 4)
+                .padding(.bottom, 2)
+                .background {
+                    Rectangle()
+                        .fill(Color(uiColor: .systemBackground))
+                        .backgroundExtensionEffect()
+                        .allowsHitTesting(false)
                 }
             }
-            .scrollEdgeEffectStyle(.soft, for: .top)
+            .toolbar(.hidden, for: .navigationBar)
             .task {
                 await viewModel.applyCurrentSelection()
             }
