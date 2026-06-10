@@ -45,7 +45,7 @@ struct HomeView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
 
     private var toolbarHorizontalBleed: CGFloat {
-        horizontalSizeClass == .regular ? -20 : -12
+        horizontalSizeClass == .regular ? -18 : -10
     }
 
     var body: some View {
@@ -203,8 +203,8 @@ private struct HomeCategoryTextTabs: View {
         horizontalSizeClass == .regular ? 28 : 22
     }
 
-    private var scrollEdgePadding: CGFloat {
-        horizontalSizeClass == .regular ? 6 : 2
+    private var edgeContentInset: CGFloat {
+        horizontalSizeClass == .regular ? 20 : 16
     }
 
     private var filterLabel: String {
@@ -226,8 +226,10 @@ private struct HomeCategoryTextTabs: View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .top, spacing: tabSpacing) {
-                    ForEach(HomeCategory.allCases, id: \.self) { category in
+                    ForEach(Array(HomeCategory.allCases.enumerated()), id: \.element) { index, category in
                         let isSelected = selectedCategory == category
+                        let isFirst = index == 0
+                        let isLast = index == HomeCategory.allCases.count - 1
 
                         VStack(alignment: .center, spacing: 0) {
                             Button {
@@ -282,11 +284,12 @@ private struct HomeCategoryTextTabs: View {
                         }
                         .id(category)
                         .frame(height: tabHeight, alignment: isSelected ? .top : .center)
+                        .padding(.leading, isFirst ? edgeContentInset : 0)
+                        .padding(.trailing, isLast ? edgeContentInset : 0)
                         .animation(.snappy(duration: 0.32, extraBounce: 0.06), value: isSelected)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, scrollEdgePadding)
             }
             .scrollClipDisabled()
             .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
