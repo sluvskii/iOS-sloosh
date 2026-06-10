@@ -183,6 +183,7 @@ private struct HomeCategoryTextTabs: View {
     @Binding var selectedCategory: HomeCategory
     @Binding var selectedFilter: HomeFilter
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @State private var scrollPosition: HomeCategory?
     @ScaledMetric(relativeTo: .headline) private var titleSize: CGFloat = 22
     private let filterSize: CGFloat = 11
 
@@ -220,97 +221,91 @@ private struct HomeCategoryTextTabs: View {
             .foregroundStyle(baseColor)
     }
 
-    @MainActor
-    private func animateScroll(
-        to category: HomeCategory,
-        with proxy: ScrollViewProxy
-    ) {
-        Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 16_000_000)
-            withAnimation(tabScrollAnimation) {
-                proxy.scrollTo(category, anchor: .center)
-            }
-        }
-    }
-
     var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(alignment: .top, spacing: tabSpacing) {
-                    ForEach(Array(HomeCategory.allCases.enumerated()), id: \.element) { index, category in
-                        let isSelected = selectedCategory == category
-                        let isFirst = index == 0
-                        let isLast = index == HomeCategory.allCases.count - 1
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(alignment: .top, spacing: tabSpacing) {
+                ForEach(Array(HomeCategory.allCases.enumerated()), id: \.element) { index, category in
+                    let isSelected = selectedCategory == category
+                    let isFirst = index == 0
+                    let isLast = index == HomeCategory.allCases.count - 1
 
-                        VStack(alignment: .center, spacing: 0) {
-                            Button {
-                                guard !isSelected else { return }
+                    VStack(alignment: .center, spacing: 0) {
+                        Button {
+                            guard !isSelected else { return }
+                            withAnimation(tabScrollAnimation) {
                                 selectedCategory = category
+                                scrollPosition = category
+                            }
+                        } label: {
+                            layeredText(
+                                category.segmentedTitle,
+                                size: titleSize,
+                                weight: isSelected ? .bold : .semibold,
+                                baseColor: isSelected ? .primary : .secondary
+                            )
+                                .lineLimit(1)
+                                .fixedSize(horizontal: true, vertical: false)
+                                .frame(height: titleHeight, alignment: .center)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 2)
+                        .accessibilityAddTraits(isSelected ? .isSelected : [])
+
+                        if isSelected {
+                            Menu {
+                                ForEach(HomeFilter.allCases) { filter in
+                                    Button {
+                                        selectedFilter = filter
+                                    } label: {
+                                        if selectedFilter == filter {
+                                            Label(filter.title, systemImage: "checkmark")
+                                        } else {
+                                            Text(filter.title)
+                                        }
+                                    }
+                                }
                             } label: {
                                 layeredText(
-                                    category.segmentedTitle,
-                                    size: titleSize,
-                                    weight: isSelected ? .bold : .semibold,
-                                    baseColor: isSelected ? .primary : .secondary
+                                    filterLabel,
+                                    size: filterSize,
+                                    weight: .semibold,
+                                    baseColor: .secondary
                                 )
                                     .lineLimit(1)
                                     .fixedSize(horizontal: true, vertical: false)
-                                    .frame(height: titleHeight, alignment: .center)
                                     .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
-                            .padding(.horizontal, 4)
-                            .padding(.vertical, 2)
-                            .accessibilityAddTraits(isSelected ? .isSelected : [])
-
-                            if isSelected {
-                                Menu {
-                                    ForEach(HomeFilter.allCases) { filter in
-                                        Button {
-                                            selectedFilter = filter
-                                        } label: {
-                                            if selectedFilter == filter {
-                                                Label(filter.title, systemImage: "checkmark")
-                                            } else {
-                                                Text(filter.title)
-                                            }
-                                        }
-                                    }
-                                } label: {
-                                    layeredText(
-                                        filterLabel,
-                                        size: filterSize,
-                                        weight: .semibold,
-                                        baseColor: .secondary
-                                    )
-                                        .lineLimit(1)
-                                        .fixedSize(horizontal: true, vertical: false)
-                                        .contentShape(Rectangle())
-                                }
-                                .buttonStyle(.plain)
-                                .frame(height: filterHeight, alignment: .top)
-                                .transition(.opacity.combined(with: .move(edge: .top)))
-                            }
+                            .frame(height: filterHeight, alignment: .top)
+                            .transition(.opacity.combined(with: .move(edge: .top)))
                         }
-                        .id(category)
-                        .frame(height: tabHeight, alignment: isSelected ? .top : .center)
-                        .padding(.leading, isFirst ? edgeContentInset : 0)
-                        .padding(.trailing, isLast ? edgeContentInset : 0)
-                        .animation(tabScrollAnimation, value: isSelected)
                     }
+                    .id(category)
+                    .frame(height: tabHeight, alignment: isSelected ? .top : .center)
+                    .padding(.leading, isFirst ? edgeContentInset : 0)
+                    .padding(.trailing, isLast ? edgeContentInset : 0)
+                    .animation(tabScrollAnimation, value: isSelected)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .scrollClipDisabled()
-            .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
-            .onAppear {
-                proxy.scrollTo(selectedCategory, anchor: .center)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .scrollTargetLayout()
+        }
+        .scrollClipDisabled()
+        .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+        .scrollPosition(id: $scrollPosition, anchor: .center)
+        .onAppear {
+            scrollPosition = selectedCategory
+        }
+        .onChange(of: selectedCategory) { _, newCategory in
+            withAnimation(tabScrollAnimation) {
+                scrollPosition = newCategory
             }
-            .onChange(of: selectedCategory) { _, newCategory in
-                animateScroll(to: newCategory, with: proxy)
-            }
-            .onChange(of: selectedFilter) { _, _ in
-                animateScroll(to: selectedCategory, with: proxy)
+        }
+        .onChange(of: selectedFilter) { _, _ in
+            withAnimation(tabScrollAnimation) {
+                scrollPosition = selectedCategory
             }
         }
     }
