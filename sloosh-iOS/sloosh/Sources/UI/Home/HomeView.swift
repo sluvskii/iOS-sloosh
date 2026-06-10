@@ -58,11 +58,6 @@ struct HomeView: View {
                 )
                 .padding(.top, 4)
                 .padding(.bottom, 2)
-                .background {
-                    Rectangle()
-                        .fill(.regularMaterial)
-                        .ignoresSafeArea(edges: .top)
-                }
             }
             .toolbar(.hidden, for: .navigationBar)
             .task {
