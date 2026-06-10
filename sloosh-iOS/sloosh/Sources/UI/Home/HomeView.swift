@@ -60,8 +60,8 @@ struct HomeView: View {
                         selectedFilter: $viewModel.selectedFilter
                     )
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.top, 6)
-                    .padding(.bottom, 8)
+                    .padding(.top, 3)
+                    .padding(.bottom, 3)
                 }
             }
             .scrollEdgeEffectStyle(.soft, for: .top)
