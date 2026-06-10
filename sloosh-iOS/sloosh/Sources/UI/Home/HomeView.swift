@@ -51,21 +51,15 @@ struct HomeView: View {
                 navigationTransition: navigationTransition
             )
             .animation(.spring(response: 0.3, dampingFraction: 0.8), value: viewModel.selectedCategory)
-            .safeAreaInset(edge: .top, spacing: 0) {
-                HomeCategoryTextTabs(
-                    selectedCategory: $viewModel.selectedCategory,
-                    selectedFilter: $viewModel.selectedFilter
-                )
-                .padding(.top, 4)
-                .padding(.bottom, 2)
-                .background {
-                    Rectangle()
-                        .fill(Color(uiColor: .systemBackground))
-                        .backgroundExtensionEffect()
-                        .allowsHitTesting(false)
+            .toolbar {
+                ToolbarItem(placement: .principal) {
+                    HomeCategoryTextTabs(
+                        selectedCategory: $viewModel.selectedCategory,
+                        selectedFilter: $viewModel.selectedFilter
+                    )
                 }
             }
-            .toolbar(.hidden, for: .navigationBar)
+            .navigationBarTitleDisplayMode(.inline)
             .task {
                 await viewModel.applyCurrentSelection()
             }
@@ -134,13 +128,6 @@ struct HomeCategoryContentView: View {
                 }
                 .padding(16)
             }
-        }
-        .background(alignment: .top) {
-            Rectangle()
-                .fill(Color(uiColor: .systemBackground))
-                .frame(height: 140)
-                .backgroundExtensionEffect()
-                .allowsHitTesting(false)
         }
         .scrollIndicators(.hidden)
     }
