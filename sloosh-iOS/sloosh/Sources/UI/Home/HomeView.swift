@@ -60,9 +60,8 @@ struct HomeView: View {
                 .padding(.bottom, 2)
                 .background {
                     Rectangle()
-                        .fill(Color(uiColor: .systemBackground))
-                        .backgroundExtensionEffect()
-                        .allowsHitTesting(false)
+                        .fill(.regularMaterial)
+                        .ignoresSafeArea(edges: .top)
                 }
             }
             .toolbar(.hidden, for: .navigationBar)
@@ -134,13 +133,6 @@ struct HomeCategoryContentView: View {
                 }
                 .padding(16)
             }
-        }
-        .background(alignment: .top) {
-            Rectangle()
-                .fill(Color(uiColor: .systemBackground))
-                .frame(height: 140)
-                .backgroundExtensionEffect()
-                .allowsHitTesting(false)
         }
         .scrollIndicators(.hidden)
     }
