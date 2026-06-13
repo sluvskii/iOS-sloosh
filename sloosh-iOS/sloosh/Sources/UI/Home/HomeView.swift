@@ -44,15 +44,21 @@ struct HomeView: View {
     @Namespace private var navigationTransition
     @State private var isFilterCollapsed = false
 
+    private var currentSelection: HomeSelection {
+        HomeSelection(
+            category: viewModel.selectedCategory,
+            filter: viewModel.selectedFilter
+        )
+    }
+
     var body: some View {
         NavigationStack {
             HomeCategoryContentView(
                 viewModel: viewModel,
-                category: viewModel.selectedCategory,
+                selection: currentSelection,
                 navigationTransition: navigationTransition,
                 isFilterCollapsed: $isFilterCollapsed
             )
-            .animation(.spring(response: 0.3, dampingFraction: 0.8), value: viewModel.selectedCategory)
             .safeAreaBar(edge: .top, spacing: 0) {
                 HomeCategoryTextTabs(
                     selectedCategory: $viewModel.selectedCategory,
@@ -64,20 +70,14 @@ struct HomeView: View {
             }
             .scrollEdgeEffectStyle(.soft, for: .top)
             .toolbar(.hidden, for: .navigationBar)
-            .task {
-                await viewModel.applyCurrentSelection()
+            .task(id: currentSelection) {
+                await viewModel.apply(selection: currentSelection)
             }
             .onChange(of: viewModel.selectedCategory) { _, _ in
                 isFilterCollapsed = false
-                Task {
-                    await viewModel.applyCurrentSelection()
-                }
             }
             .onChange(of: viewModel.selectedFilter) { _, _ in
                 isFilterCollapsed = false
-                Task {
-                    await viewModel.applyCurrentSelection()
-                }
             }
         }
     }
@@ -85,7 +85,7 @@ struct HomeView: View {
 
 struct HomeCategoryContentView: View {
     @ObservedObject var viewModel: HomeViewModel
-    let category: HomeCategory
+    let selection: HomeSelection
     let navigationTransition: Namespace.ID
     @Binding var isFilterCollapsed: Bool
     
@@ -94,7 +94,7 @@ struct HomeCategoryContentView: View {
     ]
 
     var body: some View {
-        let key = HomeCacheKey(category: category, filter: viewModel.selectedFilter)
+        let key = selection.cacheKey
         let items = viewModel.cachedItems[key] ?? []
         let isLoading = viewModel.isLoading[key] ?? false
         let isLoadingMore = viewModel.isLoadingMore[key] ?? false
@@ -109,8 +109,8 @@ struct HomeCategoryContentView: View {
                 .padding(16)
             } else if items.isEmpty {
                 HomeEmptyState(
-                    category: category,
-                    filter: viewModel.selectedFilter
+                    category: selection.category,
+                    filter: selection.filter
                 )
                 .frame(maxWidth: .infinity, minHeight: 300)
                 .padding(.horizontal, 20)
@@ -121,7 +121,7 @@ struct HomeCategoryContentView: View {
                         .onAppear {
                             if movie.id == items.last?.id {
                                 Task {
-                                    await viewModel.loadData(for: category)
+                                    await viewModel.loadData(for: selection)
                                 }
                             }
                         }
@@ -140,13 +140,20 @@ struct HomeCategoryContentView: View {
             geometry.contentOffset.y + geometry.contentInsets.top
         } action: { oldOffset, newOffset in
             let delta = newOffset - oldOffset
+            let nextCollapsedState: Bool?
 
             if newOffset <= 0 {
-                isFilterCollapsed = false
+                nextCollapsedState = false
             } else if delta > 6 {
-                isFilterCollapsed = true
+                nextCollapsedState = true
             } else if delta < -4 {
-                isFilterCollapsed = false
+                nextCollapsedState = false
+            } else {
+                nextCollapsedState = nil
+            }
+
+            if let nextCollapsedState, nextCollapsedState != isFilterCollapsed {
+                isFilterCollapsed = nextCollapsedState
             }
         }
         .scrollIndicators(.hidden)
@@ -493,6 +500,15 @@ struct HomeCacheKey: Hashable {
     let filter: HomeFilter
 }
 
+struct HomeSelection: Hashable {
+    let category: HomeCategory
+    let filter: HomeFilter
+
+    var cacheKey: HomeCacheKey {
+        HomeCacheKey(category: category, filter: filter)
+    }
+}
+
 @MainActor
 class HomeViewModel: ObservableObject {
     @Published var selectedCategory: HomeCategory = .all
@@ -504,27 +520,27 @@ class HomeViewModel: ObservableObject {
 
     private var cachedPages: [HomeCacheKey: Int] = [:]
     private var cachedCanLoadMore: [HomeCacheKey: Bool] = [:]
-    private var hasPerformedInitialLoad = false
 
-    func applyCurrentSelection(force: Bool = false) async {
-        let key = HomeCacheKey(category: selectedCategory, filter: selectedFilter)
+    func apply(selection: HomeSelection, force: Bool = false) async {
+        let key = selection.cacheKey
 
         if force {
             cachedItems[key] = []
             cachedPages[key] = 1
             cachedCanLoadMore[key] = true
-        } else if !hasPerformedInitialLoad {
-            hasPerformedInitialLoad = true
         } else if let cached = cachedItems[key], !cached.isEmpty {
             return
         }
 
-        await loadData(for: selectedCategory)
+        await loadData(for: selection)
     }
 
-    func loadData(for category: HomeCategory? = nil) async {
-        let cat = category ?? selectedCategory
-        let key = HomeCacheKey(category: cat, filter: selectedFilter)
+    func loadData(for selection: HomeSelection? = nil) async {
+        let resolvedSelection = selection ?? HomeSelection(
+            category: selectedCategory,
+            filter: selectedFilter
+        )
+        let key = resolvedSelection.cacheKey
 
         let currentCanLoadMore = cachedCanLoadMore[key] ?? true
         guard currentCanLoadMore else { return }
@@ -552,14 +568,14 @@ class HomeViewModel: ObservableObject {
             var canLoad = currentCanLoadMore
 
             while newItems.isEmpty && pagesFetched < 3 && canLoad {
-                let fetched = try await fetchPage(page, category: cat, filter: selectedFilter)
+                let fetched = try await fetchPage(page, selection: resolvedSelection)
                 if fetched.isEmpty {
                     canLoad = false
                     break
                 }
 
                 let validFetched = filterValidItems(fetched)
-                newItems.append(contentsOf: filterItemsForSelectedCategory(validFetched, category: cat))
+                newItems.append(contentsOf: filterItemsForSelectedCategory(validFetched, category: resolvedSelection.category))
 
                 page += 1
                 pagesFetched += 1
@@ -577,14 +593,14 @@ class HomeViewModel: ObservableObject {
         }
     }
 
-    private func fetchPage(_ page: Int, category: HomeCategory, filter: HomeFilter) async throws -> [MediaDto] {
+    private func fetchPage(_ page: Int, selection: HomeSelection) async throws -> [MediaDto] {
         let baseItems: [MediaDto]
 
-        switch filter {
+        switch selection.filter {
         case .popular:
             baseItems = try await MoviesRepository.shared.getPopularMovies(page: page)
         case .topRated:
-            switch category {
+            switch selection.category {
             case .tvShows:
                 baseItems = try await MoviesRepository.shared.getTopTv(page: page)
             case .movies, .cartoons:
