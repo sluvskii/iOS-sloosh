@@ -199,19 +199,14 @@ private struct HomeCategoryTextTabs: View {
     @Binding var selectedFilter: HomeFilter
     @Binding var isFilterCollapsed: Bool
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    @State private var scrollPosition: HomeCategory?
     @ScaledMetric(relativeTo: .headline) private var titleSize: CGFloat = 22
     private let filterSize: CGFloat = 11
 
     private let titleHeight: CGFloat = 28
     private let filterHeight: CGFloat = 16
 
-    private var visibleFilterHeight: CGFloat {
-        isFilterCollapsed ? 0 : filterHeight
-    }
-
     private var tabHeight: CGFloat {
-        titleHeight + visibleFilterHeight
+        titleHeight + filterHeight
     }
 
     private var tabSpacing: CGFloat {
@@ -220,10 +215,6 @@ private struct HomeCategoryTextTabs: View {
 
     private var edgeContentInset: CGFloat {
         horizontalSizeClass == .regular ? 18 : 16
-    }
-
-    private var tabScrollAnimation: Animation {
-        .easeInOut(duration: 0.35)
     }
 
     private var filterLabel: String {
@@ -251,13 +242,10 @@ private struct HomeCategoryTextTabs: View {
 
                     VStack(alignment: .center, spacing: 0) {
                         Button {
-                            withAnimation(tabScrollAnimation) {
-                                isFilterCollapsed = false
+                            isFilterCollapsed = false
 
-                                guard !isSelected else { return }
-                                selectedCategory = category
-                                scrollPosition = category
-                            }
+                            guard !isSelected else { return }
+                            selectedCategory = category
                         } label: {
                             layeredText(
                                 category.segmentedTitle,
@@ -275,61 +263,56 @@ private struct HomeCategoryTextTabs: View {
                         .padding(.vertical, 2)
                         .accessibilityAddTraits(isSelected ? .isSelected : [])
 
-                        if isSelected {
-                            Menu {
-                                ForEach(HomeFilter.allCases) { filter in
-                                    Button {
-                                        isFilterCollapsed = false
-                                        selectedFilter = filter
-                                    } label: {
-                                        if selectedFilter == filter {
-                                            Label(filter.title, systemImage: "checkmark")
-                                        } else {
-                                            Text(filter.title)
+                        Group {
+                            if isSelected {
+                                Menu {
+                                    ForEach(HomeFilter.allCases) { filter in
+                                        Button {
+                                            isFilterCollapsed = false
+                                            selectedFilter = filter
+                                        } label: {
+                                            if selectedFilter == filter {
+                                                Label(filter.title, systemImage: "checkmark")
+                                            } else {
+                                                Text(filter.title)
+                                            }
                                         }
                                     }
+                                } label: {
+                                    layeredText(
+                                        filterLabel,
+                                        size: filterSize,
+                                        weight: .semibold,
+                                        baseColor: .secondary
+                                    )
+                                        .lineLimit(1)
+                                        .fixedSize(horizontal: true, vertical: false)
+                                        .contentShape(Rectangle())
                                 }
-                            } label: {
-                                layeredText(
-                                    filterLabel,
-                                    size: filterSize,
-                                    weight: .semibold,
-                                    baseColor: .secondary
-                                )
-                                    .lineLimit(1)
-                                    .fixedSize(horizontal: true, vertical: false)
-                                    .contentShape(Rectangle())
+                                .buttonStyle(.plain)
+                                .allowsHitTesting(!isFilterCollapsed)
+                                .accessibilityHidden(isFilterCollapsed)
+                            } else {
+                                Color.clear
+                                    .frame(width: 1, height: filterHeight)
+                                    .accessibilityHidden(true)
                             }
-                            .buttonStyle(.plain)
-                            .frame(height: visibleFilterHeight, alignment: .top)
-                            .opacity(isFilterCollapsed ? 0 : 1)
-                            .offset(y: isFilterCollapsed ? -6 : 0)
-                            .allowsHitTesting(!isFilterCollapsed)
-                            .clipped()
                         }
+                        .frame(height: filterHeight, alignment: .top)
+                        .opacity(isSelected && !isFilterCollapsed ? 1 : 0)
+                        .offset(y: isSelected && isFilterCollapsed ? -6 : 0)
+                        .clipped()
                     }
                     .id(category)
-                    .frame(height: tabHeight, alignment: isSelected ? .top : .center)
+                    .frame(height: tabHeight, alignment: .top)
                     .padding(.leading, isFirst ? edgeContentInset : 0)
                     .padding(.trailing, isLast ? edgeContentInset : 0)
-                    .animation(tabScrollAnimation, value: isSelected)
-                    .animation(tabScrollAnimation, value: isFilterCollapsed)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .scrollTargetLayout()
         }
         .scrollClipDisabled()
         .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
-        .scrollPosition(id: $scrollPosition, anchor: .center)
-        .onAppear {
-            scrollPosition = selectedCategory
-        }
-        .onChange(of: selectedCategory) { _, newCategory in
-            withAnimation(tabScrollAnimation) {
-                scrollPosition = newCategory
-            }
-        }
     }
 }
 
