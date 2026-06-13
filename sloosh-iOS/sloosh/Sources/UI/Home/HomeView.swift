@@ -59,18 +59,17 @@ struct HomeView: View {
                 navigationTransition: navigationTransition,
                 isFilterCollapsed: $isFilterCollapsed
             )
-            .scrollEdgeEffectStyle(.soft, for: .top)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(id: "home-categories", placement: .principal) {
-                    HomeCategoryTextTabs(
-                        selectedCategory: $viewModel.selectedCategory,
-                        selectedFilter: $viewModel.selectedFilter,
-                        isFilterCollapsed: $isFilterCollapsed
-                    )
-                    .frame(maxWidth: 560)
-                }
+            .safeAreaBar(edge: .top, spacing: 0) {
+                HomeCategoryTextTabs(
+                    selectedCategory: $viewModel.selectedCategory,
+                    selectedFilter: $viewModel.selectedFilter,
+                    isFilterCollapsed: $isFilterCollapsed
+                )
+                .padding(.top, 4)
+                .padding(.bottom, 2)
             }
+            .scrollEdgeEffectStyle(.soft, for: .top)
+            .toolbar(.hidden, for: .navigationBar)
             .task(id: currentSelection) {
                 await viewModel.apply(selection: currentSelection)
             }
@@ -202,12 +201,11 @@ private struct HomeCategoryTextTabs: View {
     @Binding var selectedFilter: HomeFilter
     @Binding var isFilterCollapsed: Bool
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    @Namespace private var selectedTabAnimation
     @ScaledMetric(relativeTo: .headline) private var titleSize: CGFloat = 22
     private let filterSize: CGFloat = 11
 
     private let titleHeight: CGFloat = 28
-    private let filterHeight: CGFloat = 18
+    private let filterHeight: CGFloat = 16
 
     private var tabHeight: CGFloat {
         titleHeight + filterHeight
@@ -215,10 +213,6 @@ private struct HomeCategoryTextTabs: View {
 
     private var tabSpacing: CGFloat {
         horizontalSizeClass == .regular ? 28 : 22
-    }
-
-    private var edgeContentInset: CGFloat {
-        horizontalSizeClass == .regular ? 18 : 16
     }
 
     private var filterLabel: String {
@@ -244,9 +238,9 @@ private struct HomeCategoryTextTabs: View {
             .foregroundStyle(baseColor)
     }
 
-    private func scrollToSelectedCategory(using proxy: ScrollViewProxy, animated: Bool) {
+    private func scrollToSelectedCategory(using proxy: ScrollViewProxy, category: HomeCategory, animated: Bool) {
         let update = {
-            proxy.scrollTo(selectedCategory, anchor: .center)
+            proxy.scrollTo(category, anchor: .center)
         }
 
         if animated {
@@ -262,10 +256,8 @@ private struct HomeCategoryTextTabs: View {
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .top, spacing: tabSpacing) {
-                    ForEach(Array(HomeCategory.allCases.enumerated()), id: \.element) { index, category in
+                    ForEach(HomeCategory.allCases, id: \.self) { category in
                         let isSelected = selectedCategory == category
-                        let isFirst = index == 0
-                        let isLast = index == HomeCategory.allCases.count - 1
 
                         VStack(alignment: .center, spacing: 0) {
                             Button {
@@ -276,31 +268,16 @@ private struct HomeCategoryTextTabs: View {
                                     selectedCategory = category
                                 }
                             } label: {
-                                VStack(spacing: 0) {
-                                    layeredText(
-                                        category.segmentedTitle,
-                                        size: titleSize,
-                                        weight: isSelected ? .bold : .semibold,
-                                        baseColor: isSelected ? .primary : .secondary
-                                    )
-                                    .lineLimit(1)
-                                    .fixedSize(horizontal: true, vertical: false)
-                                    .frame(height: titleHeight, alignment: .center)
-                                    .contentShape(Rectangle())
-
-                                    Group {
-                                        if isSelected {
-                                            Capsule()
-                                                .fill(.primary.opacity(0.95))
-                                                .frame(width: 24, height: 3)
-                                                .matchedGeometryEffect(id: "home-category-indicator", in: selectedTabAnimation)
-                                        } else {
-                                            Color.clear
-                                                .frame(width: 24, height: 3)
-                                        }
-                                    }
-                                    .padding(.top, 1)
-                                }
+                                layeredText(
+                                    category.segmentedTitle,
+                                    size: titleSize,
+                                    weight: isSelected ? .bold : .semibold,
+                                    baseColor: isSelected ? .primary : .secondary
+                                )
+                                .lineLimit(1)
+                                .fixedSize(horizontal: true, vertical: false)
+                                .frame(height: titleHeight, alignment: .center)
+                                .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
                             .padding(.horizontal, 4)
@@ -325,18 +302,12 @@ private struct HomeCategoryTextTabs: View {
                                             }
                                         }
                                     } label: {
-                                        HStack(spacing: 4) {
-                                            Image(systemName: selectedFilter.icon)
-                                                .font(.system(size: 9, weight: .bold))
-                                            layeredText(
-                                                filterLabel,
-                                                size: filterSize,
-                                                weight: .semibold,
-                                                baseColor: .secondary
-                                            )
-                                            Image(systemName: "chevron.down")
-                                                .font(.system(size: 8, weight: .bold))
-                                        }
+                                        layeredText(
+                                            filterLabel,
+                                            size: filterSize,
+                                            weight: .semibold,
+                                            baseColor: .secondary
+                                        )
                                         .lineLimit(1)
                                         .fixedSize(horizontal: true, vertical: false)
                                         .contentShape(Rectangle())
@@ -359,20 +330,17 @@ private struct HomeCategoryTextTabs: View {
                         }
                         .id(category)
                         .frame(height: tabHeight, alignment: .top)
-                        .padding(.leading, isFirst ? edgeContentInset : 0)
-                        .padding(.trailing, isLast ? edgeContentInset : 0)
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
             .scrollClipDisabled()
             .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
-            .contentMargins(.horizontal, 0, for: .scrollContent)
+            .contentMargins(.horizontal, 16, for: .scrollContent)
             .onAppear {
-                scrollToSelectedCategory(using: proxy, animated: false)
+                scrollToSelectedCategory(using: proxy, category: selectedCategory, animated: false)
             }
-            .onChange(of: selectedCategory) { _, _ in
-                scrollToSelectedCategory(using: proxy, animated: true)
+            .onChange(of: selectedCategory) { _, newCategory in
+                scrollToSelectedCategory(using: proxy, category: newCategory, animated: true)
             }
         }
     }
