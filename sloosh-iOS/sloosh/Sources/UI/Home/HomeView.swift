@@ -59,17 +59,18 @@ struct HomeView: View {
                 navigationTransition: navigationTransition,
                 isFilterCollapsed: $isFilterCollapsed
             )
-            .safeAreaBar(edge: .top, spacing: 0) {
-                HomeCategoryTextTabs(
-                    selectedCategory: $viewModel.selectedCategory,
-                    selectedFilter: $viewModel.selectedFilter,
-                    isFilterCollapsed: $isFilterCollapsed
-                )
-                .padding(.top, 4)
-                .padding(.bottom, 2)
-            }
             .scrollEdgeEffectStyle(.soft, for: .top)
-            .toolbar(.hidden, for: .navigationBar)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(id: "home-categories", placement: .principal) {
+                    HomeCategoryTextTabs(
+                        selectedCategory: $viewModel.selectedCategory,
+                        selectedFilter: $viewModel.selectedFilter,
+                        isFilterCollapsed: $isFilterCollapsed
+                    )
+                    .frame(maxWidth: 560)
+                }
+            }
             .task(id: currentSelection) {
                 await viewModel.apply(selection: currentSelection)
             }
@@ -153,7 +154,9 @@ struct HomeCategoryContentView: View {
             }
 
             if let nextCollapsedState, nextCollapsedState != isFilterCollapsed {
-                isFilterCollapsed = nextCollapsedState
+                withAnimation(.easeInOut(duration: 0.22)) {
+                    isFilterCollapsed = nextCollapsedState
+                }
             }
         }
         .scrollIndicators(.hidden)
@@ -199,11 +202,12 @@ private struct HomeCategoryTextTabs: View {
     @Binding var selectedFilter: HomeFilter
     @Binding var isFilterCollapsed: Bool
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Namespace private var selectedTabAnimation
     @ScaledMetric(relativeTo: .headline) private var titleSize: CGFloat = 22
     private let filterSize: CGFloat = 11
 
     private let titleHeight: CGFloat = 28
-    private let filterHeight: CGFloat = 16
+    private let filterHeight: CGFloat = 18
 
     private var tabHeight: CGFloat {
         titleHeight + filterHeight
@@ -221,6 +225,14 @@ private struct HomeCategoryTextTabs: View {
         selectedFilter.title.lowercased()
     }
 
+    private var selectionAnimation: Animation {
+        .snappy(duration: 0.32, extraBounce: 0.06)
+    }
+
+    private var filterAnimation: Animation {
+        .easeInOut(duration: 0.22)
+    }
+
     private func layeredText(
         _ text: String,
         size: CGFloat,
@@ -232,87 +244,137 @@ private struct HomeCategoryTextTabs: View {
             .foregroundStyle(baseColor)
     }
 
+    private func scrollToSelectedCategory(using proxy: ScrollViewProxy, animated: Bool) {
+        let update = {
+            proxy.scrollTo(selectedCategory, anchor: .center)
+        }
+
+        if animated {
+            withAnimation(selectionAnimation) {
+                update()
+            }
+        } else {
+            update()
+        }
+    }
+
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(alignment: .top, spacing: tabSpacing) {
-                ForEach(Array(HomeCategory.allCases.enumerated()), id: \.element) { index, category in
-                    let isSelected = selectedCategory == category
-                    let isFirst = index == 0
-                    let isLast = index == HomeCategory.allCases.count - 1
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(alignment: .top, spacing: tabSpacing) {
+                    ForEach(Array(HomeCategory.allCases.enumerated()), id: \.element) { index, category in
+                        let isSelected = selectedCategory == category
+                        let isFirst = index == 0
+                        let isLast = index == HomeCategory.allCases.count - 1
 
-                    VStack(alignment: .center, spacing: 0) {
-                        Button {
-                            isFilterCollapsed = false
+                        VStack(alignment: .center, spacing: 0) {
+                            Button {
+                                isFilterCollapsed = false
 
-                            guard !isSelected else { return }
-                            selectedCategory = category
-                        } label: {
-                            layeredText(
-                                category.segmentedTitle,
-                                size: titleSize,
-                                weight: isSelected ? .bold : .semibold,
-                                baseColor: isSelected ? .primary : .secondary
-                            )
-                                .lineLimit(1)
-                                .fixedSize(horizontal: true, vertical: false)
-                                .frame(height: titleHeight, alignment: .center)
-                                .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 2)
-                        .accessibilityAddTraits(isSelected ? .isSelected : [])
+                                guard !isSelected else { return }
+                                withAnimation(selectionAnimation) {
+                                    selectedCategory = category
+                                }
+                            } label: {
+                                VStack(spacing: 0) {
+                                    layeredText(
+                                        category.segmentedTitle,
+                                        size: titleSize,
+                                        weight: isSelected ? .bold : .semibold,
+                                        baseColor: isSelected ? .primary : .secondary
+                                    )
+                                    .lineLimit(1)
+                                    .fixedSize(horizontal: true, vertical: false)
+                                    .frame(height: titleHeight, alignment: .center)
+                                    .contentShape(Rectangle())
 
-                        Group {
-                            if isSelected {
-                                Menu {
-                                    ForEach(HomeFilter.allCases) { filter in
-                                        Button {
-                                            isFilterCollapsed = false
-                                            selectedFilter = filter
-                                        } label: {
-                                            if selectedFilter == filter {
-                                                Label(filter.title, systemImage: "checkmark")
-                                            } else {
-                                                Text(filter.title)
-                                            }
+                                    Group {
+                                        if isSelected {
+                                            Capsule()
+                                                .fill(.primary.opacity(0.95))
+                                                .frame(width: 24, height: 3)
+                                                .matchedGeometryEffect(id: "home-category-indicator", in: selectedTabAnimation)
+                                        } else {
+                                            Color.clear
+                                                .frame(width: 24, height: 3)
                                         }
                                     }
-                                } label: {
-                                    layeredText(
-                                        filterLabel,
-                                        size: filterSize,
-                                        weight: .semibold,
-                                        baseColor: .secondary
-                                    )
+                                    .padding(.top, 1)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 2)
+                            .accessibilityAddTraits(isSelected ? .isSelected : [])
+
+                            Group {
+                                if isSelected {
+                                    Menu {
+                                        ForEach(HomeFilter.allCases) { filter in
+                                            Button {
+                                                isFilterCollapsed = false
+                                                withAnimation(selectionAnimation) {
+                                                    selectedFilter = filter
+                                                }
+                                            } label: {
+                                                if selectedFilter == filter {
+                                                    Label(filter.title, systemImage: "checkmark")
+                                                } else {
+                                                    Text(filter.title)
+                                                }
+                                            }
+                                        }
+                                    } label: {
+                                        HStack(spacing: 4) {
+                                            Image(systemName: selectedFilter.icon)
+                                                .font(.system(size: 9, weight: .bold))
+                                            layeredText(
+                                                filterLabel,
+                                                size: filterSize,
+                                                weight: .semibold,
+                                                baseColor: .secondary
+                                            )
+                                            Image(systemName: "chevron.down")
+                                                .font(.system(size: 8, weight: .bold))
+                                        }
                                         .lineLimit(1)
                                         .fixedSize(horizontal: true, vertical: false)
                                         .contentShape(Rectangle())
+                                    }
+                                    .buttonStyle(.plain)
+                                    .allowsHitTesting(!isFilterCollapsed)
+                                    .accessibilityHidden(isFilterCollapsed)
+                                } else {
+                                    Color.clear
+                                        .frame(width: 1, height: filterHeight)
+                                        .accessibilityHidden(true)
                                 }
-                                .buttonStyle(.plain)
-                                .allowsHitTesting(!isFilterCollapsed)
-                                .accessibilityHidden(isFilterCollapsed)
-                            } else {
-                                Color.clear
-                                    .frame(width: 1, height: filterHeight)
-                                    .accessibilityHidden(true)
                             }
+                            .frame(height: filterHeight, alignment: .top)
+                            .opacity(isSelected && !isFilterCollapsed ? 1 : 0)
+                            .offset(y: isSelected && isFilterCollapsed ? -6 : 0)
+                            .animation(filterAnimation, value: isSelected)
+                            .animation(filterAnimation, value: isFilterCollapsed)
+                            .clipped()
                         }
-                        .frame(height: filterHeight, alignment: .top)
-                        .opacity(isSelected && !isFilterCollapsed ? 1 : 0)
-                        .offset(y: isSelected && isFilterCollapsed ? -6 : 0)
-                        .clipped()
+                        .id(category)
+                        .frame(height: tabHeight, alignment: .top)
+                        .padding(.leading, isFirst ? edgeContentInset : 0)
+                        .padding(.trailing, isLast ? edgeContentInset : 0)
                     }
-                    .id(category)
-                    .frame(height: tabHeight, alignment: .top)
-                    .padding(.leading, isFirst ? edgeContentInset : 0)
-                    .padding(.trailing, isLast ? edgeContentInset : 0)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .scrollClipDisabled()
+            .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+            .contentMargins(.horizontal, 0, for: .scrollContent)
+            .onAppear {
+                scrollToSelectedCategory(using: proxy, animated: false)
+            }
+            .onChange(of: selectedCategory) { _, _ in
+                scrollToSelectedCategory(using: proxy, animated: true)
+            }
         }
-        .scrollClipDisabled()
-        .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
     }
 }
 
