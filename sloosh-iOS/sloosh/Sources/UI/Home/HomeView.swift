@@ -42,19 +42,22 @@ enum HomeFilter: String, CaseIterable, Identifiable {
 struct HomeView: View {
     @StateObject private var viewModel = HomeViewModel()
     @Namespace private var navigationTransition
+    @State private var isFilterCollapsed = false
 
     var body: some View {
         NavigationStack {
             HomeCategoryContentView(
                 viewModel: viewModel,
                 category: viewModel.selectedCategory,
-                navigationTransition: navigationTransition
+                navigationTransition: navigationTransition,
+                isFilterCollapsed: $isFilterCollapsed
             )
             .animation(.spring(response: 0.3, dampingFraction: 0.8), value: viewModel.selectedCategory)
             .safeAreaBar(edge: .top, spacing: 0) {
                 HomeCategoryTextTabs(
                     selectedCategory: $viewModel.selectedCategory,
-                    selectedFilter: $viewModel.selectedFilter
+                    selectedFilter: $viewModel.selectedFilter,
+                    isFilterCollapsed: $isFilterCollapsed
                 )
                 .padding(.top, 4)
                 .padding(.bottom, 2)
@@ -65,11 +68,13 @@ struct HomeView: View {
                 await viewModel.applyCurrentSelection()
             }
             .onChange(of: viewModel.selectedCategory) { _, _ in
+                isFilterCollapsed = false
                 Task {
                     await viewModel.applyCurrentSelection()
                 }
             }
             .onChange(of: viewModel.selectedFilter) { _, _ in
+                isFilterCollapsed = false
                 Task {
                     await viewModel.applyCurrentSelection()
                 }
@@ -82,6 +87,7 @@ struct HomeCategoryContentView: View {
     @ObservedObject var viewModel: HomeViewModel
     let category: HomeCategory
     let navigationTransition: Namespace.ID
+    @Binding var isFilterCollapsed: Bool
     
     let columns = [
         GridItem(.adaptive(minimum: 105), spacing: 16)
@@ -130,6 +136,19 @@ struct HomeCategoryContentView: View {
                 .padding(16)
             }
         }
+        .onScrollGeometryChange(for: CGFloat.self) { geometry in
+            geometry.contentOffset.y + geometry.contentInsets.top
+        } action: { oldOffset, newOffset in
+            let delta = newOffset - oldOffset
+
+            if newOffset <= 0 {
+                isFilterCollapsed = false
+            } else if delta > 6 {
+                isFilterCollapsed = true
+            } else if delta < -4 {
+                isFilterCollapsed = false
+            }
+        }
         .scrollIndicators(.hidden)
     }
 }
@@ -171,6 +190,7 @@ struct MovieDetailsNavigationLink<Label: View>: View {
 private struct HomeCategoryTextTabs: View {
     @Binding var selectedCategory: HomeCategory
     @Binding var selectedFilter: HomeFilter
+    @Binding var isFilterCollapsed: Bool
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @State private var scrollPosition: HomeCategory?
     @ScaledMetric(relativeTo: .headline) private var titleSize: CGFloat = 22
@@ -179,8 +199,12 @@ private struct HomeCategoryTextTabs: View {
     private let titleHeight: CGFloat = 28
     private let filterHeight: CGFloat = 16
 
+    private var visibleFilterHeight: CGFloat {
+        isFilterCollapsed ? 0 : filterHeight
+    }
+
     private var tabHeight: CGFloat {
-        titleHeight + filterHeight
+        titleHeight + visibleFilterHeight
     }
 
     private var tabSpacing: CGFloat {
@@ -220,8 +244,10 @@ private struct HomeCategoryTextTabs: View {
 
                     VStack(alignment: .center, spacing: 0) {
                         Button {
-                            guard !isSelected else { return }
                             withAnimation(tabScrollAnimation) {
+                                isFilterCollapsed = false
+
+                                guard !isSelected else { return }
                                 selectedCategory = category
                                 scrollPosition = category
                             }
@@ -246,6 +272,7 @@ private struct HomeCategoryTextTabs: View {
                             Menu {
                                 ForEach(HomeFilter.allCases) { filter in
                                     Button {
+                                        isFilterCollapsed = false
                                         selectedFilter = filter
                                     } label: {
                                         if selectedFilter == filter {
@@ -267,8 +294,11 @@ private struct HomeCategoryTextTabs: View {
                                     .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
-                            .frame(height: filterHeight, alignment: .top)
-                            .transition(.opacity.combined(with: .move(edge: .top)))
+                            .frame(height: visibleFilterHeight, alignment: .top)
+                            .opacity(isFilterCollapsed ? 0 : 1)
+                            .offset(y: isFilterCollapsed ? -6 : 0)
+                            .allowsHitTesting(!isFilterCollapsed)
+                            .clipped()
                         }
                     }
                     .id(category)
@@ -276,6 +306,7 @@ private struct HomeCategoryTextTabs: View {
                     .padding(.leading, isFirst ? edgeContentInset : 0)
                     .padding(.trailing, isLast ? edgeContentInset : 0)
                     .animation(tabScrollAnimation, value: isSelected)
+                    .animation(tabScrollAnimation, value: isFilterCollapsed)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
