@@ -203,11 +203,25 @@ private struct HomeCategoryTextTabs: View {
         _ text: String,
         size: CGFloat,
         weight: Font.Weight,
-        baseColor: Color
+        baseColor: Color,
+        material: Material,
+        toneOpacity: Double,
+        overlayOpacity: Double
     ) -> some View {
-        return Text(text)
+        let textView = Text(text)
             .font(.system(size: size, weight: weight))
-            .foregroundStyle(baseColor)
+
+        return ZStack {
+            textView
+                .foregroundStyle(material)
+
+            textView
+                .foregroundStyle(baseColor.opacity(toneOpacity))
+
+            textView
+                .foregroundStyle(.white.opacity(overlayOpacity))
+                .blendMode(.overlay)
+        }
     }
 
     var body: some View {
@@ -230,7 +244,10 @@ private struct HomeCategoryTextTabs: View {
                                 category.segmentedTitle,
                                 size: titleSize,
                                 weight: isSelected ? .bold : .semibold,
-                                baseColor: isSelected ? .primary : .secondary
+                                baseColor: isSelected ? .primary : .secondary,
+                                material: isSelected ? .regularMaterial : .thinMaterial,
+                                toneOpacity: isSelected ? 0.82 : 0.72,
+                                overlayOpacity: isSelected ? 0.18 : 0.10
                             )
                                 .lineLimit(1)
                                 .fixedSize(horizontal: true, vertical: false)
@@ -260,7 +277,10 @@ private struct HomeCategoryTextTabs: View {
                                     filterLabel,
                                     size: filterSize,
                                     weight: .semibold,
-                                    baseColor: .secondary
+                                    baseColor: .secondary,
+                                    material: .thinMaterial,
+                                    toneOpacity: 0.72,
+                                    overlayOpacity: 0.08
                                 )
                                     .lineLimit(1)
                                     .fixedSize(horizontal: true, vertical: false)
