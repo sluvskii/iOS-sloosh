@@ -42,37 +42,39 @@ enum HomeFilter: String, CaseIterable, Identifiable {
 struct HomeView: View {
     @StateObject private var viewModel = HomeViewModel()
     @Namespace private var navigationTransition
+    @State private var isFilterCollapsed = false
 
     var body: some View {
         NavigationStack {
             HomeCategoryContentView(
                 viewModel: viewModel,
                 category: viewModel.selectedCategory,
-                navigationTransition: navigationTransition
+                navigationTransition: navigationTransition,
+                isFilterCollapsed: $isFilterCollapsed
             )
             .animation(.spring(response: 0.3, dampingFraction: 0.8), value: viewModel.selectedCategory)
-            .navigationTitle("")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    HomeCategoryTextTabs(
-                        selectedCategory: $viewModel.selectedCategory,
-                        selectedFilter: $viewModel.selectedFilter
-                    )
-                    .padding(.top, 6)
-                    .padding(.bottom, 8)
-                }
+            .safeAreaBar(edge: .top, spacing: 0) {
+                HomeCategoryTextTabs(
+                    selectedCategory: $viewModel.selectedCategory,
+                    selectedFilter: $viewModel.selectedFilter,
+                    isFilterCollapsed: $isFilterCollapsed
+                )
+                .padding(.top, 4)
+                .padding(.bottom, 2)
             }
             .scrollEdgeEffectStyle(.soft, for: .top)
+            .toolbar(.hidden, for: .navigationBar)
             .task {
                 await viewModel.applyCurrentSelection()
             }
             .onChange(of: viewModel.selectedCategory) { _, _ in
+                isFilterCollapsed = false
                 Task {
                     await viewModel.applyCurrentSelection()
                 }
             }
             .onChange(of: viewModel.selectedFilter) { _, _ in
+                isFilterCollapsed = false
                 Task {
                     await viewModel.applyCurrentSelection()
                 }
@@ -85,6 +87,7 @@ struct HomeCategoryContentView: View {
     @ObservedObject var viewModel: HomeViewModel
     let category: HomeCategory
     let navigationTransition: Namespace.ID
+    @Binding var isFilterCollapsed: Bool
     
     let columns = [
         GridItem(.adaptive(minimum: 105), spacing: 16)
@@ -133,12 +136,18 @@ struct HomeCategoryContentView: View {
                 .padding(16)
             }
         }
-        .background(alignment: .top) {
-            Rectangle()
-                .fill(Color(uiColor: .systemBackground))
-                .frame(height: 140)
-                .backgroundExtensionEffect()
-                .allowsHitTesting(false)
+        .onScrollGeometryChange(for: CGFloat.self) { geometry in
+            geometry.contentOffset.y + geometry.contentInsets.top
+        } action: { oldOffset, newOffset in
+            let delta = newOffset - oldOffset
+
+            if newOffset <= 0 {
+                isFilterCollapsed = false
+            } else if delta > 6 {
+                isFilterCollapsed = true
+            } else if delta < -4 {
+                isFilterCollapsed = false
+            }
         }
         .scrollIndicators(.hidden)
     }
@@ -181,13 +190,33 @@ struct MovieDetailsNavigationLink<Label: View>: View {
 private struct HomeCategoryTextTabs: View {
     @Binding var selectedCategory: HomeCategory
     @Binding var selectedFilter: HomeFilter
+    @Binding var isFilterCollapsed: Bool
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @State private var scrollPosition: HomeCategory?
+    @ScaledMetric(relativeTo: .headline) private var titleSize: CGFloat = 22
+    private let filterSize: CGFloat = 11
 
     private let titleHeight: CGFloat = 28
     private let filterHeight: CGFloat = 16
-    private let horizontalInset: CGFloat = 16
+
+    private var visibleFilterHeight: CGFloat {
+        isFilterCollapsed ? 0 : filterHeight
+    }
 
     private var tabHeight: CGFloat {
-        titleHeight + filterHeight
+        titleHeight + visibleFilterHeight
+    }
+
+    private var tabSpacing: CGFloat {
+        horizontalSizeClass == .regular ? 28 : 22
+    }
+
+    private var edgeContentInset: CGFloat {
+        horizontalSizeClass == .regular ? 18 : 16
+    }
+
+    private var tabScrollAnimation: Animation {
+        .easeInOut(duration: 0.35)
     }
 
     private var filterLabel: String {
@@ -206,79 +235,92 @@ private struct HomeCategoryTextTabs: View {
     }
 
     var body: some View {
-        ScrollViewReader { proxy in
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(alignment: .top, spacing: 24) {
-                    ForEach(HomeCategory.allCases, id: \.self) { category in
-                        let isSelected = selectedCategory == category
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(alignment: .top, spacing: tabSpacing) {
+                ForEach(Array(HomeCategory.allCases.enumerated()), id: \.element) { index, category in
+                    let isSelected = selectedCategory == category
+                    let isFirst = index == 0
+                    let isLast = index == HomeCategory.allCases.count - 1
 
-                        VStack(alignment: .center, spacing: 0) {
-                            Button {
+                    VStack(alignment: .center, spacing: 0) {
+                        Button {
+                            withAnimation(tabScrollAnimation) {
+                                isFilterCollapsed = false
+
                                 guard !isSelected else { return }
-                                withAnimation(.snappy(duration: 0.32, extraBounce: 0.06)) {
-                                    selectedCategory = category
+                                selectedCategory = category
+                                scrollPosition = category
+                            }
+                        } label: {
+                            layeredText(
+                                category.segmentedTitle,
+                                size: titleSize,
+                                weight: isSelected ? .bold : .semibold,
+                                baseColor: isSelected ? .primary : .secondary
+                            )
+                                .lineLimit(1)
+                                .fixedSize(horizontal: true, vertical: false)
+                                .frame(height: titleHeight, alignment: .center)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 2)
+                        .accessibilityAddTraits(isSelected ? .isSelected : [])
+
+                        if isSelected {
+                            Menu {
+                                ForEach(HomeFilter.allCases) { filter in
+                                    Button {
+                                        isFilterCollapsed = false
+                                        selectedFilter = filter
+                                    } label: {
+                                        if selectedFilter == filter {
+                                            Label(filter.title, systemImage: "checkmark")
+                                        } else {
+                                            Text(filter.title)
+                                        }
+                                    }
                                 }
                             } label: {
                                 layeredText(
-                                    category.segmentedTitle,
-                                    size: 22,
-                                    weight: isSelected ? .bold : .semibold,
-                                    baseColor: isSelected ? .primary : .secondary
+                                    filterLabel,
+                                    size: filterSize,
+                                    weight: .semibold,
+                                    baseColor: .secondary
                                 )
                                     .lineLimit(1)
                                     .fixedSize(horizontal: true, vertical: false)
-                                    .frame(height: titleHeight, alignment: .center)
+                                    .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
-                            .accessibilityAddTraits(isSelected ? .isSelected : [])
-
-                            if isSelected {
-                                Menu {
-                                    ForEach(HomeFilter.allCases) { filter in
-                                        Button {
-                                            selectedFilter = filter
-                                        } label: {
-                                            if selectedFilter == filter {
-                                                Label(filter.title, systemImage: "checkmark")
-                                            } else {
-                                                Text(filter.title)
-                                            }
-                                        }
-                                    }
-                                } label: {
-                                    layeredText(
-                                        filterLabel,
-                                        size: 12,
-                                        weight: .semibold,
-                                        baseColor: .secondary
-                                    )
-                                        .lineLimit(1)
-                                        .fixedSize(horizontal: true, vertical: false)
-                                        .contentShape(Rectangle())
-                                }
-                                .buttonStyle(.plain)
-                                .frame(height: filterHeight, alignment: .top)
-                                .transition(.opacity.combined(with: .move(edge: .top)))
-                            }
+                            .frame(height: visibleFilterHeight, alignment: .top)
+                            .opacity(isFilterCollapsed ? 0 : 1)
+                            .offset(y: isFilterCollapsed ? -6 : 0)
+                            .allowsHitTesting(!isFilterCollapsed)
+                            .clipped()
                         }
-                        .id(category)
-                        .frame(height: tabHeight, alignment: isSelected ? .top : .center)
-                        .animation(.snappy(duration: 0.32, extraBounce: 0.06), value: isSelected)
                     }
-                }
-                .padding(.horizontal, horizontalInset)
-            }
-            .padding(.horizontal, -horizontalInset)
-            .onAppear {
-                proxy.scrollTo(selectedCategory, anchor: .center)
-            }
-            .onChange(of: selectedCategory) { _, newCategory in
-                withAnimation(.snappy(duration: 0.32, extraBounce: 0.06)) {
-                    proxy.scrollTo(newCategory, anchor: .center)
+                    .id(category)
+                    .frame(height: tabHeight, alignment: isSelected ? .top : .center)
+                    .padding(.leading, isFirst ? edgeContentInset : 0)
+                    .padding(.trailing, isLast ? edgeContentInset : 0)
+                    .animation(tabScrollAnimation, value: isSelected)
+                    .animation(tabScrollAnimation, value: isFilterCollapsed)
                 }
             }
-            .onChange(of: selectedFilter) { _, _ in
-                proxy.scrollTo(selectedCategory, anchor: .center)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .scrollTargetLayout()
+        }
+        .scrollClipDisabled()
+        .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+        .scrollPosition(id: $scrollPosition, anchor: .center)
+        .onAppear {
+            scrollPosition = selectedCategory
+        }
+        .onChange(of: selectedCategory) { _, newCategory in
+            withAnimation(tabScrollAnimation) {
+                scrollPosition = newCategory
             }
         }
     }
