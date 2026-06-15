@@ -46,18 +46,12 @@ struct HomeView: View {
 
     var body: some View {
         NavigationStack {
-            TabView(selection: $viewModel.selectedCategory) {
-                ForEach(HomeCategory.allCases, id: \.self) { cat in
-                    HomeCategoryContentView(
-                        viewModel: viewModel,
-                        category: cat,
-                        navigationTransition: navigationTransition,
-                        isFilterCollapsed: $isFilterCollapsed
-                    )
-                    .tag(cat)
-                }
-            }
-            .tabViewStyle(.page(indexDisplayMode: .never))
+            HomeCategoryContentView(
+                viewModel: viewModel,
+                category: viewModel.selectedCategory,
+                navigationTransition: navigationTransition,
+                isFilterCollapsed: $isFilterCollapsed
+            )
             .animation(.spring(response: 0.3, dampingFraction: 0.8), value: viewModel.selectedCategory)
             .safeAreaBar(edge: .top, spacing: 0) {
                 HomeCategoryTextTabs(
