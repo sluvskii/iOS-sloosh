@@ -265,29 +265,31 @@ struct DetailsView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarRole(.editor)
         .toolbar {
-            ToolbarItemGroup(placement: .topBarTrailing) {
-                Button {
-                    let generator = UIImpactFeedbackGenerator(style: .light)
-                    generator.prepare()
-                    generator.impactOccurred()
-                    favoriteBounce.toggle()
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.5, blendDuration: 0.5)) {
-                        viewModel.toggleFavorite()
+            ToolbarItem(placement: .topBarTrailing) {
+                HStack(spacing: 16) {
+                    Button {
+                        showDownloadAlert = true
+                    } label: {
+                        Image(systemName: "arrow.down.circle")
+                            .foregroundStyle(.white)
                     }
-                } label: {
-                    Image(systemName: viewModel.isFavorite ? "heart.fill" : "heart")
-                        .foregroundStyle(.white)
-                        .symbolEffect(.bounce, value: favoriteBounce)
+                    .disabled(viewModel.details == nil)
+                    
+                    Button {
+                        let generator = UIImpactFeedbackGenerator(style: .light)
+                        generator.prepare()
+                        generator.impactOccurred()
+                        favoriteBounce.toggle()
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.5, blendDuration: 0.5)) {
+                            viewModel.toggleFavorite()
+                        }
+                    } label: {
+                        Image(systemName: viewModel.isFavorite ? "heart.fill" : "heart")
+                            .foregroundStyle(.white)
+                            .symbolEffect(.bounce, value: favoriteBounce)
+                    }
+                    .disabled(viewModel.details == nil)
                 }
-                .disabled(viewModel.details == nil)
-
-                Button {
-                    showDownloadAlert = true
-                } label: {
-                    Image(systemName: "arrow.down.circle")
-                        .foregroundStyle(.white)
-                }
-                .disabled(viewModel.details == nil)
             }
         }
             .alert("В разработке", isPresented: $showDownloadAlert) {
