@@ -178,7 +178,6 @@ struct DetailsView: View {
     let navigationTransitionID: String?
     let navigationTransitionNamespace: Namespace.ID?
     @StateObject private var viewModel = DetailsViewModel()
-    @Environment(\.dismiss) private var dismiss
     
     @State private var showPlayer = false
     @State private var showSourceSheet = false
@@ -252,19 +251,16 @@ struct DetailsView: View {
     }
     
     var body: some View {
-        GeometryReader { proxy in
-            ZStack(alignment: .top) {
-                detailsContent
-
-                DetailsTopControlsBar(
-                    topInset: proxy.safeAreaInsets.top,
-                    isFavorite: viewModel.isFavorite,
-                    favoriteBounce: favoriteBounce,
-                    isDisabled: viewModel.details == nil,
-                    onBack: {
-                        dismiss()
-                    },
-                    onFavorite: {
+        ZStack {
+            detailsContent
+        }
+            .environment(\.colorScheme, .dark)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .ignoresSafeArea(edges: .top)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
                         let generator = UIImpactFeedbackGenerator(style: .light)
                         generator.prepare()
                         generator.impactOccurred()
@@ -272,21 +268,24 @@ struct DetailsView: View {
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.5, blendDuration: 0.5)) {
                             viewModel.toggleFavorite()
                         }
-                    },
-                    onDownload: {
-                        showDownloadAlert = true
+                    } label: {
+                        Image(systemName: viewModel.isFavorite ? "heart.fill" : "heart")
+                            .foregroundStyle(.white)
+                            .symbolEffect(.bounce, value: favoriteBounce)
                     }
-                )
+                    .disabled(viewModel.details == nil)
+                }
+
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showDownloadAlert = true
+                    } label: {
+                        Image(systemName: "arrow.down.circle")
+                            .foregroundStyle(.white)
+                    }
+                    .disabled(viewModel.details == nil)
+                }
             }
-        }
-            .optionalMovieNavigationTransition(
-                sourceID: navigationTransitionID,
-                in: navigationTransitionNamespace
-            )
-            .environment(\.colorScheme, .dark)
-            .ignoresSafeArea(edges: .top)
-            .toolbar(.hidden, for: .navigationBar)
-            .navigationBarBackButtonHidden(true)
             .alert("В разработке", isPresented: $showDownloadAlert) {
                 Button("OK", role: .cancel) { }
             } message: {
@@ -531,56 +530,13 @@ struct DetailsView: View {
     }
 }
 
-private struct DetailsTopControlsBar: View {
-    let topInset: CGFloat
-    let isFavorite: Bool
-    let favoriteBounce: Bool
-    let isDisabled: Bool
-    let onBack: () -> Void
-    let onFavorite: () -> Void
-    let onDownload: () -> Void
-
-    var body: some View {
-        HStack(spacing: 12) {
-            Button(action: onBack) {
-                Image(systemName: "chevron.backward")
-                    .font(.system(size: 17, weight: .semibold))
-            }
-
-            Spacer(minLength: 0)
-
-            Button(action: onDownload) {
-                Image(systemName: "arrow.down.circle")
-                    .font(.system(size: 18, weight: .semibold))
-            }
-            .disabled(isDisabled)
-
-            Button(action: onFavorite) {
-                Image(systemName: isFavorite ? "heart.fill" : "heart")
-                    .font(.system(size: 18, weight: .semibold))
-                    .symbolEffect(.bounce, value: favoriteBounce)
-            }
-            .disabled(isDisabled)
-        }
-        .foregroundStyle(.white)
-        .buttonStyle(.plain)
-        .padding(.horizontal, 16)
-        .padding(.top, max(topInset, 0) + 8)
-        .padding(.bottom, 8)
-    }
-}
-
 private struct OptionalMovieNavigationTransitionModifier: ViewModifier {
     let sourceID: String?
     let namespace: Namespace.ID?
 
     @ViewBuilder
     func body(content: Content) -> some View {
-        if let sourceID, let namespace {
-            content.navigationTransition(.zoom(sourceID: sourceID, in: namespace))
-        } else {
-            content
-        }
+        content
     }
 }
 
