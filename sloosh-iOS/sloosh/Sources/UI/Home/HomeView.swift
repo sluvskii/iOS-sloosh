@@ -265,10 +265,6 @@ private struct HomeCategoryTextTabs: View {
         horizontalSizeClass == .regular ? 18 : 16
     }
 
-    private var edgeFadeWidth: CGFloat {
-        horizontalSizeClass == .regular ? 40 : 28
-    }
-
     private var tabScrollAnimation: Animation {
         .spring(response: 0.35, dampingFraction: 0.75, blendDuration: 0.1)
     }
@@ -345,23 +341,6 @@ private struct HomeCategoryTextTabs: View {
             .frame(height: titleHeight + 4, alignment: .topLeading)
             .scrollClipDisabled()
             .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
-            .mask {
-                GeometryReader { proxy in
-                    let width = max(proxy.size.width, 1)
-                    let fadeFraction = min(edgeFadeWidth / width, 0.18)
-
-                    LinearGradient(
-                        stops: [
-                            .init(color: .clear, location: 0),
-                            .init(color: .black, location: fadeFraction),
-                            .init(color: .black, location: 1 - fadeFraction),
-                            .init(color: .clear, location: 1)
-                        ],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                }
-            }
             .animation(tabScrollAnimation, value: selectedCategory)
             .animation(tabScrollAnimation, value: isFilterCollapsed)
             .frame(height: tabHeight, alignment: .topLeading)
