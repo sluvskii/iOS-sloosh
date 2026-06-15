@@ -178,7 +178,6 @@ struct DetailsView: View {
     let navigationTransitionID: String?
     let navigationTransitionNamespace: Namespace.ID?
     @StateObject private var viewModel = DetailsViewModel()
-    @Environment(\.dismiss) private var dismiss
     
     @State private var showPlayer = false
     @State private var showSourceSheet = false
@@ -252,17 +251,20 @@ struct DetailsView: View {
     }
     
     var body: some View {
-        GeometryReader { proxy in
-            ZStack(alignment: .top) {
-                detailsContent
-
-                DetailsTopControlsBar(
-                    topInset: proxy.safeAreaInsets.top,
-                    isFavorite: viewModel.isFavorite,
-                    favoriteBounce: favoriteBounce,
-                    isDisabled: viewModel.details == nil,
-                    onBack: { dismiss() },
-                    onFavorite: {
+        ZStack {
+            detailsContent
+        }
+            .optionalMovieNavigationTransition(
+                sourceID: navigationTransitionID,
+                in: navigationTransitionNamespace
+            )
+            .environment(\.colorScheme, .dark)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .ignoresSafeArea(edges: .top)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar(id: "details") {
+                ToolbarItem(id: "favorite", placement: .topBarTrailing) {
+                    Button {
                         let generator = UIImpactFeedbackGenerator(style: .light)
                         generator.prepare()
                         generator.impactOccurred()
@@ -270,20 +272,24 @@ struct DetailsView: View {
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.5, blendDuration: 0.5)) {
                             viewModel.toggleFavorite()
                         }
-                    },
-                    onDownload: {
-                        showDownloadAlert = true
+                    } label: {
+                        Image(systemName: viewModel.isFavorite ? "heart.fill" : "heart")
+                            .foregroundStyle(.white)
+                            .symbolEffect(.bounce, value: favoriteBounce)
                     }
-                )
+                    .disabled(viewModel.details == nil)
+                }
+
+                ToolbarItem(id: "download", placement: .topBarTrailing) {
+                    Button {
+                        showDownloadAlert = true
+                    } label: {
+                        Image(systemName: "arrow.down.circle")
+                            .foregroundStyle(.white)
+                    }
+                    .disabled(viewModel.details == nil)
+                }
             }
-        }
-            .optionalMovieNavigationTransition(
-                sourceID: navigationTransitionID,
-                in: navigationTransitionNamespace
-            )
-            .environment(\.colorScheme, .dark)
-            .ignoresSafeArea(edges: .top)
-            .toolbar(.hidden, for: .navigationBar)
             .alert("В разработке", isPresented: $showDownloadAlert) {
                 Button("OK", role: .cancel) { }
             } message: {
@@ -525,70 +531,6 @@ struct DetailsView: View {
         }
         .scrollIndicators(.hidden)
         .background(effectiveBackgroundColor)
-    }
-}
-
-private struct DetailsTopControlsBar: View {
-    let topInset: CGFloat
-    let isFavorite: Bool
-    let favoriteBounce: Bool
-    let isDisabled: Bool
-    let onBack: () -> Void
-    let onFavorite: () -> Void
-    let onDownload: () -> Void
-
-    var body: some View {
-        HStack(spacing: 0) {
-            Button(action: onBack) {
-                HStack(spacing: 6) {
-                    Image(systemName: "chevron.backward")
-                        .font(.system(size: 17, weight: .semibold))
-                }
-                .frame(width: 44, height: 44, alignment: .leading)
-                .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-
-            Spacer(minLength: 0)
-
-            HStack(spacing: 0) {
-                Button(action: onDownload) {
-                    Image(systemName: "arrow.down.circle")
-                        .font(.system(size: 20, weight: .regular))
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .disabled(isDisabled)
-
-                Button(action: onFavorite) {
-                    Image(systemName: isFavorite ? "heart.fill" : "heart")
-                        .font(.system(size: 20, weight: .regular))
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
-                        .symbolEffect(.bounce, value: favoriteBounce)
-                }
-                .buttonStyle(.plain)
-                .disabled(isDisabled)
-            }
-        }
-        .foregroundStyle(.white)
-        .padding(.top, topInset)
-        .padding(.horizontal, 8)
-        .frame(height: topInset + 44, alignment: .bottom)
-        .background(alignment: .top) {
-            LinearGradient(
-                colors: [
-                    Color.black.opacity(0.34),
-                    Color.black.opacity(0.14),
-                    .clear
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .frame(height: topInset + 64)
-            .allowsHitTesting(false)
-        }
     }
 }
 

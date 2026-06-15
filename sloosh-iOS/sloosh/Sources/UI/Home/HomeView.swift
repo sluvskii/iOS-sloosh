@@ -245,7 +245,6 @@ private struct HomeCategoryTextTabs: View {
     @Binding var selectedFilter: HomeFilter
     @Binding var isFilterCollapsed: Bool
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    @State private var scrollPosition: HomeCategory?
     @ScaledMetric(relativeTo: .headline) private var titleSize: CGFloat = 22
     private let filterSize: CGFloat = 11
 
@@ -287,98 +286,134 @@ private struct HomeCategoryTextTabs: View {
             .foregroundStyle(baseColor)
     }
 
+    @ViewBuilder
+    private func filterMenuLabel() -> some View {
+        Menu {
+            ForEach(HomeFilter.allCases) { filter in
+                Button {
+                    withAnimation(tabScrollAnimation) {
+                        isFilterCollapsed = false
+                        selectedFilter = filter
+                    }
+                } label: {
+                    if selectedFilter == filter {
+                        Label(filter.title, systemImage: "checkmark")
+                    } else {
+                        Text(filter.title)
+                    }
+                }
+            }
+        } label: {
+            layeredText(
+                filterLabel,
+                size: filterSize,
+                weight: .semibold,
+                baseColor: .secondary
+            )
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .opacity(isFilterCollapsed ? 0 : 1)
+        .scaleEffect(isFilterCollapsed ? 0.92 : 1.0, anchor: .top)
+        .offset(y: isFilterCollapsed ? -6 : 0)
+        .allowsHitTesting(!isFilterCollapsed)
+    }
+
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(alignment: .top, spacing: tabSpacing) {
-                ForEach(Array(HomeCategory.allCases.enumerated()), id: \.element) { index, category in
-                    let isSelected = selectedCategory == category
-                    let isFirst = index == 0
-                    let isLast = index == HomeCategory.allCases.count - 1
+        ScrollViewReader { scrollProxy in
+            ZStack(alignment: .topLeading) {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(alignment: .top, spacing: tabSpacing) {
+                        ForEach(Array(HomeCategory.allCases.enumerated()), id: \.element) { index, category in
+                            let isSelected = selectedCategory == category
+                            let isFirst = index == 0
+                            let isLast = index == HomeCategory.allCases.count - 1
 
-                    VStack(alignment: .center, spacing: 0) {
-                        Button {
-                            withAnimation(tabScrollAnimation) {
-                                isFilterCollapsed = false
+                            Button {
+                                withAnimation(tabScrollAnimation) {
+                                    isFilterCollapsed = false
 
-                                guard !isSelected else { return }
-                                selectedCategory = category
-                                scrollPosition = category
-                            }
-                        } label: {
-                            layeredText(
-                                category.segmentedTitle,
-                                size: titleSize,
-                                weight: isSelected ? .bold : .semibold,
-                                baseColor: isSelected ? .primary : .secondary
-                            )
+                                    guard !isSelected else { return }
+                                    selectedCategory = category
+                                }
+                            } label: {
+                                layeredText(
+                                    category.segmentedTitle,
+                                    size: titleSize,
+                                    weight: isSelected ? .bold : .semibold,
+                                    baseColor: isSelected ? .primary : .secondary
+                                )
                                 .lineLimit(1)
                                 .fixedSize(horizontal: true, vertical: false)
                                 .frame(height: titleHeight, alignment: .center)
                                 .contentShape(Rectangle())
-                        }
-                        .buttonStyle(TabScaleButtonStyle())
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 2)
-                        .accessibilityAddTraits(isSelected ? .isSelected : [])
-
-                        if isSelected {
-                            Menu {
-                                ForEach(HomeFilter.allCases) { filter in
-                                    Button {
-                                        isFilterCollapsed = false
-                                        selectedFilter = filter
-                                    } label: {
-                                        if selectedFilter == filter {
-                                            Label(filter.title, systemImage: "checkmark")
-                                        } else {
-                                            Text(filter.title)
-                                        }
-                                    }
-                                }
-                            } label: {
-                                layeredText(
-                                    filterLabel,
-                                    size: filterSize,
-                                    weight: .semibold,
-                                    baseColor: .secondary
-                                )
-                                    .lineLimit(1)
-                                    .fixedSize(horizontal: true, vertical: false)
-                                    .contentShape(Rectangle())
                             }
-                            .buttonStyle(.plain)
-                            .frame(height: visibleFilterHeight, alignment: .top)
-                            .opacity(isFilterCollapsed ? 0 : 1)
-                            .scaleEffect(isFilterCollapsed ? 0.92 : 1.0, anchor: .top)
-                            .offset(y: isFilterCollapsed ? -6 : 0)
-                            .allowsHitTesting(!isFilterCollapsed)
-                            .clipped()
+                            .buttonStyle(TabScaleButtonStyle())
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 2)
+                            .id(category)
+                            .accessibilityAddTraits(isSelected ? .isSelected : [])
+                            .padding(.leading, isFirst ? edgeContentInset : 0)
+                            .padding(.trailing, isLast ? edgeContentInset : 0)
+                            .background(
+                                GeometryReader { proxy in
+                                    Color.clear.preference(
+                                        key: HomeCategoryTabFramePreferenceKey.self,
+                                        value: [category: proxy.frame(in: .named("HomeCategoryTabs"))]
+                                    )
+                                }
+                            )
                         }
                     }
-                    .id(category)
-                    .frame(height: tabHeight, alignment: isSelected ? .top : .center)
-                    .padding(.leading, isFirst ? edgeContentInset : 0)
-                    .padding(.trailing, isLast ? edgeContentInset : 0)
-                    .animation(tabScrollAnimation, value: isSelected)
-                    .animation(tabScrollAnimation, value: isFilterCollapsed)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .scrollTargetLayout()
+                }
+                .frame(height: titleHeight + 4, alignment: .topLeading)
+                .scrollClipDisabled()
+                .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+                .coordinateSpace(name: "HomeCategoryTabs")
+                .animation(tabScrollAnimation, value: selectedCategory)
+                .animation(tabScrollAnimation, value: isFilterCollapsed)
+
+                GeometryReader { proxy in
+                    Color.clear
+                        .overlayPreferenceValue(HomeCategoryTabFramePreferenceKey.self) { frames in
+                            if let selectedFrame = frames[selectedCategory] {
+                                filterMenuLabel()
+                                    .position(
+                                        x: min(max(selectedFrame.midX, 0), proxy.size.width),
+                                        y: titleHeight + (visibleFilterHeight / 2)
+                                    )
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                                    .animation(tabScrollAnimation, value: selectedCategory)
+                                    .animation(tabScrollAnimation, value: selectedFilter)
+                                    .animation(tabScrollAnimation, value: isFilterCollapsed)
+                            }
+                        }
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .scrollTargetLayout()
-        }
-        .scrollClipDisabled()
-        .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
-        .scrollPosition(id: $scrollPosition, anchor: .center)
-        .sensoryFeedback(.selection, trigger: selectedCategory)
-        .sensoryFeedback(.selection, trigger: selectedFilter)
-        .onAppear {
-            scrollPosition = selectedCategory
-        }
-        .onChange(of: selectedCategory) { _, newCategory in
-            withAnimation(tabScrollAnimation) {
-                scrollPosition = newCategory
+            .frame(height: tabHeight, alignment: .topLeading)
+            .onAppear {
+                scrollProxy.scrollTo(selectedCategory, anchor: .center)
+            }
+            .onChange(of: selectedCategory) { _, newCategory in
+                withAnimation(tabScrollAnimation) {
+                    scrollProxy.scrollTo(newCategory, anchor: .center)
+                }
             }
         }
+        .sensoryFeedback(.selection, trigger: selectedCategory)
+        .sensoryFeedback(.selection, trigger: selectedFilter)
+    }
+}
+
+private struct HomeCategoryTabFramePreferenceKey: PreferenceKey {
+    static var defaultValue: [HomeCategory: CGRect] = [:]
+
+    static func reduce(value: inout [HomeCategory: CGRect], nextValue: () -> [HomeCategory: CGRect]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
     }
 }
 
