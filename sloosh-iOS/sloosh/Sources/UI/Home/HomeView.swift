@@ -327,7 +327,6 @@ private struct HomeCategoryTextTabs: View {
         .scrollPosition(id: $scrollPosition, anchor: .center)
         .sensoryFeedback(.selection, trigger: selectedCategory)
         .sensoryFeedback(.selection, trigger: selectedFilter)
-        .sensoryFeedback(.impact(weight: .light), trigger: isFilterCollapsed)
         .onAppear {
             scrollPosition = selectedCategory
         }
