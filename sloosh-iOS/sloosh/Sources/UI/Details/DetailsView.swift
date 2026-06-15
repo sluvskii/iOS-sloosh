@@ -254,42 +254,42 @@ struct DetailsView: View {
         ZStack {
             detailsContent
         }
-            .optionalMovieNavigationTransition(
-                sourceID: navigationTransitionID,
-                in: navigationTransitionNamespace
-            )
-            .environment(\.colorScheme, .dark)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .ignoresSafeArea(edges: .top)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar(id: "details") {
-                ToolbarItem(id: "favorite", placement: .topBarTrailing) {
-                    Button {
-                        let generator = UIImpactFeedbackGenerator(style: .light)
-                        generator.prepare()
-                        generator.impactOccurred()
-                        favoriteBounce.toggle()
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.5, blendDuration: 0.5)) {
-                            viewModel.toggleFavorite()
-                        }
-                    } label: {
-                        Image(systemName: viewModel.isFavorite ? "heart.fill" : "heart")
-                            .foregroundStyle(.white)
-                            .symbolEffect(.bounce, value: favoriteBounce)
+        .optionalMovieNavigationTransition(
+            sourceID: navigationTransitionID,
+            in: navigationTransitionNamespace
+        )
+        .environment(\.colorScheme, .dark)
+        .toolbarColorScheme(.dark, for: .navigationBar)
+        .toolbarBackground(.hidden, for: .navigationBar)
+        .ignoresSafeArea(edges: .top)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarRole(.editor)
+        .toolbar {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                Button {
+                    let generator = UIImpactFeedbackGenerator(style: .light)
+                    generator.prepare()
+                    generator.impactOccurred()
+                    favoriteBounce.toggle()
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.5, blendDuration: 0.5)) {
+                        viewModel.toggleFavorite()
                     }
-                    .disabled(viewModel.details == nil)
+                } label: {
+                    Image(systemName: viewModel.isFavorite ? "heart.fill" : "heart")
+                        .foregroundStyle(.white)
+                        .symbolEffect(.bounce, value: favoriteBounce)
                 }
+                .disabled(viewModel.details == nil)
 
-                ToolbarItem(id: "download", placement: .topBarTrailing) {
-                    Button {
-                        showDownloadAlert = true
-                    } label: {
-                        Image(systemName: "arrow.down.circle")
-                            .foregroundStyle(.white)
-                    }
-                    .disabled(viewModel.details == nil)
+                Button {
+                    showDownloadAlert = true
+                } label: {
+                    Image(systemName: "arrow.down.circle")
+                        .foregroundStyle(.white)
                 }
+                .disabled(viewModel.details == nil)
             }
+        }
             .alert("В разработке", isPresented: $showDownloadAlert) {
                 Button("OK", role: .cancel) { }
             } message: {
@@ -541,7 +541,8 @@ private struct OptionalMovieNavigationTransitionModifier: ViewModifier {
     @ViewBuilder
     func body(content: Content) -> some View {
         if let sourceID, let namespace {
-            content.navigationTransition(.zoom(sourceID: sourceID, in: namespace))
+            content
+                .navigationTransition(.zoom(sourceID: sourceID, in: namespace))
         } else {
             content
         }
