@@ -254,27 +254,16 @@ struct DetailsView: View {
         ZStack {
             detailsContent
         }
-        .optionalMovieNavigationTransition(
-            sourceID: navigationTransitionID,
-            in: navigationTransitionNamespace
-        )
-        .environment(\.colorScheme, .dark)
-        .toolbarColorScheme(.dark, for: .navigationBar)
-        .toolbarBackground(.hidden, for: .navigationBar)
-        .ignoresSafeArea(edges: .top)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbarRole(.editor)
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                HStack(spacing: 16) {
-                    Button {
-                        showDownloadAlert = true
-                    } label: {
-                        Image(systemName: "arrow.down.circle")
-                            .foregroundStyle(.white)
-                    }
-                    .disabled(viewModel.details == nil)
-                    
+            .optionalMovieNavigationTransition(
+                sourceID: navigationTransitionID,
+                in: navigationTransitionNamespace
+            )
+            .environment(\.colorScheme, .dark)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .ignoresSafeArea(edges: .top)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar(id: "details") {
+                ToolbarItem(id: "favorite", placement: .topBarTrailing) {
                     Button {
                         let generator = UIImpactFeedbackGenerator(style: .light)
                         generator.prepare()
@@ -290,8 +279,17 @@ struct DetailsView: View {
                     }
                     .disabled(viewModel.details == nil)
                 }
+
+                ToolbarItem(id: "download", placement: .topBarTrailing) {
+                    Button {
+                        showDownloadAlert = true
+                    } label: {
+                        Image(systemName: "arrow.down.circle")
+                            .foregroundStyle(.white)
+                    }
+                    .disabled(viewModel.details == nil)
+                }
             }
-        }
             .alert("В разработке", isPresented: $showDownloadAlert) {
                 Button("OK", role: .cancel) { }
             } message: {
@@ -543,8 +541,7 @@ private struct OptionalMovieNavigationTransitionModifier: ViewModifier {
     @ViewBuilder
     func body(content: Content) -> some View {
         if let sourceID, let namespace {
-            content
-                .navigationTransition(.zoom(sourceID: sourceID, in: namespace))
+            content.navigationTransition(.zoom(sourceID: sourceID, in: namespace))
         } else {
             content
         }
