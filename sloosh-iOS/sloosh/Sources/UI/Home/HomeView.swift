@@ -249,8 +249,8 @@ private struct HomeCategoryTextTabs: View {
     private let filterSize: CGFloat = 11
 
     private let titleHeight: CGFloat = 28
-    private let filterHeight: CGFloat = 28
-    private let filterTopSpacing: CGFloat = 4
+    private let filterHeight: CGFloat = 16
+    private let filterTopSpacing: CGFloat = 2
 
     private var visibleFilterHeight: CGFloat {
         isFilterCollapsed ? 0 : (filterHeight + filterTopSpacing)
@@ -306,10 +306,6 @@ private struct HomeCategoryTextTabs: View {
             }
         } label: {
             HStack(spacing: 6) {
-                Image(systemName: selectedFilter.icon)
-                    .font(.system(size: filterSize, weight: .semibold))
-                    .foregroundStyle(.secondary)
-
                 layeredText(
                     filterLabel,
                     size: filterSize,
@@ -317,15 +313,15 @@ private struct HomeCategoryTextTabs: View {
                     baseColor: .secondary
                 )
                 .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
 
                 Image(systemName: "chevron.down")
-                    .font(.system(size: 10, weight: .bold))
+                    .font(.system(size: 9, weight: .bold))
                     .foregroundStyle(.tertiary)
             }
-            .padding(.horizontal, 12)
+            .padding(.horizontal, 4)
             .frame(height: filterHeight)
-            .glassEffect(in: Capsule())
-            .contentShape(Capsule())
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .opacity(isFilterCollapsed ? 0 : 1)
@@ -336,7 +332,7 @@ private struct HomeCategoryTextTabs: View {
 
     var body: some View {
         ScrollViewReader { scrollProxy in
-            VStack(alignment: .leading, spacing: 0) {
+            ZStack(alignment: .topLeading) {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(alignment: .top, spacing: tabSpacing) {
                         ForEach(Array(HomeCategory.allCases.enumerated()), id: \.element) { index, category in
@@ -370,6 +366,14 @@ private struct HomeCategoryTextTabs: View {
                             .accessibilityAddTraits(isSelected ? .isSelected : [])
                             .padding(.leading, isFirst ? edgeContentInset : 0)
                             .padding(.trailing, isLast ? edgeContentInset : 0)
+                            .background(
+                                GeometryReader { proxy in
+                                    Color.clear.preference(
+                                        key: HomeCategoryTabFramePreferenceKey.self,
+                                        value: [category: proxy.frame(in: .named("HomeCategoryTabs"))]
+                                    )
+                                }
+                            )
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -378,20 +382,26 @@ private struct HomeCategoryTextTabs: View {
                 .frame(height: titleHeight + 4, alignment: .topLeading)
                 .scrollClipDisabled()
                 .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+                .coordinateSpace(name: "HomeCategoryTabs")
                 .animation(tabScrollAnimation, value: selectedCategory)
                 .animation(tabScrollAnimation, value: isFilterCollapsed)
 
-                HStack(spacing: 0) {
-                    filterMenuLabel()
-                    Spacer(minLength: 0)
+                GeometryReader { proxy in
+                    Color.clear
+                        .overlayPreferenceValue(HomeCategoryTabFramePreferenceKey.self) { frames in
+                            if let selectedFrame = frames[selectedCategory] {
+                                filterMenuLabel()
+                                    .position(
+                                        x: min(max(selectedFrame.midX, 8), max(proxy.size.width - 8, 8)),
+                                        y: titleHeight + filterTopSpacing + (filterHeight / 2)
+                                    )
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                                    .animation(tabScrollAnimation, value: selectedCategory)
+                                    .animation(tabScrollAnimation, value: selectedFilter)
+                                    .animation(tabScrollAnimation, value: isFilterCollapsed)
+                            }
+                        }
                 }
-                .padding(.top, filterTopSpacing)
-                .padding(.horizontal, edgeContentInset)
-                .frame(height: visibleFilterHeight, alignment: .topLeading)
-                .clipped()
-                .animation(tabScrollAnimation, value: selectedCategory)
-                .animation(tabScrollAnimation, value: selectedFilter)
-                .animation(tabScrollAnimation, value: isFilterCollapsed)
             }
             .frame(height: tabHeight, alignment: .topLeading)
             .onAppear {
@@ -405,6 +415,14 @@ private struct HomeCategoryTextTabs: View {
         }
         .sensoryFeedback(.selection, trigger: selectedCategory)
         .sensoryFeedback(.selection, trigger: selectedFilter)
+    }
+}
+
+private struct HomeCategoryTabFramePreferenceKey: PreferenceKey {
+    static var defaultValue: [HomeCategory: CGRect] = [:]
+
+    static func reduce(value: inout [HomeCategory: CGRect], nextValue: () -> [HomeCategory: CGRect]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, new in new })
     }
 }
 
