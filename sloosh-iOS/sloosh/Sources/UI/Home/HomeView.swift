@@ -340,6 +340,7 @@ private struct HomeCategoryTextTabs: View {
             }
             .frame(height: titleHeight + 4, alignment: .topLeading)
             .scrollClipDisabled()
+            .scrollEdgeEffectStyle(.soft, for: [.leading, .trailing])
             .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
             .animation(tabScrollAnimation, value: selectedCategory)
             .animation(tabScrollAnimation, value: isFilterCollapsed)
