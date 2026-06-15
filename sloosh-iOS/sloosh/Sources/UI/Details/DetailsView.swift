@@ -262,8 +262,8 @@ struct DetailsView: View {
             .toolbarColorScheme(.dark, for: .navigationBar)
             .ignoresSafeArea(edges: .top)
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar(id: "details") {
-                ToolbarItem(id: "favorite", placement: .topBarTrailing) {
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         let generator = UIImpactFeedbackGenerator(style: .light)
                         generator.prepare()
@@ -280,7 +280,7 @@ struct DetailsView: View {
                     .disabled(viewModel.details == nil)
                 }
 
-                ToolbarItem(id: "download", placement: .topBarTrailing) {
+                ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         showDownloadAlert = true
                     } label: {
