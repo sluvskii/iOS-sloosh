@@ -187,6 +187,15 @@ struct MovieDetailsNavigationLink<Label: View>: View {
     }
 }
 
+private struct TabScaleButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.94 : 1.0)
+            .opacity(configuration.isPressed ? 0.8 : 1.0)
+            .animation(.spring(response: 0.25, dampingFraction: 0.7), value: configuration.isPressed)
+    }
+}
+
 private struct HomeCategoryTextTabs: View {
     @Binding var selectedCategory: HomeCategory
     @Binding var selectedFilter: HomeFilter
@@ -216,7 +225,7 @@ private struct HomeCategoryTextTabs: View {
     }
 
     private var tabScrollAnimation: Animation {
-        .easeInOut(duration: 0.35)
+        .spring(response: 0.35, dampingFraction: 0.75, blendDuration: 0.1)
     }
 
     private var filterLabel: String {
@@ -263,7 +272,7 @@ private struct HomeCategoryTextTabs: View {
                                 .frame(height: titleHeight, alignment: .center)
                                 .contentShape(Rectangle())
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(TabScaleButtonStyle())
                         .padding(.horizontal, 4)
                         .padding(.vertical, 2)
                         .accessibilityAddTraits(isSelected ? .isSelected : [])
@@ -296,6 +305,7 @@ private struct HomeCategoryTextTabs: View {
                             .buttonStyle(.plain)
                             .frame(height: visibleFilterHeight, alignment: .top)
                             .opacity(isFilterCollapsed ? 0 : 1)
+                            .scaleEffect(isFilterCollapsed ? 0.92 : 1.0, anchor: .top)
                             .offset(y: isFilterCollapsed ? -6 : 0)
                             .allowsHitTesting(!isFilterCollapsed)
                             .clipped()
@@ -315,6 +325,9 @@ private struct HomeCategoryTextTabs: View {
         .scrollClipDisabled()
         .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
         .scrollPosition(id: $scrollPosition, anchor: .center)
+        .sensoryFeedback(.selection, trigger: selectedCategory)
+        .sensoryFeedback(.selection, trigger: selectedFilter)
+        .sensoryFeedback(.impact(weight: .light), trigger: isFilterCollapsed)
         .onAppear {
             scrollPosition = selectedCategory
         }
