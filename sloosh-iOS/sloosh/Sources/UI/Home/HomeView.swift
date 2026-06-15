@@ -246,6 +246,9 @@ private struct HomeCategoryTextTabs: View {
     @Binding var isFilterCollapsed: Bool
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @ScaledMetric(relativeTo: .headline) private var titleSize: CGFloat = 25
+    @State private var scrollContainerWidth: CGFloat = 0
+    @State private var scrollContentWidth: CGFloat = 0
+    @State private var scrollContentMinX: CGFloat = 0
 
     private let titleHeight: CGFloat = 31
 
@@ -263,6 +266,18 @@ private struct HomeCategoryTextTabs: View {
 
     private var edgeContentInset: CGFloat {
         horizontalSizeClass == .regular ? 18 : 16
+    }
+
+    private var edgeFadeWidth: CGFloat {
+        horizontalSizeClass == .regular ? 34 : 26
+    }
+
+    private var showsLeadingFade: Bool {
+        scrollContentMinX < -2
+    }
+
+    private var showsTrailingFade: Bool {
+        scrollContentWidth + scrollContentMinX > scrollContainerWidth + 2
     }
 
     private var tabScrollAnimation: Animation {
@@ -336,15 +351,66 @@ private struct HomeCategoryTextTabs: View {
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .background {
+                    GeometryReader { proxy in
+                        Color.clear
+                            .preference(
+                                key: HomeCategoryTabsContentMetricsPreferenceKey.self,
+                                value: HomeCategoryTabsContentMetrics(
+                                    minX: proxy.frame(in: .named("homeCategoryTabsScroll")).minX,
+                                    width: proxy.size.width
+                                )
+                            )
+                    }
+                }
                 .scrollTargetLayout()
             }
+            .coordinateSpace(name: "homeCategoryTabsScroll")
             .frame(height: titleHeight + 4, alignment: .topLeading)
+            .background {
+                GeometryReader { proxy in
+                    Color.clear
+                        .preference(
+                            key: HomeCategoryTabsContainerWidthPreferenceKey.self,
+                            value: proxy.size.width
+                        )
+                }
+            }
             .scrollClipDisabled()
-            .scrollEdgeEffectStyle(.soft, for: [.leading, .trailing])
             .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+            .compositingGroup()
+            .mask {
+                HStack(spacing: 0) {
+                    LinearGradient(
+                        colors: showsLeadingFade ? [.clear, .black] : [.black, .black],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                    .frame(width: edgeFadeWidth)
+
+                    Rectangle()
+                        .fill(.black)
+
+                    LinearGradient(
+                        colors: showsTrailingFade ? [.black, .clear] : [.black, .black],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                    .frame(width: edgeFadeWidth)
+                }
+            }
             .animation(tabScrollAnimation, value: selectedCategory)
             .animation(tabScrollAnimation, value: isFilterCollapsed)
+            .animation(.easeInOut(duration: 0.2), value: showsLeadingFade)
+            .animation(.easeInOut(duration: 0.2), value: showsTrailingFade)
             .frame(height: tabHeight, alignment: .topLeading)
+            .onPreferenceChange(HomeCategoryTabsContainerWidthPreferenceKey.self) { width in
+                scrollContainerWidth = width
+            }
+            .onPreferenceChange(HomeCategoryTabsContentMetricsPreferenceKey.self) { metrics in
+                scrollContentWidth = metrics.width
+                scrollContentMinX = metrics.minX
+            }
             .onAppear {
                 scrollProxy.scrollTo(selectedCategory, anchor: .center)
             }
@@ -356,6 +422,27 @@ private struct HomeCategoryTextTabs: View {
         }
         .sensoryFeedback(.selection, trigger: selectedCategory)
         .sensoryFeedback(.selection, trigger: selectedFilter)
+    }
+}
+
+private struct HomeCategoryTabsContentMetrics: Equatable {
+    let minX: CGFloat
+    let width: CGFloat
+}
+
+private struct HomeCategoryTabsContentMetricsPreferenceKey: PreferenceKey {
+    static var defaultValue: HomeCategoryTabsContentMetrics = .init(minX: 0, width: 0)
+
+    static func reduce(value: inout HomeCategoryTabsContentMetrics, nextValue: () -> HomeCategoryTabsContentMetrics) {
+        value = nextValue()
+    }
+}
+
+private struct HomeCategoryTabsContainerWidthPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
     }
 }
 
