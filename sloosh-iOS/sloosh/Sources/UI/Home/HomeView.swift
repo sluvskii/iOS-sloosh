@@ -246,6 +246,9 @@ private struct HomeCategoryTextTabs: View {
     @Binding var isFilterCollapsed: Bool
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @ScaledMetric(relativeTo: .headline) private var titleSize: CGFloat = 25
+    @State private var shimmerPhase: CGFloat = 1.25
+    @State private var tabMidXMap: [HomeCategory: CGFloat] = [:]
+    @State private var viewportWidth: CGFloat = 0
 
     private let titleHeight: CGFloat = 31
 
@@ -269,15 +272,55 @@ private struct HomeCategoryTextTabs: View {
         .spring(response: 0.35, dampingFraction: 0.75, blendDuration: 0.1)
     }
 
-    private func layeredText(
-        _ text: String,
-        size: CGFloat,
-        weight: Font.Weight,
-        baseColor: Color
-    ) -> some View {
-        return Text(text)
-            .font(.system(size: size, weight: weight))
-            .foregroundStyle(baseColor)
+    private var selectedIndex: Int {
+        HomeCategory.allCases.firstIndex(of: selectedCategory) ?? 0
+    }
+
+    private func magneticPull(for category: HomeCategory) -> CGFloat {
+        guard let midX = tabMidXMap[category], viewportWidth > 1 else { return 0 }
+
+        let centerX = viewportWidth / 2
+        let maxDistance = max(viewportWidth * 0.55, 1)
+        let distance = abs(midX - centerX)
+        return max(0, 1 - (distance / maxDistance))
+    }
+
+    private func neighborCompression(for category: HomeCategory) -> CGFloat {
+        guard let index = HomeCategory.allCases.firstIndex(of: category) else { return 1.0 }
+
+        let distance = abs(index - selectedIndex)
+        switch distance {
+        case 0:
+            return 1.0
+        case 1:
+            return 0.972
+        default:
+            return 0.985
+        }
+    }
+
+    private func tabScale(for category: HomeCategory) -> CGFloat {
+        let magnetic = magneticPull(for: category)
+        let compression = neighborCompression(for: category)
+        let selectedBoost: CGFloat = selectedCategory == category ? 0.02 : 0
+        let magneticBoost = magnetic * (selectedCategory == category ? 0.025 : 0.015)
+
+        return min(compression + selectedBoost + magneticBoost, 1.06)
+    }
+
+    private func tabOpacity(for category: HomeCategory) -> CGFloat {
+        if selectedCategory == category {
+            return 1.0
+        }
+
+        return 0.72 + (magneticPull(for: category) * 0.18)
+    }
+
+    private func startSelectionShimmer() {
+        shimmerPhase = -1.25
+        withAnimation(.easeInOut(duration: 0.62)) {
+            shimmerPhase = 1.25
+        }
     }
 
     var body: some View {
@@ -288,6 +331,7 @@ private struct HomeCategoryTextTabs: View {
                         let isSelected = selectedCategory == category
                         let isFirst = index == 0
                         let isLast = index == HomeCategory.allCases.count - 1
+                        let magnetic = magneticPull(for: category)
 
                         Button {
                             withAnimation(tabScrollAnimation) {
@@ -297,11 +341,14 @@ private struct HomeCategoryTextTabs: View {
                                 selectedCategory = category
                             }
                         } label: {
-                            layeredText(
-                                category.segmentedTitle,
+                            HomeCategoryTabLabel(
+                                title: category.segmentedTitle,
                                 size: titleSize,
-                                weight: isSelected ? .bold : .semibold,
-                                baseColor: isSelected ? .primary : .secondary
+                                isSelected: isSelected,
+                                scale: tabScale(for: category),
+                                opacity: tabOpacity(for: category),
+                                shimmerPhase: shimmerPhase,
+                                magneticPull: magnetic
                             )
                             .lineLimit(1)
                             .fixedSize(horizontal: true, vertical: false)
@@ -316,6 +363,14 @@ private struct HomeCategoryTextTabs: View {
                         .accessibilityHint("Нажмите для перехода. Удерживайте для выбора фильтра.")
                         .padding(.leading, isFirst ? edgeContentInset : 0)
                         .padding(.trailing, isLast ? edgeContentInset : 0)
+                        .background {
+                            GeometryReader { proxy in
+                                Color.clear.preference(
+                                    key: HomeCategoryTabMidXPreferenceKey.self,
+                                    value: [category: proxy.frame(in: .named("homeCategoryTabsViewport")).midX]
+                                )
+                            }
+                        }
                         .contextMenu {
                             ForEach(HomeFilter.allCases) { filter in
                                 Button {
@@ -338,16 +393,32 @@ private struct HomeCategoryTextTabs: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .scrollTargetLayout()
             }
+            .coordinateSpace(name: "homeCategoryTabsViewport")
             .frame(height: titleHeight + 4, alignment: .topLeading)
+            .background {
+                GeometryReader { proxy in
+                    Color.clear.preference(
+                        key: HomeCategoryTabsViewportWidthPreferenceKey.self,
+                        value: proxy.size.width
+                    )
+                }
+            }
             .scrollClipDisabled()
             .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
             .animation(tabScrollAnimation, value: selectedCategory)
             .animation(tabScrollAnimation, value: isFilterCollapsed)
             .frame(height: tabHeight, alignment: .topLeading)
+            .onPreferenceChange(HomeCategoryTabMidXPreferenceKey.self) { values in
+                tabMidXMap = values
+            }
+            .onPreferenceChange(HomeCategoryTabsViewportWidthPreferenceKey.self) { width in
+                viewportWidth = width
+            }
             .onAppear {
                 scrollProxy.scrollTo(selectedCategory, anchor: .center)
             }
             .onChange(of: selectedCategory) { _, newCategory in
+                startSelectionShimmer()
                 withAnimation(tabScrollAnimation) {
                     scrollProxy.scrollTo(newCategory, anchor: .center)
                 }
@@ -355,6 +426,83 @@ private struct HomeCategoryTextTabs: View {
         }
         .sensoryFeedback(.selection, trigger: selectedCategory)
         .sensoryFeedback(.selection, trigger: selectedFilter)
+    }
+}
+
+private struct HomeCategoryTabLabel: View {
+    let title: String
+    let size: CGFloat
+    let isSelected: Bool
+    let scale: CGFloat
+    let opacity: CGFloat
+    let shimmerPhase: CGFloat
+    let magneticPull: CGFloat
+
+    private var fontWeight: Font.Weight {
+        isSelected ? .bold : .semibold
+    }
+
+    private var trackingValue: CGFloat {
+        isSelected ? -0.2 : 0
+    }
+
+    var body: some View {
+        Text(title)
+            .font(.system(size: size, weight: fontWeight))
+            .tracking(trackingValue)
+            .foregroundStyle(isSelected ? .primary : .secondary)
+            .opacity(opacity)
+            .scaleEffect(scale)
+            .shadow(
+                color: isSelected ? .white.opacity(0.08 + (magneticPull * 0.08)) : .clear,
+                radius: isSelected ? 12 : 0,
+                x: 0,
+                y: 0
+            )
+            .overlay {
+                if isSelected {
+                    GeometryReader { proxy in
+                        let width = max(proxy.size.width, 1)
+
+                        LinearGradient(
+                            stops: [
+                                .init(color: .clear, location: 0.0),
+                                .init(color: .white.opacity(0.0), location: 0.15),
+                                .init(color: .white.opacity(0.75), location: 0.5),
+                                .init(color: .white.opacity(0.0), location: 0.85),
+                                .init(color: .clear, location: 1.0)
+                            ],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                        .frame(width: width * 0.85)
+                        .offset(x: shimmerPhase * (width + 28))
+                        .blendMode(.screen)
+                        .mask(
+                            Text(title)
+                                .font(.system(size: size, weight: fontWeight))
+                                .tracking(trackingValue)
+                        )
+                    }
+                    .allowsHitTesting(false)
+                }
+            }
+    }
+}
+
+private struct HomeCategoryTabMidXPreferenceKey: PreferenceKey {
+    static var defaultValue: [HomeCategory: CGFloat] = [:]
+
+    static func reduce(value: inout [HomeCategory: CGFloat], nextValue: () -> [HomeCategory: CGFloat]) {
+        value.merge(nextValue()) { _, new in new }
+    }
+}
+
+private struct HomeCategoryTabsViewportWidthPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
     }
 }
 
