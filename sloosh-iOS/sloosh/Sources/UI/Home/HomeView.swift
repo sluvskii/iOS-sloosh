@@ -245,9 +245,9 @@ private struct HomeCategoryTextTabs: View {
     @Binding var selectedFilter: HomeFilter
     @Binding var isFilterCollapsed: Bool
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    @ScaledMetric(relativeTo: .headline) private var titleSize: CGFloat = 24
+    @ScaledMetric(relativeTo: .headline) private var titleSize: CGFloat = 25
 
-    private let titleHeight: CGFloat = 30
+    private let titleHeight: CGFloat = 31
 
     private var visibleFilterHeight: CGFloat {
         0
