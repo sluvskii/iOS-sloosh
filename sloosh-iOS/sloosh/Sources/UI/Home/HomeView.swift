@@ -142,11 +142,11 @@ struct HomeCategoryContentView: View {
             let delta = newOffset - oldOffset
 
             if newOffset <= 0 {
-                isFilterCollapsed = false
+                if isFilterCollapsed { isFilterCollapsed = false }
             } else if delta > 6 {
-                isFilterCollapsed = true
+                if !isFilterCollapsed { isFilterCollapsed = true }
             } else if delta < -4 {
-                isFilterCollapsed = false
+                if isFilterCollapsed { isFilterCollapsed = false }
             }
         }
         .scrollIndicators(.hidden)
