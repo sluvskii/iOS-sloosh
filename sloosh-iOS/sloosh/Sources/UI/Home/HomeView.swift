@@ -83,11 +83,18 @@ struct HomeView: View {
     }
 }
 
+class ScrollDebouncer {
+    var lastStateChangeTime: Date = Date.distantPast
+    let debounceInterval: TimeInterval = 0.4 // Matches animation duration
+}
+
 struct HomeCategoryContentView: View {
     @ObservedObject var viewModel: HomeViewModel
     let category: HomeCategory
     let navigationTransition: Namespace.ID
     @Binding var isFilterCollapsed: Bool
+    
+    @State private var debouncer = ScrollDebouncer()
     
     let columns = [
         GridItem(.adaptive(minimum: 105), spacing: 16)
@@ -139,14 +146,28 @@ struct HomeCategoryContentView: View {
         .onScrollGeometryChange(for: CGFloat.self) { geometry in
             geometry.contentOffset.y + geometry.contentInsets.top
         } action: { oldOffset, newOffset in
+            let now = Date()
+            guard now.timeIntervalSince(debouncer.lastStateChangeTime) > debouncer.debounceInterval else {
+                return
+            }
+            
             let delta = newOffset - oldOffset
 
             if newOffset <= 0 {
-                if isFilterCollapsed { isFilterCollapsed = false }
-            } else if delta > 6 {
-                if !isFilterCollapsed { isFilterCollapsed = true }
-            } else if delta < -4 {
-                if isFilterCollapsed { isFilterCollapsed = false }
+                if isFilterCollapsed { 
+                    isFilterCollapsed = false
+                    debouncer.lastStateChangeTime = now
+                }
+            } else if delta > 8 {
+                if !isFilterCollapsed { 
+                    isFilterCollapsed = true
+                    debouncer.lastStateChangeTime = now
+                }
+            } else if delta < -8 {
+                if isFilterCollapsed { 
+                    isFilterCollapsed = false
+                    debouncer.lastStateChangeTime = now
+                }
             }
         }
         .scrollIndicators(.hidden)
