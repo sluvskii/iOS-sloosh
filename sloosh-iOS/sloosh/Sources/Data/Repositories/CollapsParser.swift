@@ -181,27 +181,9 @@ enum CollapsParser {
             return directNames
         }
 
-        let patterns = [
-            #"(?is)\btranslations\s*:\s*(\[[\s\S]*?\])"#,
-            #"(?is)\"translations\"\s*:\s*(\[[\s\S]*?\])"#
-        ]
-
-        for pattern in patterns {
-            if let regex = try? NSRegularExpression(pattern: pattern),
-               let match = regex.firstMatch(in: html, range: NSRange(html.startIndex..., in: html)),
-               let range = Range(match.range(at: 1), in: html) {
-                let raw = String(html[range]).trimmingCharacters(in: .whitespacesAndNewlines)
-                if raw.hasPrefix("["),
-                   let data = raw.data(using: .utf8),
-                   let array = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
-                    return array.compactMap { object in
-                        let name = (object["name"] as? String ?? object["title"] as? String ?? "")
-                            .trimmingCharacters(in: .whitespacesAndNewlines)
-                        return name.isEmpty ? nil : name
-                    }
-                }
-            }
-        }
+        // The "translations" array in Collaps HTML for movies usually contains other movies in the franchise, NOT voiceovers.
+        // Returning titles from "translations" causes the selection view to incorrectly show the movie title as the only voiceover.
+        // We removed the fallback to "translations" array here so it correctly falls back to parsing the HLS manifest if needed.
 
         return []
     }
