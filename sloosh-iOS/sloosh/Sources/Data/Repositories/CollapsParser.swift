@@ -124,10 +124,20 @@ enum CollapsParser {
 
         let resolvedHls = hls ?? firstPreferredStreamURLString(in: html)
         
-        let voices: [String]
-        if let voiceStr = extractRegexGroup(in: html, pattern: #"audio:\s+\{"names":\["([^"]+)"\]"#) {
-            voices = voiceStr.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
-        } else {
+        var voices: [String] = []
+        if let voiceStr = extractRegexGroup(in: html, pattern: #"audio:\s+\{\s*['"]?names['"]?\s*:\s*\[(.*?)\]\s*\}"#) {
+            // voiceStr will be like `"Dubbing", "Original"`
+            // We need to extract just the text inside the quotes
+            let components = voiceStr.components(separatedBy: ",")
+            voices = components.compactMap { comp in
+                let cleaned = comp.trimmingCharacters(in: .whitespacesAndNewlines)
+                    .replacingOccurrences(of: "\"", with: "")
+                    .replacingOccurrences(of: "'", with: "")
+                return cleaned.isEmpty ? nil : cleaned
+            }
+        }
+        
+        if voices.isEmpty {
             voices = extractVoiceNames(from: html)
         }
         

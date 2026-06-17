@@ -87,18 +87,28 @@ class AllohaRepository {
                 var parsedEpisodes: [AllohaEpisode] = []
                 for (eKey, eValue) in episodesObj {
                     guard let episodeNum = Int(eKey),
-                          let eDict = eValue as? [String: Any],
-                          let transObj = eDict["translation"] as? [String: Any] else { continue }
+                          let eDict = eValue as? [String: Any] else { continue }
                     
                     var parsedTrans: [AllohaTranslation] = []
-                    for (tKey, tValue) in transObj {
-                        guard let tDict = tValue as? [String: Any],
-                              var iframe = tDict["iframe"] as? String, !iframe.isEmpty else { continue }
-                        if iframe.hasPrefix("//") {
-                            iframe = "https:" + iframe
+                    if let transObj = eDict["translation"] as? [String: Any] {
+                        for (tKey, tValue) in transObj {
+                            guard let tDict = tValue as? [String: Any],
+                                  var iframe = tDict["iframe"] as? String, !iframe.isEmpty else { continue }
+                            if iframe.hasPrefix("//") {
+                                iframe = "https:" + iframe
+                            }
+                            let transName = tDict["translation"] as? String ?? "Unknown"
+                            parsedTrans.append(AllohaTranslation(id: tKey, name: transName, iframeUrl: iframe))
                         }
-                        let transName = tDict["translation"] as? String ?? "Unknown"
-                        parsedTrans.append(AllohaTranslation(id: tKey, name: transName, iframeUrl: iframe))
+                    } else if let transArray = eDict["translation"] as? [[String: Any]] {
+                        for (index, tDict) in transArray.enumerated() {
+                            guard var iframe = tDict["iframe"] as? String, !iframe.isEmpty else { continue }
+                            if iframe.hasPrefix("//") {
+                                iframe = "https:" + iframe
+                            }
+                            let transName = tDict["translation"] as? String ?? "Unknown"
+                            parsedTrans.append(AllohaTranslation(id: String(index), name: transName, iframeUrl: iframe))
+                        }
                     }
                     
                     parsedTrans.sort { $0.name < $1.name }
@@ -127,6 +137,16 @@ class AllohaRepository {
                     }
                     let transName = tDict["translation"] as? String ?? "Unknown"
                     parsedTrans.append(AllohaTranslation(id: tKey, name: transName, iframeUrl: iframe))
+                }
+                parsedTrans.sort { $0.name < $1.name }
+            } else if let transArray = dataObj["translation"] as? [[String: Any]] {
+                for (index, tDict) in transArray.enumerated() {
+                    guard var iframe = tDict["iframe"] as? String, !iframe.isEmpty else { continue }
+                    if iframe.hasPrefix("//") {
+                        iframe = "https:" + iframe
+                    }
+                    let transName = tDict["translation"] as? String ?? "Unknown"
+                    parsedTrans.append(AllohaTranslation(id: String(index), name: transName, iframeUrl: iframe))
                 }
                 parsedTrans.sort { $0.name < $1.name }
             }
