@@ -60,7 +60,7 @@ class CollapsRepository {
     private func fetchEmbedHtml(url: String) async throws -> String {
         guard let fetchUrl = URL(string: url) else { throw URLError(.badURL) }
         var request = URLRequest(url: fetchUrl)
-        request.setValue("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36", forHTTPHeaderField: "User-Agent")
+        request.setValue("Mozilla/5.0 (Windows NT 10.0; Win64; x64)", forHTTPHeaderField: "User-Agent")
         request.setValue("https://kinokrad.my", forHTTPHeaderField: "Origin")
         request.setValue("https://kinokrad.my/", forHTTPHeaderField: "Referer")
         
