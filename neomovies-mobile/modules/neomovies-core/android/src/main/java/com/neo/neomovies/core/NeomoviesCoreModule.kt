@@ -248,7 +248,7 @@ class NeomoviesCoreModule : Module() {
     }
 
     View(EpisodesListView::class) {
-      Events("onEpisodePress", "onContentHeight", "onDownloadPress", "onWatchedToggle")
+      Events("onEpisodePress", "onContentHeight", "onDownloadPress")
 
       Prop("episodes") { view: EpisodesListView, episodes: List<Map<String, Any?>> ->
         view.setEpisodes(episodes)
@@ -612,17 +612,6 @@ class NeomoviesCoreModule : Module() {
         }
 
       (episodeRecords + movieRecords).sortedByDescending { (it["updatedAtMs"] as? Long) ?: 0L }
-    }
-
-    Function("setCollapsEpisodeWatched") { kpId: Int, season: Int, episode: Int, watched: Boolean ->
-      val context = appContext.reactContext ?: throw Exception("No react context")
-      val watchedPrefs = context.getSharedPreferences("collaps_watched", android.content.Context.MODE_PRIVATE)
-      val key = "kp_${kpId}_s${season}_e${episode}"
-      watchedPrefs.edit()
-        .putBoolean("${key}_watched", watched)
-        .putLong("${key}_updated_at", System.currentTimeMillis())
-        .apply()
-      true
     }
   }
 }

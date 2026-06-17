@@ -98,7 +98,7 @@ export default function AboutScreen() {
           <ListRowItem
             title={copy.about.credits}
             subtitle={copy.about.creditsDesc}
-            onPress={() => router.push({ pathname: '/credits', params: { from: '/about' } })}
+            onPress={() => router.push('/credits')}
             showChevron
             leftAccessory={
               <View style={styles.iconWrapper}>
@@ -109,7 +109,7 @@ export default function AboutScreen() {
           <ListRowItem
             title={copy.about.changelog}
             subtitle={copy.about.changelogDesc}
-            onPress={() => router.push({ pathname: '/changelog', params: { from: '/about' } })}
+            onPress={() => router.push('/changelog')}
             showChevron
             leftAccessory={
               <View style={styles.iconWrapper}>

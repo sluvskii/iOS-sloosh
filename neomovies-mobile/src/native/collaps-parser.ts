@@ -247,7 +247,6 @@ type NeomoviesCoreModule = {
     lastUpdatedAtMs: number;
   };
   listCollapsWatchProgressRecords?(kpId?: number | null): CollapsWatchProgressRecord[];
-  setCollapsEpisodeWatched?(kpId: number, season: number, episode: number, watched: boolean): boolean;
 };
 
 let nativeModule: NeomoviesCoreModule | null = null;
@@ -817,13 +816,4 @@ export function getCollapsWatchProgress(kpId: number, season?: number | null, ep
 
 export function listCollapsWatchProgressRecords(kpId?: number | null): CollapsWatchProgressRecord[] {
   return getNativeModule().listCollapsWatchProgressRecords?.(kpId ?? null) ?? [];
-}
-
-export async function setCollapsEpisodeWatched(
-  kpId: number,
-  season: number,
-  episode: number,
-  watched: boolean
-): Promise<boolean> {
-  return getNativeModule().setCollapsEpisodeWatched?.(kpId, season, episode, watched) ?? false;
 }

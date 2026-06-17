@@ -105,12 +105,11 @@ public class CollapsHlsRewriter {
                     continue
                 }
                 
-                // Deduplicate variants by resolution/codecs/audio/bandwidth
+                // Deduplicate variants by resolution/codecs/audio
                 let resolution = extractAttrValue(line, key: "RESOLUTION")
-                let bandwidth = extractAttrValue(line, key: "BANDWIDTH")
                 let codecs = extractQuotedAttr(line, key: "CODECS")
                 let audioGroup = extractQuotedAttr(line, key: "AUDIO")
-                let key = [resolution, bandwidth, codecs, audioGroup].compactMap { $0 }.joined(separator: "|")
+                let key = [resolution, codecs, audioGroup].compactMap { $0 }.joined(separator: "|")
                 
                 if !key.isEmpty && !seenVariantKeys.insert(key).inserted {
                     i += 2 // Skip duplicate variant

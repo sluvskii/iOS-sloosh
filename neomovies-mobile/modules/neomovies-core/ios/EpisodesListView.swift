@@ -7,7 +7,6 @@ fileprivate struct EpisodeRow {
   let title: String
   let description: String
   let progress: Int
-  let watched: Bool
   let stillUrl: String?
   let fallbackPosterUrl: String?
   let tmdbRating: Double?
@@ -18,7 +17,6 @@ final class EpisodesListView: ExpoView, UITableViewDataSource, UITableViewDelega
   let onEpisodePress = EventDispatcher()
   let onContentHeight = EventDispatcher()
   let onDownloadPress = EventDispatcher()
-  let onWatchedToggle = EventDispatcher()
 
   private let tableView = UITableView(frame: .zero, style: .plain)
   private var items: [EpisodeRow] = []
@@ -59,7 +57,6 @@ final class EpisodesListView: ExpoView, UITableViewDataSource, UITableViewDelega
         title: (raw["title"] as? String) ?? "",
         description: (raw["description"] as? String) ?? "",
         progress: min(max((raw["progress"] as? Int ?? (raw["progress"] as? NSNumber)?.intValue ?? 0), 0), 100),
-        watched: (raw["watched"] as? Bool) ?? false,
         stillUrl: raw["stillUrl"] as? String,
         fallbackPosterUrl: raw["fallbackPosterUrl"] as? String,
         tmdbRating: raw["tmdbRating"] as? Double ?? (raw["tmdbRating"] as? NSNumber)?.doubleValue,
@@ -146,7 +143,7 @@ private final class EpisodeCell: UITableViewCell {
   private let metaLabel = UILabel()
   private let descLabel = UILabel()
   private let downloadWrap = UIView()
-  private let downloadIcon = LucideIconView(kind: .check)
+  private let downloadIcon = LucideIconView(kind: .download)
   private var imageTask: URLSessionDataTask?
   private var imageURL: String?
   private var episodeData: EpisodeRow?
@@ -276,8 +273,7 @@ private final class EpisodeCell: UITableViewCell {
     metaLabel.textColor = secondaryTextColor
     descLabel.textColor = secondaryTextColor
     downloadWrap.layer.borderColor = borderColor.cgColor
-    downloadIcon.strokeColor = item.watched ? .systemGreen : secondaryTextColor
-    contentView.backgroundColor = item.watched ? UIColor(red: 0.09, green: 0.22, blue: 0.14, alpha: 1) : .clear
+    downloadIcon.strokeColor = secondaryTextColor
     titleLabel.text = "\(item.episode). \(item.title)"
     let rating = item.tmdbRating != nil ? String(format: " · TMDB %.1f", item.tmdbRating!) : (item.imdbRating != nil ? String(format: " · IMDb %.1f", item.imdbRating!) : "")
     metaLabel.text = "S\(item.season) · E\(item.episode)\(rating)"
@@ -319,7 +315,7 @@ private final class EpisodeCell: UITableViewCell {
     if let tableView = superview as? UITableView,
        let indexPath = tableView.indexPath(for: self),
        let listView = tableView.delegate as? EpisodesListView {
-      listView.onWatchedToggle(["season": item.season, "episode": item.episode])
+      listView.onDownloadPress(["season": item.season, "episode": item.episode])
     }
   }
 
@@ -330,7 +326,7 @@ private final class EpisodeCell: UITableViewCell {
 }
 
 private final class LucideIconView: UIView {
-  enum Kind { case play, download, check }
+  enum Kind { case play, download }
   var strokeColor: UIColor = .white {
     didSet { shape.strokeColor = strokeColor.cgColor; shape.fillColor = fillColor?.cgColor }
   }
@@ -388,13 +384,6 @@ private final class LucideIconView: UIView {
       path.move(to: point(7, 10))
       path.addLine(to: point(12, 15))
       path.addLine(to: point(17, 10))
-    case .check:
-      path.move(to: point(4, 12))
-      path.addLine(to: point(9, 17))
-      path.addLine(to: point(20, 6))
-      path.move(to: point(2, 12))
-      path.addLine(to: point(7, 17))
-      path.addLine(to: point(18, 6))
     }
     shape.path = path.cgPath
   }

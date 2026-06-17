@@ -47,7 +47,7 @@ function ContinueWatchingCardWrapper({ item, nextUpLabel }: { item: ContinueWatc
   return (
     <Pressable
       onPress={() =>
-        router.push({ pathname: '/media/[id]', params: { id: item.mediaId, title: title ?? '', from: '/' } })
+        router.push({ pathname: '/media/[id]', params: { id: item.mediaId, title: title ?? '' } })
       }>
       <ContinueWatchingCard
         item={item}

@@ -129,7 +129,7 @@ export default function FavoritesScreen() {
                 onPress={() =>
                   router.push({
                     pathname: '/media/[id]',
-                    params: { id: item.value.id, title: item.value.title, from: '/favorites' },
+                    params: { id: item.value.id, title: item.value.title },
                   })
                 }>
                 <PosterCard item={item.value} fluid />

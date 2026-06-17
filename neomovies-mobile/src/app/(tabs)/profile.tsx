@@ -77,9 +77,7 @@ export default function ProfileScreen() {
           {menuItems.map((item, index) => (
             <Pressable
               key={item.label}
-              onPress={() =>
-                router.push({ pathname: item.route as '/settings' | '/about', params: { from: '/profile' } })
-              }
+              onPress={() => router.push(item.route as never)}
               style={[styles.menuItem, index === menuItems.length - 1 ? styles.menuItemLast : null]}>
               <View style={styles.menuItemLeft}>
                 {item.icon}

@@ -126,7 +126,7 @@ export default function SearchScreen() {
             void trackCurrentQuery();
             router.push({
               pathname: '/media/[id]',
-              params: { id: item.value.id, title: item.value.title, from: '/explore' },
+              params: { id: item.value.id, title: item.value.title },
             });
           }}>
           <PosterCard item={item.value} fluid />
