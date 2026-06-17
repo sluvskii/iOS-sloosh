@@ -125,26 +125,26 @@ struct HomeCategoryContentView: View {
 
     var body: some View {
         let key = HomeCacheKey(category: category, filter: viewModel.selectedFilter)
-        let items = viewModel.cachedItems[key] ?? []
+        let items = viewModel.cachedItems[key]
         let isLoading = viewModel.isLoading[key] ?? false
         let isLoadingMore = viewModel.isLoadingMore[key] ?? false
 
         ScrollView {
-            if isLoading {
+            if isLoading || items == nil {
                 LazyVGrid(columns: columns, spacing: 20) {
                     ForEach(0..<12, id: \.self) { _ in
                         MoviePosterCardPlaceholder()
                     }
                 }
                 .padding(16)
-            } else if items.isEmpty {
+            } else if let items = items, items.isEmpty {
                 HomeEmptyState(
                     category: category,
                     filter: viewModel.selectedFilter
                 )
                 .frame(maxWidth: .infinity, minHeight: 300)
                 .padding(.horizontal, 20)
-            } else {
+            } else if let items = items {
                 LazyVGrid(columns: columns, spacing: 20) {
                     ForEach(items) { movie in
                         MovieDetailsNavigationLink(movie: movie, navigationTransition: navigationTransition)
@@ -542,7 +542,7 @@ class HomeViewModel: ObservableObject {
         let key = HomeCacheKey(category: selectedCategory, filter: selectedFilter)
 
         if force {
-            cachedItems[key] = []
+            cachedItems[key] = nil
             cachedPages[key] = 1
             cachedCanLoadMore[key] = true
         } else if !hasPerformedInitialLoad {
