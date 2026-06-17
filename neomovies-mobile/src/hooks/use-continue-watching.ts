@@ -1,7 +1,16 @@
 import { useFocusEffect } from 'expo-router';
 import { useCallback, useState } from 'react';
 
-import { listCollapsWatchProgressRecords } from '@/native/collaps-parser';
+import { useContentSource } from '@/hooks/use-content-source';
+import { buildAllohaSeriesCatalogFromApi } from '@/hooks/watch-player/alloha';
+import { getProviderEmbedHtml } from '@/lib/neomovies-api';
+import {
+  CollapsCatalog,
+  CollapsEpisode,
+  CollapsWatchProgressRecord,
+  listCollapsWatchProgressRecords,
+  parseCollapsCatalog,
+} from '@/native/collaps-parser';
 
 export type ContinueWatchingItem = {
   kpId: number;
@@ -16,76 +25,153 @@ export type ContinueWatchingItem = {
 const MIN_PROGRESS_PERCENT = 3;
 const MIN_ITEMS_TO_SHOW = 1;
 const MAX_ITEMS = 20;
+const CATALOG_CACHE_TTL_MS = 1000 * 60 * 5;
+
+const catalogCache = new Map<string, { expiresAt: number; value: CollapsCatalog | null }>();
+
+function progressKey(season: number | null, episode: number | null) {
+  return `${season ?? 0}-${episode ?? 0}`;
+}
+
+async function resolveSeriesCatalog(mediaId: string, source: 'collaps' | 'alloha') {
+  const cacheKey = `${source}:${mediaId}`;
+  const cached = catalogCache.get(cacheKey);
+  if (cached && cached.expiresAt > Date.now()) return cached.value;
+
+  const catalog =
+    source === 'alloha'
+      ? await buildAllohaSeriesCatalogFromApi(mediaId)
+      : await getProviderEmbedHtml(mediaId, source).then((payload) => parseCollapsCatalog(payload.embedHtml));
+
+  catalogCache.set(cacheKey, {
+    expiresAt: Date.now() + CATALOG_CACHE_TTL_MS,
+    value: catalog,
+  });
+  return catalog;
+}
+
+function findNextEpisode(catalog: CollapsCatalog | null, season: number, episode: number): CollapsEpisode | null {
+  if (catalog?.kind !== 'series') return null;
+  const episodes = catalog.seasons
+    .flatMap((item) => item.episodes)
+    .sort((a, b) => a.season - b.season || a.episode - b.episode);
+  const currentIndex = episodes.findIndex((item) => item.season === season && item.episode === episode);
+  if (currentIndex < 0) return null;
+  return episodes[currentIndex + 1] ?? null;
+}
+
+function toEpisodeItem(record: CollapsWatchProgressRecord): ContinueWatchingItem {
+  return {
+    kpId: record.kpId,
+    mediaId: record.mediaId,
+    kind: 'episode',
+    season: record.season,
+    episode: record.episode,
+    progressPercent: record.progressPercent,
+    updatedAtMs: record.updatedAtMs,
+  };
+}
 
 export function useContinueWatching(): ContinueWatchingItem[] {
   const [items, setItems] = useState<ContinueWatchingItem[]>([]);
+  const { source, ready: sourceReady } = useContentSource();
 
   useFocusEffect(
     useCallback(() => {
+      let cancelled = false;
       const records = listCollapsWatchProgressRecords();
+      const byKpId = new Map<number, typeof records>();
 
-      // Group by kpId, keep most recent record per kpId
-      const byKpId = new Map<number, typeof records[number]>();
-      for (const r of records) {
-        const existing = byKpId.get(r.kpId);
-        if (!existing || r.updatedAtMs > existing.updatedAtMs) {
-          byKpId.set(r.kpId, r);
+      for (const record of records) {
+        const group = byKpId.get(record.kpId);
+        if (group) {
+          group.push(record);
+        } else {
+          byKpId.set(record.kpId, [record]);
         }
       }
 
-      const result: ContinueWatchingItem[] = [];
+      void (async () => {
+        if (!sourceReady) return;
 
-      for (const r of byKpId.values()) {
-        if (r.progressPercent < MIN_PROGRESS_PERCENT) continue;
+        const result: ContinueWatchingItem[] = [];
 
-        if (r.kind === 'movie_or_generic') {
-          if (r.watched) continue;
-          result.push({
-            kpId: r.kpId,
-            mediaId: r.mediaId,
-            kind: 'movie',
-            season: null,
-            episode: null,
-            progressPercent: r.progressPercent,
-            updatedAtMs: r.updatedAtMs,
-          });
-        } else {
-          // episode — show current episode (continue watching)
-          result.push({
-            kpId: r.kpId,
-            mediaId: r.mediaId,
-            kind: 'episode',
-            season: r.season,
-            episode: r.episode,
-            progressPercent: r.progressPercent,
-            updatedAtMs: r.updatedAtMs,
-          });
+        for (const group of byKpId.values()) {
+          const sorted = group
+            .filter((record) => record.progressPercent >= MIN_PROGRESS_PERCENT)
+            .sort((a, b) => b.updatedAtMs - a.updatedAtMs);
+          if (sorted.length === 0) continue;
 
-          // next up — next episode if current is mostly watched (>= 85%)
-          if (r.progressPercent >= 85 && r.season != null && r.episode != null) {
+          const latestMovie = sorted[0].kind === 'movie_or_generic' ? sorted[0] : null;
+          if (latestMovie) {
+            if (latestMovie.watched) continue;
             result.push({
-              kpId: r.kpId,
-              mediaId: r.mediaId,
-              kind: 'next_up',
-              season: r.season,
-              episode: r.episode + 1,
-              progressPercent: 0,
-              updatedAtMs: r.updatedAtMs,
+              kpId: latestMovie.kpId,
+              mediaId: latestMovie.mediaId,
+              kind: 'movie',
+              season: null,
+              episode: null,
+              progressPercent: latestMovie.progressPercent,
+              updatedAtMs: latestMovie.updatedAtMs,
             });
+            continue;
+          }
+
+          const latestEpisode = sorted[0];
+          if (latestEpisode.kind !== 'episode' || latestEpisode.season == null || latestEpisode.episode == null) {
+            continue;
+          }
+
+          const episodeRecords = sorted.filter(
+            (record) => record.kind === 'episode' && record.season != null && record.episode != null
+          );
+          const progressByEpisode = new Map(
+            episodeRecords.map((record) => [progressKey(record.season, record.episode), record])
+          );
+
+          if (!latestEpisode.watched) {
+            result.push(toEpisodeItem(latestEpisode));
+            continue;
+          }
+
+          try {
+            const catalog = await resolveSeriesCatalog(latestEpisode.mediaId, source);
+            const nextEpisode = findNextEpisode(catalog, latestEpisode.season, latestEpisode.episode);
+            if (!nextEpisode) continue;
+
+            const nextProgress = progressByEpisode.get(progressKey(nextEpisode.season, nextEpisode.episode));
+            if (nextProgress?.watched) continue;
+
+            result.push({
+              kpId: latestEpisode.kpId,
+              mediaId: latestEpisode.mediaId,
+              kind: 'next_up',
+              season: nextEpisode.season,
+              episode: nextEpisode.episode,
+              progressPercent: nextProgress?.progressPercent ?? 0,
+              updatedAtMs: latestEpisode.updatedAtMs,
+            });
+          } catch {
           }
         }
-      }
 
-      result.sort((a, b) => b.updatedAtMs - a.updatedAtMs);
+        if (cancelled) return;
 
-      const uniqueKpIds = new Set(result.map((i) => i.kpId));
-      if (uniqueKpIds.size < MIN_ITEMS_TO_SHOW) {
-        setItems([]);
-        return;
-      }
+        result.sort((a, b) => b.updatedAtMs - a.updatedAtMs);
 
-      setItems(result.slice(0, MAX_ITEMS));
-    }, [])
+        const uniqueKpIds = new Set(result.map((item) => item.kpId));
+        if (uniqueKpIds.size < MIN_ITEMS_TO_SHOW) {
+          setItems([]);
+          return;
+        }
+
+        setItems(result.slice(0, MAX_ITEMS));
+      })();
+
+      return () => {
+        cancelled = true;
+      };
+    }, [source, sourceReady])
   );
 
   return items;

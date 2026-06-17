@@ -128,5 +128,4 @@ export type CollapsParserModule = {
     episode?: number | null
   ): CollapsWatchProgressSnapshot;
   listCollapsWatchProgressRecords?(kpId?: number | null): CollapsWatchProgressRecord[];
-  setCollapsEpisodeWatched?(kpId: number, season: number, episode: number, watched: boolean): boolean;
 };

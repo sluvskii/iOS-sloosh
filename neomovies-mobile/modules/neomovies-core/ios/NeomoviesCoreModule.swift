@@ -15,7 +15,7 @@ public class NeomoviesCoreModule: Module {
     Events("onAVPlayerStateChanged", "onAVPlayerProgress", "onAVPlayerEpisodeChanged", "onAVPlayerDismissed")
 
     View(EpisodesListView.self) {
-      Events("onEpisodePress", "onContentHeight", "onDownloadPress", "onWatchedToggle")
+      Events("onEpisodePress", "onContentHeight", "onDownloadPress")
 
       Prop("episodes") { (view: EpisodesListView, episodes: [[String: Any]]) in
         view.setEpisodes(episodes)
@@ -614,13 +614,6 @@ public class NeomoviesCoreModule: Module {
       }
 
       return records.sorted { ($0["updatedAtMs"] as? Int ?? 0) > ($1["updatedAtMs"] as? Int ?? 0) }
-    }
-
-    Function("setCollapsEpisodeWatched") { (kpId: Int, season: Int, episode: Int, watched: Bool) -> Bool in
-      let store = CollapsPlaybackProgressStore.shared
-      let mediaId = "kp_\(kpId)_s\(season)_e\(episode)"
-      store.setWatched(mediaId: mediaId, watched: watched)
-      return true
     }
   }
 

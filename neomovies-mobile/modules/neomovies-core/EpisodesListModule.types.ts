@@ -6,7 +6,6 @@ export type NativeEpisodeItem = {
   title: string;
   description: string;
   progress: number;
-  watched?: boolean;
   stillUrl?: string | null;
   fallbackPosterUrl?: string | null;
   tmdbRating?: number | null;
@@ -22,5 +21,4 @@ export type EpisodesListViewProps = ViewProps & {
   onEpisodePress?: (event: { nativeEvent: { season: number; episode: number } }) => void;
   onContentHeight?: (event: { nativeEvent: { height: number } }) => void;
   onDownloadPress?: (event: { nativeEvent: { season: number; episode: number } }) => void;
-  onWatchedToggle?: (event: { nativeEvent: { season: number; episode: number } }) => void;
 };

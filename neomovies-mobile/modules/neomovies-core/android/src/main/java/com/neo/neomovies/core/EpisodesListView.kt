@@ -26,7 +26,6 @@ class EpisodesListView(context: Context, appContext: AppContext) : ExpoView(cont
   private val onEpisodePress by EventDispatcher<Map<String, Any>>()
   private val onContentHeight by EventDispatcher<Map<String, Any>>()
   private val onDownloadPress by EventDispatcher<Map<String, Any>>()
-  private val onWatchedToggle by EventDispatcher<Map<String, Any>>()
   private val recyclerView = RecyclerView(context)
   private val adapter = EpisodesAdapter(
     onEpisodePress = { episode ->
@@ -34,9 +33,6 @@ class EpisodesListView(context: Context, appContext: AppContext) : ExpoView(cont
     },
     onDownloadPress = { episode ->
       onDownloadPress(mapOf("season" to episode.season, "episode" to episode.episode))
-    },
-    onWatchedToggle = { episode ->
-      onWatchedToggle(mapOf("season" to episode.season, "episode" to episode.episode))
     }
   )
 
@@ -67,7 +63,6 @@ class EpisodesListView(context: Context, appContext: AppContext) : ExpoView(cont
         title = (raw["title"] as? String).orEmpty(),
         description = (raw["description"] as? String).orEmpty(),
         progress = ((raw["progress"] as? Number)?.toInt() ?: 0).coerceIn(0, 100),
-        watched = raw["watched"] as? Boolean ?: false,
         stillUrl = raw["stillUrl"] as? String,
         fallbackPosterUrl = raw["fallbackPosterUrl"] as? String,
         tmdbRating = (raw["tmdbRating"] as? Number)?.toDouble(),
@@ -101,7 +96,6 @@ private data class EpisodeUi(
   val title: String,
   val description: String,
   val progress: Int,
-  val watched: Boolean,
   val stillUrl: String?,
   val fallbackPosterUrl: String?,
   val tmdbRating: Double?,
@@ -111,7 +105,6 @@ private data class EpisodeUi(
 private class EpisodesAdapter(
   private val onEpisodePress: (EpisodeUi) -> Unit,
   private val onDownloadPress: (EpisodeUi) -> Unit,
-  private val onWatchedToggle: (EpisodeUi) -> Unit,
 ) : RecyclerView.Adapter<EpisodesAdapter.VH>() {
   private val items = mutableListOf<EpisodeUi>()
 
@@ -246,7 +239,7 @@ private class EpisodesAdapter(
     }
     val downloadIcon = ImageView(parent.context).apply {
       layoutParams = FrameLayout.LayoutParams(dp(16), dp(16), Gravity.CENTER)
-      setImageDrawable(AppCompatResources.getDrawable(parent.context, R.drawable.ic_check))
+      setImageDrawable(AppCompatResources.getDrawable(parent.context, R.drawable.ic_lucide_download))
     }
     downloadWrap.addView(downloadIcon)
 
@@ -262,16 +255,13 @@ private class EpisodesAdapter(
   override fun onBindViewHolder(holder: VH, position: Int) {
     val item = items[position]
     holder.root.setOnClickListener { onEpisodePress(item) }
-    holder.downloadWrap.setOnClickListener { onWatchedToggle(item) }
-    holder.root.background = android.graphics.drawable.GradientDrawable().apply {
-      cornerRadius = 12f * holder.root.resources.displayMetrics.density
-      setColor(if (item.watched) Color.parseColor("#163824") else Color.TRANSPARENT)
-    }
+    holder.downloadWrap.setOnClickListener { onDownloadPress(item) }
+    holder.root.background = null
     holder.title.setTextColor(textColor)
     holder.meta.setTextColor(secondaryTextColor)
     holder.description.setTextColor(secondaryTextColor)
     holder.progress.setTextColor(secondaryTextColor)
-    holder.downloadIcon.setColorFilter(if (item.watched) Color.parseColor("#35C759") else secondaryTextColor)
+    holder.downloadIcon.setColorFilter(secondaryTextColor)
     (holder.downloadWrap.background as? android.graphics.drawable.GradientDrawable)?.apply {
       setStroke(1, borderColor)
     }

@@ -130,7 +130,7 @@ export default function SettingsScreen() {
           <ListRowItem
             title={copy.settings.source}
             value={sourceLabel}
-            onPress={() => router.push({ pathname: '/settings/source', params: { from: '/settings' } })}
+            onPress={() => router.push('/settings/source')}
             showChevron
             leftAccessory={
               <View style={styles.iconWrapper}>
@@ -142,7 +142,7 @@ export default function SettingsScreen() {
           <ListRowItem
             title={copy.settings.language}
             value={LANGUAGES.find((l) => l.code === locale)?.name}
-            onPress={() => router.push({ pathname: '/settings/language', params: { from: '/settings' } })}
+            onPress={() => router.push('/settings/language')}
             showChevron
             leftAccessory={
               <View style={styles.iconWrapper}>

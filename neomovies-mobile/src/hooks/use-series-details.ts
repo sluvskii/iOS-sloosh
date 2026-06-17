@@ -172,7 +172,6 @@ export function useSeriesDetails(details: MediaDetails | null) {
   const episodeMetaPatchRef = useRef<Record<string, EpisodeMeta>>({});
   const episodeMetaFlushTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [seasonProgressMap, setSeasonProgressMap] = useState<Record<string, number>>({});
-  const [seasonWatchedMap, setSeasonWatchedMap] = useState<Record<string, boolean>>({});
   const mediaIdNumber = Number((details?.id ?? '').replace(/^kp_/, ''));
   const canReadProgress = Number.isFinite(mediaIdNumber);
   const progressKpId = details?.type === 'tv' && canReadProgress ? mediaIdNumber : null;
@@ -458,21 +457,16 @@ export function useSeriesDetails(details: MediaDetails | null) {
     useCallback(() => {
       if (!details || details.type !== 'tv' || !Number.isFinite(mediaIdNumber)) {
         setSeasonProgressMap({});
-        setSeasonWatchedMap({});
         return;
       }
 
       const records = listCollapsWatchProgressRecords(mediaIdNumber);
       const nextMap: Record<string, number> = {};
-      const nextWatchedMap: Record<string, boolean> = {};
       for (const record of records) {
         if (record.season == null || record.episode == null) continue;
-        const key = `${record.season}-${record.episode}`;
-        nextMap[key] = Math.max(0, Math.min(record.progressPercent ?? 0, 100));
-        nextWatchedMap[key] = record.watched === true;
+        nextMap[`${record.season}-${record.episode}`] = Math.max(0, Math.min(record.progressPercent ?? 0, 100));
       }
       setSeasonProgressMap(nextMap);
-      setSeasonWatchedMap(nextWatchedMap);
     }, [details, mediaIdNumber])
   );
 
@@ -496,7 +490,6 @@ export function useSeriesDetails(details: MediaDetails | null) {
     canReadProgress,
     seriesProgress,
     seasonProgressMap,
-    seasonWatchedMap,
     sortedEpisodes,
   };
 }

@@ -30,7 +30,7 @@ type GridItem =
 export default function CategoryScreen() {
   const { width } = useWindowDimensions();
   const theme = useTheme();
-  const params = useLocalSearchParams<{ kind?: string; from?: string }>();
+  const params = useLocalSearchParams<{ kind?: string }>();
   const kindParam = params.kind;
   const kind =
     kindParam === 'popular' || kindParam === 'top-films' || kindParam === 'top-series'
@@ -145,7 +145,7 @@ export default function CategoryScreen() {
                 onPress={() =>
                   router.push({
                     pathname: '/media/[id]',
-                    params: { id: item.value.id, title: item.value.title, from: `/category/${kind}` },
+                    params: { id: item.value.id, title: item.value.title },
                   })
                 }>
                 <PosterCard item={item.value} fluid />

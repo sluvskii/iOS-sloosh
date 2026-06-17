@@ -43,7 +43,7 @@ export function MediaCarouselSection({
     : items.map((item) => (
         <Pressable
           key={item.id}
-          onPress={() => router.push({ pathname: '/media/[id]', params: { id: item.id, title: item.title, from: '/' } })}>
+          onPress={() => router.push({ pathname: '/media/[id]', params: { id: item.id, title: item.title } })}>
           <CardComponent item={item} />
         </Pressable>
       ));
@@ -54,7 +54,7 @@ export function MediaCarouselSection({
         <ThemedText style={mediaCarouselSectionStyles.sectionTitle}>{title}</ThemedText>
         <Pressable
           style={mediaCarouselSectionStyles.headerAction}
-          onPress={() => router.push({ pathname: '/category/[kind]', params: { kind: categoryKind, title, from: '/' } })}>
+          onPress={() => router.push({ pathname: '/category/[kind]', params: { kind: categoryKind, title } })}>
           <ChevronRight size={22} color={theme.textSecondary} strokeWidth={2.6} />
         </Pressable>
       </View>
@@ -68,3 +68,4 @@ export function MediaCarouselSection({
     </View>
   );
 }
+

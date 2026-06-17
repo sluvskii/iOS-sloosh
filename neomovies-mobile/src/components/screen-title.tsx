@@ -11,11 +11,10 @@ import { screenTitleStyles } from '@/styles/screen-title.styles';
 
 export function ScreenTitle() {
   const pathname = usePathname();
-  const params = useGlobalSearchParams<{ title?: string; from?: string }>();
+  const params = useGlobalSearchParams<{ title?: string }>();
   const theme = useTheme();
   const { copy } = useI18n();
   const detailsTitle = typeof params.title === 'string' ? decodeURIComponent(params.title) : '';
-  const from = typeof params.from === 'string' ? decodeURIComponent(params.from) : '';
   const isDetailsScreen = pathname.startsWith('/media/');
   const isCategoryScreen = pathname.startsWith('/category/');
   const isWatchSelectorScreen = pathname.startsWith('/watch/');
@@ -67,11 +66,6 @@ export function ScreenTitle() {
         <View style={screenTitleStyles.backButton}>
           <Pressable
             onPress={() => {
-              const allowedFrom = new Set(['/','/explore','/favorites','/profile','/settings','/about']);
-              if (from && allowedFrom.has(from)) {
-                router.replace(from as any);
-                return;
-              }
               if (router.canGoBack()) {
                 router.back();
               } else {

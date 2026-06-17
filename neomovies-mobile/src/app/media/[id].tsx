@@ -18,7 +18,6 @@ import { useWatchProgress } from '@/hooks/use-watch-progress';
 import { useI18n } from '@/i18n';
 import { addFavorite, checkFavorite, removeFavorite, resolveEpisodeStillUrl, resolveBackdropUrl, resolveLogoUrl, resolvePosterUrl } from '@/lib/neomovies-api';
 import { getStoredTokens } from '@/lib/neoid-auth';
-import { setCollapsEpisodeWatched } from '@/native/collaps-parser';
 import { resetMediaFavoriteHeader, setMediaFavoriteHeader } from '@/lib/media-favorite-header';
 import { setRouteHasCache } from '@/lib/screen-cache-state';
 import { createMediaDetailsStyles } from '@/styles/media-details.styles';
@@ -54,15 +53,8 @@ export default function MediaDetailsScreen() {
     canReadProgress,
     seriesProgress,
     seasonProgressMap,
-    seasonWatchedMap,
     sortedEpisodes,
   } = useSeriesDetails(details);
-
-  const [watchedOverrides, setWatchedOverrides] = useState<Record<string, boolean>>({});
-
-  useEffect(() => {
-    setWatchedOverrides({});
-  }, [details?.id, selectedSeasonData?.season]);
 
   const movieKpId = details?.type === 'movie' && canReadProgress ? mediaIdNumber : null;
   const movieProgress = useWatchProgress(movieKpId);
@@ -195,24 +187,6 @@ export default function MediaDetailsScreen() {
     });
   }, [details]);
 
-  const handleToggleEpisodeWatched = useCallback(async (season: number, episode: number) => {
-    if (!details || !canReadProgress) return;
-    const key = `${season}-${episode}`;
-    const currentWatched = watchedOverrides[key] ?? seasonWatchedMap[key] ?? false;
-    const nextWatched = !currentWatched;
-    setWatchedOverrides((prev) => ({ ...prev, [key]: nextWatched }));
-    try {
-      await setCollapsEpisodeWatched(mediaIdNumber, season, episode, nextWatched);
-    } catch {
-      setWatchedOverrides((prev) => ({ ...prev, [key]: currentWatched }));
-    }
-  }, [details, canReadProgress, watchedOverrides, seasonWatchedMap, mediaIdNumber]);
-
-  const effectiveSeasonWatchedMap = useMemo(
-    () => ({ ...seasonWatchedMap, ...watchedOverrides }),
-    [seasonWatchedMap, watchedOverrides]
-  );
-
   useEffect(() => {
     setMediaFavoriteHeader({
       visible: Boolean(details) && favoriteStatusReady && isAuthenticated,
@@ -320,12 +294,10 @@ export default function MediaDetailsScreen() {
           sortedEpisodes={sortedEpisodes}
           episodeMetaMap={episodeMetaMap}
           seasonProgressMap={seasonProgressMap}
-          seasonWatchedMap={effectiveSeasonWatchedMap}
           posterUri={posterUri}
           resolveEpisodeStillUrl={resolveEpisodeStillUrl}
           headerContent={detailsHeaderContent}
           onOpenEpisode={handleOpenEpisode}
-          onToggleEpisodeWatched={handleToggleEpisodeWatched}
         />
       </ThemedView>
     );

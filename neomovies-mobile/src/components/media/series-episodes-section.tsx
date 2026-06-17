@@ -1,8 +1,9 @@
 import { ChevronDown, Menu } from "lucide-react-native";
 import { Dispatch, ReactElement, SetStateAction, useEffect, useMemo, useState } from "react";
-import { Pressable, ScrollView, View } from "react-native";
+import { Alert, Pressable, ScrollView, View } from "react-native";
 
 import { ThemedText } from "@/components/themed-text";
+import { useI18n } from "@/i18n/provider";
 import {
   CollapsCatalogSeries,
   CollapsEpisode,
@@ -40,7 +41,6 @@ type SeriesEpisodesSectionProps = {
   sortedEpisodes: CollapsEpisode[];
   episodeMetaMap: Record<string, EpisodeMeta>;
   seasonProgressMap: Record<string, number>;
-  seasonWatchedMap: Record<string, boolean>;
   posterUri: string | null;
   resolveEpisodeStillUrl: (
     movieId?: string | null,
@@ -49,7 +49,6 @@ type SeriesEpisodesSectionProps = {
     size?: "small" | "large",
   ) => string | null;
   onOpenEpisode: (season: number, episode: number) => void;
-  onToggleEpisodeWatched: (season: number, episode: number) => void;
   headerContent?: ReactElement | null;
 };
 
@@ -69,13 +68,12 @@ export function SeriesEpisodesSection(props: SeriesEpisodesSectionProps) {
     sortedEpisodes,
     episodeMetaMap,
     seasonProgressMap,
-    seasonWatchedMap,
     posterUri,
     resolveEpisodeStillUrl,
     onOpenEpisode,
-    onToggleEpisodeWatched,
     headerContent,
   } = props;
+  const { copy: t } = useI18n();
   const [listHeight, setListHeight] = useState(1);
   useEffect(() => {
     setListHeight(1);
@@ -92,7 +90,6 @@ export function SeriesEpisodesSection(props: SeriesEpisodesSectionProps) {
       const progress = canReadProgress
         ? Math.max(0, Math.min(seasonProgressMap[key] ?? 0, 100))
         : 0;
-      const watched = canReadProgress ? (seasonWatchedMap[key] ?? false) : false;
 
       return {
         season: item.season,
@@ -100,7 +97,6 @@ export function SeriesEpisodesSection(props: SeriesEpisodesSectionProps) {
         title: meta?.name || item.title || `Episode ${item.episode}`,
         description: meta?.overview || detailsDescription,
         progress,
-        watched,
         stillUrl: resolveEpisodeStillUrl(detailsId, item.season, item.episode, "large"),
         fallbackPosterUrl: posterUri,
         tmdbRating: meta?.tmdbRating,
@@ -115,7 +111,6 @@ export function SeriesEpisodesSection(props: SeriesEpisodesSectionProps) {
     posterUri,
     resolveEpisodeStillUrl,
     seasonProgressMap,
-    seasonWatchedMap,
     sortedEpisodes,
   ]);
 
@@ -195,8 +190,12 @@ export function SeriesEpisodesSection(props: SeriesEpisodesSectionProps) {
         onEpisodePress={(event) => {
           onOpenEpisode(event.nativeEvent.season, event.nativeEvent.episode);
         }}
-        onWatchedToggle={(event: { nativeEvent: { season: number; episode: number } }) => {
-          onToggleEpisodeWatched(event.nativeEvent.season, event.nativeEvent.episode);
+        onDownloadPress={(event: { nativeEvent: { season: number; episode: number } }) => {
+          // TODO: Add download functionality later
+          Alert.alert(
+            t.media.downloadComingSoon,
+            t.media.downloadComingSoonMessage
+          );
         }}
       />
     </ScrollView>
