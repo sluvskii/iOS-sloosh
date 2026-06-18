@@ -681,7 +681,31 @@ class PlayerViewModel: ObservableObject {
         return variants.compactMap { variant in
             let title = (variant["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             guard !title.isEmpty else { return nil }
-            return seen.insert(title).inserted ? title : nil
+            
+            // Clean up the title similarly so player matching works correctly
+            var cleanTitle = title
+                .replacingOccurrences(of: "\\(Russian\\)", with: "")
+                .replacingOccurrences(of: "AC3 51 @ 640 kbps - Blu-ray CEE", with: "")
+                .replacingOccurrences(of: "AC3 5.1 @ 640 kbps", with: "")
+                .replacingOccurrences(of: "DUB", with: "Дубляж")
+                .replacingOccurrences(of: "MVO", with: "Многоголосый")
+                .replacingOccurrences(of: "DVO", with: "Двухголосый")
+                .replacingOccurrences(of: "AVO", with: "Авторский")
+                .replacingOccurrences(of: "ПМ", with: "Проф. многоголосый")
+                .replacingOccurrences(of: "ПД", with: "Проф. двухголосый")
+                .replacingOccurrences(of: "ЛМ", with: "Люб. многоголосый")
+                .replacingOccurrences(of: "ЛД", with: "Люб. двухголосый")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            
+            while cleanTitle.hasPrefix("-") || cleanTitle.hasPrefix(",") {
+                cleanTitle = String(cleanTitle.dropFirst()).trimmingCharacters(in: .whitespaces)
+            }
+            while cleanTitle.hasSuffix("-") || cleanTitle.hasSuffix(",") {
+                cleanTitle = String(cleanTitle.dropLast()).trimmingCharacters(in: .whitespaces)
+            }
+            if cleanTitle.isEmpty { cleanTitle = title }
+
+            return seen.insert(cleanTitle).inserted ? cleanTitle : nil
         }
     }
 

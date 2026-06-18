@@ -98,7 +98,30 @@ class AllohaRepository {
                                 iframe = "https:" + iframe
                             }
                             let transName = tDict["translation"] as? String ?? "Unknown"
-                            parsedTrans.append(AllohaTranslation(id: tKey, name: transName, iframeUrl: iframe))
+                            
+                            var cleanTitle = transName
+                                .replacingOccurrences(of: "\\(Russian\\)", with: "")
+                                .replacingOccurrences(of: "AC3 51 @ 640 kbps - Blu-ray CEE", with: "")
+                                .replacingOccurrences(of: "AC3 5.1 @ 640 kbps", with: "")
+                                .replacingOccurrences(of: "DUB", with: "Дубляж")
+                                .replacingOccurrences(of: "MVO", with: "Многоголосый")
+                                .replacingOccurrences(of: "DVO", with: "Двухголосый")
+                                .replacingOccurrences(of: "AVO", with: "Авторский")
+                                .replacingOccurrences(of: "ПМ", with: "Проф. многоголосый")
+                                .replacingOccurrences(of: "ПД", with: "Проф. двухголосый")
+                                .replacingOccurrences(of: "ЛМ", with: "Люб. многоголосый")
+                                .replacingOccurrences(of: "ЛД", with: "Люб. двухголосый")
+                                .trimmingCharacters(in: .whitespacesAndNewlines)
+                            
+                            while cleanTitle.hasPrefix("-") || cleanTitle.hasPrefix(",") {
+                                cleanTitle = String(cleanTitle.dropFirst()).trimmingCharacters(in: .whitespaces)
+                            }
+                            while cleanTitle.hasSuffix("-") || cleanTitle.hasSuffix(",") {
+                                cleanTitle = String(cleanTitle.dropLast()).trimmingCharacters(in: .whitespaces)
+                            }
+                            if cleanTitle.isEmpty { cleanTitle = transName }
+
+                            parsedTrans.append(AllohaTranslation(id: tKey, name: cleanTitle, iframeUrl: iframe))
                         }
                     } else if let transArray = eDict["translation"] as? [[String: Any]] {
                         for (index, tDict) in transArray.enumerated() {
@@ -107,7 +130,30 @@ class AllohaRepository {
                                 iframe = "https:" + iframe
                             }
                             let transName = tDict["translation"] as? String ?? "Unknown"
-                            parsedTrans.append(AllohaTranslation(id: String(index), name: transName, iframeUrl: iframe))
+                            
+                            var cleanTitle = transName
+                                .replacingOccurrences(of: "\\(Russian\\)", with: "")
+                                .replacingOccurrences(of: "AC3 51 @ 640 kbps - Blu-ray CEE", with: "")
+                                .replacingOccurrences(of: "AC3 5.1 @ 640 kbps", with: "")
+                                .replacingOccurrences(of: "DUB", with: "Дубляж")
+                                .replacingOccurrences(of: "MVO", with: "Многоголосый")
+                                .replacingOccurrences(of: "DVO", with: "Двухголосый")
+                                .replacingOccurrences(of: "AVO", with: "Авторский")
+                                .replacingOccurrences(of: "ПМ", with: "Проф. многоголосый")
+                                .replacingOccurrences(of: "ПД", with: "Проф. двухголосый")
+                                .replacingOccurrences(of: "ЛМ", with: "Люб. многоголосый")
+                                .replacingOccurrences(of: "ЛД", with: "Люб. двухголосый")
+                                .trimmingCharacters(in: .whitespacesAndNewlines)
+                            
+                            while cleanTitle.hasPrefix("-") || cleanTitle.hasPrefix(",") {
+                                cleanTitle = String(cleanTitle.dropFirst()).trimmingCharacters(in: .whitespaces)
+                            }
+                            while cleanTitle.hasSuffix("-") || cleanTitle.hasSuffix(",") {
+                                cleanTitle = String(cleanTitle.dropLast()).trimmingCharacters(in: .whitespaces)
+                            }
+                            if cleanTitle.isEmpty { cleanTitle = transName }
+
+                            parsedTrans.append(AllohaTranslation(id: String(index), name: cleanTitle, iframeUrl: iframe))
                         }
                     }
                     
@@ -136,7 +182,30 @@ class AllohaRepository {
                         iframe = "https:" + iframe
                     }
                     let transName = tDict["translation"] as? String ?? "Unknown"
-                    parsedTrans.append(AllohaTranslation(id: tKey, name: transName, iframeUrl: iframe))
+                    
+                    var cleanTitle = transName
+                        .replacingOccurrences(of: "\\(Russian\\)", with: "")
+                        .replacingOccurrences(of: "AC3 51 @ 640 kbps - Blu-ray CEE", with: "")
+                        .replacingOccurrences(of: "AC3 5.1 @ 640 kbps", with: "")
+                        .replacingOccurrences(of: "DUB", with: "Дубляж")
+                        .replacingOccurrences(of: "MVO", with: "Многоголосый")
+                        .replacingOccurrences(of: "DVO", with: "Двухголосый")
+                        .replacingOccurrences(of: "AVO", with: "Авторский")
+                        .replacingOccurrences(of: "ПМ", with: "Проф. многоголосый")
+                        .replacingOccurrences(of: "ПД", with: "Проф. двухголосый")
+                        .replacingOccurrences(of: "ЛМ", with: "Люб. многоголосый")
+                        .replacingOccurrences(of: "ЛД", with: "Люб. двухголосый")
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    
+                    while cleanTitle.hasPrefix("-") || cleanTitle.hasPrefix(",") {
+                        cleanTitle = String(cleanTitle.dropFirst()).trimmingCharacters(in: .whitespaces)
+                    }
+                    while cleanTitle.hasSuffix("-") || cleanTitle.hasSuffix(",") {
+                        cleanTitle = String(cleanTitle.dropLast()).trimmingCharacters(in: .whitespaces)
+                    }
+                    if cleanTitle.isEmpty { cleanTitle = transName }
+
+                    parsedTrans.append(AllohaTranslation(id: tKey, name: cleanTitle, iframeUrl: iframe))
                 }
                 parsedTrans.sort { $0.name < $1.name }
             } else if let transArray = dataObj["translation"] as? [[String: Any]] {
@@ -146,7 +215,30 @@ class AllohaRepository {
                         iframe = "https:" + iframe
                     }
                     let transName = tDict["translation"] as? String ?? "Unknown"
-                    parsedTrans.append(AllohaTranslation(id: String(index), name: transName, iframeUrl: iframe))
+                    
+                    var cleanTitle = transName
+                        .replacingOccurrences(of: "\\(Russian\\)", with: "")
+                        .replacingOccurrences(of: "AC3 51 @ 640 kbps - Blu-ray CEE", with: "")
+                        .replacingOccurrences(of: "AC3 5.1 @ 640 kbps", with: "")
+                        .replacingOccurrences(of: "DUB", with: "Дубляж")
+                        .replacingOccurrences(of: "MVO", with: "Многоголосый")
+                        .replacingOccurrences(of: "DVO", with: "Двухголосый")
+                        .replacingOccurrences(of: "AVO", with: "Авторский")
+                        .replacingOccurrences(of: "ПМ", with: "Проф. многоголосый")
+                        .replacingOccurrences(of: "ПД", with: "Проф. двухголосый")
+                        .replacingOccurrences(of: "ЛМ", with: "Люб. многоголосый")
+                        .replacingOccurrences(of: "ЛД", with: "Люб. двухголосый")
+                        .trimmingCharacters(in: .whitespacesAndNewlines)
+                    
+                    while cleanTitle.hasPrefix("-") || cleanTitle.hasPrefix(",") {
+                        cleanTitle = String(cleanTitle.dropFirst()).trimmingCharacters(in: .whitespaces)
+                    }
+                    while cleanTitle.hasSuffix("-") || cleanTitle.hasSuffix(",") {
+                        cleanTitle = String(cleanTitle.dropLast()).trimmingCharacters(in: .whitespaces)
+                    }
+                    if cleanTitle.isEmpty { cleanTitle = transName }
+
+                    parsedTrans.append(AllohaTranslation(id: String(index), name: cleanTitle, iframeUrl: iframe))
                 }
                 parsedTrans.sort { $0.name < $1.name }
             }
