@@ -195,7 +195,7 @@ struct DetailsView: View {
     @State private var playerEpisode: Int?
     @State private var playerVoiceover: String?
     @State private var playerVoices: [String] = []
-    @State private var playerSubtitles: [CollapsSubtitle] = []
+    @State private var playerSubtitles: [MediaSubtitle] = []
     @State private var playerQuality: VideoQualityPreference? = nil
     @State private var favoriteBounce = false
 
@@ -334,32 +334,6 @@ struct DetailsView: View {
                             showSourceSheet = false
                             viewModel.saveAllohaTranslation(translation.name)
                         }
-                    } else if let wrapper = viewModel.sourceResultWrapper, wrapper.mode == .collaps {
-                        let isSerial = wrapper.collapsSeasons != nil && !(wrapper.collapsSeasons?.isEmpty ?? true)
-                        if isSerial || wrapper.collapsMovie != nil {
-                            CollapsSelectionView(
-                                result: wrapper.collapsSeasons ?? [],
-                                movieResult: wrapper.collapsMovie,
-                                kpId: wrapper.kpId,
-                                isSerial: isSerial,
-                                title: viewModel.details?.title ?? viewModel.details?.name ?? "",
-                                onPlay: { url, season, episode, voiceover, voices, subtitles, quality in
-                                    // Collaps returns direct HLS/MPD urls
-                                    selectedIframeUrl = url // we use this state variable for the URL
-                                    playerKpId = wrapper.kpId
-                                    playerSeason = season
-                                    playerEpisode = episode
-                                    playerVoiceover = voiceover
-                                    playerVoices = voices
-                                    playerSubtitles = subtitles
-                                    playerQuality = quality
-                                    showPlayer = true
-                                    showSourceSheet = false
-                                }
-                            )
-                        } else {
-                            SourceSelectionEmptyView(title: sourceSheetTitle)
-                        }
                     } else {
                         SourceSelectionEmptyView(title: sourceSheetTitle)
                     }
@@ -490,19 +464,6 @@ struct DetailsView: View {
                         if details.type == "tv" {
                             InlineEpisodesSection(viewModel: viewModel, details: details) { season, episode in
                                 guard let kpId = details.externalIds?.kp else { return }
-
-                                // To handle pre-selection, we can use a new state property in DetailsView or just save to progress store
-                                // CollapsPlaybackProgressStore reads from store when opened, so let's temporarily save it there to auto-select
-                                CollapsPlaybackProgressStore.shared.saveLastPlayed(
-                                    kpId: kpId,
-                                    season: season,
-                                    episode: episode
-                                )
-                                CollapsPlaybackProgressStore.shared.saveLastVoiceover(
-                                    kpId: kpId,
-                                    source: "collaps",
-                                    voiceover: nil
-                                )
 
                                 sourceSheetMode = SourceManager.shared.currentMode
                                 sourceSheetTitle = details.title ?? details.name ?? ""
@@ -1026,9 +987,7 @@ struct InlineEpisodesSection: View {
 
     var allSeasons: [Int] {
         if let wrapper = viewModel.inlineSourceWrapper {
-            if wrapper.mode == .collaps, let collapsSeasons = wrapper.collapsSeasons {
-                return collapsSeasons.map { $0.season }.sorted()
-            } else if wrapper.mode == .alloha, let allohaResult = wrapper.allohaResult {
+            if wrapper.mode == .alloha, let allohaResult = wrapper.allohaResult {
                 return allohaResult.seasons.map { $0.season }.sorted()
             }
         }
@@ -1037,11 +996,7 @@ struct InlineEpisodesSection: View {
 
     var episodesForSelectedSeason: [Int] {
         if let wrapper = viewModel.inlineSourceWrapper {
-            if wrapper.mode == .collaps, let collapsSeasons = wrapper.collapsSeasons {
-                if let season = collapsSeasons.first(where: { $0.season == selectedSeason }) {
-                    return season.episodes.map { $0.episode }.sorted()
-                }
-            } else if wrapper.mode == .alloha, let allohaResult = wrapper.allohaResult {
+            if wrapper.mode == .alloha, let allohaResult = wrapper.allohaResult {
                 if let season = allohaResult.seasons.first(where: { $0.season == selectedSeason }) {
                     return season.episodes.map { $0.episode }.sorted()
                 }
@@ -1137,8 +1092,6 @@ struct SourceResultWrapper: Identifiable {
     let id = UUID()
     let mode: SourceMode
     var allohaResult: AllohaApiResult?
-    var collapsSeasons: [CollapsSeason]?
-    var collapsMovie: CollapsMovie?
     var kpId: Int?
 }
 
@@ -1150,7 +1103,7 @@ class DetailsViewModel: ObservableObject {
     @Published var isFetchingSources = false
     @Published var sourceResultWrapper: SourceResultWrapper?
     
-    @Published var inlineSeasons: [CollapsSeason]? // Or AllohaSeason mapped to a common model? Let's use SourceResultWrapper for inline too.
+    @Published var inlineSeasons: [AllohaSeason]? // Or AllohaSeason mapped to a common model? Let's use SourceResultWrapper for inline too.
     @Published var inlineSourceWrapper: SourceResultWrapper?
     @Published var selectedInlineSeason: Int = 1
     @Published var isFetchingInlineSeasons = false
@@ -1199,11 +1152,6 @@ class DetailsViewModel: ObservableObject {
                 let result = try await AllohaRepository.shared.fetchByKpId(kpId: kpId)
                 if result.isSerial {
                     self.inlineSourceWrapper = SourceResultWrapper(mode: .alloha, allohaResult: result, kpId: kpId)
-                }
-            case .collaps:
-                let seasons = try await CollapsRepository.shared.getSeasonsByKpId(kpId: kpId)
-                if !seasons.isEmpty {
-                    self.inlineSourceWrapper = SourceResultWrapper(mode: .collaps, collapsSeasons: seasons, kpId: kpId)
                 }
             }
         } catch {
@@ -1297,14 +1245,6 @@ class DetailsViewModel: ObservableObject {
                     }
                 }
                 self.sourceResultWrapper = SourceResultWrapper(mode: .alloha, allohaResult: result, kpId: kpId)
-            case .collaps:
-                let seasons = try await CollapsRepository.shared.getSeasonsByKpId(kpId: kpId)
-                if seasons.isEmpty {
-                    let movie = try await CollapsRepository.shared.getMovieByKpId(kpId: kpId)
-                    self.sourceResultWrapper = SourceResultWrapper(mode: .collaps, collapsMovie: movie, kpId: kpId)
-                } else {
-                    self.sourceResultWrapper = SourceResultWrapper(mode: .collaps, collapsSeasons: seasons, kpId: kpId)
-                }
             }
         } catch {
             print("Error fetching sources: \(error)")

@@ -243,6 +243,12 @@ struct FavoriteCheckDto: Codable {
     let isFavorite: Bool
 }
 
+struct MediaSubtitle: Codable {
+    let url: String
+    let label: String
+    let lang: String
+}
+
 enum VideoQualityPreference: String, CaseIterable, Identifiable {
     case ask = "Спрашивать каждый раз"
     case auto = "Авто"
