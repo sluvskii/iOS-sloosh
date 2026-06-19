@@ -255,7 +255,7 @@ class PlayerViewModel: ObservableObject {
         self.currentKpId = kpId
         self.currentSeason = season
         self.currentEpisode = episode
-        self.currentSourcePreferenceKey = "collaps"
+        self.currentSourcePreferenceKey = "direct"
         self.targetVoiceover = selectedVoiceover
         
         isLoading = true
@@ -420,14 +420,7 @@ class PlayerViewModel: ObservableObject {
         }
         
         // Final progress save before cleanup
-        if let player = player, let currentKpId = currentKpId {
-            let mediaId: String
-            if let season = currentSeason, let episode = currentEpisode {
-                mediaId = "kp_\(currentKpId)_s\(season)_e\(episode)"
-            } else {
-                mediaId = "kp_\(currentKpId)"
-            }
-        }
+        // (Collaps logic removed)
 
         resolveTask?.cancel()
         resolveTask = nil
@@ -531,10 +524,6 @@ class PlayerViewModel: ObservableObject {
     }
     
     private func loadSavedVoiceover() -> String? {
-        guard let kpId = currentKpId,
-              let source = currentSourcePreferenceKey else {
-            return nil
-        }
         return nil
     }
     
@@ -597,17 +586,6 @@ class PlayerViewModel: ObservableObject {
     
     private func startTrackingProgress() {
         guard let player = player else { return }
-        
-        let mediaId: String
-        if let kpId = currentKpId {
-            if let season = currentSeason, let episode = currentEpisode {
-                mediaId = "kp_\(kpId)_s\(season)_e\(episode)"
-            } else {
-                mediaId = "kp_\(kpId)"
-            }
-        } else {
-            return
-        }
         
         timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 5, preferredTimescale: 600), queue: .main) { [weak self, weak player] time in
             guard let self = self, let player = player else { return }
@@ -724,10 +702,7 @@ class PlayerViewModel: ObservableObject {
     }
 
     private func persistVoiceoverSelection(_ name: String?) {
-        guard let kpId = currentKpId,
-              let source = currentSourcePreferenceKey else {
-            return
-        }
+        // intentionally empty after removing Collaps
     }
 
     private func appendQualityVariants(_ variants: [[String: Any]], to qualities: inout [(key: String, url: URL)], seenKeys: inout Set<String>) {

@@ -353,19 +353,10 @@ struct DetailsView: View {
                 playerQuality = nil
             }) {
                 if let details = viewModel.details {
-                    let mode = SourceManager.shared.currentMode
-                    if mode == .alloha {
-                        if let iframeUrl = selectedIframeUrl {
-                            PlayerView(iframeUrl: iframeUrl, fallbackTitle: details.title ?? details.name ?? "", kpId: playerKpId, season: playerSeason, episode: playerEpisode, selectedVoiceover: playerVoiceover, voices: playerVoices, subtitles: playerSubtitles, initialQuality: playerQuality)
-                        } else {
-                            Text("Видео не найдено")
-                        }
+                    if let iframeUrl = selectedIframeUrl {
+                        PlayerView(iframeUrl: iframeUrl, fallbackTitle: details.title ?? details.name ?? "", kpId: playerKpId, season: playerSeason, episode: playerEpisode, selectedVoiceover: playerVoiceover, voices: playerVoices, subtitles: playerSubtitles, initialQuality: playerQuality)
                     } else {
-                        if let directUrl = selectedIframeUrl ?? selectedDirectVideoUrl {
-                            PlayerView(directVideoUrl: directUrl, fallbackTitle: details.title ?? details.name ?? "", kpId: playerKpId, season: playerSeason, episode: playerEpisode, selectedVoiceover: playerVoiceover, voices: playerVoices, subtitles: playerSubtitles, initialQuality: playerQuality)
-                        } else {
-                            Text("Видео не найдено")
-                        }
+                        Text("Видео не найдено")
                     }
                 }
             }
@@ -635,7 +626,7 @@ private struct SourceSelectionLoadingView: View {
                 VStack(alignment: .leading, spacing: 24) {
                     SourceSelectionSkeletonSection(title: "Озвучка", chipWidths: [84, 112, 96, 104])
 
-                    if mode == .alloha || mode == .collaps {
+                    if mode == .alloha {
                         SourceSelectionSkeletonSection(title: "Сезон", chipWidths: [88, 88, 88])
                         SourceSelectionSkeletonSection(title: "Серия", chipWidths: [84, 84, 84, 84])
                     }
