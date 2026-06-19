@@ -13,7 +13,7 @@ class HlsProxyServer {
     private var mediaId: String = ""
     private var currentMasterUrl: URL?
 
-    init() {
+    init() {}
     
     var port: NWEndpoint.Port = 8181
     var fixedMasterUrl: String { "http://127.0.0.1:\(port.rawValue)/master.m3u8" }
@@ -179,8 +179,8 @@ class HlsProxyServer {
     }
     
     private func fetchAndServe(realUrl: URL, isPlaylist: Bool, incomingHeaders: [String: String], connection: NWConnection) async {
-        let (currentHeaders, currentVoices, currentSubtitles, currentMediaId) = stateLock.withLock {
-            (self.headers, self.voices, self.subtitles, self.mediaId)
+        let currentHeaders = stateLock.withLock {
+            self.headers
         }
         
         let targetUrl = realUrl
