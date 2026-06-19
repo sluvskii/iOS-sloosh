@@ -11,6 +11,7 @@ class HlsProxyServer {
     private var voices: [String] = []
     private var subtitles: [MediaSubtitle] = []
     private var mediaId: String = ""
+    private var currentMasterUrl: URL?
 
     init() {
     
