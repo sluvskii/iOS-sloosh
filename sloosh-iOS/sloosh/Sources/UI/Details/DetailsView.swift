@@ -465,7 +465,6 @@ struct DetailsView: View {
                             InlineEpisodesSection(viewModel: viewModel, details: details) { season, episode in
                                 guard let kpId = details.externalIds?.kp else { return }
 
-                                // We no longer use Collaps
                                 // Use Alloha session manager or standard defaults here if needed
 
                                 sourceSheetMode = SourceManager.shared.currentMode
