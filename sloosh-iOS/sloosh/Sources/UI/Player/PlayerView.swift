@@ -131,7 +131,6 @@ struct PlayerView: View {
     
     @StateObject private var viewModel = PlayerViewModel()
     @Environment(\.presentationMode) var presentationMode
-    @State private var hasPresentedPlayerController = false
     
     init(iframeUrl: String? = nil, fallbackTitle: String, kpId: Int? = nil, season: Int? = nil, episode: Int? = nil, selectedVoiceover: String? = nil, voices: [String] = [], subtitles: [PlaybackSubtitle] = [], initialQuality: VideoQualityPreference? = nil, seriesResult: AllohaApiResult? = nil) {
         self.iframeUrl = iframeUrl
@@ -149,21 +148,7 @@ struct PlayerView: View {
     var body: some View {
         ZStack {
             Color.black.edgesIgnoringSafeArea(.all)
-
-            if hasPresentedPlayerController || (!viewModel.isLoading && viewModel.player != nil) {
-                ModalPlayerPresenter(player: viewModel.player, viewModel: viewModel) {
-                    viewModel.cleanup() // Теперь очистка происходит ТОЛЬКО когда плеер реально закрылся
-                    presentationMode.wrappedValue.dismiss()
-                }
-                .edgesIgnoringSafeArea(.all)
-            }
-
-            if viewModel.isLoading && !hasPresentedPlayerController {
-                ProgressView()
-                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                    .scaleEffect(1.5)
-            }
-
+            
             if let error = viewModel.error {
                 VStack(spacing: 16) {
                     Image(systemName: "exclamationmark.triangle.fill")
@@ -185,6 +170,16 @@ struct PlayerView: View {
                     viewModel.cleanup()
                     presentationMode.wrappedValue.dismiss()
                 }
+            } else if viewModel.isLoading {
+                ProgressView()
+                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                    .scaleEffect(1.5)
+            } else {
+                ModalPlayerPresenter(player: viewModel.player, viewModel: viewModel) {
+                    viewModel.cleanup() // Теперь очистка происходит ТОЛЬКО когда плеер реально закрылся
+                    presentationMode.wrappedValue.dismiss()
+                }
+                .edgesIgnoringSafeArea(.all)
             }
         }
         .onAppear {
@@ -199,11 +194,6 @@ struct PlayerView: View {
                     viewModel.error = "Нет URL для воспроизведения"
                     viewModel.isLoading = false
                 }
-            }
-        }
-        .onChange(of: viewModel.isLoading) { _, isLoading in
-            if !isLoading, viewModel.player != nil {
-                hasPresentedPlayerController = true
             }
         }
         // Убрали .onDisappear с cleanup, чтобы он не убивал видео при показе плеера
@@ -227,9 +217,6 @@ class PlayerViewModel: ObservableObject {
     private var timeObserver: Any?
     private var itemObservation: NSKeyValueObservation?
     private var playbackEndObserver: NSObjectProtocol?
-    private var nextEpisodePrefetchTask: Task<Void, Never>?
-    private var nextEpisodePrefetchKey: String?
-    private var nextEpisodePrefetchedResolved: [String: Any]?
     
     private var currentKpId: Int?
     private var currentSeason: Int?
@@ -424,10 +411,6 @@ class PlayerViewModel: ObservableObject {
 
         resolveTask?.cancel()
         resolveTask = nil
-        nextEpisodePrefetchTask?.cancel()
-        nextEpisodePrefetchTask = nil
-        nextEpisodePrefetchKey = nil
-        nextEpisodePrefetchedResolved = nil
         resolver?.cancel()
         resolver = nil
         player?.pause()
@@ -667,28 +650,13 @@ class PlayerViewModel: ObservableObject {
             PlaybackProgressStore.shared.saveLastPlayed(kpId: kpId, season: nextEpisode.season, episode: nextEpisode.episode)
         }
 
-        let nextKey = episodeKey(season: nextEpisode.season, episode: nextEpisode.episode)
-        if let nextKey,
-           nextEpisodePrefetchKey == nextKey,
-           let prefetchedResolved = nextEpisodePrefetchedResolved {
-            currentSeason = nextEpisode.season
-            currentEpisode = nextEpisode.episode
-            currentTranslationName = nextEpisode.translation.name
-            targetVoiceover = nextEpisode.translation.name
-            nextEpisodePrefetchTask?.cancel()
-            nextEpisodePrefetchTask = nil
-            nextEpisodePrefetchKey = nil
-            nextEpisodePrefetchedResolved = nil
-            applyResolvedAllohaStream(prefetchedResolved)
-        } else {
-            beginLoad(
-                iframeUrl: nextEpisode.translation.iframeUrl,
-                kpId: currentKpId,
-                season: nextEpisode.season,
-                episode: nextEpisode.episode,
-                selectedVoiceover: nextEpisode.translation.name
-            )
-        }
+        beginLoad(
+            iframeUrl: nextEpisode.translation.iframeUrl,
+            kpId: currentKpId,
+            season: nextEpisode.season,
+            episode: nextEpisode.episode,
+            selectedVoiceover: nextEpisode.translation.name
+        )
     }
 
     private func nextEpisodeCandidate() -> (season: Int, episode: Int, translation: AllohaTranslation)? {
@@ -728,47 +696,6 @@ class PlayerViewModel: ObservableObject {
         }
 
         return episode.translations.first
-    }
-
-    private func episodeKey(season: Int, episode: Int) -> String {
-        "\(season)-\(episode)"
-    }
-
-    private func scheduleNextEpisodePrefetch() {
-        guard autoplayNextEpisodeEnabled,
-              let nextEpisode = nextEpisodeCandidate() else {
-            nextEpisodePrefetchTask?.cancel()
-            nextEpisodePrefetchTask = nil
-            nextEpisodePrefetchKey = nil
-            nextEpisodePrefetchedResolved = nil
-            return
-        }
-
-        let nextKey = episodeKey(season: nextEpisode.season, episode: nextEpisode.episode)
-        guard nextEpisodePrefetchKey != nextKey || nextEpisodePrefetchedResolved == nil else {
-            return
-        }
-
-        nextEpisodePrefetchTask?.cancel()
-        nextEpisodePrefetchedResolved = nil
-        nextEpisodePrefetchKey = nextKey
-
-        nextEpisodePrefetchTask = Task { [weak self] in
-            let resolver = AllohaRuntimeResolver()
-            do {
-                let resolved = try await resolver.resolve(iframeUrl: nextEpisode.translation.iframeUrl)
-                guard let self, !Task.isCancelled else { return }
-                await MainActor.run {
-                    guard self.nextEpisodePrefetchKey == nextKey else { return }
-                    self.nextEpisodePrefetchedResolved = resolved
-                }
-            } catch {
-                await MainActor.run {
-                    guard self?.nextEpisodePrefetchKey == nextKey else { return }
-                    self?.nextEpisodePrefetchedResolved = nil
-                }
-            }
-        }
     }
 
     private func applyResolvedAllohaStream(_ resolved: [String: Any]) {
@@ -812,7 +739,6 @@ class PlayerViewModel: ObservableObject {
         playVideo(url: resolvedUrl, headers: headers, voices: resolvedVoices, subtitles: resolvedSubtitles)
         NotificationCenter.default.post(name: NSNotification.Name("QualitiesUpdated"), object: nil)
         applyInitialQuality()
-        scheduleNextEpisodePrefetch()
     }
 
     private func resolvedVoiceovers(from resolved: [String: Any]) -> [String] {
