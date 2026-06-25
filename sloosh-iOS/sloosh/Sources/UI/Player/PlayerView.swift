@@ -126,13 +126,13 @@ struct PlayerView: View {
     let selectedVoiceover: String?
     let voices: [String]
     let subtitles: [PlaybackSubtitle]
-    
     let initialQuality: VideoQualityPreference?
+    let seriesResult: AllohaApiResult?
     
     @StateObject private var viewModel = PlayerViewModel()
     @Environment(\.presentationMode) var presentationMode
     
-    init(iframeUrl: String? = nil, fallbackTitle: String, kpId: Int? = nil, season: Int? = nil, episode: Int? = nil, selectedVoiceover: String? = nil, voices: [String] = [], subtitles: [PlaybackSubtitle] = [], initialQuality: VideoQualityPreference? = nil) {
+    init(iframeUrl: String? = nil, fallbackTitle: String, kpId: Int? = nil, season: Int? = nil, episode: Int? = nil, selectedVoiceover: String? = nil, voices: [String] = [], subtitles: [PlaybackSubtitle] = [], initialQuality: VideoQualityPreference? = nil, seriesResult: AllohaApiResult? = nil) {
         self.iframeUrl = iframeUrl
         self.fallbackTitle = fallbackTitle
         self.kpId = kpId
@@ -142,6 +142,7 @@ struct PlayerView: View {
         self.voices = voices
         self.subtitles = subtitles
         self.initialQuality = initialQuality
+        self.seriesResult = seriesResult
     }
     
     var body: some View {
@@ -185,6 +186,7 @@ struct PlayerView: View {
             if viewModel.player == nil { // Избегаем повторной загрузки при перерисовках
                 viewModel.player = AVPlayer() // СРАЗУ СОЗДАЕМ ПЛЕЕР, ЧТОБЫ AVPlayerViewController ПОЛУЧИЛ ЕГО ПРИ СТАРТЕ
                 viewModel.targetQualityPreference = initialQuality
+                viewModel.seriesResult = seriesResult
                 
                 if let iframe = iframeUrl {
                     viewModel.load(iframeUrl: iframe, kpId: kpId, season: season, episode: episode, selectedVoiceover: selectedVoiceover, voices: voices, subtitles: subtitles)
@@ -214,13 +216,26 @@ class PlayerViewModel: ObservableObject {
     private var currentHeaders: [String: String] = [:]
     private var timeObserver: Any?
     private var itemObservation: NSKeyValueObservation?
+    private var playbackEndObserver: NSObjectProtocol?
     
     private var currentKpId: Int?
     private var currentSeason: Int?
     private var currentEpisode: Int?
     private var targetVoiceover: String?
+    private var currentTranslationName: String?
+    private var isAdvancingToNextEpisode = false
+
     var targetQualityPreference: VideoQualityPreference?
+    var seriesResult: AllohaApiResult?
     private var hasStartedLoading = false
+
+    private var autoplayNextEpisodeEnabled: Bool {
+        let defaults = UserDefaults.standard
+        if defaults.object(forKey: "autoplayNextEpisode") == nil {
+            return true
+        }
+        return defaults.bool(forKey: "autoplayNextEpisode")
+    }
 
     private func isLocalProxyUrl(_ url: URL) -> Bool {
         guard let host = url.host?.lowercased() else { return false }
@@ -230,11 +245,16 @@ class PlayerViewModel: ObservableObject {
     func load(iframeUrl: String, kpId: Int?, season: Int?, episode: Int?, selectedVoiceover: String?, voices: [String] = [], subtitles: [PlaybackSubtitle] = []) {
         if hasStartedLoading { return } // Защита от двойного вызова
         hasStartedLoading = true
-        
+        beginLoad(iframeUrl: iframeUrl, kpId: kpId, season: season, episode: episode, selectedVoiceover: selectedVoiceover, voices: voices, subtitles: subtitles)
+    }
+
+    private func beginLoad(iframeUrl: String, kpId: Int?, season: Int?, episode: Int?, selectedVoiceover: String?, voices: [String] = [], subtitles: [PlaybackSubtitle] = []) {
         self.currentKpId = kpId
         self.currentSeason = season
         self.currentEpisode = episode
         self.targetVoiceover = selectedVoiceover
+        self.currentTranslationName = selectedVoiceover
+        self.isAdvancingToNextEpisode = false
         
         isLoading = true
         error = nil
@@ -370,6 +390,12 @@ class PlayerViewModel: ObservableObject {
             player?.removeTimeObserver(observer)
             timeObserver = nil
         }
+        if let playbackEndObserver {
+            NotificationCenter.default.removeObserver(playbackEndObserver)
+            self.playbackEndObserver = nil
+        }
+        itemObservation?.invalidate()
+        itemObservation = nil
         
         // Final progress save before cleanup
         if let player = player, let currentKpId = currentKpId {
@@ -439,12 +465,19 @@ class PlayerViewModel: ObservableObject {
 
         let asset = AVURLAsset(url: playbackUrl)
         let playerItem = AVPlayerItem(asset: asset)
+        itemObservation?.invalidate()
+        itemObservation = nil
+        if let playbackEndObserver {
+            NotificationCenter.default.removeObserver(playbackEndObserver)
+            self.playbackEndObserver = nil
+        }
         
         self.player?.replaceCurrentItem(with: playerItem)
         self.player?.seek(to: currentTime)
         if wasPlaying {
             self.player?.play()
         }
+        observePlaybackCompletion(for: playerItem)
         
         // Re-extract audio tracks for new item and restore selection
         self.itemObservation = playerItem.observe(\.status) { [weak self] item, _ in
@@ -527,10 +560,17 @@ class PlayerViewModel: ObservableObject {
         
         let asset = AVURLAsset(url: proxyUrl)
         let playerItem = AVPlayerItem(asset: asset)
+        itemObservation?.invalidate()
+        itemObservation = nil
+        if let playbackEndObserver {
+            NotificationCenter.default.removeObserver(playbackEndObserver)
+            self.playbackEndObserver = nil
+        }
         
         if self.player == nil { self.player = AVPlayer() }
         self.player?.replaceCurrentItem(with: playerItem)
         self.player?.automaticallyWaitsToMinimizeStalling = true
+        observePlaybackCompletion(for: playerItem)
         
         self.isLoading = false
         self.startTrackingProgress()
@@ -548,6 +588,10 @@ class PlayerViewModel: ObservableObject {
     
     private func startTrackingProgress() {
         guard let player = player else { return }
+        if let observer = timeObserver {
+            player.removeTimeObserver(observer)
+            timeObserver = nil
+        }
         
         let mediaId: String
         if let kpId = currentKpId {
@@ -573,6 +617,85 @@ class PlayerViewModel: ObservableObject {
                 self.persistCurrentVoiceoverSelection(from: item)
             }
         }
+    }
+
+    private func observePlaybackCompletion(for item: AVPlayerItem) {
+        playbackEndObserver = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemDidPlayToEndTime,
+            object: item,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                await self?.handlePlaybackEnded()
+            }
+        }
+    }
+
+    private func handlePlaybackEnded() async {
+        guard autoplayNextEpisodeEnabled,
+              !isAdvancingToNextEpisode,
+              let nextEpisode = nextEpisodeCandidate() else {
+            return
+        }
+
+        isAdvancingToNextEpisode = true
+        defer { isAdvancingToNextEpisode = false }
+
+        currentSeason = nextEpisode.season
+        currentEpisode = nextEpisode.episode
+        currentTranslationName = nextEpisode.translation.name
+        targetVoiceover = nextEpisode.translation.name
+
+        if let kpId = currentKpId {
+            PlaybackProgressStore.shared.saveLastPlayed(kpId: kpId, season: nextEpisode.season, episode: nextEpisode.episode)
+        }
+
+        beginLoad(
+            iframeUrl: nextEpisode.translation.iframeUrl,
+            kpId: currentKpId,
+            season: nextEpisode.season,
+            episode: nextEpisode.episode,
+            selectedVoiceover: nextEpisode.translation.name
+        )
+    }
+
+    private func nextEpisodeCandidate() -> (season: Int, episode: Int, translation: AllohaTranslation)? {
+        guard let seriesResult, seriesResult.isSerial,
+              let currentSeason, let currentEpisode else {
+            return nil
+        }
+
+        let sortedSeasons = seriesResult.seasons.sorted { $0.season < $1.season }
+        var foundCurrentEpisode = false
+
+        for season in sortedSeasons {
+            for episode in season.episodes.sorted(by: { $0.episode < $1.episode }) {
+                if foundCurrentEpisode {
+                    guard let translation = preferredTranslation(in: episode) else { return nil }
+                    return (season.season, episode.episode, translation)
+                }
+
+                if season.season == currentSeason && episode.episode == currentEpisode {
+                    foundCurrentEpisode = true
+                }
+            }
+        }
+
+        return nil
+    }
+
+    private func preferredTranslation(in episode: AllohaEpisode) -> AllohaTranslation? {
+        if let currentTranslationName,
+           let exactMatch = episode.translations.first(where: { $0.name.caseInsensitiveCompare(currentTranslationName) == .orderedSame }) {
+            return exactMatch
+        }
+
+        if let targetVoiceover,
+           let voiceMatch = episode.translations.first(where: { $0.name.caseInsensitiveCompare(targetVoiceover) == .orderedSame }) {
+            return voiceMatch
+        }
+
+        return episode.translations.first
     }
 
     private func applyResolvedAllohaStream(_ resolved: [String: Any]) {

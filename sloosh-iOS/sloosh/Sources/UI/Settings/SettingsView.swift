@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SettingsView: View {
     @AppStorage("preferredVideoQuality") private var preferredQuality: VideoQualityPreference = .ask
+    @AppStorage("autoplayNextEpisode") private var autoplayNextEpisode = true
     
     var body: some View {
         NavigationStack {
@@ -12,6 +13,8 @@ struct SettingsView: View {
                             Text(quality.title).tag(quality)
                         }
                     }
+
+                    Toggle("Автопереход к следующей серии", isOn: $autoplayNextEpisode)
                 }
 
                 Section("О приложении") {
