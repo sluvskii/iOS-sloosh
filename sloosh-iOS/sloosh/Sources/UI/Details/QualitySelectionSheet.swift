@@ -17,7 +17,7 @@ struct QualitySelectionSheet: View {
                             selectedQuality = quality
                         } label: {
                             HStack {
-                                Text(quality.rawValue)
+                                Text(quality.title)
                                     .foregroundColor(.primary)
                                 Spacer()
                                 if selectedQuality == quality {

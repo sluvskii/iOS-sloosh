@@ -9,7 +9,7 @@ struct SettingsView: View {
                 Section("Воспроизведение") {
                     Picker("Качество видео", selection: $preferredQuality) {
                         ForEach(VideoQualityPreference.allCases) { quality in
-                            Text(quality.rawValue).tag(quality)
+                            Text(quality.title).tag(quality)
                         }
                     }
                 }

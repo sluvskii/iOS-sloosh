@@ -252,4 +252,13 @@ enum VideoQualityPreference: String, CaseIterable, Identifiable {
     case q360 = "360p"
     
     var id: String { self.rawValue }
+
+    var title: String {
+        switch self {
+        case .ask:
+            return "Спрашивать"
+        default:
+            return rawValue
+        }
+    }
 }
