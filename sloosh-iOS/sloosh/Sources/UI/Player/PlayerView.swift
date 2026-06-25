@@ -131,6 +131,7 @@ struct PlayerView: View {
     
     @StateObject private var viewModel = PlayerViewModel()
     @Environment(\.presentationMode) var presentationMode
+    @State private var hasPresentedPlayerController = false
     
     init(iframeUrl: String? = nil, fallbackTitle: String, kpId: Int? = nil, season: Int? = nil, episode: Int? = nil, selectedVoiceover: String? = nil, voices: [String] = [], subtitles: [PlaybackSubtitle] = [], initialQuality: VideoQualityPreference? = nil, seriesResult: AllohaApiResult? = nil) {
         self.iframeUrl = iframeUrl
@@ -148,7 +149,21 @@ struct PlayerView: View {
     var body: some View {
         ZStack {
             Color.black.edgesIgnoringSafeArea(.all)
-            
+
+            if hasPresentedPlayerController || (!viewModel.isLoading && viewModel.player != nil) {
+                ModalPlayerPresenter(player: viewModel.player, viewModel: viewModel) {
+                    viewModel.cleanup() // Теперь очистка происходит ТОЛЬКО когда плеер реально закрылся
+                    presentationMode.wrappedValue.dismiss()
+                }
+                .edgesIgnoringSafeArea(.all)
+            }
+
+            if viewModel.isLoading && !hasPresentedPlayerController {
+                ProgressView()
+                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                    .scaleEffect(1.5)
+            }
+
             if let error = viewModel.error {
                 VStack(spacing: 16) {
                     Image(systemName: "exclamationmark.triangle.fill")
@@ -170,16 +185,6 @@ struct PlayerView: View {
                     viewModel.cleanup()
                     presentationMode.wrappedValue.dismiss()
                 }
-            } else if viewModel.isLoading {
-                ProgressView()
-                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                    .scaleEffect(1.5)
-            } else {
-                ModalPlayerPresenter(player: viewModel.player, viewModel: viewModel) {
-                    viewModel.cleanup() // Теперь очистка происходит ТОЛЬКО когда плеер реально закрылся
-                    presentationMode.wrappedValue.dismiss()
-                }
-                .edgesIgnoringSafeArea(.all)
             }
         }
         .onAppear {
@@ -194,6 +199,11 @@ struct PlayerView: View {
                     viewModel.error = "Нет URL для воспроизведения"
                     viewModel.isLoading = false
                 }
+            }
+        }
+        .onChange(of: viewModel.isLoading) { _, isLoading in
+            if !isLoading, viewModel.player != nil {
+                hasPresentedPlayerController = true
             }
         }
         // Убрали .onDisappear с cleanup, чтобы он не убивал видео при показе плеера
