@@ -17,9 +17,7 @@ jobs:
     - uses: actions/checkout@v4
 
     - name: Select Xcode
-      run: |
-        sudo xcode-select -s /Applications/Xcode_26.0.1.app/Contents/Developer || sudo xcode-select -s /Applications/Xcode_26.0.app/Contents/Developer
-        xcodebuild -downloadPlatform iOS || true
+      run: sudo xcode-select -s /Applications/Xcode_26.0.1.app/Contents/Developer || sudo xcode-select -s /Applications/Xcode_26.0.app/Contents/Developer
 
     - name: Install XcodeGen
       run: brew install xcodegen
@@ -48,7 +46,9 @@ jobs:
           -derivedDataPath ./build \
           CODE_SIGN_IDENTITY="" \
           CODE_SIGNING_REQUIRED=NO \
-          CODE_SIGNING_ALLOWED=NO
+          CODE_SIGNING_ALLOWED=NO \
+          ENABLE_ON_DEMAND_RESOURCES=NO \
+          ASSETCATALOG_COMPILER_GENERATE_THINNED_MODELS=NO
 
     - name: Package IPA (Unsigned)
       run: |
