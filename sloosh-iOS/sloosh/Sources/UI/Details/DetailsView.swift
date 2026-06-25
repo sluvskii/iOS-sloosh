@@ -195,6 +195,7 @@ struct DetailsView: View {
     @State private var playerVoices: [String] = []
     @State private var playerSubtitles: [PlaybackSubtitle] = []
     @State private var playerQuality: VideoQualityPreference? = nil
+    @State private var playerSeriesResult: AllohaApiResult?
     @State private var favoriteBounce = false
 
     @State private var dominantUIColor: UIColor? = nil
@@ -323,6 +324,7 @@ struct DetailsView: View {
                             playerSeason = season
                             playerEpisode = episode
                             playerQuality = quality
+                            playerSeriesResult = result.isSerial ? result : nil
                             selectedIframeUrl = translation.iframeUrl
                             playerVoiceover = translation.name
                             showPlayer = true
@@ -345,10 +347,11 @@ struct DetailsView: View {
                 playerVoices = []
                 playerSubtitles = []
                 playerQuality = nil
+                playerSeriesResult = nil
             }) {
                 if let details = viewModel.details {
                     if let iframeUrl = selectedIframeUrl {
-                        PlayerView(iframeUrl: iframeUrl, fallbackTitle: details.title ?? details.name ?? "", kpId: playerKpId, season: playerSeason, episode: playerEpisode, selectedVoiceover: playerVoiceover, voices: playerVoices, subtitles: playerSubtitles, initialQuality: playerQuality)
+                        PlayerView(iframeUrl: iframeUrl, fallbackTitle: details.title ?? details.name ?? "", kpId: playerKpId, season: playerSeason, episode: playerEpisode, selectedVoiceover: playerVoiceover, voices: playerVoices, subtitles: playerSubtitles, initialQuality: playerQuality, seriesResult: playerSeriesResult)
                     } else {
                         Text("Видео не найдено")
                     }
