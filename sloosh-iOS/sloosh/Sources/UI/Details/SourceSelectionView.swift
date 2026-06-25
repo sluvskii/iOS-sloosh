@@ -121,12 +121,12 @@ struct SourceSelectionView: View {
             var initialEpisode: Int? = nil
             
             if let kpId = kpId {
-                if let lastSeason = CollapsPlaybackProgressStore.shared.loadLastSeason(kpId: kpId),
+                if let lastSeason = PlaybackProgressStore.shared.loadLastSeason(kpId: kpId),
                    result.seasons.contains(where: { $0.season == lastSeason }) {
                     initialSeason = lastSeason
                 }
                 
-                if let lastEpisode = CollapsPlaybackProgressStore.shared.loadLastEpisode(kpId: kpId) {
+                if let lastEpisode = PlaybackProgressStore.shared.loadLastEpisode(kpId: kpId) {
                     initialEpisode = lastEpisode
                 }
             }
@@ -164,7 +164,7 @@ struct SourceSelectionView: View {
                   let translation = epObj.translations.first(where: { $0.name == tName }) else { return }
             
             if let kpId = kpId {
-                CollapsPlaybackProgressStore.shared.saveLastPlayed(kpId: kpId, season: s, episode: e)
+                PlaybackProgressStore.shared.saveLastPlayed(kpId: kpId, season: s, episode: e)
             }
             
             onPlay(translation, s, e, quality)
@@ -174,7 +174,7 @@ struct SourceSelectionView: View {
                   let translation = movie.translations.first(where: { $0.name == tName }) else { return }
             
             if let kpId = kpId {
-                CollapsPlaybackProgressStore.shared.saveLastPlayed(kpId: kpId, season: nil, episode: nil)
+                PlaybackProgressStore.shared.saveLastPlayed(kpId: kpId, season: nil, episode: nil)
             }
             
             onPlay(translation, nil, nil, quality)

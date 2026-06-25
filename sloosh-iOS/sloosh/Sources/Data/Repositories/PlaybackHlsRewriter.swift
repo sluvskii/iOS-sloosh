@@ -1,10 +1,10 @@
 import Foundation
 
-class CollapsHlsRewriter {
+class PlaybackHlsRewriter {
     static func rewrite(
         master: String,
         voices: [String],
-        subtitles: [CollapsSubtitle] = [],
+        subtitles: [PlaybackSubtitle] = [],
         mediaId: String,
         rewriteVariantUris: Bool = false,
         stripExistingSubtitles: Bool = false
@@ -20,13 +20,9 @@ class CollapsHlsRewriter {
         var output: [String] = []
         let subsGroupId = "subs0"
         
-        // Filter out failover duplicates
         let filteredLines = filterFailoverDuplicates(lines: lines)
-        
-        // Find first STREAM-INF index
         let streamInfIndex = filteredLines.firstIndex { $0.hasPrefix("#EXT-X-STREAM-INF") } ?? filteredLines.count
         
-        // Process header (before STREAM-INF)
         for i in 0..<streamInfIndex {
             let line = filteredLines[i]
             if stripExistingSubtitles && isSubtitleMediaLine(line) {
@@ -35,7 +31,6 @@ class CollapsHlsRewriter {
             output.append(rewriteMediaLine(line, voices: voices))
         }
         
-        // Inject subtitles
         if !subtitles.isEmpty {
             for sub in subtitles {
                 let lang = sub.lang.isEmpty ? "ru" : sub.lang
@@ -47,9 +42,6 @@ class CollapsHlsRewriter {
             }
         }
         
-        // Process variants.
-        // Keep original variant URIs by default (same behavior as Android),
-        // because synthetic names require additional local variant files.
         var variantIndex = 0
         for i in streamInfIndex..<filteredLines.count {
             let line = filteredLines[i]
@@ -61,7 +53,6 @@ class CollapsHlsRewriter {
                 }
                 output.append(modifiedLine)
             } else if !line.hasPrefix("#") && !line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                // This is a variant URI - rewrite it with proper naming
                 if rewriteVariantUris {
                     let newUri = "\(mediaId)_\(variantIndex).m3u8"
                     output.append(newUri)
@@ -85,7 +76,6 @@ class CollapsHlsRewriter {
         while i < lines.count {
             let line = lines[i]
             
-            // Skip failover MEDIA renditions
             if line.hasPrefix("#EXT-X-MEDIA") {
                 if let groupId = extractQuotedAttr(line, key: "GROUP-ID"),
                    groupId.lowercased().hasPrefix("failover-") {
@@ -97,15 +87,13 @@ class CollapsHlsRewriter {
                 continue
             }
             
-            // Skip failover STREAM-INF variants
             if line.hasPrefix("#EXT-X-STREAM-INF") {
                 if let audioGroup = extractQuotedAttr(line, key: "AUDIO"),
                    audioGroup.lowercased().hasPrefix("failover-") {
-                    i += 2 // Skip STREAM-INF and following URI
+                    i += 2
                     continue
                 }
                 
-                // Deduplicate variants by resolution/codecs/audio/bandwidth
                 let resolution = extractAttrValue(line, key: "RESOLUTION")
                 let bandwidth = extractAttrValue(line, key: "BANDWIDTH")
                 let codecs = extractQuotedAttr(line, key: "CODECS")
@@ -113,13 +101,13 @@ class CollapsHlsRewriter {
                 let key = [resolution, bandwidth, codecs, audioGroup].compactMap { $0 }.joined(separator: "|")
                 
                 if !key.isEmpty && !seenVariantKeys.insert(key).inserted {
-                    i += 2 // Skip duplicate variant
+                    i += 2
                     continue
                 }
                 
                 filtered.append(line)
                 if i + 1 < lines.count {
-                    filtered.append(lines[i + 1]) // URI line
+                    filtered.append(lines[i + 1])
                 }
                 i += 2
                 continue
@@ -147,7 +135,6 @@ class CollapsHlsRewriter {
         guard let index, index >= 0, index < voices.count else { return line }
         let voiceName = voices[index]
         
-        // Determine language
         let normalizedLang: String
         if voiceName.lowercased().contains("eng") || voiceName.lowercased().contains("original") {
             normalizedLang = "en"
@@ -194,15 +181,12 @@ class CollapsHlsRewriter {
         if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
            regex.firstMatch(in: line, options: [], range: NSRange(line.startIndex..., in: line)) != nil {
             return regex.stringByReplacingMatches(in: line, options: [], range: NSRange(line.startIndex..., in: line), withTemplate: newAttr)
+        } else if let colonIndex = line.firstIndex(of: ":") {
+            let prefix = line[...colonIndex]
+            let rest = line[line.index(after: colonIndex)...]
+            return "\(prefix)\(newAttr),\(rest)"
         } else {
-            // Insert after tag name
-            if let colonIndex = line.firstIndex(of: ":") {
-                let prefix = line[...colonIndex]
-                let rest = line[line.index(after: colonIndex)...]
-                return "\(prefix)\(newAttr),\(rest)"
-            } else {
-                return "\(line),\(newAttr)"
-            }
+            return "\(line),\(newAttr)"
         }
     }
     
