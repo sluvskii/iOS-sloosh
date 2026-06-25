@@ -1,7 +1,7 @@
 import Foundation
 
-public final class CollapsPlaybackProgressStore {
-    public static let shared = CollapsPlaybackProgressStore()
+public final class PlaybackProgressStore {
+    public static let shared = PlaybackProgressStore()
     private let defaults = UserDefaults.standard
 
     private let positionPrefix  = "neomovies.collaps.progress."
@@ -12,8 +12,6 @@ public final class CollapsPlaybackProgressStore {
     private let lastEpisodePrefix = "neomovies.collaps.lastEpisode."
 
     private init() {}
-
-    // MARK: - Per-item progress
 
     public func save(mediaId: String, positionSec: Double, durationSec: Double? = nil) {
         guard !mediaId.isEmpty, positionSec.isFinite, positionSec >= 0 else { return }
@@ -80,8 +78,6 @@ public final class CollapsPlaybackProgressStore {
         return defaults.string(forKey: key)
     }
 
-    // MARK: - Last-played tracking (per kpId)
-
     public func saveLastPlayed(kpId: Int, season: Int?, episode: Int?) {
         if let s = season { defaults.set(s, forKey: lastSeasonPrefix + "kp_\(kpId)") }
         if let e = episode { defaults.set(e, forKey: lastEpisodePrefix + "kp_\(kpId)") }
@@ -96,8 +92,6 @@ public final class CollapsPlaybackProgressStore {
         let v = defaults.integer(forKey: lastEpisodePrefix + "kp_\(kpId)")
         return v > 0 ? v : nil
     }
-
-    // MARK: - Key prefix exposure (for scanning in module)
 
     public var positionKeyPrefix: String { positionPrefix }
 }

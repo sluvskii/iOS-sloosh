@@ -12,10 +12,6 @@ struct SettingsView: View {
                             Text(quality.rawValue).tag(quality)
                         }
                     }
-                    
-                    NavigationLink("Источники") {
-                        SourceSettingsView()
-                    }
                 }
 
                 Section("О приложении") {

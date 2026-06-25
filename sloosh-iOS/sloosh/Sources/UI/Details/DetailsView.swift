@@ -182,9 +182,7 @@ struct DetailsView: View {
     @State private var showPlayer = false
     @State private var showSourceSheet = false
     @State private var selectedIframeUrl: String? = nil
-    @State private var selectedDirectVideoUrl: String? = nil
     @State private var showDownloadAlert = false
-    @State private var sourceSheetMode: SourceMode?
     @State private var sourceSheetTitle = ""
     @State private var sourceFetchTask: Task<Void, Never>?
     @State private var sourceSheetDetent: PresentationDetent = .medium
@@ -195,7 +193,7 @@ struct DetailsView: View {
     @State private var playerEpisode: Int?
     @State private var playerVoiceover: String?
     @State private var playerVoices: [String] = []
-    @State private var playerSubtitles: [CollapsSubtitle] = []
+    @State private var playerSubtitles: [PlaybackSubtitle] = []
     @State private var playerQuality: VideoQualityPreference? = nil
     @State private var favoriteBounce = false
 
@@ -310,18 +308,15 @@ struct DetailsView: View {
                 sourceFetchTask?.cancel()
                 sourceFetchTask = nil
                 sourceSheetDetent = .medium
-                sourceSheetMode = nil
                 sourceSheetTitle = ""
                 viewModel.resetSourceSheet()
             }) {
                 ZStack {
-                    if viewModel.isFetchingSources, let sourceSheetMode {
+                    if viewModel.isFetchingSources {
                         SourceSelectionLoadingView(
-                            title: sourceSheetTitle,
-                            mode: sourceSheetMode
+                            title: sourceSheetTitle
                         )
                     } else if let wrapper = viewModel.sourceResultWrapper,
-                              wrapper.mode == .alloha,
                               let result = wrapper.allohaResult {
                         SourceSelectionView(result: result, kpId: wrapper.kpId) { translation, season, episode, quality in
                             playerKpId = wrapper.kpId
@@ -334,32 +329,6 @@ struct DetailsView: View {
                             showSourceSheet = false
                             viewModel.saveAllohaTranslation(translation.name)
                         }
-                    } else if let wrapper = viewModel.sourceResultWrapper, wrapper.mode == .collaps {
-                        let isSerial = wrapper.collapsSeasons != nil && !(wrapper.collapsSeasons?.isEmpty ?? true)
-                        if isSerial || wrapper.collapsMovie != nil {
-                            CollapsSelectionView(
-                                result: wrapper.collapsSeasons ?? [],
-                                movieResult: wrapper.collapsMovie,
-                                kpId: wrapper.kpId,
-                                isSerial: isSerial,
-                                title: viewModel.details?.title ?? viewModel.details?.name ?? "",
-                                onPlay: { url, season, episode, voiceover, voices, subtitles, quality in
-                                    // Collaps returns direct HLS/MPD urls
-                                    selectedIframeUrl = url // we use this state variable for the URL
-                                    playerKpId = wrapper.kpId
-                                    playerSeason = season
-                                    playerEpisode = episode
-                                    playerVoiceover = voiceover
-                                    playerVoices = voices
-                                    playerSubtitles = subtitles
-                                    playerQuality = quality
-                                    showPlayer = true
-                                    showSourceSheet = false
-                                }
-                            )
-                        } else {
-                            SourceSelectionEmptyView(title: sourceSheetTitle)
-                        }
                     } else {
                         SourceSelectionEmptyView(title: sourceSheetTitle)
                     }
@@ -369,7 +338,6 @@ struct DetailsView: View {
             }
             .fullScreenCover(isPresented: $showPlayer, onDismiss: {
                 selectedIframeUrl = nil
-                selectedDirectVideoUrl = nil
                 playerKpId = nil
                 playerSeason = nil
                 playerEpisode = nil
@@ -379,19 +347,10 @@ struct DetailsView: View {
                 playerQuality = nil
             }) {
                 if let details = viewModel.details {
-                    let mode = SourceManager.shared.currentMode
-                    if mode == .alloha {
-                        if let iframeUrl = selectedIframeUrl {
-                            PlayerView(iframeUrl: iframeUrl, fallbackTitle: details.title ?? details.name ?? "", kpId: playerKpId, season: playerSeason, episode: playerEpisode, selectedVoiceover: playerVoiceover, voices: playerVoices, subtitles: playerSubtitles, initialQuality: playerQuality)
-                        } else {
-                            Text("Видео не найдено")
-                        }
+                    if let iframeUrl = selectedIframeUrl {
+                        PlayerView(iframeUrl: iframeUrl, fallbackTitle: details.title ?? details.name ?? "", kpId: playerKpId, season: playerSeason, episode: playerEpisode, selectedVoiceover: playerVoiceover, voices: playerVoices, subtitles: playerSubtitles, initialQuality: playerQuality)
                     } else {
-                        if let directUrl = selectedIframeUrl ?? selectedDirectVideoUrl {
-                            PlayerView(directVideoUrl: directUrl, fallbackTitle: details.title ?? details.name ?? "", kpId: playerKpId, season: playerSeason, episode: playerEpisode, selectedVoiceover: playerVoiceover, voices: playerVoices, subtitles: playerSubtitles, initialQuality: playerQuality)
-                        } else {
-                            Text("Видео не найдено")
-                        }
+                        Text("Видео не найдено")
                     }
                 }
             }
@@ -452,7 +411,6 @@ struct DetailsView: View {
 
                             guard let kpId = details.externalIds?.kp else { return }
 
-                            sourceSheetMode = SourceManager.shared.currentMode
                             sourceSheetTitle = details.title ?? details.name ?? ""
                             sourceSheetDetent = .medium
                             viewModel.resetSourceSheet()
@@ -492,19 +450,17 @@ struct DetailsView: View {
                                 guard let kpId = details.externalIds?.kp else { return }
 
                                 // To handle pre-selection, we can use a new state property in DetailsView or just save to progress store
-                                // CollapsPlaybackProgressStore reads from store when opened, so let's temporarily save it there to auto-select
-                                CollapsPlaybackProgressStore.shared.saveLastPlayed(
+                                PlaybackProgressStore.shared.saveLastPlayed(
                                     kpId: kpId,
                                     season: season,
                                     episode: episode
                                 )
-                                CollapsPlaybackProgressStore.shared.saveLastVoiceover(
+                                PlaybackProgressStore.shared.saveLastVoiceover(
                                     kpId: kpId,
-                                    source: "collaps",
+                                    source: "alloha",
                                     voiceover: nil
                                 )
 
-                                sourceSheetMode = SourceManager.shared.currentMode
                                 sourceSheetTitle = details.title ?? details.name ?? ""
                                 sourceSheetDetent = .medium
                                 viewModel.resetSourceSheet()
@@ -664,7 +620,6 @@ private struct DetailsSkeletonView: View {
 
 private struct SourceSelectionLoadingView: View {
     let title: String
-    let mode: SourceMode
 
     @Environment(\.dismiss) private var dismiss
 
@@ -673,11 +628,8 @@ private struct SourceSelectionLoadingView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
                     SourceSelectionSkeletonSection(title: "Озвучка", chipWidths: [84, 112, 96, 104])
-
-                    if mode == .alloha || mode == .collaps {
-                        SourceSelectionSkeletonSection(title: "Сезон", chipWidths: [88, 88, 88])
-                        SourceSelectionSkeletonSection(title: "Серия", chipWidths: [84, 84, 84, 84])
-                    }
+                    SourceSelectionSkeletonSection(title: "Сезон", chipWidths: [88, 88, 88])
+                    SourceSelectionSkeletonSection(title: "Серия", chipWidths: [84, 84, 84, 84])
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -1025,27 +977,12 @@ struct InlineEpisodesSection: View {
     @State private var selectedSeason: Int = 1
 
     var allSeasons: [Int] {
-        if let wrapper = viewModel.inlineSourceWrapper {
-            if wrapper.mode == .collaps, let collapsSeasons = wrapper.collapsSeasons {
-                return collapsSeasons.map { $0.season }.sorted()
-            } else if wrapper.mode == .alloha, let allohaResult = wrapper.allohaResult {
-                return allohaResult.seasons.map { $0.season }.sorted()
-            }
-        }
-        return []
+        viewModel.inlineSourceWrapper?.allohaResult?.seasons.map { $0.season }.sorted() ?? []
     }
 
     var episodesForSelectedSeason: [Int] {
-        if let wrapper = viewModel.inlineSourceWrapper {
-            if wrapper.mode == .collaps, let collapsSeasons = wrapper.collapsSeasons {
-                if let season = collapsSeasons.first(where: { $0.season == selectedSeason }) {
-                    return season.episodes.map { $0.episode }.sorted()
-                }
-            } else if wrapper.mode == .alloha, let allohaResult = wrapper.allohaResult {
-                if let season = allohaResult.seasons.first(where: { $0.season == selectedSeason }) {
-                    return season.episodes.map { $0.episode }.sorted()
-                }
-            }
+        if let season = viewModel.inlineSourceWrapper?.allohaResult?.seasons.first(where: { $0.season == selectedSeason }) {
+            return season.episodes.map { $0.episode }.sorted()
         }
         return []
     }
@@ -1135,10 +1072,7 @@ struct InlineEpisodesSection: View {
 // Обертка для Identifiable, чтобы использовать в .sheet(item:)
 struct SourceResultWrapper: Identifiable {
     let id = UUID()
-    let mode: SourceMode
     var allohaResult: AllohaApiResult?
-    var collapsSeasons: [CollapsSeason]?
-    var collapsMovie: CollapsMovie?
     var kpId: Int?
 }
 
@@ -1150,7 +1084,6 @@ class DetailsViewModel: ObservableObject {
     @Published var isFetchingSources = false
     @Published var sourceResultWrapper: SourceResultWrapper?
     
-    @Published var inlineSeasons: [CollapsSeason]? // Or AllohaSeason mapped to a common model? Let's use SourceResultWrapper for inline too.
     @Published var inlineSourceWrapper: SourceResultWrapper?
     @Published var selectedInlineSeason: Int = 1
     @Published var isFetchingInlineSeasons = false
@@ -1192,19 +1125,10 @@ class DetailsViewModel: ObservableObject {
         isFetchingInlineSeasons = true
         defer { isFetchingInlineSeasons = false }
         
-        let mode = SourceManager.shared.currentMode
         do {
-            switch mode {
-            case .alloha:
-                let result = try await AllohaRepository.shared.fetchByKpId(kpId: kpId)
-                if result.isSerial {
-                    self.inlineSourceWrapper = SourceResultWrapper(mode: .alloha, allohaResult: result, kpId: kpId)
-                }
-            case .collaps:
-                let seasons = try await CollapsRepository.shared.getSeasonsByKpId(kpId: kpId)
-                if !seasons.isEmpty {
-                    self.inlineSourceWrapper = SourceResultWrapper(mode: .collaps, collapsSeasons: seasons, kpId: kpId)
-                }
+            let result = try await AllohaRepository.shared.fetchByKpId(kpId: kpId)
+            if result.isSerial {
+                self.inlineSourceWrapper = SourceResultWrapper(allohaResult: result, kpId: kpId)
             }
         } catch {
             print("Error fetching inline seasons: \(error)")
@@ -1249,63 +1173,51 @@ class DetailsViewModel: ObservableObject {
         isFetchingSources = true
         defer { isFetchingSources = false }
         
-        let mode = SourceManager.shared.currentMode
         do {
-            switch mode {
-            case .alloha:
-                var result = try await AllohaRepository.shared.fetchByKpId(kpId: kpId)
-                if !result.isSerial, let movie = result.movie {
-                    // Pre-resolve Alloha iframe to get actual voiceovers for the selection screen
-                    if movie.translations.count == 1 && movie.translations[0].name == result.title {
-                        let resolver = AllohaRuntimeResolver()
-                        if let resolved = try? await resolver.resolve(iframeUrl: movie.iframeUrl),
-                           let audioVariants = resolved["audioVariants"] as? [[String: Any]], !audioVariants.isEmpty {
-                            let newTranslations = audioVariants.enumerated().compactMap { index, variant -> AllohaTranslation? in
-                                guard let vTitle = variant["title"] as? String, !vTitle.isEmpty else { return nil }
-                                
-                                // Clean up the title similar to Android/neomovies-mobile behavior
-                                var cleanTitle = vTitle
-                                    .replacingOccurrences(of: "\\(Russian\\)", with: "")
-                                    .replacingOccurrences(of: "AC3 51 @ 640 kbps - Blu-ray CEE", with: "")
-                                    .replacingOccurrences(of: "AC3 5.1 @ 640 kbps", with: "")
-                                    .replacingOccurrences(of: "DUB", with: "Дубляж")
-                                    .replacingOccurrences(of: "MVO", with: "Многоголосый")
-                                    .replacingOccurrences(of: "DVO", with: "Двухголосый")
-                                    .replacingOccurrences(of: "AVO", with: "Авторский")
-                                    .replacingOccurrences(of: "ПМ", with: "Проф. многоголосый")
-                                    .replacingOccurrences(of: "ПД", with: "Проф. двухголосый")
-                                    .replacingOccurrences(of: "ЛМ", with: "Люб. многоголосый")
-                                    .replacingOccurrences(of: "ЛД", with: "Люб. двухголосый")
-                                    .trimmingCharacters(in: .whitespacesAndNewlines)
-                                
-                                // Clean up remaining hyphens, commas, or parentheses at the ends
-                                while cleanTitle.hasPrefix("-") || cleanTitle.hasPrefix(",") {
-                                    cleanTitle = String(cleanTitle.dropFirst()).trimmingCharacters(in: .whitespaces)
-                                }
-                                while cleanTitle.hasSuffix("-") || cleanTitle.hasSuffix(",") {
-                                    cleanTitle = String(cleanTitle.dropLast()).trimmingCharacters(in: .whitespaces)
-                                }
-                                if cleanTitle.isEmpty { cleanTitle = vTitle }
-                                
-                                return AllohaTranslation(id: "dub_\(index)", name: cleanTitle, iframeUrl: movie.iframeUrl)
+            var result = try await AllohaRepository.shared.fetchByKpId(kpId: kpId)
+            if !result.isSerial, let movie = result.movie {
+                // Pre-resolve Alloha iframe to get actual voiceovers for the selection screen
+                if movie.translations.count == 1 && movie.translations[0].name == result.title {
+                    let resolver = AllohaRuntimeResolver()
+                    if let resolved = try? await resolver.resolve(iframeUrl: movie.iframeUrl),
+                       let audioVariants = resolved["audioVariants"] as? [[String: Any]], !audioVariants.isEmpty {
+                        let newTranslations = audioVariants.enumerated().compactMap { index, variant -> AllohaTranslation? in
+                            guard let vTitle = variant["title"] as? String, !vTitle.isEmpty else { return nil }
+                            
+                            // Clean up the title similar to Android/neomovies-mobile behavior
+                            var cleanTitle = vTitle
+                                .replacingOccurrences(of: "\\(Russian\\)", with: "")
+                                .replacingOccurrences(of: "AC3 51 @ 640 kbps - Blu-ray CEE", with: "")
+                                .replacingOccurrences(of: "AC3 5.1 @ 640 kbps", with: "")
+                                .replacingOccurrences(of: "DUB", with: "Дубляж")
+                                .replacingOccurrences(of: "MVO", with: "Многоголосый")
+                                .replacingOccurrences(of: "DVO", with: "Двухголосый")
+                                .replacingOccurrences(of: "AVO", with: "Авторский")
+                                .replacingOccurrences(of: "ПМ", with: "Проф. многоголосый")
+                                .replacingOccurrences(of: "ПД", with: "Проф. двухголосый")
+                                .replacingOccurrences(of: "ЛМ", with: "Люб. многоголосый")
+                                .replacingOccurrences(of: "ЛД", with: "Люб. двухголосый")
+                                .trimmingCharacters(in: .whitespacesAndNewlines)
+                            
+                            // Clean up remaining hyphens, commas, or parentheses at the ends
+                            while cleanTitle.hasPrefix("-") || cleanTitle.hasPrefix(",") {
+                                cleanTitle = String(cleanTitle.dropFirst()).trimmingCharacters(in: .whitespaces)
                             }
-                            if !newTranslations.isEmpty {
-                                let newMovie = AllohaMovie(title: movie.title, iframeUrl: movie.iframeUrl, translations: newTranslations)
-                                result = AllohaApiResult(title: result.title, isSerial: false, movie: newMovie, seasons: [])
+                            while cleanTitle.hasSuffix("-") || cleanTitle.hasSuffix(",") {
+                                cleanTitle = String(cleanTitle.dropLast()).trimmingCharacters(in: .whitespaces)
                             }
+                            if cleanTitle.isEmpty { cleanTitle = vTitle }
+                            
+                            return AllohaTranslation(id: "dub_\(index)", name: cleanTitle, iframeUrl: movie.iframeUrl)
+                        }
+                        if !newTranslations.isEmpty {
+                            let newMovie = AllohaMovie(title: movie.title, iframeUrl: movie.iframeUrl, translations: newTranslations)
+                            result = AllohaApiResult(title: result.title, isSerial: false, movie: newMovie, seasons: [])
                         }
                     }
                 }
-                self.sourceResultWrapper = SourceResultWrapper(mode: .alloha, allohaResult: result, kpId: kpId)
-            case .collaps:
-                let seasons = try await CollapsRepository.shared.getSeasonsByKpId(kpId: kpId)
-                if seasons.isEmpty {
-                    let movie = try await CollapsRepository.shared.getMovieByKpId(kpId: kpId)
-                    self.sourceResultWrapper = SourceResultWrapper(mode: .collaps, collapsMovie: movie, kpId: kpId)
-                } else {
-                    self.sourceResultWrapper = SourceResultWrapper(mode: .collaps, collapsSeasons: seasons, kpId: kpId)
-                }
             }
+            self.sourceResultWrapper = SourceResultWrapper(allohaResult: result, kpId: kpId)
         } catch {
             print("Error fetching sources: \(error)")
         }
