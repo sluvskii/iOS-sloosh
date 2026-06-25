@@ -638,7 +638,7 @@ private struct SourceSelectionLoadingView: View {
                 VStack(alignment: .leading, spacing: 24) {
                     SourceSelectionSkeletonSection(title: "Озвучка", chipWidths: [84, 112, 96, 104])
 
-                    if mode == .alloha || mode == .alloha {
+                    if mode == .alloha {
                         SourceSelectionSkeletonSection(title: "Сезон", chipWidths: [88, 88, 88])
                         SourceSelectionSkeletonSection(title: "Серия", chipWidths: [84, 84, 84, 84])
                     }
