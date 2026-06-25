@@ -126,14 +126,14 @@ struct PlayerView: View {
     let episode: Int?
     let selectedVoiceover: String?
     let voices: [String]
-    let subtitles: [CollapsSubtitle]
+    let subtitles: [String]
     
     let initialQuality: VideoQualityPreference?
     
     @StateObject private var viewModel = PlayerViewModel()
     @Environment(\.presentationMode) var presentationMode
     
-    init(iframeUrl: String? = nil, directVideoUrl: String? = nil, fallbackTitle: String, kpId: Int? = nil, season: Int? = nil, episode: Int? = nil, selectedVoiceover: String? = nil, voices: [String] = [], subtitles: [CollapsSubtitle] = [], initialQuality: VideoQualityPreference? = nil) {
+    init(iframeUrl: String? = nil, directVideoUrl: String? = nil, fallbackTitle: String, kpId: Int? = nil, season: Int? = nil, episode: Int? = nil, selectedVoiceover: String? = nil, voices: [String] = [], subtitles: [String] = [], initialQuality: VideoQualityPreference? = nil) {
         self.iframeUrl = iframeUrl
         self.directVideoUrl = directVideoUrl
         self.fallbackTitle = fallbackTitle
@@ -232,7 +232,7 @@ class PlayerViewModel: ObservableObject {
         return host == "127.0.0.1" || host == "localhost"
     }
     
-    func load(iframeUrl: String, kpId: Int?, season: Int?, episode: Int?, selectedVoiceover: String?, voices: [String] = [], subtitles: [CollapsSubtitle] = []) {
+    func load(iframeUrl: String, kpId: Int?, season: Int?, episode: Int?, selectedVoiceover: String?, voices: [String] = [], subtitles: [String] = []) {
         if hasStartedLoading { return } // Защита от двойного вызова
         hasStartedLoading = true
         
@@ -248,14 +248,14 @@ class PlayerViewModel: ObservableObject {
         startParsing(iframeUrl: iframeUrl, voices: voices, subtitles: subtitles)
     }
     
-    func loadDirect(url: String, kpId: Int?, season: Int?, episode: Int?, selectedVoiceover: String?, voices: [String] = [], subtitles: [CollapsSubtitle] = []) {
+    func loadDirect(url: String, kpId: Int?, season: Int?, episode: Int?, selectedVoiceover: String?, voices: [String] = [], subtitles: [String] = []) {
         if hasStartedLoading { return }
         hasStartedLoading = true
         
         self.currentKpId = kpId
         self.currentSeason = season
         self.currentEpisode = episode
-        self.currentSourcePreferenceKey = "collaps"
+        self.currentSourcePreferenceKey = "alloha"
         self.targetVoiceover = selectedVoiceover
         
         isLoading = true
@@ -275,12 +275,7 @@ class PlayerViewModel: ObservableObject {
 
         Task {
             do {
-                let fetchUrl: URL
-                if currentSourcePreferenceKey == "collaps", let encodedString = CollapsStreamEncoder.encodeUri(url).addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed), let encodedUrl = URL(string: encodedString) {
-                    fetchUrl = encodedUrl
-                } else {
-                    fetchUrl = parsedUrl
-                }
+                let fetchUrl = parsedUrl
                 
                 var request = URLRequest(url: fetchUrl)
                 request.setValue("Mozilla/5.0 (Windows NT 10.0; Win64; x64)", forHTTPHeaderField: "User-Agent")
@@ -395,7 +390,7 @@ class PlayerViewModel: ObservableObject {
         }
     }
     
-    private func startParsing(iframeUrl: String, voices: [String] = [], subtitles: [CollapsSubtitle] = []) {
+    private func startParsing(iframeUrl: String, voices: [String] = [], subtitles: [String] = []) {
         resolveTask?.cancel()
         resolver?.cancel()
 
@@ -433,7 +428,11 @@ class PlayerViewModel: ObservableObject {
                 mediaId = "kp_\(currentKpId)"
             }
             let duration = player.currentItem?.duration.seconds
-            CollapsPlaybackProgressStore.shared.save(mediaId: mediaId, positionSec: player.currentTime().seconds, durationSec: duration?.isNaN == false ? duration : nil)
+            let pos = player.currentTime().seconds
+            if pos > 0 && !(duration?.isNaN ?? true) {
+                UserDefaults.standard.set(pos, forKey: "progress_pos_\(mediaId)")
+                UserDefaults.standard.set(duration, forKey: "progress_dur_\(mediaId)")
+            }
         }
 
         resolveTask?.cancel()
@@ -542,10 +541,10 @@ class PlayerViewModel: ObservableObject {
               let source = currentSourcePreferenceKey else {
             return nil
         }
-        return CollapsPlaybackProgressStore.shared.loadLastVoiceover(kpId: kpId, source: source)
+        return UserDefaults.standard.string(forKey: "voiceover_\(kpId)_\(source)")
     }
     
-    private func playVideo(url: URL, headers: [String: String], voices: [String] = [], subtitles: [CollapsSubtitle] = []) {
+    private func playVideo(url: URL, headers: [String: String], voices: [String] = [], subtitles: [String] = []) {
         let absoluteUrlString = url.absoluteString
         guard let encodedData = absoluteUrlString.data(using: .utf8) else {
             self.error = "Ошибка формирования URL"
@@ -570,8 +569,7 @@ class PlayerViewModel: ObservableObject {
             mediaId = "unknown"
         }
         
-        let isCollaps = currentSourcePreferenceKey == "collaps"
-        HlsProxyServer.shared.start(headers: headers, voices: voices, subtitles: subtitles, mediaId: mediaId, isCollaps: isCollaps)
+        HlsProxyServer.shared.start(headers: headers, voices: voices, subtitles: [], mediaId: mediaId)
         
         let ext = url.pathExtension
         let pathSuffix = ext.isEmpty ? "stream.m3u8" : "stream.\(ext)"
@@ -617,7 +615,7 @@ class PlayerViewModel: ObservableObject {
             return
         }
         
-        let savedPosition = CollapsPlaybackProgressStore.shared.load(mediaId: mediaId)
+        let savedPosition = UserDefaults.standard.double(forKey: "progress_pos_\(mediaId)")
         if savedPosition > 0 {
             player.seek(to: CMTime(seconds: savedPosition, preferredTimescale: 600))
         }
@@ -625,7 +623,13 @@ class PlayerViewModel: ObservableObject {
         timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 5, preferredTimescale: 600), queue: .main) { [weak self, weak player] time in
             guard let self = self, let player = player else { return }
             let duration = player.currentItem?.duration.seconds
-            CollapsPlaybackProgressStore.shared.save(mediaId: mediaId, positionSec: time.seconds, durationSec: duration?.isNaN == false ? duration : nil)
+            
+            let pos = time.seconds
+            if pos > 0 && !(duration?.isNaN ?? true) {
+                UserDefaults.standard.set(pos, forKey: "progress_pos_\(mediaId)")
+                UserDefaults.standard.set(duration, forKey: "progress_dur_\(mediaId)")
+            }
+            
             if let item = player.currentItem {
                 self.persistCurrentVoiceoverSelection(from: item)
             }
@@ -709,20 +713,12 @@ class PlayerViewModel: ObservableObject {
         }
     }
 
-    private func resolvedSubtitles(from resolved: [String: Any]) -> [CollapsSubtitle] {
+    private func resolvedSubtitles(from resolved: [String: Any]) -> [String] {
         let subtitles = (resolved["subtitles"] as? [[String: Any]]) ?? []
         return subtitles.compactMap { item in
             let url = ((item["url"] as? String) ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
             guard !url.isEmpty else { return nil }
-            let label = ((item["label"] as? String) ?? (item["name"] as? String) ?? "Субтитры")
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            let language = ((item["language"] as? String) ?? (item["lang"] as? String) ?? "ru")
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            return CollapsSubtitle(
-                url: url,
-                label: label.isEmpty ? "Субтитры" : label,
-                lang: language.isEmpty ? "ru" : language
-            )
+            return url
         }
     }
 
@@ -740,10 +736,11 @@ class PlayerViewModel: ObservableObject {
 
     private func persistVoiceoverSelection(_ name: String?) {
         guard let kpId = currentKpId,
-              let source = currentSourcePreferenceKey else {
+              let source = currentSourcePreferenceKey,
+              let validName = name else {
             return
         }
-        CollapsPlaybackProgressStore.shared.saveLastVoiceover(kpId: kpId, source: source, voiceover: name)
+        UserDefaults.standard.set(validName, forKey: "voiceover_\(kpId)_\(source)")
     }
 
     private func appendQualityVariants(_ variants: [[String: Any]], to qualities: inout [(key: String, url: URL)], seenKeys: inout Set<String>) {
