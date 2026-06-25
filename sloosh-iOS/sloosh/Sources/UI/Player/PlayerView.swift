@@ -227,6 +227,9 @@ class PlayerViewModel: ObservableObject {
     private var timeObserver: Any?
     private var itemObservation: NSKeyValueObservation?
     private var playbackEndObserver: NSObjectProtocol?
+    private var nextEpisodePrefetchTask: Task<Void, Never>?
+    private var nextEpisodePrefetchKey: String?
+    private var nextEpisodePrefetchedResolved: [String: Any]?
     
     private var currentKpId: Int?
     private var currentSeason: Int?
@@ -421,6 +424,10 @@ class PlayerViewModel: ObservableObject {
 
         resolveTask?.cancel()
         resolveTask = nil
+        nextEpisodePrefetchTask?.cancel()
+        nextEpisodePrefetchTask = nil
+        nextEpisodePrefetchKey = nil
+        nextEpisodePrefetchedResolved = nil
         resolver?.cancel()
         resolver = nil
         player?.pause()
@@ -660,13 +667,28 @@ class PlayerViewModel: ObservableObject {
             PlaybackProgressStore.shared.saveLastPlayed(kpId: kpId, season: nextEpisode.season, episode: nextEpisode.episode)
         }
 
-        beginLoad(
-            iframeUrl: nextEpisode.translation.iframeUrl,
-            kpId: currentKpId,
-            season: nextEpisode.season,
-            episode: nextEpisode.episode,
-            selectedVoiceover: nextEpisode.translation.name
-        )
+        let nextKey = episodeKey(season: nextEpisode.season, episode: nextEpisode.episode)
+        if let nextKey,
+           nextEpisodePrefetchKey == nextKey,
+           let prefetchedResolved = nextEpisodePrefetchedResolved {
+            currentSeason = nextEpisode.season
+            currentEpisode = nextEpisode.episode
+            currentTranslationName = nextEpisode.translation.name
+            targetVoiceover = nextEpisode.translation.name
+            nextEpisodePrefetchTask?.cancel()
+            nextEpisodePrefetchTask = nil
+            nextEpisodePrefetchKey = nil
+            nextEpisodePrefetchedResolved = nil
+            applyResolvedAllohaStream(prefetchedResolved)
+        } else {
+            beginLoad(
+                iframeUrl: nextEpisode.translation.iframeUrl,
+                kpId: currentKpId,
+                season: nextEpisode.season,
+                episode: nextEpisode.episode,
+                selectedVoiceover: nextEpisode.translation.name
+            )
+        }
     }
 
     private func nextEpisodeCandidate() -> (season: Int, episode: Int, translation: AllohaTranslation)? {
@@ -706,6 +728,47 @@ class PlayerViewModel: ObservableObject {
         }
 
         return episode.translations.first
+    }
+
+    private func episodeKey(season: Int, episode: Int) -> String {
+        "\(season)-\(episode)"
+    }
+
+    private func scheduleNextEpisodePrefetch() {
+        guard autoplayNextEpisodeEnabled,
+              let nextEpisode = nextEpisodeCandidate() else {
+            nextEpisodePrefetchTask?.cancel()
+            nextEpisodePrefetchTask = nil
+            nextEpisodePrefetchKey = nil
+            nextEpisodePrefetchedResolved = nil
+            return
+        }
+
+        let nextKey = episodeKey(season: nextEpisode.season, episode: nextEpisode.episode)
+        guard nextEpisodePrefetchKey != nextKey || nextEpisodePrefetchedResolved == nil else {
+            return
+        }
+
+        nextEpisodePrefetchTask?.cancel()
+        nextEpisodePrefetchedResolved = nil
+        nextEpisodePrefetchKey = nextKey
+
+        nextEpisodePrefetchTask = Task { [weak self] in
+            let resolver = AllohaRuntimeResolver()
+            do {
+                let resolved = try await resolver.resolve(iframeUrl: nextEpisode.translation.iframeUrl)
+                guard let self, !Task.isCancelled else { return }
+                await MainActor.run {
+                    guard self.nextEpisodePrefetchKey == nextKey else { return }
+                    self.nextEpisodePrefetchedResolved = resolved
+                }
+            } catch {
+                await MainActor.run {
+                    guard self?.nextEpisodePrefetchKey == nextKey else { return }
+                    self?.nextEpisodePrefetchedResolved = nil
+                }
+            }
+        }
     }
 
     private func applyResolvedAllohaStream(_ resolved: [String: Any]) {
@@ -749,6 +812,7 @@ class PlayerViewModel: ObservableObject {
         playVideo(url: resolvedUrl, headers: headers, voices: resolvedVoices, subtitles: resolvedSubtitles)
         NotificationCenter.default.post(name: NSNotification.Name("QualitiesUpdated"), object: nil)
         applyInitialQuality()
+        scheduleNextEpisodePrefetch()
     }
 
     private func resolvedVoiceovers(from resolved: [String: Any]) -> [String] {
