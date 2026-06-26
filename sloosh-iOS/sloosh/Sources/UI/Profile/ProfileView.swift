@@ -60,13 +60,7 @@ struct ProfileView: View {
                 VStack(spacing: 20) {
                     // В будущем здесь будет шапка профиля (аватарка, ник пользователя)
                     
-                    Picker("Папка", selection: $selectedCategory) {
-                        ForEach(FavoriteCategory.allCases, id: \.self) { category in
-                            Text(category.title).tag(category)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .padding(.horizontal, 16)
+                    ProfileCategoryTextTabs(selectedCategory: $selectedCategory)
                     
                     if favoritesRepo.favorites.isEmpty {
                         VStack {
@@ -128,5 +122,79 @@ struct ProfileView: View {
                 }
             }
         }
+    }
+}
+
+private struct ProfileTabScaleButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
+            .opacity(configuration.isPressed ? 0.8 : 1.0)
+            .animation(.spring(response: 0.25, dampingFraction: 0.75), value: configuration.isPressed)
+    }
+}
+
+private struct ProfileCategoryTextTabs: View {
+    @Binding var selectedCategory: FavoriteCategory
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @ScaledMetric(relativeTo: .headline) private var titleSize: CGFloat = 24
+
+    private var tabSpacing: CGFloat {
+        horizontalSizeClass == .regular ? 28 : 22
+    }
+
+    private var edgeInset: CGFloat {
+        horizontalSizeClass == .regular ? 18 : 16
+    }
+
+    private var animation: Animation {
+        .spring(response: 0.35, dampingFraction: 0.78, blendDuration: 0.1)
+    }
+
+    var body: some View {
+        ScrollViewReader { scrollProxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: tabSpacing) {
+                    ForEach(Array(FavoriteCategory.allCases.enumerated()), id: \.element) { index, category in
+                        let isSelected = selectedCategory == category
+                        let isFirst = index == 0
+                        let isLast = index == FavoriteCategory.allCases.count - 1
+
+                        Button {
+                            guard !isSelected else { return }
+                            withAnimation(animation) {
+                                selectedCategory = category
+                            }
+                        } label: {
+                            Text(category.title)
+                                .font(.system(size: titleSize, weight: isSelected ? .bold : .semibold))
+                                .foregroundStyle(isSelected ? .primary : .secondary)
+                                .lineLimit(1)
+                                .fixedSize(horizontal: true, vertical: false)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(ProfileTabScaleButtonStyle())
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 2)
+                        .padding(.leading, isFirst ? edgeInset : 0)
+                        .padding(.trailing, isLast ? edgeInset : 0)
+                        .id(category)
+                        .accessibilityAddTraits(isSelected ? .isSelected : [])
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .scrollClipDisabled()
+            .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+            .onAppear {
+                scrollProxy.scrollTo(selectedCategory, anchor: .center)
+            }
+            .onChange(of: selectedCategory) { _, newCategory in
+                withAnimation(animation) {
+                    scrollProxy.scrollTo(newCategory, anchor: .center)
+                }
+            }
+        }
+        .sensoryFeedback(.selection, trigger: selectedCategory)
     }
 }
