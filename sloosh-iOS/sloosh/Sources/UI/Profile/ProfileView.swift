@@ -65,7 +65,7 @@ struct ProfileView: View {
                         
                         if favoritesRepo.favorites.isEmpty {
                             ProfileEmptyState(
-                                icon: "sparkles.tv",
+                                icon: "heart.slash",
                                 title: "Пока ничего не добавлено",
                                 message: "Сохраняйте фильмы и сериалы в избранное, чтобы быстро возвращаться к ним позже."
                             )
@@ -73,7 +73,7 @@ struct ProfileView: View {
                             .frame(minHeight: max(geometry.size.height - 180, 320))
                         } else if filteredFavorites.isEmpty {
                             ProfileEmptyState(
-                                icon: "line.3.horizontal.decrease.circle",
+                                icon: "film.stack",
                                 title: "В этой подборке пока пусто",
                                 message: "Попробуйте открыть другую вкладку или добавьте что-нибудь в избранное."
                             )
@@ -126,15 +126,9 @@ private struct ProfileEmptyState: View {
 
     var body: some View {
         VStack(spacing: 18) {
-            ZStack {
-                Circle()
-                    .fill(Color.secondary.opacity(0.12))
-                    .frame(width: 88, height: 88)
-
-                Image(systemName: icon)
-                    .font(.system(size: 34, weight: .semibold))
-                    .foregroundStyle(.primary)
-            }
+            Image(systemName: icon)
+                .font(.system(size: 42, weight: .medium))
+                .foregroundStyle(.secondary)
 
             VStack(spacing: 8) {
                 Text(title)
