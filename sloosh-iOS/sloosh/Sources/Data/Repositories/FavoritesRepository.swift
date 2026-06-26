@@ -9,6 +9,7 @@ class FavoritesRepository: ObservableObject {
     
     private init() {
         loadFavorites()
+        refreshMissingMetadataIfNeeded()
     }
     
     private func loadFavorites() {
@@ -32,14 +33,15 @@ class FavoritesRepository: ObservableObject {
         return favorites.contains { $0.mediaId == mediaId && $0.type == mediaType }
     }
     
-    func addToFavorites(mediaId: String, mediaType: String, title: String?, posterUrl: String?) {
+    func addToFavorites(mediaId: String, mediaType: String, title: String?, posterUrl: String?, rating: Double?) {
         if !isFavorite(mediaId: mediaId, mediaType: mediaType) {
             let newFav = FavoriteDto(
                 id: UUID().uuidString,
                 mediaId: mediaId,
                 type: mediaType,
                 title: title,
-                posterUrl: posterUrl
+                posterUrl: posterUrl,
+                rating: rating
             )
             favorites.append(newFav)
             saveFavorites()
@@ -49,5 +51,51 @@ class FavoritesRepository: ObservableObject {
     func removeFromFavorites(mediaId: String, mediaType: String) {
         favorites.removeAll { $0.mediaId == mediaId && $0.type == mediaType }
         saveFavorites()
+    }
+
+    private func refreshMissingMetadataIfNeeded() {
+        let needsRefresh = favorites.contains {
+            ($0.rating == nil || $0.rating == 0) && ($0.mediaId?.isEmpty == false)
+        }
+
+        guard needsRefresh else { return }
+
+        Task {
+            await refreshMissingMetadata()
+        }
+    }
+
+    private func refreshMissingMetadata() async {
+        var updatedFavorites = favorites
+        var didChange = false
+
+        for index in updatedFavorites.indices {
+            let favorite = updatedFavorites[index]
+            guard let mediaId = favorite.mediaId, !mediaId.isEmpty else { continue }
+            guard favorite.rating == nil || favorite.rating == 0 else { continue }
+
+            do {
+                guard let details = try await MoviesRepository.shared.getDetails(id: mediaId) else {
+                    continue
+                }
+
+                updatedFavorites[index] = FavoriteDto(
+                    id: favorite.id,
+                    mediaId: favorite.mediaId,
+                    type: favorite.type,
+                    title: favorite.title ?? details.title ?? details.name,
+                    posterUrl: favorite.posterUrl ?? details.posterUrl ?? details.backdropUrl,
+                    rating: details.rating
+                )
+                didChange = true
+            } catch {
+                continue
+            }
+        }
+
+        if didChange {
+            favorites = updatedFavorites
+            saveFavorites()
+        }
     }
 }
