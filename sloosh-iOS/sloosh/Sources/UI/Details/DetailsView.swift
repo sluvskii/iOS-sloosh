@@ -1156,7 +1156,8 @@ class DetailsViewModel: ObservableObject {
                 mediaId: mediaId,
                 mediaType: mediaType,
                 title: details.title ?? details.name,
-                posterUrl: details.posterUrl ?? details.backdropUrl
+                posterUrl: details.posterUrl ?? details.backdropUrl,
+                rating: details.rating
             )
         }
         isFavorite.toggle()
