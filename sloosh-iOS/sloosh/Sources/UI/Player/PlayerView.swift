@@ -753,7 +753,9 @@ class PlayerViewModel: ObservableObject {
             let duration = player.currentItem?.duration.seconds
             PlaybackProgressStore.shared.save(mediaId: mediaId, positionSec: time.seconds, durationSec: duration?.isNaN == false ? duration : nil)
             if let item = player.currentItem {
-                self.persistCurrentVoiceoverSelection(from: item)
+                Task { @MainActor [weak self] in
+                    self?.persistCurrentVoiceoverSelection(from: item)
+                }
             }
         }
     }
