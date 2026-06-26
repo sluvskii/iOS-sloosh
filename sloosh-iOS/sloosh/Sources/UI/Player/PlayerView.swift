@@ -621,7 +621,8 @@ class PlayerViewModel: ObservableObject {
     private func makeResolvedQualityOptions(
         resolvedUrl: URL,
         qualityVariants: [[String: Any]],
-        audioVariants: [[String: Any]]
+        audioVariants: [[String: Any]],
+        preferredVoiceover: String?
     ) -> [PlaybackQualityOption] {
         var qualities = [makeAutoQualityOption(url: resolvedUrl)]
         var seenKeys = Set<String>(["Авто"])
@@ -629,8 +630,8 @@ class PlayerViewModel: ObservableObject {
         appendQualityVariants(qualityVariants, to: &qualities, seenKeys: &seenKeys)
 
         if qualities.count == 1,
-           let firstAudio = audioVariants.first,
-           let nestedQualityVariants = firstAudio["qualityVariants"] as? [[String: Any]] {
+           let selectedAudio = preferredAudioVariant(in: audioVariants, preferredVoiceover: preferredVoiceover) ?? audioVariants.first,
+           let nestedQualityVariants = selectedAudio["qualityVariants"] as? [[String: Any]] {
             appendQualityVariants(nestedQualityVariants, to: &qualities, seenKeys: &seenKeys)
         }
 
@@ -849,25 +850,32 @@ class PlayerViewModel: ObservableObject {
     }
 
     private func applyResolvedAllohaStream(_ resolved: [String: Any]) {
-        guard let resolvedUrlString = (resolved["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
-              let resolvedUrl = URL(string: resolvedUrlString) else {
+        let headers = (resolved["headers"] as? [String: String]) ?? [:]
+        currentHeaders = headers
+        let resolvedVoices = resolvedVoiceovers(from: resolved)
+        let resolvedSubtitles = resolvedSubtitles(from: resolved)
+        let qualityVariants = (resolved["qualityVariants"] as? [[String: Any]]) ?? []
+        let audioVariants = (resolved["audioVariants"] as? [[String: Any]]) ?? []
+
+        let preferredVoiceover = currentTranslationName ?? targetVoiceover
+        let selectedAudioVariant = preferredAudioVariant(in: audioVariants, preferredVoiceover: preferredVoiceover)
+        let selectedUrlString = (
+            selectedAudioVariant?["url"] as? String
+            ?? (resolved["url"] as? String)
+            ?? ""
+        ).trimmingCharacters(in: .whitespacesAndNewlines)
+
+        guard let resolvedUrl = URL(string: selectedUrlString), !selectedUrlString.isEmpty else {
             self.error = "Не удалось извлечь ссылку на видео"
             self.isLoading = false
             return
         }
 
-        let headers = (resolved["headers"] as? [String: String]) ?? [:]
-        currentHeaders = headers
-        let resolvedVoices = resolvedVoiceovers(from: resolved)
-        let resolvedSubtitles = resolvedSubtitles(from: resolved)
-
-        let qualityVariants = (resolved["qualityVariants"] as? [[String: Any]]) ?? []
-        let audioVariants = (resolved["audioVariants"] as? [[String: Any]]) ?? []
-
         availableQualities = makeResolvedQualityOptions(
             resolvedUrl: resolvedUrl,
             qualityVariants: qualityVariants,
-            audioVariants: audioVariants
+            audioVariants: audioVariants,
+            preferredVoiceover: preferredVoiceover
         )
         currentQualityKey = "Авто"
         playVideo(url: resolvedUrl, headers: headers, voices: resolvedVoices, subtitles: resolvedSubtitles)
@@ -948,6 +956,17 @@ class PlayerViewModel: ObservableObject {
             episode: currentEpisode,
             voiceover: normalized.isEmpty ? name : normalized
         )
+    }
+
+    private func preferredAudioVariant(
+        in audioVariants: [[String: Any]],
+        preferredVoiceover: String?
+    ) -> [String: Any]? {
+        guard let preferredVoiceover, !preferredVoiceover.isEmpty else { return nil }
+        return audioVariants.first { variant in
+            let title = variant["title"] as? String
+            return allohaTranslationNamesMatch(title, preferredVoiceover)
+        }
     }
 
     private func appendQualityVariants(_ variants: [[String: Any]], to qualities: inout [PlaybackQualityOption], seenKeys: inout Set<String>) {
