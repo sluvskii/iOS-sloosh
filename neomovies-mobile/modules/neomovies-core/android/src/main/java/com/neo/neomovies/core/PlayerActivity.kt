@@ -134,6 +134,16 @@ class PlayerActivity : BasePlayerActivity() {
         if (kinopoiskId != null) {
             viewModel.setKinopoiskId(kinopoiskId)
         }
+
+        val finalUrls = urls ?: arrayListOf(url)
+        val initialPlaybackUrl = finalUrls.getOrNull(startIndex) ?: finalUrls.firstOrNull().orEmpty()
+        viewModel.primePlaybackPreferences(
+            currentUrl = initialPlaybackUrl,
+            names = names,
+            startIndex = startIndex,
+            title = title,
+            kinopoiskId = kinopoiskId,
+        )
         
         // Set Alloha variants if present
         if (audioVariants.isNotEmpty() || qualityVariants.isNotEmpty()) {
@@ -459,7 +469,6 @@ class PlayerActivity : BasePlayerActivity() {
         // Use PlayerControlView to connect next/prev to chapters if needed later.
         findViewById<PlayerControlView>(R.id.exo_controller)
 
-        val finalUrls = urls ?: arrayListOf(url)
         android.util.Log.d("PlayerActivity", "Calling initializePlayer with urls: $finalUrls")
 
         val allohaIframeUrl = intent.getStringExtra(EXTRA_ALLOHA_IFRAME_URL)
@@ -473,6 +482,13 @@ class PlayerActivity : BasePlayerActivity() {
                     @Suppress("UNCHECKED_CAST")
                     val qv = (resolved["qualityVariants"] as? List<Map<String, Any>>) ?: emptyList()
                     if (av.isNotEmpty() || qv.isNotEmpty()) {
+                        viewModel.primePlaybackPreferences(
+                            currentUrl = resolved["url"] as? String ?: finalUrls.firstOrNull().orEmpty(),
+                            names = names,
+                            startIndex = 0,
+                            title = title,
+                            kinopoiskId = kinopoiskId,
+                        )
                         viewModel.setAllohaVariants(av, qv)
                     }
                     val resolvedUrl = viewModel.getBestAllohaUrl()
@@ -761,6 +777,13 @@ class PlayerActivity : BasePlayerActivity() {
                 val qualityVariants = (resolved["qualityVariants"] as? List<Map<String, Any>>) ?: emptyList()
                 holder.currentAudioVariants = audioVariants
                 holder.currentQualityVariants = qualityVariants
+                viewModel.primePlaybackPreferences(
+                    currentUrl = newUrl,
+                    names = listOf(episodeName),
+                    startIndex = 0,
+                    title = holder.baseTitle,
+                    kinopoiskId = kpId,
+                )
                 viewModel.setAllohaVariants(audioVariants, qualityVariants)
 
                 // Restore saved progress for the new episode

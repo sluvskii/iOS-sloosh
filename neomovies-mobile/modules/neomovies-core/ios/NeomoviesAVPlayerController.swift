@@ -433,7 +433,8 @@ public final class CollapsAVPlayerController: NSObject {
 
     public func selectAudioTrack(index: Int?) {
         audioManager.updatePlaylist(playlistManager.playlist, currentIndex: playlistManager.currentIndex)
-        let result = audioManager.selectAudioTrack(index: index, emitState: emitState)
+        let preferenceKey = playlistManager.currentItem.map(playbackPreferenceKey(for:)) ?? ""
+        let result = audioManager.selectAudioTrack(index: index, preferenceKey: preferenceKey, emitState: emitState)
         if let episodeIndex = result {
             // Voiceover playlist: switch to a different playlist item (dub as separate episode)
             Task { @MainActor [weak self] in
@@ -701,6 +702,11 @@ public final class CollapsAVPlayerController: NSObject {
 
     private func scopedPlaybackMediaId(baseMediaId: String, urlString: String) -> String {
         return progressManager.scopedPlaybackMediaId(baseMediaId: baseMediaId, urlString: urlString)
+    }
+
+    private func playbackPreferenceKey(for item: CollapsAVPlaylistItem) -> String {
+        let progressKey = progressManager.progressKey(kpId: kpId, episode: item.episode, season: item.season)
+        return progressKey.isEmpty ? item.mediaId : progressKey
     }
 
     @MainActor

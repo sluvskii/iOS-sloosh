@@ -9,6 +9,8 @@ internal class PlayerProgressStore(context: Context) {
     private val watchedPrefs: SharedPreferences =
         context.getSharedPreferences("collaps_watched", Context.MODE_PRIVATE)
     private val durationPrefix = "duration_"
+    private val audioTrackPrefix = "audio_track_"
+    private val allohaAudioPrefix = "alloha_audio_"
 
     internal fun readStartPosition(progressKey: String, startFromBeginning: Boolean): Long {
         if (startFromBeginning) return 0L
@@ -81,6 +83,38 @@ internal class PlayerProgressStore(context: Context) {
 
     internal fun clearPosition(progressKey: String) {
         prefs.edit().remove(progressKey).remove(durationPrefix + progressKey).apply()
+    }
+
+    internal fun savePreferredAudioLabel(progressKey: String, label: String?) {
+        if (progressKey.isBlank()) return
+        val editor = prefs.edit()
+        if (label.isNullOrBlank()) {
+            editor.remove(audioTrackPrefix + progressKey)
+        } else {
+            editor.putString(audioTrackPrefix + progressKey, label)
+        }
+        editor.apply()
+    }
+
+    internal fun readPreferredAudioLabel(progressKey: String): String? {
+        if (progressKey.isBlank()) return null
+        return prefs.getString(audioTrackPrefix + progressKey, null)?.takeIf { it.isNotBlank() }
+    }
+
+    internal fun savePreferredAllohaAudioTitle(progressKey: String, title: String?) {
+        if (progressKey.isBlank()) return
+        val editor = prefs.edit()
+        if (title.isNullOrBlank()) {
+            editor.remove(allohaAudioPrefix + progressKey)
+        } else {
+            editor.putString(allohaAudioPrefix + progressKey, title)
+        }
+        editor.apply()
+    }
+
+    internal fun readPreferredAllohaAudioTitle(progressKey: String): String? {
+        if (progressKey.isBlank()) return null
+        return prefs.getString(allohaAudioPrefix + progressKey, null)?.takeIf { it.isNotBlank() }
     }
 
     internal fun clearAllohaEpisodeProgress(kpId: Int, episodeIndex: Int) {
