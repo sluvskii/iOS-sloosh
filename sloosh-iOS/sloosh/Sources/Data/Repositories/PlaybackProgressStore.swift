@@ -119,7 +119,7 @@ public final class PlaybackProgressStore {
         defaults.set(data, forKey: metadataPrefix + "kp_\(kpId)")
     }
 
-    public func saveMetadata(details: MediaDetailsDto) {
+    func saveMetadata(details: MediaDetailsDto) {
         guard let kpId = details.externalIds?.kp else { return }
 
         let detailsId = details.id ?? details.sourceId ?? String(kpId)
