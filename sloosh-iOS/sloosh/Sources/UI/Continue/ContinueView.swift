@@ -117,6 +117,10 @@ private struct ContinueWatchingItem: Identifiable {
         return nil
     }
 
+    var progressText: String {
+        "\(ContinueTimeFormatter.playback(record.positionSec)) / \(ContinueTimeFormatter.playback(record.durationSec))"
+    }
+
     var remainingText: String? {
         let remaining = max(record.durationSec - record.positionSec, 0)
         guard remaining > 60 else { return nil }
