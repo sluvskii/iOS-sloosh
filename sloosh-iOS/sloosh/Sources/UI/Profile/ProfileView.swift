@@ -55,73 +55,102 @@ struct ProfileView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(spacing: 20) {
-                    // В будущем здесь будет шапка профиля (аватарка, ник пользователя)
-                    
-                    ProfileCategoryTextTabs(selectedCategory: $selectedCategory)
-                    
-                    if favoritesRepo.favorites.isEmpty {
-                        VStack {
-                            Image(systemName: "folder.fill")
-                                .font(.system(size: 64))
-                                .foregroundColor(.gray.opacity(0.5))
-                                .padding(.bottom, 8)
-                            Text("Пусто")
-                                .font(.system(size: 20, weight: .bold, design: .rounded))
-                                .foregroundColor(.primary)
-                            Text("Здесь будут ваши избранные фильмы и сериалы")
-                                .font(.system(size: 16, weight: .regular, design: .rounded))
-                                .foregroundColor(.secondary)
-                                .multilineTextAlignment(.center)
-                                .padding(.top, 4)
-                        }
-                        .padding(.top, 40)
-                        .frame(maxWidth: .infinity)
-                    } else if filteredFavorites.isEmpty {
-                        VStack {
-                            Text("В этой папке пока пусто")
-                                .font(.system(size: 16, weight: .regular, design: .rounded))
-                                .foregroundColor(.secondary)
-                        }
-                        .padding(.top, 40)
-                        .frame(maxWidth: .infinity)
-                    } else {
-                        LazyVGrid(columns: columns, spacing: 20) {
-                            ForEach(filteredFavorites) { favorite in
-                                let media = favorite.toMediaDto()
-                                MovieDetailsNavigationLink(movie: media, navigationTransition: navigationTransition)
-                                .contextMenu {
-                                    Button(role: .destructive) {
-                                        if let mediaId = favorite.mediaId, let type = favorite.type {
-                                            favoritesRepo.removeFromFavorites(mediaId: mediaId, mediaType: type)
+        GeometryReader { geometry in
+            NavigationStack {
+                ScrollView {
+                    VStack(spacing: 20) {
+                        // В будущем здесь будет шапка профиля (аватарка, ник пользователя)
+                        
+                        ProfileCategoryTextTabs(selectedCategory: $selectedCategory)
+                        
+                        if favoritesRepo.favorites.isEmpty {
+                            ProfileEmptyState(
+                                icon: "sparkles.tv",
+                                title: "Пока ничего не добавлено",
+                                message: "Сохраняйте фильмы и сериалы в избранное, чтобы быстро возвращаться к ним позже."
+                            )
+                            .frame(maxWidth: .infinity)
+                            .frame(minHeight: max(geometry.size.height - 180, 320))
+                        } else if filteredFavorites.isEmpty {
+                            ProfileEmptyState(
+                                icon: "line.3.horizontal.decrease.circle",
+                                title: "В этой подборке пока пусто",
+                                message: "Попробуйте открыть другую вкладку или добавьте что-нибудь в избранное."
+                            )
+                            .frame(maxWidth: .infinity)
+                            .frame(minHeight: max(geometry.size.height - 180, 320))
+                        } else {
+                            LazyVGrid(columns: columns, spacing: 20) {
+                                ForEach(filteredFavorites) { favorite in
+                                    let media = favorite.toMediaDto()
+                                    MovieDetailsNavigationLink(movie: media, navigationTransition: navigationTransition)
+                                    .contextMenu {
+                                        Button(role: .destructive) {
+                                            if let mediaId = favorite.mediaId, let type = favorite.type {
+                                                favoritesRepo.removeFromFavorites(mediaId: mediaId, mediaType: type)
+                                            }
+                                        } label: {
+                                            Label("Удалить", systemImage: "trash")
                                         }
-                                    } label: {
-                                        Label("Удалить", systemImage: "trash")
                                     }
                                 }
                             }
+                            .padding(.horizontal, 16)
                         }
-                        .padding(.horizontal, 16)
                     }
+                    .frame(minHeight: geometry.size.height, alignment: .top)
+                    .padding(.vertical, 16)
                 }
-                .padding(.vertical, 16)
-            }
-            .navigationTitle("Профиль")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    NavigationLink(destination: SettingsView()) {
-                        Image(systemName: "gearshape.fill")
-                            .font(.system(size: 16, weight: .semibold))
-                            .frame(width: 30, height: 30)
-                            .contentShape(Circle())
+                .navigationTitle("Профиль")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        NavigationLink(destination: SettingsView()) {
+                            Image(systemName: "gearshape.fill")
+                                .font(.system(size: 16, weight: .semibold))
+                                .frame(width: 30, height: 30)
+                                .contentShape(Circle())
+                        }
+                        .tint(.primary)
                     }
-                    .tint(.primary)
                 }
             }
         }
+    }
+}
+
+private struct ProfileEmptyState: View {
+    let icon: String
+    let title: String
+    let message: String
+
+    var body: some View {
+        VStack(spacing: 18) {
+            ZStack {
+                Circle()
+                    .fill(Color.secondary.opacity(0.12))
+                    .frame(width: 88, height: 88)
+
+                Image(systemName: icon)
+                    .font(.system(size: 34, weight: .semibold))
+                    .foregroundStyle(.primary)
+            }
+
+            VStack(spacing: 8) {
+                Text(title)
+                    .font(.system(size: 24, weight: .bold))
+                    .multilineTextAlignment(.center)
+
+                Text(message)
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(2)
+            }
+            .frame(maxWidth: 320)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.horizontal, 24)
     }
 }
 
