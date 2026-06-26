@@ -12,16 +12,15 @@ struct ContinueView: View {
                     ScrollView {
                         LazyVStack(spacing: 16) {
                             ForEach(viewModel.items) { item in
-                                NavigationLink {
-                                    DetailsView(
-                                        movieId: item.detailsId,
-                                        navigationTransitionID: nil,
-                                        navigationTransitionNamespace: nil
-                                    )
+                                Button {
+                                    Task {
+                                        await viewModel.resume(item)
+                                    }
                                 } label: {
                                     ContinueWatchingCard(item: item)
                                 }
                                 .buttonStyle(.plain)
+                                .disabled(viewModel.isLaunching)
                             }
                         }
                         .padding(.horizontal, 16)
@@ -38,6 +37,8 @@ struct ContinueView: View {
                 if viewModel.isLoading && viewModel.items.isEmpty {
                     ProgressView()
                         .controlSize(.large)
+                } else if viewModel.isLaunching {
+                    ContinueLaunchOverlay(title: viewModel.launchingTitle)
                 }
             }
             .onAppear {
@@ -45,7 +46,43 @@ struct ContinueView: View {
                     await viewModel.reload()
                 }
             }
+            .fullScreenCover(item: $viewModel.activePlayback, onDismiss: {
+                Task {
+                    await viewModel.reload()
+                }
+            }) { playback in
+                PlayerView(
+                    iframeUrl: playback.iframeUrl,
+                    fallbackTitle: playback.title,
+                    kpId: playback.kpId,
+                    season: playback.season,
+                    episode: playback.episode,
+                    selectedVoiceover: playback.voiceover,
+                    voices: [],
+                    subtitles: [],
+                    initialQuality: playback.initialQuality,
+                    seriesResult: playback.seriesResult
+                )
+            }
+            .alert("Не удалось начать воспроизведение", isPresented: launchErrorBinding) {
+                Button("OK", role: .cancel) {
+                    viewModel.launchErrorMessage = nil
+                }
+            } message: {
+                Text(viewModel.launchErrorMessage ?? "")
+            }
         }
+    }
+
+    private var launchErrorBinding: Binding<Bool> {
+        Binding(
+            get: { viewModel.launchErrorMessage != nil },
+            set: { isPresented in
+                if !isPresented {
+                    viewModel.launchErrorMessage = nil
+                }
+            }
+        )
     }
 }
 
@@ -56,10 +93,6 @@ private struct ContinueWatchingItem: Identifiable {
     var id: String { record.mediaId }
 
     var kpId: Int { record.kpId }
-
-    var detailsId: String {
-        metadata?.detailsId ?? String(record.kpId)
-    }
 
     var title: String {
         metadata?.title ?? "Без названия"
@@ -77,25 +110,11 @@ private struct ContinueWatchingItem: Identifiable {
         record.progressFraction
     }
 
-    var episodeBadgeText: String? {
-        guard let season = record.season, let episode = record.episode else { return nil }
-        return "S\(season):E\(episode)"
-    }
-
-    var kindLabel: String {
-        if isSeries { return "Сериал" }
-        return "Фильм"
-    }
-
-    var subtitle: String {
+    var subtitle: String? {
         if let season = record.season, let episode = record.episode {
             return "Сезон \(season) • Серия \(episode)"
         }
-        return kindLabel
-    }
-
-    var progressText: String {
-        "\(ContinueTimeFormatter.playback(record.positionSec)) / \(ContinueTimeFormatter.playback(record.durationSec))"
+        return nil
     }
 
     var remainingText: String? {
@@ -108,10 +127,8 @@ private struct ContinueWatchingItem: Identifiable {
         URL(string: backdropUrl ?? posterUrl ?? "")
     }
 
-    private var isSeries: Bool {
-        if record.isEpisode { return true }
-        let lowercasedType = metadata?.type?.lowercased()
-        return lowercasedType == "tv" || lowercasedType == "series"
+    var voiceover: String? {
+        PlaybackProgressStore.shared.loadLastVoiceover(kpId: record.kpId, source: "alloha")
     }
 }
 
@@ -119,6 +136,10 @@ private struct ContinueWatchingItem: Identifiable {
 private final class ContinueViewModel: ObservableObject {
     @Published var items: [ContinueWatchingItem] = []
     @Published var isLoading = false
+    @Published var isLaunching = false
+    @Published var launchingTitle: String?
+    @Published var activePlayback: ContinuePlaybackRoute?
+    @Published var launchErrorMessage: String?
 
     private let store = PlaybackProgressStore.shared
     private var metadataBackfillAttempted = Set<Int>()
@@ -192,6 +213,123 @@ private final class ContinueViewModel: ObservableObject {
             }
         }
     }
+
+    func resume(_ item: ContinueWatchingItem) async {
+        if isLaunching { return }
+
+        isLaunching = true
+        launchingTitle = item.title
+        launchErrorMessage = nil
+        defer {
+            isLaunching = false
+            launchingTitle = nil
+        }
+
+        do {
+            let result = try await AllohaRepository.shared.fetchByKpId(kpId: item.kpId)
+            guard let route = makePlaybackRoute(for: item, result: result) else {
+                launchErrorMessage = "Не удалось подобрать источник для продолжения просмотра."
+                return
+            }
+
+            activePlayback = route
+        } catch {
+            launchErrorMessage = "Не удалось загрузить источник. Попробуй еще раз."
+        }
+    }
+
+    private func makePlaybackRoute(for item: ContinueWatchingItem, result: AllohaApiResult) -> ContinuePlaybackRoute? {
+        let preferredQuality = preferredQualityForResume()
+        let savedVoiceover = item.voiceover
+
+        if result.isSerial {
+            let targetSeason = item.record.season
+                ?? store.loadLastSeason(kpId: item.kpId)
+                ?? result.seasons.first?.season
+
+            guard let targetSeason,
+                  let season = result.seasons.first(where: { $0.season == targetSeason }) ?? result.seasons.first else {
+                return nil
+            }
+
+            let targetEpisode = item.record.episode ?? store.loadLastEpisode(kpId: item.kpId)
+            let episode = targetEpisode.flatMap { episodeNumber in
+                season.episodes.first(where: { $0.episode == episodeNumber })
+            } ?? season.episodes.first
+
+            guard let episode else { return nil }
+
+            let translation = preferredTranslation(
+                in: episode.translations,
+                preferredVoiceover: savedVoiceover
+            )
+
+            guard let translation else { return nil }
+
+            store.saveLastPlayed(kpId: item.kpId, season: season.season, episode: episode.episode)
+
+            return ContinuePlaybackRoute(
+                iframeUrl: translation.iframeUrl,
+                title: item.title,
+                kpId: item.kpId,
+                season: season.season,
+                episode: episode.episode,
+                voiceover: translation.name,
+                initialQuality: preferredQuality,
+                seriesResult: result
+            )
+        }
+
+        guard let movie = result.movie else { return nil }
+        guard let translation = preferredTranslation(
+            in: movie.translations,
+            preferredVoiceover: savedVoiceover
+        ) else {
+            return nil
+        }
+
+        store.saveLastPlayed(kpId: item.kpId, season: nil, episode: nil)
+
+        return ContinuePlaybackRoute(
+            iframeUrl: translation.iframeUrl,
+            title: item.title,
+            kpId: item.kpId,
+            season: nil,
+            episode: nil,
+            voiceover: translation.name,
+            initialQuality: preferredQuality,
+            seriesResult: nil
+        )
+    }
+
+    private func preferredTranslation(in translations: [AllohaTranslation], preferredVoiceover: String?) -> AllohaTranslation? {
+        guard !translations.isEmpty else { return nil }
+
+        if let preferredVoiceover,
+           let translation = translations.first(where: { $0.name.compare(preferredVoiceover, options: .caseInsensitive) == .orderedSame }) {
+            return translation
+        }
+
+        return translations.first
+    }
+
+    private func preferredQualityForResume() -> VideoQualityPreference? {
+        let rawValue = UserDefaults.standard.string(forKey: "preferredVideoQuality") ?? VideoQualityPreference.ask.rawValue
+        let preference = VideoQualityPreference(rawValue: rawValue) ?? .ask
+        return preference == .ask ? .auto : preference
+    }
+}
+
+private struct ContinuePlaybackRoute: Identifiable {
+    let id = UUID()
+    let iframeUrl: String
+    let title: String
+    let kpId: Int
+    let season: Int?
+    let episode: Int?
+    let voiceover: String?
+    let initialQuality: VideoQualityPreference?
+    let seriesResult: AllohaApiResult?
 }
 
 private struct ContinueWatchingCard: View {
@@ -212,14 +350,6 @@ private struct ContinueWatchingCard: View {
             )
 
             VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 8) {
-                    ContinuePill(title: item.kindLabel)
-
-                    if let episodeBadgeText = item.episodeBadgeText {
-                        ContinuePill(title: episodeBadgeText)
-                    }
-                }
-
                 Spacer(minLength: 0)
 
                 VStack(alignment: .leading, spacing: 4) {
@@ -228,10 +358,12 @@ private struct ContinueWatchingCard: View {
                         .foregroundStyle(.white)
                         .lineLimit(2)
 
-                    Text(item.subtitle)
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.74))
-                        .lineLimit(1)
+                    if let subtitle = item.subtitle {
+                        Text(subtitle)
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.74))
+                            .lineLimit(1)
+                    }
                 }
 
                 ContinueProgressBar(progress: item.progressFraction)
@@ -331,20 +463,6 @@ private struct ContinueProgressBar: View {
     }
 }
 
-private struct ContinuePill: View {
-    let title: String
-
-    var body: some View {
-        Text(title)
-            .font(.system(size: 11, weight: .bold))
-            .foregroundStyle(.white.opacity(0.92))
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(.black.opacity(0.22))
-            .clipShape(Capsule())
-    }
-}
-
 private struct ContinueEmptyState: View {
     var body: some View {
         ContentUnavailableView(
@@ -352,6 +470,34 @@ private struct ContinueEmptyState: View {
             systemImage: "clock.arrow.circlepath",
             description: Text("Фильмы и серии, которые ты уже начал смотреть, появятся здесь с прогрессом и временем.")
         )
+    }
+}
+
+private struct ContinueLaunchOverlay: View {
+    let title: String?
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.28)
+                .ignoresSafeArea()
+
+            VStack(spacing: 14) {
+                ProgressView()
+                    .controlSize(.large)
+
+                Text(title ?? "Подготавливаем воспроизведение")
+                    .font(.system(size: 16, weight: .semibold))
+                    .multilineTextAlignment(.center)
+
+                Text("Открываем с сохраненного места")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.secondary)
+            }
+            .padding(.horizontal, 24)
+            .padding(.vertical, 20)
+            .frame(maxWidth: 280)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+        }
     }
 }
 
