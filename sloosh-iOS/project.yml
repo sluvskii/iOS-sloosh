@@ -10,6 +10,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.sloosh.ios
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        TARGETED_DEVICE_FAMILY: 1
     sources:
       - path: sloosh/Sources
       - path: sloosh/Resources
