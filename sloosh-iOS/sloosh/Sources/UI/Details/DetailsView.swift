@@ -1114,6 +1114,9 @@ class DetailsViewModel: ObservableObject {
 
         do {
             details = try await MoviesRepository.shared.getDetails(id: id)
+            if let details {
+                PlaybackProgressStore.shared.saveMetadata(details: details)
+            }
             checkFavoriteStatus()
             
             if details?.type == "tv", let kpId = details?.externalIds?.kp {
