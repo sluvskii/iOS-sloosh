@@ -26,9 +26,9 @@ struct ProfileView: View {
     let columns = [
         GridItem(.adaptive(minimum: 105), spacing: 16)
     ]
-    
-    var filteredFavorites: [FavoriteDto] {
-        switch selectedCategory {
+
+    private func favorites(for category: FavoriteCategory) -> [FavoriteDto] {
+        switch category {
         case .all:
             return favoritesRepo.favorites
         case .movies:
@@ -54,6 +54,16 @@ struct ProfileView: View {
         }
     }
 
+    var filteredFavorites: [FavoriteDto] {
+        favorites(for: selectedCategory)
+    }
+
+    private var categoryCounts: [FavoriteCategory: Int] {
+        Dictionary(uniqueKeysWithValues: FavoriteCategory.allCases.map { category in
+            (category, favorites(for: category).count)
+        })
+    }
+
     var body: some View {
         GeometryReader { geometry in
             NavigationStack {
@@ -61,7 +71,10 @@ struct ProfileView: View {
                     VStack(spacing: 20) {
                         // В будущем здесь будет шапка профиля (аватарка, ник пользователя)
                         
-                        ProfileCategoryTextTabs(selectedCategory: $selectedCategory)
+                        ProfileCategoryTextTabs(
+                            selectedCategory: $selectedCategory,
+                            categoryCounts: categoryCounts
+                        )
                         
                         if favoritesRepo.favorites.isEmpty {
                             ProfileEmptyState(
@@ -90,7 +103,11 @@ struct ProfileView: View {
                                                 favoritesRepo.removeFromFavorites(mediaId: mediaId, mediaType: type)
                                             }
                                         } label: {
-                                            Label("Удалить", systemImage: "trash")
+                                            HStack(spacing: 8) {
+                                                Text("Удалить")
+                                                Image(systemName: "trash")
+                                            }
+                                            .foregroundStyle(.red)
                                         }
                                     }
                                 }
@@ -159,6 +176,7 @@ private struct ProfileTabScaleButtonStyle: ButtonStyle {
 
 private struct ProfileCategoryTextTabs: View {
     @Binding var selectedCategory: FavoriteCategory
+    let categoryCounts: [FavoriteCategory: Int]
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @ScaledMetric(relativeTo: .headline) private var titleSize: CGFloat = 24
 
@@ -172,6 +190,25 @@ private struct ProfileCategoryTextTabs: View {
 
     private var animation: Animation {
         .spring(response: 0.35, dampingFraction: 0.78, blendDuration: 0.1)
+    }
+
+    @ViewBuilder
+    private func tabLabel(for category: FavoriteCategory, isSelected: Bool) -> some View {
+        let count = categoryCounts[category] ?? 0
+        let primaryColor: Color = isSelected ? .primary : .secondary
+        let secondaryColor: Color = isSelected ? .primary.opacity(0.72) : .secondary.opacity(0.8)
+
+        (
+            Text(category.title)
+                .foregroundStyle(primaryColor)
+            +
+            Text(" \(count)")
+                .foregroundStyle(secondaryColor)
+        )
+        .font(.system(size: titleSize, weight: isSelected ? .bold : .semibold))
+        .lineLimit(1)
+        .fixedSize(horizontal: true, vertical: false)
+        .contentShape(Rectangle())
     }
 
     var body: some View {
@@ -189,12 +226,7 @@ private struct ProfileCategoryTextTabs: View {
                                 selectedCategory = category
                             }
                         } label: {
-                            Text(category.title)
-                                .font(.system(size: titleSize, weight: isSelected ? .bold : .semibold))
-                                .foregroundStyle(isSelected ? .primary : .secondary)
-                                .lineLimit(1)
-                                .fixedSize(horizontal: true, vertical: false)
-                                .contentShape(Rectangle())
+                            tabLabel(for: category, isSelected: isSelected)
                         }
                         .buttonStyle(ProfileTabScaleButtonStyle())
                         .padding(.horizontal, 4)
