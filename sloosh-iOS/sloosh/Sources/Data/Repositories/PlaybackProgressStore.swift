@@ -224,8 +224,14 @@ public final class PlaybackProgressStore {
         return records.sorted { $0.updatedAtMs > $1.updatedAtMs }
     }
 
-    public func saveLastVoiceover(kpId: Int, source: String, voiceover: String?) {
-        let key = "neomovies.\(source).lastVoiceover.kp_\(kpId)"
+    public func saveLastVoiceover(
+        kpId: Int,
+        source: String,
+        season: Int? = nil,
+        episode: Int? = nil,
+        voiceover: String?
+    ) {
+        let key = lastVoiceoverKey(kpId: kpId, source: source, season: season, episode: episode)
         if let v = voiceover {
             defaults.set(v, forKey: key)
         } else {
@@ -233,9 +239,20 @@ public final class PlaybackProgressStore {
         }
     }
 
-    public func loadLastVoiceover(kpId: Int, source: String) -> String? {
-        let key = "neomovies.\(source).lastVoiceover.kp_\(kpId)"
-        return defaults.string(forKey: key)
+    public func loadLastVoiceover(
+        kpId: Int,
+        source: String,
+        season: Int? = nil,
+        episode: Int? = nil
+    ) -> String? {
+        let scopedKey = lastVoiceoverKey(kpId: kpId, source: source, season: season, episode: episode)
+        if let scoped = defaults.string(forKey: scopedKey) {
+            return scoped
+        }
+
+        // Backward compatibility with older app versions that stored voiceover only per title.
+        let legacyKey = lastVoiceoverKey(kpId: kpId, source: source, season: nil, episode: nil)
+        return defaults.string(forKey: legacyKey)
     }
 
     public func saveLastPlayed(kpId: Int, season: Int?, episode: Int?) {
@@ -251,6 +268,14 @@ public final class PlaybackProgressStore {
     public func loadLastEpisode(kpId: Int) -> Int? {
         let v = defaults.integer(forKey: lastEpisodePrefix + "kp_\(kpId)")
         return v > 0 ? v : nil
+    }
+
+    private func lastVoiceoverKey(kpId: Int, source: String, season: Int?, episode: Int?) -> String {
+        var key = "neomovies.\(source).lastVoiceover.kp_\(kpId)"
+        if let season, let episode {
+            key += ".s\(season).e\(episode)"
+        }
+        return key
     }
 
     public var positionKeyPrefix: String { positionPrefix }
