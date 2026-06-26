@@ -204,11 +204,19 @@ struct PlayerView: View {
 
 @MainActor
 class PlayerViewModel: ObservableObject {
+    struct PlaybackQualityOption {
+        let key: String
+        let url: URL
+        let preferredPeakBitRate: Double?
+        let isAuto: Bool
+        let shouldReloadOnSelect: Bool
+    }
+
     @Published var player: AVPlayer?
     @Published var isLoading = true
     @Published var error: String?
     
-    @Published var availableQualities: [(key: String, url: URL)] = []
+    @Published var availableQualities: [PlaybackQualityOption] = []
     @Published var currentQualityKey: String?
     
     private var resolver: AllohaRuntimeResolver?
@@ -217,6 +225,7 @@ class PlayerViewModel: ObservableObject {
     private var timeObserver: Any?
     private var itemObservation: NSKeyValueObservation?
     private var playbackEndObserver: NSObjectProtocol?
+    private var currentPlaybackSourceURL: URL?
     
     private var currentKpId: Int?
     private var currentSeason: Int?
@@ -263,15 +272,24 @@ class PlayerViewModel: ObservableObject {
     }
     
     private func parseMasterPlaylist(content: String, baseUrl: URL) {
-        var qualities: [(key: String, url: URL)] = []
-        qualities.append(("Авто", baseUrl))
+        var qualities: [PlaybackQualityOption] = [
+            PlaybackQualityOption(
+                key: "Авто",
+                url: baseUrl,
+                preferredPeakBitRate: nil,
+                isAuto: true,
+                shouldReloadOnSelect: false
+            )
+        ]
         
         let lines = content.components(separatedBy: .newlines)
         var currentResolution: String?
+        var currentBandwidth: Double?
         
         for line in lines {
             if line.hasPrefix("#EXT-X-STREAM-INF:") {
                 var resStr = "Поток"
+                currentBandwidth = nil
                 if let range = line.range(of: "RESOLUTION=([^,\\s]+)", options: .regularExpression) {
                     let match = String(line[range])
                     let res = match.replacingOccurrences(of: "RESOLUTION=", with: "")
@@ -282,7 +300,8 @@ class PlayerViewModel: ObservableObject {
                 } else if let range = line.range(of: "BANDWIDTH=([^,\\s]+)", options: .regularExpression) {
                     let match = String(line[range])
                     let bw = match.replacingOccurrences(of: "BANDWIDTH=", with: "")
-                    if let bandwidth = Int(bw) {
+                    if let bandwidth = Double(bw) {
+                        currentBandwidth = bandwidth
                         resStr = "\(bandwidth / 1000) kbps"
                     }
                 }
@@ -291,18 +310,35 @@ class PlayerViewModel: ObservableObject {
                 if let res = currentResolution {
                     let variantUrl: URL
                     if line.hasPrefix("http") {
-                        variantUrl = URL(string: line)!
+                        variantUrl = URL(string: line)!.absoluteURL
                     } else {
-                        variantUrl = URL(string: line, relativeTo: baseUrl)!
+                        variantUrl = URL(string: line, relativeTo: baseUrl)!.absoluteURL
                     }
                     if !qualities.contains(where: { $0.key == res }) {
-                        qualities.append((res, variantUrl))
+                        qualities.append(
+                            PlaybackQualityOption(
+                                key: res,
+                                url: variantUrl,
+                                preferredPeakBitRate: currentBandwidth,
+                                isAuto: false,
+                                shouldReloadOnSelect: false
+                            )
+                        )
                     } else {
                         // Prevent duplicate keys
                         let uniqueRes = "\(res) (\(qualities.count))"
-                        qualities.append((uniqueRes, variantUrl))
+                        qualities.append(
+                            PlaybackQualityOption(
+                                key: uniqueRes,
+                                url: variantUrl,
+                                preferredPeakBitRate: currentBandwidth,
+                                isAuto: false,
+                                shouldReloadOnSelect: false
+                            )
+                        )
                     }
                     currentResolution = nil
+                    currentBandwidth = nil
                 }
             }
         }
@@ -386,6 +422,7 @@ class PlayerViewModel: ObservableObject {
     
     func cleanup() {
         hasStartedLoading = false
+        currentPlaybackSourceURL = nil
         if let observer = timeObserver {
             player?.removeTimeObserver(observer)
             timeObserver = nil
@@ -424,61 +461,53 @@ class PlayerViewModel: ObservableObject {
         
         let isHls = quality.url.pathExtension.lowercased() == "m3u8" || quality.url.absoluteString.contains(".m3u8")
         
-        if isHls, let currentItem = self.player?.currentItem {
-            // For HLS, we use preferredPeakBitRate on the master playlist instead of swapping URLs.
-            // Swapping to a variant URL directly causes loss of separate audio/subtitle tracks!
-            if key == "Авто" {
-                currentItem.preferredPeakBitRate = 0 // 0 means auto
+        if quality.isAuto {
+            if shouldReloadForAutoSelection(autoURL: quality.url) {
+                reloadPlayback(to: quality.url, preferredPeakBitRate: 0)
             } else {
-                let height = Int(key.replacingOccurrences(of: "p", with: "")) ?? 0
-                let bitrate: Double
-                switch height {
-                case 1080...: bitrate = 8_000_000
-                case 720..<1080: bitrate = 4_000_000
-                case 480..<720: bitrate = 2_000_000
-                case 360..<480: bitrate = 1_000_000
-                case 1..<360: bitrate = 700_000
-                default: bitrate = 0 // fallback to auto if unknown
-                }
-                currentItem.preferredPeakBitRate = bitrate
+                player?.currentItem?.preferredPeakBitRate = 0
             }
             return
         }
-        
+
+        if quality.shouldReloadOnSelect {
+            reloadPlayback(to: quality.url, preferredPeakBitRate: quality.preferredPeakBitRate)
+            return
+        }
+
+        if isHls, let currentItem = self.player?.currentItem {
+            currentItem.preferredPeakBitRate = resolvedBitrate(for: quality)
+            return
+        }
+
+        reloadPlayback(to: quality.url, preferredPeakBitRate: quality.preferredPeakBitRate)
+    }
+
+    private func reloadPlayback(to sourceURL: URL, preferredPeakBitRate: Double?) {
         let currentTime = player?.currentTime() ?? .zero
         let wasPlaying = player?.timeControlStatus == .playing
-        
-        let playbackUrl: URL
-        let absoluteUrlString = quality.url.absoluteString
-        
-        guard let encodedData = absoluteUrlString.data(using: .utf8) else { return }
-        let encoded = encodedData.base64EncodedString()
-            .replacingOccurrences(of: "+", with: "-")
-            .replacingOccurrences(of: "/", with: "_")
-            .replacingOccurrences(of: "=", with: "")
 
-        let ext = quality.url.pathExtension
-        let pathSuffix = ext.isEmpty ? "stream.m3u8" : "stream.\(ext)"
+        guard let proxyUrl = proxiedPlaybackURL(for: sourceURL) else { return }
 
-        guard let proxyUrl = URL(string: "http://127.0.0.1:\(HlsProxyServer.shared.port.rawValue)/proxy/\(pathSuffix)?url=\(encoded)") else { return }
-        playbackUrl = proxyUrl
-
-        let asset = AVURLAsset(url: playbackUrl)
+        let asset = AVURLAsset(url: proxyUrl)
         let playerItem = AVPlayerItem(asset: asset)
+        playerItem.preferredPeakBitRate = max(0, preferredPeakBitRate ?? 0)
+        currentPlaybackSourceURL = sourceURL.absoluteURL
+
         itemObservation?.invalidate()
         itemObservation = nil
         if let playbackEndObserver {
             NotificationCenter.default.removeObserver(playbackEndObserver)
             self.playbackEndObserver = nil
         }
-        
+
         self.player?.replaceCurrentItem(with: playerItem)
         self.player?.seek(to: currentTime)
         if wasPlaying {
             self.player?.play()
         }
         observePlaybackCompletion(for: playerItem)
-        
+
         // Re-extract audio tracks for new item and restore selection
         self.itemObservation = playerItem.observe(\.status) { [weak self] item, _ in
             guard let self = self else { return }
@@ -488,6 +517,130 @@ class PlayerViewModel: ObservableObject {
                 }
             }
         }
+    }
+
+    private func proxiedPlaybackURL(for sourceURL: URL) -> URL? {
+        let absoluteUrlString = sourceURL.absoluteURL.absoluteString
+        guard let encodedData = absoluteUrlString.data(using: .utf8) else { return nil }
+        let encoded = encodedData.base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+
+        let ext = sourceURL.pathExtension
+        let pathSuffix = ext.isEmpty ? "stream.m3u8" : "stream.\(ext)"
+
+        return URL(string: "http://127.0.0.1:\(HlsProxyServer.shared.port.rawValue)/proxy/\(pathSuffix)?url=\(encoded)")
+    }
+
+    private func shouldReloadForAutoSelection(autoURL: URL) -> Bool {
+        guard let currentPlaybackSourceURL else { return false }
+        return currentPlaybackSourceURL.absoluteURL.absoluteString != autoURL.absoluteURL.absoluteString
+    }
+
+    private func resolvedBitrate(for quality: PlaybackQualityOption) -> Double {
+        if let preferredPeakBitRate = quality.preferredPeakBitRate, preferredPeakBitRate > 0 {
+            return preferredPeakBitRate
+        }
+
+        let height = Int(quality.key.replacingOccurrences(of: "p", with: "")) ?? 0
+        switch height {
+        case 1080...: return 8_000_000
+        case 720..<1080: return 4_000_000
+        case 480..<720: return 2_000_000
+        case 360..<480: return 1_000_000
+        case 1..<360: return 700_000
+        default: return 0
+        }
+    }
+
+    private func bitrateValue(from variant: [String: Any]) -> Double? {
+        if let bitrate = variant["bitrate"] as? Double, bitrate > 0 { return bitrate }
+        if let bitrate = variant["bitrate"] as? NSNumber, bitrate.doubleValue > 0 { return bitrate.doubleValue }
+        if let bandwidth = variant["bandwidth"] as? Double, bandwidth > 0 { return bandwidth }
+        if let bandwidth = variant["bandwidth"] as? NSNumber, bandwidth.doubleValue > 0 { return bandwidth.doubleValue }
+        return nil
+    }
+
+    private func absoluteQualityURL(from rawURL: String) -> URL? {
+        let trimmed = rawURL.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        return URL(string: trimmed)?.absoluteURL
+    }
+
+    private func makeQualityOption(
+        key: String,
+        url: URL,
+        preferredPeakBitRate: Double?,
+        isAuto: Bool,
+        shouldReloadOnSelect: Bool
+    ) -> PlaybackQualityOption {
+        PlaybackQualityOption(
+            key: key,
+            url: url.absoluteURL,
+            preferredPeakBitRate: preferredPeakBitRate,
+            isAuto: isAuto,
+            shouldReloadOnSelect: shouldReloadOnSelect
+        )
+    }
+
+    private func makeAutoQualityOption(url: URL) -> PlaybackQualityOption {
+        makeQualityOption(
+            key: "Авто",
+            url: url,
+            preferredPeakBitRate: nil,
+            isAuto: true,
+            shouldReloadOnSelect: false
+        )
+    }
+
+    private func makeResolvedQualityOption(label: String, url: URL, preferredPeakBitRate: Double?) -> PlaybackQualityOption {
+        makeQualityOption(
+            key: label,
+            url: url,
+            preferredPeakBitRate: preferredPeakBitRate,
+            isAuto: false,
+            shouldReloadOnSelect: true
+        )
+    }
+
+    private func makeMasterPlaylistQualityOption(label: String, url: URL, preferredPeakBitRate: Double?) -> PlaybackQualityOption {
+        makeQualityOption(
+            key: label,
+            url: url,
+            preferredPeakBitRate: preferredPeakBitRate,
+            isAuto: false,
+            shouldReloadOnSelect: false
+        )
+    }
+
+    private func makeResolvedQualityOptions(
+        resolvedUrl: URL,
+        qualityVariants: [[String: Any]],
+        audioVariants: [[String: Any]]
+    ) -> [PlaybackQualityOption] {
+        var qualities = [makeAutoQualityOption(url: resolvedUrl)]
+        var seenKeys = Set<String>(["Авто"])
+
+        appendQualityVariants(qualityVariants, to: &qualities, seenKeys: &seenKeys)
+
+        if qualities.count == 1,
+           let firstAudio = audioVariants.first,
+           let nestedQualityVariants = firstAudio["qualityVariants"] as? [[String: Any]] {
+            appendQualityVariants(nestedQualityVariants, to: &qualities, seenKeys: &seenKeys)
+        }
+
+        if qualities.count > 1 {
+            let autoQuality = qualities.removeFirst()
+            qualities.sort { lhs, rhs in
+                let valA = Int(lhs.key.replacingOccurrences(of: "p", with: "")) ?? 0
+                let valB = Int(rhs.key.replacingOccurrences(of: "p", with: "")) ?? 0
+                return valA > valB
+            }
+            qualities.insert(autoQuality, at: 0)
+        }
+
+        return qualities
     }
     
     private func extractAudioTracks(from item: AVPlayerItem) {
@@ -523,18 +676,13 @@ class PlayerViewModel: ObservableObject {
     }
     
     private func playVideo(url: URL, headers: [String: String], voices: [String] = [], subtitles: [PlaybackSubtitle] = []) {
-        let absoluteUrlString = url.absoluteString
-        guard let encodedData = absoluteUrlString.data(using: .utf8) else {
+        currentPlaybackSourceURL = url.absoluteURL
+
+        guard let proxyUrl = proxiedPlaybackURL(for: url) else {
             self.error = "Ошибка формирования URL"
             self.isLoading = false
             return
         }
-        
-        // Use URL Safe Base64 without padding (same as proxy implementation)
-        let encoded = encodedData.base64EncodedString()
-            .replacingOccurrences(of: "+", with: "-")
-            .replacingOccurrences(of: "/", with: "_")
-            .replacingOccurrences(of: "=", with: "")
         
         let mediaId: String
         if let kpId = currentKpId {
@@ -548,15 +696,6 @@ class PlayerViewModel: ObservableObject {
         }
         
         HlsProxyServer.shared.start(headers: headers, voices: voices, subtitles: subtitles, mediaId: mediaId)
-        
-        let ext = url.pathExtension
-        let pathSuffix = ext.isEmpty ? "stream.m3u8" : "stream.\(ext)"
-        
-        guard let proxyUrl = URL(string: "http://127.0.0.1:\(HlsProxyServer.shared.port.rawValue)/proxy/\(pathSuffix)?url=\(encoded)") else {
-            self.error = "Ошибка формирования URL"
-            self.isLoading = false
-            return
-        }
         
         let asset = AVURLAsset(url: proxyUrl)
         let playerItem = AVPlayerItem(asset: asset)
@@ -711,30 +850,14 @@ class PlayerViewModel: ObservableObject {
         let resolvedVoices = resolvedVoiceovers(from: resolved)
         let resolvedSubtitles = resolvedSubtitles(from: resolved)
 
-        var qualities = [(key: "Авто", url: resolvedUrl)]
-        var seenKeys = Set<String>(["Авто"])
-
         let qualityVariants = (resolved["qualityVariants"] as? [[String: Any]]) ?? []
-        appendQualityVariants(qualityVariants, to: &qualities, seenKeys: &seenKeys)
+        let audioVariants = (resolved["audioVariants"] as? [[String: Any]]) ?? []
 
-        if qualities.count == 1,
-           let audioVariants = resolved["audioVariants"] as? [[String: Any]],
-           let firstAudio = audioVariants.first,
-           let nestedQualityVariants = firstAudio["qualityVariants"] as? [[String: Any]] {
-            appendQualityVariants(nestedQualityVariants, to: &qualities, seenKeys: &seenKeys)
-        }
-
-        if qualities.count > 1 {
-            let autoQuality = qualities.removeFirst()
-            qualities.sort { (a, b) -> Bool in
-                let valA = Int(a.key.replacingOccurrences(of: "p", with: "")) ?? 0
-                let valB = Int(b.key.replacingOccurrences(of: "p", with: "")) ?? 0
-                return valA > valB
-            }
-            qualities.insert(autoQuality, at: 0)
-        }
-
-        availableQualities = qualities
+        availableQualities = makeResolvedQualityOptions(
+            resolvedUrl: resolvedUrl,
+            qualityVariants: qualityVariants,
+            audioVariants: audioVariants
+        )
         currentQualityKey = "Авто"
         playVideo(url: resolvedUrl, headers: headers, voices: resolvedVoices, subtitles: resolvedSubtitles)
         NotificationCenter.default.post(name: NSNotification.Name("QualitiesUpdated"), object: nil)
@@ -809,16 +932,21 @@ class PlayerViewModel: ObservableObject {
         PlaybackProgressStore.shared.saveLastVoiceover(kpId: kpId, source: "alloha", voiceover: name)
     }
 
-    private func appendQualityVariants(_ variants: [[String: Any]], to qualities: inout [(key: String, url: URL)], seenKeys: inout Set<String>) {
+    private func appendQualityVariants(_ variants: [[String: Any]], to qualities: inout [PlaybackQualityOption], seenKeys: inout Set<String>) {
         for variant in variants {
             guard let urlString = variant["url"] as? String,
-                  let url = URL(string: urlString),
-                  !urlString.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                  let url = absoluteQualityURL(from: urlString) else {
                 continue
             }
             let label = normalizedQualityLabel(from: variant["label"] as? String)
             guard seenKeys.insert(label).inserted else { continue }
-            qualities.append((key: label, url: url))
+            qualities.append(
+                makeResolvedQualityOption(
+                    label: label,
+                    url: url,
+                    preferredPeakBitRate: bitrateValue(from: variant)
+                )
+            )
         }
     }
 
