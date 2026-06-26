@@ -198,14 +198,17 @@ private struct ProfileCategoryTextTabs: View {
         let primaryColor: Color = isSelected ? .primary : .secondary
         let secondaryColor: Color = isSelected ? .primary.opacity(0.72) : .secondary.opacity(0.8)
 
-        (
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
             Text(category.title)
+                .font(.system(size: titleSize, weight: isSelected ? .bold : .semibold))
                 .foregroundStyle(primaryColor)
-            +
-            Text(" \(count)")
+
+            Text("\(count)")
+                .font(.system(size: max(titleSize - 7, 13), weight: .semibold, design: .rounded))
+                .monospacedDigit()
                 .foregroundStyle(secondaryColor)
-        )
-        .font(.system(size: titleSize, weight: isSelected ? .bold : .semibold))
+                .padding(.top, 2)
+        }
         .lineLimit(1)
         .fixedSize(horizontal: true, vertical: false)
         .contentShape(Rectangle())
