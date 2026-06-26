@@ -45,11 +45,13 @@ jobs:
           -project sloosh.xcodeproj \
           -scheme sloosh \
           -configuration Release \
+          -destination "generic/platform=iOS" \
           -sdk iphoneos \
           -derivedDataPath ./build \
           CODE_SIGN_IDENTITY="" \
           CODE_SIGNING_REQUIRED=NO \
-          CODE_SIGNING_ALLOWED=NO
+          CODE_SIGNING_ALLOWED=NO \
+          COMPILER_INDEX_STORE_ENABLE=NO
 
     - name: Package IPA (Unsigned)
       run: |
