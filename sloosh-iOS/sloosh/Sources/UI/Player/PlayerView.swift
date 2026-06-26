@@ -264,6 +264,10 @@ class PlayerViewModel: ObservableObject {
         self.targetVoiceover = selectedVoiceover
         self.currentTranslationName = selectedVoiceover
         self.isAdvancingToNextEpisode = false
+
+        if let kpId, let selectedVoiceover, !selectedVoiceover.isEmpty {
+            persistVoiceoverSelection(selectedVoiceover)
+        }
         
         isLoading = true
         error = nil
@@ -649,7 +653,7 @@ class PlayerViewModel: ObservableObject {
             
             DispatchQueue.main.async {
                 if let targetVoice = self.targetVoiceover, !targetVoice.isEmpty {
-                    if let match = group.options.first(where: { $0.displayName.lowercased() == targetVoice.lowercased() }) {
+                    if let match = group.options.first(where: { allohaTranslationNamesMatch($0.displayName, targetVoice) }) {
                         item.select(match, in: group)
                         self.persistVoiceoverSelection(match.displayName)
                         self.targetVoiceover = nil // Only apply once per initial load or quality change if needed, but it's safe to clear
@@ -659,7 +663,7 @@ class PlayerViewModel: ObservableObject {
                 
                 let savedVoiceover = self.loadSavedVoiceover()
                 if let saved = savedVoiceover, !saved.isEmpty {
-                    if let match = group.options.first(where: { $0.displayName.lowercased() == saved.lowercased() }) {
+                    if let match = group.options.first(where: { allohaTranslationNamesMatch($0.displayName, saved) }) {
                         item.select(match, in: group)
                         return
                     }
@@ -827,12 +831,12 @@ class PlayerViewModel: ObservableObject {
 
     private func preferredTranslation(in episode: AllohaEpisode) -> AllohaTranslation? {
         if let currentTranslationName,
-           let exactMatch = episode.translations.first(where: { $0.name.caseInsensitiveCompare(currentTranslationName) == .orderedSame }) {
+           let exactMatch = episode.translations.first(where: { allohaTranslationNamesMatch($0.name, currentTranslationName) }) {
             return exactMatch
         }
 
         if let targetVoiceover,
-           let voiceMatch = episode.translations.first(where: { $0.name.caseInsensitiveCompare(targetVoiceover) == .orderedSame }) {
+           let voiceMatch = episode.translations.first(where: { allohaTranslationNamesMatch($0.name, targetVoiceover) }) {
             return voiceMatch
         }
 
@@ -931,7 +935,12 @@ class PlayerViewModel: ObservableObject {
 
     private func persistVoiceoverSelection(_ name: String?) {
         guard let kpId = currentKpId else { return }
-        PlaybackProgressStore.shared.saveLastVoiceover(kpId: kpId, source: "alloha", voiceover: name)
+        let normalized = normalizedAllohaTranslationName(name)
+        PlaybackProgressStore.shared.saveLastVoiceover(
+            kpId: kpId,
+            source: "alloha",
+            voiceover: normalized.isEmpty ? name : normalized
+        )
     }
 
     private func appendQualityVariants(_ variants: [[String: Any]], to qualities: inout [PlaybackQualityOption], seenKeys: inout Set<String>) {

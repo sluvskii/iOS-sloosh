@@ -30,6 +30,51 @@ struct AllohaApiResult: Codable, Hashable, Equatable {
     let seasons: [AllohaSeason]
 }
 
+func normalizedAllohaTranslationName(_ raw: String?) -> String {
+    guard var value = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else {
+        return ""
+    }
+
+    value = value
+        .replacingOccurrences(of: "\\(Russian\\)", with: "")
+        .replacingOccurrences(of: "AC3 51 @ 640 kbps - Blu-ray CEE", with: "")
+        .replacingOccurrences(of: "AC3 5.1 @ 640 kbps", with: "")
+        .replacingOccurrences(of: "DUB", with: "Дубляж")
+        .replacingOccurrences(of: "MVO", with: "Многоголосый")
+        .replacingOccurrences(of: "DVO", with: "Двухголосый")
+        .replacingOccurrences(of: "AVO", with: "Авторский")
+        .replacingOccurrences(of: "ПМ", with: "Проф. многоголосый")
+        .replacingOccurrences(of: "ПД", with: "Проф. двухголосый")
+        .replacingOccurrences(of: "ЛМ", with: "Люб. многоголосый")
+        .replacingOccurrences(of: "ЛД", with: "Люб. двухголосый")
+        .replacingOccurrences(of: "[", with: " ")
+        .replacingOccurrences(of: "]", with: " ")
+        .replacingOccurrences(of: "(", with: " ")
+        .replacingOccurrences(of: ")", with: " ")
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+
+    while value.hasPrefix("-") || value.hasPrefix(",") {
+        value = String(value.dropFirst()).trimmingCharacters(in: .whitespaces)
+    }
+    while value.hasSuffix("-") || value.hasSuffix(",") {
+        value = String(value.dropLast()).trimmingCharacters(in: .whitespaces)
+    }
+
+    value = value
+        .lowercased()
+        .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+
+    return value
+}
+
+func allohaTranslationNamesMatch(_ lhs: String?, _ rhs: String?) -> Bool {
+    let left = normalizedAllohaTranslationName(lhs)
+    let right = normalizedAllohaTranslationName(rhs)
+    guard !left.isEmpty, !right.isEmpty else { return false }
+    return left == right || left.contains(right) || right.contains(left)
+}
+
 class TrustAllSessionDelegate: NSObject, @preconcurrency URLSessionDelegate, @unchecked Sendable {
     @MainActor
     func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge, completionHandler: @escaping @MainActor @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {

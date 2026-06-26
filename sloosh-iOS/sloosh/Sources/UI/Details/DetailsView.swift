@@ -458,11 +458,6 @@ struct DetailsView: View {
                                     season: season,
                                     episode: episode
                                 )
-                                PlaybackProgressStore.shared.saveLastVoiceover(
-                                    kpId: kpId,
-                                    source: "alloha",
-                                    voiceover: nil
-                                )
 
                                 sourceSheetTitle = details.title ?? details.name ?? ""
                                 sourceSheetDetent = .medium

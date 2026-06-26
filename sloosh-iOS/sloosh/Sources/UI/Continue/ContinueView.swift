@@ -37,8 +37,6 @@ struct ContinueView: View {
                 if viewModel.isLoading && viewModel.items.isEmpty {
                     ProgressView()
                         .controlSize(.large)
-                } else if viewModel.isLaunching {
-                    ContinueLaunchOverlay(title: viewModel.launchingTitle)
                 }
             }
             .onAppear {
@@ -310,7 +308,7 @@ private final class ContinueViewModel: ObservableObject {
         guard !translations.isEmpty else { return nil }
 
         if let preferredVoiceover,
-           let translation = translations.first(where: { $0.name.compare(preferredVoiceover, options: .caseInsensitive) == .orderedSame }) {
+           let translation = translations.first(where: { allohaTranslationNamesMatch($0.name, preferredVoiceover) }) {
             return translation
         }
 
@@ -474,34 +472,6 @@ private struct ContinueEmptyState: View {
             systemImage: "clock.arrow.circlepath",
             description: Text("Фильмы и серии, которые ты уже начал смотреть, появятся здесь с прогрессом и временем.")
         )
-    }
-}
-
-private struct ContinueLaunchOverlay: View {
-    let title: String?
-
-    var body: some View {
-        ZStack {
-            Color.black.opacity(0.28)
-                .ignoresSafeArea()
-
-            VStack(spacing: 14) {
-                ProgressView()
-                    .controlSize(.large)
-
-                Text(title ?? "Подготавливаем воспроизведение")
-                    .font(.system(size: 16, weight: .semibold))
-                    .multilineTextAlignment(.center)
-
-                Text("Открываем с сохраненного места")
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundStyle(.secondary)
-            }
-            .padding(.horizontal, 24)
-            .padding(.vertical, 20)
-            .frame(maxWidth: 280)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 24, style: .continuous))
-        }
     }
 }
 
