@@ -125,10 +125,6 @@ struct SourceSelectionView: View {
     }
     
     private func setupInitialSelection() {
-        let savedVoiceover = kpId.flatMap {
-            PlaybackProgressStore.shared.loadLastVoiceover(kpId: $0, source: "alloha")
-        }
-
         if result.isSerial {
             var initialSeason = result.seasons.first?.season
             var initialEpisode: Int? = nil
@@ -153,10 +149,21 @@ struct SourceSelectionView: View {
                 
                 if let episode = episodeToSelect {
                     selectedEpisode = episode.episode
+                    let savedVoiceover = kpId.flatMap {
+                        PlaybackProgressStore.shared.loadLastVoiceover(
+                            kpId: $0,
+                            source: "alloha",
+                            season: seasonNum,
+                            episode: episode.episode
+                        )
+                    }
                     selectedTranslationName = preferredTranslation(in: episode.translations, preferredName: savedVoiceover)?.name
                 }
             }
         } else if let movie = result.movie {
+            let savedVoiceover = kpId.flatMap {
+                PlaybackProgressStore.shared.loadLastVoiceover(kpId: $0, source: "alloha")
+            }
             selectedTranslationName = preferredTranslation(in: movie.translations, preferredName: savedVoiceover)?.name
         }
     }
@@ -178,7 +185,13 @@ struct SourceSelectionView: View {
             
             if let kpId = kpId {
                 PlaybackProgressStore.shared.saveLastPlayed(kpId: kpId, season: s, episode: e)
-                PlaybackProgressStore.shared.saveLastVoiceover(kpId: kpId, source: "alloha", voiceover: translation.name)
+                PlaybackProgressStore.shared.saveLastVoiceover(
+                    kpId: kpId,
+                    source: "alloha",
+                    season: s,
+                    episode: e,
+                    voiceover: translation.name
+                )
             }
             
             onPlay(translation, s, e, quality)

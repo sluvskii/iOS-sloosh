@@ -676,7 +676,12 @@ class PlayerViewModel: ObservableObject {
     
     private func loadSavedVoiceover() -> String? {
         guard let kpId = currentKpId else { return nil }
-        return PlaybackProgressStore.shared.loadLastVoiceover(kpId: kpId, source: "alloha")
+        return PlaybackProgressStore.shared.loadLastVoiceover(
+            kpId: kpId,
+            source: "alloha",
+            season: currentSeason,
+            episode: currentEpisode
+        )
     }
     
     private func playVideo(url: URL, headers: [String: String], voices: [String] = [], subtitles: [PlaybackSubtitle] = []) {
@@ -939,6 +944,8 @@ class PlayerViewModel: ObservableObject {
         PlaybackProgressStore.shared.saveLastVoiceover(
             kpId: kpId,
             source: "alloha",
+            season: currentSeason,
+            episode: currentEpisode,
             voiceover: normalized.isEmpty ? name : normalized
         )
     }
