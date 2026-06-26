@@ -98,17 +98,14 @@ struct ProfileView: View {
                                     let media = favorite.toMediaDto()
                                     MovieDetailsNavigationLink(movie: media, navigationTransition: navigationTransition)
                                     .contextMenu {
-                                        Button(role: .destructive) {
+                                        Button {
                                             if let mediaId = favorite.mediaId, let type = favorite.type {
                                                 favoritesRepo.removeFromFavorites(mediaId: mediaId, mediaType: type)
                                             }
                                         } label: {
-                                            HStack(spacing: 8) {
-                                                Text("Удалить")
-                                                Image(systemName: "trash")
-                                            }
-                                            .foregroundStyle(.red)
+                                            Label("Удалить", systemImage: "trash")
                                         }
+                                        .tint(.red)
                                     }
                                 }
                             }
