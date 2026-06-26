@@ -57,7 +57,11 @@ final class CollapsAVAssetLoader {
         if let idx = playlistManager?.currentIndex {
             playlistManager?.updateItem(at: idx, with: resolvedItem)
         }
-        let selectedVariantIndex = audioManager?.selectedAudioVariantIndexByMediaId[resolvedItem.mediaId] ?? 0
+        let preferenceKey = playbackPreferenceKey(for: resolvedItem)
+        let selectedVariantIndex = audioManager?.restoreSelectedAudioVariantIndex(
+            for: resolvedItem,
+            preferenceKey: preferenceKey
+        ) ?? 0
         let resolvedUrlString = resolveURL(for: resolvedItem, selectedVariantIndex: selectedVariantIndex, overrideUrlString: overrideUrlString)
 
         guard let url = URL(string: resolvedUrlString) else {
@@ -72,7 +76,8 @@ final class CollapsAVAssetLoader {
         player?.automaticallyWaitsToMinimizeStalling = true
         player?.isMuted = false
 
-        restorePlaybackPosition(itemMeta: resolvedItem, overrideStartSec: overrideStartSec)
+        restorePlaybackPosition(itemMeta: resolvedItem, overrideStartSec: overrideStartSec, resolvedUrlString: resolvedUrlString)
+        audioManager?.applyPersistedAudioTrackIfNeeded(preferenceKey: preferenceKey)
 
         if autoplay {
             player?.play()
@@ -106,7 +111,11 @@ final class CollapsAVAssetLoader {
 
         playlistManager?.updateItem(at: currentIdx, with: resolvedItem)
         
-        let selectedVariantIndex = audioManager?.selectedAudioVariantIndexByMediaId[resolvedItem.mediaId] ?? 0
+        let preferenceKey = playbackPreferenceKey(for: resolvedItem)
+        let selectedVariantIndex = audioManager?.restoreSelectedAudioVariantIndex(
+            for: resolvedItem,
+            preferenceKey: preferenceKey
+        ) ?? 0
         let resolvedUrlString = resolveURL(for: resolvedItem, selectedVariantIndex: selectedVariantIndex, overrideUrlString: overrideUrlString)
 
         guard let url = URL(string: resolvedUrlString) else {
@@ -121,7 +130,8 @@ final class CollapsAVAssetLoader {
         player?.automaticallyWaitsToMinimizeStalling = true
         player?.isMuted = false
 
-        restorePlaybackPosition(itemMeta: resolvedItem, overrideStartSec: overrideStartSec)
+        restorePlaybackPosition(itemMeta: resolvedItem, overrideStartSec: overrideStartSec, resolvedUrlString: resolvedUrlString)
+        audioManager?.applyPersistedAudioTrackIfNeeded(preferenceKey: preferenceKey)
         
         if autoplay {
             player?.play()
@@ -204,9 +214,10 @@ final class CollapsAVAssetLoader {
         return playerItem
     }
     
-    private func restorePlaybackPosition(itemMeta: CollapsAVPlaylistItem, overrideStartSec: Double?) {
+    private func restorePlaybackPosition(itemMeta: CollapsAVPlaylistItem, overrideStartSec: Double?, resolvedUrlString: String) {
         let progressKey = progressManager?.progressKey(kpId: kpId, episode: itemMeta.episode, season: itemMeta.season) ?? ""
         let legacyKey = progressManager?.progressKey(kpId: kpId, episode: itemMeta.episode) ?? ""
+        let scopedKey = progressManager?.scopedPlaybackMediaId(baseMediaId: itemMeta.mediaId, urlString: resolvedUrlString) ?? ""
         let isWatched = CollapsPlaybackProgressStore.shared.loadWatched(mediaId: itemMeta.mediaId)
         let startAt: Double
         if isWatched {
@@ -214,8 +225,9 @@ final class CollapsAVAssetLoader {
         } else if let override = overrideStartSec {
             startAt = override
         } else {
-            let saved = CollapsPlaybackProgressStore.shared.load(mediaId: progressKey)
-            let legacySaved = saved > 0 ? saved : CollapsPlaybackProgressStore.shared.load(mediaId: legacyKey)
+            let saved = !scopedKey.isEmpty ? CollapsPlaybackProgressStore.shared.load(mediaId: scopedKey) : 0
+            let progressSaved = saved > 0 ? saved : CollapsPlaybackProgressStore.shared.load(mediaId: progressKey)
+            let legacySaved = progressSaved > 0 ? progressSaved : CollapsPlaybackProgressStore.shared.load(mediaId: legacyKey)
             // For movies (no episode), progressKey is empty — fall back to mediaId directly
             startAt = legacySaved > 0 ? legacySaved : (progressKey.isEmpty ? CollapsPlaybackProgressStore.shared.load(mediaId: itemMeta.mediaId) : 0)
         }
@@ -241,5 +253,10 @@ final class CollapsAVAssetLoader {
             toleranceBefore: .zero,
             toleranceAfter: .zero
         )
+    }
+
+    private func playbackPreferenceKey(for itemMeta: CollapsAVPlaylistItem) -> String {
+        let progressKey = progressManager?.progressKey(kpId: kpId, episode: itemMeta.episode, season: itemMeta.season) ?? ""
+        return progressKey.isEmpty ? itemMeta.mediaId : progressKey
     }
 }

@@ -75,6 +75,7 @@ class PlayerViewModel(
     private var pendingStartPositionMs: Long? = null
     private var pendingStartDurationMs: Long? = null
     private var pendingProgressKey: String? = null
+    private var currentPlaybackPreferenceKey: String? = null
     private var episodeVoiceNames: List<String> = emptyList()
     private var lastInitArgs: LastInitArgs? = null
     private var preferSoftwareDecoder: Boolean = false
@@ -87,6 +88,7 @@ class PlayerViewModel(
     private val forceFirstAudioTrack: Boolean by lazy { useCollapsHeaders }
     private var appliedFirstAudioOverride: Boolean = false
     private var preferredAudioLabel: String? = null
+    private var preferredAllohaAudioTitle: String? = null
     private var preferredVideoHeight: Int? = null
     private var prefersAutoVideoQuality: Boolean = true
     
@@ -320,6 +322,7 @@ class PlayerViewModel(
             "pos_$currentUrl"
         }
         Log.d("PlayerVM", "Progress key: $progressKey (displayName=$initialDisplayName)")
+        restorePlaybackPreferences(progressKey)
         val startPosition = progressStore.readStartPosition(progressKey, startFromBeginning)
         val savedDuration = progressStore.readSavedDuration(progressKey)
         pendingStartPositionMs = if (startPosition > 0L) startPosition else null
@@ -334,11 +337,39 @@ class PlayerViewModel(
         Log.d("PlayerVM", "Player prepared and playWhenReady set to true")
     }
 
+    fun primePlaybackPreferences(
+        currentUrl: String,
+        names: List<String>?,
+        startIndex: Int,
+        kinopoiskId: Int? = null,
+    ): String {
+        val initialDisplayName = names?.getOrNull(startIndex)
+            ?: AllohaEpisodeHolder.currentEpisodeName().takeIf { AllohaEpisodeHolder.episodeIframeUrls.isNotEmpty() }
+            ?: ""
+        val parsedSeasonEpisode = parseSeasonEpisodeNumbers(initialDisplayName)
+        val progressKey = if (kinopoiskId != null && parsedSeasonEpisode != null) {
+            "kp_${kinopoiskId}_s${parsedSeasonEpisode.first}_e${parsedSeasonEpisode.second}"
+        } else if (AllohaEpisodeHolder.episodeIframeUrls.isNotEmpty() && kinopoiskId != null) {
+            val episodeName = AllohaEpisodeHolder.currentEpisodeName()
+            val parsed = parseSeasonEpisodeNumbers(episodeName)
+            if (parsed != null) {
+                "kp_${kinopoiskId}_s${parsed.first}_e${parsed.second}"
+            } else {
+                "kp_${kinopoiskId}_e${AllohaEpisodeHolder.currentEpisodeIndex}"
+            }
+        } else {
+            "pos_$currentUrl"
+        }
+        restorePlaybackPreferences(progressKey)
+        return progressKey
+    }
+
 
     override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
         _uiState.update { it.copy(currentItemTitle = buildDisplayTitle(mediaItem)) }
         appliedFirstAudioOverride = false
         currentEpisodeIndex = player.currentMediaItemIndex
+        restorePlaybackPreferences(progressKey())
     }
 
     override fun onTracksChanged(tracks: Tracks) {
@@ -437,6 +468,22 @@ class PlayerViewModel(
         )
     }
 
+    private fun restorePlaybackPreferences(progressKey: String) {
+        currentPlaybackPreferenceKey = progressKey.takeIf { it.isNotBlank() }
+        preferredAudioLabel = progressStore.readPreferredAudioLabel(progressKey)
+        preferredAllohaAudioTitle = progressStore.readPreferredAllohaAudioTitle(progressKey)
+    }
+
+    private fun persistPreferredAudioTrackSelection(label: String?) {
+        val key = currentPlaybackPreferenceKey ?: return
+        progressStore.savePreferredAudioLabel(key, label)
+    }
+
+    private fun persistPreferredAllohaAudioSelection(title: String?) {
+        val key = currentPlaybackPreferenceKey ?: return
+        progressStore.savePreferredAllohaAudioTitle(key, title)
+    }
+
     fun clearCurrentProgress() {
         val key = progressKey().takeIf { it.isNotBlank() } ?: return
         progressStore.clearPosition(key)
@@ -505,6 +552,10 @@ class PlayerViewModel(
                 if (index >= 0) {
                     val selected = getSelectableTracks(C.TRACK_TYPE_AUDIO).getOrNull(index)
                     preferredAudioLabel = selected?.label
+                    persistPreferredAudioTrackSelection(preferredAudioLabel)
+                } else {
+                    preferredAudioLabel = null
+                    persistPreferredAudioTrackSelection(null)
                 }
             }
             C.TRACK_TYPE_VIDEO -> {
@@ -656,7 +707,8 @@ class PlayerViewModel(
         qualityVariants: List<Map<String, Any>>
     ) {
         // Try to preserve selected audio by title across episode switches
-        val prevAudioTitle = allohaAudioVariants.getOrNull(selectedAllohaAudioIndex)?.get("title") as? String
+        val prevAudioTitle = preferredAllohaAudioTitle
+            ?: (allohaAudioVariants.getOrNull(selectedAllohaAudioIndex)?.get("title") as? String)
         val prevQualityLabel = if (selectedAllohaQualityIndex >= 0) {
             val prevAudio = allohaAudioVariants.getOrNull(selectedAllohaAudioIndex)
             val prevQv = (prevAudio?.get("qualityVariants") as? List<*>)?.mapNotNull { it as? Map<*, *> }
@@ -672,6 +724,7 @@ class PlayerViewModel(
             audioVariants.indexOfFirst { (it["title"] as? String) == prevAudioTitle }.takeIf { it >= 0 }
         } else null
         selectedAllohaAudioIndex = restoredAudioIndex ?: 0
+        preferredAllohaAudioTitle = audioVariants.getOrNull(selectedAllohaAudioIndex)?.get("title") as? String
 
         // Restore quality selection by label
         if (prevQualityLabel != null) {
@@ -803,6 +856,8 @@ class PlayerViewModel(
     fun selectAllohaAudioVariant(index: Int) {
         if (index !in allohaAudioVariants.indices) return
         selectedAllohaAudioIndex = index
+        preferredAllohaAudioTitle = allohaAudioVariants.getOrNull(index)?.get("title") as? String
+        persistPreferredAllohaAudioSelection(preferredAllohaAudioTitle)
         selectedAllohaQualityIndex = -1
         isAutoQuality = true
         reloadAllohaVariant()

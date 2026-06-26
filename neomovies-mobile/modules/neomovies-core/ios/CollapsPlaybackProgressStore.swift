@@ -10,6 +10,8 @@ public final class CollapsPlaybackProgressStore {
     private let updatedAtPrefix = "neomovies.collaps.updatedAt."
     private let lastSeasonPrefix  = "neomovies.collaps.lastSeason."
     private let lastEpisodePrefix = "neomovies.collaps.lastEpisode."
+    private let audioTrackPrefix = "neomovies.collaps.audioTrack."
+    private let audioVariantPrefix = "neomovies.collaps.audioVariant."
 
     private init() {}
 
@@ -60,6 +62,38 @@ public final class CollapsPlaybackProgressStore {
     public func loadUpdatedAtMs(mediaId: String) -> Int {
         guard !mediaId.isEmpty else { return 0 }
         return defaults.integer(forKey: updatedAtPrefix + mediaId)
+    }
+
+    public func saveAudioTrackLabel(mediaId: String, label: String?) {
+        guard !mediaId.isEmpty else { return }
+        let key = audioTrackPrefix + mediaId
+        if let label, !label.isEmpty {
+            defaults.set(label, forKey: key)
+        } else {
+            defaults.removeObject(forKey: key)
+        }
+        defaults.synchronize()
+    }
+
+    public func loadAudioTrackLabel(mediaId: String) -> String? {
+        guard !mediaId.isEmpty else { return nil }
+        return defaults.string(forKey: audioTrackPrefix + mediaId)
+    }
+
+    public func saveAudioVariantTitle(mediaId: String, title: String?) {
+        guard !mediaId.isEmpty else { return }
+        let key = audioVariantPrefix + mediaId
+        if let title, !title.isEmpty {
+            defaults.set(title, forKey: key)
+        } else {
+            defaults.removeObject(forKey: key)
+        }
+        defaults.synchronize()
+    }
+
+    public func loadAudioVariantTitle(mediaId: String) -> String? {
+        guard !mediaId.isEmpty else { return nil }
+        return defaults.string(forKey: audioVariantPrefix + mediaId)
     }
 
     // MARK: - Last-played tracking (per kpId)
