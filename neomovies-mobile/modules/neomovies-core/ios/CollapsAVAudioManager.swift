@@ -76,12 +76,10 @@ final class CollapsAVAudioManager {
     /// Selects an audio track by index.
     /// Returns the playlist index to switch to when this is a voiceover-playlist dub switch;
     /// returns nil for all other cases (handled internally).
-    func selectAudioTrack(index: Int?, preferenceKey: String, emitState: @escaping () -> Void) -> Int? {
+    func selectAudioTrack(index: Int?, emitState: @escaping () -> Void) -> Int? {
         if let current = playlist[safe: currentIndex], !current.audioVariants.isEmpty {
             guard let index, index >= 0, index < current.audioVariants.count else { return nil }
             selectedAudioVariantIndexByMediaId[current.mediaId] = index
-            let title = current.audioVariants[index].title.trimmingCharacters(in: .whitespacesAndNewlines)
-            CollapsPlaybackProgressStore.shared.saveAudioVariantTitle(mediaId: preferenceKey, title: title.isEmpty ? nil : title)
             emitState()
             return nil
         }
@@ -98,13 +96,8 @@ final class CollapsAVAudioManager {
         }
         if let index, index >= 0, index < group.options.count {
             item.select(group.options[index], in: group)
-            CollapsPlaybackProgressStore.shared.saveAudioTrackLabel(
-                mediaId: preferenceKey,
-                label: group.options[index].displayName
-            )
         } else {
             item.select(nil, in: group)
-            CollapsPlaybackProgressStore.shared.saveAudioTrackLabel(mediaId: preferenceKey, label: nil)
         }
         emitState()
         return nil
@@ -142,35 +135,6 @@ final class CollapsAVAudioManager {
     /// Sets the selected audio variant index for a media ID
     func setSelectedAudioVariantIndex(_ index: Int, for mediaId: String) {
         selectedAudioVariantIndexByMediaId[mediaId] = index
-    }
-
-    func restoreSelectedAudioVariantIndex(for item: CollapsAVPlaylistItem, preferenceKey: String) -> Int {
-        let savedTitle = CollapsPlaybackProgressStore.shared.loadAudioVariantTitle(mediaId: preferenceKey)?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        let restoredIndex = savedTitle.flatMap { title in
-            item.audioVariants.firstIndex {
-                $0.title.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare(title) == .orderedSame
-            }
-        } ?? selectedAudioVariantIndexByMediaId[item.mediaId]
-            ?? 0
-        selectedAudioVariantIndexByMediaId[item.mediaId] = restoredIndex
-        return restoredIndex
-    }
-
-    func applyPersistedAudioTrackIfNeeded(preferenceKey: String) {
-        guard let item = player?.currentItem,
-              let group = item.asset.mediaSelectionGroup(forMediaCharacteristic: .audible) else {
-            return
-        }
-        let savedLabel = CollapsPlaybackProgressStore.shared.loadAudioTrackLabel(mediaId: preferenceKey)?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let savedLabel, !savedLabel.isEmpty else { return }
-        guard let option = group.options.first(where: {
-            $0.displayName.trimmingCharacters(in: .whitespacesAndNewlines).caseInsensitiveCompare(savedLabel) == .orderedSame
-        }) else {
-            return
-        }
-        item.select(option, in: group)
     }
     
     /// Gets the current audio track label
