@@ -383,15 +383,10 @@ private struct HomeEmptyState: View {
 
 struct RemotePosterView: View {
     let url: URL?
-    @Environment(\.colorScheme) private var colorScheme
     
     @State private var image: UIImage?
     @State private var isLoading = false
     @State private var hasError = false
-
-    private var posterShadowColor: Color {
-        colorScheme == .dark ? .black.opacity(0.16) : .clear
-    }
     
     var body: some View {
         Group {
@@ -400,7 +395,6 @@ struct RemotePosterView: View {
                     .resizable()
                     .aspectRatio(2/3, contentMode: .fill)
                     .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                    .shadow(color: posterShadowColor, radius: 10, x: 0, y: 6)
             } else if isLoading {
                 Rectangle()
                     .fill(Color.gray.opacity(0.2))
