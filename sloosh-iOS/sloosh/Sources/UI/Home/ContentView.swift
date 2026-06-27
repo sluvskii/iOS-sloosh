@@ -6,23 +6,38 @@ struct ContentView: View {
         GeometryReader { proxy in
             ZStack(alignment: .top) {
                 TabView {
-                    Tab("Главная", systemImage: "house.fill") {
+                    Tab {
                         HomeView()
+                    } label: {
+                        Label("Главная", systemImage: "house.fill")
+                            .labelStyle(.iconOnly)
                     }
-                    Tab("Поиск", systemImage: "magnifyingglass", role: .search) {
+                    Tab(role: .search) {
                         SearchView()
+                    } label: {
+                        Label("Поиск", systemImage: "magnifyingglass")
+                            .labelStyle(.iconOnly)
                     }
-                    Tab("Загрузки", systemImage: "arrow.down.circle.fill") {
+                    Tab {
                         DownloadsView()
+                    } label: {
+                        Label("Загрузки", systemImage: "arrow.down.circle.fill")
+                            .labelStyle(.iconOnly)
                     }
-                    Tab("Продолжить", systemImage: "clock.arrow.circlepath") {
+                    Tab {
                         ContinueView()
+                    } label: {
+                        Label("Продолжить", systemImage: "clock.arrow.circlepath")
+                            .labelStyle(.iconOnly)
                     }
-                    Tab("Профиль", systemImage: "person.fill") {
+                    Tab {
                         ProfileView()
+                    } label: {
+                        Label("Профиль", systemImage: "person.fill")
+                            .labelStyle(.iconOnly)
                     }
                 }
-                .tabViewStyle(.sidebarAdaptable)
+                .tabViewStyle(.tabBarOnly)
                 .tabBarMinimizeBehavior(.onScrollDown)
                 .tint(Color.slooshAccent)
                 
