@@ -2,6 +2,18 @@ import SwiftUI
 import UIKit
 
 struct ContentView: View {
+    @AppStorage("tabBarShowsLabels") private var tabBarShowsLabels = false
+
+    @ViewBuilder
+    private func tabLabel(_ title: LocalizedStringKey, systemImage: String) -> some View {
+        if tabBarShowsLabels {
+            Label(title, systemImage: systemImage)
+        } else {
+            Label(title, systemImage: systemImage)
+                .labelStyle(.iconOnly)
+        }
+    }
+
     var body: some View {
         GeometryReader { proxy in
             ZStack(alignment: .top) {
@@ -9,32 +21,27 @@ struct ContentView: View {
                     Tab {
                         HomeView()
                     } label: {
-                        Label("Главная", systemImage: "house.fill")
-                            .labelStyle(.iconOnly)
+                        tabLabel("Главная", systemImage: "house.fill")
                     }
                     Tab(role: .search) {
                         SearchView()
                     } label: {
-                        Label("Поиск", systemImage: "magnifyingglass")
-                            .labelStyle(.iconOnly)
+                        tabLabel("Поиск", systemImage: "magnifyingglass")
                     }
                     Tab {
                         DownloadsView()
                     } label: {
-                        Label("Загрузки", systemImage: "arrow.down.circle.fill")
-                            .labelStyle(.iconOnly)
+                        tabLabel("Загрузки", systemImage: "arrow.down.circle.fill")
                     }
                     Tab {
                         ContinueView()
                     } label: {
-                        Label("Продолжить", systemImage: "clock.arrow.circlepath")
-                            .labelStyle(.iconOnly)
+                        tabLabel("Продолжить", systemImage: "clock.arrow.circlepath")
                     }
                     Tab {
                         ProfileView()
                     } label: {
-                        Label("Профиль", systemImage: "person.fill")
-                            .labelStyle(.iconOnly)
+                        tabLabel("Профиль", systemImage: "person.fill")
                     }
                 }
                 .tabViewStyle(.tabBarOnly)
