@@ -1,8 +1,17 @@
 import SwiftUI
 import UIKit
 
+private enum AppTab: Hashable {
+    case home
+    case search
+    case downloads
+    case continueWatching
+    case profile
+}
+
 struct ContentView: View {
     @AppStorage("tabBarShowsLabels") private var tabBarShowsLabels = false
+    @State private var selectedTab: AppTab = .home
 
     @ViewBuilder
     private func tabLabel(_ title: LocalizedStringKey, systemImage: String) -> some View {
@@ -17,33 +26,34 @@ struct ContentView: View {
     var body: some View {
         GeometryReader { proxy in
             ZStack(alignment: .top) {
-                TabView {
-                    Tab {
+                TabView(selection: $selectedTab) {
+                    Tab(value: .home) {
                         HomeView()
                     } label: {
                         tabLabel("Главная", systemImage: "house.fill")
                     }
-                    Tab(role: .search) {
+                    Tab(value: .search, role: .search) {
                         SearchView()
                     } label: {
                         tabLabel("Поиск", systemImage: "magnifyingglass")
                     }
-                    Tab {
+                    Tab(value: .downloads) {
                         DownloadsView()
                     } label: {
                         tabLabel("Загрузки", systemImage: "arrow.down.circle.fill")
                     }
-                    Tab {
+                    Tab(value: .continueWatching) {
                         ContinueView()
                     } label: {
                         tabLabel("Продолжить", systemImage: "clock.arrow.circlepath")
                     }
-                    Tab {
+                    Tab(value: .profile) {
                         ProfileView()
                     } label: {
                         tabLabel("Профиль", systemImage: "person.fill")
                     }
                 }
+                .id(tabBarShowsLabels)
                 .tabViewStyle(.tabBarOnly)
                 .tabBarMinimizeBehavior(.onScrollDown)
                 .tint(Color.slooshAccent)
