@@ -21,6 +21,7 @@ enum FavoriteCategory: String, CaseIterable {
 struct ProfileView: View {
     @StateObject private var favoritesRepo = FavoritesRepository.shared
     @State private var selectedCategory: FavoriteCategory = .all
+    @SceneStorage("profileShowsSettings") private var showsSettings = false
     @Namespace private var navigationTransition
     
     let columns = [
@@ -117,9 +118,14 @@ struct ProfileView: View {
                 }
                 .navigationTitle("Профиль")
                 .navigationBarTitleDisplayMode(.inline)
+                .navigationDestination(isPresented: $showsSettings) {
+                    SettingsView()
+                }
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
-                        NavigationLink(destination: SettingsView()) {
+                        Button {
+                            showsSettings = true
+                        } label: {
                             Image(systemName: "gearshape.fill")
                                 .font(.system(size: 16, weight: .semibold))
                                 .frame(width: 30, height: 30)
