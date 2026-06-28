@@ -1,28 +1,60 @@
 import SwiftUI
 import UIKit
 
+private enum AppTab: Hashable {
+    case home
+    case search
+    case downloads
+    case continueWatching
+    case profile
+}
+
 struct ContentView: View {
+    @AppStorage("tabBarShowsLabels") private var tabBarShowsLabels = false
+    @State private var selectedTab: AppTab = .home
+
+    @ViewBuilder
+    private func tabLabel(_ title: LocalizedStringKey, systemImage: String) -> some View {
+        if tabBarShowsLabels {
+            Label(title, systemImage: systemImage)
+        } else {
+            Label(title, systemImage: systemImage)
+                .labelStyle(.iconOnly)
+        }
+    }
+
     var body: some View {
         GeometryReader { proxy in
             ZStack(alignment: .top) {
-                TabView {
-                    Tab("Главная", systemImage: "house.fill") {
+                TabView(selection: $selectedTab) {
+                    Tab(value: .home) {
                         HomeView()
+                    } label: {
+                        tabLabel("Главная", systemImage: "house.fill")
                     }
-                    Tab("Поиск", systemImage: "magnifyingglass", role: .search) {
+                    Tab(value: .search, role: .search) {
                         SearchView()
+                    } label: {
+                        tabLabel("Поиск", systemImage: "magnifyingglass")
                     }
-                    Tab("Загрузки", systemImage: "arrow.down.circle.fill") {
+                    Tab(value: .downloads) {
                         DownloadsView()
+                    } label: {
+                        tabLabel("Загрузки", systemImage: "arrow.down.circle.fill")
                     }
-                    Tab("Продолжить", systemImage: "clock.arrow.circlepath") {
+                    Tab(value: .continueWatching) {
                         ContinueView()
+                    } label: {
+                        tabLabel("Продолжить", systemImage: "clock.arrow.circlepath")
                     }
-                    Tab("Профиль", systemImage: "person.fill") {
+                    Tab(value: .profile) {
                         ProfileView()
+                    } label: {
+                        tabLabel("Профиль", systemImage: "person.fill")
                     }
                 }
-                .tabViewStyle(.sidebarAdaptable)
+                .id(tabBarShowsLabels)
+                .tabViewStyle(.tabBarOnly)
                 .tabBarMinimizeBehavior(.onScrollDown)
                 .tint(Color.slooshAccent)
                 
