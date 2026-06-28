@@ -46,7 +46,7 @@ struct SourceSelectionView: View {
             guard let s = selectedSeason, let e = selectedEpisode else { return false }
             return episodeHasTranslation(season: s, episode: e, t: name)
         } else if let movie = result.movie {
-            return movie.translations.contains { $0.name == name }
+            return movie.translations.contains { allohaTranslationNamesMatch($0.name, name) }
         }
         return false
     }
@@ -64,13 +64,22 @@ struct SourceSelectionView: View {
     // Logic
     func seasonHasTranslation(season: Int, t: String) -> Bool {
         guard let s = result.seasons.first(where: { $0.season == season }) else { return false }
-        return s.episodes.contains { ep in ep.translations.contains { $0.name == t } }
+        return s.episodes.contains { ep in ep.translations.contains { allohaTranslationNamesMatch($0.name, t) } }
     }
 
     func episodeHasTranslation(season: Int, episode: Int, t: String) -> Bool {
         guard let s = result.seasons.first(where: { $0.season == season }),
               let ep = s.episodes.first(where: { $0.episode == episode }) else { return false }
-        return ep.translations.contains { $0.name == t }
+        return ep.translations.contains { allohaTranslationNamesMatch($0.name, t) }
+    }
+
+    func preferredTranslation(in translations: [AllohaTranslation], preferredName: String?) -> AllohaTranslation? {
+        guard !translations.isEmpty else { return nil }
+        if let preferredName,
+           let match = translations.first(where: { allohaTranslationNamesMatch($0.name, preferredName) }) {
+            return match
+        }
+        return translations.first
     }
     
     // Selection actions
@@ -116,6 +125,10 @@ struct SourceSelectionView: View {
     }
     
     private func setupInitialSelection() {
+        let savedVoiceover = kpId.flatMap {
+            PlaybackProgressStore.shared.loadLastVoiceover(kpId: $0, source: "alloha")
+        }
+
         if result.isSerial {
             var initialSeason = result.seasons.first?.season
             var initialEpisode: Int? = nil
@@ -140,11 +153,11 @@ struct SourceSelectionView: View {
                 
                 if let episode = episodeToSelect {
                     selectedEpisode = episode.episode
-                    selectedTranslationName = episode.translations.first?.name
+                    selectedTranslationName = preferredTranslation(in: episode.translations, preferredName: savedVoiceover)?.name
                 }
             }
         } else if let movie = result.movie {
-            selectedTranslationName = movie.translations.first?.name
+            selectedTranslationName = preferredTranslation(in: movie.translations, preferredName: savedVoiceover)?.name
         }
     }
     
@@ -161,20 +174,22 @@ struct SourceSelectionView: View {
             guard let s = selectedSeason, let e = selectedEpisode, let tName = selectedTranslationName else { return }
             guard let seasonObj = result.seasons.first(where: { $0.season == s }),
                   let epObj = seasonObj.episodes.first(where: { $0.episode == e }),
-                  let translation = epObj.translations.first(where: { $0.name == tName }) else { return }
+                  let translation = epObj.translations.first(where: { allohaTranslationNamesMatch($0.name, tName) }) else { return }
             
             if let kpId = kpId {
                 PlaybackProgressStore.shared.saveLastPlayed(kpId: kpId, season: s, episode: e)
+                PlaybackProgressStore.shared.saveLastVoiceover(kpId: kpId, source: "alloha", voiceover: translation.name)
             }
             
             onPlay(translation, s, e, quality)
             dismiss()
         } else if let movie = result.movie {
             guard let tName = selectedTranslationName,
-                  let translation = movie.translations.first(where: { $0.name == tName }) else { return }
+                  let translation = movie.translations.first(where: { allohaTranslationNamesMatch($0.name, tName) }) else { return }
             
             if let kpId = kpId {
                 PlaybackProgressStore.shared.saveLastPlayed(kpId: kpId, season: nil, episode: nil)
+                PlaybackProgressStore.shared.saveLastVoiceover(kpId: kpId, source: "alloha", voiceover: translation.name)
             }
             
             onPlay(translation, nil, nil, quality)

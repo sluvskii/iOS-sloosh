@@ -43,9 +43,9 @@ class HlsProxyServer {
             }
             newListener.start(queue: queue)
             
-            stateLock.lock()
-            self.listener = newListener
-            stateLock.unlock()
+            stateLock.withLock {
+                self.listener = newListener
+            }
             
             print("HlsProxyServer started on port \(port)")
         } catch {
@@ -54,15 +54,15 @@ class HlsProxyServer {
     }
 
     func updateHeaders(_ headers: [String: String]) {
-        stateLock.lock()
-        self.headers.merge(headers) { _, new in new }
-        stateLock.unlock()
+        stateLock.withLock {
+            self.headers.merge(headers) { _, new in new }
+        }
     }
 
     func updateMasterUrl(_ urlString: String) {
-        stateLock.lock()
-        currentMasterUrl = URL(string: urlString)
-        stateLock.unlock()
+        stateLock.withLock {
+            currentMasterUrl = URL(string: urlString)
+        }
     }
     
     func stop() {
@@ -142,9 +142,9 @@ class HlsProxyServer {
         }
         
         if urlComponents.path == "/master.m3u8" {
-            stateLock.lock()
-            let masterUrl = self.currentMasterUrl
-            stateLock.unlock()
+            let masterUrl = stateLock.withLock {
+                self.currentMasterUrl
+            }
             
             guard let currentMasterUrl = masterUrl else {
                 self.send404(on: connection)

@@ -458,11 +458,6 @@ struct DetailsView: View {
                                     season: season,
                                     episode: episode
                                 )
-                                PlaybackProgressStore.shared.saveLastVoiceover(
-                                    kpId: kpId,
-                                    source: "alloha",
-                                    voiceover: nil
-                                )
 
                                 sourceSheetTitle = details.title ?? details.name ?? ""
                                 sourceSheetDetent = .medium
@@ -1114,6 +1109,9 @@ class DetailsViewModel: ObservableObject {
 
         do {
             details = try await MoviesRepository.shared.getDetails(id: id)
+            if let details {
+                PlaybackProgressStore.shared.saveMetadata(details: details)
+            }
             checkFavoriteStatus()
             
             if details?.type == "tv", let kpId = details?.externalIds?.kp {
@@ -1156,7 +1154,8 @@ class DetailsViewModel: ObservableObject {
                 mediaId: mediaId,
                 mediaType: mediaType,
                 title: details.title ?? details.name,
-                posterUrl: details.posterUrl ?? details.backdropUrl
+                posterUrl: details.posterUrl ?? details.backdropUrl,
+                rating: details.rating
             )
         }
         isFavorite.toggle()

@@ -26,9 +26,9 @@ struct ProfileView: View {
     let columns = [
         GridItem(.adaptive(minimum: 105), spacing: 16)
     ]
-    
-    var filteredFavorites: [FavoriteDto] {
-        switch selectedCategory {
+
+    private func favorites(for category: FavoriteCategory) -> [FavoriteDto] {
+        switch category {
         case .all:
             return favoritesRepo.favorites
         case .movies:
@@ -54,79 +54,202 @@ struct ProfileView: View {
         }
     }
 
+    var filteredFavorites: [FavoriteDto] {
+        favorites(for: selectedCategory)
+    }
+
+    private var categoryCounts: [FavoriteCategory: Int] {
+        Dictionary(uniqueKeysWithValues: FavoriteCategory.allCases.map { category in
+            (category, favorites(for: category).count)
+        })
+    }
+
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(spacing: 20) {
-                    // В будущем здесь будет шапка профиля (аватарка, ник пользователя)
-                    
-                    Picker("Папка", selection: $selectedCategory) {
-                        ForEach(FavoriteCategory.allCases, id: \.self) { category in
-                            Text(category.title).tag(category)
-                        }
-                    }
-                    .pickerStyle(.segmented)
-                    .padding(.horizontal, 16)
-                    
-                    if favoritesRepo.favorites.isEmpty {
-                        VStack {
-                            Image(systemName: "folder.fill")
-                                .font(.system(size: 64))
-                                .foregroundColor(.gray.opacity(0.5))
-                                .padding(.bottom, 8)
-                            Text("Пусто")
-                                .font(.system(size: 20, weight: .bold, design: .rounded))
-                                .foregroundColor(.primary)
-                            Text("Здесь будут ваши избранные фильмы и сериалы")
-                                .font(.system(size: 16, weight: .regular, design: .rounded))
-                                .foregroundColor(.secondary)
-                                .multilineTextAlignment(.center)
-                                .padding(.top, 4)
-                        }
-                        .padding(.top, 40)
-                        .frame(maxWidth: .infinity)
-                    } else if filteredFavorites.isEmpty {
-                        VStack {
-                            Text("В этой папке пока пусто")
-                                .font(.system(size: 16, weight: .regular, design: .rounded))
-                                .foregroundColor(.secondary)
-                        }
-                        .padding(.top, 40)
-                        .frame(maxWidth: .infinity)
-                    } else {
-                        LazyVGrid(columns: columns, spacing: 20) {
-                            ForEach(filteredFavorites) { favorite in
-                                let media = favorite.toMediaDto()
-                                MovieDetailsNavigationLink(movie: media, navigationTransition: navigationTransition)
-                                .contextMenu {
-                                    Button(role: .destructive) {
-                                        if let mediaId = favorite.mediaId, let type = favorite.type {
-                                            favoritesRepo.removeFromFavorites(mediaId: mediaId, mediaType: type)
+        GeometryReader { geometry in
+            NavigationStack {
+                ScrollView {
+                    VStack(spacing: 20) {
+                        // В будущем здесь будет шапка профиля (аватарка, ник пользователя)
+                        
+                        ProfileCategoryTextTabs(
+                            selectedCategory: $selectedCategory,
+                            categoryCounts: categoryCounts
+                        )
+                        
+                        if favoritesRepo.favorites.isEmpty {
+                            ProfileEmptyState(
+                                icon: "heart.slash",
+                                title: "Пока ничего не добавлено",
+                                message: "Сохраняйте фильмы и сериалы в избранное, чтобы быстро возвращаться к ним позже."
+                            )
+                            .frame(maxWidth: .infinity)
+                            .frame(minHeight: max(geometry.size.height - 180, 320))
+                        } else if filteredFavorites.isEmpty {
+                            ProfileEmptyState(
+                                icon: "film.stack",
+                                title: "В этой подборке пока пусто",
+                                message: "Попробуйте открыть другую вкладку или добавьте что-нибудь в избранное."
+                            )
+                            .frame(maxWidth: .infinity)
+                            .frame(minHeight: max(geometry.size.height - 180, 320))
+                        } else {
+                            LazyVGrid(columns: columns, spacing: 20) {
+                                ForEach(filteredFavorites) { favorite in
+                                    let media = favorite.toMediaDto()
+                                    MovieDetailsNavigationLink(movie: media, navigationTransition: navigationTransition)
+                                    .contextMenu {
+                                        Button {
+                                            if let mediaId = favorite.mediaId, let type = favorite.type {
+                                                favoritesRepo.removeFromFavorites(mediaId: mediaId, mediaType: type)
+                                            }
+                                        } label: {
+                                            Label("Удалить", systemImage: "trash")
                                         }
-                                    } label: {
-                                        Label("Удалить", systemImage: "trash")
+                                        .tint(.red)
                                     }
                                 }
                             }
+                            .padding(.horizontal, 16)
                         }
-                        .padding(.horizontal, 16)
                     }
+                    .frame(minHeight: geometry.size.height, alignment: .top)
+                    .padding(.vertical, 16)
                 }
-                .padding(.vertical, 16)
-            }
-            .navigationTitle("Профиль")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    NavigationLink(destination: SettingsView()) {
-                        Image(systemName: "gearshape.fill")
-                            .font(.system(size: 16, weight: .semibold))
-                            .frame(width: 30, height: 30)
-                            .contentShape(Circle())
+                .navigationTitle("Профиль")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        NavigationLink(destination: SettingsView()) {
+                            Image(systemName: "gearshape.fill")
+                                .font(.system(size: 16, weight: .semibold))
+                                .frame(width: 30, height: 30)
+                                .contentShape(Circle())
+                        }
+                        .tint(.primary)
                     }
-                    .tint(.primary)
                 }
             }
         }
+    }
+}
+
+private struct ProfileEmptyState: View {
+    let icon: String
+    let title: String
+    let message: String
+
+    var body: some View {
+        VStack(spacing: 18) {
+            Image(systemName: icon)
+                .font(.system(size: 42, weight: .medium))
+                .foregroundStyle(.secondary)
+
+            VStack(spacing: 8) {
+                Text(title)
+                    .font(.system(size: 24, weight: .bold))
+                    .multilineTextAlignment(.center)
+
+                Text(message)
+                    .font(.system(size: 16, weight: .medium))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(2)
+            }
+            .frame(maxWidth: 320)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.horizontal, 24)
+    }
+}
+
+private struct ProfileTabScaleButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
+            .opacity(configuration.isPressed ? 0.8 : 1.0)
+            .animation(.spring(response: 0.25, dampingFraction: 0.75), value: configuration.isPressed)
+    }
+}
+
+private struct ProfileCategoryTextTabs: View {
+    @Binding var selectedCategory: FavoriteCategory
+    let categoryCounts: [FavoriteCategory: Int]
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @ScaledMetric(relativeTo: .headline) private var titleSize: CGFloat = 24
+
+    private var tabSpacing: CGFloat {
+        horizontalSizeClass == .regular ? 28 : 22
+    }
+
+    private var edgeInset: CGFloat {
+        horizontalSizeClass == .regular ? 18 : 16
+    }
+
+    private var animation: Animation {
+        .spring(response: 0.35, dampingFraction: 0.78, blendDuration: 0.1)
+    }
+
+    @ViewBuilder
+    private func tabLabel(for category: FavoriteCategory, isSelected: Bool) -> some View {
+        let count = categoryCounts[category] ?? 0
+        let primaryColor: Color = isSelected ? .primary : .secondary
+        let secondaryColor: Color = isSelected ? .primary.opacity(0.72) : .secondary.opacity(0.8)
+
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text(category.title)
+                .font(.system(size: titleSize, weight: isSelected ? .bold : .semibold))
+                .foregroundStyle(primaryColor)
+
+            Text("\(count)")
+                .font(.system(size: max(titleSize - 7, 13), weight: .semibold, design: .rounded))
+                .monospacedDigit()
+                .foregroundStyle(secondaryColor)
+                .padding(.top, 2)
+        }
+        .lineLimit(1)
+        .fixedSize(horizontal: true, vertical: false)
+        .contentShape(Rectangle())
+    }
+
+    var body: some View {
+        ScrollViewReader { scrollProxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: tabSpacing) {
+                    ForEach(Array(FavoriteCategory.allCases.enumerated()), id: \.element) { index, category in
+                        let isSelected = selectedCategory == category
+                        let isFirst = index == 0
+                        let isLast = index == FavoriteCategory.allCases.count - 1
+
+                        Button {
+                            guard !isSelected else { return }
+                            withAnimation(animation) {
+                                selectedCategory = category
+                            }
+                        } label: {
+                            tabLabel(for: category, isSelected: isSelected)
+                        }
+                        .buttonStyle(ProfileTabScaleButtonStyle())
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 2)
+                        .padding(.leading, isFirst ? edgeInset : 0)
+                        .padding(.trailing, isLast ? edgeInset : 0)
+                        .id(category)
+                        .accessibilityAddTraits(isSelected ? .isSelected : [])
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .scrollClipDisabled()
+            .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+            .onAppear {
+                scrollProxy.scrollTo(selectedCategory, anchor: .center)
+            }
+            .onChange(of: selectedCategory) { _, newCategory in
+                withAnimation(animation) {
+                    scrollProxy.scrollTo(newCategory, anchor: .center)
+                }
+            }
+        }
+        .sensoryFeedback(.selection, trigger: selectedCategory)
     }
 }

@@ -219,6 +219,7 @@ struct FavoriteDto: Codable, Identifiable {
     let type: String?
     let title: String?
     let posterUrl: String?
+    let rating: Double?
     
     // Mapping to MediaDto for UI reuse
     func toMediaDto() -> MediaDto {
@@ -227,7 +228,7 @@ struct FavoriteDto: Codable, Identifiable {
             title: title,
             originalTitle: nil,
             year: nil,
-            rating: nil, // We don't save rating in favorites locally right now
+            rating: rating,
             posterUrl: posterUrl,
             description: nil,
             type: type,
