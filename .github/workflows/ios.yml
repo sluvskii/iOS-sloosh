@@ -2,9 +2,7 @@ name: iOS Build
 
 on:
   push:
-    branches: [ "main", "trae/**" ]
   pull_request:
-    branches: [ "main" ]
   workflow_dispatch:
 
 jobs:
@@ -18,10 +16,6 @@ jobs:
 
     - name: Select Xcode
       run: sudo xcode-select -s /Applications/Xcode_26.0.1.app/Contents/Developer
-
-    - name: Install iOS Runtime For actool
-      run: |
-        xcodebuild -downloadPlatform iOS
 
     - name: Install XcodeGen
       run: brew install xcodegen
