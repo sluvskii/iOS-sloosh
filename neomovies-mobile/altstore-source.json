@@ -9,13 +9,13 @@
       "developerName": "Neo",
       "subtitle": "Movies & series streaming",
       "version": "0.1.0-pre7",
-      "versionDate": "2026-05-30",
+      "versionDate": "2026-06-28",
       "versionDescription": "Latest release with Alloha support, quality selection, and episode switching",
       "downloadURL": "https://github.com/Neo-Open-Source/neomovies-mobile/releases/download/v0.1.0-pre7/neomovies-ios-unsigned-prerelease-0.1.0-pre7.ipa",
       "localizedDescription": "Movies & series streaming client for mobile. Features:\n\n• Alloha and Collaps sources\n• HLS streaming with quality selection\n• Voiceover and subtitle support\n• Episode switching in player\n• Continue watching\n• Multi-language support (EN, RU, UK, BE, RO)\n\nNote: This is a prerelease version. For stable releases, switch to the release branch.",
       "iconURL": "https://git.disroot.org/Neo/neomovies-mobile/raw/branch/main/.github/assets/logo.png",
       "tintColor": "#FF6B6B",
-      "size": 11671170,
+      "size": 11671830,
       "screenshotURLs": [],
       "permissions": [
         {

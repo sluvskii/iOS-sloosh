@@ -119,7 +119,7 @@ TabView (ContentView)
 
 ## Data Layer Notes
 
-### API Endpoints (base: `https://api.neomovies.ru`)
+### API Endpoints (base: `https://api.neome.uk`)
 
 | Method | Endpoint | Returns |
 |--------|----------|---------|
@@ -134,8 +134,8 @@ TabView (ContentView)
 
 `normalizeImageUrl(path:id:)` in `Models.swift`:
 - Absolute URLs → returned as-is (percent encoded)
-- Paths starting with `/` → prefixed with `https://api.neomovies.ru`
-- Paths starting with `api/` → prefixed with `https://api.neomovies.ru/`
+- Paths starting with `/` → prefixed with `https://api.neome.uk`
+- Paths starting with `api/` → prefixed with `https://api.neome.uk/`
 - Fallback by numeric KP id → `api/v1/images/kp_small/{id}?fallback=true`
 
 ### Playback Progress Key Schema (`UserDefaults`)

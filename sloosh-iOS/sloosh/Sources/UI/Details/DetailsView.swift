@@ -838,7 +838,7 @@ struct EpisodeCellView: View {
     @EnvironmentObject private var viewModel: DetailsViewModel
     
     var previewUrl: URL? {
-        URL(string: "https://api.neomovies.ru/api/v1/images/screens/\(movieId)/\(season)/\(episode)/large")
+        URL(string: "https://api.neome.uk/api/v1/images/screens/\(movieId)/\(season)/\(episode)/large")
     }
     
     private func ratingColor(for rating: Double) -> Color {

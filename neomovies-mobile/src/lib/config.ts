@@ -1,5 +1,5 @@
-const DEFAULT_API_BASE_URL = 'https://api.neomovies.ru/api/v1';
-const DEFAULT_NEO_ID_BASE_URL = 'https://id.neomovies.ru';
+const DEFAULT_API_BASE_URL = 'https://api.neome.uk/api/v1';
+const DEFAULT_NEO_ID_BASE_URL = 'https://id.neome.uk';
 
 function normalizeBaseUrl(input: string | undefined, fallback: string) {
   const value = (input || '').trim();
