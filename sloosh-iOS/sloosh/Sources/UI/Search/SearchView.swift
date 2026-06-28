@@ -5,7 +5,7 @@ struct SearchView: View {
     @Namespace private var navigationTransition
 
     private let columns = [
-        GridItem(.adaptive(minimum: 120), spacing: 16)
+        GridItem(.adaptive(minimum: 105), spacing: 16)
     ]
 
     var body: some View {

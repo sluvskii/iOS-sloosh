@@ -1,5 +1,36 @@
 import Foundation
 
+public struct PlaybackProgressRecord: Identifiable {
+    public let mediaId: String
+    public let kpId: Int
+    public let season: Int?
+    public let episode: Int?
+    public let positionSec: Double
+    public let durationSec: Double
+    public let watched: Bool
+    public let updatedAtMs: Int
+
+    public var id: String { mediaId }
+
+    public var isEpisode: Bool {
+        season != nil && episode != nil
+    }
+
+    public var progressFraction: Double {
+        guard durationSec.isFinite, durationSec > 0, positionSec.isFinite else { return 0 }
+        return max(0, min(positionSec / durationSec, 0.999))
+    }
+}
+
+public struct PlaybackMediaMetadata: Codable {
+    public let kpId: Int
+    public let detailsId: String
+    public let title: String
+    public let type: String?
+    public let posterUrl: String?
+    public let backdropUrl: String?
+}
+
 public final class PlaybackProgressStore {
     public static let shared = PlaybackProgressStore()
     private let defaults = UserDefaults.standard
@@ -10,6 +41,7 @@ public final class PlaybackProgressStore {
     private let updatedAtPrefix = "neomovies.collaps.updatedAt."
     private let lastSeasonPrefix  = "neomovies.collaps.lastSeason."
     private let lastEpisodePrefix = "neomovies.collaps.lastEpisode."
+    private let metadataPrefix = "neomovies.collaps.meta."
 
     private init() {}
 
@@ -62,6 +94,134 @@ public final class PlaybackProgressStore {
     public func loadUpdatedAtMs(mediaId: String) -> Int {
         guard !mediaId.isEmpty else { return 0 }
         return defaults.integer(forKey: updatedAtPrefix + mediaId)
+    }
+
+    public func saveMetadata(
+        kpId: Int,
+        detailsId: String,
+        title: String,
+        type: String?,
+        posterUrl: String?,
+        backdropUrl: String?
+    ) {
+        guard kpId > 0, !detailsId.isEmpty, !title.isEmpty else { return }
+
+        let snapshot = PlaybackMediaMetadata(
+            kpId: kpId,
+            detailsId: detailsId,
+            title: title,
+            type: type,
+            posterUrl: posterUrl,
+            backdropUrl: backdropUrl
+        )
+
+        guard let data = try? JSONEncoder().encode(snapshot) else { return }
+        defaults.set(data, forKey: metadataPrefix + "kp_\(kpId)")
+    }
+
+    func saveMetadata(details: MediaDetailsDto) {
+        guard let kpId = details.externalIds?.kp else { return }
+
+        let detailsId = details.id ?? details.sourceId ?? String(kpId)
+        let title = details.title ?? details.name ?? details.originalTitle ?? "Без названия"
+
+        saveMetadata(
+            kpId: kpId,
+            detailsId: detailsId,
+            title: title,
+            type: details.type,
+            posterUrl: details.displayPosterUrl,
+            backdropUrl: details.previewBackdropUrl ?? details.displayBackdropUrl ?? details.displayPosterUrl
+        )
+    }
+
+    public func loadMetadata(kpId: Int) -> PlaybackMediaMetadata? {
+        guard kpId > 0 else { return nil }
+        guard let data = defaults.data(forKey: metadataPrefix + "kp_\(kpId)") else { return nil }
+        return try? JSONDecoder().decode(PlaybackMediaMetadata.self, from: data)
+    }
+
+    public func listProgressRecords(kpId: Int? = nil) -> [PlaybackProgressRecord] {
+        let allDefaults = defaults.dictionaryRepresentation()
+        let prefix = positionPrefix
+
+        guard
+            let episodeRegex = try? NSRegularExpression(pattern: "^kp_(\\d+)_s(\\d+)_e(\\d+)$"),
+            let movieRegex = try? NSRegularExpression(pattern: "^kp_(\\d+)$")
+        else {
+            return []
+        }
+
+        var records: [PlaybackProgressRecord] = []
+        var seriesKpIds = Set<Int>()
+
+        for key in allDefaults.keys {
+            guard key.hasPrefix(prefix) else { continue }
+
+            let mediaId = String(key.dropFirst(prefix.count))
+            let range = NSRange(mediaId.startIndex..., in: mediaId)
+
+            guard let match = episodeRegex.firstMatch(in: mediaId, range: range) else { continue }
+            guard
+                let kpRange = Range(match.range(at: 1), in: mediaId),
+                let seasonRange = Range(match.range(at: 2), in: mediaId),
+                let episodeRange = Range(match.range(at: 3), in: mediaId),
+                let itemKpId = Int(mediaId[kpRange]),
+                let season = Int(mediaId[seasonRange]),
+                let episode = Int(mediaId[episodeRange])
+            else {
+                continue
+            }
+
+            if let kpId, itemKpId != kpId { continue }
+            seriesKpIds.insert(itemKpId)
+
+            records.append(
+                PlaybackProgressRecord(
+                    mediaId: mediaId,
+                    kpId: itemKpId,
+                    season: season,
+                    episode: episode,
+                    positionSec: load(mediaId: mediaId),
+                    durationSec: loadDuration(mediaId: mediaId),
+                    watched: loadWatched(mediaId: mediaId),
+                    updatedAtMs: loadUpdatedAtMs(mediaId: mediaId)
+                )
+            )
+        }
+
+        for key in allDefaults.keys {
+            guard key.hasPrefix(prefix) else { continue }
+
+            let mediaId = String(key.dropFirst(prefix.count))
+            let range = NSRange(mediaId.startIndex..., in: mediaId)
+
+            guard let match = movieRegex.firstMatch(in: mediaId, range: range) else { continue }
+            guard
+                let kpRange = Range(match.range(at: 1), in: mediaId),
+                let itemKpId = Int(mediaId[kpRange])
+            else {
+                continue
+            }
+
+            if let kpId, itemKpId != kpId { continue }
+            if seriesKpIds.contains(itemKpId) { continue }
+
+            records.append(
+                PlaybackProgressRecord(
+                    mediaId: mediaId,
+                    kpId: itemKpId,
+                    season: nil,
+                    episode: nil,
+                    positionSec: load(mediaId: mediaId),
+                    durationSec: loadDuration(mediaId: mediaId),
+                    watched: loadWatched(mediaId: mediaId),
+                    updatedAtMs: loadUpdatedAtMs(mediaId: mediaId)
+                )
+            )
+        }
+
+        return records.sorted { $0.updatedAtMs > $1.updatedAtMs }
     }
 
     public func saveLastVoiceover(kpId: Int, source: String, voiceover: String?) {
