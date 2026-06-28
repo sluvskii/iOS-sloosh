@@ -114,7 +114,7 @@ struct MediaDto: Codable, Identifiable {
 }
 
 func normalizeImageUrl(path: String?, id: String? = nil) -> String? {
-    let baseUrl = "https://api.neomovies.ru"
+    let baseUrl = "https://api.neome.uk"
     
     if let val = path?.trimmingCharacters(in: .whitespacesAndNewlines), !val.isEmpty {
         if val.hasPrefix("http://") || val.hasPrefix("https://") {
@@ -159,17 +159,17 @@ struct MediaDetailsDto: Codable {
     
     var displayBackdropUrl: String? {
         guard let validId = id?.replacingOccurrences(of: "kp_", with: ""), !validId.isEmpty else { return nil }
-        return "https://api.neomovies.ru/api/v1/images/backdrops/\(validId)/original"
+        return "https://api.neome.uk/api/v1/images/backdrops/\(validId)/original"
     }
     
     var previewBackdropUrl: String? {
         guard let validId = id?.replacingOccurrences(of: "kp_", with: ""), !validId.isEmpty else { return nil }
-        return "https://api.neomovies.ru/api/v1/images/backdrops/\(validId)/small"
+        return "https://api.neome.uk/api/v1/images/backdrops/\(validId)/small"
     }
 
     var displayLogoUrl: String? {
         guard let validId = id?.replacingOccurrences(of: "kp_", with: ""), !validId.isEmpty else { return nil }
-        return "https://api.neomovies.ru/api/v1/images/logos/\(validId)/original"
+        return "https://api.neome.uk/api/v1/images/logos/\(validId)/original"
     }
 }
 
