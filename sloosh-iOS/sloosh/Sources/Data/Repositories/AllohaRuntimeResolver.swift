@@ -3,6 +3,10 @@ import UIKit
 import WebKit
 
 final class AllohaRuntimeResolver: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
+    private static var iframeCache: [String: (result: [String: Any], expiresAt: Date)] = [:]
+    private static let cacheTtl: TimeInterval = 45 // 45 seconds
+    private static let cacheQueue = DispatchQueue(label: "ru.neomovies.alloharesolver.cache", attributes: .concurrent)
+
     private static var uaIndex = 0
     private static let userAgents = [
         "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
@@ -32,6 +36,11 @@ final class AllohaRuntimeResolver: NSObject, WKNavigationDelegate, WKScriptMessa
     private var baseURL: URL?
 
     func resolve(iframeUrl: String) async throws -> [String: Any] {
+        let cached = Self.cacheQueue.sync { Self.iframeCache[iframeUrl] }
+        if let cached = cached, cached.expiresAt > Date() {
+            return cached.result
+        }
+
         guard let url = URL(string: iframeUrl) else {
             throw NSError(domain: "SlooshCore", code: 1, userInfo: [NSLocalizedDescriptionKey: "Invalid iframe URL"])
         }
@@ -231,6 +240,13 @@ final class AllohaRuntimeResolver: NSObject, WKNavigationDelegate, WKScriptMessa
     private func finish(with result: [String: Any]) {
         guard !didFinish else { return }
         didFinish = true
+
+        if let originalUrl = baseURL?.absoluteString {
+            Self.cacheQueue.async(flags: .barrier) {
+                Self.iframeCache[originalUrl] = (result: result, expiresAt: Date().addingTimeInterval(Self.cacheTtl))
+            }
+        }
+
         cleanup()
         continuation?.resume(returning: result)
         continuation = nil
