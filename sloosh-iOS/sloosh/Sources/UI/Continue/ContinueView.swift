@@ -133,7 +133,8 @@ private struct ContinueWatchingItem: Identifiable {
     }
 
     var voiceover: String? {
-        PlaybackProgressStore.shared.loadLastVoiceover(kpId: record.kpId, source: "alloha")
+        PlaybackProgressStore.shared.loadLastVoiceover(kpId: record.kpId, source: "alloha") ??
+        UserDefaults.standard.string(forKey: "alloha_last_translation_name")
     }
 }
 

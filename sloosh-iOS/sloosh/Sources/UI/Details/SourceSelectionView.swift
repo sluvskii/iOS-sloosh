@@ -151,6 +151,24 @@ struct SourceSelectionView: View {
                 
                 if let lastEpisode = PlaybackProgressStore.shared.loadLastEpisode(kpId: kpId) {
                     initialEpisode = lastEpisode
+                    
+                    // If the user fully watched this episode, auto-select the next one!
+                    let mediaId = "kp_\(kpId)_s\(initialSeason ?? 1)_e\(lastEpisode)"
+                    if PlaybackProgressStore.shared.loadWatched(mediaId: mediaId) {
+                        let allEpisodes = result.seasons
+                            .flatMap { s in s.episodes.map { (s.season, $0.episode) } }
+                            .sorted {
+                                if $0.0 != $1.0 { return $0.0 < $1.0 }
+                                return $0.1 < $1.1
+                            }
+                        
+                        if let currentIdx = allEpisodes.firstIndex(where: { $0.0 == initialSeason && $0.1 == lastEpisode }),
+                           currentIdx + 1 < allEpisodes.count {
+                            let nextEp = allEpisodes[currentIdx + 1]
+                            initialSeason = nextEp.0
+                            initialEpisode = nextEp.1
+                        }
+                    }
                 }
             }
             
