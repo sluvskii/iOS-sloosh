@@ -72,7 +72,30 @@ func allohaTranslationNamesMatch(_ lhs: String?, _ rhs: String?) -> Bool {
     let left = normalizedAllohaTranslationName(lhs)
     let right = normalizedAllohaTranslationName(rhs)
     guard !left.isEmpty, !right.isEmpty else { return false }
-    return left == right || left.contains(right) || right.contains(left)
+    
+    if left == right || left.contains(right) || right.contains(left) {
+        return true
+    }
+    
+    let isOriginalOrEnglish: (String) -> Bool = { name in
+        let n = name.lowercased()
+        return n.contains("original") || n.contains("оригинал") || n.contains("english") || n.contains("английский") || n.contains("eng") || n == "en"
+    }
+    
+    let isRussianOrDub: (String) -> Bool = { name in
+        let n = name.lowercased()
+        return n.contains("russian") || n.contains("русский") || n.contains("rus") || n == "ru" || n.contains("дубляж") || n.contains("dub")
+    }
+    
+    if isOriginalOrEnglish(left) && isOriginalOrEnglish(right) {
+        return true
+    }
+    
+    if isRussianOrDub(left) && isRussianOrDub(right) {
+        return true
+    }
+    
+    return false
 }
 
 class TrustAllSessionDelegate: NSObject, @preconcurrency URLSessionDelegate, @unchecked Sendable {
