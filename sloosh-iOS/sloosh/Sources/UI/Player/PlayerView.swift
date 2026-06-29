@@ -225,6 +225,7 @@ class PlayerViewModel: ObservableObject {
     private var timeObserver: Any?
     private var itemObservation: NSKeyValueObservation?
     private var playbackEndObserver: NSObjectProtocol?
+    private var resignActiveObserver: NSObjectProtocol?
     private var currentPlaybackSourceURL: URL?
     
     private var currentKpId: Int?
@@ -435,20 +436,15 @@ class PlayerViewModel: ObservableObject {
             NotificationCenter.default.removeObserver(playbackEndObserver)
             self.playbackEndObserver = nil
         }
+        if let resignActiveObserver {
+            NotificationCenter.default.removeObserver(resignActiveObserver)
+            self.resignActiveObserver = nil
+        }
         itemObservation?.invalidate()
         itemObservation = nil
         
         // Final progress save before cleanup
-        if let player = player, let currentKpId = currentKpId {
-            let mediaId: String
-            if let season = currentSeason, let episode = currentEpisode {
-                mediaId = "kp_\(currentKpId)_s\(season)_e\(episode)"
-            } else {
-                mediaId = "kp_\(currentKpId)"
-            }
-            let duration = player.currentItem?.duration.seconds
-            PlaybackProgressStore.shared.save(mediaId: mediaId, positionSec: player.currentTime().seconds, durationSec: duration?.isNaN == false ? duration : nil)
-        }
+        saveCurrentProgress()
 
         resolveTask?.cancel()
         resolveTask = nil
@@ -457,6 +453,23 @@ class PlayerViewModel: ObservableObject {
         player?.pause()
         player = nil
         HlsProxyServer.shared.stop()
+    }
+
+    /// Сохраняет текущую позицию воспроизведения. Вызывается и по таймеру, и при сворачивании приложения.
+    private func saveCurrentProgress() {
+        guard let player = player, let currentKpId = currentKpId else { return }
+        let mediaId: String
+        if let season = currentSeason, let episode = currentEpisode {
+            mediaId = "kp_\(currentKpId)_s\(season)_e\(episode)"
+        } else {
+            mediaId = "kp_\(currentKpId)"
+        }
+        let duration = player.currentItem?.duration.seconds
+        PlaybackProgressStore.shared.save(
+            mediaId: mediaId,
+            positionSec: player.currentTime().seconds,
+            durationSec: duration?.isNaN == false ? duration : nil
+        )
     }
     
     func changeQuality(to key: String) {
@@ -762,6 +775,18 @@ class PlayerViewModel: ObservableObject {
                 }
             }
         }
+
+        // Сохраняем прогресс немедленно при сворачивании — даже если система потом убьёт процесс
+        if let existing = resignActiveObserver {
+            NotificationCenter.default.removeObserver(existing)
+        }
+        resignActiveObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.willResignActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.saveCurrentProgress()
+        }
     }
 
     private func observePlaybackCompletion(for item: AVPlayerItem) {
@@ -876,30 +901,7 @@ class PlayerViewModel: ObservableObject {
         return variants.compactMap { variant in
             let title = (variant["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             guard !title.isEmpty else { return nil }
-            
-            // Clean up the title similarly so player matching works correctly
-            var cleanTitle = title
-                .replacingOccurrences(of: "\\(Russian\\)", with: "")
-                .replacingOccurrences(of: "AC3 51 @ 640 kbps - Blu-ray CEE", with: "")
-                .replacingOccurrences(of: "AC3 5.1 @ 640 kbps", with: "")
-                .replacingOccurrences(of: "DUB", with: "Дубляж")
-                .replacingOccurrences(of: "MVO", with: "Многоголосый")
-                .replacingOccurrences(of: "DVO", with: "Двухголосый")
-                .replacingOccurrences(of: "AVO", with: "Авторский")
-                .replacingOccurrences(of: "ПМ", with: "Проф. многоголосый")
-                .replacingOccurrences(of: "ПД", with: "Проф. двухголосый")
-                .replacingOccurrences(of: "ЛМ", with: "Люб. многоголосый")
-                .replacingOccurrences(of: "ЛД", with: "Люб. двухголосый")
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            
-            while cleanTitle.hasPrefix("-") || cleanTitle.hasPrefix(",") {
-                cleanTitle = String(cleanTitle.dropFirst()).trimmingCharacters(in: .whitespaces)
-            }
-            while cleanTitle.hasSuffix("-") || cleanTitle.hasSuffix(",") {
-                cleanTitle = String(cleanTitle.dropLast()).trimmingCharacters(in: .whitespaces)
-            }
-            if cleanTitle.isEmpty { cleanTitle = title }
-
+            let cleanTitle = normalizedAllohaTranslationName(title).isEmpty ? title : normalizedAllohaTranslationName(title)
             return seen.insert(cleanTitle).inserted ? cleanTitle : nil
         }
     }

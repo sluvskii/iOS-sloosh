@@ -87,6 +87,8 @@ struct ContinueView: View {
 private struct ContinueWatchingItem: Identifiable {
     let record: PlaybackProgressRecord
     let metadata: PlaybackMediaMetadata?
+    /// Труе если это следующий эпизод (предыдущий был досмотрен).
+    let isNextEpisode: Bool
 
     var id: String { record.mediaId }
 
@@ -174,11 +176,8 @@ private final class ContinueViewModel: ObservableObject {
 
     private func filteredRecords() -> [PlaybackProgressRecord] {
         store.listProgressRecords()
-            .filter { !$0.watched }
             .filter { $0.updatedAtMs > 0 }
-            .filter { $0.positionSec >= 30 }
             .filter { $0.durationSec >= 60 }
-            .filter { $0.progressFraction >= 0.03 }
             .sorted { $0.updatedAtMs > $1.updatedAtMs }
     }
 
@@ -187,16 +186,80 @@ private final class ContinueViewModel: ObservableObject {
         var missingMetadataKpIds = Set<Int>()
 
         let items = grouped.values.compactMap { group -> ContinueWatchingItem? in
-            guard let latestRecord = group.max(by: { $0.updatedAtMs < $1.updatedAtMs }) else { return nil }
+            // Берём запись, которую нужно показать пользователю.
+            // Для сериалов: если последний просмотренный эпизод досмотрен (watched),
+            // ищем следующий эпизод по номеру сезона/серии.
+            let latestRecord = group.max(by: { $0.updatedAtMs < $1.updatedAtMs })!
+
+            let displayRecord: PlaybackProgressRecord
+            if latestRecord.watched, let nextRecord = nextEpisodeRecord(after: latestRecord, in: group, allRecords: records) {
+                displayRecord = nextRecord
+            } else if latestRecord.watched && latestRecord.isEpisode {
+                // Досмотрен и следующего эпизода в истории нет — создаём виртуальную запись для следующего
+                displayRecord = virtualNextEpisodeRecord(after: latestRecord) ?? latestRecord
+            } else if !latestRecord.watched && latestRecord.positionSec >= 30 && latestRecord.progressFraction >= 0.03 {
+                displayRecord = latestRecord
+            } else if latestRecord.watched {
+                // Фильм досмотрен — не показываем
+                return nil
+            } else {
+                // Мало просмотрено — не показываем
+                return nil
+            }
+
             let metadata = store.loadMetadata(kpId: latestRecord.kpId)
             if metadata == nil {
                 missingMetadataKpIds.insert(latestRecord.kpId)
             }
-            return ContinueWatchingItem(record: latestRecord, metadata: metadata)
+            return ContinueWatchingItem(
+                record: displayRecord,
+                metadata: metadata,
+                isNextEpisode: displayRecord.mediaId != latestRecord.mediaId || (latestRecord.watched && displayRecord.isEpisode)
+            )
         }
         .sorted { $0.record.updatedAtMs > $1.record.updatedAtMs }
 
         return (items, missingMetadataKpIds)
+    }
+
+    /// Ищет запись следующего эпизода в уже просмотренной истории (пользователь открывал его).
+    private func nextEpisodeRecord(
+        after current: PlaybackProgressRecord,
+        in group: [PlaybackProgressRecord],
+        allRecords: [PlaybackProgressRecord]
+    ) -> PlaybackProgressRecord? {
+        guard let currentSeason = current.season, let currentEpisode = current.episode else { return nil }
+        // Ищем в истории запись, которая идёт хронологически следующей после current
+        return group
+            .filter { !$0.watched }
+            .filter { $0.positionSec >= 30 && $0.progressFraction >= 0.03 && $0.durationSec >= 60 }
+            .filter { record in
+                guard let s = record.season, let e = record.episode else { return false }
+                return (s == currentSeason && e > currentEpisode) || s > currentSeason
+            }
+            .min { lhs, rhs in
+                let ls = lhs.season ?? 0; let le = lhs.episode ?? 0
+                let rs = rhs.season ?? 0; let re = rhs.episode ?? 0
+                return ls != rs ? ls < rs : le < re
+            }
+    }
+
+    /// Создаёт виртуальную запись следующего эпизода (которого пользователь ещё не открывал).
+    /// Используется, чтобы показать кнопку «Смотреть следующую серию», даже если записи нет в истории.
+    private func virtualNextEpisodeRecord(after current: PlaybackProgressRecord) -> PlaybackProgressRecord? {
+        guard let season = current.season, let episode = current.episode else { return nil }
+        let nextEpisode = episode + 1
+        let nextMediaId = "kp_\(current.kpId)_s\(season)_e\(nextEpisode)"
+        return PlaybackProgressRecord(
+            mediaId: nextMediaId,
+            kpId: current.kpId,
+            season: season,
+            episode: nextEpisode,
+            positionSec: 0,
+            durationSec: 0,
+            watched: false,
+            updatedAtMs: current.updatedAtMs
+        )
     }
 
     private func backfillMetadata(for kpIds: Set<Int>) async {
@@ -354,6 +417,20 @@ private struct ContinueWatchingCard: View {
             VStack(alignment: .leading, spacing: 12) {
                 Spacer(minLength: 0)
 
+                // Бейдж «Следующая серия»
+                if item.isNextEpisode {
+                    HStack(spacing: 4) {
+                        Image(systemName: "play.fill")
+                            .font(.system(size: 9, weight: .bold))
+                        Text("Следующая серия")
+                            .font(.system(size: 11, weight: .semibold))
+                    }
+                    .foregroundStyle(.black)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(.white, in: Capsule())
+                }
+
                 VStack(alignment: .leading, spacing: 4) {
                     Text(item.title)
                         .font(.system(size: 22, weight: .bold))
@@ -368,21 +445,26 @@ private struct ContinueWatchingCard: View {
                     }
                 }
 
-                ContinueProgressBar(progress: item.progressFraction)
+                if item.isNextEpisode {
+                    // Для следующей серии прогресс-бар не показываем
+                    EmptyView()
+                } else {
+                    ContinueProgressBar(progress: item.progressFraction)
 
-                HStack(alignment: .firstTextBaseline, spacing: 12) {
-                    Text(item.progressText)
-                        .font(.system(size: 13, weight: .semibold, design: .rounded))
-                        .monospacedDigit()
-                        .foregroundStyle(.white.opacity(0.92))
+                    HStack(alignment: .firstTextBaseline, spacing: 12) {
+                        Text(item.progressText)
+                            .font(.system(size: 13, weight: .semibold, design: .rounded))
+                            .monospacedDigit()
+                            .foregroundStyle(.white.opacity(0.92))
 
-                    Spacer(minLength: 0)
+                        Spacer(minLength: 0)
 
-                    if let remainingText = item.remainingText {
-                        Text(remainingText)
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.72))
-                            .lineLimit(1)
+                        if let remainingText = item.remainingText {
+                            Text(remainingText)
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(.white.opacity(0.72))
+                                .lineLimit(1)
+                        }
                     }
                 }
             }
