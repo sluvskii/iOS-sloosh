@@ -666,7 +666,7 @@ class PlayerViewModel: ObservableObject {
             
             DispatchQueue.main.async {
                 if let targetVoice = self.targetVoiceover, !targetVoice.isEmpty {
-                    if let match = group.options.first(where: { allohaTranslationNamesMatch($0.displayName, targetVoice) }) {
+                    if let match = group.options.first(where: { allohaTranslationNamesMatch($0.displayName, targetVoice, exactOnly: false) }) {
                         item.select(match, in: group)
                         self.targetVoiceover = nil // Only apply once per initial load or quality change if needed, but it's safe to clear
                         return
@@ -675,7 +675,7 @@ class PlayerViewModel: ObservableObject {
                 
                 let savedVoiceover = self.loadSavedVoiceover()
                 if let saved = savedVoiceover, !saved.isEmpty {
-                    if let match = group.options.first(where: { allohaTranslationNamesMatch($0.displayName, saved) }) {
+                    if let match = group.options.first(where: { allohaTranslationNamesMatch($0.displayName, saved, exactOnly: false) }) {
                         item.select(match, in: group)
                         return
                     }
@@ -871,7 +871,7 @@ class PlayerViewModel: ObservableObject {
         if let voiceToMatch, !voiceToMatch.isEmpty {
             if let match = audioVariants.first(where: { variant in
                 let title = variant["title"] as? String
-                return allohaTranslationNamesMatch(title, voiceToMatch)
+                return allohaTranslationNamesMatch(title, voiceToMatch, exactOnly: true)
             }), let matchedUrl = match["url"] as? String, !matchedUrl.isEmpty {
                 resolvedUrlString = matchedUrl.trimmingCharacters(in: .whitespacesAndNewlines)
             }
@@ -885,7 +885,6 @@ class PlayerViewModel: ObservableObject {
 
         let headers = (resolved["headers"] as? [String: String]) ?? [:]
         currentHeaders = headers
-        let resolvedVoices = resolvedVoiceovers(from: resolved)
         let resolvedSubtitles = resolvedSubtitles(from: resolved)
 
         let qualityVariants = (resolved["qualityVariants"] as? [[String: Any]]) ?? []
@@ -896,7 +895,7 @@ class PlayerViewModel: ObservableObject {
             audioVariants: audioVariants
         )
         currentQualityKey = "Авто"
-        playVideo(url: resolvedUrl, headers: headers, voices: resolvedVoices, subtitles: resolvedSubtitles)
+        playVideo(url: resolvedUrl, headers: headers, voices: [], subtitles: resolvedSubtitles)
         NotificationCenter.default.post(name: NSNotification.Name("QualitiesUpdated"), object: nil)
         applyInitialQuality()
     }

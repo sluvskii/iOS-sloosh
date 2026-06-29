@@ -68,13 +68,17 @@ func normalizedAllohaTranslationName(_ raw: String?) -> String {
     return value
 }
 
-func allohaTranslationNamesMatch(_ lhs: String?, _ rhs: String?) -> Bool {
+func allohaTranslationNamesMatch(_ lhs: String?, _ rhs: String?, exactOnly: Bool = false) -> Bool {
     let left = normalizedAllohaTranslationName(lhs)
     let right = normalizedAllohaTranslationName(rhs)
     guard !left.isEmpty, !right.isEmpty else { return false }
     
     if left == right || left.contains(right) || right.contains(left) {
         return true
+    }
+    
+    if exactOnly {
+        return false
     }
     
     let isOriginalOrEnglish: (String) -> Bool = { name in
