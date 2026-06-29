@@ -82,6 +82,7 @@ struct DetailsView: View {
     @State private var playerSeason: Int?
     @State private var playerEpisode: Int?
     @State private var playerVoiceover: String?
+    @State private var playerStreamUrl: String?
     @State private var playerVoices: [String] = []
     @State private var playerSubtitles: [PlaybackSubtitle] = []
     @State private var playerQuality: VideoQualityPreference? = nil
@@ -202,6 +203,7 @@ struct DetailsView: View {
                             playerSeriesResult = result
                             selectedIframeUrl = translation.iframeUrl
                             playerVoiceover = translation.name
+                            playerStreamUrl = translation.streamUrl
                             showPlayer = true
                             showSourceSheet = false
                             viewModel.saveAllohaTranslation(translation.name)
@@ -219,6 +221,7 @@ struct DetailsView: View {
                 playerSeason = nil
                 playerEpisode = nil
                 playerVoiceover = nil
+                playerStreamUrl = nil
                 playerVoices = []
                 playerSubtitles = []
                 playerQuality = nil
@@ -226,7 +229,7 @@ struct DetailsView: View {
             }) {
                 if let details = viewModel.details {
                     if let iframeUrl = selectedIframeUrl {
-                        PlayerView(iframeUrl: iframeUrl, fallbackTitle: details.title ?? details.name ?? "", kpId: playerKpId, season: playerSeason, episode: playerEpisode, selectedVoiceover: playerVoiceover, voices: playerVoices, subtitles: playerSubtitles, initialQuality: playerQuality, seriesResult: playerSeriesResult)
+                        PlayerView(iframeUrl: iframeUrl, fallbackTitle: details.title ?? details.name ?? "", kpId: playerKpId, season: playerSeason, episode: playerEpisode, selectedVoiceover: playerVoiceover, directStreamUrl: playerStreamUrl, voices: playerVoices, subtitles: playerSubtitles, initialQuality: playerQuality, seriesResult: playerSeriesResult)
                     } else {
                         Text("Видео не найдено")
                     }
