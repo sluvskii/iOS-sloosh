@@ -22,19 +22,22 @@ struct ContinueView: View {
                                 .buttonStyle(ScaleButtonStyle())
                                 .disabled(viewModel.isLaunching)
                                 .contextMenu {
-                                    NavigationLink(destination: DetailsView(movieId: String(item.kpId), navigationTransitionID: nil, navigationTransitionNamespace: nil)) {
-                                        Label("Подробнее", systemImage: "info.circle")
+                                    Group {
+                                        NavigationLink(destination: DetailsView(movieId: String(item.kpId), navigationTransitionID: nil, navigationTransitionNamespace: nil)) {
+                                            Label("Подробнее", systemImage: "info.circle")
+                                        }
+                                        Button {
+                                            viewModel.markAsWatched(item)
+                                        } label: {
+                                            Label("Отметить просмотренным", systemImage: "eye")
+                                        }
+                                        Button(role: .destructive) {
+                                            viewModel.removeFromHistory(item)
+                                        } label: {
+                                            Label("Удалить из истории", systemImage: "trash")
+                                        }
                                     }
-                                    Button {
-                                        viewModel.markAsWatched(item)
-                                    } label: {
-                                        Label("Отметить просмотренным", systemImage: "eye")
-                                    }
-                                    Button(role: .destructive) {
-                                        viewModel.removeFromHistory(item)
-                                    } label: {
-                                        Label("Удалить из истории", systemImage: "trash")
-                                    }
+                                    .tint(nil)
                                 }
                             }
                         }
