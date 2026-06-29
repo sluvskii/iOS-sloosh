@@ -75,10 +75,20 @@ struct SourceSelectionView: View {
 
     func preferredTranslation(in translations: [AllohaTranslation], preferredName: String?) -> AllohaTranslation? {
         guard !translations.isEmpty else { return nil }
+        
+        // 1. Try specified voiceover (per-show preference)
         if let preferredName,
            let match = translations.first(where: { allohaTranslationNamesMatch($0.name, preferredName) }) {
             return match
         }
+        
+        // 2. Try global preferred voiceover
+        if let globalVoiceover = UserDefaults.standard.string(forKey: "alloha_last_translation_name"),
+           let match = translations.first(where: { allohaTranslationNamesMatch($0.name, globalVoiceover) }) {
+            return match
+        }
+        
+        // 3. Fallback to first available
         return translations.first
     }
     
@@ -93,7 +103,7 @@ struct SourceSelectionView: View {
             }
             if let s = selectedSeason, let e = selectedEpisode, !episodeHasTranslation(season: s, episode: e, t: name) {
                 if let season = result.seasons.first(where: { $0.season == s }),
-                   let newEp = season.episodes.first(where: { $0.translations.contains(where: { $0.name == name }) }) {
+                   let newEp = season.episodes.first(where: { $0.translations.contains(where: { allohaTranslationNamesMatch($0.name, name) }) }) {
                     selectedEpisode = newEp.episode
                 }
             }
@@ -127,7 +137,7 @@ struct SourceSelectionView: View {
     private func setupInitialSelection() {
         let savedVoiceover = kpId.flatMap {
             PlaybackProgressStore.shared.loadLastVoiceover(kpId: $0, source: "alloha")
-        }
+        } ?? UserDefaults.standard.string(forKey: "alloha_last_translation_name")
 
         if result.isSerial {
             var initialSeason = result.seasons.first?.season

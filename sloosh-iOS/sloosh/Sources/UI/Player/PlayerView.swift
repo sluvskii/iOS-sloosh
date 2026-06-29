@@ -689,7 +689,10 @@ class PlayerViewModel: ObservableObject {
     
     private func loadSavedVoiceover() -> String? {
         guard let kpId = currentKpId else { return nil }
-        return PlaybackProgressStore.shared.loadLastVoiceover(kpId: kpId, source: "alloha")
+        if let saved = PlaybackProgressStore.shared.loadLastVoiceover(kpId: kpId, source: "alloha"), !saved.isEmpty {
+            return saved
+        }
+        return UserDefaults.standard.string(forKey: "alloha_last_translation_name")
     }
     
     private func playVideo(url: URL, headers: [String: String], voices: [String] = [], subtitles: [PlaybackSubtitle] = []) {
@@ -938,11 +941,15 @@ class PlayerViewModel: ObservableObject {
     private func persistVoiceoverSelection(_ name: String?) {
         guard let kpId = currentKpId else { return }
         let normalized = normalizedAllohaTranslationName(name)
+        let finalName = normalized.isEmpty ? name : normalized
         PlaybackProgressStore.shared.saveLastVoiceover(
             kpId: kpId,
             source: "alloha",
-            voiceover: normalized.isEmpty ? name : normalized
+            voiceover: finalName
         )
+        if let finalName, !finalName.isEmpty {
+            UserDefaults.standard.set(finalName, forKey: "alloha_last_translation_name")
+        }
     }
 
     private func appendQualityVariants(_ variants: [[String: Any]], to qualities: inout [PlaybackQualityOption], seenKeys: inout Set<String>) {
