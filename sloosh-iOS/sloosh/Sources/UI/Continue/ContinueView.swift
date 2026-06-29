@@ -365,6 +365,7 @@ private final class ContinueViewModel: ObservableObject {
             guard let translation else { return nil }
 
             store.saveLastPlayed(kpId: item.kpId, season: finalSeason.season, episode: finalEpisode.episode)
+            store.saveLastVoiceover(kpId: item.kpId, source: "alloha", voiceover: translation.name)
 
             return ContinuePlaybackRoute(
                 iframeUrl: translation.iframeUrl,
@@ -387,6 +388,7 @@ private final class ContinueViewModel: ObservableObject {
         }
 
         store.saveLastPlayed(kpId: item.kpId, season: nil, episode: nil)
+        store.saveLastVoiceover(kpId: item.kpId, source: "alloha", voiceover: translation.name)
 
         return ContinuePlaybackRoute(
             iframeUrl: translation.iframeUrl,
@@ -403,11 +405,19 @@ private final class ContinueViewModel: ObservableObject {
     private func preferredTranslation(in translations: [AllohaTranslation], preferredVoiceover: String?) -> AllohaTranslation? {
         guard !translations.isEmpty else { return nil }
 
+        // 1. Try specified voiceover (per-show preference)
         if let preferredVoiceover,
            let translation = translations.first(where: { allohaTranslationNamesMatch($0.name, preferredVoiceover) }) {
             return translation
         }
 
+        // 2. Try global preferred voiceover
+        if let globalVoiceover = UserDefaults.standard.string(forKey: "alloha_last_translation_name"),
+           let translation = translations.first(where: { allohaTranslationNamesMatch($0.name, globalVoiceover) }) {
+            return translation
+        }
+
+        // 3. Fallback to first available
         return translations.first
     }
 
