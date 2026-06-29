@@ -525,15 +525,7 @@ class PlayerViewModel: ObservableObject {
         }
         observePlaybackCompletion(for: playerItem)
 
-        // Re-extract audio tracks for new item and restore selection
-        self.itemObservation = playerItem.observe(\.status) { [weak self] item, _ in
-            guard let self = self else { return }
-            if item.status == .readyToPlay {
-                Task { @MainActor in
-                    self.extractAudioTracks(from: item)
-                }
-            }
-        }
+        self.itemObservation = playerItem.observe(\.status) { _, _ in }
     }
 
     private func proxiedPlaybackURL(for sourceURL: URL) -> URL? {
@@ -660,37 +652,6 @@ class PlayerViewModel: ObservableObject {
         return qualities
     }
     
-    private func extractAudioTracks(from item: AVPlayerItem) {
-        Task {
-            guard let group = try? await item.asset.loadMediaSelectionGroup(for: .audible) else { return }
-            
-            DispatchQueue.main.async {
-                if let targetVoice = self.targetVoiceover, !targetVoice.isEmpty {
-                    if let match = group.options.first(where: { allohaTranslationNamesMatch($0.displayName, targetVoice, exactOnly: false) }) {
-                        item.select(match, in: group)
-                        self.targetVoiceover = nil // Only apply once per initial load or quality change if needed, but it's safe to clear
-                        return
-                    }
-                }
-                
-                let savedVoiceover = self.loadSavedVoiceover()
-                if let saved = savedVoiceover, !saved.isEmpty {
-                    if let match = group.options.first(where: { allohaTranslationNamesMatch($0.displayName, saved, exactOnly: false) }) {
-                        item.select(match, in: group)
-                        return
-                    }
-                }
-            }
-        }
-    }
-    
-    private func loadSavedVoiceover() -> String? {
-        guard let kpId = currentKpId else { return nil }
-        if let saved = PlaybackProgressStore.shared.loadLastVoiceover(kpId: kpId, source: "alloha"), !saved.isEmpty {
-            return saved
-        }
-        return UserDefaults.standard.string(forKey: "alloha_last_translation_name")
-    }
     
     private func playVideo(url: URL, headers: [String: String], voices: [String] = [], subtitles: [PlaybackSubtitle] = []) {
         currentPlaybackSourceURL = url.absoluteURL
@@ -732,14 +693,7 @@ class PlayerViewModel: ObservableObject {
         self.startTrackingProgress()
         self.player?.play()
         
-        self.itemObservation = playerItem.observe(\.status) { [weak self] item, _ in
-            guard let self = self else { return }
-            if item.status == .readyToPlay {
-                Task { @MainActor in
-                    self.extractAudioTracks(from: item)
-                }
-            }
-        }
+        self.itemObservation = playerItem.observe(\.status) { _, _ in }
     }
     
     private func startTrackingProgress() {
@@ -867,18 +821,19 @@ class PlayerViewModel: ObservableObject {
         var resolvedUrlString = (resolved["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let audioVariants = (resolved["audioVariants"] as? [[String: Any]]) ?? []
 
-        let voiceToMatch = targetVoiceover ?? currentTranslationName ?? loadSavedVoiceover()
+        // Pick the URL for the selected voiceover directly from audioVariants.
+        // Exact match first, then fuzzy. No fallback to AVMediaSelectionGroup —
+        // that system uses HLS-internal track names which differ from Alloha API names.
+        let voiceToMatch = targetVoiceover ?? currentTranslationName
         if let voiceToMatch, !voiceToMatch.isEmpty {
-            var match = audioVariants.first(where: { variant in
+            let exactMatch = audioVariants.first(where: { variant in
                 let title = variant["title"] as? String
                 return allohaTranslationNamesMatch(title, voiceToMatch, exactOnly: true)
             })
-            if match == nil {
-                match = audioVariants.first(where: { variant in
-                    let title = variant["title"] as? String
-                    return allohaTranslationNamesMatch(title, voiceToMatch, exactOnly: false)
-                })
-            }
+            let match = exactMatch ?? audioVariants.first(where: { variant in
+                let title = variant["title"] as? String
+                return allohaTranslationNamesMatch(title, voiceToMatch, exactOnly: false)
+            })
             if let validMatch = match, let matchedUrl = validMatch["url"] as? String, !matchedUrl.isEmpty {
                 resolvedUrlString = matchedUrl.trimmingCharacters(in: .whitespacesAndNewlines)
             }
