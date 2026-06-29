@@ -6,70 +6,98 @@ on:
   workflow_dispatch:
 
 jobs:
+  # Lint запускается параллельно только для PR, не блокирует сборку
+  lint:
+    if: github.event_name == 'pull_request'
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Cache Homebrew
+        uses: actions/cache@v4
+        with:
+          path: ~/Library/Caches/Homebrew
+          key: brew-swiftlint-${{ runner.os }}
+
+      - name: Install SwiftLint
+        run: brew install swiftlint
+
+      - name: Run SwiftLint
+        run: |
+          cd sloosh-iOS
+          swiftlint lint --reporter github-actions-logging
+        continue-on-error: true
+
   build:
-    runs-on: macos-latest
+    runs-on: macos-15
     permissions:
       contents: write
 
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Select Xcode
-      run: sudo xcode-select -s /Applications/Xcode_26.0.1.app/Contents/Developer
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode_26.0.1.app/Contents/Developer
 
-    - name: Install iOS Runtime For actool
-      run: |
-        xcodebuild -downloadPlatform iOS
+      - name: Cache Homebrew packages
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/Library/Caches/Homebrew
+            /usr/local/Cellar/xcodegen
+          key: brew-xcodegen-${{ runner.os }}-v1
 
-    - name: Install XcodeGen
-      run: brew install xcodegen
+      - name: Install XcodeGen
+        run: brew install xcodegen
 
-    - name: Run SwiftLint
-      run: |
-        brew install swiftlint
-        cd sloosh-iOS
-        swiftlint lint --reporter github-actions-logging
-      continue-on-error: true
+      - name: Generate Xcode Project
+        run: |
+          cd sloosh-iOS
+          xcodegen generate
 
-    - name: Generate Xcode Project
-      run: |
-        cd sloosh-iOS
-        xcodegen generate
+      - name: Cache DerivedData
+        uses: actions/cache@v4
+        with:
+          path: sloosh-iOS/build
+          key: deriveddata-${{ runner.os }}-${{ hashFiles('sloosh-iOS/**/*.swift', 'sloosh-iOS/project.yml') }}
+          restore-keys: |
+            deriveddata-${{ runner.os }}-
 
-    - name: Build iOS App
-      run: |
-        cd sloosh-iOS
-        xcodebuild clean build \
-          -project sloosh.xcodeproj \
-          -scheme sloosh \
-          -configuration Release \
-          -destination "generic/platform=iOS" \
-          -sdk iphoneos \
-          -derivedDataPath ./build \
-          CODE_SIGN_IDENTITY="" \
-          CODE_SIGNING_REQUIRED=NO \
-          CODE_SIGNING_ALLOWED=NO \
-          COMPILER_INDEX_STORE_ENABLE=NO
+      - name: Build iOS App
+        run: |
+          cd sloosh-iOS
+          xcodebuild build \
+            -project sloosh.xcodeproj \
+            -scheme sloosh \
+            -configuration Release \
+            -destination "generic/platform=iOS" \
+            -sdk iphoneos \
+            -derivedDataPath ./build \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            -quiet
 
-    - name: Package IPA (Unsigned)
-      run: |
-        cd sloosh-iOS
-        mkdir -p Payload
-        mv build/Build/Products/Release-iphoneos/sloosh.app Payload/
-        zip -r sloosh.ipa Payload
+      - name: Package IPA (Unsigned)
+        run: |
+          cd sloosh-iOS
+          mkdir -p Payload
+          mv build/Build/Products/Release-iphoneos/sloosh.app Payload/
+          zip -r sloosh.ipa Payload
 
-    - name: Create Release
-      uses: softprops/action-gh-release@v2
-      if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
-      with:
-        tag_name: build-${{ github.run_number }}
-        target_commitish: ${{ github.sha }}
-        name: Development Build #${{ github.run_number }}
-        body: |
-          Auto-generated IPA build from the latest commit.
-          **Note:** This is an unsigned IPA file. You need to use tools like TrollStore, AltStore, or SideStore to install it.
-        files: sloosh-iOS/sloosh.ipa
-        draft: false
-        prerelease: true
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        with:
+          tag_name: build-${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          name: Development Build #${{ github.run_number }}
+          body: |
+            Auto-generated IPA build from the latest commit.
+            **Note:** This is an unsigned IPA file. You need to use tools like TrollStore, AltStore, or SideStore to install it.
+          files: sloosh-iOS/sloosh.ipa
+          draft: false
+          prerelease: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
