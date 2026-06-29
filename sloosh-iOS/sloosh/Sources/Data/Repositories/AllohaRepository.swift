@@ -77,22 +77,22 @@ func allohaTranslationNamesMatch(_ lhs: String?, _ rhs: String?, exactOnly: Bool
         return true
     }
     
-    if exactOnly {
-        return false
-    }
-    
     let isOriginalOrEnglish: (String) -> Bool = { name in
         let n = name.lowercased()
         return n.contains("original") || n.contains("оригинал") || n.contains("english") || n.contains("английский") || n.contains("eng") || n == "en"
     }
     
+    if isOriginalOrEnglish(left) && isOriginalOrEnglish(right) {
+        return true
+    }
+    
+    if exactOnly {
+        return false
+    }
+    
     let isRussianOrDub: (String) -> Bool = { name in
         let n = name.lowercased()
         return n.contains("russian") || n.contains("русский") || n.contains("rus") || n == "ru" || n.contains("дубляж") || n.contains("dub")
-    }
-    
-    if isOriginalOrEnglish(left) && isOriginalOrEnglish(right) {
-        return true
     }
     
     if isRussianOrDub(left) && isRussianOrDub(right) {
