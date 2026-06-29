@@ -6,24 +6,20 @@ struct RemoteBackdropView: View {
     let width: CGFloat
     let height: CGFloat
 
-    @State private var image: UIImage?
-    @State private var isLoading = false
-
     var body: some View {
-        ZStack {
-            if let image = image {
-                Image(uiImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .frame(width: width, height: height)
-                    .clipped()
-                    .transition(.opacity)
-            } else {
-                Rectangle().fill(Color.gray.opacity(0.2))
-                    .frame(width: width, height: height)
-                    .shimmer()
-                    .transition(.opacity)
-            }
+        AsyncCachedImage(url: url, fallbackUrl: fallbackUrl) {
+            Rectangle().fill(Color.gray.opacity(0.2))
+                .frame(width: width, height: height)
+                .shimmer()
+        } content: { image in
+            Image(uiImage: image)
+                .resizable()
+                .aspectRatio(contentMode: .fill)
+                .frame(width: width, height: height)
+                .clipped()
+        } fallback: {
+            Rectangle().fill(Color.gray.opacity(0.2))
+                .frame(width: width, height: height)
         }
         .mask(
             LinearGradient(
@@ -38,36 +34,6 @@ struct RemoteBackdropView: View {
                 endPoint: .bottom
             )
         )
-        .animation(.easeInOut(duration: 0.35), value: image != nil)
-        .task(id: url) {
-            guard let url = url, image == nil else { return }
-            isLoading = true
-
-            var fetchedImage: UIImage? = nil
-            do {
-                let request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad)
-                let (data, response) = try await URLSession.shared.data(for: request)
-                if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200, let uiImg = UIImage(data: data) {
-                    fetchedImage = uiImg
-                }
-            } catch {}
-
-            if fetchedImage == nil, let fallback = fallbackUrl {
-                do {
-                    let request = URLRequest(url: fallback, cachePolicy: .returnCacheDataElseLoad)
-                    let (data, response) = try await URLSession.shared.data(for: request)
-                    if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200, let uiImg = UIImage(data: data) {
-                        fetchedImage = uiImg
-                    }
-                } catch {}
-            }
-
-            if let fetchedImage = fetchedImage {
-                self.image = fetchedImage
-            }
-
-            isLoading = false
-        }
     }
 }
 
@@ -75,96 +41,25 @@ struct RemoteLogoView: View {
     let url: URL?
     let fallbackTitle: String
     
-    @State private var image: UIImage?
-    @State private var isLoading: Bool
-    @State private var hasError: Bool
-    
-    init(url: URL?, fallbackTitle: String) {
-        self.url = url
-        self.fallbackTitle = fallbackTitle
-        
-        // Синхронно проверяем кэш URLSession перед рендером, чтобы избежать мигания для уже загруженных картинок
-        if let url = url {
-            let request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad)
-            if let cachedResponse = URLCache.shared.cachedResponse(for: request),
-               let uiImg = UIImage(data: cachedResponse.data) {
-                _image = State(initialValue: uiImg)
-                _isLoading = State(initialValue: false)
-                _hasError = State(initialValue: false)
-            } else {
-                _image = State(initialValue: nil)
-                _isLoading = State(initialValue: true)
-                _hasError = State(initialValue: false)
-            }
-        } else {
-            _image = State(initialValue: nil)
-            _isLoading = State(initialValue: false)
-            _hasError = State(initialValue: true)
-        }
-    }
-    
     var body: some View {
-        ZStack {
-            if let image = image {
-                Image(uiImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .frame(maxWidth: 280, maxHeight: 110)
-                    .padding(.horizontal)
-                    .shadow(color: .black.opacity(0.3), radius: 8, x: 0, y: 4)
-                    .transition(.opacity)
-            } else if isLoading {
-                // Во время загрузки показываем текстовое название вместо серого прямоугольника
-                Text(fallbackTitle)
-                    .font(.system(size: 34, weight: .heavy))
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal)
-                    .shimmer() // Добавляем шиммер на текст, чтобы показать, что это состояние загрузки
-                    .transition(.opacity)
-            } else {
-                Text(fallbackTitle)
-                    .font(.system(size: 34, weight: .heavy))
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal)
-                    .transition(.opacity)
-            }
-        }
-        .animation(.easeInOut(duration: 0.35), value: image)
-        .animation(.easeInOut(duration: 0.35), value: isLoading)
-        .task(id: url) {
-            guard let url = url, image == nil else {
-                if url == nil {
-                    withAnimation(.easeInOut(duration: 0.35)) {
-                        hasError = true
-                        isLoading = false
-                    }
-                }
-                return
-            }
-            withAnimation(.easeInOut(duration: 0.35)) {
-                isLoading = true
-                hasError = false
-            }
-            do {
-                let request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad)
-                let (data, response) = try await URLSession.shared.data(for: request)
-                if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200, let uiImg = UIImage(data: data) {
-                    withAnimation(.easeInOut(duration: 0.35)) {
-                        self.image = uiImg
-                    }
-                } else {
-                    withAnimation(.easeInOut(duration: 0.35)) {
-                        self.hasError = true
-                    }
-                }
-            } catch {
-                withAnimation(.easeInOut(duration: 0.35)) {
-                    self.hasError = true
-                }
-            }
-            withAnimation(.easeInOut(duration: 0.35)) {
-                isLoading = false
-            }
+        AsyncCachedImage(url: url) {
+            Text(fallbackTitle)
+                .font(.system(size: 34, weight: .heavy))
+                .multilineTextAlignment(.center)
+                .padding(.horizontal)
+                .shimmer()
+        } content: { image in
+            Image(uiImage: image)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(maxWidth: 280, maxHeight: 110)
+                .padding(.horizontal)
+                .shadow(color: .black.opacity(0.3), radius: 8, x: 0, y: 4)
+        } fallback: {
+            Text(fallbackTitle)
+                .font(.system(size: 34, weight: .heavy))
+                .multilineTextAlignment(.center)
+                .padding(.horizontal)
         }
     }
 }
@@ -816,26 +711,25 @@ struct EpisodeCellView: View {
                     .frame(width: 150, height: 85)
                     .cornerRadius(12)
                 
-                AsyncImage(url: previewUrl) { phase in
-                    if let image = phase.image {
-                        image.resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(width: 150, height: 85)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                            .transition(.opacity)
-                    } else if phase.error != nil {
-                        // Fallback image if error
-                        Image(systemName: "photo")
-                            .font(.system(size: 24))
-                            .foregroundColor(.secondary)
-                    } else {
-                        // Loading state
-                        Rectangle()
-                            .fill(Color.gray.opacity(0.2))
-                            .frame(width: 150, height: 85)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                            .shimmer()
-                    }
+                AsyncCachedImage(url: previewUrl) {
+                    Rectangle()
+                        .fill(Color.gray.opacity(0.2))
+                        .frame(width: 150, height: 85)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .shimmer()
+                } content: { image in
+                    Image(uiImage: image)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: 150, height: 85)
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                } fallback: {
+                    Image(systemName: "photo")
+                        .font(.system(size: 24))
+                        .foregroundColor(.secondary)
+                        .frame(width: 150, height: 85)
+                        .background(Color(UIColor.tertiarySystemFill))
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
                 .animation(.easeInOut(duration: 0.3), value: previewUrl)
                 

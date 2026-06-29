@@ -485,26 +485,21 @@ private struct ContinueArtworkView: View {
     let url: URL?
 
     var body: some View {
-        AsyncImage(url: url, transaction: Transaction(animation: .easeInOut(duration: 0.25))) { phase in
-            switch phase {
-            case .success(let image):
-                image
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            case .failure:
-                ContinueArtworkPlaceholder()
-            case .empty:
-                Rectangle()
-                    .fill(Color.gray.opacity(0.18))
-                    .overlay {
-                        Rectangle()
-                            .fill(Color.gray.opacity(0.12))
-                            .shimmer()
-                    }
-            @unknown default:
-                ContinueArtworkPlaceholder()
-            }
+        AsyncCachedImage(url: url) {
+            Rectangle()
+                .fill(Color.gray.opacity(0.18))
+                .overlay {
+                    Rectangle()
+                        .fill(Color.gray.opacity(0.12))
+                        .shimmer()
+                }
+        } content: { image in
+            Image(uiImage: image)
+                .resizable()
+                .aspectRatio(contentMode: .fill)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        } fallback: {
+            ContinueArtworkPlaceholder()
         }
         .background(Color(UIColor.secondarySystemFill))
     }
