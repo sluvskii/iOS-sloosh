@@ -21,10 +21,11 @@ struct HomeDirectPlayWrapper: View {
     let onPlay: (PlayerConfig) -> Void
     
     @StateObject private var viewModel = DetailsViewModel()
+    @State private var fetchAttempted = false
     
     var body: some View {
         ZStack {
-            if viewModel.isFetchingSources {
+            if !fetchAttempted || viewModel.isFetchingSources {
                 SourceSelectionLoadingView(title: title)
                     .transition(.opacity)
             } else if let wrapper = viewModel.sourceResultWrapper,
@@ -53,10 +54,12 @@ struct HomeDirectPlayWrapper: View {
             }
         }
         .animation(.easeInOut(duration: 0.3), value: viewModel.isFetchingSources)
+        .animation(.easeInOut(duration: 0.3), value: fetchAttempted)
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
         .task {
             await viewModel.fetchSources(kpId: kpId, title: title)
+            fetchAttempted = true
         }
     }
 }
