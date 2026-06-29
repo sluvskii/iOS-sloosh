@@ -64,7 +64,6 @@ func normalizedAllohaTranslationName(_ raw: String?) -> String {
     }
 
     value = value
-        .lowercased()
         .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
         .trimmingCharacters(in: .whitespacesAndNewlines)
 
@@ -72,8 +71,8 @@ func normalizedAllohaTranslationName(_ raw: String?) -> String {
 }
 
 func allohaTranslationNamesMatch(_ lhs: String?, _ rhs: String?, exactOnly: Bool = false) -> Bool {
-    let left = normalizedAllohaTranslationName(lhs)
-    let right = normalizedAllohaTranslationName(rhs)
+    let left = normalizedAllohaTranslationName(lhs).lowercased()
+    let right = normalizedAllohaTranslationName(rhs).lowercased()
     guard !left.isEmpty, !right.isEmpty else { return false }
     
     if left == right {
