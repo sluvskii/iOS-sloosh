@@ -230,6 +230,7 @@ class PlayerViewModel: ObservableObject {
     private var playbackEndObserver: NSObjectProtocol?
     private var resignActiveObserver: NSObjectProtocol?
     private var currentPlaybackSourceURL: URL?
+    private var videoOutput: AVPlayerItemVideoOutput?
     
     private var currentKpId: Int?
     private var currentSeason: Int?
@@ -480,32 +481,29 @@ class PlayerViewModel: ObservableObject {
     }
     
     private func captureAndSaveThumbnail(for kpId: Int) {
-        guard let player = player, let currentItem = player.currentItem else { return }
-        
-        let asset = currentItem.asset
+        guard let player = player else { return }
         let time = player.currentTime()
-        let generator = AVAssetImageGenerator(asset: asset)
-        generator.appliesPreferredTrackTransform = true
-        generator.requestedTimeToleranceBefore = .zero
-        generator.requestedTimeToleranceAfter = .zero
-        generator.maximumSize = CGSize(width: 800, height: 450)
         
-        Task {
-            do {
-                let cgImage: CGImage
-                if #available(iOS 16.0, *) {
-                    let (image, _) = try await generator.image(at: time)
-                    cgImage = image
-                } else {
-                    cgImage = try generator.copyCGImage(at: time, actualTime: nil)
-                }
-                
-                let uiImage = UIImage(cgImage: cgImage)
-                if let data = uiImage.jpegData(compressionQuality: 0.75) {
-                    PlaybackProgressStore.shared.saveThumbnail(data: data, for: kpId)
-                }
-            } catch {
-                print("Failed to capture thumbnail for kpId \(kpId): \(error)")
+        guard let videoOutput = videoOutput, videoOutput.hasNewPixelBuffer(forItemTime: time),
+              let pixelBuffer = videoOutput.copyPixelBuffer(forItemTime: time, itemTimeForDisplay: nil) else {
+            return
+        }
+        
+        Task(priority: .background) {
+            let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+            let context = CIContext(options: nil)
+            guard let cgImage = context.createCGImage(ciImage, from: ciImage.extent) else { return }
+            
+            let uiImage = UIImage(cgImage: cgImage)
+            // Resize image to save space and match card aspect ratio
+            let targetSize = CGSize(width: 800, height: 450)
+            let renderer = UIGraphicsImageRenderer(size: targetSize)
+            let resized = renderer.image { _ in
+                uiImage.draw(in: CGRect(origin: .zero, size: targetSize))
+            }
+            
+            if let data = resized.jpegData(compressionQuality: 0.75) {
+                PlaybackProgressStore.shared.saveThumbnail(data: data, for: kpId)
             }
         }
     }
@@ -725,6 +723,11 @@ class PlayerViewModel: ObservableObject {
         if self.player == nil { self.player = AVPlayer() }
         self.player?.replaceCurrentItem(with: playerItem)
         self.player?.automaticallyWaitsToMinimizeStalling = true
+        
+        let output = AVPlayerItemVideoOutput(pixelBufferAttributes: [String(kCVPixelBufferPixelFormatTypeKey): Int(kCVPixelFormatType_32BGRA)])
+        playerItem.add(output)
+        self.videoOutput = output
+        
         observePlaybackCompletion(for: playerItem)
         
         self.isLoading = false
