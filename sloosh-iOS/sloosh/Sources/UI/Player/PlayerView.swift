@@ -272,7 +272,7 @@ class PlayerViewModel: ObservableObject {
         self.targetDirectStreamUrl = directStreamUrl
         self.isAdvancingToNextEpisode = false
 
-        if let kpId, let selectedVoiceover, !selectedVoiceover.isEmpty {
+        if kpId != nil, let selectedVoiceover, !selectedVoiceover.isEmpty {
             persistVoiceoverSelection(selectedVoiceover)
         }
         

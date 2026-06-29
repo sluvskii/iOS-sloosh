@@ -489,7 +489,7 @@ private struct DetailsSkeletonView: View {
     }
 }
 
-private struct SourceSelectionLoadingView: View {
+struct SourceSelectionLoadingView: View {
     let title: String
 
     @Environment(\.dismiss) private var dismiss
@@ -526,7 +526,7 @@ private struct SourceSelectionLoadingView: View {
     }
 }
 
-private struct SourceSelectionSkeletonSection: View {
+struct SourceSelectionSkeletonSection: View {
     let title: String
     let chipWidths: [CGFloat]
 
