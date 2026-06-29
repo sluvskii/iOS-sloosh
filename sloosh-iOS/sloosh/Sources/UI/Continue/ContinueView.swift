@@ -19,8 +19,23 @@ struct ContinueView: View {
                                 } label: {
                                     ContinueWatchingCard(item: item)
                                 }
-                                .buttonStyle(.plain)
+                                .buttonStyle(ScaleButtonStyle())
                                 .disabled(viewModel.isLaunching)
+                                .contextMenu {
+                                    NavigationLink(destination: DetailsView(movieId: String(item.kpId), navigationTransitionID: nil, navigationTransitionNamespace: nil)) {
+                                        Label("Подробнее", systemImage: "info.circle")
+                                    }
+                                    Button {
+                                        viewModel.markAsWatched(item)
+                                    } label: {
+                                        Label("Отметить просмотренным", systemImage: "eye")
+                                    }
+                                    Button(role: .destructive) {
+                                        viewModel.removeFromHistory(item)
+                                    } label: {
+                                        Label("Удалить из истории", systemImage: "trash")
+                                    }
+                                }
                             }
                         }
                         .padding(.horizontal, 16)
@@ -413,6 +428,17 @@ private final class ContinueViewModel: ObservableObject {
         )
     }
 
+    func markAsWatched(_ item: ContinueWatchingItem) {
+        store.save(mediaId: item.record.mediaId, positionSec: item.record.durationSec, durationSec: item.record.durationSec)
+        Task { await reload() }
+    }
+
+    func removeFromHistory(_ item: ContinueWatchingItem) {
+        // Since we don't have a direct delete method in store, we can set updatedAtMs to 0
+        UserDefaults.standard.set(0, forKey: "neomovies.collaps.updatedAt.\(item.record.mediaId)")
+        Task { await reload() }
+    }
+
     private func preferredTranslation(in translations: [AllohaTranslation], preferredVoiceover: String?) -> AllohaTranslation? {
         guard !translations.isEmpty else { return nil }
 
@@ -624,6 +650,15 @@ private struct ContinueEmptyState: View {
             systemImage: "clock.arrow.circlepath",
             description: Text("Фильмы и серии, которые ты уже начал смотреть, появятся здесь с прогрессом и временем.")
         )
+    }
+}
+
+private struct ScaleButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.96 : 1)
+            .opacity(configuration.isPressed ? 0.9 : 1)
+            .animation(.easeOut(duration: 0.2), value: configuration.isPressed)
     }
 }
 
