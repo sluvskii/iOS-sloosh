@@ -35,22 +35,16 @@ struct ProfileView: View {
         case .movies:
             return favoritesRepo.favorites.filter { fav in
                 guard fav.type == "movie" else { return false }
-                // Пытаемся определить, не мультфильм ли это
-                // Поскольку в FavoriteDto нет жанров, пока просто фильтруем по type
-                // В идеале нужно сохранять isCartoon флаг при добавлении в избранное
-                let title = (fav.title ?? "").lowercased()
-                return !title.contains("мульт") && !title.contains("анимац")
+                return !isCartoonByTitle(fav.title)
             }
         case .tvShows:
             return favoritesRepo.favorites.filter { fav in
                 guard fav.type == "tv" else { return false }
-                let title = (fav.title ?? "").lowercased()
-                return !title.contains("мульт") && !title.contains("анимац")
+                return !isCartoonByTitle(fav.title)
             }
         case .cartoons:
             return favoritesRepo.favorites.filter { fav in
-                let title = (fav.title ?? "").lowercased()
-                return title.contains("мульт") || title.contains("анимац") || title.contains("anime")
+                isCartoonByTitle(fav.title)
             }
         }
     }

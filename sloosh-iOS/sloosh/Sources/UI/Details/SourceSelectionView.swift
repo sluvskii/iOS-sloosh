@@ -196,7 +196,16 @@ struct SourceSelectionView: View {
             dismiss()
         }
     }
-    
+
+    /// Кнопка «Смотреть» активна только когда пользователь сделал полный выбор.
+    var isReadyToPlay: Bool {
+        guard selectedTranslationName != nil else { return false }
+        if result.isSerial {
+            return selectedSeason != nil && selectedEpisode != nil
+        }
+        return true
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -297,6 +306,7 @@ struct SourceSelectionView: View {
                     .buttonBorderShape(.capsule)
                     .tint(.primary)
                     .foregroundStyle(Color(UIColor.systemBackground))
+                    .disabled(!isReadyToPlay)
                     .padding(.horizontal)
                 }
             }
