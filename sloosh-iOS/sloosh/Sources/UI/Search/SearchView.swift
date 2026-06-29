@@ -1,4 +1,5 @@
 import SwiftUI
+import Combine
 
 struct SearchView: View {
     @StateObject private var viewModel = SearchViewModel()
@@ -132,11 +133,6 @@ struct SearchView: View {
             }
             .navigationTitle("Поиск")
             .searchable(text: $viewModel.searchQuery, prompt: "Фильмы и сериалы...")
-            .onChange(of: viewModel.searchQuery) { oldValue, newValue in
-                Task {
-                    await viewModel.setQuery(newValue)
-                }
-            }
             .toolbar {
                 if viewModel.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !viewModel.history.isEmpty {
                     ToolbarItem(placement: .topBarTrailing) {
@@ -186,14 +182,23 @@ class SearchViewModel: ObservableObject {
     private let historyKey = "search_history"
     private let maxHistory = 5
     private var searchTask: Task<Void, Never>?
+    private var cancellables = Set<AnyCancellable>()
 
     init() {
         loadHistory()
-    }
-
-    func setQuery(_ value: String) async {
-        page = 1
-        await performSearch(reset: true)
+        
+        $searchQuery
+            .dropFirst()
+            .debounce(for: .milliseconds(300), scheduler: RunLoop.main)
+            .removeDuplicates()
+            .sink { [weak self] _ in
+                guard let self = self else { return }
+                Task {
+                    self.page = 1
+                    await self.performSearch(reset: true)
+                }
+            }
+            .store(in: &cancellables)
     }
 
     func selectHistory(_ query: String) {
@@ -243,9 +248,6 @@ class SearchViewModel: ObservableObject {
 
         searchTask = Task {
             do {
-                if reset {
-                    try await Task.sleep(nanoseconds: 300_000_000)
-                }
                 if Task.isCancelled { return }
 
                 if reset {
