@@ -107,6 +107,10 @@ private struct ContinueWatchingItem: Identifiable {
         metadata?.backdropUrl
     }
 
+    var logoUrl: String? {
+        metadata?.logoUrl
+    }
+
     var progressFraction: Double {
         record.progressFraction
     }
@@ -483,10 +487,31 @@ private struct ContinueWatchingCard: View {
                 }
 
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(item.title)
-                        .font(.system(size: 22, weight: .bold))
-                        .foregroundStyle(.white)
-                        .lineLimit(2)
+                    if let logoStr = item.logoUrl, let logoUrl = URL(string: logoStr) {
+                        AsyncCachedImage(url: logoUrl) {
+                            Text(item.title)
+                                .font(.system(size: 22, weight: .bold))
+                                .foregroundStyle(.white)
+                                .lineLimit(2)
+                        } content: { image in
+                            Image(uiImage: image)
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(height: 48)
+                                .frame(maxWidth: 220, alignment: .leading)
+                                .shadow(color: .black.opacity(0.4), radius: 4, x: 0, y: 2)
+                        } fallback: {
+                            Text(item.title)
+                                .font(.system(size: 22, weight: .bold))
+                                .foregroundStyle(.white)
+                                .lineLimit(2)
+                        }
+                    } else {
+                        Text(item.title)
+                            .font(.system(size: 22, weight: .bold))
+                            .foregroundStyle(.white)
+                            .lineLimit(2)
+                    }
 
                     if let subtitle = item.subtitle {
                         Text(subtitle)
