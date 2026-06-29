@@ -234,11 +234,30 @@ class AllohaRepository {
                     ])
                 }
             }
-            let result = AllohaApiResult(title: title, isSerial: false, movie: movie, seasons: [])
-            cacheQueue.async(flags: .barrier) {
-                self.catalogCache[kpId] = (result: result, expiresAt: Date().addingTimeInterval(self.cacheTtl))
+            
+            var result = AllohaApiResult(title: title, isSerial: false, movie: movie, seasons: [])
+            
+            if let m = result.movie, m.translations.count == 1 && m.translations[0].name == result.title {
+                let resolver = AllohaRuntimeResolver()
+                if let resolved = try? await resolver.resolve(iframeUrl: m.iframeUrl),
+                   let audioVariants = resolved["audioVariants"] as? [[String: Any]], !audioVariants.isEmpty {
+                    let newTranslations = audioVariants.enumerated().compactMap { index, variant -> AllohaTranslation? in
+                        guard let vTitle = variant["title"] as? String, !vTitle.isEmpty else { return nil }
+                        let cleanTitle = normalizedAllohaTranslationName(vTitle)
+                        return AllohaTranslation(id: "dub_\(index)", name: cleanTitle.isEmpty ? vTitle : cleanTitle, iframeUrl: m.iframeUrl)
+                    }
+                    if !newTranslations.isEmpty {
+                        let newMovie = AllohaMovie(title: m.title, iframeUrl: m.iframeUrl, translations: newTranslations)
+                        result = AllohaApiResult(title: result.title, isSerial: false, movie: newMovie, seasons: [])
+                    }
+                }
             }
-            return result
+            
+            let finalResult = result
+            cacheQueue.async(flags: .barrier) {
+                self.catalogCache[kpId] = (result: finalResult, expiresAt: Date().addingTimeInterval(self.cacheTtl))
+            }
+            return finalResult
         }
     }
 }

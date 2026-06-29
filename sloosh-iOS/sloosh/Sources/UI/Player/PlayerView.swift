@@ -872,8 +872,20 @@ class PlayerViewModel: ObservableObject {
     }
 
     private func applyResolvedAllohaStream(_ resolved: [String: Any]) {
-        guard let resolvedUrlString = (resolved["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
-              let resolvedUrl = URL(string: resolvedUrlString) else {
+        var resolvedUrlString = (resolved["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let audioVariants = (resolved["audioVariants"] as? [[String: Any]]) ?? []
+
+        let voiceToMatch = targetVoiceover ?? currentTranslationName ?? loadSavedVoiceover()
+        if let voiceToMatch, !voiceToMatch.isEmpty {
+            if let match = audioVariants.first(where: { variant in
+                let title = variant["title"] as? String
+                return allohaTranslationNamesMatch(title, voiceToMatch)
+            }), let matchedUrl = match["url"] as? String, !matchedUrl.isEmpty {
+                resolvedUrlString = matchedUrl.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
+
+        guard let resolvedUrl = URL(string: resolvedUrlString) else {
             self.error = "Не удалось извлечь ссылку на видео"
             self.isLoading = false
             return
@@ -885,7 +897,6 @@ class PlayerViewModel: ObservableObject {
         let resolvedSubtitles = resolvedSubtitles(from: resolved)
 
         let qualityVariants = (resolved["qualityVariants"] as? [[String: Any]]) ?? []
-        let audioVariants = (resolved["audioVariants"] as? [[String: Any]]) ?? []
 
         availableQualities = makeResolvedQualityOptions(
             resolvedUrl: resolvedUrl,

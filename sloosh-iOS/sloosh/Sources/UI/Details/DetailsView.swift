@@ -1035,25 +1035,7 @@ class DetailsViewModel: ObservableObject {
         defer { isFetchingSources = false }
 
         do {
-            var result = try await AllohaRepository.shared.fetchByKpId(kpId: kpId)
-            if !result.isSerial, let movie = result.movie {
-                // Pre-resolve Alloha iframe to get actual voiceovers for the selection screen
-                if movie.translations.count == 1 && movie.translations[0].name == result.title {
-                    let resolver = AllohaRuntimeResolver()
-                    if let resolved = try? await resolver.resolve(iframeUrl: movie.iframeUrl),
-                       let audioVariants = resolved["audioVariants"] as? [[String: Any]], !audioVariants.isEmpty {
-                        let newTranslations = audioVariants.enumerated().compactMap { index, variant -> AllohaTranslation? in
-                            guard let vTitle = variant["title"] as? String, !vTitle.isEmpty else { return nil }
-                            let cleanTitle = normalizedAllohaTranslationName(vTitle)
-                            return AllohaTranslation(id: "dub_\(index)", name: cleanTitle.isEmpty ? vTitle : cleanTitle, iframeUrl: movie.iframeUrl)
-                        }
-                        if !newTranslations.isEmpty {
-                            let newMovie = AllohaMovie(title: movie.title, iframeUrl: movie.iframeUrl, translations: newTranslations)
-                            result = AllohaApiResult(title: result.title, isSerial: false, movie: newMovie, seasons: [])
-                        }
-                    }
-                }
-            }
+            let result = try await AllohaRepository.shared.fetchByKpId(kpId: kpId)
             let wrapper = SourceResultWrapper(allohaResult: result, kpId: kpId)
             sourcesCache[kpId] = (wrapper: wrapper, expiresAt: Date().addingTimeInterval(sourcesCacheTtl))
             self.sourceResultWrapper = wrapper
