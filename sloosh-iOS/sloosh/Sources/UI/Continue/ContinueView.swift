@@ -398,7 +398,7 @@ private final class ContinueViewModel: ObservableObject {
             episode: nil,
             voiceover: translation.name,
             initialQuality: preferredQuality,
-            seriesResult: nil
+            seriesResult: result
         )
     }
 
