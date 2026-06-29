@@ -46,7 +46,7 @@ struct SourceSelectionView: View {
             guard let s = selectedSeason, let e = selectedEpisode else { return false }
             return episodeHasTranslation(season: s, episode: e, t: name)
         } else if let movie = result.movie {
-            return movie.translations.contains { allohaTranslationNamesMatch($0.name, name) }
+            return movie.translations.contains { allohaTranslationNamesMatch($0.name, name, exactOnly: true) }
         }
         return false
     }
@@ -64,13 +64,13 @@ struct SourceSelectionView: View {
     // Logic
     func seasonHasTranslation(season: Int, t: String) -> Bool {
         guard let s = result.seasons.first(where: { $0.season == season }) else { return false }
-        return s.episodes.contains { ep in ep.translations.contains { allohaTranslationNamesMatch($0.name, t) } }
+        return s.episodes.contains { ep in ep.translations.contains { allohaTranslationNamesMatch($0.name, t, exactOnly: true) } }
     }
 
     func episodeHasTranslation(season: Int, episode: Int, t: String) -> Bool {
         guard let s = result.seasons.first(where: { $0.season == season }),
               let ep = s.episodes.first(where: { $0.episode == episode }) else { return false }
-        return ep.translations.contains { allohaTranslationNamesMatch($0.name, t) }
+        return ep.translations.contains { allohaTranslationNamesMatch($0.name, t, exactOnly: true) }
     }
 
     func preferredTranslation(in translations: [AllohaTranslation], preferredName: String?) -> AllohaTranslation? {
@@ -78,13 +78,13 @@ struct SourceSelectionView: View {
         
         // 1. Try specified voiceover (per-show preference)
         if let preferredName,
-           let match = translations.first(where: { allohaTranslationNamesMatch($0.name, preferredName) }) {
+           let match = translations.first(where: { allohaTranslationNamesMatch($0.name, preferredName, exactOnly: true) }) {
             return match
         }
         
         // 2. Try global preferred voiceover
         if let globalVoiceover = UserDefaults.standard.string(forKey: "alloha_last_translation_name"),
-           let match = translations.first(where: { allohaTranslationNamesMatch($0.name, globalVoiceover) }) {
+           let match = translations.first(where: { allohaTranslationNamesMatch($0.name, globalVoiceover, exactOnly: false) }) {
             return match
         }
         
@@ -103,7 +103,7 @@ struct SourceSelectionView: View {
             }
             if let s = selectedSeason, let e = selectedEpisode, !episodeHasTranslation(season: s, episode: e, t: name) {
                 if let season = result.seasons.first(where: { $0.season == s }),
-                   let newEp = season.episodes.first(where: { $0.translations.contains(where: { allohaTranslationNamesMatch($0.name, name) }) }) {
+                   let newEp = season.episodes.first(where: { $0.translations.contains(where: { allohaTranslationNamesMatch($0.name, name, exactOnly: true) }) }) {
                     selectedEpisode = newEp.episode
                 }
             }
@@ -184,7 +184,7 @@ struct SourceSelectionView: View {
             guard let s = selectedSeason, let e = selectedEpisode, let tName = selectedTranslationName else { return }
             guard let seasonObj = result.seasons.first(where: { $0.season == s }),
                   let epObj = seasonObj.episodes.first(where: { $0.episode == e }),
-                  let translation = epObj.translations.first(where: { allohaTranslationNamesMatch($0.name, tName) }) else { return }
+                  let translation = epObj.translations.first(where: { allohaTranslationNamesMatch($0.name, tName, exactOnly: true) }) else { return }
             
             if let kpId = kpId {
                 PlaybackProgressStore.shared.saveLastPlayed(kpId: kpId, season: s, episode: e)
@@ -195,7 +195,7 @@ struct SourceSelectionView: View {
             dismiss()
         } else if let movie = result.movie {
             guard let tName = selectedTranslationName,
-                  let translation = movie.translations.first(where: { allohaTranslationNamesMatch($0.name, tName) }) else { return }
+                  let translation = movie.translations.first(where: { allohaTranslationNamesMatch($0.name, tName, exactOnly: true) }) else { return }
             
             if let kpId = kpId {
                 PlaybackProgressStore.shared.saveLastPlayed(kpId: kpId, season: nil, episode: nil)

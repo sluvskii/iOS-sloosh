@@ -407,13 +407,13 @@ private final class ContinueViewModel: ObservableObject {
 
         // 1. Try specified voiceover (per-show preference)
         if let preferredVoiceover,
-           let translation = translations.first(where: { allohaTranslationNamesMatch($0.name, preferredVoiceover) }) {
+           let translation = translations.first(where: { allohaTranslationNamesMatch($0.name, preferredVoiceover, exactOnly: true) }) {
             return translation
         }
 
         // 2. Try global preferred voiceover
         if let globalVoiceover = UserDefaults.standard.string(forKey: "alloha_last_translation_name"),
-           let translation = translations.first(where: { allohaTranslationNamesMatch($0.name, globalVoiceover) }) {
+           let translation = translations.first(where: { allohaTranslationNamesMatch($0.name, globalVoiceover, exactOnly: false) }) {
             return translation
         }
 
