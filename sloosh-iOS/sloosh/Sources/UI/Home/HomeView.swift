@@ -107,6 +107,26 @@ struct HomeView: View {
                 HomeDirectPlayWrapper(
                     kpId: kpId,
                     title: movie.title ?? movie.name ?? movie.originalTitle ?? ""
+                ) { config in
+                    viewModel.directPlaybackMovie = nil
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        viewModel.playerConfig = config
+                    }
+                }
+            }
+            .fullScreenCover(item: $viewModel.playerConfig) { config in
+                PlayerView(
+                    iframeUrl: config.iframeUrl,
+                    fallbackTitle: config.title,
+                    kpId: config.kpId,
+                    season: config.season,
+                    episode: config.episode,
+                    selectedVoiceover: config.voiceover,
+                    directStreamUrl: config.streamUrl,
+                    voices: config.voices,
+                    subtitles: config.subtitles,
+                    initialQuality: config.quality,
+                    seriesResult: config.seriesResult
                 )
             }
         }
@@ -508,6 +528,7 @@ class HomeViewModel: ObservableObject {
     @Published var isLoadingMore: [HomeCacheKey: Bool] = [:]
     
     @Published var directPlaybackMovie: MediaDto? = nil
+    @Published var playerConfig: PlayerConfig? = nil
 
     private var cachedPages: [HomeCacheKey: Int] = [:]
     private var cachedCanLoadMore: [HomeCacheKey: Bool] = [:]

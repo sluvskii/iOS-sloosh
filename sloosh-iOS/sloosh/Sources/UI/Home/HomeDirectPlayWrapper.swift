@@ -1,69 +1,62 @@
 import SwiftUI
 
+struct PlayerConfig: Identifiable {
+    let id = UUID()
+    let iframeUrl: String
+    let title: String
+    let kpId: Int?
+    let season: Int?
+    let episode: Int?
+    let voiceover: String?
+    let streamUrl: String?
+    let voices: [String]
+    let subtitles: [PlaybackSubtitle]
+    let quality: VideoQualityPreference?
+    let seriesResult: AllohaApiResult?
+}
+
 struct HomeDirectPlayWrapper: View {
     let kpId: Int
     let title: String
+    let onPlay: (PlayerConfig) -> Void
     
     @StateObject private var viewModel = DetailsViewModel()
-    @State private var sourceSheetDetent: PresentationDetent = .medium
     
-    // Player State
-    @State private var showPlayer = false
-    @State private var selectedIframeUrl: String?
-    @State private var playerKpId: Int?
-    @State private var playerSeason: Int?
-    @State private var playerEpisode: Int?
-    @State private var playerVoiceover: String?
-    @State private var playerStreamUrl: String?
-    @State private var playerVoices: [String] = []
-    @State private var playerSubtitles: [PlaybackSubtitle] = []
-    @State private var playerQuality: VideoQualityPreference?
-    @State private var playerSeriesResult: AllohaApiResult?
-
     var body: some View {
         ZStack {
             if viewModel.isFetchingSources {
                 SourceSelectionLoadingView(title: title)
+                    .transition(.opacity)
             } else if let wrapper = viewModel.sourceResultWrapper,
                       let result = wrapper.allohaResult {
                 SourceSelectionView(result: result, kpId: wrapper.kpId) { translation, season, episode, quality in
-                    playerKpId = wrapper.kpId
-                    playerSeason = season
-                    playerEpisode = episode
-                    playerQuality = quality
-                    playerSeriesResult = result
-                    selectedIframeUrl = translation.iframeUrl
-                    playerVoiceover = translation.name
-                    playerStreamUrl = translation.streamUrl
-                    
-                    showPlayer = true
+                    let config = PlayerConfig(
+                        iframeUrl: translation.iframeUrl,
+                        title: title,
+                        kpId: wrapper.kpId,
+                        season: season,
+                        episode: episode,
+                        voiceover: translation.name,
+                        streamUrl: translation.streamUrl,
+                        voices: [],
+                        subtitles: [],
+                        quality: quality,
+                        seriesResult: result
+                    )
+                    onPlay(config)
                 }
+                .transition(.opacity)
             } else {
                 Text("Не удалось загрузить данные.")
                     .padding()
+                    .transition(.opacity)
             }
         }
+        .animation(.easeInOut(duration: 0.3), value: viewModel.isFetchingSources)
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
         .task {
             await viewModel.fetchSources(kpId: kpId, title: title)
-        }
-        .fullScreenCover(isPresented: $showPlayer) {
-            if let iframeUrl = selectedIframeUrl {
-                PlayerView(
-                    iframeUrl: iframeUrl,
-                    fallbackTitle: title,
-                    kpId: playerKpId,
-                    season: playerSeason,
-                    episode: playerEpisode,
-                    selectedVoiceover: playerVoiceover,
-                    directStreamUrl: playerStreamUrl,
-                    voices: playerVoices,
-                    subtitles: playerSubtitles,
-                    initialQuality: playerQuality,
-                    seriesResult: playerSeriesResult
-                )
-            }
         }
     }
 }
