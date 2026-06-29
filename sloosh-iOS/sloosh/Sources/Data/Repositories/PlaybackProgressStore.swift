@@ -29,6 +29,7 @@ public struct PlaybackMediaMetadata: Codable {
     public let type: String?
     public let posterUrl: String?
     public let backdropUrl: String?
+    public let logoUrl: String?
 }
 
 public final class PlaybackProgressStore {
@@ -106,7 +107,8 @@ public final class PlaybackProgressStore {
         title: String,
         type: String?,
         posterUrl: String?,
-        backdropUrl: String?
+        backdropUrl: String?,
+        logoUrl: String?
     ) {
         guard kpId > 0, !detailsId.isEmpty, !title.isEmpty else { return }
 
@@ -116,7 +118,8 @@ public final class PlaybackProgressStore {
             title: title,
             type: type,
             posterUrl: posterUrl,
-            backdropUrl: backdropUrl
+            backdropUrl: backdropUrl,
+            logoUrl: logoUrl
         )
 
         guard let data = try? JSONEncoder().encode(snapshot) else { return }
@@ -135,7 +138,8 @@ public final class PlaybackProgressStore {
             title: title,
             type: details.type,
             posterUrl: details.displayPosterUrl,
-            backdropUrl: details.displayBackdropUrl ?? details.displayPosterUrl
+            backdropUrl: details.displayBackdropUrl ?? details.displayPosterUrl,
+            logoUrl: details.displayLogoUrl
         )
     }
 
