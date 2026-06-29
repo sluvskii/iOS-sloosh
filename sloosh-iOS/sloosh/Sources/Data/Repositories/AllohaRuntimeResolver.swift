@@ -179,26 +179,34 @@ final class AllohaRuntimeResolver: NSObject, WKNavigationDelegate, WKScriptMessa
         var seen = Set<String>()
         for payload in payloads where seen.insert(payload).inserted {
             let parsed = AllohaRuntimeParser.parsePayload(payload, baseURL: baseURL.absoluteString, headers: headers) ?? [:]
-            if let variants = parsed["audioVariants"] as? [[String: Any]],
-               let url = variants.first(where: { (($0["url"] as? String) ?? "").isEmpty == false })?["url"] as? String {
-                let mappedVariants = variants.compactMap { item -> [String: Any]? in
-                    guard let variantUrl = item["url"] as? String, !variantUrl.isEmpty else { return nil }
-                    let title = (item["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
-                    let qualityVariants = (item["qualityVariants"] as? [[String: Any]]) ?? []
-                    return [
-                        "title": (title?.isEmpty == false) ? title! : "Unknown",
-                        "url": variantUrl,
-                        "qualityVariants": qualityVariants
-                    ]
+            if let variants = parsed["audioVariants"] as? [[String: Any]] {
+                var chosenUrl: String? = nil
+                if let master = bestMasterPayload, !master.isEmpty {
+                    chosenUrl = master
+                } else {
+                    chosenUrl = variants.first(where: { (($0["url"] as? String) ?? "").isEmpty == false })?["url"] as? String
                 }
-                finish(with: [
-                    "url": url,
-                    "subtitles": parsed["subtitles"] ?? [],
-                    "audioVariants": mappedVariants,
-                    "qualityVariants": parsed["qualityVariants"] ?? [],
-                    "headers": headers
-                ])
-                return
+                
+                if let url = chosenUrl {
+                    let mappedVariants = variants.compactMap { item -> [String: Any]? in
+                        guard let variantUrl = item["url"] as? String, !variantUrl.isEmpty else { return nil }
+                        let title = (item["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                        let qualityVariants = (item["qualityVariants"] as? [[String: Any]]) ?? []
+                        return [
+                            "title": (title?.isEmpty == false) ? title! : "Unknown",
+                            "url": variantUrl,
+                            "qualityVariants": qualityVariants
+                        ]
+                    }
+                    finish(with: [
+                        "url": url,
+                        "subtitles": parsed["subtitles"] ?? [],
+                        "audioVariants": mappedVariants,
+                        "qualityVariants": parsed["qualityVariants"] ?? [],
+                        "headers": headers
+                    ])
+                    return
+                }
             }
             if let url = parsed["videoURL"] as? String, !url.isEmpty {
                 finish(with: [

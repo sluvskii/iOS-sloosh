@@ -869,10 +869,17 @@ class PlayerViewModel: ObservableObject {
 
         let voiceToMatch = targetVoiceover ?? currentTranslationName ?? loadSavedVoiceover()
         if let voiceToMatch, !voiceToMatch.isEmpty {
-            if let match = audioVariants.first(where: { variant in
+            var match = audioVariants.first(where: { variant in
                 let title = variant["title"] as? String
                 return allohaTranslationNamesMatch(title, voiceToMatch, exactOnly: true)
-            }), let matchedUrl = match["url"] as? String, !matchedUrl.isEmpty {
+            })
+            if match == nil {
+                match = audioVariants.first(where: { variant in
+                    let title = variant["title"] as? String
+                    return allohaTranslationNamesMatch(title, voiceToMatch, exactOnly: false)
+                })
+            }
+            if let validMatch = match, let matchedUrl = validMatch["url"] as? String, !matchedUrl.isEmpty {
                 resolvedUrlString = matchedUrl.trimmingCharacters(in: .whitespacesAndNewlines)
             }
         }
