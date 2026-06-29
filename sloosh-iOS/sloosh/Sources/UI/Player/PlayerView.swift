@@ -668,7 +668,6 @@ class PlayerViewModel: ObservableObject {
                 if let targetVoice = self.targetVoiceover, !targetVoice.isEmpty {
                     if let match = group.options.first(where: { allohaTranslationNamesMatch($0.displayName, targetVoice) }) {
                         item.select(match, in: group)
-                        self.persistVoiceoverSelection(match.displayName)
                         self.targetVoiceover = nil // Only apply once per initial load or quality change if needed, but it's safe to clear
                         return
                     }
@@ -681,8 +680,6 @@ class PlayerViewModel: ObservableObject {
                         return
                     }
                 }
-                
-                self.persistCurrentVoiceoverSelection(from: item)
             }
         }
     }
@@ -772,11 +769,6 @@ class PlayerViewModel: ObservableObject {
             guard let self = self, let player = player else { return }
             let duration = player.currentItem?.duration.seconds
             PlaybackProgressStore.shared.save(mediaId: mediaId, positionSec: time.seconds, durationSec: duration?.isNaN == false ? duration : nil)
-            if let item = player.currentItem {
-                Task { @MainActor [weak self] in
-                    self?.persistCurrentVoiceoverSelection(from: item)
-                }
-            }
         }
 
         // Сохраняем прогресс немедленно при сворачивании — даже если система потом убьёт процесс
@@ -937,43 +929,6 @@ class PlayerViewModel: ObservableObject {
         }
     }
 
-    private func isValidTranslationOption(_ trackName: String) -> Bool {
-        guard let result = seriesResult else { return false }
-        
-        let allTranslations: [String]
-        if result.isSerial {
-            var names = Set<String>()
-            for season in result.seasons {
-                for episode in season.episodes {
-                    for t in episode.translations {
-                        names.insert(t.name)
-                    }
-                }
-            }
-            allTranslations = Array(names)
-        } else if let movie = result.movie {
-            allTranslations = movie.translations.map { $0.name }
-        } else {
-            allTranslations = []
-        }
-        
-        return allTranslations.contains { allohaTranslationNamesMatch($0, trackName) }
-    }
-
-    private func persistCurrentVoiceoverSelection(from item: AVPlayerItem) {
-        Task {
-            guard let group = try? await item.asset.loadMediaSelectionGroup(for: .audible),
-                  let selectedOption = item.currentMediaSelection.selectedMediaOption(in: group) else {
-                return
-            }
-            await MainActor.run {
-                let trackName = selectedOption.displayName
-                if isValidTranslationOption(trackName) {
-                    persistVoiceoverSelection(trackName)
-                }
-            }
-        }
-    }
 
     private func persistVoiceoverSelection(_ name: String?) {
         guard let kpId = currentKpId else { return }
