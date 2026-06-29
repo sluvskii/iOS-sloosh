@@ -96,10 +96,7 @@ public struct AsyncCachedImage<Placeholder: View, Content: View, Fallback: View>
     
     private func loadImage() async {
         guard let url = url else {
-            await MainActor.run {
-                self.isLoading = false
-                self.hasError = true
-            }
+            await loadFallbackImage()
             return
         }
         
@@ -153,6 +150,10 @@ public struct AsyncCachedImage<Placeholder: View, Content: View, Fallback: View>
             if Task.isCancelled { return }
         }
         
+        await loadFallbackImage()
+    }
+    
+    private func loadFallbackImage() async {
         // Handle fallback URL if provided
         if let fallbackUrl = fallbackUrl {
             if let cachedFallback = ImageCache.shared.image(forKey: fallbackUrl.absoluteString) {
