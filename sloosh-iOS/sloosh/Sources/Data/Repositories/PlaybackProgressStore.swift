@@ -135,7 +135,7 @@ public final class PlaybackProgressStore {
             title: title,
             type: details.type,
             posterUrl: details.displayPosterUrl,
-            backdropUrl: details.previewBackdropUrl ?? details.displayBackdropUrl ?? details.displayPosterUrl
+            backdropUrl: details.displayBackdropUrl ?? details.displayPosterUrl
         )
     }
 

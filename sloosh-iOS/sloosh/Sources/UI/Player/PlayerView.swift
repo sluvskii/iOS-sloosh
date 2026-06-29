@@ -495,14 +495,8 @@ class PlayerViewModel: ObservableObject {
             guard let cgImage = context.createCGImage(ciImage, from: ciImage.extent) else { return }
             
             let uiImage = UIImage(cgImage: cgImage)
-            // Resize image to save space and match card aspect ratio
-            let targetSize = CGSize(width: 800, height: 450)
-            let renderer = UIGraphicsImageRenderer(size: targetSize)
-            let resized = renderer.image { _ in
-                uiImage.draw(in: CGRect(origin: .zero, size: targetSize))
-            }
             
-            if let data = resized.jpegData(compressionQuality: 0.75) {
+            if let data = uiImage.jpegData(compressionQuality: 0.8) {
                 PlaybackProgressStore.shared.saveThumbnail(data: data, for: kpId)
             }
         }
