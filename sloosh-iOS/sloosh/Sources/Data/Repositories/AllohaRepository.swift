@@ -76,7 +76,21 @@ func allohaTranslationNamesMatch(_ lhs: String?, _ rhs: String?, exactOnly: Bool
     let right = normalizedAllohaTranslationName(rhs)
     guard !left.isEmpty, !right.isEmpty else { return false }
     
-    if left == right || left.contains(right) || right.contains(left) {
+    if left == right {
+        return true
+    }
+    
+    // Instead of raw contains, which causes "rudub".contains("dub") to be true,
+    // we split into words and check for significant word overlap.
+    let leftWords = Set(left.components(separatedBy: " ").filter { $0.count > 2 })
+    let rightWords = Set(right.components(separatedBy: " ").filter { $0.count > 2 })
+    
+    if !leftWords.isEmpty && !rightWords.isEmpty {
+        if leftWords.isSubset(of: rightWords) || rightWords.isSubset(of: leftWords) {
+            return true
+        }
+    } else if left.contains(right) || right.contains(left) {
+        // Fallback for very short names (like "en", "ru", "qtv")
         return true
     }
     
@@ -213,6 +227,42 @@ class AllohaRepository {
             }
             
             parsedSeasons.sort { $0.season < $1.season }
+            
+            // For series, the API often returns translations that aren't actually in the video player.
+            // We resolve the first episode's iframe to get the definitive audioVariants list,
+            // and filter out API translations that don't match anything in the player.
+            if let firstIframe = parsedSeasons.first?.episodes.first?.translations.first?.iframeUrl {
+                let resolver = AllohaRuntimeResolver()
+                if let resolved = try? await resolver.resolve(iframeUrl: firstIframe),
+                   let audioVariants = resolved["audioVariants"] as? [[String: Any]], !audioVariants.isEmpty {
+                    
+                    let validVariantTitles = audioVariants.compactMap { $0["title"] as? String }
+                    
+                    var filteredSeasons: [AllohaSeason] = []
+                    for season in parsedSeasons {
+                        var filteredEpisodes: [AllohaEpisode] = []
+                        for episode in season.episodes {
+                            let filteredTranslations = episode.translations.filter { apiTrans in
+                                validVariantTitles.contains { variantTitle in
+                                    allohaTranslationNamesMatch(apiTrans.name, variantTitle)
+                                }
+                            }
+                            // Only add the episode if it still has translations
+                            if !filteredTranslations.isEmpty {
+                                filteredEpisodes.append(AllohaEpisode(season: episode.season, episode: episode.episode, translations: filteredTranslations))
+                            } else {
+                                // If filtering removed everything, keep the original translations as a safety fallback
+                                filteredEpisodes.append(episode)
+                            }
+                        }
+                        if !filteredEpisodes.isEmpty {
+                            filteredSeasons.append(AllohaSeason(season: season.season, episodes: filteredEpisodes))
+                        }
+                    }
+                    parsedSeasons = filteredSeasons
+                }
+            }
+            
             let result = AllohaApiResult(title: title, isSerial: true, movie: nil, seasons: parsedSeasons)
             cacheQueue.async(flags: .barrier) {
                 self.catalogCache[kpId] = (result: result, expiresAt: Date().addingTimeInterval(self.cacheTtl))
@@ -267,9 +317,9 @@ class AllohaRepository {
             
             var result = AllohaApiResult(title: title, isSerial: false, movie: movie, seasons: [])
             
-            if let m = result.movie, m.translations.count == 1 && m.translations[0].name == result.title {
+            if let m = result.movie, let firstIframe = m.translations.first?.iframeUrl {
                 let resolver = AllohaRuntimeResolver()
-                if let resolved = try? await resolver.resolve(iframeUrl: m.iframeUrl),
+                if let resolved = try? await resolver.resolve(iframeUrl: firstIframe),
                    let audioVariants = resolved["audioVariants"] as? [[String: Any]], !audioVariants.isEmpty {
                     let newTranslations = audioVariants.enumerated().compactMap { index, variant -> AllohaTranslation? in
                         guard let vTitle = variant["title"] as? String, !vTitle.isEmpty,
