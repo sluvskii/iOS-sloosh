@@ -21,24 +21,29 @@ struct HomeDirectPlayWrapper: View {
     @State private var playerSeriesResult: AllohaApiResult?
 
     var body: some View {
-        SourceSelectionView(
-            title: title,
-            viewModel: viewModel,
-            detent: $sourceSheetDetent,
-            onSelectionComplete: { seriesResult, kpId, season, episode, voiceover, quality, streamUrl in
-                self.playerSeriesResult = seriesResult
-                self.playerKpId = kpId
-                self.playerSeason = season
-                self.playerEpisode = episode
-                self.playerVoiceover = voiceover
-                self.playerQuality = quality
-                self.playerStreamUrl = streamUrl
-                
-                self.selectedIframeUrl = "https://alloha.tv/?kp=\(kpId)"
-                self.showPlayer = true
+        ZStack {
+            if viewModel.isFetchingSources {
+                SourceSelectionLoadingView(title: title)
+            } else if let wrapper = viewModel.sourceResultWrapper,
+                      let result = wrapper.allohaResult {
+                SourceSelectionView(result: result, kpId: wrapper.kpId) { translation, season, episode, quality in
+                    playerKpId = wrapper.kpId
+                    playerSeason = season
+                    playerEpisode = episode
+                    playerQuality = quality
+                    playerSeriesResult = result
+                    selectedIframeUrl = translation.iframeUrl
+                    playerVoiceover = translation.name
+                    playerStreamUrl = translation.streamUrl
+                    
+                    showPlayer = true
+                }
+            } else {
+                Text("Не удалось загрузить данные.")
+                    .padding()
             }
-        )
-        .presentationDetents([.medium, .large], selection: $sourceSheetDetent)
+        }
+        .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
         .task {
             await viewModel.fetchSources(kpId: kpId, title: title)

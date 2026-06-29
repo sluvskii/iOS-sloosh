@@ -728,8 +728,8 @@ class PlayerViewModel: ObservableObject {
             player.seek(to: CMTime(seconds: savedPosition, preferredTimescale: 600))
         }
         
-        timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 5, preferredTimescale: 600), queue: .main) { [weak self, weak player] time in
-            guard let self = self, let player = player else { return }
+        timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 5, preferredTimescale: 600), queue: .main) { [weak player] time in
+            guard let player = player else { return }
             let duration = player.currentItem?.duration.seconds
             PlaybackProgressStore.shared.save(mediaId: mediaId, positionSec: time.seconds, durationSec: duration?.isNaN == false ? duration : nil)
         }
@@ -743,7 +743,9 @@ class PlayerViewModel: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.saveCurrentProgress()
+            Task { @MainActor [weak self] in
+                self?.saveCurrentProgress()
+            }
         }
     }
 

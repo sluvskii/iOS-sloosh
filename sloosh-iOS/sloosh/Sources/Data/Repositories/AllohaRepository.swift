@@ -131,7 +131,7 @@ class TrustAllSessionDelegate: NSObject, @preconcurrency URLSessionDelegate, @un
     }
 }
 
-class AllohaRepository {
+final class AllohaRepository: @unchecked Sendable {
     static let shared = AllohaRepository()
     private let token = "ffbd312217e27c4245f2678afe1881"
     
@@ -232,7 +232,7 @@ class AllohaRepository {
             // We resolve the first episode's iframe to get the definitive audioVariants list,
             // and filter out API translations that don't match anything in the player.
             if let firstIframe = parsedSeasons.first?.episodes.first?.translations.first?.iframeUrl {
-                let resolver = AllohaRuntimeResolver()
+                let resolver = await AllohaRuntimeResolver()
                 if let resolved = try? await resolver.resolve(iframeUrl: firstIframe),
                    let audioVariants = resolved["audioVariants"] as? [[String: Any]], !audioVariants.isEmpty {
                     
@@ -318,7 +318,7 @@ class AllohaRepository {
             var result = AllohaApiResult(title: title, isSerial: false, movie: movie, seasons: [])
             
             if let m = result.movie, let firstIframe = m.translations.first?.iframeUrl {
-                let resolver = AllohaRuntimeResolver()
+                let resolver = await AllohaRuntimeResolver()
                 if let resolved = try? await resolver.resolve(iframeUrl: firstIframe),
                    let audioVariants = resolved["audioVariants"] as? [[String: Any]], !audioVariants.isEmpty {
                     let newTranslations = audioVariants.enumerated().compactMap { index, variant -> AllohaTranslation? in
