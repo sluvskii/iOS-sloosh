@@ -43,6 +43,10 @@ public final class PlaybackProgressStore {
     private let lastEpisodePrefix = "neomovies.collaps.lastEpisode."
     private let metadataPrefix = "neomovies.collaps.meta."
 
+    // Компилируются один раз при запуске приложения, а не при каждом вызове listProgressRecords()
+    private static let episodeRegex = try! NSRegularExpression(pattern: "^kp_(\\d+)_s(\\d+)_e(\\d+)$")
+    private static let movieRegex   = try! NSRegularExpression(pattern: "^kp_(\\d+)$")
+
     private init() {}
 
     public func save(mediaId: String, positionSec: Double, durationSec: Double? = nil) {
@@ -145,12 +149,10 @@ public final class PlaybackProgressStore {
         let allDefaults = defaults.dictionaryRepresentation()
         let prefix = positionPrefix
 
-        guard
-            let episodeRegex = try? NSRegularExpression(pattern: "^kp_(\\d+)_s(\\d+)_e(\\d+)$"),
-            let movieRegex = try? NSRegularExpression(pattern: "^kp_(\\d+)$")
-        else {
-            return []
-        }
+        guard !allDefaults.isEmpty else { return [] }
+
+        let episodeRegex = Self.episodeRegex
+        let movieRegex   = Self.movieRegex
 
         var records: [PlaybackProgressRecord] = []
         var seriesKpIds = Set<Int>()

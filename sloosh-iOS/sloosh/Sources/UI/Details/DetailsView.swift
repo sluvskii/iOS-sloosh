@@ -5,11 +5,10 @@ struct RemoteBackdropView: View {
     let fallbackUrl: URL?
     let width: CGFloat
     let height: CGFloat
-    var onImageLoaded: ((UIImage) -> Void)? = nil
-    
+
     @State private var image: UIImage?
     @State private var isLoading = false
-    
+
     var body: some View {
         ZStack {
             if let image = image {
@@ -43,7 +42,7 @@ struct RemoteBackdropView: View {
         .task(id: url) {
             guard let url = url, image == nil else { return }
             isLoading = true
-            
+
             var fetchedImage: UIImage? = nil
             do {
                 let request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad)
@@ -52,7 +51,7 @@ struct RemoteBackdropView: View {
                     fetchedImage = uiImg
                 }
             } catch {}
-            
+
             if fetchedImage == nil, let fallback = fallbackUrl {
                 do {
                     let request = URLRequest(url: fallback, cachePolicy: .returnCacheDataElseLoad)
@@ -62,14 +61,11 @@ struct RemoteBackdropView: View {
                     }
                 } catch {}
             }
-            
+
             if let fetchedImage = fetchedImage {
                 self.image = fetchedImage
-                Task { @MainActor in
-                    onImageLoaded?(fetchedImage)
-                }
             }
-            
+
             isLoading = false
         }
     }
@@ -182,7 +178,6 @@ struct DetailsView: View {
     @State private var showPlayer = false
     @State private var showSourceSheet = false
     @State private var selectedIframeUrl: String? = nil
-    @State private var showDownloadAlert = false
     @State private var sourceSheetTitle = ""
     @State private var sourceFetchTask: Task<Void, Never>?
     @State private var sourceSheetDetent: PresentationDetent = .medium
@@ -278,21 +273,6 @@ struct DetailsView: View {
                     }
                     .disabled(viewModel.details == nil)
                 }
-
-                ToolbarItem(id: "download", placement: .topBarTrailing) {
-                    Button {
-                        showDownloadAlert = true
-                    } label: {
-                        Image(systemName: "arrow.down.circle")
-                            .foregroundStyle(.white)
-                    }
-                    .disabled(viewModel.details == nil)
-                }
-            }
-            .alert("В разработке", isPresented: $showDownloadAlert) {
-                Button("OK", role: .cancel) { }
-            } message: {
-                Text("Функция скачивания появится в будущих обновлениях.")
             }
             .task {
                 await viewModel.loadDetails(id: movieId)
@@ -378,11 +358,6 @@ struct DetailsView: View {
                             fallbackUrl: URL(string: details.displayPosterUrl ?? ""),
                             width: geometry.size.width,
                             height: height,
-                            onImageLoaded: { img in
-                                withAnimation(.easeInOut(duration: 0.8)) {
-                                    self.dominantUIColor = img.averageColor
-                                }
-                            }
                         )
                         .offset(y: offset)
                     }
@@ -719,20 +694,11 @@ private struct SourceSelectionEmptyView: View {
 private struct DetailsPrimaryMetadataRow: View {
     let details: MediaDetailsDto
 
-    private func ratingColor(for rating: Double) -> Color {
-        switch rating {
-        case 7.5...10.0: return .green
-        case 5.0..<7.5: return .yellow
-        case 0.1..<5.0: return .red
-        default: return .secondary
-        }
-    }
-
     var body: some View {
         HStack(spacing: 8) {
             if let rating = details.rating, rating > 0 {
                 Label(String(format: "%.1f", rating), systemImage: "star.fill")
-                    .foregroundColor(ratingColor(for: rating))
+                    .foregroundColor(.rating(rating))
             }
 
             if let year = details.releaseDate?.prefix(4), !year.isEmpty {
@@ -841,15 +807,7 @@ struct EpisodeCellView: View {
         URL(string: "https://api.neome.uk/api/v1/images/screens/\(movieId)/\(season)/\(episode)/large")
     }
     
-    private func ratingColor(for rating: Double) -> Color {
-        switch rating {
-        case 7.5...10.0: return .green
-        case 5.0..<7.5: return .yellow
-        case 0.1..<5.0: return .red
-        default: return .secondary
-        }
-    }
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             ZStack {
@@ -913,19 +871,19 @@ struct EpisodeCellView: View {
                         HStack(spacing: 4) {
                             Image(systemName: "star.fill")
                                 .font(.system(size: 10))
-                                .foregroundColor(ratingColor(for: rating))
+                                .foregroundColor(.rating(rating))
                             Text(String(format: "%.1f", rating))
                                 .font(.system(size: 12, weight: .medium))
-                                .foregroundColor(ratingColor(for: rating))
+                                .foregroundColor(.rating(rating))
                         }
                     } else if let rating = meta?.ratings?.imdb, rating > 0 {
                         HStack(spacing: 4) {
                             Image(systemName: "star.fill")
                                 .font(.system(size: 10))
-                                .foregroundColor(ratingColor(for: rating))
+                                .foregroundColor(.rating(rating))
                             Text(String(format: "%.1f", rating))
                                 .font(.system(size: 12, weight: .medium))
-                                .foregroundColor(ratingColor(for: rating))
+                                .foregroundColor(.rating(rating))
                         }
                     }
                 }
@@ -1078,17 +1036,21 @@ struct SourceResultWrapper: Identifiable {
 class DetailsViewModel: ObservableObject {
     @Published var details: MediaDetailsDto?
     @Published var isLoading = true
-    
+
     @Published var isFetchingSources = false
     @Published var sourceResultWrapper: SourceResultWrapper?
-    
+
     @Published var inlineSourceWrapper: SourceResultWrapper?
     @Published var selectedInlineSeason: Int = 1
     @Published var isFetchingInlineSeasons = false
-    
+
     @Published var isFavorite: Bool = false
 
     private let allohaTranslationPreferenceKey = "alloha_last_translation_name"
+
+    // MARK: - Sources cache (5 min TTL)
+    private var sourcesCache: [Int: (wrapper: SourceResultWrapper, expiresAt: Date)] = [:]
+    private let sourcesCacheTtl: TimeInterval = 5 * 60
 
     func resetSourceSheet() {
         sourceResultWrapper = nil
@@ -1098,7 +1060,7 @@ class DetailsViewModel: ObservableObject {
         guard let name = name, !name.isEmpty else { return }
         UserDefaults.standard.set(name, forKey: allohaTranslationPreferenceKey)
     }
-    
+
     func loadDetails(id: String) async {
         if details != nil && (details?.id == id || details?.sourceId == id || details?.externalIds?.kp?.description == id.replacingOccurrences(of: "kp_", with: "")) {
             return
@@ -1113,7 +1075,7 @@ class DetailsViewModel: ObservableObject {
                 PlaybackProgressStore.shared.saveMetadata(details: details)
             }
             checkFavoriteStatus()
-            
+
             if details?.type == "tv", let kpId = details?.externalIds?.kp {
                 await fetchInlineSeasons(kpId: kpId)
             }
@@ -1121,11 +1083,11 @@ class DetailsViewModel: ObservableObject {
             print("Error loading details: \(error)")
         }
     }
-    
+
     func fetchInlineSeasons(kpId: Int) async {
         isFetchingInlineSeasons = true
         defer { isFetchingInlineSeasons = false }
-        
+
         do {
             let result = try await AllohaRepository.shared.fetchByKpId(kpId: kpId)
             if result.isSerial {
@@ -1135,18 +1097,17 @@ class DetailsViewModel: ObservableObject {
             print("Error fetching inline seasons: \(error)")
         }
     }
-    
+
     func checkFavoriteStatus() {
         guard let details = details else { return }
         guard let (mediaId, mediaType) = favoriteKey(for: details) else { return }
-        
         isFavorite = FavoritesRepository.shared.isFavorite(mediaId: mediaId, mediaType: mediaType)
     }
-    
+
     func toggleFavorite() {
         guard let details = details else { return }
         guard let (mediaId, mediaType) = favoriteKey(for: details) else { return }
-        
+
         if isFavorite {
             FavoritesRepository.shared.removeFromFavorites(mediaId: mediaId, mediaType: mediaType)
         } else {
@@ -1160,21 +1121,25 @@ class DetailsViewModel: ObservableObject {
         }
         isFavorite.toggle()
     }
-    
+
     private func favoriteKey(for details: MediaDetailsDto) -> (String, String)? {
-        // Use KP ID if available, otherwise ID
         let mediaId = details.externalIds?.kp?.description ?? details.id ?? details.sourceId
         guard let validId = mediaId, !validId.isEmpty else { return nil }
-        
         let type = (details.type?.lowercased() == "tv" || details.type?.lowercased() == "series") ? "tv" : "movie"
         return (validId.replacingOccurrences(of: "kp_", with: ""), type)
     }
-    
+
     func fetchSources(kpId: Int, title: String) async {
+        // Кэш на 5 минут — повторный тап «Смотреть» возвращает результат мгновенно
+        if let cached = sourcesCache[kpId], cached.expiresAt > Date() {
+            sourceResultWrapper = cached.wrapper
+            return
+        }
+
         sourceResultWrapper = nil
         isFetchingSources = true
         defer { isFetchingSources = false }
-        
+
         do {
             var result = try await AllohaRepository.shared.fetchByKpId(kpId: kpId)
             if !result.isSerial, let movie = result.movie {
@@ -1185,32 +1150,8 @@ class DetailsViewModel: ObservableObject {
                        let audioVariants = resolved["audioVariants"] as? [[String: Any]], !audioVariants.isEmpty {
                         let newTranslations = audioVariants.enumerated().compactMap { index, variant -> AllohaTranslation? in
                             guard let vTitle = variant["title"] as? String, !vTitle.isEmpty else { return nil }
-                            
-                            // Clean up the title similar to Android/neomovies-mobile behavior
-                            var cleanTitle = vTitle
-                                .replacingOccurrences(of: "\\(Russian\\)", with: "")
-                                .replacingOccurrences(of: "AC3 51 @ 640 kbps - Blu-ray CEE", with: "")
-                                .replacingOccurrences(of: "AC3 5.1 @ 640 kbps", with: "")
-                                .replacingOccurrences(of: "DUB", with: "Дубляж")
-                                .replacingOccurrences(of: "MVO", with: "Многоголосый")
-                                .replacingOccurrences(of: "DVO", with: "Двухголосый")
-                                .replacingOccurrences(of: "AVO", with: "Авторский")
-                                .replacingOccurrences(of: "ПМ", with: "Проф. многоголосый")
-                                .replacingOccurrences(of: "ПД", with: "Проф. двухголосый")
-                                .replacingOccurrences(of: "ЛМ", with: "Люб. многоголосый")
-                                .replacingOccurrences(of: "ЛД", with: "Люб. двухголосый")
-                                .trimmingCharacters(in: .whitespacesAndNewlines)
-                            
-                            // Clean up remaining hyphens, commas, or parentheses at the ends
-                            while cleanTitle.hasPrefix("-") || cleanTitle.hasPrefix(",") {
-                                cleanTitle = String(cleanTitle.dropFirst()).trimmingCharacters(in: .whitespaces)
-                            }
-                            while cleanTitle.hasSuffix("-") || cleanTitle.hasSuffix(",") {
-                                cleanTitle = String(cleanTitle.dropLast()).trimmingCharacters(in: .whitespaces)
-                            }
-                            if cleanTitle.isEmpty { cleanTitle = vTitle }
-                            
-                            return AllohaTranslation(id: "dub_\(index)", name: cleanTitle, iframeUrl: movie.iframeUrl)
+                            let cleanTitle = normalizedAllohaTranslationName(vTitle)
+                            return AllohaTranslation(id: "dub_\(index)", name: cleanTitle.isEmpty ? vTitle : cleanTitle, iframeUrl: movie.iframeUrl)
                         }
                         if !newTranslations.isEmpty {
                             let newMovie = AllohaMovie(title: movie.title, iframeUrl: movie.iframeUrl, translations: newTranslations)
@@ -1219,7 +1160,9 @@ class DetailsViewModel: ObservableObject {
                     }
                 }
             }
-            self.sourceResultWrapper = SourceResultWrapper(allohaResult: result, kpId: kpId)
+            let wrapper = SourceResultWrapper(allohaResult: result, kpId: kpId)
+            sourcesCache[kpId] = (wrapper: wrapper, expiresAt: Date().addingTimeInterval(sourcesCacheTtl))
+            self.sourceResultWrapper = wrapper
         } catch {
             print("Error fetching sources: \(error)")
         }

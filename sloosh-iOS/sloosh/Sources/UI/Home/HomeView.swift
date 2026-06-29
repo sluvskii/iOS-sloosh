@@ -438,21 +438,12 @@ struct RemotePosterView: View {
 
 struct MoviePosterCard: View {
     let movie: MediaDto
-    
-    private func ratingColor(for rating: Double) -> Color {
-        switch rating {
-        case 7.5...10.0: return .green
-        case 5.0..<7.5: return .yellow
-        case 0.1..<5.0: return .red
-        default: return .secondary
-        }
-    }
-    
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             let url = URL(string: movie.displayPosterUrl ?? "")
             RemotePosterView(url: url)
-            
+
             VStack(alignment: .leading, spacing: 4) {
                 Text(movie.displayTitle)
                     .font(.system(size: 14, weight: .semibold))
@@ -460,15 +451,15 @@ struct MoviePosterCard: View {
                     .truncationMode(.tail)
                     .multilineTextAlignment(.leading)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                
+
                 if let rating = movie.rating, rating > 0 {
                     HStack(spacing: 4) {
                         Image(systemName: "star.fill")
-                            .foregroundColor(ratingColor(for: rating))
+                            .foregroundColor(.rating(rating))
                             .font(.system(size: 10))
                         Text(String(format: "%.1f", rating))
                             .font(.system(size: 12, weight: .bold))
-                            .foregroundColor(ratingColor(for: rating))
+                            .foregroundColor(.rating(rating))
                     }
                 }
             }
@@ -647,29 +638,8 @@ class HomeViewModel: ObservableObject {
         case .tvShows:
             return items.filter { $0.type == "tv" && !isCartoon($0) }
         case .cartoons:
-            return items.filter(isCartoon)
+            return items.filter { isCartoon($0) }
         }
     }
 
-    private func isCartoon(_ item: MediaDto) -> Bool {
-        let genreNames = item.genres?
-            .compactMap { $0.name?.lowercased() }
-            .joined(separator: " ") ?? ""
-
-        let haystack = [
-            genreNames,
-            item.displayTitle.lowercased(),
-            item.originalTitle?.lowercased() ?? ""
-        ].joined(separator: " ")
-
-        return haystack.contains("мульт")
-            || haystack.contains("анимац")
-            || haystack.contains("animation")
-            || haystack.contains("anime")
-    }
-
-    private func extractedYear(from item: MediaDto) -> Int {
-        let raw = item.year?.stringValue ?? ""
-        return Int(raw.prefix(4)) ?? 0
-    }
 }
