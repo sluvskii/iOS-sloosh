@@ -256,29 +256,5 @@ public final class PlaybackProgressStore {
     }
 
     public var positionKeyPrefix: String { positionPrefix }
-
-    // MARK: - Thumbnails
-    
-    private var thumbnailsDirectory: URL {
-        let paths = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)
-        let dir = paths[0].appendingPathComponent("SlooshThumbnails", isDirectory: true)
-        if !FileManager.default.fileExists(atPath: dir.path) {
-            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        }
-        return dir
-    }
-    
-    public func thumbnailURL(for kpId: Int) -> URL? {
-        let url = thumbnailsDirectory.appendingPathComponent("thumb_kp_\(kpId).jpg")
-        if FileManager.default.fileExists(atPath: url.path) {
-            return url
-        }
-        return nil
-    }
-    
-    public func saveThumbnail(data: Data, for kpId: Int) {
-        let url = thumbnailsDirectory.appendingPathComponent("thumb_kp_\(kpId).jpg")
-        try? data.write(to: url, options: .atomic)
-    }
 }
 

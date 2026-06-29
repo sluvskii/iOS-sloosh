@@ -230,7 +230,6 @@ class PlayerViewModel: ObservableObject {
     private var playbackEndObserver: NSObjectProtocol?
     private var resignActiveObserver: NSObjectProtocol?
     private var currentPlaybackSourceURL: URL?
-    private var videoOutput: AVPlayerItemVideoOutput?
     
     private var currentKpId: Int?
     private var currentSeason: Int?
@@ -477,29 +476,6 @@ class PlayerViewModel: ObservableObject {
             positionSec: player.currentTime().seconds,
             durationSec: duration?.isNaN == false ? duration : nil
         )
-        captureAndSaveThumbnail(for: currentKpId)
-    }
-    
-    private func captureAndSaveThumbnail(for kpId: Int) {
-        guard let player = player else { return }
-        let time = player.currentTime()
-        
-        guard let videoOutput = videoOutput, videoOutput.hasNewPixelBuffer(forItemTime: time),
-              let pixelBuffer = videoOutput.copyPixelBuffer(forItemTime: time, itemTimeForDisplay: nil) else {
-            return
-        }
-        
-        Task(priority: .background) {
-            let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
-            let context = CIContext(options: nil)
-            guard let cgImage = context.createCGImage(ciImage, from: ciImage.extent) else { return }
-            
-            let uiImage = UIImage(cgImage: cgImage)
-            
-            if let data = uiImage.jpegData(compressionQuality: 0.8) {
-                PlaybackProgressStore.shared.saveThumbnail(data: data, for: kpId)
-            }
-        }
     }
     
     func changeQuality(to key: String) {
@@ -718,9 +694,7 @@ class PlayerViewModel: ObservableObject {
         self.player?.replaceCurrentItem(with: playerItem)
         self.player?.automaticallyWaitsToMinimizeStalling = true
         
-        let output = AVPlayerItemVideoOutput(pixelBufferAttributes: [String(kCVPixelBufferPixelFormatTypeKey): Int(kCVPixelFormatType_32BGRA)])
-        playerItem.add(output)
-        self.videoOutput = output
+
         
         observePlaybackCompletion(for: playerItem)
         
