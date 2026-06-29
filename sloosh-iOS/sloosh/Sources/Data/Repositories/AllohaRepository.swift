@@ -91,6 +91,10 @@ class AllohaRepository {
     static let shared = AllohaRepository()
     private let token = "ffbd312217e27c4245f2678afe1881"
     
+    private var catalogCache: [Int: (result: AllohaApiResult, expiresAt: Date)] = [:]
+    private let cacheTtl: TimeInterval = 5 * 60 // 5 minutes
+    private let cacheQueue = DispatchQueue(label: "ru.neomovies.alloharepo.cache", attributes: .concurrent)
+
     // Create a URLSession that ignores SSL certificate errors
     private lazy var session: URLSession = {
         let configuration = URLSessionConfiguration.default
@@ -98,7 +102,36 @@ class AllohaRepository {
         return URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
     }()
     
+    private func normalizeTranslationName(from rawName: String) -> String {
+        var cleanTitle = rawName
+            .replacingOccurrences(of: "\\(Russian\\)", with: "")
+            .replacingOccurrences(of: "AC3 51 @ 640 kbps - Blu-ray CEE", with: "")
+            .replacingOccurrences(of: "AC3 5.1 @ 640 kbps", with: "")
+            .replacingOccurrences(of: "DUB", with: "Дубляж")
+            .replacingOccurrences(of: "MVO", with: "Многоголосый")
+            .replacingOccurrences(of: "DVO", with: "Двухголосый")
+            .replacingOccurrences(of: "AVO", with: "Авторский")
+            .replacingOccurrences(of: "ПМ", with: "Проф. многоголосый")
+            .replacingOccurrences(of: "ПД", with: "Проф. двухголосый")
+            .replacingOccurrences(of: "ЛМ", with: "Люб. многоголосый")
+            .replacingOccurrences(of: "ЛД", with: "Люб. двухголосый")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        while cleanTitle.hasPrefix("-") || cleanTitle.hasPrefix(",") {
+            cleanTitle = String(cleanTitle.dropFirst()).trimmingCharacters(in: .whitespaces)
+        }
+        while cleanTitle.hasSuffix("-") || cleanTitle.hasSuffix(",") {
+            cleanTitle = String(cleanTitle.dropLast()).trimmingCharacters(in: .whitespaces)
+        }
+        return cleanTitle.isEmpty ? rawName : cleanTitle
+    }
+
     func fetchByKpId(kpId: Int) async throws -> AllohaApiResult {
+        let cached = cacheQueue.sync { catalogCache[kpId] }
+        if let cached = cached, cached.expiresAt > Date() {
+            return cached.result
+        }
+
         guard let encodedToken = token.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
               let encodedKp = String(kpId).addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
               let url = URL(string: "https://api.alloha.tv/?token=\(encodedToken)&kp=\(encodedKp)") else {
@@ -145,28 +178,7 @@ class AllohaRepository {
                             }
                             let transName = tDict["translation"] as? String ?? "Unknown"
                             
-                            var cleanTitle = transName
-                                .replacingOccurrences(of: "\\(Russian\\)", with: "")
-                                .replacingOccurrences(of: "AC3 51 @ 640 kbps - Blu-ray CEE", with: "")
-                                .replacingOccurrences(of: "AC3 5.1 @ 640 kbps", with: "")
-                                .replacingOccurrences(of: "DUB", with: "Дубляж")
-                                .replacingOccurrences(of: "MVO", with: "Многоголосый")
-                                .replacingOccurrences(of: "DVO", with: "Двухголосый")
-                                .replacingOccurrences(of: "AVO", with: "Авторский")
-                                .replacingOccurrences(of: "ПМ", with: "Проф. многоголосый")
-                                .replacingOccurrences(of: "ПД", with: "Проф. двухголосый")
-                                .replacingOccurrences(of: "ЛМ", with: "Люб. многоголосый")
-                                .replacingOccurrences(of: "ЛД", with: "Люб. двухголосый")
-                                .trimmingCharacters(in: .whitespacesAndNewlines)
-                            
-                            while cleanTitle.hasPrefix("-") || cleanTitle.hasPrefix(",") {
-                                cleanTitle = String(cleanTitle.dropFirst()).trimmingCharacters(in: .whitespaces)
-                            }
-                            while cleanTitle.hasSuffix("-") || cleanTitle.hasSuffix(",") {
-                                cleanTitle = String(cleanTitle.dropLast()).trimmingCharacters(in: .whitespaces)
-                            }
-                            if cleanTitle.isEmpty { cleanTitle = transName }
-
+                            let cleanTitle = normalizeTranslationName(from: transName)
                             parsedTrans.append(AllohaTranslation(id: tKey, name: cleanTitle, iframeUrl: iframe))
                         }
                     } else if let transArray = eDict["translation"] as? [[String: Any]] {
@@ -177,28 +189,7 @@ class AllohaRepository {
                             }
                             let transName = tDict["translation"] as? String ?? "Unknown"
                             
-                            var cleanTitle = transName
-                                .replacingOccurrences(of: "\\(Russian\\)", with: "")
-                                .replacingOccurrences(of: "AC3 51 @ 640 kbps - Blu-ray CEE", with: "")
-                                .replacingOccurrences(of: "AC3 5.1 @ 640 kbps", with: "")
-                                .replacingOccurrences(of: "DUB", with: "Дубляж")
-                                .replacingOccurrences(of: "MVO", with: "Многоголосый")
-                                .replacingOccurrences(of: "DVO", with: "Двухголосый")
-                                .replacingOccurrences(of: "AVO", with: "Авторский")
-                                .replacingOccurrences(of: "ПМ", with: "Проф. многоголосый")
-                                .replacingOccurrences(of: "ПД", with: "Проф. двухголосый")
-                                .replacingOccurrences(of: "ЛМ", with: "Люб. многоголосый")
-                                .replacingOccurrences(of: "ЛД", with: "Люб. двухголосый")
-                                .trimmingCharacters(in: .whitespacesAndNewlines)
-                            
-                            while cleanTitle.hasPrefix("-") || cleanTitle.hasPrefix(",") {
-                                cleanTitle = String(cleanTitle.dropFirst()).trimmingCharacters(in: .whitespaces)
-                            }
-                            while cleanTitle.hasSuffix("-") || cleanTitle.hasSuffix(",") {
-                                cleanTitle = String(cleanTitle.dropLast()).trimmingCharacters(in: .whitespaces)
-                            }
-                            if cleanTitle.isEmpty { cleanTitle = transName }
-
+                            let cleanTitle = normalizeTranslationName(from: transName)
                             parsedTrans.append(AllohaTranslation(id: String(index), name: cleanTitle, iframeUrl: iframe))
                         }
                     }
@@ -216,7 +207,11 @@ class AllohaRepository {
             }
             
             parsedSeasons.sort { $0.season < $1.season }
-            return AllohaApiResult(title: title, isSerial: true, movie: nil, seasons: parsedSeasons)
+            let result = AllohaApiResult(title: title, isSerial: true, movie: nil, seasons: parsedSeasons)
+            cacheQueue.async(flags: .barrier) {
+                self.catalogCache[kpId] = (result: result, expiresAt: Date().addingTimeInterval(self.cacheTtl))
+            }
+            return result
         } else {
             var parsedTrans: [AllohaTranslation] = []
             
@@ -229,28 +224,7 @@ class AllohaRepository {
                     }
                     let transName = tDict["translation"] as? String ?? "Unknown"
                     
-                    var cleanTitle = transName
-                        .replacingOccurrences(of: "\\(Russian\\)", with: "")
-                        .replacingOccurrences(of: "AC3 51 @ 640 kbps - Blu-ray CEE", with: "")
-                        .replacingOccurrences(of: "AC3 5.1 @ 640 kbps", with: "")
-                        .replacingOccurrences(of: "DUB", with: "Дубляж")
-                        .replacingOccurrences(of: "MVO", with: "Многоголосый")
-                        .replacingOccurrences(of: "DVO", with: "Двухголосый")
-                        .replacingOccurrences(of: "AVO", with: "Авторский")
-                        .replacingOccurrences(of: "ПМ", with: "Проф. многоголосый")
-                        .replacingOccurrences(of: "ПД", with: "Проф. двухголосый")
-                        .replacingOccurrences(of: "ЛМ", with: "Люб. многоголосый")
-                        .replacingOccurrences(of: "ЛД", with: "Люб. двухголосый")
-                        .trimmingCharacters(in: .whitespacesAndNewlines)
-                    
-                    while cleanTitle.hasPrefix("-") || cleanTitle.hasPrefix(",") {
-                        cleanTitle = String(cleanTitle.dropFirst()).trimmingCharacters(in: .whitespaces)
-                    }
-                    while cleanTitle.hasSuffix("-") || cleanTitle.hasSuffix(",") {
-                        cleanTitle = String(cleanTitle.dropLast()).trimmingCharacters(in: .whitespaces)
-                    }
-                    if cleanTitle.isEmpty { cleanTitle = transName }
-
+                    let cleanTitle = normalizeTranslationName(from: transName)
                     parsedTrans.append(AllohaTranslation(id: tKey, name: cleanTitle, iframeUrl: iframe))
                 }
                 parsedTrans.sort { $0.name < $1.name }
@@ -262,28 +236,7 @@ class AllohaRepository {
                     }
                     let transName = tDict["translation"] as? String ?? "Unknown"
                     
-                    var cleanTitle = transName
-                        .replacingOccurrences(of: "\\(Russian\\)", with: "")
-                        .replacingOccurrences(of: "AC3 51 @ 640 kbps - Blu-ray CEE", with: "")
-                        .replacingOccurrences(of: "AC3 5.1 @ 640 kbps", with: "")
-                        .replacingOccurrences(of: "DUB", with: "Дубляж")
-                        .replacingOccurrences(of: "MVO", with: "Многоголосый")
-                        .replacingOccurrences(of: "DVO", with: "Двухголосый")
-                        .replacingOccurrences(of: "AVO", with: "Авторский")
-                        .replacingOccurrences(of: "ПМ", with: "Проф. многоголосый")
-                        .replacingOccurrences(of: "ПД", with: "Проф. двухголосый")
-                        .replacingOccurrences(of: "ЛМ", with: "Люб. многоголосый")
-                        .replacingOccurrences(of: "ЛД", with: "Люб. двухголосый")
-                        .trimmingCharacters(in: .whitespacesAndNewlines)
-                    
-                    while cleanTitle.hasPrefix("-") || cleanTitle.hasPrefix(",") {
-                        cleanTitle = String(cleanTitle.dropFirst()).trimmingCharacters(in: .whitespaces)
-                    }
-                    while cleanTitle.hasSuffix("-") || cleanTitle.hasSuffix(",") {
-                        cleanTitle = String(cleanTitle.dropLast()).trimmingCharacters(in: .whitespaces)
-                    }
-                    if cleanTitle.isEmpty { cleanTitle = transName }
-
+                    let cleanTitle = normalizeTranslationName(from: transName)
                     parsedTrans.append(AllohaTranslation(id: String(index), name: cleanTitle, iframeUrl: iframe))
                 }
                 parsedTrans.sort { $0.name < $1.name }
@@ -305,7 +258,11 @@ class AllohaRepository {
                     ])
                 }
             }
-            return AllohaApiResult(title: title, isSerial: false, movie: movie, seasons: [])
+            let result = AllohaApiResult(title: title, isSerial: false, movie: movie, seasons: [])
+            cacheQueue.async(flags: .barrier) {
+                self.catalogCache[kpId] = (result: result, expiresAt: Date().addingTimeInterval(self.cacheTtl))
+            }
+            return result
         }
     }
 }
