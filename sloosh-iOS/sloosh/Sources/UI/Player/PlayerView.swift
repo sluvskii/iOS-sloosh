@@ -476,6 +476,38 @@ class PlayerViewModel: ObservableObject {
             positionSec: player.currentTime().seconds,
             durationSec: duration?.isNaN == false ? duration : nil
         )
+        captureAndSaveThumbnail(for: currentKpId)
+    }
+    
+    private func captureAndSaveThumbnail(for kpId: Int) {
+        guard let player = player, let currentItem = player.currentItem else { return }
+        
+        let asset = currentItem.asset
+        let time = player.currentTime()
+        let generator = AVAssetImageGenerator(asset: asset)
+        generator.appliesPreferredTrackTransform = true
+        generator.requestedTimeToleranceBefore = .zero
+        generator.requestedTimeToleranceAfter = .zero
+        generator.maximumSize = CGSize(width: 800, height: 450)
+        
+        Task {
+            do {
+                let cgImage: CGImage
+                if #available(iOS 16.0, *) {
+                    let (image, _) = try await generator.image(at: time)
+                    cgImage = image
+                } else {
+                    cgImage = try generator.copyCGImage(at: time, actualTime: nil)
+                }
+                
+                let uiImage = UIImage(cgImage: cgImage)
+                if let data = uiImage.jpegData(compressionQuality: 0.75) {
+                    PlaybackProgressStore.shared.saveThumbnail(data: data, for: kpId)
+                }
+            } catch {
+                print("Failed to capture thumbnail for kpId \(kpId): \(error)")
+            }
+        }
     }
     
     func changeQuality(to key: String) {
