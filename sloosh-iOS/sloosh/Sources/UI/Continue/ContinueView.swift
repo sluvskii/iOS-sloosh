@@ -312,33 +312,66 @@ private final class ContinueViewModel: ObservableObject {
                 ?? store.loadLastSeason(kpId: item.kpId)
                 ?? result.seasons.first?.season
 
-            guard let targetSeason,
-                  let season = result.seasons.first(where: { $0.season == targetSeason }) ?? result.seasons.first else {
-                return nil
-            }
+            guard let targetSeason else { return nil }
 
             let targetEpisode = item.record.episode ?? store.loadLastEpisode(kpId: item.kpId)
-            let episode = targetEpisode.flatMap { episodeNumber in
-                season.episodes.first(where: { $0.episode == episodeNumber })
-            } ?? season.episodes.first
 
-            guard let episode else { return nil }
+            var chosenSeason = result.seasons.first(where: { $0.season == targetSeason })
+            var chosenEpisode = targetEpisode.flatMap { epNum in
+                chosenSeason?.episodes.first(where: { $0.episode == epNum })
+            }
+
+            // Если запрашиваемый эпизод не найден (например, завершился сезон, и виртуальный эпизод +1 вышел за рамки),
+            // то ищем хронологически следующий по всему сериалу.
+            if chosenEpisode == nil, item.isNextEpisode, let epNum = targetEpisode {
+                let lastWatchedEpisode = epNum - 1
+                let allEpisodes = result.seasons
+                    .flatMap { s in s.episodes }
+                    .sorted { a, b in
+                        if a.season != b.season {
+                            return a.season < b.season
+                        }
+                        return a.episode < b.episode
+                    }
+
+                if let currentIndex = allEpisodes.firstIndex(where: { $0.season == targetSeason && $0.episode == lastWatchedEpisode }) {
+                    let nextIndex = currentIndex + 1
+                    if nextIndex < allEpisodes.count {
+                        let nextEp = allEpisodes[nextIndex]
+                        chosenSeason = result.seasons.first(where: { $0.season == nextEp.season })
+                        chosenEpisode = nextEp
+                    } else {
+                        // Сериал полностью просмотрен — остаемся на последней просмотренной серии
+                        chosenSeason = result.seasons.first(where: { $0.season == targetSeason })
+                        chosenEpisode = chosenSeason?.episodes.first(where: { $0.episode == lastWatchedEpisode })
+                    }
+                }
+            }
+
+            let finalSeason = chosenSeason ?? result.seasons.first(where: { $0.season == targetSeason }) ?? result.seasons.first
+            guard let finalSeason else { return nil }
+
+            let finalEpisode = chosenEpisode ?? targetEpisode.flatMap { epNum in
+                finalSeason.episodes.first(where: { $0.episode == epNum })
+            } ?? finalSeason.episodes.first
+
+            guard let finalEpisode else { return nil }
 
             let translation = preferredTranslation(
-                in: episode.translations,
+                in: finalEpisode.translations,
                 preferredVoiceover: savedVoiceover
             )
 
             guard let translation else { return nil }
 
-            store.saveLastPlayed(kpId: item.kpId, season: season.season, episode: episode.episode)
+            store.saveLastPlayed(kpId: item.kpId, season: finalSeason.season, episode: finalEpisode.episode)
 
             return ContinuePlaybackRoute(
                 iframeUrl: translation.iframeUrl,
                 title: item.title,
                 kpId: item.kpId,
-                season: season.season,
-                episode: episode.episode,
+                season: finalSeason.season,
+                episode: finalEpisode.episode,
                 voiceover: translation.name,
                 initialQuality: preferredQuality,
                 seriesResult: result
