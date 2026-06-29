@@ -133,8 +133,14 @@ public struct AsyncCachedImage<Placeholder: View, Content: View, Fallback: View>
         
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
-            if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200,
-               let uiImg = UIImage(data: data) {
+            let isSuccessful: Bool
+            if let httpResponse = response as? HTTPURLResponse {
+                isSuccessful = httpResponse.statusCode == 200
+            } else {
+                isSuccessful = true // For file:// URLs
+            }
+            
+            if isSuccessful, let uiImg = UIImage(data: data) {
                 ImageCache.shared.insertImage(uiImg, forKey: url.absoluteString)
                 await MainActor.run {
                     self.image = uiImg
@@ -172,8 +178,14 @@ public struct AsyncCachedImage<Placeholder: View, Content: View, Fallback: View>
             
             do {
                 let (data, response) = try await URLSession.shared.data(for: fallbackRequest)
-                if let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200,
-                   let uiImg = UIImage(data: data) {
+                let isSuccessful: Bool
+                if let httpResponse = response as? HTTPURLResponse {
+                    isSuccessful = httpResponse.statusCode == 200
+                } else {
+                    isSuccessful = true // For file:// URLs
+                }
+                
+                if isSuccessful, let uiImg = UIImage(data: data) {
                     ImageCache.shared.insertImage(uiImg, forKey: fallbackUrl.absoluteString)
                     await MainActor.run {
                         self.image = uiImg

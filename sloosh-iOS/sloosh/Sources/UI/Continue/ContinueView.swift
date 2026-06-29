@@ -128,8 +128,15 @@ private struct ContinueWatchingItem: Identifiable {
         return "Осталось \(ContinueTimeFormatter.shortDuration(remaining))"
     }
 
+    var thumbnailURL: URL? {
+        PlaybackProgressStore.shared.thumbnailURL(for: kpId)
+    }
+
     var imageURL: URL? {
-        URL(string: backdropUrl ?? posterUrl ?? "")
+        if let urlStr = backdropUrl ?? posterUrl, !urlStr.isEmpty {
+            return URL(string: urlStr)
+        }
+        return nil
     }
 
     var voiceover: String? {
@@ -450,7 +457,7 @@ private struct ContinueWatchingCard: View {
 
     var body: some View {
         ZStack(alignment: .bottomLeading) {
-            ContinueArtworkView(url: item.imageURL)
+            ContinueArtworkView(url: item.thumbnailURL, fallbackUrl: item.imageURL)
 
             LinearGradient(
                 colors: [
@@ -531,9 +538,10 @@ private struct ContinueWatchingCard: View {
 
 private struct ContinueArtworkView: View {
     let url: URL?
+    let fallbackUrl: URL?
 
     var body: some View {
-        AsyncCachedImage(url: url) {
+        AsyncCachedImage(url: url, fallbackUrl: fallbackUrl) {
             Rectangle()
                 .fill(Color.gray.opacity(0.18))
                 .overlay {
