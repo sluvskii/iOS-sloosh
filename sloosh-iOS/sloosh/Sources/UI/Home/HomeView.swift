@@ -102,6 +102,13 @@ struct HomeView: View {
                     await viewModel.applyCurrentSelection()
                 }
             }
+            .sheet(item: $viewModel.directPlaybackMovie) { movie in
+                let kpId = movie.externalIds?.kp ?? Int(movie.id) ?? 0
+                HomeDirectPlayWrapper(
+                    kpId: kpId,
+                    title: movie.title ?? movie.name ?? movie.originalTitle ?? ""
+                )
+            }
         }
     }
 }
@@ -148,6 +155,20 @@ struct HomeCategoryContentView: View {
                 LazyVGrid(columns: columns, spacing: 20) {
                     ForEach(items) { movie in
                         MovieDetailsNavigationLink(movie: movie, navigationTransition: navigationTransition)
+                            .contextMenu {
+                                Group {
+                                    Button {
+                                        viewModel.directPlaybackMovie = movie
+                                    } label: {
+                                        Label("Смотреть", systemImage: "play.fill")
+                                    }
+                                    
+                                    NavigationLink(destination: DetailsView(movieId: movie.id, navigationTransitionID: nil, navigationTransitionNamespace: nil)) {
+                                        Label("Подробнее", systemImage: "info.circle")
+                                    }
+                                }
+                                .tint(nil)
+                            }
                         .onAppear {
                             if movie.id == items.last?.id {
                                 Task {
@@ -485,6 +506,8 @@ class HomeViewModel: ObservableObject {
     @Published var cachedItems: [HomeCacheKey: [MediaDto]] = [:]
     @Published var isLoading: [HomeCacheKey: Bool] = [:]
     @Published var isLoadingMore: [HomeCacheKey: Bool] = [:]
+    
+    @Published var directPlaybackMovie: MediaDto? = nil
 
     private var cachedPages: [HomeCacheKey: Int] = [:]
     private var cachedCanLoadMore: [HomeCacheKey: Bool] = [:]
