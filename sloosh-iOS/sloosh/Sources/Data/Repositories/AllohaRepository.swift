@@ -4,6 +4,9 @@ struct AllohaTranslation: Codable, Hashable, Equatable {
     let id: String
     let name: String
     let iframeUrl: String
+    /// Pre-resolved direct stream URL. Set for films where multiple dubs share a single
+    /// iframe URL — bypasses runtime re-resolution and avoids name-matching ambiguity.
+    let streamUrl: String?
 }
 
 struct AllohaEpisode: Codable, Hashable, Equatable {
@@ -182,7 +185,7 @@ class AllohaRepository {
                             let transName = tDict["translation"] as? String ?? "Unknown"
                             
                             let cleanTitle = normalizedAllohaTranslationName(transName)
-                            parsedTrans.append(AllohaTranslation(id: tKey, name: cleanTitle, iframeUrl: iframe))
+                            parsedTrans.append(AllohaTranslation(id: tKey, name: cleanTitle, iframeUrl: iframe, streamUrl: nil))
                         }
                     } else if let transArray = eDict["translation"] as? [[String: Any]] {
                         for (index, tDict) in transArray.enumerated() {
@@ -193,7 +196,7 @@ class AllohaRepository {
                             let transName = tDict["translation"] as? String ?? "Unknown"
                             
                             let cleanTitle = normalizedAllohaTranslationName(transName)
-                            parsedTrans.append(AllohaTranslation(id: String(index), name: cleanTitle, iframeUrl: iframe))
+                            parsedTrans.append(AllohaTranslation(id: String(index), name: cleanTitle, iframeUrl: iframe, streamUrl: nil))
                         }
                     }
                     
@@ -228,7 +231,7 @@ class AllohaRepository {
                     let transName = tDict["translation"] as? String ?? "Unknown"
                     
                     let cleanTitle = normalizedAllohaTranslationName(transName)
-                    parsedTrans.append(AllohaTranslation(id: tKey, name: cleanTitle, iframeUrl: iframe))
+                    parsedTrans.append(AllohaTranslation(id: tKey, name: cleanTitle, iframeUrl: iframe, streamUrl: nil))
                 }
                 parsedTrans.sort { $0.name < $1.name }
             } else if let transArray = dataObj["translation"] as? [[String: Any]] {
@@ -240,7 +243,7 @@ class AllohaRepository {
                     let transName = tDict["translation"] as? String ?? "Unknown"
                     
                     let cleanTitle = normalizedAllohaTranslationName(transName)
-                    parsedTrans.append(AllohaTranslation(id: String(index), name: cleanTitle, iframeUrl: iframe))
+                    parsedTrans.append(AllohaTranslation(id: String(index), name: cleanTitle, iframeUrl: iframe, streamUrl: nil))
                 }
                 parsedTrans.sort { $0.name < $1.name }
             }
@@ -257,7 +260,7 @@ class AllohaRepository {
                 if iframe.hasPrefix("//") { iframe = "https:" + iframe }
                 if !iframe.isEmpty {
                     movie = AllohaMovie(title: title, iframeUrl: iframe, translations: [
-                        AllohaTranslation(id: "default", name: title, iframeUrl: iframe)
+                        AllohaTranslation(id: "default", name: title, iframeUrl: iframe, streamUrl: nil)
                     ])
                 }
             }
@@ -269,9 +272,15 @@ class AllohaRepository {
                 if let resolved = try? await resolver.resolve(iframeUrl: m.iframeUrl),
                    let audioVariants = resolved["audioVariants"] as? [[String: Any]], !audioVariants.isEmpty {
                     let newTranslations = audioVariants.enumerated().compactMap { index, variant -> AllohaTranslation? in
-                        guard let vTitle = variant["title"] as? String, !vTitle.isEmpty else { return nil }
+                        guard let vTitle = variant["title"] as? String, !vTitle.isEmpty,
+                              let streamUrl = variant["url"] as? String, !streamUrl.isEmpty else { return nil }
                         let cleanTitle = normalizedAllohaTranslationName(vTitle)
-                        return AllohaTranslation(id: "dub_\(index)", name: cleanTitle.isEmpty ? vTitle : cleanTitle, iframeUrl: m.iframeUrl)
+                        return AllohaTranslation(
+                            id: "dub_\(index)",
+                            name: cleanTitle.isEmpty ? vTitle : cleanTitle,
+                            iframeUrl: m.iframeUrl,
+                            streamUrl: streamUrl  // pre-resolved: used directly at playback, no re-matching needed
+                        )
                     }
                     if !newTranslations.isEmpty {
                         let newMovie = AllohaMovie(title: m.title, iframeUrl: m.iframeUrl, translations: newTranslations)

@@ -56,6 +56,7 @@ struct ContinueView: View {
                     season: playback.season,
                     episode: playback.episode,
                     selectedVoiceover: playback.voiceover,
+                    directStreamUrl: playback.streamUrl,
                     voices: [],
                     subtitles: [],
                     initialQuality: playback.initialQuality,
@@ -374,6 +375,7 @@ private final class ContinueViewModel: ObservableObject {
                 season: finalSeason.season,
                 episode: finalEpisode.episode,
                 voiceover: translation.name,
+                streamUrl: translation.streamUrl,
                 initialQuality: preferredQuality,
                 seriesResult: result
             )
@@ -397,6 +399,7 @@ private final class ContinueViewModel: ObservableObject {
             season: nil,
             episode: nil,
             voiceover: translation.name,
+            streamUrl: translation.streamUrl,
             initialQuality: preferredQuality,
             seriesResult: result
         )
@@ -436,6 +439,7 @@ private struct ContinuePlaybackRoute: Identifiable {
     let season: Int?
     let episode: Int?
     let voiceover: String?
+    let streamUrl: String?
     let initialQuality: VideoQualityPreference?
     let seriesResult: AllohaApiResult?
 }

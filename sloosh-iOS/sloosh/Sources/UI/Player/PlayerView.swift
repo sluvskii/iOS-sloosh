@@ -124,6 +124,8 @@ struct PlayerView: View {
     let season: Int?
     let episode: Int?
     let selectedVoiceover: String?
+    /// Pre-resolved direct stream URL. When set, skips iframe resolution and name-matching.
+    let directStreamUrl: String?
     let voices: [String]
     let subtitles: [PlaybackSubtitle]
     let initialQuality: VideoQualityPreference?
@@ -132,13 +134,14 @@ struct PlayerView: View {
     @StateObject private var viewModel = PlayerViewModel()
     @Environment(\.presentationMode) var presentationMode
     
-    init(iframeUrl: String? = nil, fallbackTitle: String, kpId: Int? = nil, season: Int? = nil, episode: Int? = nil, selectedVoiceover: String? = nil, voices: [String] = [], subtitles: [PlaybackSubtitle] = [], initialQuality: VideoQualityPreference? = nil, seriesResult: AllohaApiResult? = nil) {
+    init(iframeUrl: String? = nil, fallbackTitle: String, kpId: Int? = nil, season: Int? = nil, episode: Int? = nil, selectedVoiceover: String? = nil, directStreamUrl: String? = nil, voices: [String] = [], subtitles: [PlaybackSubtitle] = [], initialQuality: VideoQualityPreference? = nil, seriesResult: AllohaApiResult? = nil) {
         self.iframeUrl = iframeUrl
         self.fallbackTitle = fallbackTitle
         self.kpId = kpId
         self.season = season
         self.episode = episode
         self.selectedVoiceover = selectedVoiceover
+        self.directStreamUrl = directStreamUrl
         self.voices = voices
         self.subtitles = subtitles
         self.initialQuality = initialQuality
@@ -189,7 +192,7 @@ struct PlayerView: View {
                 viewModel.seriesResult = seriesResult
                 
                 if let iframe = iframeUrl {
-                    viewModel.load(iframeUrl: iframe, kpId: kpId, season: season, episode: episode, selectedVoiceover: selectedVoiceover, voices: voices, subtitles: subtitles)
+                    viewModel.load(iframeUrl: iframe, kpId: kpId, season: season, episode: episode, selectedVoiceover: selectedVoiceover, directStreamUrl: directStreamUrl, voices: voices, subtitles: subtitles)
                 } else {
                     viewModel.error = "Нет URL для воспроизведения"
                     viewModel.isLoading = false
@@ -233,6 +236,8 @@ class PlayerViewModel: ObservableObject {
     private var currentEpisode: Int?
     private var targetVoiceover: String?
     private var currentTranslationName: String?
+    /// Pre-resolved direct stream URL; bypasses audioVariant matching when set.
+    private var targetDirectStreamUrl: String?
     private var isAdvancingToNextEpisode = false
 
     var targetQualityPreference: VideoQualityPreference?
@@ -252,18 +257,19 @@ class PlayerViewModel: ObservableObject {
         return host == "127.0.0.1" || host == "localhost"
     }
     
-    func load(iframeUrl: String, kpId: Int?, season: Int?, episode: Int?, selectedVoiceover: String?, voices: [String] = [], subtitles: [PlaybackSubtitle] = []) {
+    func load(iframeUrl: String, kpId: Int?, season: Int?, episode: Int?, selectedVoiceover: String?, directStreamUrl: String? = nil, voices: [String] = [], subtitles: [PlaybackSubtitle] = []) {
         if hasStartedLoading { return } // Защита от двойного вызова
         hasStartedLoading = true
-        beginLoad(iframeUrl: iframeUrl, kpId: kpId, season: season, episode: episode, selectedVoiceover: selectedVoiceover, voices: voices, subtitles: subtitles)
+        beginLoad(iframeUrl: iframeUrl, kpId: kpId, season: season, episode: episode, selectedVoiceover: selectedVoiceover, directStreamUrl: directStreamUrl, voices: voices, subtitles: subtitles)
     }
 
-    private func beginLoad(iframeUrl: String, kpId: Int?, season: Int?, episode: Int?, selectedVoiceover: String?, voices: [String] = [], subtitles: [PlaybackSubtitle] = []) {
+    private func beginLoad(iframeUrl: String, kpId: Int?, season: Int?, episode: Int?, selectedVoiceover: String?, directStreamUrl: String? = nil, voices: [String] = [], subtitles: [PlaybackSubtitle] = []) {
         self.currentKpId = kpId
         self.currentSeason = season
         self.currentEpisode = episode
         self.targetVoiceover = selectedVoiceover
         self.currentTranslationName = selectedVoiceover
+        self.targetDirectStreamUrl = directStreamUrl
         self.isAdvancingToNextEpisode = false
 
         if let kpId, let selectedVoiceover, !selectedVoiceover.isEmpty {
@@ -821,21 +827,25 @@ class PlayerViewModel: ObservableObject {
         var resolvedUrlString = (resolved["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let audioVariants = (resolved["audioVariants"] as? [[String: Any]]) ?? []
 
-        // Pick the URL for the selected voiceover directly from audioVariants.
-        // Exact match first, then fuzzy. No fallback to AVMediaSelectionGroup —
-        // that system uses HLS-internal track names which differ from Alloha API names.
-        let voiceToMatch = targetVoiceover ?? currentTranslationName
-        if let voiceToMatch, !voiceToMatch.isEmpty {
-            let exactMatch = audioVariants.first(where: { variant in
-                let title = variant["title"] as? String
-                return allohaTranslationNamesMatch(title, voiceToMatch, exactOnly: true)
-            })
-            let match = exactMatch ?? audioVariants.first(where: { variant in
-                let title = variant["title"] as? String
-                return allohaTranslationNamesMatch(title, voiceToMatch, exactOnly: false)
-            })
-            if let validMatch = match, let matchedUrl = validMatch["url"] as? String, !matchedUrl.isEmpty {
-                resolvedUrlString = matchedUrl.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let directUrl = targetDirectStreamUrl, !directUrl.isEmpty {
+            // Pre-resolved URL stored at fetch time: use directly, no name matching needed.
+            resolvedUrlString = directUrl
+        } else {
+            // Pick the URL for the selected voiceover from audioVariants by name.
+            // Exact match first, then fuzzy.
+            let voiceToMatch = targetVoiceover ?? currentTranslationName
+            if let voiceToMatch, !voiceToMatch.isEmpty {
+                let exactMatch = audioVariants.first(where: { variant in
+                    let title = variant["title"] as? String
+                    return allohaTranslationNamesMatch(title, voiceToMatch, exactOnly: true)
+                })
+                let match = exactMatch ?? audioVariants.first(where: { variant in
+                    let title = variant["title"] as? String
+                    return allohaTranslationNamesMatch(title, voiceToMatch, exactOnly: false)
+                })
+                if let validMatch = match, let matchedUrl = validMatch["url"] as? String, !matchedUrl.isEmpty {
+                    resolvedUrlString = matchedUrl.trimmingCharacters(in: .whitespacesAndNewlines)
+                }
             }
         }
 
