@@ -199,7 +199,7 @@ struct DetailsView: View {
                             playerSeason = season
                             playerEpisode = episode
                             playerQuality = quality
-                            playerSeriesResult = result.isSerial ? result : nil
+                            playerSeriesResult = result
                             selectedIframeUrl = translation.iframeUrl
                             playerVoiceover = translation.name
                             showPlayer = true

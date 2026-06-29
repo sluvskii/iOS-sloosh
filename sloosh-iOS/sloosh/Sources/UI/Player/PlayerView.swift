@@ -926,6 +926,29 @@ class PlayerViewModel: ObservableObject {
         }
     }
 
+    private func isValidTranslationOption(_ trackName: String) -> Bool {
+        guard let result = seriesResult else { return false }
+        
+        let allTranslations: [String]
+        if result.isSerial {
+            var names = Set<String>()
+            for season in result.seasons {
+                for episode in season.episodes {
+                    for t in episode.translations {
+                        names.insert(t.name)
+                    }
+                }
+            }
+            allTranslations = Array(names)
+        } else if let movie = result.movie {
+            allTranslations = movie.translations.map { $0.name }
+        } else {
+            allTranslations = []
+        }
+        
+        return allTranslations.contains { allohaTranslationNamesMatch($0, trackName) }
+    }
+
     private func persistCurrentVoiceoverSelection(from item: AVPlayerItem) {
         Task {
             guard let group = try? await item.asset.loadMediaSelectionGroup(for: .audible),
@@ -933,7 +956,10 @@ class PlayerViewModel: ObservableObject {
                 return
             }
             await MainActor.run {
-                persistVoiceoverSelection(selectedOption.displayName)
+                let trackName = selectedOption.displayName
+                if isValidTranslationOption(trackName) {
+                    persistVoiceoverSelection(trackName)
+                }
             }
         }
     }
