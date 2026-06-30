@@ -449,24 +449,49 @@ struct MoviePosterCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             let url = URL(string: movie.displayPosterUrl ?? "")
-            RemotePosterView(url: url)
+            
+            ZStack(alignment: .topLeading) {
+                RemotePosterView(url: url)
+                
+                if let rating = movie.rating, rating > 0 {
+                    Text(String(format: "%.1f", rating))
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 4)
+                        .background(Color.rating(rating))
+                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                        .padding(8)
+                        .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 1)
+                }
+            }
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(movie.displayTitle)
                     .font(.system(size: 14, weight: .semibold))
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .multilineTextAlignment(.leading)
+                    .foregroundColor(.primary)
 
-                if let rating = movie.rating, rating > 0 {
-                    HStack(spacing: 4) {
-                        Image(systemName: "star.fill")
-                            .foregroundColor(.rating(rating))
-                            .font(.system(size: 10))
-                        Text(String(format: "%.1f", rating))
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundColor(.rating(rating))
-                    }
+                let yearStr = movie.year?.stringValue
+                let genreStr = movie.genres?.first?.name?.capitalized
+                
+                if let y = yearStr, let g = genreStr {
+                    Text("\(y) • \(g)")
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                } else if let y = yearStr {
+                    Text(y)
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+                } else if let g = genreStr {
+                    Text(g)
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
                 }
             }
             .padding(.horizontal, 4)
