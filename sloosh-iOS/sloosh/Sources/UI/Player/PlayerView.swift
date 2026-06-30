@@ -20,14 +20,7 @@ class PlayerPresenterViewController: UIViewController {
     private var playerController: AVPlayerViewController?
     private var observation: NSKeyValueObservation?
     
-    override func viewWillAppear(_ animated: Bool) {
-        super.viewWillAppear(animated)
-        
-        if didPresent && (presentedViewController == nil || presentedViewController?.isBeingDismissed == true) {
-            handleDismissal()
-        }
-    }
-    
+
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
         
