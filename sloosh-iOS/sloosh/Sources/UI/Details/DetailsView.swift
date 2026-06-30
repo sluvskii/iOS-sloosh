@@ -1008,7 +1008,7 @@ class DetailsViewModel: ObservableObject {
         if isFavorite {
             FavoritesRepository.shared.removeFromFavorites(mediaId: mediaId, mediaType: mediaType)
         } else {
-            let year = details.releaseDate?.prefix(4).map(String.init)
+            let year = details.releaseDate.map { String($0.prefix(4)) }
             FavoritesRepository.shared.addToFavorites(
                 mediaId: mediaId,
                 mediaType: mediaType,

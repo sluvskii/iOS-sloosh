@@ -81,7 +81,7 @@ class FavoritesRepository: ObservableObject {
                     continue
                 }
 
-                let extractedYear = details.releaseDate?.prefix(4).map(String.init)
+                let extractedYear = details.releaseDate.map { String($0.prefix(4)) }
 
                 updatedFavorites[index] = FavoriteDto(
                     id: favorite.id,
