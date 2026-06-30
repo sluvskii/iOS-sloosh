@@ -430,8 +430,8 @@ struct DetailsView: View {
                         }
                         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                         .shadow(color: .black.opacity(0.4), radius: 12, x: 0, y: 8)
-                        .frame(width: geometry.size.width * 0.35)
-                        .padding(.leading, max(geometry.safeAreaInsets.leading, 32))
+                        .frame(maxWidth: geometry.size.width * 0.32, maxHeight: geometry.size.height - 48)
+                        .padding(.leading, 32)
                         .padding(.vertical, 24)
 
                         // Right Column: Details
@@ -467,11 +467,12 @@ struct DetailsView: View {
                                 }
                             }
                             .padding(.bottom, 24)
-                            .padding(.trailing, max(geometry.safeAreaInsets.trailing, 32))
+                            .padding(.trailing, 32)
                             .frame(maxWidth: .infinity, alignment: .leading)
                         }
                         .scrollIndicators(.hidden)
                     }
+                    .frame(width: geometry.size.width, height: geometry.size.height, alignment: .leading)
                     .transition(.opacity)
                 } else {
                     Text("Не удалось загрузить данные.")
@@ -623,8 +624,8 @@ private struct LandscapeDetailsSkeletonView: View {
                     .fill(Color.gray.opacity(0.2))
                     .aspectRatio(2/3, contentMode: .fit)
                     .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    .frame(width: geometry.size.width * 0.35)
-                    .padding(.leading, max(geometry.safeAreaInsets.leading, 32))
+                    .frame(maxWidth: geometry.size.width * 0.32, maxHeight: geometry.size.height - 48)
+                    .padding(.leading, 32)
                     .padding(.vertical, 24)
                     .shimmer()
                 
@@ -684,9 +685,10 @@ private struct LandscapeDetailsSkeletonView: View {
                 }
                 .shimmer()
                 .padding(.vertical, 24)
-                .padding(.trailing, max(geometry.safeAreaInsets.trailing, 32))
+                .padding(.trailing, 32)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .frame(width: geometry.size.width, height: geometry.size.height, alignment: .leading)
         }
     }
 }
