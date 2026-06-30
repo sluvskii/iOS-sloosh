@@ -515,6 +515,8 @@ struct MoviePosterCard: View {
             // Progressive blur at the bottom of the card
             Rectangle()
                 .fill(.ultraThinMaterial)
+                .padding(.horizontal, -2)
+                .padding(.bottom, -2)
                 .mask(
                     LinearGradient(
                         stops: [
@@ -537,6 +539,8 @@ struct MoviePosterCard: View {
                 startPoint: .top,
                 endPoint: .bottom
             )
+            .padding(.horizontal, -2)
+            .padding(.bottom, -2)
             
             // Metadata inside the poster
             VStack(alignment: .leading, spacing: 2) {
@@ -589,7 +593,7 @@ struct MoviePosterCard: View {
                 }
             }
         }
-        .aspectRatio(2/3, contentMode: .fit)
+        .aspectRatio(0.625, contentMode: .fit)
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }
