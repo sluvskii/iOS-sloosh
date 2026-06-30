@@ -40,26 +40,29 @@ struct RemoteBackdropView: View {
 struct RemoteLogoView: View {
     let url: URL?
     let fallbackTitle: String
+    var alignment: Alignment = .center
     
     var body: some View {
         AsyncCachedImage(url: url) {
             Text(fallbackTitle)
                 .font(.system(size: 34, weight: .heavy))
-                .multilineTextAlignment(.center)
-                .padding(.horizontal)
+                .multilineTextAlignment(alignment == .leading ? .leading : .center)
+                .padding(.horizontal, alignment == .center ? 16 : 0)
                 .shimmer()
+                .frame(maxWidth: .infinity, alignment: alignment)
         } content: { image in
             Image(uiImage: image)
                 .resizable()
                 .aspectRatio(contentMode: .fit)
-                .frame(maxWidth: 280, maxHeight: 110)
-                .padding(.horizontal)
+                .frame(maxWidth: 280, maxHeight: 110, alignment: alignment)
+                .padding(.horizontal, alignment == .center ? 16 : 0)
                 .shadow(color: .black.opacity(0.3), radius: 8, x: 0, y: 4)
         } fallback: {
             Text(fallbackTitle)
                 .font(.system(size: 34, weight: .heavy))
-                .multilineTextAlignment(.center)
-                .padding(.horizontal)
+                .multilineTextAlignment(alignment == .leading ? .leading : .center)
+                .padding(.horizontal, alignment == .center ? 16 : 0)
+                .frame(maxWidth: .infinity, alignment: alignment)
         }
     }
 }
@@ -239,7 +242,78 @@ struct DetailsView: View {
             }
     }
 
+    private func handlePlayAction(details: MediaDetailsDto) {
+        let generator = UIImpactFeedbackGenerator(style: .medium)
+        generator.prepare()
+        generator.impactOccurred()
+
+        guard let kpId = details.externalIds?.kp else { return }
+
+        sourceSheetTitle = details.title ?? details.name ?? ""
+        sourceSheetDetent = .medium
+        viewModel.resetSourceSheet()
+        showSourceSheet = true
+
+        sourceFetchTask?.cancel()
+        sourceFetchTask = Task {
+            await viewModel.fetchSources(kpId: kpId, title: sourceSheetTitle)
+        }
+    }
+
+    private func handleEpisodeSelection(details: MediaDetailsDto, season: Int, episode: Int) {
+        guard let kpId = details.externalIds?.kp else { return }
+
+        PlaybackProgressStore.shared.saveLastPlayed(
+            kpId: kpId,
+            season: season,
+            episode: episode
+        )
+
+        sourceSheetTitle = details.title ?? details.name ?? ""
+        sourceSheetDetent = .medium
+        viewModel.resetSourceSheet()
+        showSourceSheet = true
+
+        sourceFetchTask?.cancel()
+        sourceFetchTask = Task {
+            await viewModel.fetchSources(kpId: kpId, title: sourceSheetTitle)
+        }
+    }
+
+    private func playButton(for details: MediaDetailsDto) -> some View {
+        Button(action: {
+            handlePlayAction(details: details)
+        }) {
+            HStack {
+                Image(systemName: "play.fill")
+                    .font(.system(size: 18, weight: .black))
+                Text("Смотреть")
+                    .font(.system(size: 19, weight: .heavy))
+            }
+            .frame(height: 50)
+            .padding(.horizontal, 32)
+            .foregroundStyle(Color(UIColor.systemBackground))
+        }
+        .matchedTransitionSource(id: "playBtn", in: transition) { source in
+            source
+                .background(.primary)
+                .clipShape(RoundedRectangle(cornerRadius: 25, style: .continuous))
+        }
+        .contentShape(Capsule())
+        .buttonStyle(.plain)
+    }
+
     private var detailsContent: some View {
+        Group {
+            if verticalSizeClass == .compact {
+                landscapeDetailsContent
+            } else {
+                portraitDetailsContent
+            }
+        }
+    }
+
+    private var portraitDetailsContent: some View {
         ScrollView {
             VStack(spacing: 0) {
                 if viewModel.isLoading {
@@ -247,7 +321,7 @@ struct DetailsView: View {
                         .transition(.opacity)
                 } else if let details = viewModel.details {
                     // Stretchy Backdrop
-                    let baseHeight: CGFloat = verticalSizeClass == .compact ? 250 : 450
+                    let baseHeight: CGFloat = 450
                     
                     GeometryReader { geometry in
                         let minY = geometry.frame(in: .global).minY
@@ -259,7 +333,7 @@ struct DetailsView: View {
                             url: URL(string: details.displayBackdropUrl ?? ""),
                             fallbackUrl: URL(string: details.displayPosterUrl ?? ""),
                             width: geometry.size.width,
-                            height: height,
+                            height: height
                         )
                         .offset(y: offset)
                     }
@@ -268,7 +342,8 @@ struct DetailsView: View {
                     VStack(alignment: .center, spacing: 12) {
                         RemoteLogoView(
                             url: URL(string: details.displayLogoUrl ?? ""),
-                            fallbackTitle: details.title ?? details.name ?? "Без названия"
+                            fallbackTitle: details.title ?? details.name ?? "Без названия",
+                            alignment: .center
                         )
                         .padding(.bottom, 8)
 
@@ -281,45 +356,11 @@ struct DetailsView: View {
                                 .padding(.top, -8)
                         }
 
-                        DetailsPrimaryMetadataRow(details: details)
+                        DetailsPrimaryMetadataRow(details: details, alignment: .center)
 
-                        // Play Button
-                        Button(action: {
-                            let generator = UIImpactFeedbackGenerator(style: .medium)
-                            generator.prepare()
-                            generator.impactOccurred()
-
-                            guard let kpId = details.externalIds?.kp else { return }
-
-                            sourceSheetTitle = details.title ?? details.name ?? ""
-                            sourceSheetDetent = .medium
-                            viewModel.resetSourceSheet()
-                            showSourceSheet = true
-
-                            sourceFetchTask?.cancel()
-                            sourceFetchTask = Task {
-                                await viewModel.fetchSources(kpId: kpId, title: sourceSheetTitle)
-                            }
-                        }) {
-                            HStack {
-                                Image(systemName: "play.fill")
-                                    .font(.system(size: 18, weight: .black))
-                                Text("Смотреть")
-                                    .font(.system(size: 19, weight: .heavy))
-                            }
-                            .frame(height: 50)
-                            .padding(.horizontal, 32)
-                            .foregroundStyle(Color(UIColor.systemBackground))
-                        }
-                        .matchedTransitionSource(id: "playBtn", in: transition) { source in
-                            source
-                                .background(.primary)
-                                .clipShape(RoundedRectangle(cornerRadius: 25, style: .continuous))
-                        }
-                        .contentShape(Capsule())
-                        .buttonStyle(.plain)
-                        .padding(.top, 8)
-                        .padding(.bottom, -4)
+                        playButton(for: details)
+                            .padding(.top, 8)
+                            .padding(.bottom, -4)
 
                         DetailsInfoSection(details: details, backgroundColor: effectiveBackgroundColor)
                             .padding(.top, 20)
@@ -327,24 +368,7 @@ struct DetailsView: View {
 
                         if details.type == "tv" {
                             InlineEpisodesSection(viewModel: viewModel, details: details) { season, episode in
-                                guard let kpId = details.externalIds?.kp else { return }
-
-                                // To handle pre-selection, we can use a new state property in DetailsView or just save to progress store
-                                PlaybackProgressStore.shared.saveLastPlayed(
-                                    kpId: kpId,
-                                    season: season,
-                                    episode: episode
-                                )
-
-                                sourceSheetTitle = details.title ?? details.name ?? ""
-                                sourceSheetDetent = .medium
-                                viewModel.resetSourceSheet()
-                                showSourceSheet = true
-
-                                sourceFetchTask?.cancel()
-                                sourceFetchTask = Task {
-                                    await viewModel.fetchSources(kpId: kpId, title: sourceSheetTitle)
-                                }
+                                handleEpisodeSelection(details: details, season: season, episode: episode)
                             }
                             .padding(.top, 24)
                             .padding(.bottom, 20)
@@ -363,6 +387,100 @@ struct DetailsView: View {
         }
         .scrollIndicators(.hidden)
         .background(effectiveBackgroundColor)
+    }
+
+    private var landscapeDetailsContent: some View {
+        GeometryReader { geometry in
+            ZStack {
+                // Blurred Background
+                if let details = viewModel.details {
+                    AsyncCachedImage(url: URL(string: details.displayBackdropUrl ?? "")) {
+                        effectiveBackgroundColor
+                    } content: { image in
+                        Image(uiImage: image)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .blur(radius: 40)
+                            .overlay(Color.black.opacity(0.6))
+                            .overlay(effectiveBackgroundColor.opacity(0.5))
+                    } fallback: {
+                        effectiveBackgroundColor
+                    }
+                    .frame(width: geometry.size.width, height: geometry.size.height)
+                    .clipped()
+                    .ignoresSafeArea()
+                } else {
+                    effectiveBackgroundColor.ignoresSafeArea()
+                }
+
+                if viewModel.isLoading {
+                    LandscapeDetailsSkeletonView()
+                        .transition(.opacity)
+                } else if let details = viewModel.details {
+                    HStack(alignment: .top, spacing: 32) {
+                        // Left Column: Vertical Poster
+                        AsyncCachedImage(url: URL(string: details.displayPosterUrl ?? "")) {
+                            Rectangle().fill(Color.gray.opacity(0.2)).shimmer()
+                        } content: { image in
+                            Image(uiImage: image)
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                        } fallback: {
+                            Rectangle().fill(Color.gray.opacity(0.2))
+                        }
+                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .shadow(color: .black.opacity(0.4), radius: 12, x: 0, y: 8)
+                        .frame(width: geometry.size.width * 0.35)
+                        .padding(.leading, max(geometry.safeAreaInsets.leading, 32))
+                        .padding(.vertical, 24)
+
+                        // Right Column: Details
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 16) {
+                                RemoteLogoView(
+                                    url: URL(string: details.displayLogoUrl ?? ""),
+                                    fallbackTitle: details.title ?? details.name ?? "Без названия",
+                                    alignment: .leading
+                                )
+                                .padding(.top, 24)
+
+                                if let originalTitle = details.originalTitle, !originalTitle.isEmpty, originalTitle != (details.title ?? details.name) {
+                                    Text(originalTitle)
+                                        .font(.system(size: 16, weight: .medium))
+                                        .foregroundColor(.secondary)
+                                }
+
+                                DetailsPrimaryMetadataRow(details: details, alignment: .leading)
+
+                                playButton(for: details)
+                                    .padding(.top, 8)
+
+                                DetailsInfoSection(details: details, backgroundColor: .clear)
+                                    .padding(.top, 8)
+
+                                if details.type == "tv" {
+                                    InlineEpisodesSection(viewModel: viewModel, details: details) { season, episode in
+                                        handleEpisodeSelection(details: details, season: season, episode: episode)
+                                    }
+                                    .padding(.top, 16)
+                                    .padding(.bottom, 24)
+                                }
+                            }
+                            .padding(.bottom, 24)
+                            .padding(.trailing, max(geometry.safeAreaInsets.trailing, 32))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                        .scrollIndicators(.hidden)
+                    }
+                    .transition(.opacity)
+                } else {
+                    Text("Не удалось загрузить данные.")
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .transition(.opacity)
+                }
+            }
+            .animation(.easeInOut(duration: 0.35), value: viewModel.isLoading)
+        }
     }
 }
 
@@ -496,6 +614,83 @@ private struct DetailsSkeletonView: View {
     }
 }
 
+private struct LandscapeDetailsSkeletonView: View {
+    var body: some View {
+        GeometryReader { geometry in
+            HStack(alignment: .top, spacing: 32) {
+                // Left Column
+                Rectangle()
+                    .fill(Color.gray.opacity(0.2))
+                    .aspectRatio(2/3, contentMode: .fit)
+                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .frame(width: geometry.size.width * 0.35)
+                    .padding(.leading, max(geometry.safeAreaInsets.leading, 32))
+                    .padding(.vertical, 24)
+                    .shimmer()
+                
+                // Right Column
+                VStack(alignment: .leading, spacing: 16) {
+                    Rectangle()
+                        .fill(Color.gray.opacity(0.2))
+                        .frame(width: 240, height: 40)
+                        .cornerRadius(8)
+                    
+                    HStack(spacing: 16) {
+                        ForEach(0..<4) { _ in
+                            Rectangle()
+                                .fill(Color.gray.opacity(0.2))
+                                .frame(width: 40, height: 16)
+                                .cornerRadius(4)
+                        }
+                    }
+                    
+                    Capsule()
+                        .fill(Color.gray.opacity(0.2))
+                        .frame(width: 180, height: 50)
+                        .padding(.top, 8)
+                    
+                    VStack(alignment: .leading, spacing: 10) {
+                        Rectangle()
+                            .fill(Color.gray.opacity(0.2))
+                            .frame(width: 80, height: 20)
+                            .cornerRadius(4)
+                        
+                        HStack(spacing: 8) {
+                            ForEach(0..<3) { i in
+                                Capsule()
+                                    .fill(Color.gray.opacity(0.2))
+                                    .frame(width: CGFloat(60 + i * 20), height: 32)
+                            }
+                        }
+                    }
+                    .padding(.top, 16)
+                    
+                    VStack(alignment: .leading, spacing: 10) {
+                        Rectangle()
+                            .fill(Color.gray.opacity(0.2))
+                            .frame(width: 100, height: 20)
+                            .cornerRadius(4)
+                        
+                        VStack(alignment: .leading, spacing: 6) {
+                            ForEach(0..<4) { _ in
+                                Rectangle()
+                                    .fill(Color.gray.opacity(0.2))
+                                    .frame(height: 16)
+                                    .cornerRadius(4)
+                            }
+                        }
+                    }
+                    .padding(.top, 16)
+                }
+                .shimmer()
+                .padding(.vertical, 24)
+                .padding(.trailing, max(geometry.safeAreaInsets.trailing, 32))
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+    }
+}
+
 struct SourceSelectionLoadingView: View {
     let title: String
 
@@ -598,6 +793,7 @@ private struct SourceSelectionEmptyView: View {
 
 private struct DetailsPrimaryMetadataRow: View {
     let details: MediaDetailsDto
+    var alignment: HorizontalAlignment = .center
 
     var body: some View {
         HStack(spacing: 8) {
@@ -620,8 +816,9 @@ private struct DetailsPrimaryMetadataRow: View {
         }
         .font(.system(size: 15, weight: .semibold))
         .foregroundColor(.secondary)
-        .multilineTextAlignment(.center)
-        .padding(.horizontal)
+        .multilineTextAlignment(alignment == .leading ? .leading : .center)
+        .padding(.horizontal, alignment == .center ? 16 : 0)
+        .frame(maxWidth: .infinity, alignment: alignment == .center ? .center : .leading)
     }
 }
 
