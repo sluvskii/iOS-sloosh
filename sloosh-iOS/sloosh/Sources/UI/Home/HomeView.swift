@@ -175,7 +175,6 @@ struct HomeCategoryContentView: View {
                 LazyVGrid(columns: columns, spacing: 20) {
                     ForEach(items) { movie in
                         MovieDetailsNavigationLink(movie: movie, navigationTransition: navigationTransition)
-                            .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: 8, style: .continuous))
                             .contextMenu {
                                 Group {
                                     Button {
@@ -470,6 +469,8 @@ struct MoviePosterCard: View {
                     }
                 }
             }
+            .padding(.horizontal, 4)
+            .padding(.bottom, 2)
         }
     }
 }
