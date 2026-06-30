@@ -430,9 +430,9 @@ struct DetailsView: View {
                         }
                         .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                         .shadow(color: .black.opacity(0.4), radius: 12, x: 0, y: 8)
-                        .frame(maxWidth: geometry.size.width * 0.32, maxHeight: geometry.size.height - 48)
+                        .frame(maxWidth: geometry.size.width * 0.32, maxHeight: geometry.size.height - 24)
                         .padding(.leading, 32)
-                        .padding(.vertical, 24)
+                        .padding(.bottom, 24)
 
                         // Right Column: Details
                         ScrollView {
@@ -443,20 +443,25 @@ struct DetailsView: View {
                                     alignment: .leading
                                 )
                                 .padding(.top, 24)
+                                .padding(.trailing, 32)
 
                                 if let originalTitle = details.originalTitle, !originalTitle.isEmpty, originalTitle != (details.title ?? details.name) {
                                     Text(originalTitle)
                                         .font(.system(size: 16, weight: .medium))
                                         .foregroundColor(.secondary)
+                                        .padding(.trailing, 32)
                                 }
 
                                 DetailsPrimaryMetadataRow(details: details, alignment: .leading)
+                                    .padding(.trailing, 32)
 
                                 playButton(for: details)
                                     .padding(.top, 8)
+                                    .padding(.trailing, 32)
 
                                 DetailsInfoSection(details: details, backgroundColor: .clear)
                                     .padding(.top, 8)
+                                    .padding(.trailing, 32)
 
                                 if details.type == "tv" {
                                     InlineEpisodesSection(viewModel: viewModel, details: details) { season, episode in
@@ -467,7 +472,6 @@ struct DetailsView: View {
                                 }
                             }
                             .padding(.bottom, 24)
-                            .padding(.trailing, 32)
                             .frame(maxWidth: .infinity, alignment: .leading)
                         }
                         .scrollIndicators(.hidden)
@@ -624,9 +628,9 @@ private struct LandscapeDetailsSkeletonView: View {
                     .fill(Color.gray.opacity(0.2))
                     .aspectRatio(2/3, contentMode: .fit)
                     .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    .frame(maxWidth: geometry.size.width * 0.32, maxHeight: geometry.size.height - 48)
+                    .frame(maxWidth: geometry.size.width * 0.32, maxHeight: geometry.size.height - 24)
                     .padding(.leading, 32)
-                    .padding(.vertical, 24)
+                    .padding(.bottom, 24)
                     .shimmer()
                 
                 // Right Column
@@ -635,6 +639,7 @@ private struct LandscapeDetailsSkeletonView: View {
                         .fill(Color.gray.opacity(0.2))
                         .frame(width: 240, height: 40)
                         .cornerRadius(8)
+                        .padding(.trailing, 32)
                     
                     HStack(spacing: 16) {
                         ForEach(0..<4) { _ in
@@ -644,11 +649,13 @@ private struct LandscapeDetailsSkeletonView: View {
                                 .cornerRadius(4)
                         }
                     }
+                    .padding(.trailing, 32)
                     
                     Capsule()
                         .fill(Color.gray.opacity(0.2))
                         .frame(width: 180, height: 50)
                         .padding(.top, 8)
+                        .padding(.trailing, 32)
                     
                     VStack(alignment: .leading, spacing: 10) {
                         Rectangle()
@@ -665,6 +672,7 @@ private struct LandscapeDetailsSkeletonView: View {
                         }
                     }
                     .padding(.top, 16)
+                    .padding(.trailing, 32)
                     
                     VStack(alignment: .leading, spacing: 10) {
                         Rectangle()
@@ -682,10 +690,10 @@ private struct LandscapeDetailsSkeletonView: View {
                         }
                     }
                     .padding(.top, 16)
+                    .padding(.trailing, 32)
                 }
                 .shimmer()
                 .padding(.vertical, 24)
-                .padding(.trailing, 32)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .frame(width: geometry.size.width, height: geometry.size.height, alignment: .leading)
