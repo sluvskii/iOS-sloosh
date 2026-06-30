@@ -553,7 +553,7 @@ struct MoviePosterCard: View {
                     .lineLimit(movie.displayTitle.contains(" ") ? 2 : 1)
                     .tracking(-0.3)
                     .allowsTightening(true)
-                    .lineSpacing(-2.5)
+                    .lineHeight(.multiple(factor: 0.85))
                     .multilineTextAlignment(.leading)
                 
                 let yearStr = movie.year?.stringValue
