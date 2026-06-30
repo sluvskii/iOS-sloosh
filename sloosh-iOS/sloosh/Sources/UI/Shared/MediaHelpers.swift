@@ -1,15 +1,15 @@
-﻿import SwiftUI
+import SwiftUI
 
 // MARK: - Rating Color
 
 extension Color {
-    /// Цвет рейтинга: зелёный ≥7.5, жёлтый 5–7.5, красный <5.
+    /// Цвет рейтинга: зелёный ≥7.5, серый 5–7.5, красный <5.
     static func rating(_ value: Double) -> Color {
         switch value {
-        case 7.5...10.0: return .green
-        case 5.0..<7.5:  return .yellow
-        case 0.1..<5.0:  return .red
-        default:         return .secondary
+        case 7.5...10.0: return Color(red: 0.18, green: 0.65, blue: 0.27)
+        case 5.0..<7.5:  return Color(red: 0.50, green: 0.55, blue: 0.60)
+        case 0.1..<5.0:  return Color(red: 0.80, green: 0.20, blue: 0.20)
+        default:         return Color(red: 0.50, green: 0.55, blue: 0.60)
         }
     }
 }

@@ -455,14 +455,13 @@ struct MoviePosterCard: View {
                 
                 if let rating = movie.rating, rating > 0 {
                     Text(String(format: "%.1f", rating))
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.system(size: 13, weight: .heavy))
                         .foregroundColor(.white)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 4)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 3)
                         .background(Color.rating(rating))
                         .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                         .padding(8)
-                        .shadow(color: .black.opacity(0.3), radius: 2, x: 0, y: 1)
                 }
             }
 
