@@ -156,12 +156,18 @@ private struct ContinueWatchingItem: Identifiable {
             var finalUrlStr = urlStr
             if isLowQuality {
                 if finalUrlStr.contains("/backdrops/") && finalUrlStr.contains("/original") {
-                    finalUrlStr = finalUrlStr.replacingOccurrences(of: "/original", with: "/small")
+                    finalUrlStr = finalUrlStr.replacingOccurrences(of: "/original", with: "/large")
+                }
+                if finalUrlStr.contains("/backdrops/") && finalUrlStr.contains("/small") {
+                    finalUrlStr = finalUrlStr.replacingOccurrences(of: "/small", with: "/large")
                 }
                 if finalUrlStr.contains("/kp/") {
                     finalUrlStr = finalUrlStr.replacingOccurrences(of: "/kp/", with: "/kp_small/")
                 }
             } else {
+                if finalUrlStr.contains("/backdrops/") && finalUrlStr.contains("/large") {
+                    finalUrlStr = finalUrlStr.replacingOccurrences(of: "/large", with: "/original")
+                }
                 if finalUrlStr.contains("/backdrops/") && finalUrlStr.contains("/small") {
                     finalUrlStr = finalUrlStr.replacingOccurrences(of: "/small", with: "/original")
                 }
@@ -169,6 +175,8 @@ private struct ContinueWatchingItem: Identifiable {
                     finalUrlStr = finalUrlStr.replacingOccurrences(of: "/kp_small/", with: "/kp/")
                 }
             }
+            
+            finalUrlStr = adjustExternalImageUrl(urlStr: finalUrlStr, isLowQuality: isLowQuality)
             return URL(string: finalUrlStr)
         }
         return nil
