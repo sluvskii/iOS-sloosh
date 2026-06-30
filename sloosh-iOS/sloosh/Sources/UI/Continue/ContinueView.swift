@@ -4,100 +4,89 @@ struct ContinueView: View {
     @StateObject private var viewModel = ContinueViewModel()
 
     var body: some View {
-        GeometryReader { proxy in
-            let isLandscape = proxy.size.width > proxy.size.height
-            
-            NavigationStack {
-                Group {
-                    if viewModel.items.isEmpty && !viewModel.isLoading {
-                        ContinueEmptyState()
-                    } else {
-                        ScrollView {
-                            let columns = isLandscape ? [
-                                GridItem(.flexible(), spacing: 16),
-                                GridItem(.flexible(), spacing: 16)
-                            ] : [
-                                GridItem(.flexible(), spacing: 16)
-                            ]
-                            
-                            LazyVGrid(columns: columns, spacing: 16) {
-                                ForEach(viewModel.items) { item in
-                                    Button {
-                                        Task {
-                                            await viewModel.resume(item)
-                                        }
-                                    } label: {
-                                        ContinueWatchingCard(item: item)
+        NavigationStack {
+            Group {
+                if viewModel.items.isEmpty && !viewModel.isLoading {
+                    ContinueEmptyState()
+                } else {
+                    ScrollView {
+                        LazyVStack(spacing: 16) {
+                            ForEach(viewModel.items) { item in
+                                Button {
+                                    Task {
+                                        await viewModel.resume(item)
                                     }
-                                    .buttonStyle(ScaleButtonStyle())
-                                    .disabled(viewModel.isLaunching)
-                                    .contextMenu {
-                                        Group {
-                                            NavigationLink(destination: DetailsView(movieId: String(item.kpId), navigationTransitionID: nil, navigationTransitionNamespace: nil)) {
-                                                Label("Подробнее", systemImage: "info.circle")
-                                            }
-                                            Button {
-                                                viewModel.markAsWatched(item)
-                                            } label: {
-                                                Label("Отметить просмотренным", systemImage: "eye")
-                                            }
-                                            Button(role: .destructive) {
-                                                viewModel.removeFromHistory(item)
-                                            } label: {
-                                                Label("Удалить из истории", systemImage: "trash")
-                                            }
+                                } label: {
+                                    ContinueWatchingCard(item: item)
+                                }
+                                .buttonStyle(ScaleButtonStyle())
+                                .disabled(viewModel.isLaunching)
+                                .contextMenu {
+                                    Group {
+                                        NavigationLink(destination: DetailsView(movieId: String(item.kpId), navigationTransitionID: nil, navigationTransitionNamespace: nil)) {
+                                            Label("Подробнее", systemImage: "info.circle")
                                         }
-                                        .tint(nil)
+                                        Button {
+                                            viewModel.markAsWatched(item)
+                                        } label: {
+                                            Label("Отметить просмотренным", systemImage: "eye")
+                                        }
+                                        Button(role: .destructive) {
+                                            viewModel.removeFromHistory(item)
+                                        } label: {
+                                            Label("Удалить из истории", systemImage: "trash")
+                                        }
                                     }
+                                    .tint(nil)
                                 }
                             }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 12)
                         }
-                        .scrollIndicators(.hidden)
-                        .refreshable {
-                            await viewModel.reload(forceMetadataRefresh: true)
-                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                    }
+                    .scrollIndicators(.hidden)
+                    .refreshable {
+                        await viewModel.reload(forceMetadataRefresh: true)
                     }
                 }
-                .navigationTitle("Продолжить")
-                .overlay {
-                    if viewModel.isLoading && viewModel.items.isEmpty {
-                        ProgressView()
-                            .controlSize(.large)
-                    }
+            }
+            .navigationTitle("Продолжить")
+            .overlay {
+                if viewModel.isLoading && viewModel.items.isEmpty {
+                    ProgressView()
+                        .controlSize(.large)
                 }
-                .onAppear {
-                    Task {
-                        await viewModel.reload()
-                    }
+            }
+            .onAppear {
+                Task {
+                    await viewModel.reload()
                 }
-                .fullScreenCover(item: $viewModel.activePlayback, onDismiss: {
-                    Task {
-                        await viewModel.reload()
-                    }
-                }) { playback in
-                    PlayerView(
-                        iframeUrl: playback.iframeUrl,
-                        fallbackTitle: playback.title,
-                        kpId: playback.kpId,
-                        season: playback.season,
-                        episode: playback.episode,
-                        selectedVoiceover: playback.voiceover,
-                        directStreamUrl: playback.streamUrl,
-                        voices: [],
-                        subtitles: [],
-                        initialQuality: playback.initialQuality,
-                        seriesResult: playback.seriesResult
-                    )
+            }
+            .fullScreenCover(item: $viewModel.activePlayback, onDismiss: {
+                Task {
+                    await viewModel.reload()
                 }
-                .alert("Не удалось начать воспроизведение", isPresented: launchErrorBinding) {
-                    Button("OK", role: .cancel) {
-                        viewModel.launchErrorMessage = nil
-                    }
-                } message: {
-                    Text(viewModel.launchErrorMessage ?? "")
+            }) { playback in
+                PlayerView(
+                    iframeUrl: playback.iframeUrl,
+                    fallbackTitle: playback.title,
+                    kpId: playback.kpId,
+                    season: playback.season,
+                    episode: playback.episode,
+                    selectedVoiceover: playback.voiceover,
+                    directStreamUrl: playback.streamUrl,
+                    voices: [],
+                    subtitles: [],
+                    initialQuality: playback.initialQuality,
+                    seriesResult: playback.seriesResult
+                )
+            }
+            .alert("Не удалось начать воспроизведение", isPresented: launchErrorBinding) {
+                Button("OK", role: .cancel) {
+                    viewModel.launchErrorMessage = nil
                 }
+            } message: {
+                Text(viewModel.launchErrorMessage ?? "")
             }
         }
     }
