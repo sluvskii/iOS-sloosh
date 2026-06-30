@@ -170,10 +170,9 @@ struct SearchView: View {
                     directStreamUrl: config.streamUrl,
                     voices: config.voices,
                     subtitles: config.subtitles,
-                    quality: config.quality,
+                    initialQuality: config.quality,
                     seriesResult: config.seriesResult
                 )
-                .background(Color.black.edgesIgnoringSafeArea(.all))
             }
             .toolbar {
                 if viewModel.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !viewModel.history.isEmpty {
