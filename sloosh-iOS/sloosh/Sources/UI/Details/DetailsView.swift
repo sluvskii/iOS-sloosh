@@ -406,7 +406,7 @@ struct DetailsView: View {
                     } fallback: {
                         effectiveBackgroundColor
                     }
-                    .frame(width: geometry.size.width, height: geometry.size.height)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .clipped()
                     .ignoresSafeArea()
                 } else {
