@@ -513,25 +513,27 @@ struct MoviePosterCard: View {
             RemotePosterView(url: URL(string: movie.displayPosterUrl ?? ""))
             
             // Progressive blur at the bottom of the card
-            GeometryReader { geo in
-                VStack {
-                    Spacer()
-                    Rectangle()
-                        .fill(.ultraThinMaterial)
-                        .frame(height: geo.size.height * 0.45)
-                        .mask(
-                            LinearGradient(
-                                colors: [.clear, .black.opacity(0.8), .black],
-                                startPoint: .top,
-                                endPoint: .bottom
-                            )
-                        )
-                }
-            }
+            Rectangle()
+                .fill(.ultraThinMaterial)
+                .mask(
+                    LinearGradient(
+                        stops: [
+                            .init(color: .clear, location: 0.5),
+                            .init(color: .black.opacity(0.85), location: 0.8),
+                            .init(color: .black, location: 1.0)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
             
             // Additional dark gradient overlay for white text readability
             LinearGradient(
-                colors: [.clear, .black.opacity(0.4), .black.opacity(0.85)],
+                stops: [
+                    .init(color: .clear, location: 0.5),
+                    .init(color: .black.opacity(0.4), location: 0.8),
+                    .init(color: .black.opacity(0.85), location: 1.0)
+                ],
                 startPoint: .top,
                 endPoint: .bottom
             )
@@ -542,6 +544,8 @@ struct MoviePosterCard: View {
                     .font(.system(size: 13, weight: .bold))
                     .foregroundColor(.white)
                     .lineLimit(2)
+                    .minimumScaleFactor(0.8)
+                    .allowsTightening(true)
                     .multilineTextAlignment(.leading)
                 
                 let yearStr = movie.year?.stringValue
@@ -585,6 +589,7 @@ struct MoviePosterCard: View {
                 }
             }
         }
+        .aspectRatio(2/3, contentMode: .fit)
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }
