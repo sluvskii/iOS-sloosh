@@ -175,6 +175,7 @@ struct HomeCategoryContentView: View {
                 LazyVGrid(columns: columns, spacing: 20) {
                     ForEach(items) { movie in
                         MovieDetailsNavigationLink(movie: movie, navigationTransition: navigationTransition)
+                            .contentShape(.contextMenuPreview, RoundedRectangle(cornerRadius: 8, style: .continuous))
                             .contextMenu {
                                 Group {
                                     Button {
@@ -188,12 +189,6 @@ struct HomeCategoryContentView: View {
                                     }
                                 }
                                 .tint(nil)
-                            } preview: {
-                                MoviePosterCard(movie: movie)
-                                    .frame(width: 160)
-                                    .padding(16)
-                                    .background(Color(uiColor: .secondarySystemGroupedBackground))
-                                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                             }
                         .onAppear {
                             if movie.id == items.last?.id {
@@ -463,7 +458,6 @@ struct MoviePosterCard: View {
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .multilineTextAlignment(.leading)
-                    .frame(maxWidth: .infinity, alignment: .leading)
 
                 if let rating = movie.rating, rating > 0 {
                     HStack(spacing: 4) {
