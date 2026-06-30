@@ -460,7 +460,7 @@ struct MoviePosterCard: View {
                         .padding(.horizontal, 5)
                         .padding(.vertical, 3)
                         .background(Color.rating(rating))
-                        .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                         .padding(8)
                 }
             }
