@@ -424,21 +424,22 @@ private struct HomeEmptyState: View {
 
 struct RemotePosterView: View {
     let url: URL?
+    var cornerRadius: CGFloat = 12
     
     var body: some View {
         AsyncCachedImage(url: url) {
             Rectangle()
                 .fill(Color.gray.opacity(0.2))
                 .aspectRatio(2/3, contentMode: .fill)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
                 .shimmer()
         } content: { image in
             Image(uiImage: image)
                 .resizable()
                 .aspectRatio(2/3, contentMode: .fill)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         } fallback: {
-            FallbackPosterView()
+            FallbackPosterView(cornerRadius: cornerRadius)
         }
     }
 }
@@ -510,7 +511,7 @@ struct MoviePosterCard: View {
 
     private var overlayBody: some View {
         ZStack(alignment: .bottomLeading) {
-            RemotePosterView(url: URL(string: movie.displayPosterUrl ?? ""))
+            RemotePosterView(url: URL(string: movie.displayPosterUrl ?? ""), cornerRadius: 16)
             
             // Progressive blur at the bottom of the card
             Rectangle()
@@ -550,6 +551,7 @@ struct MoviePosterCard: View {
                     .lineLimit(2)
                     .minimumScaleFactor(0.8)
                     .allowsTightening(true)
+                    .lineSpacing(-2.5)
                     .multilineTextAlignment(.leading)
                 
                 let yearStr = movie.year?.stringValue
@@ -594,11 +596,13 @@ struct MoviePosterCard: View {
             }
         }
         .aspectRatio(0.625, contentMode: .fit)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 }
 
 struct FallbackPosterView: View {
+    var cornerRadius: CGFloat = 12
+    
     var body: some View {
         ZStack {
             Color.clear
@@ -607,7 +611,7 @@ struct FallbackPosterView: View {
                 .foregroundColor(.secondary.opacity(0.65))
         }
         .aspectRatio(2/3, contentMode: .fill)
-        .glassEffect(in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .glassEffect(in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
     }
 }
 
