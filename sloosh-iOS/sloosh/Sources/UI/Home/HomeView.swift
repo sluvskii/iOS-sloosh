@@ -188,6 +188,9 @@ struct HomeCategoryContentView: View {
                                     }
                                 }
                                 .tint(nil)
+                            } preview: {
+                                MoviePosterCard(movie: movie)
+                                    .frame(width: 140)
                             }
                         .onAppear {
                             if movie.id == items.last?.id {
