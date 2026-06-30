@@ -85,13 +85,27 @@ struct SearchView: View {
                         LazyVGrid(columns: columns, spacing: 20) {
                             ForEach(viewModel.results) { movie in
                                 MovieDetailsNavigationLink(movie: movie, navigationTransition: navigationTransition)
-                                .onAppear {
-                                    if movie.id == viewModel.results.last?.id {
-                                        Task {
-                                            await viewModel.loadNextPage()
+                                    .contextMenu {
+                                        Group {
+                                            Button {
+                                                viewModel.directPlaybackMovie = movie
+                                            } label: {
+                                                Label("Смотреть", systemImage: "play.fill")
+                                            }
+                                            
+                                            NavigationLink(destination: DetailsView(movieId: movie.id, navigationTransitionID: nil, navigationTransitionNamespace: nil)) {
+                                                Label("Подробнее", systemImage: "info.circle")
+                                            }
+                                        }
+                                        .tint(nil)
+                                    }
+                                    .onAppear {
+                                        if movie.id == viewModel.results.last?.id {
+                                            Task {
+                                                await viewModel.loadNextPage()
+                                            }
                                         }
                                     }
-                                }
                             }
 
                             if viewModel.isAppending {
@@ -133,6 +147,34 @@ struct SearchView: View {
             }
             .navigationTitle("Поиск")
             .searchable(text: $viewModel.searchQuery, prompt: "Фильмы и сериалы...")
+            .sheet(item: $viewModel.directPlaybackMovie) { movie in
+                let kpId = movie.externalIds?.kp ?? Int(movie.id) ?? 0
+                HomeDirectPlayWrapper(
+                    kpId: kpId,
+                    title: movie.title ?? movie.name ?? movie.originalTitle ?? ""
+                ) { config in
+                    viewModel.directPlaybackMovie = nil
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                        viewModel.playerConfig = config
+                    }
+                }
+            }
+            .fullScreenCover(item: $viewModel.playerConfig) { config in
+                PlayerView(
+                    iframeUrl: config.iframeUrl,
+                    fallbackTitle: config.title,
+                    kpId: config.kpId,
+                    season: config.season,
+                    episode: config.episode,
+                    selectedVoiceover: config.voiceover,
+                    directStreamUrl: config.streamUrl,
+                    voices: config.voices,
+                    subtitles: config.subtitles,
+                    quality: config.quality,
+                    seriesResult: config.seriesResult
+                )
+                .background(Color.black.edgesIgnoringSafeArea(.all))
+            }
             .toolbar {
                 if viewModel.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !viewModel.history.isEmpty {
                     ToolbarItem(placement: .topBarTrailing) {
@@ -178,6 +220,8 @@ class SearchViewModel: ObservableObject {
     @Published var error: String?
     @Published var page = 1
     @Published var totalPages = 1
+    @Published var directPlaybackMovie: MediaDto? = nil
+    @Published var playerConfig: PlayerConfig? = nil
 
     private let historyKey = "search_history"
     private let maxHistory = 5
