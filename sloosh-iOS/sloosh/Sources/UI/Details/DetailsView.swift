@@ -141,9 +141,12 @@ struct DetailsView: View {
     }
     
     var body: some View {
-        ZStack {
-            detailsContent
-        }
+        GeometryReader { proxy in
+            let isLandscape = proxy.size.width > proxy.size.height
+            
+            ZStack {
+                detailsContent(isLandscape: isLandscape)
+            }
             .optionalMovieNavigationTransition(
                 sourceID: navigationTransitionID,
                 in: navigationTransitionNamespace
@@ -235,130 +238,236 @@ struct DetailsView: View {
                     }
                 }
             }
+        }
     }
 
-    private var detailsContent: some View {
+    private func detailsContent(isLandscape: Bool) -> some View {
+        Group {
+            if viewModel.isLoading {
+                DetailsSkeletonView(backgroundColor: effectiveBackgroundColor)
+                    .transition(.opacity)
+            } else if let details = viewModel.details {
+                if isLandscape {
+                    landscapeDetailsContent(details: details)
+                } else {
+                    portraitDetailsContent(details: details)
+                }
+            } else {
+                Text("Не удалось загрузить данные.")
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .padding(.top, 100)
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeInOut(duration: 0.35), value: viewModel.isLoading)
+    }
+
+    private func portraitDetailsContent(details: MediaDetailsDto) -> some View {
         ScrollView {
             VStack(spacing: 0) {
-                if viewModel.isLoading {
-                    DetailsSkeletonView(backgroundColor: effectiveBackgroundColor)
-                        .transition(.opacity)
-                } else if let details = viewModel.details {
-                    // Stretchy Backdrop
-                    GeometryReader { geometry in
-                        let minY = geometry.frame(in: .global).minY
-                        let isScrollingDown = minY > 0
-                        let height = isScrollingDown ? 450 + minY : 450
-                        let offset = isScrollingDown ? -minY : 0
+                // Stretchy Backdrop
+                GeometryReader { geometry in
+                    let minY = geometry.frame(in: .global).minY
+                    let isScrollingDown = minY > 0
+                    let height = isScrollingDown ? 450 + minY : 450
+                    let offset = isScrollingDown ? -minY : 0
 
-                        RemoteBackdropView(
-                            url: URL(string: details.displayBackdropUrl ?? ""),
-                            fallbackUrl: URL(string: details.displayPosterUrl ?? ""),
-                            width: geometry.size.width,
-                            height: height,
-                        )
-                        .offset(y: offset)
-                    }
-                    .frame(height: 450)
-
-                    VStack(alignment: .center, spacing: 12) {
-                        RemoteLogoView(
-                            url: URL(string: details.displayLogoUrl ?? ""),
-                            fallbackTitle: details.title ?? details.name ?? "Без названия"
-                        )
-                        .padding(.bottom, 8)
-
-                        if let originalTitle = details.originalTitle, !originalTitle.isEmpty, originalTitle != (details.title ?? details.name) {
-                            Text(originalTitle)
-                                .font(.system(size: 16, weight: .medium))
-                                .foregroundColor(.secondary)
-                                .multilineTextAlignment(.center)
-                                .padding(.horizontal)
-                                .padding(.top, -8)
-                        }
-
-                        DetailsPrimaryMetadataRow(details: details)
-
-                        // Play Button
-                        Button(action: {
-                            let generator = UIImpactFeedbackGenerator(style: .medium)
-                            generator.prepare()
-                            generator.impactOccurred()
-
-                            guard let kpId = details.externalIds?.kp else { return }
-
-                            sourceSheetTitle = details.title ?? details.name ?? ""
-                            sourceSheetDetent = .medium
-                            viewModel.resetSourceSheet()
-                            showSourceSheet = true
-
-                            sourceFetchTask?.cancel()
-                            sourceFetchTask = Task {
-                                await viewModel.fetchSources(kpId: kpId, title: sourceSheetTitle)
-                            }
-                        }) {
-                            HStack {
-                                Image(systemName: "play.fill")
-                                    .font(.system(size: 18, weight: .black))
-                                Text("Смотреть")
-                                    .font(.system(size: 19, weight: .heavy))
-                            }
-                            .frame(height: 50)
-                            .padding(.horizontal, 32)
-                            .foregroundStyle(Color(UIColor.systemBackground))
-                        }
-                        .matchedTransitionSource(id: "playBtn", in: transition) { source in
-                            source
-                                .background(.primary)
-                                .clipShape(RoundedRectangle(cornerRadius: 25, style: .continuous))
-                        }
-                        .contentShape(Capsule())
-                        .buttonStyle(.plain)
-                        .padding(.top, 8)
-                        .padding(.bottom, -4)
-
-                        DetailsInfoSection(details: details, backgroundColor: effectiveBackgroundColor)
-                            .padding(.top, 20)
-                            .padding(.horizontal)
-
-                        if details.type == "tv" {
-                            InlineEpisodesSection(viewModel: viewModel, details: details) { season, episode in
-                                guard let kpId = details.externalIds?.kp else { return }
-
-                                // To handle pre-selection, we can use a new state property in DetailsView or just save to progress store
-                                PlaybackProgressStore.shared.saveLastPlayed(
-                                    kpId: kpId,
-                                    season: season,
-                                    episode: episode
-                                )
-
-                                sourceSheetTitle = details.title ?? details.name ?? ""
-                                sourceSheetDetent = .medium
-                                viewModel.resetSourceSheet()
-                                showSourceSheet = true
-
-                                sourceFetchTask?.cancel()
-                                sourceFetchTask = Task {
-                                    await viewModel.fetchSources(kpId: kpId, title: sourceSheetTitle)
-                                }
-                            }
-                            .padding(.top, 24)
-                            .padding(.bottom, 20)
-                        }
-                    }
-                    .offset(y: -80)
-                    .transition(.opacity)
-                } else {
-                    Text("Не удалось загрузить данные.")
-                        .frame(maxWidth: .infinity, alignment: .center)
-                        .padding(.top, 100)
-                        .transition(.opacity)
+                    RemoteBackdropView(
+                        url: URL(string: details.displayBackdropUrl ?? ""),
+                        fallbackUrl: URL(string: details.displayPosterUrl ?? ""),
+                        width: geometry.size.width,
+                        height: height,
+                    )
+                    .offset(y: offset)
                 }
+                .frame(height: 450)
+
+                VStack(alignment: .center, spacing: 12) {
+                    RemoteLogoView(
+                        url: URL(string: details.displayLogoUrl ?? ""),
+                        fallbackTitle: details.title ?? details.name ?? "Без названия"
+                    )
+                    .padding(.bottom, 8)
+
+                    if let originalTitle = details.originalTitle, !originalTitle.isEmpty, originalTitle != (details.title ?? details.name) {
+                        Text(originalTitle)
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
+                            .padding(.top, -8)
+                    }
+
+                    DetailsPrimaryMetadataRow(details: details)
+
+                    // Play Button
+                    playButton(details: details)
+
+                    DetailsInfoSection(details: details, backgroundColor: effectiveBackgroundColor)
+                        .padding(.top, 20)
+                        .padding(.horizontal)
+
+                    if details.type == "tv" {
+                        InlineEpisodesSection(viewModel: viewModel, details: details) { season, episode in
+                            playEpisode(details: details, season: season, episode: episode)
+                        }
+                        .padding(.top, 24)
+                        .padding(.bottom, 20)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .offset(y: -80)
+                .transition(.opacity)
             }
-            .animation(.easeInOut(duration: 0.35), value: viewModel.isLoading)
         }
         .scrollIndicators(.hidden)
         .background(effectiveBackgroundColor)
+    }
+
+    private func landscapeDetailsContent(details: MediaDetailsDto) -> some View {
+        HStack(spacing: 0) {
+            // Left Pane: Backdrop/Poster + Logo + Play Button
+            ZStack(alignment: .bottom) {
+                // Background Backdrop with progressive blur
+                if let backdropUrlStr = details.displayBackdropUrl, let backdropUrl = URL(string: backdropUrlStr) {
+                    AsyncCachedImage(url: backdropUrl) {
+                        Rectangle().fill(Color.gray.opacity(0.15))
+                    } content: { image in
+                        Image(uiImage: image)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                    } fallback: {
+                        Rectangle().fill(Color.gray.opacity(0.15))
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .clipped()
+                } else if let posterUrlStr = details.displayPosterUrl, let posterUrl = URL(string: posterUrlStr) {
+                    AsyncCachedImage(url: posterUrl) {
+                        Rectangle().fill(Color.gray.opacity(0.15))
+                    } content: { image in
+                        Image(uiImage: image)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                    } fallback: {
+                        Rectangle().fill(Color.gray.opacity(0.15))
+                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .clipped()
+                }
+                
+                // Dark progressive gradient overlay for readability
+                LinearGradient(
+                    colors: [.clear, .black.opacity(0.3), .black.opacity(0.92)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                
+                VStack(spacing: 12) {
+                    Spacer()
+                    
+                    RemoteLogoView(
+                        url: URL(string: details.displayLogoUrl ?? ""),
+                        fallbackTitle: details.title ?? details.name ?? "Без названия"
+                    )
+                    
+                    if let originalTitle = details.originalTitle, !originalTitle.isEmpty, originalTitle != (details.title ?? details.name) {
+                        Text(originalTitle)
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
+                    }
+                    
+                    // Play Button
+                    playButton(details: details)
+                        .padding(.bottom, 16)
+                }
+            }
+            .frame(width: 320)
+            .frame(maxHeight: .infinity)
+            .ignoresSafeArea(edges: .vertical)
+            
+            // Right Pane: Scrollable details metadata and episodes
+            ScrollView {
+                VStack(alignment: .leading, spacing: 18) {
+                    DetailsPrimaryMetadataRow(details: details)
+                        .padding(.top, 24)
+                    
+                    DetailsInfoSection(details: details, backgroundColor: effectiveBackgroundColor)
+                    
+                    if details.type == "tv" {
+                        InlineEpisodesSection(viewModel: viewModel, details: details) { season, episode in
+                            playEpisode(details: details, season: season, episode: episode)
+                        }
+                        .padding(.bottom, 24)
+                    }
+                }
+                .padding(.horizontal, 24)
+            }
+            .scrollIndicators(.hidden)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .background(effectiveBackgroundColor)
+    }
+
+    @ViewBuilder
+    private func playButton(details: MediaDetailsDto) -> some View {
+        Button(action: {
+            let generator = UIImpactFeedbackGenerator(style: .medium)
+            generator.prepare()
+            generator.impactOccurred()
+
+            guard let kpId = details.externalIds?.kp else { return }
+
+            sourceSheetTitle = details.title ?? details.name ?? ""
+            sourceSheetDetent = .medium
+            viewModel.resetSourceSheet()
+            showSourceSheet = true
+
+            sourceFetchTask?.cancel()
+            sourceFetchTask = Task {
+                await viewModel.fetchSources(kpId: kpId, title: sourceSheetTitle)
+            }
+        }) {
+            HStack {
+                Image(systemName: "play.fill")
+                    .font(.system(size: 18, weight: .black))
+                Text("Смотреть")
+                    .font(.system(size: 19, weight: .heavy))
+            }
+            .frame(height: 50)
+            .padding(.horizontal, 32)
+            .foregroundStyle(Color(UIColor.systemBackground))
+        }
+        .matchedTransitionSource(id: "playBtn", in: transition) { source in
+            source
+                .background(.primary)
+                .clipShape(RoundedRectangle(cornerRadius: 25, style: .continuous))
+        }
+        .contentShape(Capsule())
+        .buttonStyle(.plain)
+        .padding(.top, 8)
+        .padding(.bottom, -4)
+    }
+
+    private func playEpisode(details: MediaDetailsDto, season: Int, episode: Int) {
+        guard let kpId = details.externalIds?.kp else { return }
+
+        PlaybackProgressStore.shared.saveLastPlayed(
+            kpId: kpId,
+            season: season,
+            episode: episode
+        )
+
+        sourceSheetTitle = details.title ?? details.name ?? ""
+        sourceSheetDetent = .medium
+        viewModel.resetSourceSheet()
+        showSourceSheet = true
+
+        sourceFetchTask?.cancel()
+        sourceFetchTask = Task {
+            await viewModel.fetchSources(kpId: kpId, title: sourceSheetTitle)
+        }
     }
 }
 
