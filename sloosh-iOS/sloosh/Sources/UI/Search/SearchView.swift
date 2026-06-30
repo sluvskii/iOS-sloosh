@@ -82,7 +82,7 @@ struct SearchView: View {
                     )
                 } else {
                     ScrollView {
-                        LazyVGrid(columns: columns, spacing: 20) {
+                        LazyVGrid(columns: columns, spacing: 16) {
                             ForEach(viewModel.results) { movie in
                                 MovieDetailsNavigationLink(movie: movie, navigationTransition: navigationTransition)
                                     .contextMenu {

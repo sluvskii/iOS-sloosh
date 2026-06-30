@@ -29,7 +29,7 @@ struct FavoritesView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     ScrollView {
-                        LazyVGrid(columns: columns, spacing: 20) {
+                        LazyVGrid(columns: columns, spacing: 16) {
                             ForEach(favoritesRepo.favorites) { favorite in
                                 let media = favorite.toMediaDto()
                                 MovieDetailsNavigationLink(movie: media, navigationTransition: navigationTransition)
