@@ -432,7 +432,8 @@ struct DetailsView: View {
                         .shadow(color: .black.opacity(0.4), radius: 12, x: 0, y: 8)
                         .frame(maxWidth: geometry.size.width * 0.32, maxHeight: geometry.size.height - 48)
                         .padding(.leading, 32)
-                        .padding(.vertical, 24)
+                        .padding(.top, 0)
+                        .padding(.bottom, 24)
 
                         // Right Column: Details
                         ScrollView {
@@ -630,7 +631,8 @@ private struct LandscapeDetailsSkeletonView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                     .frame(maxWidth: geometry.size.width * 0.32, maxHeight: geometry.size.height - 48)
                     .padding(.leading, 32)
-                    .padding(.vertical, 24)
+                    .padding(.top, 0)
+                    .padding(.bottom, 24)
                     .shimmer()
                 
                 // Right Column
