@@ -36,6 +36,7 @@ public struct AsyncCachedImage<Placeholder: View, Content: View, Fallback: View>
     @ViewBuilder public let placeholder: () -> Placeholder
     @ViewBuilder public let content: (UIImage) -> Content
     @ViewBuilder public let fallback: () -> Fallback
+    public var isExternalLoading: Binding<Bool>? = nil
     
     @State private var image: UIImage?
     @State private var isLoading = false
@@ -45,6 +46,7 @@ public struct AsyncCachedImage<Placeholder: View, Content: View, Fallback: View>
         url: URL?,
         fallbackUrl: URL? = nil,
         cachePolicy: URLRequest.CachePolicy = .returnCacheDataElseLoad,
+        isExternalLoading: Binding<Bool>? = nil,
         @ViewBuilder placeholder: @escaping () -> Placeholder,
         @ViewBuilder content: @escaping (UIImage) -> Content,
         @ViewBuilder fallback: @escaping () -> Fallback
@@ -52,6 +54,7 @@ public struct AsyncCachedImage<Placeholder: View, Content: View, Fallback: View>
         self.url = url
         self.fallbackUrl = fallbackUrl
         self.cachePolicy = cachePolicy
+        self.isExternalLoading = isExternalLoading
         self.placeholder = placeholder
         self.content = content
         self.fallback = fallback
@@ -91,6 +94,9 @@ public struct AsyncCachedImage<Placeholder: View, Content: View, Fallback: View>
         }
         .task(id: url) {
             await loadImage()
+        }
+        .onChange(of: isLoading, initial: true) { _, newValue in
+            isExternalLoading?.wrappedValue = newValue
         }
     }
     
