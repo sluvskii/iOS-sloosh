@@ -188,6 +188,12 @@ struct HomeCategoryContentView: View {
                                     }
                                 }
                                 .tint(nil)
+                            } preview: {
+                                MoviePosterCard(movie: movie)
+                                    .frame(width: 160)
+                                    .padding(16)
+                                    .background(Color(uiColor: .secondarySystemGroupedBackground))
+                                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                             }
                         .onAppear {
                             if movie.id == items.last?.id {
