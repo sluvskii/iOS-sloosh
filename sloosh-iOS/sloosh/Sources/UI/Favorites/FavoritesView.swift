@@ -3,10 +3,13 @@ import SwiftUI
 struct FavoritesView: View {
     @StateObject private var favoritesRepo = FavoritesRepository.shared
     @Namespace private var navigationTransition
+    @AppStorage("cardDensity") private var cardDensity: CardDensity = .regular
     
-    let columns = [
-        GridItem(.adaptive(minimum: 105), spacing: 16)
-    ]
+    private var columns: [GridItem] {
+        let spacing: CGFloat = cardDensity == .compact ? 8 : 16
+        let minWidth: CGFloat = cardDensity == .compact ? 95 : 105
+        return [GridItem(.adaptive(minimum: minWidth), spacing: spacing)]
+    }
     
     var body: some View {
         NavigationStack {
@@ -29,7 +32,9 @@ struct FavoritesView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     ScrollView {
-                        LazyVGrid(columns: columns, spacing: 20) {
+                        let spacing: CGFloat = cardDensity == .compact ? 8 : 16
+                        let padding: CGFloat = cardDensity == .compact ? 12 : 16
+                        LazyVGrid(columns: columns, spacing: spacing) {
                             ForEach(favoritesRepo.favorites) { favorite in
                                 let media = favorite.toMediaDto()
                                 MovieDetailsNavigationLink(movie: media, navigationTransition: navigationTransition)
@@ -44,7 +49,7 @@ struct FavoritesView: View {
                                 }
                             }
                         }
-                        .padding(16)
+                        .padding(padding)
                     }
                 }
             }

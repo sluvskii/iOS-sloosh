@@ -4,10 +4,13 @@ import Combine
 struct SearchView: View {
     @StateObject private var viewModel = SearchViewModel()
     @Namespace private var navigationTransition
+    @AppStorage("cardDensity") private var cardDensity: CardDensity = .regular
 
-    private let columns = [
-        GridItem(.adaptive(minimum: 105), spacing: 16)
-    ]
+    private var columns: [GridItem] {
+        let spacing: CGFloat = cardDensity == .compact ? 8 : 16
+        let minWidth: CGFloat = cardDensity == .compact ? 95 : 105
+        return [GridItem(.adaptive(minimum: minWidth), spacing: spacing)]
+    }
 
     var body: some View {
         NavigationStack {
@@ -82,7 +85,9 @@ struct SearchView: View {
                     )
                 } else {
                     ScrollView {
-                        LazyVGrid(columns: columns, spacing: 20) {
+                        let spacing: CGFloat = cardDensity == .compact ? 8 : 16
+                        let padding: CGFloat = cardDensity == .compact ? 12 : 16
+                        LazyVGrid(columns: columns, spacing: spacing) {
                             ForEach(viewModel.results) { movie in
                                 MovieDetailsNavigationLink(movie: movie, navigationTransition: navigationTransition)
                                     .contextMenu {
@@ -114,7 +119,7 @@ struct SearchView: View {
                                 }
                             }
                         }
-                        .padding(16)
+                        .padding(padding)
 
                         if viewModel.totalPages > 1 {
                             HStack(spacing: 12) {

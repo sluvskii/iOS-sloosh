@@ -5,6 +5,7 @@ struct SettingsView: View {
     @AppStorage("autoplayNextEpisode") private var autoplayNextEpisode = true
     @AppStorage("tabBarShowsLabels") private var tabBarShowsLabels = false
     @AppStorage("cardStyle") private var cardStyle: CardStyle = .classic
+    @AppStorage("cardDensity") private var cardDensity: CardDensity = .regular
     @State private var tabBarShowsLabelsDraft = false
     @State private var applyTabBarLabelsTask: Task<Void, Never>?
     
@@ -16,6 +17,12 @@ struct SettingsView: View {
                 Picker("Стиль карточек", selection: $cardStyle) {
                     ForEach(CardStyle.allCases) { style in
                         Text(style.title).tag(style)
+                    }
+                }
+                
+                Picker("Сетка карточек", selection: $cardDensity) {
+                    ForEach(CardDensity.allCases) { density in
+                        Text(density.title).tag(density)
                     }
                 }
             }

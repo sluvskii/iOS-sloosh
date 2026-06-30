@@ -279,3 +279,17 @@ enum CardStyle: String, CaseIterable, Identifiable {
         }
     }
 }
+
+enum CardDensity: String, CaseIterable, Identifiable {
+    case regular = "regular"
+    case compact = "compact"
+    
+    var id: String { rawValue }
+    
+    var title: String {
+        switch self {
+        case .regular: return "Стандартная"
+        case .compact: return "Компактная"
+        }
+    }
+}
