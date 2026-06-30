@@ -23,10 +23,13 @@ struct ProfileView: View {
     @State private var selectedCategory: FavoriteCategory = .all
     @SceneStorage("profileShowsSettings") private var showsSettings = false
     @Namespace private var navigationTransition
+    @AppStorage("cardDensity") private var cardDensity: CardDensity = .regular
     
-    let columns = [
-        GridItem(.adaptive(minimum: 105), spacing: 16)
-    ]
+    private var columns: [GridItem] {
+        let spacing: CGFloat = cardDensity == .compact ? 8 : 16
+        let minWidth: CGFloat = cardDensity == .compact ? 95 : 105
+        return [GridItem(.adaptive(minimum: minWidth), spacing: spacing)]
+    }
 
     private func favorites(for category: FavoriteCategory) -> [FavoriteDto] {
         switch category {
@@ -88,7 +91,9 @@ struct ProfileView: View {
                             .frame(maxWidth: .infinity)
                             .frame(minHeight: max(geometry.size.height - 180, 320))
                         } else {
-                            LazyVGrid(columns: columns, spacing: 20) {
+                            let spacing: CGFloat = cardDensity == .compact ? 8 : 16
+                            let padding: CGFloat = cardDensity == .compact ? 12 : 16
+                            LazyVGrid(columns: columns, spacing: spacing) {
                                 ForEach(filteredFavorites) { favorite in
                                     let media = favorite.toMediaDto()
                                     MovieDetailsNavigationLink(movie: media, navigationTransition: navigationTransition)
@@ -103,7 +108,7 @@ struct ProfileView: View {
                                     }
                                 }
                             }
-                            .padding(.horizontal, 16)
+                            .padding(.horizontal, padding)
                         }
                     }
                     .frame(minHeight: geometry.size.height, alignment: .top)
