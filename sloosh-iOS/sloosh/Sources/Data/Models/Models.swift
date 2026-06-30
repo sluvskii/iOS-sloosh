@@ -220,6 +220,8 @@ struct FavoriteDto: Codable, Identifiable {
     let title: String?
     let posterUrl: String?
     let rating: Double?
+    let year: String?
+    let genres: [GenreDto]?
     
     // Mapping to MediaDto for UI reuse
     func toMediaDto() -> MediaDto {
@@ -227,12 +229,12 @@ struct FavoriteDto: Codable, Identifiable {
             originalId: .string(mediaId ?? UUID().uuidString),
             title: title,
             originalTitle: nil,
-            year: nil,
+            year: year != nil ? .string(year!) : nil,
             rating: rating,
             posterUrl: posterUrl,
             description: nil,
             type: type,
-            genres: nil,
+            genres: genres,
             externalIds: nil,
             name: title,
             poster_path: posterUrl

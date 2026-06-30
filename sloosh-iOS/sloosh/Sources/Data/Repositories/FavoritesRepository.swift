@@ -33,7 +33,7 @@ class FavoritesRepository: ObservableObject {
         return favorites.contains { $0.mediaId == mediaId && $0.type == mediaType }
     }
     
-    func addToFavorites(mediaId: String, mediaType: String, title: String?, posterUrl: String?, rating: Double?) {
+    func addToFavorites(mediaId: String, mediaType: String, title: String?, posterUrl: String?, rating: Double?, year: String? = nil, genres: [GenreDto]? = nil) {
         if !isFavorite(mediaId: mediaId, mediaType: mediaType) {
             let newFav = FavoriteDto(
                 id: UUID().uuidString,
@@ -41,7 +41,9 @@ class FavoritesRepository: ObservableObject {
                 type: mediaType,
                 title: title,
                 posterUrl: posterUrl,
-                rating: rating
+                rating: rating,
+                year: year,
+                genres: genres
             )
             favorites.append(newFav)
             saveFavorites()
@@ -55,7 +57,7 @@ class FavoritesRepository: ObservableObject {
 
     private func refreshMissingMetadataIfNeeded() {
         let needsRefresh = favorites.contains {
-            ($0.rating == nil || $0.rating == 0) && ($0.mediaId?.isEmpty == false)
+            (($0.rating == nil || $0.rating == 0 || $0.year == nil || $0.genres == nil) && ($0.mediaId?.isEmpty == false))
         }
 
         guard needsRefresh else { return }
@@ -72,12 +74,14 @@ class FavoritesRepository: ObservableObject {
         for index in updatedFavorites.indices {
             let favorite = updatedFavorites[index]
             guard let mediaId = favorite.mediaId, !mediaId.isEmpty else { continue }
-            guard favorite.rating == nil || favorite.rating == 0 else { continue }
+            guard favorite.rating == nil || favorite.rating == 0 || favorite.year == nil || favorite.genres == nil else { continue }
 
             do {
                 guard let details = try await MoviesRepository.shared.getDetails(id: mediaId) else {
                     continue
                 }
+
+                let extractedYear = details.releaseDate?.prefix(4).map(String.init)
 
                 updatedFavorites[index] = FavoriteDto(
                     id: favorite.id,
@@ -85,7 +89,9 @@ class FavoritesRepository: ObservableObject {
                     type: favorite.type,
                     title: favorite.title ?? details.title ?? details.name,
                     posterUrl: favorite.posterUrl ?? details.posterUrl ?? details.backdropUrl,
-                    rating: details.rating
+                    rating: details.rating ?? favorite.rating,
+                    year: extractedYear ?? favorite.year,
+                    genres: details.genres ?? favorite.genres
                 )
                 didChange = true
             } catch {
