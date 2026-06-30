@@ -457,7 +457,6 @@ struct MoviePosterCard: View {
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .multilineTextAlignment(.leading)
-                    .frame(maxWidth: .infinity, alignment: .leading)
 
                 if let rating = movie.rating, rating > 0 {
                     HStack(spacing: 4) {
