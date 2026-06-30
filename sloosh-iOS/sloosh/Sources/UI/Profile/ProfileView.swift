@@ -88,7 +88,7 @@ struct ProfileView: View {
                             .frame(maxWidth: .infinity)
                             .frame(minHeight: max(geometry.size.height - 180, 320))
                         } else {
-                            LazyVGrid(columns: columns, spacing: 20) {
+                            LazyVGrid(columns: columns, spacing: 16) {
                                 ForEach(filteredFavorites) { favorite in
                                     let media = favorite.toMediaDto()
                                     MovieDetailsNavigationLink(movie: media, navigationTransition: navigationTransition)
