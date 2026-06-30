@@ -6,6 +6,7 @@ struct SettingsView: View {
     @AppStorage("tabBarShowsLabels") private var tabBarShowsLabels = false
     @AppStorage("cardStyle") private var cardStyle: CardStyle = .classic
     @AppStorage("cardDensity") private var cardDensity: CardDensity = .regular
+    @AppStorage("posterQuality") private var posterQuality: PosterQuality = .high
     @State private var tabBarShowsLabelsDraft = false
     @State private var applyTabBarLabelsTask: Task<Void, Never>?
     
@@ -23,6 +24,12 @@ struct SettingsView: View {
                 Picker("Сетка карточек", selection: $cardDensity) {
                     ForEach(CardDensity.allCases) { density in
                         Text(density.title).tag(density)
+                    }
+                }
+                
+                Picker("Качество постеров", selection: $posterQuality) {
+                    ForEach(PosterQuality.allCases) { quality in
+                        Text(quality.title).tag(quality)
                     }
                 }
             }

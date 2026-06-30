@@ -115,8 +115,22 @@ struct MediaDto: Codable, Identifiable {
 
 func normalizeImageUrl(path: String?, id: String? = nil) -> String? {
     let baseUrl = "https://api.neome.uk"
+    let isLowQuality = UserDefaults.standard.string(forKey: "posterQuality") == "low"
     
-    if let val = path?.trimmingCharacters(in: .whitespacesAndNewlines), !val.isEmpty {
+    var rawUrl = path
+    if let url = rawUrl {
+        if isLowQuality {
+            if url.contains("/kp/") {
+                rawUrl = url.replacingOccurrences(of: "/kp/", with: "/kp_small/")
+            }
+        } else {
+            if url.contains("/kp_small/") {
+                rawUrl = url.replacingOccurrences(of: "/kp_small/", with: "/kp/")
+            }
+        }
+    }
+    
+    if let val = rawUrl?.trimmingCharacters(in: .whitespacesAndNewlines), !val.isEmpty {
         if val.hasPrefix("http://") || val.hasPrefix("https://") {
             return val.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? val
         }
@@ -129,10 +143,12 @@ func normalizeImageUrl(path: String?, id: String? = nil) -> String? {
     }
     
     // Fallback to ID-based poster if no valid path was found
-    guard let validId = id, validId.allSatisfy({ $0.isNumber }) else {
+    let sanitizedId = id?.replacingOccurrences(of: "kp_", with: "")
+    guard let validId = sanitizedId, validId.allSatisfy({ $0.isNumber }) else {
         return nil
     }
-    return "\(baseUrl)/api/v1/images/kp_small/\(validId)?fallback=true"
+    let qualityPath = isLowQuality ? "kp_small" : "kp"
+    return "\(baseUrl)/api/v1/images/\(qualityPath)/\(validId)?fallback=true"
 }
 
 struct MediaDetailsDto: Codable {
@@ -158,8 +174,10 @@ struct MediaDetailsDto: Codable {
     }
     
     var displayBackdropUrl: String? {
+        let isLowQuality = UserDefaults.standard.string(forKey: "posterQuality") == "low"
         guard let validId = id?.replacingOccurrences(of: "kp_", with: ""), !validId.isEmpty else { return nil }
-        return "https://api.neome.uk/api/v1/images/backdrops/\(validId)/original"
+        let size = isLowQuality ? "small" : "original"
+        return "https://api.neome.uk/api/v1/images/backdrops/\(validId)/\(size)"
     }
     
     var previewBackdropUrl: String? {
@@ -290,6 +308,20 @@ enum CardDensity: String, CaseIterable, Identifiable {
         switch self {
         case .regular: return "Стандартная"
         case .compact: return "Компактная"
+        }
+    }
+}
+
+enum PosterQuality: String, CaseIterable, Identifiable {
+    case high = "high"
+    case low = "low"
+    
+    var id: String { rawValue }
+    
+    var title: String {
+        switch self {
+        case .high: return "Высокое"
+        case .low: return "Низкое"
         }
     }
 }
