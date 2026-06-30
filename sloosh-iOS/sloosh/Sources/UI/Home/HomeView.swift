@@ -188,9 +188,6 @@ struct HomeCategoryContentView: View {
                                     }
                                 }
                                 .tint(nil)
-                            } preview: {
-                                MoviePosterCard(movie: movie)
-                                    .frame(width: 140)
                             }
                         .onAppear {
                             if movie.id == items.last?.id {
@@ -460,6 +457,7 @@ struct MoviePosterCard: View {
                     .lineLimit(1)
                     .truncationMode(.tail)
                     .multilineTextAlignment(.leading)
+                    .frame(maxWidth: .infinity, alignment: .leading)
 
                 if let rating = movie.rating, rating > 0 {
                     HStack(spacing: 4) {
