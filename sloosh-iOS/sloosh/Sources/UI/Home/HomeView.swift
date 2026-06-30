@@ -422,12 +422,21 @@ private struct HomeEmptyState: View {
     }
 }
 
-struct RemotePosterView: View {
+struct RemotePosterView<Overlay: View>: View {
     let url: URL?
     var cornerRadius: CGFloat = 12
+    @Binding var isLoading: Bool
+    let overlay: () -> Overlay
+    
+    init(url: URL?, cornerRadius: CGFloat = 12, isLoading: Binding<Bool> = .constant(false), @ViewBuilder overlay: @escaping () -> Overlay) {
+        self.url = url
+        self.cornerRadius = cornerRadius
+        self._isLoading = isLoading
+        self.overlay = overlay
+    }
     
     var body: some View {
-        AsyncCachedImage(url: url) {
+        AsyncCachedImage(url: url, isExternalLoading: $isLoading) {
             Rectangle()
                 .fill(Color.gray.opacity(0.2))
                 .aspectRatio(2/3, contentMode: .fill)
@@ -438,9 +447,24 @@ struct RemotePosterView: View {
                 .resizable()
                 .aspectRatio(2/3, contentMode: .fill)
                 .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+                .overlay {
+                    overlay()
+                }
         } fallback: {
             FallbackPosterView(cornerRadius: cornerRadius)
+                .overlay {
+                    overlay()
+                }
         }
+    }
+}
+
+extension RemotePosterView where Overlay == EmptyView {
+    init(url: URL?, cornerRadius: CGFloat = 12, isLoading: Binding<Bool> = .constant(false)) {
+        self.url = url
+        self.cornerRadius = cornerRadius
+        self._isLoading = isLoading
+        self.overlay = { EmptyView() }
     }
 }
 
@@ -512,87 +536,87 @@ struct MoviePosterCard: View {
     }
 
     private var overlayBody: some View {
-        ZStack(alignment: .bottomLeading) {
-            RemotePosterView(url: URL(string: movie.displayPosterUrl ?? ""), cornerRadius: 16)
-            
-            // Progressive blur at the bottom of the card
-            Rectangle()
-                .fill(.ultraThinMaterial)
+        RemotePosterView(url: URL(string: movie.displayPosterUrl ?? ""), cornerRadius: 16) {
+            ZStack(alignment: .bottomLeading) {
+                // Progressive blur at the bottom of the card
+                Rectangle()
+                    .fill(.ultraThinMaterial)
+                    .padding(.horizontal, -2)
+                    .padding(.bottom, -2)
+                    .mask(
+                        LinearGradient(
+                            stops: [
+                                .init(color: .clear, location: 0.5),
+                                .init(color: .black.opacity(0.85), location: 0.8),
+                                .init(color: .black, location: 1.0)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                
+                // Additional dark gradient overlay for white text readability
+                LinearGradient(
+                    stops: [
+                        .init(color: .clear, location: 0.5),
+                        .init(color: .black.opacity(0.4), location: 0.8),
+                        .init(color: .black.opacity(0.85), location: 1.0)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
                 .padding(.horizontal, -2)
                 .padding(.bottom, -2)
-                .mask(
-                    LinearGradient(
-                        stops: [
-                            .init(color: .clear, location: 0.5),
-                            .init(color: .black.opacity(0.85), location: 0.8),
-                            .init(color: .black, location: 1.0)
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-            
-            // Additional dark gradient overlay for white text readability
-            LinearGradient(
-                stops: [
-                    .init(color: .clear, location: 0.5),
-                    .init(color: .black.opacity(0.4), location: 0.8),
-                    .init(color: .black.opacity(0.85), location: 1.0)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .padding(.horizontal, -2)
-            .padding(.bottom, -2)
-            
-            // Metadata inside the poster
-            VStack(alignment: .leading, spacing: 1) {
-                Text(movie.displayTitle)
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundColor(.white)
-                    .lineLimit(movie.displayTitle.contains(" ") ? 2 : 1)
-                    .tracking(-0.3)
-                    .allowsTightening(true)
-                    .multilineTextAlignment(.leading)
                 
-                let yearStr = movie.year?.stringValue
-                let genreStr = movie.genres?.first?.name?.capitalized
-                
-                if let y = yearStr, let g = genreStr {
-                    Text("\(y) • \(g)")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.8))
-                        .lineLimit(1)
-                } else if let y = yearStr {
-                    Text(y)
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.8))
-                        .lineLimit(1)
-                } else if let g = genreStr {
-                    Text(g)
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(.white.opacity(0.8))
-                        .lineLimit(1)
+                // Metadata inside the poster
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(movie.displayTitle)
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(.white)
+                        .lineLimit(movie.displayTitle.contains(" ") ? 2 : 1)
+                        .tracking(-0.3)
+                        .allowsTightening(true)
+                        .multilineTextAlignment(.leading)
+                    
+                    let yearStr = movie.year?.stringValue
+                    let genreStr = movie.genres?.first?.name?.capitalized
+                    
+                    if let y = yearStr, let g = genreStr {
+                        Text("\(y) • \(g)")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.8))
+                            .lineLimit(1)
+                    } else if let y = yearStr {
+                        Text(y)
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.8))
+                            .lineLimit(1)
+                    } else if let g = genreStr {
+                        Text(g)
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(.white.opacity(0.8))
+                            .lineLimit(1)
+                    }
                 }
-            }
-            .padding(.horizontal, 10)
-            .padding(.bottom, 10)
-            
-            // Rating overlay on top-left of the poster
-            if let rating = movie.rating, rating > 0 {
-                VStack {
-                    HStack {
-                        Text(String(format: "%.1f", rating))
-                            .font(.system(size: 12, weight: .heavy))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 3)
-                            .background(Color.rating(rating))
-                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                            .padding(8)
+                .padding(.horizontal, 10)
+                .padding(.bottom, 10)
+                
+                // Rating overlay on top-left of the poster
+                if let rating = movie.rating, rating > 0 {
+                    VStack {
+                        HStack {
+                            Text(String(format: "%.1f", rating))
+                                .font(.system(size: 12, weight: .heavy))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 3)
+                                .background(Color.rating(rating))
+                                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                                .padding(8)
+                            Spacer()
+                        }
                         Spacer()
                     }
-                    Spacer()
                 }
             }
         }
@@ -617,27 +641,38 @@ struct FallbackPosterView: View {
 }
 
 struct MoviePosterCardPlaceholder: View {
+    @AppStorage("cardStyle") private var cardStyle: CardStyle = .classic
+    
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        switch cardStyle {
+        case .classic:
+            VStack(alignment: .leading, spacing: 8) {
+                Rectangle()
+                    .fill(Color.gray.opacity(0.2))
+                    .aspectRatio(2/3, contentMode: .fill)
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .shimmer()
+                
+                VStack(alignment: .leading, spacing: 4) {
+                    Rectangle()
+                        .fill(Color.gray.opacity(0.2))
+                        .frame(height: 14)
+                        .cornerRadius(4)
+                        .shimmer()
+                        
+                    Rectangle()
+                        .fill(Color.gray.opacity(0.2))
+                        .frame(width: 50, height: 14)
+                        .cornerRadius(4)
+                        .shimmer()
+                }
+            }
+        case .overlay:
             Rectangle()
                 .fill(Color.gray.opacity(0.2))
-                .aspectRatio(2/3, contentMode: .fill)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .aspectRatio(0.625, contentMode: .fit)
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                 .shimmer()
-            
-            VStack(alignment: .leading, spacing: 4) {
-                Rectangle()
-                    .fill(Color.gray.opacity(0.2))
-                    .frame(height: 14)
-                    .cornerRadius(4)
-                    .shimmer()
-                    
-                Rectangle()
-                    .fill(Color.gray.opacity(0.2))
-                    .frame(width: 50, height: 14)
-                    .cornerRadius(4)
-                    .shimmer()
-            }
         }
     }
 }
