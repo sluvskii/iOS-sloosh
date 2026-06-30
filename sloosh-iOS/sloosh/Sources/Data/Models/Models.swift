@@ -265,3 +265,17 @@ enum VideoQualityPreference: String, CaseIterable, Identifiable {
         }
     }
 }
+
+enum CardStyle: String, CaseIterable, Identifiable {
+    case classic = "classic"
+    case overlay = "overlay"
+    
+    var id: String { rawValue }
+    
+    var title: String {
+        switch self {
+        case .classic: return "Классический"
+        case .overlay: return "Инфо внутри постера"
+        }
+    }
+}

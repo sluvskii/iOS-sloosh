@@ -4,6 +4,7 @@ struct SettingsView: View {
     @AppStorage("preferredVideoQuality") private var preferredQuality: VideoQualityPreference = .ask
     @AppStorage("autoplayNextEpisode") private var autoplayNextEpisode = true
     @AppStorage("tabBarShowsLabels") private var tabBarShowsLabels = false
+    @AppStorage("cardStyle") private var cardStyle: CardStyle = .classic
     @State private var tabBarShowsLabelsDraft = false
     @State private var applyTabBarLabelsTask: Task<Void, Never>?
     
@@ -11,6 +12,12 @@ struct SettingsView: View {
         List {
             Section("Интерфейс") {
                 Toggle("Показывать подписи вкладок", isOn: $tabBarShowsLabelsDraft)
+                
+                Picker("Стиль карточек", selection: $cardStyle) {
+                    ForEach(CardStyle.allCases) { style in
+                        Text(style.title).tag(style)
+                    }
+                }
             }
 
             Section("Воспроизведение") {
