@@ -113,21 +113,51 @@ struct MediaDto: Codable, Identifiable {
     }
 }
 
+func adjustExternalImageUrl(urlStr: String, isLowQuality: Bool) -> String {
+    var result = urlStr
+    
+    // 1. Kinopoisk (Yandex Avatars)
+    if result.contains("get-kinopoisk-image") || result.contains("mds.yandex.net") {
+        if let lastSlashIndex = result.lastIndex(of: "/") {
+            let base = result[..<lastSlashIndex]
+            let suffix = isLowQuality ? "300x450" : "orig"
+            result = String(base) + "/" + suffix
+        }
+    }
+    
+    // 2. TMDB
+    else if result.contains("image.tmdb.org/t/p/") {
+        if isLowQuality {
+            result = result.replacingOccurrences(of: "/original/", with: "/w342/")
+            result = result.replacingOccurrences(of: "/w500/", with: "/w342/")
+        } else {
+            result = result.replacingOccurrences(of: "/w342/", with: "/w500/")
+        }
+    }
+    
+    // 3. Backend Kinopoisk proxy (/kp/ -> /kp_small/)
+    else {
+        if isLowQuality {
+            if result.contains("/kp/") {
+                result = result.replacingOccurrences(of: "/kp/", with: "/kp_small/")
+            }
+        } else {
+            if result.contains("/kp_small/") {
+                result = result.replacingOccurrences(of: "/kp_small/", with: "/kp/")
+            }
+        }
+    }
+    
+    return result
+}
+
 func normalizeImageUrl(path: String?, id: String? = nil) -> String? {
     let baseUrl = "https://api.neome.uk"
     let isLowQuality = UserDefaults.standard.string(forKey: "posterQuality") == "low"
     
     var rawUrl = path
     if let url = rawUrl {
-        if isLowQuality {
-            if url.contains("/kp/") {
-                rawUrl = url.replacingOccurrences(of: "/kp/", with: "/kp_small/")
-            }
-        } else {
-            if url.contains("/kp_small/") {
-                rawUrl = url.replacingOccurrences(of: "/kp_small/", with: "/kp/")
-            }
-        }
+        rawUrl = adjustExternalImageUrl(urlStr: url, isLowQuality: isLowQuality)
     }
     
     if let val = rawUrl?.trimmingCharacters(in: .whitespacesAndNewlines), !val.isEmpty {
@@ -176,7 +206,7 @@ struct MediaDetailsDto: Codable {
     var displayBackdropUrl: String? {
         let isLowQuality = UserDefaults.standard.string(forKey: "posterQuality") == "low"
         guard let validId = id?.replacingOccurrences(of: "kp_", with: ""), !validId.isEmpty else { return nil }
-        let size = isLowQuality ? "small" : "original"
+        let size = isLowQuality ? "large" : "original"
         return "https://api.neome.uk/api/v1/images/backdrops/\(validId)/\(size)"
     }
     
