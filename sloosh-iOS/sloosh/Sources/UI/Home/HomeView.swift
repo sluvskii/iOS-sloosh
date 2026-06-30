@@ -546,14 +546,13 @@ struct MoviePosterCard: View {
             .padding(.bottom, -2)
             
             // Metadata inside the poster
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: 1) {
                 Text(movie.displayTitle)
                     .font(.system(size: 13, weight: .bold))
                     .foregroundColor(.white)
                     .lineLimit(movie.displayTitle.contains(" ") ? 2 : 1)
                     .tracking(-0.3)
                     .allowsTightening(true)
-                    .lineHeight(.multiple(factor: 0.85))
                     .multilineTextAlignment(.leading)
                 
                 let yearStr = movie.year?.stringValue
