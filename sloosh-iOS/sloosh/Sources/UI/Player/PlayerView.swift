@@ -16,8 +16,17 @@ class PlayerPresenterViewController: UIViewController {
     
     var onDismiss: (() -> Void)?
     private var didPresent = false
+    private var isDismissed = false
     private var playerController: AVPlayerViewController?
     private var observation: NSKeyValueObservation?
+    
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        
+        if didPresent && (presentedViewController == nil || presentedViewController?.isBeingDismissed == true) {
+            handleDismissal()
+        }
+    }
     
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
@@ -64,6 +73,9 @@ class PlayerPresenterViewController: UIViewController {
     }
     
     private func handleDismissal() {
+        guard !isDismissed else { return }
+        isDismissed = true
+        
         // Restore orientation
         AppDelegate.orientationLock = .all
         if #available(iOS 16.0, *) {
@@ -108,6 +120,14 @@ struct ModalPlayerPresenter: UIViewControllerRepresentable {
                 }
             }
         }
+        
+        // Make the parent SwiftUI UIHostingController view transparent
+        DispatchQueue.main.async { [weak controller] in
+            guard let controller = controller else { return }
+            controller.parent?.view.backgroundColor = .clear
+            controller.view.superview?.backgroundColor = .clear
+        }
+        
         return controller
     }
     
@@ -150,7 +170,11 @@ struct PlayerView: View {
     
     var body: some View {
         ZStack {
-            Color.black.edgesIgnoringSafeArea(.all)
+            if viewModel.isLoading || viewModel.error != nil {
+                Color.black.edgesIgnoringSafeArea(.all)
+            } else {
+                Color.clear.edgesIgnoringSafeArea(.all)
+            }
             
             if let error = viewModel.error {
                 VStack(spacing: 16) {
