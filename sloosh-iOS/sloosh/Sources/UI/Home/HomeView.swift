@@ -445,8 +445,18 @@ struct RemotePosterView: View {
 
 struct MoviePosterCard: View {
     let movie: MediaDto
+    @AppStorage("cardStyle") private var cardStyle: CardStyle = .classic
 
     var body: some View {
+        switch cardStyle {
+        case .classic:
+            classicBody
+        case .overlay:
+            overlayBody
+        }
+    }
+
+    private var classicBody: some View {
         VStack(alignment: .leading, spacing: 8) {
             let url = URL(string: movie.displayPosterUrl ?? "")
             
@@ -496,6 +506,86 @@ struct MoviePosterCard: View {
             .padding(.horizontal, 4)
             .padding(.bottom, 2)
         }
+    }
+
+    private var overlayBody: some View {
+        ZStack(alignment: .bottomLeading) {
+            RemotePosterView(url: URL(string: movie.displayPosterUrl ?? ""))
+            
+            // Progressive blur at the bottom of the card
+            GeometryReader { geo in
+                VStack {
+                    Spacer()
+                    Rectangle()
+                        .fill(.ultraThinMaterial)
+                        .frame(height: geo.size.height * 0.45)
+                        .mask(
+                            LinearGradient(
+                                colors: [.clear, .black.opacity(0.8), .black],
+                                startPoint: .top,
+                                endPoint: .bottom
+                            )
+                        )
+                }
+            }
+            
+            // Additional dark gradient overlay for white text readability
+            LinearGradient(
+                colors: [.clear, .black.opacity(0.4), .black.opacity(0.85)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            
+            // Metadata inside the poster
+            VStack(alignment: .leading, spacing: 2) {
+                Text(movie.displayTitle)
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(.white)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                
+                let yearStr = movie.year?.stringValue
+                let genreStr = movie.genres?.first?.name?.capitalized
+                
+                if let y = yearStr, let g = genreStr {
+                    Text("\(y) • \(g)")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.8))
+                        .lineLimit(1)
+                } else if let y = yearStr {
+                    Text(y)
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.8))
+                        .lineLimit(1)
+                } else if let g = genreStr {
+                    Text(g)
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(.white.opacity(0.8))
+                        .lineLimit(1)
+                }
+            }
+            .padding(.horizontal, 10)
+            .padding(.bottom, 10)
+            
+            // Rating overlay on top-left of the poster
+            if let rating = movie.rating, rating > 0 {
+                VStack {
+                    HStack {
+                        Text(String(format: "%.1f", rating))
+                            .font(.system(size: 12, weight: .heavy))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 3)
+                            .background(Color.rating(rating))
+                            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            .padding(8)
+                        Spacer()
+                    }
+                    Spacer()
+                }
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }
 
