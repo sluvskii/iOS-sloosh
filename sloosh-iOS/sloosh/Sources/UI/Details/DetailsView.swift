@@ -290,12 +290,13 @@ struct DetailsView: View {
             }
             .frame(height: 50)
             .padding(.horizontal, 32)
-            .foregroundStyle(Color(UIColor.systemBackground))
+            .foregroundStyle(.primary)
+            .glassEffect(in: Capsule())
         }
         .matchedTransitionSource(id: "playBtn", in: transition) { source in
             source
-                .background(.primary)
-                .clipShape(RoundedRectangle(cornerRadius: 25, style: .continuous))
+                .background(.ultraThinMaterial)
+                .clipShape(Capsule())
         }
         .contentShape(Capsule())
         .buttonStyle(.plain)
