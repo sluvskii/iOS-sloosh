@@ -290,16 +290,15 @@ struct DetailsView: View {
             }
             .frame(height: 50)
             .padding(.horizontal, 32)
-            .foregroundStyle(.primary)
-            .glassEffect(in: Capsule())
         }
+        .buttonStyle(.glassProminent)
+        .tint(.white)
         .matchedTransitionSource(id: "playBtn", in: transition) { source in
             source
                 .background(.clear)
                 .clipShape(RoundedRectangle(cornerRadius: 25))
         }
         .contentShape(Capsule())
-        .buttonStyle(.plain)
     }
 
     private var detailsContent: some View {
