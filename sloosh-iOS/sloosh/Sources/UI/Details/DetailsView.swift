@@ -405,10 +405,11 @@ struct DetailsView: View {
                             Image(uiImage: image)
                                 .resizable()
                                 .aspectRatio(contentMode: .fill)
+                                .offset(x: -50)
                         } fallback: {
                             Rectangle().fill(Color.clear)
                         }
-                        .frame(width: geometry.size.width * 0.55, height: geometry.size.height)
+                        .frame(width: geometry.size.width * 0.65, height: geometry.size.height)
                         .clipped()
                         .mask(
                             LinearGradient(
@@ -428,7 +429,7 @@ struct DetailsView: View {
                         // Right Column: Details Content
                         HStack(spacing: 0) {
                             Spacer()
-                                .frame(width: geometry.size.width * 0.45)
+                                .frame(width: geometry.size.width * 0.38)
 
                             ScrollView {
                                 VStack(alignment: .leading, spacing: 16) {
@@ -470,7 +471,7 @@ struct DetailsView: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                             }
                             .scrollIndicators(.hidden)
-                            .frame(width: geometry.size.width * 0.55)
+                            .frame(width: geometry.size.width * 0.62)
                         }
                     }
                     .frame(width: geometry.size.width, height: geometry.size.height, alignment: .leading)
@@ -624,7 +625,7 @@ private struct LandscapeDetailsSkeletonView: View {
                 // Left Column / Backdrop skeleton
                 Rectangle()
                     .fill(Color.gray.opacity(0.15))
-                    .frame(width: geometry.size.width * 0.55, height: geometry.size.height)
+                    .frame(width: geometry.size.width * 0.65, height: geometry.size.height)
                     .mask(
                         LinearGradient(
                             gradient: Gradient(colors: [
@@ -643,7 +644,7 @@ private struct LandscapeDetailsSkeletonView: View {
                 // Right Column skeleton
                 HStack(spacing: 0) {
                     Spacer()
-                        .frame(width: geometry.size.width * 0.45)
+                        .frame(width: geometry.size.width * 0.38)
                     
                     VStack(alignment: .leading, spacing: 16) {
                         Rectangle()
@@ -706,7 +707,7 @@ private struct LandscapeDetailsSkeletonView: View {
                     .padding(.top, geometry.safeAreaInsets.top + 48)
                     .padding(.bottom, 24 + geometry.safeAreaInsets.bottom)
                     .padding(.trailing, geometry.safeAreaInsets.trailing + 24)
-                    .frame(width: geometry.size.width * 0.55, alignment: .leading)
+                    .frame(width: geometry.size.width * 0.62, alignment: .leading)
                 }
             }
         }
