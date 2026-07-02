@@ -152,7 +152,7 @@ struct DetailsView: View {
             )
             .environment(\.colorScheme, .dark)
             .toolbarColorScheme(.dark, for: .navigationBar)
-            .ignoresSafeArea(edges: verticalSizeClass == .compact ? .all : .top)
+            .ignoresSafeArea(edges: .top)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(id: "details") {
                 ToolbarItem(id: "favorite", placement: .topBarTrailing) {
@@ -388,104 +388,74 @@ struct DetailsView: View {
     }
 
     private var landscapeDetailsContent: some View {
-        GeometryReader { geometry in
-            ZStack {
-                effectiveBackgroundColor.ignoresSafeArea()
-
+        ScrollView {
+            VStack(spacing: 0) {
                 if viewModel.isLoading {
-                    LandscapeDetailsSkeletonView()
+                    DetailsSkeletonView(backgroundColor: effectiveBackgroundColor)
                         .transition(.opacity)
                 } else if let details = viewModel.details {
-                    ZStack(alignment: .leading) {
-                        // Left Backdrop Image with fade out to the right
-                        AsyncCachedImage(url: URL(string: details.displayBackdropUrl ?? ""), fallbackUrl: URL(string: details.displayPosterUrl ?? "")) {
-                            Rectangle().fill(Color.gray.opacity(0.2))
-                                .shimmer()
-                        } content: { image in
-                            Image(uiImage: image)
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                                .scaleEffect(1.2)
-                                .offset(x: -60)
-                        } fallback: {
-                            Rectangle().fill(Color.clear)
-                        }
-                        .frame(width: geometry.size.width * 0.50, height: geometry.size.height)
-                        .clipped()
-                        .mask(
-                            LinearGradient(
-                                gradient: Gradient(colors: [
-                                    .black,
-                                    .black.opacity(0.85),
-                                    .black.opacity(0.55),
-                                    .black.opacity(0.2),
-                                    .clear
-                                ]),
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
+                    let baseHeight: CGFloat = 280
+                    
+                    GeometryReader { geometry in
+                        let minY = geometry.frame(in: .global).minY
+                        let isScrollingDown = minY > 0
+                        let height = isScrollingDown ? baseHeight + minY : baseHeight
+                        let offset = isScrollingDown ? -minY : 0
+
+                        RemoteBackdropView(
+                            url: URL(string: details.displayBackdropUrl ?? ""),
+                            fallbackUrl: URL(string: details.displayPosterUrl ?? ""),
+                            width: geometry.size.width,
+                            height: height
                         )
-                        .ignoresSafeArea()
+                        .offset(y: offset)
+                    }
+                    .frame(height: baseHeight)
 
-                        // Right Column: Details Content
-                        HStack(spacing: 0) {
-                            Spacer()
-                                .frame(width: geometry.size.width * 0.32)
+                    VStack(alignment: .center, spacing: 12) {
+                        RemoteLogoView(
+                            url: URL(string: details.displayLogoUrl ?? ""),
+                            fallbackTitle: details.title ?? details.name ?? "Без названия",
+                            alignment: .center
+                        )
+                        .padding(.bottom, 8)
 
-                            ScrollView {
-                                VStack(alignment: .leading, spacing: 16) {
-                                    RemoteLogoView(
-                                        url: URL(string: details.displayLogoUrl ?? ""),
-                                        fallbackTitle: details.title ?? details.name ?? "Без названия",
-                                        alignment: .leading
-                                    )
-                                    .padding(.top, geometry.safeAreaInsets.top + 68)
-                                    .padding(.trailing, 24 + geometry.safeAreaInsets.trailing)
+                        if let originalTitle = details.originalTitle, !originalTitle.isEmpty, originalTitle != (details.title ?? details.name) {
+                            Text(originalTitle)
+                                .font(.system(size: 16, weight: .medium))
+                                .foregroundColor(.secondary)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal)
+                                .padding(.top, -8)
+                        }
 
-                                    if let originalTitle = details.originalTitle, !originalTitle.isEmpty, originalTitle != (details.title ?? details.name) {
-                                        Text(originalTitle)
-                                            .font(.system(size: 16, weight: .medium))
-                                            .foregroundColor(.secondary)
-                                            .padding(.trailing, 24 + geometry.safeAreaInsets.trailing)
-                                    }
+                        DetailsPrimaryMetadataRow(details: details, alignment: .center)
 
-                                    DetailsPrimaryMetadataRow(details: details, alignment: .leading)
-                                        .padding(.trailing, 24 + geometry.safeAreaInsets.trailing)
+                        playButton(for: details)
+                            .padding(.top, 8)
+                            .padding(.bottom, -4)
 
-                                    playButton(for: details)
-                                        .padding(.top, 8)
-                                        .padding(.trailing, 24 + geometry.safeAreaInsets.trailing)
+                        DetailsInfoSection(details: details, backgroundColor: effectiveBackgroundColor)
+                            .padding(.top, 20)
+                            .padding(.horizontal)
 
-                                    DetailsInfoSection(details: details, backgroundColor: .clear)
-                                        .padding(.top, 8)
-                                        .padding(.trailing, 24 + geometry.safeAreaInsets.trailing)
-
-                                    if details.type == "tv" {
-                                        InlineEpisodesSection(viewModel: viewModel, details: details) { season, episode in
-                                            handleEpisodeSelection(details: details, season: season, episode: episode)
-                                        }
-                                        .padding(.top, 16)
-                                        .padding(.bottom, 24)
-                                    }
-                                }
-                                .padding(.bottom, 24 + geometry.safeAreaInsets.bottom)
-                                .frame(maxWidth: .infinity, alignment: .leading)
+                        if details.type == "tv" {
+                            InlineEpisodesSection(viewModel: viewModel, details: details) { season, episode in
+                                handleEpisodeSelection(details: details, season: season, episode: episode)
                             }
-                            .scrollIndicators(.hidden)
-                            .frame(width: geometry.size.width * 0.68)
+                            .padding(.top, 24)
+                            .padding(.bottom, 20)
                         }
                     }
-                    .frame(width: geometry.size.width, height: geometry.size.height, alignment: .leading)
-                    .transition(.opacity)
-                } else {
-                    Text("Не удалось загрузить данные.")
-                        .frame(maxWidth: .infinity, alignment: .center)
-                        .transition(.opacity)
+                    .frame(maxWidth: 550)
+                    .frame(maxWidth: .infinity, alignment: .center)
+                    .offset(y: -60)
+                    .padding(.bottom, 24)
                 }
             }
-            .animation(.easeInOut(duration: 0.35), value: viewModel.isLoading)
         }
-        .ignoresSafeArea()
+        .scrollIndicators(.hidden)
+        .background(effectiveBackgroundColor)
     }
 }
 
@@ -514,7 +484,7 @@ private struct DetailsSkeletonView: View {
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     
     var body: some View {
-        let baseHeight: CGFloat = verticalSizeClass == .compact ? 250 : 450
+        let baseHeight: CGFloat = verticalSizeClass == .compact ? 280 : 450
         
         VStack(spacing: 0) {
             // Backdrop
@@ -614,107 +584,14 @@ private struct DetailsSkeletonView: View {
                 .padding(.horizontal)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .offset(y: -80)
+            .frame(maxWidth: verticalSizeClass == .compact ? 550 : .infinity)
+            .frame(maxWidth: .infinity, alignment: .center)
+            .offset(y: verticalSizeClass == .compact ? -60 : -80)
         }
     }
 }
 
-private struct LandscapeDetailsSkeletonView: View {
-    var body: some View {
-        GeometryReader { geometry in
-            ZStack(alignment: .leading) {
-                // Left Column / Backdrop skeleton
-                Rectangle()
-                    .fill(Color.gray.opacity(0.15))
-                    .frame(width: geometry.size.width * 0.50, height: geometry.size.height)
-                    .mask(
-                        LinearGradient(
-                            gradient: Gradient(colors: [
-                                .black,
-                                .black.opacity(0.8),
-                                .black.opacity(0.4),
-                                .black.opacity(0.1),
-                                .clear
-                            ]),
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
-                    )
-                    .shimmer()
-                
-                // Right Column skeleton
-                HStack(spacing: 0) {
-                    Spacer()
-                        .frame(width: geometry.size.width * 0.32)
-                    
-                    VStack(alignment: .leading, spacing: 16) {
-                        Rectangle()
-                            .fill(Color.gray.opacity(0.2))
-                            .frame(width: 240, height: 40)
-                            .cornerRadius(8)
-                            .shimmer()
-                        
-                        HStack(spacing: 16) {
-                            ForEach(0..<4) { _ in
-                                Rectangle()
-                                    .fill(Color.gray.opacity(0.2))
-                                    .frame(width: 40, height: 16)
-                                    .cornerRadius(4)
-                            }
-                        }
-                        .shimmer()
-                        
-                        Capsule()
-                            .fill(Color.gray.opacity(0.2))
-                            .frame(width: 180, height: 50)
-                            .shimmer()
-                            .padding(.top, 8)
-                        
-                        VStack(alignment: .leading, spacing: 10) {
-                            Rectangle()
-                                .fill(Color.gray.opacity(0.2))
-                                .frame(width: 80, height: 20)
-                                .cornerRadius(4)
-                            
-                            HStack(spacing: 8) {
-                                ForEach(0..<3) { i in
-                                    Capsule()
-                                        .fill(Color.gray.opacity(0.2))
-                                        .frame(width: CGFloat(60 + i * 20), height: 32)
-                                }
-                            }
-                        }
-                        .shimmer()
-                        .padding(.top, 16)
-                        
-                        VStack(alignment: .leading, spacing: 10) {
-                            Rectangle()
-                                .fill(Color.gray.opacity(0.2))
-                                .frame(width: 100, height: 20)
-                                .cornerRadius(4)
-                            
-                            VStack(alignment: .leading, spacing: 6) {
-                                ForEach(0..<4) { _ in
-                                    Rectangle()
-                                        .fill(Color.gray.opacity(0.2))
-                                        .frame(height: 16)
-                                        .cornerRadius(4)
-                                }
-                            }
-                        }
-                        .shimmer()
-                        .padding(.top, 16)
-                    }
-                    .padding(.top, geometry.safeAreaInsets.top + 68)
-                    .padding(.bottom, 24 + geometry.safeAreaInsets.bottom)
-                    .padding(.trailing, geometry.safeAreaInsets.trailing + 24)
-                    .frame(width: geometry.size.width * 0.68, alignment: .leading)
-                }
-            }
-        }
-        .ignoresSafeArea()
-    }
-}
+
 
 struct SourceSelectionLoadingView: View {
     let title: String
