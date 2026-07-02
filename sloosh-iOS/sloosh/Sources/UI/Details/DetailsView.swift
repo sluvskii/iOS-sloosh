@@ -388,69 +388,77 @@ struct DetailsView: View {
     }
 
     private var landscapeDetailsContent: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                if viewModel.isLoading {
-                    DetailsSkeletonView(backgroundColor: effectiveBackgroundColor)
-                        .transition(.opacity)
-                } else if let details = viewModel.details {
-                    let baseHeight: CGFloat = 280
-                    
-                    GeometryReader { geometry in
-                        let minY = geometry.frame(in: .global).minY
-                        let isScrollingDown = minY > 0
-                        let height = isScrollingDown ? baseHeight + minY : baseHeight
-                        let offset = isScrollingDown ? -minY : 0
+        GeometryReader { outerGeometry in
+            ScrollView {
+                VStack(spacing: 0) {
+                    if viewModel.isLoading {
+                        DetailsSkeletonView(backgroundColor: effectiveBackgroundColor)
+                            .transition(.opacity)
+                    } else if let details = viewModel.details {
+                        let baseHeight: CGFloat = 280
+                        
+                        GeometryReader { geometry in
+                            let minY = geometry.frame(in: .global).minY
+                            let isScrollingDown = minY > 0
+                            let height = isScrollingDown ? baseHeight + minY : baseHeight
+                            let offset = isScrollingDown ? -minY : 0
 
-                        RemoteBackdropView(
-                            url: URL(string: details.displayBackdropUrl ?? ""),
-                            fallbackUrl: URL(string: details.displayPosterUrl ?? ""),
-                            width: geometry.size.width,
-                            height: height
-                        )
-                        .offset(y: offset)
-                    }
-                    .frame(height: baseHeight)
-
-                    VStack(alignment: .center, spacing: 12) {
-                        RemoteLogoView(
-                            url: URL(string: details.displayLogoUrl ?? ""),
-                            fallbackTitle: details.title ?? details.name ?? "Без названия",
-                            alignment: .center
-                        )
-                        .padding(.bottom, 8)
-
-                        if let originalTitle = details.originalTitle, !originalTitle.isEmpty, originalTitle != (details.title ?? details.name) {
-                            Text(originalTitle)
-                                .font(.system(size: 16, weight: .medium))
-                                .foregroundColor(.secondary)
-                                .multilineTextAlignment(.center)
-                                .padding(.horizontal)
-                                .padding(.top, -8)
+                            RemoteBackdropView(
+                                url: URL(string: details.displayBackdropUrl ?? ""),
+                                fallbackUrl: URL(string: details.displayPosterUrl ?? ""),
+                                width: geometry.size.width,
+                                height: height
+                            )
+                            .offset(y: offset)
                         }
+                        .frame(height: baseHeight)
 
-                        DetailsPrimaryMetadataRow(details: details, alignment: .center)
+                        VStack(spacing: 0) {
+                            VStack(alignment: .center, spacing: 12) {
+                                RemoteLogoView(
+                                    url: URL(string: details.displayLogoUrl ?? ""),
+                                    fallbackTitle: details.title ?? details.name ?? "Без названия",
+                                    alignment: .center
+                                )
+                                .padding(.bottom, 8)
 
-                        playButton(for: details)
-                            .padding(.top, 8)
-                            .padding(.bottom, -4)
+                                if let originalTitle = details.originalTitle, !originalTitle.isEmpty, originalTitle != (details.title ?? details.name) {
+                                    Text(originalTitle)
+                                        .font(.system(size: 16, weight: .medium))
+                                        .foregroundColor(.secondary)
+                                        .multilineTextAlignment(.center)
+                                        .padding(.horizontal)
+                                        .padding(.top, -8)
+                                }
 
-                        DetailsInfoSection(details: details, backgroundColor: effectiveBackgroundColor)
-                            .padding(.top, 20)
-                            .padding(.horizontal)
+                                DetailsPrimaryMetadataRow(details: details, alignment: .center)
 
-                        if details.type == "tv" {
-                            InlineEpisodesSection(viewModel: viewModel, details: details) { season, episode in
-                                handleEpisodeSelection(details: details, season: season, episode: episode)
+                                playButton(for: details)
+                                    .padding(.top, 8)
+                                    .padding(.bottom, -4)
+
+                                DetailsInfoSection(details: details, backgroundColor: effectiveBackgroundColor)
+                                    .padding(.top, 20)
+                                    .padding(.horizontal)
                             }
-                            .padding(.top, 24)
-                            .padding(.bottom, 20)
+                            .frame(maxWidth: 550)
+                            .frame(maxWidth: .infinity, alignment: .center)
+
+                            if details.type == "tv" {
+                                let paddingVal = max(16, (outerGeometry.size.width - 550) / 2 + 16)
+                                InlineEpisodesSection(
+                                    viewModel: viewModel,
+                                    details: details,
+                                    horizontalPadding: paddingVal
+                                ) { season, episode in
+                                    handleEpisodeSelection(details: details, season: season, episode: episode)
+                                }
+                                .padding(.top, 24)
+                            }
                         }
+                        .offset(y: -60)
+                        .padding(.bottom, 24)
                     }
-                    .frame(maxWidth: 550)
-                    .frame(maxWidth: .infinity, alignment: .center)
-                    .offset(y: -60)
-                    .padding(.bottom, 24)
                 }
             }
         }
@@ -931,6 +939,7 @@ struct EpisodeCellView: View {
 struct InlineEpisodesSection: View {
     @ObservedObject var viewModel: DetailsViewModel
     let details: MediaDetailsDto
+    var horizontalPadding: CGFloat = 16
     let onEpisodeTap: (Int, Int) -> Void
 
     @State private var selectedSeason: Int = 1
@@ -950,7 +959,7 @@ struct InlineEpisodesSection: View {
         VStack(alignment: .leading, spacing: 16) {
             Text("Сезоны и серии")
                 .font(.system(size: 18, weight: .bold))
-                .padding(.horizontal)
+                .padding(.horizontal, horizontalPadding)
 
             if viewModel.isFetchingInlineSeasons {
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -962,13 +971,13 @@ struct InlineEpisodesSection: View {
                                 .shimmer()
                         }
                     }
-                    .padding(.horizontal)
+                    .padding(.horizontal, horizontalPadding)
                 }
             } else if allSeasons.isEmpty {
                 Text("Эпизоды не найдены")
                     .font(.system(size: 15))
                     .foregroundColor(.secondary)
-                    .padding(.horizontal)
+                    .padding(.horizontal, horizontalPadding)
             } else {
                 // Season Picker
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -990,7 +999,7 @@ struct InlineEpisodesSection: View {
                             }
                         }
                     }
-                    .padding(.horizontal)
+                    .padding(.horizontal, horizontalPadding)
                 }
 
                 // Episodes List
@@ -1011,7 +1020,7 @@ struct InlineEpisodesSection: View {
                             .id("\(selectedSeason)-\(episode)")
                         }
                     }
-                    .padding(.horizontal)
+                    .padding(.horizontal, horizontalPadding)
                 }
             }
         }
