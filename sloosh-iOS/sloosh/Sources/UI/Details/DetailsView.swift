@@ -1177,7 +1177,7 @@ struct GlassPlayButtonStyle: ButtonStyle {
             .foregroundStyle(.black)
             .background(
                 Capsule()
-                    .fill(.white.opacity(0.65))
+                    .fill(.white.opacity(0.85))
             )
             .glassEffect(in: Capsule())
             .scaleEffect(configuration.isPressed ? 0.94 : 1.0)
