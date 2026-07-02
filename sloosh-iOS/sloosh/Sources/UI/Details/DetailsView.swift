@@ -392,26 +392,7 @@ struct DetailsView: View {
     private var landscapeDetailsContent: some View {
         GeometryReader { geometry in
             ZStack {
-                // Blurred Background
-                if let details = viewModel.details {
-                    AsyncCachedImage(url: URL(string: details.displayBackdropUrl ?? "")) {
-                        effectiveBackgroundColor
-                    } content: { image in
-                        Image(uiImage: image)
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .blur(radius: 40)
-                            .overlay(Color.black.opacity(0.6))
-                            .overlay(effectiveBackgroundColor.opacity(0.5))
-                    } fallback: {
-                        effectiveBackgroundColor
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .clipped()
-                    .ignoresSafeArea()
-                } else {
-                    effectiveBackgroundColor.ignoresSafeArea()
-                }
+                effectiveBackgroundColor.ignoresSafeArea()
 
                 if viewModel.isLoading {
                     LandscapeDetailsSkeletonView()
@@ -443,7 +424,7 @@ struct DetailsView: View {
                                     fallbackTitle: details.title ?? details.name ?? "Без названия",
                                     alignment: .leading
                                 )
-                                .padding(.top, 24)
+                                .padding(.top, geometry.safeAreaInsets.top + 24)
                                 .padding(.trailing, 32)
 
                                 if let originalTitle = details.originalTitle, !originalTitle.isEmpty, originalTitle != (details.title ?? details.name) {
@@ -487,6 +468,7 @@ struct DetailsView: View {
             }
             .animation(.easeInOut(duration: 0.35), value: viewModel.isLoading)
         }
+        .ignoresSafeArea(edges: .top)
     }
 }
 
@@ -695,11 +677,13 @@ private struct LandscapeDetailsSkeletonView: View {
                     .padding(.trailing, 32)
                 }
                 .shimmer()
-                .padding(.vertical, 24)
+                .padding(.bottom, 24)
+                .padding(.top, geometry.safeAreaInsets.top + 24)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .frame(width: geometry.size.width, height: geometry.size.height, alignment: .leading)
         }
+        .ignoresSafeArea(edges: .top)
     }
 }
 
