@@ -464,6 +464,7 @@ struct DetailsView: View {
         }
         .scrollIndicators(.hidden)
         .background(effectiveBackgroundColor)
+        .ignoresSafeArea()
     }
 }
 
