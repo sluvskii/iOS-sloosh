@@ -152,7 +152,7 @@ struct DetailsView: View {
             )
             .environment(\.colorScheme, .dark)
             .toolbarColorScheme(.dark, for: .navigationBar)
-            .ignoresSafeArea(edges: .top)
+            .ignoresSafeArea(edges: verticalSizeClass == .compact ? .all : .top)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(id: "details") {
                 ToolbarItem(id: "favorite", placement: .topBarTrailing) {
@@ -466,7 +466,7 @@ struct DetailsView: View {
                                         .padding(.bottom, 24)
                                     }
                                 }
-                                .padding(.bottom, 24)
+                                .padding(.bottom, 24 + geometry.safeAreaInsets.bottom)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                             }
                             .scrollIndicators(.hidden)
@@ -483,7 +483,7 @@ struct DetailsView: View {
             }
             .animation(.easeInOut(duration: 0.35), value: viewModel.isLoading)
         }
-        .ignoresSafeArea(edges: .top)
+        .ignoresSafeArea()
     }
 }
 
@@ -704,13 +704,13 @@ private struct LandscapeDetailsSkeletonView: View {
                         .padding(.top, 16)
                     }
                     .padding(.top, geometry.safeAreaInsets.top + 24)
-                    .padding(.bottom, 24)
+                    .padding(.bottom, 24 + geometry.safeAreaInsets.bottom)
                     .padding(.trailing, geometry.safeAreaInsets.trailing + 24)
                     .frame(width: geometry.size.width * 0.55, alignment: .leading)
                 }
             }
         }
-        .ignoresSafeArea(edges: .top)
+        .ignoresSafeArea()
     }
 }
 
