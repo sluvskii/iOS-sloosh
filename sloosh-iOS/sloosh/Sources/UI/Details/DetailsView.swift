@@ -94,7 +94,8 @@ struct DetailsView: View {
 
     @Environment(\.verticalSizeClass) private var verticalSizeClass
 
-    @State private var dominantUIColor: UIColor? = nil
+    @State private var dominantBackdropColor: UIColor? = nil
+    @State private var dominantPosterColor: UIColor? = nil
 
     private var detailsBaseBackgroundColor: UIColor {
         UIColor.systemBackground.resolvedColor(with: UITraitCollection(userInterfaceStyle: .dark))
@@ -102,7 +103,14 @@ struct DetailsView: View {
 
     private var effectiveBackgroundColor: Color {
         let background = detailsBaseBackgroundColor
-        if let dominant = dominantUIColor {
+        let dominant: UIColor?
+        if verticalSizeClass == .compact {
+            dominant = dominantPosterColor ?? dominantBackdropColor
+        } else {
+            dominant = dominantBackdropColor ?? dominantPosterColor
+        }
+        
+        if let dominant = dominant {
             return Color(dominant.blended(with: background, fraction: 0.35))
         } else {
             return Color(background)
@@ -126,21 +134,17 @@ struct DetailsView: View {
     }
 
     private func preloadDominantColor(for details: MediaDetailsDto) async {
-        let candidateUrls = [
-            details.previewBackdropUrl,
-            details.displayPosterUrl
-        ].compactMap { URL(string: $0 ?? "") }
-
-        for url in candidateUrls {
-            if Task.isCancelled { return }
-            if let color = await fetchAverageColor(from: url) {
-                await MainActor.run {
-                    guard dominantUIColor == nil else { return }
-                    withAnimation(.easeInOut(duration: 0.25)) {
-                        dominantUIColor = color
-                    }
-                }
-                return
+        async let backdropColor = fetchAverageColor(from: URL(string: details.previewBackdropUrl ?? ""))
+        async let posterColor = fetchAverageColor(from: URL(string: details.displayPosterUrl ?? ""))
+        
+        let (backdrop, poster) = await (backdropColor, posterColor)
+        
+        if Task.isCancelled { return }
+        
+        await MainActor.run {
+            withAnimation(.easeInOut(duration: 0.25)) {
+                self.dominantBackdropColor = backdrop
+                self.dominantPosterColor = poster
             }
         }
     }
@@ -180,7 +184,8 @@ struct DetailsView: View {
             }
             .task(id: viewModel.details?.id) {
                 await MainActor.run {
-                    dominantUIColor = nil
+                    dominantBackdropColor = nil
+                    dominantPosterColor = nil
                 }
 
                 guard let details = viewModel.details else { return }
@@ -423,10 +428,10 @@ struct DetailsView: View {
                                 .fill(Color.gray.opacity(0.2))
                                 .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
                         }
-                        .frame(maxWidth: geometry.size.width * 0.32, maxHeight: geometry.size.height - geometry.safeAreaInsets.top - geometry.safeAreaInsets.bottom - 48)
+                        .frame(maxWidth: geometry.size.width * 0.35, maxHeight: geometry.size.height - geometry.safeAreaInsets.top - geometry.safeAreaInsets.bottom - 36)
                         .padding(.leading, 32)
-                        .padding(.top, geometry.safeAreaInsets.top + 32)
-                        .padding(.bottom, geometry.safeAreaInsets.bottom + 16)
+                        .padding(.top, geometry.safeAreaInsets.top + 24)
+                        .padding(.bottom, geometry.safeAreaInsets.bottom + 12)
 
                         // Right Column: Details
                         ScrollView {
@@ -436,7 +441,7 @@ struct DetailsView: View {
                                     fallbackTitle: details.title ?? details.name ?? "Без названия",
                                     alignment: .leading
                                 )
-                                .padding(.top, geometry.safeAreaInsets.top + 32)
+                                .padding(.top, geometry.safeAreaInsets.top + 24)
                                 .padding(.trailing, 32)
 
                                 if let originalTitle = details.originalTitle, !originalTitle.isEmpty, originalTitle != (details.title ?? details.name) {
@@ -622,10 +627,10 @@ private struct LandscapeDetailsSkeletonView: View {
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .fill(Color.gray.opacity(0.2))
                     .aspectRatio(2/3, contentMode: .fit)
-                    .frame(maxWidth: geometry.size.width * 0.32, maxHeight: geometry.size.height - geometry.safeAreaInsets.top - geometry.safeAreaInsets.bottom - 48)
+                    .frame(maxWidth: geometry.size.width * 0.35, maxHeight: geometry.size.height - geometry.safeAreaInsets.top - geometry.safeAreaInsets.bottom - 36)
                     .padding(.leading, 32)
-                    .padding(.top, geometry.safeAreaInsets.top + 32)
-                    .padding(.bottom, geometry.safeAreaInsets.bottom + 16)
+                    .padding(.top, geometry.safeAreaInsets.top + 24)
+                    .padding(.bottom, geometry.safeAreaInsets.bottom + 12)
                     .shimmer()
                 
                 // Right Column
@@ -689,7 +694,7 @@ private struct LandscapeDetailsSkeletonView: View {
                 }
                 .shimmer()
                 .padding(.bottom, 24)
-                .padding(.top, geometry.safeAreaInsets.top + 32)
+                .padding(.top, geometry.safeAreaInsets.top + 24)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .frame(width: geometry.size.width, height: geometry.size.height, alignment: .leading)
