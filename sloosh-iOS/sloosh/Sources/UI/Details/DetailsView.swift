@@ -295,7 +295,8 @@ struct DetailsView: View {
         }
         .matchedTransitionSource(id: "playBtn", in: transition) { source in
             source
-                .glassEffect(in: Capsule())
+                .background(.thinMaterial)
+                .clipShape(Capsule())
         }
         .contentShape(Capsule())
         .buttonStyle(.plain)
