@@ -437,7 +437,7 @@ struct DetailsView: View {
                                         fallbackTitle: details.title ?? details.name ?? "Без названия",
                                         alignment: .leading
                                     )
-                                    .padding(.top, geometry.safeAreaInsets.top + 24)
+                                    .padding(.top, geometry.safeAreaInsets.top + 48)
                                     .padding(.trailing, 24 + geometry.safeAreaInsets.trailing)
 
                                     if let originalTitle = details.originalTitle, !originalTitle.isEmpty, originalTitle != (details.title ?? details.name) {
@@ -703,7 +703,7 @@ private struct LandscapeDetailsSkeletonView: View {
                         .shimmer()
                         .padding(.top, 16)
                     }
-                    .padding(.top, geometry.safeAreaInsets.top + 24)
+                    .padding(.top, geometry.safeAreaInsets.top + 48)
                     .padding(.bottom, 24 + geometry.safeAreaInsets.bottom)
                     .padding(.trailing, geometry.safeAreaInsets.trailing + 24)
                     .frame(width: geometry.size.width * 0.55, alignment: .leading)
