@@ -409,20 +409,25 @@ struct DetailsView: View {
                         } fallback: {
                             Rectangle().fill(Color.clear)
                         }
-                        .frame(width: geometry.size.width * 0.65, height: geometry.size.height)
+                        .frame(width: geometry.size.width, height: geometry.size.height)
                         .clipped()
                         .mask(
-                            LinearGradient(
-                                gradient: Gradient(colors: [
-                                    .black,
-                                    .black.opacity(0.85),
-                                    .black.opacity(0.55),
-                                    .black.opacity(0.2),
-                                    .clear
-                                ]),
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
+                            HStack(spacing: 0) {
+                                LinearGradient(
+                                    gradient: Gradient(colors: [
+                                        .black,
+                                        .black.opacity(0.85),
+                                        .black.opacity(0.55),
+                                        .black.opacity(0.2),
+                                        .clear
+                                    ]),
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                                .frame(width: geometry.size.width * 0.60)
+                                
+                                Color.clear
+                            }
                         )
                         .ignoresSafeArea()
 
@@ -625,19 +630,24 @@ private struct LandscapeDetailsSkeletonView: View {
                 // Left Column / Backdrop skeleton
                 Rectangle()
                     .fill(Color.gray.opacity(0.15))
-                    .frame(width: geometry.size.width * 0.65, height: geometry.size.height)
+                    .frame(width: geometry.size.width, height: geometry.size.height)
                     .mask(
-                        LinearGradient(
-                            gradient: Gradient(colors: [
-                                .black,
-                                .black.opacity(0.8),
-                                .black.opacity(0.4),
-                                .black.opacity(0.1),
-                                .clear
-                            ]),
-                            startPoint: .leading,
-                            endPoint: .trailing
-                        )
+                        HStack(spacing: 0) {
+                            LinearGradient(
+                                gradient: Gradient(colors: [
+                                    .black,
+                                    .black.opacity(0.8),
+                                    .black.opacity(0.4),
+                                    .black.opacity(0.1),
+                                    .clear
+                                ]),
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                            .frame(width: geometry.size.width * 0.60)
+                            
+                            Color.clear
+                        }
                     )
                     .shimmer()
                 
