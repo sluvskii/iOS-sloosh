@@ -291,8 +291,7 @@ struct DetailsView: View {
             .frame(height: 50)
             .padding(.horizontal, 32)
         }
-        .buttonStyle(.glassProminent)
-        .tint(.white)
+        .buttonStyle(GlassPlayButtonStyle())
         .matchedTransitionSource(id: "playBtn", in: transition) { source in
             source
                 .background(.clear)
@@ -1169,5 +1168,19 @@ class DetailsViewModel: ObservableObject {
     private func preferredAllohaTranslation(from movie: AllohaMovie) -> AllohaTranslation? {
         let savedName = UserDefaults.standard.string(forKey: allohaTranslationPreferenceKey)
         return movie.translations.first(where: { $0.name == savedName }) ?? movie.translations.first
+    }
+}
+
+struct GlassPlayButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(.black)
+            .background(
+                Capsule()
+                    .fill(.white.opacity(0.65))
+            )
+            .glassEffect(in: Capsule())
+            .scaleEffect(configuration.isPressed ? 0.94 : 1.0)
+            .animation(.spring(response: 0.25, dampingFraction: 0.6), value: configuration.isPressed)
     }
 }
