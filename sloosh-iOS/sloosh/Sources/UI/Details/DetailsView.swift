@@ -429,7 +429,7 @@ struct DetailsView: View {
                         // Right Column: Details Content
                         HStack(spacing: 0) {
                             Spacer()
-                                .frame(width: geometry.size.width * 0.38)
+                                .frame(width: geometry.size.width * 0.41)
 
                             ScrollView {
                                 VStack(alignment: .leading, spacing: 16) {
@@ -438,7 +438,7 @@ struct DetailsView: View {
                                         fallbackTitle: details.title ?? details.name ?? "Без названия",
                                         alignment: .leading
                                     )
-                                    .padding(.top, geometry.safeAreaInsets.top + 48)
+                                    .padding(.top, geometry.safeAreaInsets.top + 56)
                                     .padding(.trailing, 24 + geometry.safeAreaInsets.trailing)
 
                                     if let originalTitle = details.originalTitle, !originalTitle.isEmpty, originalTitle != (details.title ?? details.name) {
@@ -471,7 +471,7 @@ struct DetailsView: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                             }
                             .scrollIndicators(.hidden)
-                            .frame(width: geometry.size.width * 0.62)
+                            .frame(width: geometry.size.width * 0.59)
                         }
                     }
                     .frame(width: geometry.size.width, height: geometry.size.height, alignment: .leading)
@@ -644,7 +644,7 @@ private struct LandscapeDetailsSkeletonView: View {
                 // Right Column skeleton
                 HStack(spacing: 0) {
                     Spacer()
-                        .frame(width: geometry.size.width * 0.38)
+                        .frame(width: geometry.size.width * 0.41)
                     
                     VStack(alignment: .leading, spacing: 16) {
                         Rectangle()
@@ -704,10 +704,10 @@ private struct LandscapeDetailsSkeletonView: View {
                         .shimmer()
                         .padding(.top, 16)
                     }
-                    .padding(.top, geometry.safeAreaInsets.top + 48)
+                    .padding(.top, geometry.safeAreaInsets.top + 56)
                     .padding(.bottom, 24 + geometry.safeAreaInsets.bottom)
                     .padding(.trailing, geometry.safeAreaInsets.trailing + 24)
-                    .frame(width: geometry.size.width * 0.62, alignment: .leading)
+                    .frame(width: geometry.size.width * 0.59, alignment: .leading)
                 }
             }
         }
