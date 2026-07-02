@@ -401,20 +401,32 @@ struct DetailsView: View {
                     HStack(alignment: .top, spacing: 32) {
                         // Left Column: Vertical Poster
                         AsyncCachedImage(url: URL(string: details.displayPosterUrl ?? "")) {
-                            Rectangle().fill(Color.gray.opacity(0.2)).shimmer()
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .fill(Color.gray.opacity(0.2))
+                                .shimmer()
                         } content: { image in
                             Image(uiImage: image)
                                 .resizable()
                                 .aspectRatio(contentMode: .fit)
+                                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                                .background(
+                                    Image(uiImage: image)
+                                        .resizable()
+                                        .aspectRatio(contentMode: .fit)
+                                        .blur(radius: 24, opaque: false)
+                                        .opacity(0.85)
+                                        .scaleEffect(0.92)
+                                        .offset(y: 8)
+                                )
                         } fallback: {
-                            Rectangle().fill(Color.gray.opacity(0.2))
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .fill(Color.gray.opacity(0.2))
+                                .shadow(color: .black.opacity(0.2), radius: 8, x: 0, y: 4)
                         }
-                        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                        .shadow(color: .black.opacity(0.4), radius: 12, x: 0, y: 8)
-                        .frame(maxWidth: geometry.size.width * 0.32, maxHeight: geometry.size.height - 64)
+                        .frame(maxWidth: geometry.size.width * 0.32, maxHeight: geometry.size.height - geometry.safeAreaInsets.top - geometry.safeAreaInsets.bottom - 48)
                         .padding(.leading, 32)
-                        .padding(.top, 16)
-                        .padding(.bottom, 24)
+                        .padding(.top, geometry.safeAreaInsets.top + 32)
+                        .padding(.bottom, geometry.safeAreaInsets.bottom + 16)
 
                         // Right Column: Details
                         ScrollView {
@@ -424,7 +436,7 @@ struct DetailsView: View {
                                     fallbackTitle: details.title ?? details.name ?? "Без названия",
                                     alignment: .leading
                                 )
-                                .padding(.top, geometry.safeAreaInsets.top + 24)
+                                .padding(.top, geometry.safeAreaInsets.top + 32)
                                 .padding(.trailing, 32)
 
                                 if let originalTitle = details.originalTitle, !originalTitle.isEmpty, originalTitle != (details.title ?? details.name) {
@@ -607,14 +619,13 @@ private struct LandscapeDetailsSkeletonView: View {
         GeometryReader { geometry in
             HStack(alignment: .top, spacing: 32) {
                 // Left Column
-                Rectangle()
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .fill(Color.gray.opacity(0.2))
                     .aspectRatio(2/3, contentMode: .fit)
-                    .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-                    .frame(maxWidth: geometry.size.width * 0.32, maxHeight: geometry.size.height - 64)
+                    .frame(maxWidth: geometry.size.width * 0.32, maxHeight: geometry.size.height - geometry.safeAreaInsets.top - geometry.safeAreaInsets.bottom - 48)
                     .padding(.leading, 32)
-                    .padding(.top, 16)
-                    .padding(.bottom, 24)
+                    .padding(.top, geometry.safeAreaInsets.top + 32)
+                    .padding(.bottom, geometry.safeAreaInsets.bottom + 16)
                     .shimmer()
                 
                 // Right Column
@@ -678,7 +689,7 @@ private struct LandscapeDetailsSkeletonView: View {
                 }
                 .shimmer()
                 .padding(.bottom, 24)
-                .padding(.top, geometry.safeAreaInsets.top + 24)
+                .padding(.top, geometry.safeAreaInsets.top + 32)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .frame(width: geometry.size.width, height: geometry.size.height, alignment: .leading)
