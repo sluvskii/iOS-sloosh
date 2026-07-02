@@ -405,7 +405,7 @@ struct DetailsView: View {
                             Image(uiImage: image)
                                 .resizable()
                                 .aspectRatio(contentMode: .fill)
-                                .offset(x: -50)
+                                .offset(x: -120)
                         } fallback: {
                             Rectangle().fill(Color.clear)
                         }
@@ -438,7 +438,7 @@ struct DetailsView: View {
                                         fallbackTitle: details.title ?? details.name ?? "Без названия",
                                         alignment: .leading
                                     )
-                                    .padding(.top, geometry.safeAreaInsets.top + 56)
+                                    .padding(.top, geometry.safeAreaInsets.top + 68)
                                     .padding(.trailing, 24 + geometry.safeAreaInsets.trailing)
 
                                     if let originalTitle = details.originalTitle, !originalTitle.isEmpty, originalTitle != (details.title ?? details.name) {
@@ -704,7 +704,7 @@ private struct LandscapeDetailsSkeletonView: View {
                         .shimmer()
                         .padding(.top, 16)
                     }
-                    .padding(.top, geometry.safeAreaInsets.top + 56)
+                    .padding(.top, geometry.safeAreaInsets.top + 68)
                     .padding(.bottom, 24 + geometry.safeAreaInsets.bottom)
                     .padding(.trailing, geometry.safeAreaInsets.trailing + 24)
                     .frame(width: geometry.size.width * 0.59, alignment: .leading)
