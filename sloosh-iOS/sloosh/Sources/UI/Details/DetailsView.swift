@@ -605,6 +605,8 @@ struct DetailsView: View {
                                     horizontalPadding: paddingVal
                                 ) { season, episode in
                                     handleEpisodeSelection(details: details, season: season, episode: episode)
+                                } onDownloadTap: { season, episode in
+                                    startDownloadWithPreferredTranslation(details: details, season: season, episode: episode)
                                 }
                                 .padding(.top, 24)
                             }
@@ -1162,8 +1164,7 @@ struct EpisodeDetailsSheet: View {
                             .tint(.primary)
                             .foregroundStyle(Color(UIColor.systemBackground))
                             
-                            if let kpId = Int(item.movieId),
-                               let details = viewModel.details {
+                            if let kpId = Int(item.movieId) {
                                 let downloadItem = downloadManager.getDownloadItem(kpId: kpId, season: item.season, episode: item.episode)
                                 
                                 Button(action: {
@@ -1864,6 +1865,9 @@ struct InlineEpisodesSection: View {
                 item: item,
                 onPlay: {
                     onEpisodeTap(item.season, item.episode)
+                },
+                onDownload: {
+                    onDownloadTap(item.season, item.episode)
                 },
                 onWatchedToggle: { isWatched in
                     let progressKey = "kp_\(item.movieId)_s\(item.season)_e\(item.episode)"
