@@ -966,11 +966,12 @@ struct EpisodeDetailsSheet: View {
                                     Image(systemName: "play.fill")
                                     Text("Смотреть серию")
                                 }
-                                .font(.system(size: 15, weight: .bold))
+                                .font(.system(size: 17, weight: .bold))
                                 .frame(maxWidth: .infinity)
+                                .padding(.vertical, 4)
                             }
                             .buttonStyle(.borderedProminent)
-                            .controlSize(.regular)
+                            .controlSize(.large)
                             .buttonBorderShape(.capsule)
                             .tint(.primary)
                             .foregroundStyle(Color(UIColor.systemBackground))
@@ -983,15 +984,16 @@ struct EpisodeDetailsSheet: View {
                                     Image(systemName: isWatched ? "checkmark.circle.fill" : "circle")
                                     Text(isWatched ? "Просмотрено" : "Отметить как просмотренное")
                                 }
-                                .font(.system(size: 14, weight: .semibold))
+                                .font(.system(size: 16, weight: .semibold))
                                 .frame(maxWidth: .infinity)
+                                .padding(.vertical, 4)
                             }
                             .buttonStyle(.bordered)
-                            .controlSize(.regular)
+                            .controlSize(.large)
                             .buttonBorderShape(.capsule)
                             .tint(.secondary)
                         }
-                        .padding(.top, 16)
+                        .padding(.top, 8)
                     }
                     .padding(20)
                 }
@@ -1006,6 +1008,8 @@ struct EpisodeDetailsSheet: View {
                         Image(systemName: "xmark")
                             .foregroundStyle(.primary)
                     }
+                    .tint(.primary)
+                    .buttonStyle(.plain)
                 }
             }
         }
