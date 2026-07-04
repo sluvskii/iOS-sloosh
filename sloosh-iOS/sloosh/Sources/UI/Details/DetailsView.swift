@@ -339,7 +339,7 @@ struct DetailsView: View {
     }
 
     private func playAndDownloadRow(for details: MediaDetailsDto) -> some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 8) {
             playButton(for: details)
             downloadButton(for: details)
         }
