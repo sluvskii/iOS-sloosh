@@ -736,6 +736,9 @@ private struct DetailsInfoSection: View {
     let details: MediaDetailsDto
     let backgroundColor: Color
     @State private var isDescriptionExpanded = false
+    @State private var canExpand = false
+    @State private var fullHeight: CGFloat = 0
+    @State private var visibleHeight: CGFloat = 0
 
     private var genres: [String] {
         details.genres?
@@ -767,17 +770,30 @@ private struct DetailsInfoSection: View {
                     Text("Описание")
                         .font(.system(size: 18, weight: .bold))
 
-                    ZStack(alignment: .bottom) {
+                    ZStack(alignment: .bottomLeading) {
                         Text(description)
-                            .font(.system(size: 16, weight: .regular))
-                            .foregroundColor(.secondary)
+                            .font(.system(size: 15, weight: .regular))
+                            .foregroundColor(.primary.opacity(0.85))
                             .lineSpacing(4)
                             .lineLimit(isDescriptionExpanded ? nil : 4)
-                            .animation(.spring(response: 0.4, dampingFraction: 0.8), value: isDescriptionExpanded)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .background(
+                                GeometryReader { geo in
+                                    Color.clear
+                                        .onAppear {
+                                            visibleHeight = geo.size.height
+                                            checkTruncation()
+                                        }
+                                        .onChange(of: geo.size.height) { _, newHeight in
+                                            visibleHeight = newHeight
+                                            checkTruncation()
+                                        }
+                                }
+                            )
 
-                        if !isDescriptionExpanded {
+                        if canExpand && !isDescriptionExpanded {
                             LinearGradient(
-                                gradient: Gradient(colors: [.clear, backgroundColor]),
+                                gradient: Gradient(colors: [backgroundColor.opacity(0), backgroundColor]),
                                 startPoint: .top,
                                 endPoint: .bottom
                             )
@@ -785,21 +801,62 @@ private struct DetailsInfoSection: View {
                             .allowsHitTesting(false)
                         }
                     }
+                    .background(
+                        Text(description)
+                            .font(.system(size: 15, weight: .regular))
+                            .lineSpacing(4)
+                            .lineLimit(nil)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .opacity(0)
+                            .allowsHitTesting(false)
+                            .background(
+                                GeometryReader { geo in
+                                    Color.clear
+                                        .onAppear {
+                                            fullHeight = geo.size.height
+                                            checkTruncation()
+                                        }
+                                        .onChange(of: geo.size.height) { _, newHeight in
+                                            fullHeight = newHeight
+                                            checkTruncation()
+                                        }
+                                }
+                            )
+                    )
+                    .animation(.spring(response: 0.35, dampingFraction: 0.8), value: isDescriptionExpanded)
 
-                    Button(action: {
-                        let generator = UIImpactFeedbackGenerator(style: .light)
-                        generator.prepare()
-                        generator.impactOccurred()
-                        withAnimation {
-                            isDescriptionExpanded.toggle()
-                        }
-                    }) {
-                        Text(isDescriptionExpanded ? "Свернуть" : "Читать далее...")
-                            .font(.system(size: 15, weight: .semibold))
+                    if canExpand {
+                        Button(action: {
+                            let generator = UIImpactFeedbackGenerator(style: .light)
+                            generator.prepare()
+                            generator.impactOccurred()
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                isDescriptionExpanded.toggle()
+                            }
+                        }) {
+                            HStack(spacing: 6) {
+                                Text(isDescriptionExpanded ? "Свернуть" : "Развернуть")
+                                Image(systemName: "chevron.down")
+                                    .font(.system(size: 13, weight: .bold))
+                                    .rotationEffect(.degrees(isDescriptionExpanded ? 180 : 0))
+                            }
+                            .font(.system(size: 15, weight: .bold))
                             .foregroundColor(Color.slooshAccent)
+                            .padding(.vertical, 4)
+                        }
                     }
                 }
+                .onChange(of: details.description) { _, _ in
+                    isDescriptionExpanded = false
+                    canExpand = false
+                }
             }
+        }
+    }
+
+    private func checkTruncation() {
+        if !isDescriptionExpanded {
+            canExpand = fullHeight > visibleHeight + 2
         }
     }
 }
