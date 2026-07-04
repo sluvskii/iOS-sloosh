@@ -11,7 +11,7 @@ private struct DownloadArtworkView: View {
                     .resizable()
                     .aspectRatio(contentMode: .fill)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if let remote = remoteUrl, let url = URL(string: remote) {
+            } else if let remote = remoteUrl, let normalized = normalizeImageUrl(path: remote), let url = URL(string: normalized) {
                 AsyncCachedImage(url: url) {
                     Rectangle()
                         .fill(Color.gray.opacity(0.18))
