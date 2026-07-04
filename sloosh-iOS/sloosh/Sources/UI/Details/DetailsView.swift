@@ -351,13 +351,12 @@ struct DetailsView: View {
         }) {
             HStack(spacing: 8) {
                 Image(systemName: "play.fill")
-                    .font(.system(size: 16, weight: .heavy))
+                    .font(.system(size: 18, weight: .black))
                 Text("Смотреть")
-                    .font(.system(size: 17, weight: .bold))
-                    .tracking(-0.5)
+                    .font(.system(size: 19, weight: .heavy))
             }
             .frame(height: 50)
-            .padding(.horizontal, 16)
+            .padding(.horizontal, 24)
         }
         .buttonStyle(GlassPlayButtonStyle())
         .matchedTransitionSource(id: "playBtn", in: transition) { source in
