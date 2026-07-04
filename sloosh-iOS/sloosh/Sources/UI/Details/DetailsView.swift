@@ -354,7 +354,7 @@ struct DetailsView: View {
                     .font(.system(size: 16, weight: .heavy))
                 Text("Смотреть")
                     .font(.system(size: 17, weight: .bold))
-                    .tracking(0.5)
+                    .tracking(-0.5)
             }
             .frame(height: 50)
             .padding(.horizontal, 16)
