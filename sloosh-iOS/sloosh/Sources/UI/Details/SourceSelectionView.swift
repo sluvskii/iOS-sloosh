@@ -324,22 +324,23 @@ struct SourceSelectionView: View {
                     .tint(.primary)
                     .buttonStyle(.plain)
                 }
-                ToolbarItem(placement: .bottomBar) {
-                    Button(action: {
-                        actionSelected()
-                    }) {
-                        HStack(spacing: 8) {
-                            Image(systemName: mode == .play ? "play.fill" : "arrow.down")
-                                .font(.system(size: 18, weight: .black))
-                            Text(mode == .play ? "Смотреть" : "Скачать")
-                                .font(.system(size: 19, weight: .heavy))
-                        }
-                        .frame(maxWidth: .infinity, minHeight: 50)
+            }
+            .safeAreaInset(edge: .bottom) {
+                Button(action: {
+                    actionSelected()
+                }) {
+                    HStack(spacing: 8) {
+                        Image(systemName: mode == .play ? "play.fill" : "arrow.down")
+                            .font(.system(size: 18, weight: .black))
+                        Text(mode == .play ? "Смотреть" : "Скачать")
+                            .font(.system(size: 19, weight: .heavy))
                     }
-                    .buttonStyle(GlassPlayButtonStyle())
-                    .disabled(!isReadyToPlay)
-                    .padding(.horizontal)
+                    .frame(height: 50)
+                    .padding(.horizontal, 24)
                 }
+                .buttonStyle(GlassPlayButtonStyle())
+                .disabled(!isReadyToPlay)
+                .padding(.bottom, 16)
             }
         }
         .presentationDragIndicator(.visible)
