@@ -1,42 +1,56 @@
 import SwiftUI
 
-struct DownloadPosterImage: View {
+private struct DownloadArtworkView: View {
     let localUrl: URL?
     let remoteUrl: String?
-    
+
     var body: some View {
         Group {
-            if let localUrl = localUrl, let image = UIImage(contentsOfFile: localUrl.path) {
+            if let local = localUrl, let image = UIImage(contentsOfFile: local.path) {
                 Image(uiImage: image)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
-            } else if let remoteUrl = remoteUrl, let url = URL(string: remoteUrl.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? remoteUrl) {
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let remote = remoteUrl, let url = URL(string: remote) {
                 AsyncCachedImage(url: url) {
                     Rectangle()
-                        .fill(Color.gray.opacity(0.15))
-                        .shimmer()
+                        .fill(Color.gray.opacity(0.18))
+                        .overlay {
+                            Rectangle()
+                                .fill(Color.gray.opacity(0.12))
+                                .shimmer()
+                        }
                 } content: { image in
                     Image(uiImage: image)
                         .resizable()
                         .aspectRatio(contentMode: .fill)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } fallback: {
-                    fallbackView
+                    DownloadArtworkPlaceholder()
                 }
             } else {
-                fallbackView
+                DownloadArtworkPlaceholder()
             }
         }
-        .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
-        .clipped()
         .background(Color(UIColor.secondarySystemFill))
     }
-    
-    private var fallbackView: some View {
+}
+
+private struct DownloadArtworkPlaceholder: View {
+    var body: some View {
         ZStack {
-            Color(UIColor.secondarySystemFill)
+            LinearGradient(
+                colors: [
+                    Color(UIColor.secondarySystemFill),
+                    Color(UIColor.tertiarySystemFill)
+                ],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+
             Image(systemName: "film")
-                .font(.system(size: 30))
-                .foregroundColor(.secondary.opacity(0.5))
+                .font(.system(size: 40, weight: .semibold))
+                .foregroundStyle(.secondary)
         }
     }
 }
@@ -138,8 +152,7 @@ private struct DownloadCardView: View {
     
     var body: some View {
         ZStack(alignment: .bottomLeading) {
-            DownloadPosterImage(localUrl: item.localPosterUrl, remoteUrl: item.posterUrl)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            DownloadArtworkView(localUrl: item.localPosterUrl, remoteUrl: item.posterUrl)
 
             LinearGradient(
                 colors: [.black.opacity(0.1), .black.opacity(0.3), .black.opacity(0.9)],
