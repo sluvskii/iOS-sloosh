@@ -46,7 +46,6 @@ struct DownloadsView: View {
     @ObservedObject private var downloadManager = DownloadManager.shared
     @State private var selectedFilter = 0 // 0 = Все, 1 = Фильмы, 2 = Сериалы
     @State private var playerItem: DownloadItem? = nil
-    @ScaledMetric(relativeTo: .headline) private var titleSize: CGFloat = 25
     
     private var listItems: [DownloadItem] {
         downloadManager.downloads.filter { item in
@@ -80,39 +79,11 @@ struct DownloadsView: View {
                     .contentMargins(.top, 16, for: .scrollContent)
                 }
             }
-            .safeAreaInset(edge: .top) {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 22) {
-                        ForEach(Array(["Все", "Фильмы", "Сериалы", "Мульты"].enumerated()), id: \.offset) { index, title in
-                            let isSelected = selectedFilter == index
-                            let isFirst = index == 0
-                            let isLast = index == 3
-                            
-                            Button(action: {
-                                let generator = UIImpactFeedbackGenerator(style: .light)
-                                generator.prepare()
-                                generator.impactOccurred()
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.78, blendDuration: 0.1)) {
-                                    selectedFilter = index
-                                }
-                            }) {
-                                Text(title)
-                                    .font(.system(size: titleSize, weight: isSelected ? .bold : .semibold))
-                                    .foregroundStyle(isSelected ? Color.primary : Color.secondary)
-                                    .lineLimit(1)
-                                    .fixedSize(horizontal: true, vertical: false)
-                                    .contentShape(Rectangle())
-                            }
-                            .buttonStyle(DownloadsTabScaleButtonStyle())
-                            .padding(.horizontal, 4)
-                            .padding(.vertical, 2)
-                            .padding(.leading, isFirst ? 16 : 0)
-                            .padding(.trailing, isLast ? 16 : 0)
-                        }
-                    }
-                }
-                .padding(.top, 16)
-                .padding(.bottom, 12)
+            }
+            .safeAreaBar(edge: .top, spacing: 0) {
+                DownloadsCategoryTextTabs(selectedFilter: $selectedFilter)
+                    .padding(.top, 4)
+                    .padding(.bottom, 2)
             }
             .navigationTitle("Загрузки")
             .toolbar(.hidden, for: .navigationBar)
@@ -290,11 +261,83 @@ struct DownloadsView: View {
     }
 }
 
-struct DownloadsTabScaleButtonStyle: ButtonStyle {
+private struct DownloadsTabScaleButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
+            .scaleEffect(configuration.isPressed ? 0.94 : 1.0)
             .opacity(configuration.isPressed ? 0.8 : 1.0)
-            .animation(.spring(response: 0.25, dampingFraction: 0.75), value: configuration.isPressed)
+            .animation(.spring(response: 0.25, dampingFraction: 0.7), value: configuration.isPressed)
+    }
+}
+
+private struct DownloadsCategoryTextTabs: View {
+    @Binding var selectedFilter: Int
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @ScaledMetric(relativeTo: .headline) private var titleSize: CGFloat = 25
+
+    private let titleHeight: CGFloat = 31
+    private let titles = ["Все", "Фильмы", "Сериалы", "Мульты"]
+
+    private var tabSpacing: CGFloat {
+        horizontalSizeClass == .regular ? 28 : 22
+    }
+
+    private var edgeContentInset: CGFloat {
+        horizontalSizeClass == .regular ? 18 : 16
+    }
+
+    private var tabScrollAnimation: Animation {
+        .spring(response: 0.35, dampingFraction: 0.75, blendDuration: 0.1)
+    }
+
+    var body: some View {
+        ScrollViewReader { scrollProxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(alignment: .top, spacing: tabSpacing) {
+                    ForEach(Array(titles.enumerated()), id: \.offset) { index, title in
+                        let isSelected = selectedFilter == index
+                        let isFirst = index == 0
+                        let isLast = index == titles.count - 1
+
+                        Button {
+                            let generator = UIImpactFeedbackGenerator(style: .light)
+                            generator.prepare()
+                            generator.impactOccurred()
+                            withAnimation(tabScrollAnimation) {
+                                selectedFilter = index
+                            }
+                        } label: {
+                            Text(title)
+                                .font(.system(size: titleSize, weight: isSelected ? .bold : .semibold))
+                                .foregroundStyle(isSelected ? Color.primary : Color.secondary)
+                                .lineLimit(1)
+                                .fixedSize(horizontal: true, vertical: false)
+                                .frame(height: titleHeight, alignment: .center)
+                                .contentShape(Rectangle())
+                        }
+                        .buttonStyle(DownloadsTabScaleButtonStyle())
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 2)
+                        .id(index)
+                        .padding(.leading, isFirst ? edgeContentInset : 0)
+                        .padding(.trailing, isLast ? edgeContentInset : 0)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .scrollTargetLayout()
+            }
+            .frame(height: titleHeight + 4, alignment: .topLeading)
+            .scrollClipDisabled()
+            .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+            .animation(tabScrollAnimation, value: selectedFilter)
+            .onAppear {
+                scrollProxy.scrollTo(selectedFilter, anchor: .center)
+            }
+            .onChange(of: selectedFilter) { _, newFilter in
+                withAnimation(tabScrollAnimation) {
+                    scrollProxy.scrollTo(newFilter, anchor: .center)
+                }
+            }
+        }
     }
 }
