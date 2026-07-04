@@ -53,7 +53,7 @@ struct QualitySelectionSheet: View {
                     .padding(.horizontal, 24)
                 }
                 .buttonStyle(GlassPlayButtonStyle())
-                .padding(.bottom, 16)
+                .padding(.bottom, 8)
             }
         }
         .presentationDetents([.medium, .large])
