@@ -314,6 +314,7 @@ struct DetailsView: View {
         }
     }
 
+    private func handleEpisodeSelection(details: MediaDetailsDto, season: Int, episode: Int) {
         guard let kpId = details.externalIds?.kp else { return }
 
         // Episodes always show the source sheet now.
@@ -1562,8 +1563,6 @@ struct EpisodeCellView: View {
                         .font(.system(size: 15))
                         .foregroundColor(.secondary.opacity(0.8))
                         .padding(.leading, 4)
-                        .padding(.vertical, 2)
-                }
                 }
                 .buttonStyle(.plain)
             }
