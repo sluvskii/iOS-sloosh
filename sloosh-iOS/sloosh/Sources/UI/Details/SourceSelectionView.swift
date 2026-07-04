@@ -328,19 +328,15 @@ struct SourceSelectionView: View {
                     Button(action: {
                         actionSelected()
                     }) {
-                        HStack {
-                            Image(systemName: mode == .play ? "play.fill" : "arrow.down.circle.fill")
+                        HStack(spacing: 8) {
+                            Image(systemName: mode == .play ? "play.fill" : "arrow.down")
+                                .font(.system(size: 18, weight: .black))
                             Text(mode == .play ? "Смотреть" : "Скачать")
+                                .font(.system(size: 19, weight: .heavy))
                         }
-                        .font(.system(size: 17, weight: .bold))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 6)
+                        .frame(maxWidth: .infinity, minHeight: 50)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
-                    .buttonBorderShape(.capsule)
-                    .tint(.primary)
-                    .foregroundStyle(Color(UIColor.systemBackground))
+                    .buttonStyle(GlassPlayButtonStyle())
                     .disabled(!isReadyToPlay)
                     .padding(.horizontal)
                 }
