@@ -263,21 +263,20 @@ struct DownloadsView: View {
                         let details = MediaDetailsDto(
                             id: "kp_\(item.kpId)",
                             sourceId: String(item.kpId),
-                            type: item.mediaType,
                             title: item.title,
                             name: item.title,
                             originalTitle: nil,
                             description: nil,
+                            releaseDate: nil,
+                            type: item.mediaType,
+                            genres: nil,
+                            rating: nil,
                             posterUrl: item.posterUrl,
                             backdropUrl: nil,
-                            previewBackdropUrl: nil,
-                            previewPosterUrl: nil,
                             duration: nil,
-                            releaseDate: nil,
                             country: nil,
-                            rating: nil,
-                            genres: nil,
-                            externalIds: ExternalIdsDto(kp: item.kpId, imdb: nil, tmdb: nil)
+                            language: nil,
+                            externalIds: ExternalIdsDto(kp: item.kpId, tmdb: nil, imdb: nil)
                         )
                         DownloadManager.shared.startDownload(
                             details: details,

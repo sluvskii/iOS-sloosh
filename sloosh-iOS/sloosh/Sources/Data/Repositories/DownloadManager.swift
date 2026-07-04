@@ -564,10 +564,10 @@ final class DownloadManager: ObservableObject {
         
         let targetHeight: Int
         switch preferredQuality {
-        case .p1080: targetHeight = 1080
-        case .p720: targetHeight = 720
-        case .p480: targetHeight = 480
-        case .p360: targetHeight = 360
+        case .q1080: targetHeight = 1080
+        case .q720: targetHeight = 720
+        case .q480: targetHeight = 480
+        case .q360: targetHeight = 360
         default: targetHeight = 1080
         }
         

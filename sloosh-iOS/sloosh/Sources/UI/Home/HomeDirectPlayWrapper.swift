@@ -30,7 +30,7 @@ struct HomeDirectPlayWrapper: View {
                     .transition(.opacity)
             } else if let wrapper = viewModel.sourceResultWrapper,
                       let result = wrapper.allohaResult {
-                SourceSelectionView(result: result, kpId: wrapper.kpId) { translation, season, episode, quality in
+                SourceSelectionView(result: result, kpId: wrapper.kpId, details: viewModel.details) { translation, season, episode, quality in
                     let config = PlayerConfig(
                         iframeUrl: translation.iframeUrl,
                         title: title,
