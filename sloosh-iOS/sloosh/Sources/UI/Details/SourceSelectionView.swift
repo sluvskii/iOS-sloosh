@@ -330,7 +330,7 @@ struct SourceSelectionView: View {
                     actionSelected()
                 }) {
                     HStack(spacing: 8) {
-                        Image(systemName: mode == .play ? "play.fill" : "arrow.down")
+                        Image(systemName: mode == .play ? "play.fill" : "arrow.down.circle.fill")
                             .font(.system(size: 18, weight: .black))
                         Text(mode == .play ? "Смотреть" : "Скачать")
                             .font(.system(size: 19, weight: .heavy))
@@ -340,7 +340,7 @@ struct SourceSelectionView: View {
                 }
                 .buttonStyle(GlassPlayButtonStyle())
                 .disabled(!isReadyToPlay)
-                .padding(.bottom, 16)
+                .padding(.bottom, 8)
             }
         }
         .presentationDragIndicator(.visible)
