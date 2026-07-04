@@ -399,10 +399,8 @@ struct DetailsView: View {
                 }
             }
             .frame(width: 50, height: 50)
-            .background(Color.white.opacity(0.08))
-            .clipShape(Circle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(GlassDownloadButtonStyle())
         .matchedTransitionSource(id: "downloadBtn", in: transition) { source in
             source
                 .background(.clear)
@@ -1868,6 +1866,16 @@ struct GlassPlayButtonStyle: ButtonStyle {
                     .fill(.white.opacity(0.85))
             )
             .glassEffect(in: Capsule())
+            .scaleEffect(configuration.isPressed ? 0.94 : 1.0)
+            .animation(.spring(response: 0.25, dampingFraction: 0.6), value: configuration.isPressed)
+    }
+}
+
+struct GlassDownloadButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(.white)
+            .glassEffect(in: Circle())
             .scaleEffect(configuration.isPressed ? 0.94 : 1.0)
             .animation(.spring(response: 0.25, dampingFraction: 0.6), value: configuration.isPressed)
     }
