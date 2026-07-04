@@ -919,13 +919,13 @@ struct EpisodeDetailsSheet: View {
                         // Metadata: Rating & Date
                         HStack(spacing: 12) {
                             if let rating = item.meta?.ratings?.tmdb ?? item.meta?.ratings?.imdb, rating > 0 {
-                                Label(String(format: "%.1f", rating), systemImage: "star.fill")
-                                    .font(.system(size: 14, weight: .bold))
-                                    .foregroundColor(.rating(rating))
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 4)
-                                    .background(Color.rating(rating).opacity(0.1))
-                                    .cornerRadius(6)
+                                Text(String(format: "%.1f", rating))
+                                    .font(.system(size: 12, weight: .heavy))
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 5)
+                                    .padding(.vertical, 3)
+                                    .background(Color.rating(rating))
+                                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                             }
                             
                             if let airDate = item.meta?.airDate, !airDate.isEmpty {
@@ -966,12 +966,11 @@ struct EpisodeDetailsSheet: View {
                                     Image(systemName: "play.fill")
                                     Text("Смотреть серию")
                                 }
-                                .font(.system(size: 16, weight: .bold))
+                                .font(.system(size: 15, weight: .bold))
                                 .frame(maxWidth: .infinity)
-                                .frame(height: 48)
                             }
                             .buttonStyle(.borderedProminent)
-                            .controlSize(.large)
+                            .controlSize(.regular)
                             .buttonBorderShape(.capsule)
                             .tint(.primary)
                             .foregroundStyle(Color(UIColor.systemBackground))
@@ -984,12 +983,11 @@ struct EpisodeDetailsSheet: View {
                                     Image(systemName: isWatched ? "checkmark.circle.fill" : "circle")
                                     Text(isWatched ? "Просмотрено" : "Отметить как просмотренное")
                                 }
-                                .font(.system(size: 15, weight: .semibold))
+                                .font(.system(size: 14, weight: .semibold))
                                 .frame(maxWidth: .infinity)
-                                .frame(height: 44)
                             }
                             .buttonStyle(.bordered)
-                            .controlSize(.large)
+                            .controlSize(.regular)
                             .buttonBorderShape(.capsule)
                             .tint(.secondary)
                         }
@@ -1001,9 +999,12 @@ struct EpisodeDetailsSheet: View {
             .navigationTitle("\(item.season) сезон, \(item.episode) серия")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Готово") {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button {
                         dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .foregroundStyle(.primary)
                     }
                 }
             }
@@ -1063,6 +1064,16 @@ struct EpisodeCellView: View {
         isWatchedState = PlaybackProgressStore.shared.loadWatched(mediaId: progressKey) || (progressFractionState ?? 0) >= 0.9
     }
 
+    private func formatEpisodeAirDate(_ dateStr: String) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        guard let date = formatter.date(from: dateStr) else { return dateStr }
+        
+        formatter.locale = Locale(identifier: "ru_RU")
+        formatter.dateFormat = "d MMMM yyyy"
+        return formatter.string(from: date)
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             ZStack {
@@ -1108,16 +1119,6 @@ struct EpisodeCellView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 12))
                 .allowsHitTesting(false)
                 
-                // Play Overlay (Centered)
-                Image(systemName: "play.fill")
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundColor(.white)
-                    .padding(10)
-                    .background(.black.opacity(0.45))
-                    .clipShape(Circle())
-                    .shadow(radius: 4)
-                    .opacity(isLastPlayed ? 1.0 : 0.75)
-                
                 // Progress Bar (Bottom Aligned)
                 if let progress = progressFractionState, progress > 0.02 {
                     VStack {
@@ -1133,6 +1134,24 @@ struct EpisodeCellView: View {
                         }
                     }
                     .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+                
+                // Rating overlay on top-left of the card (Unified with design system)
+                if let rating = meta?.ratings?.tmdb ?? meta?.ratings?.imdb, rating > 0 {
+                    VStack {
+                        HStack {
+                            Text(String(format: "%.1f", rating))
+                                .font(.system(size: 10, weight: .heavy))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 3)
+                                .background(Color.rating(rating))
+                                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                                .padding(6)
+                            Spacer()
+                        }
+                        Spacer()
+                    }
                 }
                 
                 // Watched Checkmark Badge (Top-Right)
@@ -1204,24 +1223,10 @@ struct EpisodeCellView: View {
                         .foregroundColor(.primary)
                         .lineLimit(1)
                     
-                    HStack(spacing: 8) {
-                        if let rating = meta?.ratings?.tmdb ?? meta?.ratings?.imdb, rating > 0 {
-                            HStack(spacing: 3) {
-                                Image(systemName: "star.fill")
-                                    .font(.system(size: 9))
-                                    .foregroundColor(.rating(rating))
-                                Text(String(format: "%.1f", rating))
-                                    .font(.system(size: 11, weight: .bold))
-                                    .foregroundColor(.rating(rating))
-                            }
-                        }
-                        
-                        if let airDate = meta?.airDate, !airDate.isEmpty {
-                            let year = airDate.prefix(4)
-                            Text(year)
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundColor(.secondary)
-                        }
+                    if let airDate = meta?.airDate, !airDate.isEmpty {
+                        Text(formatEpisodeAirDate(airDate))
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundColor(.secondary)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
