@@ -476,5 +476,4 @@ struct SourceSelectionView: View {
             preferredQuality: preferredQuality
         )
     }
-    }
 }
