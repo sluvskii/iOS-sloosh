@@ -208,9 +208,19 @@ struct DetailsView: View {
                                 playerEpisode = episode
                                 playerQuality = quality
                                 playerSeriesResult = result
-                                selectedIframeUrl = translation.iframeUrl
-                                playerVoiceover = translation.name
-                                playerStreamUrl = translation.streamUrl
+                                
+                                if DownloadManager.shared.isDownloaded(kpId: wrapper.kpId, season: season, episode: episode),
+                                   let downloadItem = DownloadManager.shared.getDownloadItem(kpId: wrapper.kpId, season: season, episode: episode),
+                                   downloadItem.translationName == translation.name {
+                                    selectedIframeUrl = nil
+                                    playerVoiceover = downloadItem.translationName
+                                    playerStreamUrl = downloadItem.localPlayableUrl.absoluteString
+                                } else {
+                                    selectedIframeUrl = translation.iframeUrl
+                                    playerVoiceover = translation.name
+                                    playerStreamUrl = translation.streamUrl
+                                }
+                                
                                 showPlayer = true
                                 showSourceSheet = false
                                 viewModel.saveAllohaTranslation(translation.name)
@@ -290,19 +300,7 @@ struct DetailsView: View {
         guard let kpId = details.externalIds?.kp else { return }
 
         if details.type != "tv" {
-            if DownloadManager.shared.isDownloaded(kpId: kpId, season: nil, episode: nil),
-               let downloadItem = DownloadManager.shared.getDownloadItem(kpId: kpId, season: nil, episode: nil) {
-                playerKpId = kpId
-                playerSeason = nil
-                playerEpisode = nil
-                playerQuality = .ask
-                playerSeriesResult = nil
-                selectedIframeUrl = nil
-                playerVoiceover = downloadItem.translationName
-                playerStreamUrl = downloadItem.localPlayableUrl.absoluteString
-                showPlayer = true
-                return
-            }
+            // Movies always show the source sheet now.
         }
 
         sourceSheetTitle = details.title ?? details.name ?? ""
@@ -320,20 +318,7 @@ struct DetailsView: View {
     private func handleEpisodeSelection(details: MediaDetailsDto, season: Int, episode: Int) {
         guard let kpId = details.externalIds?.kp else { return }
 
-        if DownloadManager.shared.isDownloaded(kpId: kpId, season: season, episode: episode),
-           let downloadItem = DownloadManager.shared.getDownloadItem(kpId: kpId, season: season, episode: episode) {
-            PlaybackProgressStore.shared.saveLastPlayed(kpId: kpId, season: season, episode: episode)
-            playerKpId = kpId
-            playerSeason = season
-            playerEpisode = episode
-            playerQuality = .ask
-            playerSeriesResult = nil
-            selectedIframeUrl = nil
-            playerVoiceover = downloadItem.translationName
-            playerStreamUrl = downloadItem.localPlayableUrl.absoluteString
-            showPlayer = true
-            return
-        }
+        // Episodes always show the source sheet now.
 
         PlaybackProgressStore.shared.saveLastPlayed(
             kpId: kpId,
