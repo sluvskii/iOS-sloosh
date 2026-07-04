@@ -91,6 +91,8 @@ struct DetailsView: View {
     @State private var playerQuality: VideoQualityPreference? = nil
     @State private var playerSeriesResult: AllohaApiResult?
     @State private var favoriteBounce = false
+    @State private var movieToDelete: DownloadItem? = nil
+    @State private var showDeleteMovieAlert = false
 
     @Environment(\.verticalSizeClass) private var verticalSizeClass
 
@@ -238,6 +240,16 @@ struct DetailsView: View {
                     }
                 }
             }
+        .alert("Удалить фильм?", isPresented: $showDeleteMovieAlert) {
+            Button("Отмена", role: .cancel) {}
+            Button("Удалить", role: .destructive) {
+                if let movie = movieToDelete {
+                    DownloadManager.shared.deleteDownload(id: movie.id)
+                }
+            }
+        } message: {
+            Text("Вы действительно хотите удалить этот фильм из памяти устройства?")
+        }
     }
 
     private func handlePlayAction(details: MediaDetailsDto) {
@@ -309,6 +321,15 @@ struct DetailsView: View {
         }
     }
 
+    private func playAndDownloadRow(for details: MediaDetailsDto) -> some View {
+        HStack(spacing: 12) {
+            playButton(for: details)
+            if details.type != "tv" {
+                downloadButton(for: details)
+            }
+        }
+    }
+
     private func playButton(for details: MediaDetailsDto) -> some View {
         Button(action: {
             handlePlayAction(details: details)
@@ -329,6 +350,113 @@ struct DetailsView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 25))
         }
         .contentShape(Capsule())
+    }
+
+    @ViewBuilder
+    private func downloadButton(for details: MediaDetailsDto) -> some View {
+        let kpId = details.externalIds?.kp ?? 0
+        let item = DownloadManager.shared.getDownloadItem(kpId: kpId, season: nil, episode: nil)
+        
+        Button(action: {
+            handleDownloadAction(details: details, item: item)
+        }) {
+            Group {
+                if let item = item {
+                    switch item.status {
+                    case .pending:
+                        ProgressView()
+                            .controlSize(.small)
+                    case .downloading:
+                        ZStack {
+                            Circle()
+                                .stroke(Color.primary.opacity(0.15), lineWidth: 2)
+                                .frame(width: 20, height: 20)
+                            Circle()
+                                .trim(from: 0.0, to: item.progress)
+                                .stroke(Color.slooshAccent, lineWidth: 2)
+                                .frame(width: 20, height: 20)
+                                .rotationEffect(Angle(degrees: -90))
+                            Image(systemName: "square.fill")
+                                .font(.system(size: 6))
+                        }
+                    case .completed:
+                        Image(systemName: "arrow.down.circle.fill")
+                            .font(.system(size: 22))
+                            .foregroundColor(Color.slooshAccent)
+                    case .failed:
+                        Image(systemName: "arrow.clockwise.circle.fill")
+                            .font(.system(size: 22))
+                            .foregroundColor(.red)
+                    }
+                } else {
+                    Image(systemName: "arrow.down.circle")
+                        .font(.system(size: 22))
+                        .foregroundColor(.primary)
+                }
+            }
+            .frame(width: 50, height: 50)
+            .background(Color.white.opacity(0.08))
+            .clipShape(Circle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func handleDownloadAction(details: MediaDetailsDto, item: DownloadItem?) {
+        let generator = UIImpactFeedbackGenerator(style: .medium)
+        generator.prepare()
+        generator.impactOccurred()
+        
+        if let item = item {
+            switch item.status {
+            case .downloading, .pending:
+                DownloadManager.shared.pauseDownload(id: item.id)
+            case .failed:
+                startDownloadWithPreferredTranslation(details: details, season: nil, episode: nil)
+            case .completed:
+                movieToDelete = item
+                showDeleteMovieAlert = true
+            }
+        } else {
+            startDownloadWithPreferredTranslation(details: details, season: nil, episode: nil)
+        }
+    }
+
+    private func startDownloadWithPreferredTranslation(details: MediaDetailsDto, season: Int?, episode: Int?) {
+        guard let kpId = details.externalIds?.kp else { return }
+        
+        Task {
+            let title = details.title ?? details.name ?? ""
+            await viewModel.fetchSources(kpId: kpId, title: title)
+            guard let result = viewModel.sourceResultWrapper?.allohaResult else { return }
+            
+            let savedVoiceover = PlaybackProgressStore.shared.loadLastVoiceover(kpId: kpId, source: "alloha")
+            let globalVoiceover = UserDefaults.standard.string(forKey: "alloha_last_translation_name")
+            let translation: AllohaTranslation
+            
+            if details.type == "tv" {
+                guard let s = season, let e = episode,
+                      let seasonObj = result.seasons.first(where: { $0.season == s }),
+                      let epObj = seasonObj.episodes.first(where: { $0.episode == e }) else { return }
+                
+                let matching = epObj.translations.first(where: { allohaTranslationNamesMatch($0.name, savedVoiceover, exactOnly: true) })
+                let globalMatching = epObj.translations.first(where: { allohaTranslationNamesMatch($0.name, globalVoiceover, exactOnly: false) })
+                translation = matching ?? globalMatching ?? epObj.translations.first!
+            } else {
+                guard let movie = result.movie else { return }
+                let matching = movie.translations.first(where: { allohaTranslationNamesMatch($0.name, savedVoiceover, exactOnly: true) })
+                let globalMatching = movie.translations.first(where: { allohaTranslationNamesMatch($0.name, globalVoiceover, exactOnly: false) })
+                translation = matching ?? globalMatching ?? movie.translations.first!
+            }
+            
+            let preferredQuality = VideoQualityPreference(rawValue: UserDefaults.standard.string(forKey: "preferredVideoQuality") ?? "Спрашивать каждый раз") ?? .ask
+            DownloadManager.shared.startDownload(
+                details: details,
+                season: season,
+                episode: episode,
+                translation: translation,
+                preferredQuality: preferredQuality
+            )
+        }
     }
 
     private var detailsContent: some View {
@@ -386,7 +514,7 @@ struct DetailsView: View {
 
                         DetailsPrimaryMetadataRow(details: details, alignment: .center)
 
-                        playButton(for: details)
+                        playAndDownloadRow(for: details)
                             .padding(.top, 8)
                             .padding(.bottom, -4)
 
@@ -463,7 +591,7 @@ struct DetailsView: View {
 
                                 DetailsPrimaryMetadataRow(details: details, alignment: .center)
 
-                                playButton(for: details)
+                                playAndDownloadRow(for: details)
                                     .padding(.top, 8)
                                     .padding(.bottom, -4)
 
@@ -910,6 +1038,7 @@ struct EpisodeDetailsSheet: View {
     @State private var isWatched: Bool = false
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var downloadManager = DownloadManager.shared
+    @EnvironmentObject private var viewModel: DetailsViewModel
     
     var body: some View {
         NavigationStack {
@@ -1018,7 +1147,7 @@ struct EpisodeDetailsSheet: View {
                         }
                         
                         // Buttons at the bottom of scroll content (flying)
-                        VStack(spacing: 12) {
+                        HStack(spacing: 12) {
                             Button(action: {
                                 dismiss()
                                 onPlay()
@@ -1036,6 +1165,54 @@ struct EpisodeDetailsSheet: View {
                             .buttonBorderShape(.capsule)
                             .tint(.primary)
                             .foregroundStyle(Color(UIColor.systemBackground))
+                            
+                            if let kpId = Int(item.movieId),
+                               let details = viewModel.details {
+                                let downloadItem = downloadManager.getDownloadItem(kpId: kpId, season: item.season, episode: item.episode)
+                                
+                                Button(action: {
+                                    handleEpisodeDownload(kpId: kpId, details: details, item: downloadItem)
+                                }) {
+                                    Group {
+                                        if let dlItem = downloadItem {
+                                            switch dlItem.status {
+                                            case .pending:
+                                                ProgressView()
+                                                    .controlSize(.small)
+                                            case .downloading:
+                                                ZStack {
+                                                    Circle()
+                                                        .stroke(Color.primary.opacity(0.15), lineWidth: 2)
+                                                        .frame(width: 20, height: 20)
+                                                    Circle()
+                                                        .trim(from: 0.0, to: dlItem.progress)
+                                                        .stroke(Color.slooshAccent, lineWidth: 2)
+                                                        .frame(width: 20, height: 20)
+                                                        .rotationEffect(Angle(degrees: -90))
+                                                    Image(systemName: "square.fill")
+                                                        .font(.system(size: 6))
+                                                }
+                                            case .completed:
+                                                Image(systemName: "arrow.down.circle.fill")
+                                                    .font(.system(size: 20))
+                                                    .foregroundColor(Color.slooshAccent)
+                                            case .failed:
+                                                Image(systemName: "arrow.clockwise.circle.fill")
+                                                    .font(.system(size: 20))
+                                                    .foregroundColor(.red)
+                                            }
+                                        } else {
+                                            Image(systemName: "arrow.down.circle")
+                                                .font(.system(size: 20))
+                                                .foregroundColor(.primary)
+                                        }
+                                    }
+                                    .frame(width: 44, height: 44)
+                                    .background(Color.white.opacity(0.08))
+                                    .clipShape(Circle())
+                                }
+                                .buttonStyle(.plain)
+                            }
                         }
                         .padding(.top, 8)
                     }
@@ -1087,6 +1264,52 @@ struct EpisodeDetailsSheet: View {
         formatter.dateFormat = "d MMMM yyyy"
         return formatter.string(from: date)
     }
+    
+    private func handleEpisodeDownload(kpId: Int, details: MediaDetailsDto, item: DownloadItem?) {
+        let generator = UIImpactFeedbackGenerator(style: .medium)
+        generator.prepare()
+        generator.impactOccurred()
+        
+        if let item = item {
+            switch item.status {
+            case .downloading, .pending:
+                DownloadManager.shared.pauseDownload(id: item.id)
+            case .failed:
+                startDownload(kpId: kpId, details: details)
+            case .completed:
+                DownloadManager.shared.deleteDownload(id: item.id)
+            }
+        } else {
+            startDownload(kpId: kpId, details: details)
+        }
+    }
+    
+    private func startDownload(kpId: Int, details: MediaDetailsDto) {
+        Task {
+            let title = details.title ?? details.name ?? ""
+            await viewModel.fetchSources(kpId: kpId, title: title)
+            guard let result = viewModel.sourceResultWrapper?.allohaResult else { return }
+            
+            let savedVoiceover = PlaybackProgressStore.shared.loadLastVoiceover(kpId: kpId, source: "alloha")
+            let globalVoiceover = UserDefaults.standard.string(forKey: "alloha_last_translation_name")
+            
+            guard let seasonObj = result.seasons.first(where: { $0.season == item.season }),
+                  let epObj = seasonObj.episodes.first(where: { $0.episode == item.episode }) else { return }
+            
+            let matching = epObj.translations.first(where: { allohaTranslationNamesMatch($0.name, savedVoiceover, exactOnly: true) })
+            let globalMatching = epObj.translations.first(where: { allohaTranslationNamesMatch($0.name, globalVoiceover, exactOnly: false) })
+            let translation = matching ?? globalMatching ?? epObj.translations.first!
+            
+            let preferredQuality = VideoQualityPreference(rawValue: UserDefaults.standard.string(forKey: "preferredVideoQuality") ?? "Спрашивать каждый раз") ?? .ask
+            DownloadManager.shared.startDownload(
+                details: details,
+                season: item.season,
+                episode: item.episode,
+                translation: translation,
+                preferredQuality: preferredQuality
+            )
+        }
+    }
 }
 
 struct EpisodeCellView: View {
@@ -1125,6 +1348,53 @@ struct EpisodeCellView: View {
     private func updateProgressState() {
         progressFractionState = PlaybackProgressStore.shared.normalizedProgress(mediaId: progressKey)
         isWatchedState = PlaybackProgressStore.shared.loadWatched(mediaId: progressKey) || (progressFractionState ?? 0) >= 0.9
+    }
+    
+    private func handleEpisodeDownload(kpId: Int, item: DownloadItem?) {
+        let generator = UIImpactFeedbackGenerator(style: .medium)
+        generator.prepare()
+        generator.impactOccurred()
+        
+        if let item = item {
+            switch item.status {
+            case .downloading, .pending:
+                DownloadManager.shared.pauseDownload(id: item.id)
+            case .failed:
+                startDownload(kpId: kpId)
+            case .completed:
+                DownloadManager.shared.deleteDownload(id: item.id)
+            }
+        } else {
+            startDownload(kpId: kpId)
+        }
+    }
+    
+    private func startDownload(kpId: Int) {
+        guard let details = viewModel.details else { return }
+        Task {
+            let title = details.title ?? details.name ?? ""
+            await viewModel.fetchSources(kpId: kpId, title: title)
+            guard let result = viewModel.sourceResultWrapper?.allohaResult else { return }
+            
+            let savedVoiceover = PlaybackProgressStore.shared.loadLastVoiceover(kpId: kpId, source: "alloha")
+            let globalVoiceover = UserDefaults.standard.string(forKey: "alloha_last_translation_name")
+            
+            guard let seasonObj = result.seasons.first(where: { $0.season == season }),
+                  let epObj = seasonObj.episodes.first(where: { $0.episode == episode }) else { return }
+            
+            let matching = epObj.translations.first(where: { allohaTranslationNamesMatch($0.name, savedVoiceover, exactOnly: true) })
+            let globalMatching = epObj.translations.first(where: { allohaTranslationNamesMatch($0.name, globalVoiceover, exactOnly: false) })
+            let translation = matching ?? globalMatching ?? epObj.translations.first!
+            
+            let preferredQuality = VideoQualityPreference(rawValue: UserDefaults.standard.string(forKey: "preferredVideoQuality") ?? "Спрашивать каждый раз") ?? .ask
+            DownloadManager.shared.startDownload(
+                details: details,
+                season: season,
+                episode: episode,
+                translation: translation,
+                preferredQuality: preferredQuality
+            )
+        }
     }
 
     private func formatEpisodeAirDate(_ dateStr: String) -> String {
@@ -1340,6 +1610,49 @@ struct EpisodeCellView: View {
                         .padding(.vertical, 2)
                 }
                 .buttonStyle(.plain)
+                
+                if let kpId = viewModel.details?.externalIds?.kp {
+                    let item = downloadManager.getDownloadItem(kpId: kpId, season: season, episode: episode)
+                    Button {
+                        handleEpisodeDownload(kpId: kpId, item: item)
+                    } label: {
+                        Group {
+                            if let item = item {
+                                switch item.status {
+                                case .pending:
+                                    ProgressView()
+                                        .controlSize(.mini)
+                                case .downloading:
+                                    ZStack {
+                                        Circle()
+                                            .stroke(Color.primary.opacity(0.15), lineWidth: 1.5)
+                                            .frame(width: 14, height: 14)
+                                        Circle()
+                                            .trim(from: 0.0, to: item.progress)
+                                            .stroke(Color.slooshAccent, lineWidth: 1.5)
+                                            .frame(width: 14, height: 14)
+                                            .rotationEffect(Angle(degrees: -90))
+                                    }
+                                case .completed:
+                                    Image(systemName: "arrow.down.circle.fill")
+                                        .font(.system(size: 15))
+                                        .foregroundColor(Color.slooshAccent)
+                                case .failed:
+                                    Image(systemName: "arrow.clockwise.circle.fill")
+                                        .font(.system(size: 15))
+                                        .foregroundColor(.red)
+                                }
+                            } else {
+                                Image(systemName: "arrow.down.circle")
+                                    .font(.system(size: 15))
+                                    .foregroundColor(.secondary.opacity(0.8))
+                            }
+                        }
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 2)
+                    }
+                    .buttonStyle(.plain)
+                }
             }
             .frame(width: 160)
         }

@@ -14,9 +14,6 @@ struct SourceSelectionView: View {
     @AppStorage("preferredVideoQuality") private var preferredQuality: VideoQualityPreference = .ask
     @State private var showQualitySelection = false
     
-    @ObservedObject private var downloadManager = DownloadManager.shared
-    @State private var showDeleteAlert = false
-    
     // Computed properties for ALL unique values
     var allTranslations: [String] {
         if result.isSerial {
@@ -322,44 +319,28 @@ struct SourceSelectionView: View {
                     .buttonStyle(.plain)
                 }
                 ToolbarItem(placement: .bottomBar) {
-                    HStack(spacing: 12) {
-                        Button(action: {
-                            playSelected()
-                        }) {
-                            HStack {
-                                Image(systemName: "play.fill")
-                                Text("Смотреть")
-                            }
-                            .font(.system(size: 17, weight: .bold))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 6)
+                    Button(action: {
+                        playSelected()
+                    }) {
+                        HStack {
+                            Image(systemName: "play.fill")
+                            Text("Смотреть")
                         }
-                        .buttonStyle(.borderedProminent)
-                        .controlSize(.large)
-                        .buttonBorderShape(.capsule)
-                        .tint(.primary)
-                        .foregroundStyle(Color(UIColor.systemBackground))
-                        .disabled(!isReadyToPlay)
-                        
-                        if let details = details, isReadyToPlay {
-                            downloadButton(for: details)
-                        }
+                        .font(.system(size: 17, weight: .bold))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 6)
                     }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .buttonBorderShape(.capsule)
+                    .tint(.primary)
+                    .foregroundStyle(Color(UIColor.systemBackground))
+                    .disabled(!isReadyToPlay)
                     .padding(.horizontal)
                 }
             }
         }
         .presentationDragIndicator(.visible)
-        .alert("Удалить загрузку?", isPresented: $showDeleteAlert) {
-            Button("Отмена", role: .cancel) {}
-            Button("Удалить", role: .destructive) {
-                if let item = currentDownloadItem {
-                    DownloadManager.shared.deleteDownload(id: item.id)
-                }
-            }
-        } message: {
-            Text("Вы действительно хотите удалить этот файл из памяти устройства?")
-        }
         .onAppear {
             setupInitialSelection()
         }
@@ -369,111 +350,5 @@ struct SourceSelectionView: View {
                 finishPlay(quality: selectedQuality)
             }
         }
-    }
-    
-    private var currentDownloadItem: DownloadItem? {
-        guard let kpId = kpId else { return nil }
-        if result.isSerial {
-            guard let s = selectedSeason, let e = selectedEpisode else { return nil }
-            return downloadManager.getDownloadItem(kpId: kpId, season: s, episode: e)
-        } else {
-            return downloadManager.getDownloadItem(kpId: kpId, season: nil, episode: nil)
-        }
-    }
-    
-    @ViewBuilder
-    private func downloadButton(for details: MediaDetailsDto) -> some View {
-        let item = currentDownloadItem
-        
-        Button(action: {
-            handleDownloadAction(details: details, item: item)
-        }) {
-            Group {
-                if let item = item {
-                    switch item.status {
-                    case .pending:
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle(tint: .primary))
-                            .scaleEffect(0.8)
-                    case .downloading:
-                        ZStack {
-                            Circle()
-                                .stroke(Color.primary.opacity(0.15), lineWidth: 2.5)
-                                .frame(width: 24, height: 24)
-                            Circle()
-                                .trim(from: 0.0, to: item.progress)
-                                .stroke(Color.slooshAccent, lineWidth: 2.5)
-                                .frame(width: 24, height: 24)
-                                .rotationEffect(Angle(degrees: -90))
-                            
-                            Image(systemName: "square.fill")
-                                .font(.system(size: 8))
-                                .foregroundColor(.primary)
-                        }
-                    case .completed:
-                        Image(systemName: "checkmark.circle.fill")
-                            .font(.system(size: 20))
-                            .foregroundColor(Color.slooshAccent)
-                    case .failed:
-                        Image(systemName: "arrow.clockwise.circle.fill")
-                            .font(.system(size: 20))
-                            .foregroundColor(.red)
-                    }
-                } else {
-                    Image(systemName: "arrow.down.circle")
-                        .font(.system(size: 20))
-                        .foregroundColor(.primary)
-                }
-            }
-            .frame(width: 44, height: 44)
-            .background(Color.white.opacity(0.08))
-            .clipShape(Circle())
-        }
-        .buttonStyle(.plain)
-    }
-    
-    private func handleDownloadAction(details: MediaDetailsDto, item: DownloadItem?) {
-        let generator = UIImpactFeedbackGenerator(style: .medium)
-        generator.prepare()
-        generator.impactOccurred()
-        
-        if let item = item {
-            switch item.status {
-            case .downloading, .pending:
-                DownloadManager.shared.pauseDownload(id: item.id)
-            case .failed:
-                startOrResumeDownload(details: details)
-            case .completed:
-                showDeleteAlert = true
-            }
-        } else {
-            startOrResumeDownload(details: details)
-        }
-    }
-    
-    private func startOrResumeDownload(details: MediaDetailsDto) {
-        guard let tName = selectedTranslationName else { return }
-        
-        let translation: AllohaTranslation
-        if result.isSerial {
-            guard let s = selectedSeason, let e = selectedEpisode,
-                  let seasonObj = result.seasons.first(where: { $0.season == s }),
-                  let epObj = seasonObj.episodes.first(where: { $0.episode == e }),
-                  let transObj = epObj.translations.first(where: { allohaTranslationNamesMatch($0.name, tName, exactOnly: true) }) else { return }
-            translation = transObj
-        } else if let movie = result.movie,
-                  let transObj = movie.translations.first(where: { allohaTranslationNamesMatch($0.name, tName, exactOnly: true) }) {
-            translation = transObj
-        } else {
-            return
-        }
-        
-        DownloadManager.shared.startDownload(
-            details: details,
-            season: selectedSeason,
-            episode: selectedEpisode,
-            translation: translation,
-            preferredQuality: preferredQuality
-        )
     }
 }
