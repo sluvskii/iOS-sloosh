@@ -82,34 +82,14 @@ struct DownloadsView: View {
         NavigationStack {
             VStack(spacing: 0) {
                 // Custom Segmented Picker (Floating Glass Capsule)
-                HStack(spacing: 4) {
-                    ForEach(Array(["Все", "Фильмы", "Сериалы"].enumerated()), id: \.offset) { index, title in
-                        Button(action: {
-                            let generator = UIImpactFeedbackGenerator(style: .light)
-                            generator.prepare()
-                            generator.impactOccurred()
-                            withAnimation(.spring(response: 0.28, dampingFraction: 0.75)) {
-                                selectedFilter = index
-                            }
-                        }) {
-                            Text(title)
-                                .font(.system(size: 14, weight: .bold))
-                                .padding(.vertical, 8)
-                                .frame(maxWidth: .infinity)
-                                .background(
-                                    Capsule()
-                                        .fill(selectedFilter == index ? Color.white : Color.clear)
-                                )
-                                .foregroundColor(selectedFilter == index ? .black : .primary)
-                        }
-                        .buttonStyle(.plain)
-                    }
+                Picker("Категория", selection: $selectedFilter) {
+                    Text("Все").tag(0)
+                    Text("Фильмы").tag(1)
+                    Text("Сериалы").tag(2)
                 }
-                .padding(4)
-                .background(Color.white.opacity(0.06))
-                .clipShape(Capsule())
+                .pickerStyle(.segmented)
                 .padding(.horizontal, 16)
-                .padding(.vertical, 12)
+                .padding(.vertical, 10)
                 
                 if downloadManager.downloads.isEmpty {
                     emptyView
