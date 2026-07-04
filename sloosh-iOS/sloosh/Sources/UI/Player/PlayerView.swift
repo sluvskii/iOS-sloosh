@@ -703,7 +703,10 @@ class PlayerViewModel: ObservableObject {
         currentPlaybackSourceURL = url.absoluteURL
 
         let asset: AVURLAsset
-        if url.isFileURL {
+        if url.absoluteString.contains("127.0.0.1") || url.absoluteString.contains("localhost") {
+            HlsProxyServer.shared.start(headers: [:], voices: [], subtitles: [], mediaId: "local")
+            asset = AVURLAsset(url: url)
+        } else if url.isFileURL {
             asset = AVURLAsset(url: url)
         } else {
             guard let proxyUrl = proxiedPlaybackURL(for: url) else {

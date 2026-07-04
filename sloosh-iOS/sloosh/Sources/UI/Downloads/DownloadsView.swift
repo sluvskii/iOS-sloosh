@@ -126,6 +126,7 @@ struct DownloadsView: View {
                 }
             }
             .navigationTitle("Загрузки")
+            .toolbar(.hidden, for: .navigationBar)
             .background(Color(UIColor.systemBackground))
             .fullScreenCover(item: $playerItem) { item in
                 PlayerView(
