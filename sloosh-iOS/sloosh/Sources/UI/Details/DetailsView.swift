@@ -209,8 +209,9 @@ struct DetailsView: View {
                                 playerQuality = quality
                                 playerSeriesResult = result
                                 
-                                if DownloadManager.shared.isDownloaded(kpId: wrapper.kpId, season: season, episode: episode),
-                                   let downloadItem = DownloadManager.shared.getDownloadItem(kpId: wrapper.kpId, season: season, episode: episode),
+                                if let kpId = wrapper.kpId,
+                                   DownloadManager.shared.isDownloaded(kpId: kpId, season: season, episode: episode),
+                                   let downloadItem = DownloadManager.shared.getDownloadItem(kpId: kpId, season: season, episode: episode),
                                    downloadItem.translationName == translation.name {
                                     selectedIframeUrl = nil
                                     playerVoiceover = downloadItem.translationName
