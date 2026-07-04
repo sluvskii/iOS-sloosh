@@ -349,11 +349,12 @@ struct DetailsView: View {
         Button(action: {
             handlePlayAction(details: details)
         }) {
-            HStack {
+            HStack(spacing: 8) {
                 Image(systemName: "play.fill")
-                    .font(.system(size: 18, weight: .black))
+                    .font(.system(size: 16, weight: .heavy))
                 Text("Смотреть")
-                    .font(.system(size: 19, weight: .heavy))
+                    .font(.system(size: 17, weight: .bold))
+                    .tracking(0.5)
             }
             .frame(height: 50)
             .padding(.horizontal, 16)
