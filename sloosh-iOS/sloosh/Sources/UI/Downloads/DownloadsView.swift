@@ -46,6 +46,7 @@ struct DownloadsView: View {
     @ObservedObject private var downloadManager = DownloadManager.shared
     @State private var selectedFilter = 0 // 0 = Все, 1 = Фильмы, 2 = Сериалы
     @State private var playerItem: DownloadItem? = nil
+    @ScaledMetric(relativeTo: .headline) private var titleSize: CGFloat = 25
     
     private var listItems: [DownloadItem] {
         downloadManager.downloads.filter { item in
@@ -82,7 +83,7 @@ struct DownloadsView: View {
             .safeAreaInset(edge: .top) {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 22) {
-                        ForEach(Array(["Все", "Фильмы", "Сериалы", "Мультфильмы"].enumerated()), id: \.offset) { index, title in
+                        ForEach(Array(["Все", "Фильмы", "Сериалы", "Мульты"].enumerated()), id: \.offset) { index, title in
                             let isSelected = selectedFilter == index
                             let isFirst = index == 0
                             let isLast = index == 3
@@ -96,7 +97,7 @@ struct DownloadsView: View {
                                 }
                             }) {
                                 Text(title)
-                                    .font(.system(size: 24, weight: isSelected ? .bold : .semibold))
+                                    .font(.system(size: titleSize, weight: isSelected ? .bold : .semibold))
                                     .foregroundStyle(isSelected ? Color.primary : Color.secondary)
                                     .lineLimit(1)
                                     .fixedSize(horizontal: true, vertical: false)
@@ -112,7 +113,6 @@ struct DownloadsView: View {
                 }
                 .padding(.top, 16)
                 .padding(.bottom, 12)
-                .background(.regularMaterial)
             }
             .navigationTitle("Загрузки")
             .toolbar(.hidden, for: .navigationBar)
