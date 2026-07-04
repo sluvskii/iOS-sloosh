@@ -973,23 +973,6 @@ struct EpisodeDetailsSheet: View {
                             .buttonBorderShape(.capsule)
                             .tint(.primary)
                             .foregroundStyle(Color(UIColor.systemBackground))
-                            
-                            Button(action: {
-                                isWatched.toggle()
-                                onWatchedToggle(isWatched)
-                            }) {
-                                HStack {
-                                    Image(systemName: isWatched ? "checkmark.circle.fill" : "circle")
-                                    Text(isWatched ? "Просмотрено" : "Отметить как просмотренное")
-                                }
-                                .font(.system(size: 16, weight: .semibold))
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 4)
-                            }
-                            .buttonStyle(.bordered)
-                            .controlSize(.large)
-                            .buttonBorderShape(.capsule)
-                            .tint(.secondary)
                         }
                         .padding(.top, 8)
                     }
@@ -1008,6 +991,20 @@ struct EpisodeDetailsSheet: View {
                     }
                     .tint(.primary)
                     .buttonStyle(.plain)
+                }
+                
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        let generator = UIImpactFeedbackGenerator(style: .light)
+                        generator.prepare()
+                        generator.impactOccurred()
+                        isWatched.toggle()
+                        onWatchedToggle(isWatched)
+                    } label: {
+                        Image(systemName: isWatched ? "checkmark.circle.fill" : "checkmark.circle")
+                            .font(.system(size: 17, weight: .medium))
+                            .foregroundStyle(isWatched ? Color.slooshAccent : .primary)
+                    }
                 }
             }
         }
@@ -1162,12 +1159,10 @@ struct EpisodeCellView: View {
                         HStack {
                             Spacer()
                             Image(systemName: "checkmark.circle.fill")
-                                .font(.system(size: 14))
+                                .font(.system(size: 18))
                                 .foregroundColor(Color.slooshAccent)
-                                .padding(4)
-                                .background(.black.opacity(0.6))
-                                .clipShape(Circle())
-                                .padding([.top, .trailing], 6)
+                                .shadow(color: .black.opacity(0.8), radius: 3, x: 0, y: 1)
+                                .padding([.top, .trailing], 8)
                         }
                         Spacer()
                     }
