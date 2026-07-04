@@ -807,6 +807,7 @@ private struct DetailsInfoSection: View {
                             .lineSpacing(4)
                             .lineLimit(nil)
                             .frame(maxWidth: .infinity, alignment: .leading)
+                            .fixedSize(horizontal: false, vertical: true)
                             .opacity(0)
                             .allowsHitTesting(false)
                             .background(
