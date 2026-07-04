@@ -81,6 +81,7 @@ struct DetailsView: View {
     @State private var sourceSheetDetent: PresentationDetent = .medium
     @State private var sourceSheetMode: SourceSelectionMode = .play
     @Namespace private var transition
+    @State private var sourceSheetSourceID: String = "playBtn"
     
     @State private var playerKpId: Int?
     @State private var playerSeason: Int?
@@ -243,7 +244,7 @@ struct DetailsView: View {
                     }
                 }
                 .presentationDetents([.medium, .large], selection: $sourceSheetDetent)
-                .navigationTransition(.zoom(sourceID: "playBtn", in: transition))
+                .navigationTransition(.zoom(sourceID: sourceSheetSourceID, in: transition))
             }
             .fullScreenCover(isPresented: $showPlayer, onDismiss: {
                 selectedIframeUrl = nil
@@ -300,10 +301,7 @@ struct DetailsView: View {
 
         guard let kpId = details.externalIds?.kp else { return }
 
-        if details.type != "tv" {
-            // Movies always show the source sheet now.
-        }
-
+        sourceSheetSourceID = "playBtn"
         sourceSheetTitle = details.title ?? details.name ?? ""
         sourceSheetDetent = .medium
         sourceSheetMode = .play
@@ -316,7 +314,6 @@ struct DetailsView: View {
         }
     }
 
-    private func handleEpisodeSelection(details: MediaDetailsDto, season: Int, episode: Int) {
         guard let kpId = details.externalIds?.kp else { return }
 
         // Episodes always show the source sheet now.
@@ -327,6 +324,7 @@ struct DetailsView: View {
             episode: episode
         )
 
+        sourceSheetSourceID = "playBtn"
         sourceSheetTitle = details.title ?? details.name ?? ""
         sourceSheetDetent = .medium
         sourceSheetMode = .play
@@ -342,9 +340,7 @@ struct DetailsView: View {
     private func playAndDownloadRow(for details: MediaDetailsDto) -> some View {
         HStack(spacing: 12) {
             playButton(for: details)
-            if details.type != "tv" {
-                downloadButton(for: details)
-            }
+            downloadButton(for: details)
         }
     }
 
@@ -379,33 +375,22 @@ struct DetailsView: View {
             handleDownloadAction(details: details, item: item)
         }) {
             Group {
-                if let item = item {
-                    switch item.status {
-                    case .pending:
-                        ProgressView()
-                            .controlSize(.small)
-                    case .downloading:
-                        ZStack {
-                            Circle()
-                                .stroke(Color.primary.opacity(0.15), lineWidth: 2)
-                                .frame(width: 20, height: 20)
-                            Circle()
-                                .trim(from: 0.0, to: item.progress)
-                                .stroke(Color.slooshAccent, lineWidth: 2)
-                                .frame(width: 20, height: 20)
-                                .rotationEffect(Angle(degrees: -90))
-                            Image(systemName: "square.fill")
-                                .font(.system(size: 6))
-                        }
-                    case .completed:
-                        Image(systemName: "arrow.down.circle.fill")
-                            .font(.system(size: 22))
-                            .foregroundColor(Color.slooshAccent)
-                    case .failed:
-                        Image(systemName: "arrow.clockwise.circle.fill")
-                            .font(.system(size: 22))
-                            .foregroundColor(.red)
+                if let item = item, item.status == .downloading {
+                    ZStack {
+                        Circle()
+                            .stroke(Color.primary.opacity(0.15), lineWidth: 2)
+                            .frame(width: 20, height: 20)
+                        Circle()
+                            .trim(from: 0.0, to: item.progress)
+                            .stroke(Color.slooshAccent, lineWidth: 2)
+                            .frame(width: 20, height: 20)
+                            .rotationEffect(Angle(degrees: -90))
+                        Image(systemName: "square.fill")
+                            .font(.system(size: 6))
                     }
+                } else if let item = item, item.status == .pending {
+                    ProgressView()
+                        .controlSize(.small)
                 } else {
                     Image(systemName: "arrow.down.circle")
                         .font(.system(size: 22))
@@ -417,6 +402,12 @@ struct DetailsView: View {
             .clipShape(Circle())
         }
         .buttonStyle(.plain)
+        .matchedTransitionSource(id: "downloadBtn", in: transition) { source in
+            source
+                .background(.clear)
+                .clipShape(RoundedRectangle(cornerRadius: 25))
+        }
+        .contentShape(Capsule())
     }
 
     private func handleDownloadAction(details: MediaDetailsDto, item: DownloadItem?) {
@@ -424,15 +415,14 @@ struct DetailsView: View {
         generator.prepare()
         generator.impactOccurred()
         
+        sourceSheetSourceID = "downloadBtn"
+        
         if let item = item {
             switch item.status {
             case .downloading, .pending:
                 DownloadManager.shared.pauseDownload(id: item.id)
-            case .failed:
+            default:
                 startDownloadWithPreferredTranslation(details: details, season: nil, episode: nil)
-            case .completed:
-                movieToDelete = item
-                showDeleteMovieAlert = true
             }
         } else {
             startDownloadWithPreferredTranslation(details: details, season: nil, episode: nil)
@@ -520,8 +510,6 @@ struct DetailsView: View {
                         if details.type == "tv" {
                             InlineEpisodesSection(viewModel: viewModel, details: details) { season, episode in
                                 handleEpisodeSelection(details: details, season: season, episode: episode)
-                            } onDownloadTap: { season, episode in
-                                startDownloadWithPreferredTranslation(details: details, season: season, episode: episode)
                             }
                             .padding(.top, 24)
                             .padding(.bottom, 20)
@@ -607,8 +595,6 @@ struct DetailsView: View {
                                     horizontalPadding: paddingVal
                                 ) { season, episode in
                                     handleEpisodeSelection(details: details, season: season, episode: episode)
-                                } onDownloadTap: { season, episode in
-                                    startDownloadWithPreferredTranslation(details: details, season: season, episode: episode)
                                 }
                                 .padding(.top, 24)
                             }
@@ -1334,7 +1320,6 @@ struct EpisodeCellView: View {
     let episode: Int
     let fallbackTitle: String
     let onPlayTap: () -> Void
-    let onDownloadTap: () -> Void
     let onUpdate: () -> Void
     let onInfoTap: (TvEpisodeDetailsDto?) -> Void
     
@@ -1367,25 +1352,6 @@ struct EpisodeCellView: View {
         isWatchedState = PlaybackProgressStore.shared.loadWatched(mediaId: progressKey) || (progressFractionState ?? 0) >= 0.9
     }
     
-    private func handleEpisodeDownload(kpId: Int, item: DownloadItem?) {
-        let generator = UIImpactFeedbackGenerator(style: .medium)
-        generator.prepare()
-        generator.impactOccurred()
-        
-        if let item = item {
-            switch item.status {
-            case .downloading, .pending:
-                DownloadManager.shared.pauseDownload(id: item.id)
-            case .failed:
-                onDownloadTap()
-            case .completed:
-                DownloadManager.shared.deleteDownload(id: item.id)
-            }
-        } else {
-            onDownloadTap()
-        }
-    }
-
     private func formatEpisodeAirDate(_ dateStr: String) -> String {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyy-MM-dd"
@@ -1598,50 +1564,8 @@ struct EpisodeCellView: View {
                         .padding(.leading, 4)
                         .padding(.vertical, 2)
                 }
-                .buttonStyle(.plain)
-                
-                if let kpId = viewModel.details?.externalIds?.kp {
-                    let item = downloadManager.getDownloadItem(kpId: kpId, season: season, episode: episode)
-                    Button {
-                        handleEpisodeDownload(kpId: kpId, item: item)
-                    } label: {
-                        Group {
-                            if let item = item {
-                                switch item.status {
-                                case .pending:
-                                    ProgressView()
-                                        .controlSize(.mini)
-                                case .downloading:
-                                    ZStack {
-                                        Circle()
-                                            .stroke(Color.primary.opacity(0.15), lineWidth: 1.5)
-                                            .frame(width: 14, height: 14)
-                                        Circle()
-                                            .trim(from: 0.0, to: item.progress)
-                                            .stroke(Color.slooshAccent, lineWidth: 1.5)
-                                            .frame(width: 14, height: 14)
-                                            .rotationEffect(Angle(degrees: -90))
-                                    }
-                                case .completed:
-                                    Image(systemName: "arrow.down.circle.fill")
-                                        .font(.system(size: 15))
-                                        .foregroundColor(Color.slooshAccent)
-                                case .failed:
-                                    Image(systemName: "arrow.clockwise.circle.fill")
-                                        .font(.system(size: 15))
-                                        .foregroundColor(.red)
-                                }
-                            } else {
-                                Image(systemName: "arrow.down.circle")
-                                    .font(.system(size: 15))
-                                    .foregroundColor(.secondary.opacity(0.8))
-                            }
-                        }
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 2)
-                    }
-                    .buttonStyle(.plain)
                 }
+                .buttonStyle(.plain)
             }
             .frame(width: 160)
         }
@@ -1685,7 +1609,6 @@ struct InlineEpisodesSection: View {
     let details: MediaDetailsDto
     var horizontalPadding: CGFloat = 16
     let onEpisodeTap: (Int, Int) -> Void
-    let onDownloadTap: (Int, Int) -> Void
 
     @State private var selectedSeason: Int = 1
     @State private var selectedEpisodeForSheet: EpisodeDetailsSheetItem? = nil
@@ -1808,9 +1731,6 @@ struct InlineEpisodesSection: View {
                                         onPlayTap: {
                                             onEpisodeTap(selectedSeason, episode)
                                         },
-                                        onDownloadTap: {
-                                            onDownloadTap(selectedSeason, episode)
-                                        },
                                         onUpdate: {
                                             updateWatchedSeasons()
                                             redrawTrigger.toggle()
@@ -1867,9 +1787,6 @@ struct InlineEpisodesSection: View {
                 item: item,
                 onPlay: {
                     onEpisodeTap(item.season, item.episode)
-                },
-                onDownload: {
-                    onDownloadTap(item.season, item.episode)
                 },
                 onWatchedToggle: { isWatched in
                     let progressKey = "kp_\(item.movieId)_s\(item.season)_e\(item.episode)"
