@@ -46,16 +46,13 @@ struct QualitySelectionSheet: View {
                         }
                         onSelect(selectedQuality)
                     }) {
-                        Text("Продолжить")
-                            .font(.system(size: 17, weight: .bold))
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 6)
+                        HStack(spacing: 8) {
+                            Text("Продолжить")
+                                .font(.system(size: 19, weight: .heavy))
+                        }
+                        .frame(maxWidth: .infinity, minHeight: 50)
                     }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
-                    .buttonBorderShape(.capsule)
-                    .tint(.primary)
-                    .foregroundStyle(Color(UIColor.systemBackground))
+                    .buttonStyle(GlassPlayButtonStyle())
                     .padding(.horizontal)
                 }
             }
