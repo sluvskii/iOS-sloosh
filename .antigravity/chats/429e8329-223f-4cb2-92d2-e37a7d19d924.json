@@ -1,0 +1,33 @@
+{
+  "sessionId": "429e8329-223f-4cb2-92d2-e37a7d19d924",
+  "name": "sloosh",
+  "createdAt": "2026-07-04T11:30:48.641Z",
+  "filename": "429e8329-223f-4cb2-92d2-e37a7d19d924.json",
+  "geminiStarted": false,
+  "messages": [
+    {
+      "id": "d5e61c5e-9479-4780-94e5-8f0f94b11600",
+      "role": "user",
+      "content": "привет",
+      "status": "pending",
+      "model": "gemini-3-pro-preview",
+      "client_type": "gemini-bridge",
+      "parent_message_id": null,
+      "created_at": "2026-07-04T11:32:32.778+00:00",
+      "sender": "ios",
+      "is_cancelled": false
+    },
+    {
+      "id": "19898b37-cfe9-4fc7-baca-f871c76a4e21",
+      "role": "agent",
+      "content": "Bridge internal error while processing your message.\n\nAntigravity CLI executable path is empty. Please ensure the CLI is installed.",
+      "status": "error",
+      "model": "gemini-3-pro-preview",
+      "client_type": "gemini-bridge",
+      "parent_message_id": "d5e61c5e-9479-4780-94e5-8f0f94b11600",
+      "created_at": "2026-07-04T11:31:00.209Z",
+      "sender": "macOS",
+      "is_cancelled": false
+    }
+  ]
+}

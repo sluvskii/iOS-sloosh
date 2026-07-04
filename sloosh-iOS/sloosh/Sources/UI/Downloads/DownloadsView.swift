@@ -42,58 +42,44 @@ struct DownloadPosterImage: View {
     }
 }
 
-struct GroupedShow: Identifiable {
-    var id: Int { kpId }
-    let kpId: Int
-    let title: String
-    let posterUrl: String?
-    let localDirectory: String
-    let items: [DownloadItem]
-}
-
 struct DownloadsView: View {
     @ObservedObject private var downloadManager = DownloadManager.shared
     @State private var selectedFilter = 0 // 0 = Все, 1 = Фильмы, 2 = Сериалы
     @State private var playerItem: DownloadItem? = nil
     
-    private var filteredMovies: [DownloadItem] {
-        downloadManager.downloads.filter { $0.mediaType == "movie" && !isCartoonByTitle($0.title) }
-    }
-    
-    private var filteredCartoonsMovies: [DownloadItem] {
-        downloadManager.downloads.filter { $0.mediaType == "movie" && isCartoonByTitle($0.title) }
-    }
-    
-    private var groupedShows: [GroupedShow] {
-        let seriesItems = downloadManager.downloads.filter { $0.mediaType == "tv" && !isCartoonByTitle($0.title) }
-        return groupSeries(seriesItems)
-    }
-    
-    private var groupedCartoonsShows: [GroupedShow] {
-        let seriesItems = downloadManager.downloads.filter { $0.mediaType == "tv" && isCartoonByTitle($0.title) }
-        return groupSeries(seriesItems)
-    }
-    
-    private func groupSeries(_ seriesItems: [DownloadItem]) -> [GroupedShow] {
-        let grouped = Dictionary(grouping: seriesItems, by: { $0.kpId })
-        return grouped.map { kpId, items -> GroupedShow in
-            let first = items.first!
-            return GroupedShow(
-                kpId: kpId,
-                title: first.title,
-                posterUrl: first.posterUrl,
-                localDirectory: first.localDirectory,
-                items: items.sorted(by: {
-                    if $0.season != $1.season { return ($0.season ?? 0) < ($1.season ?? 0) }
-                    return ($0.episode ?? 0) < ($1.episode ?? 0)
-                })
-            )
-        }.sorted(by: { $0.title < $1.title })
+    private var listItems: [DownloadItem] {
+        downloadManager.downloads.filter { item in
+            let isCartoon = isCartoonByTitle(item.title)
+            switch selectedFilter {
+            case 0: return true
+            case 1: return item.mediaType == "movie" && !isCartoon
+            case 2: return item.mediaType == "tv" && !isCartoon
+            case 3: return isCartoon
+            default: return true
+            }
+        }.sorted(by: { $0.addedAt > $1.addedAt })
     }
     
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
+            Group {
+                if downloadManager.downloads.isEmpty {
+                    emptyView
+                } else {
+                    List {
+                        ForEach(listItems) { item in
+                            movieRow(item: item)
+                                .listRowBackground(Color.clear)
+                                .listRowSeparator(.hidden)
+                                .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                        }
+                    }
+                    .listStyle(.plain)
+                    .scrollIndicators(.hidden)
+                    .contentMargins(.top, 16, for: .scrollContent)
+                }
+            }
+            .safeAreaInset(edge: .top) {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 22) {
                         ForEach(Array(["Все", "Фильмы", "Сериалы", "Мультфильмы"].enumerated()), id: \.offset) { index, title in
@@ -126,66 +112,7 @@ struct DownloadsView: View {
                 }
                 .padding(.top, 16)
                 .padding(.bottom, 12)
-                
-                if downloadManager.downloads.isEmpty {
-                    emptyView
-                } else {
-                    List {
-                        // 1. Movies Section (not cartoons)
-                        if selectedFilter == 0 || selectedFilter == 1 {
-                            if !filteredMovies.isEmpty {
-                                Section(selectedFilter == 0 ? "Фильмы" : "") {
-                                    ForEach(filteredMovies) { item in
-                                        movieRow(item: item)
-                                    }
-                                }
-                                .listRowBackground(Color.clear)
-                                .listRowSeparator(.hidden)
-                            }
-                        }
-                        
-                        // 2. Cartoon Movies Section
-                        if selectedFilter == 0 || selectedFilter == 3 {
-                            if !filteredCartoonsMovies.isEmpty {
-                                Section(selectedFilter == 0 ? "Мультфильмы" : "Мультфильмы (фильмы)") {
-                                    ForEach(filteredCartoonsMovies) { item in
-                                        movieRow(item: item)
-                                    }
-                                }
-                                .listRowBackground(Color.clear)
-                                .listRowSeparator(.hidden)
-                            }
-                        }
-                        
-                        // 3. Shows Section (not cartoons)
-                        if selectedFilter == 0 || selectedFilter == 2 {
-                            if !groupedShows.isEmpty {
-                                Section(selectedFilter == 0 ? "Сериалы" : "") {
-                                    ForEach(groupedShows) { show in
-                                        showRow(show: show)
-                                    }
-                                }
-                                .listRowBackground(Color.clear)
-                                .listRowSeparator(.hidden)
-                            }
-                        }
-                        
-                        // 4. Cartoon Series Section
-                        if selectedFilter == 0 || selectedFilter == 3 {
-                            if !groupedCartoonsShows.isEmpty {
-                                Section(selectedFilter == 0 ? "Мультсериалы" : "Мультсериалы") {
-                                    ForEach(groupedCartoonsShows) { show in
-                                        showRow(show: show)
-                                    }
-                                }
-                                .listRowBackground(Color.clear)
-                                .listRowSeparator(.hidden)
-                            }
-                        }
-                    }
-                    .listStyle(.plain)
-                    .scrollIndicators(.hidden)
-                }
+                .background(.regularMaterial)
             }
             .navigationTitle("Загрузки")
             .toolbar(.hidden, for: .navigationBar)
@@ -233,6 +160,12 @@ struct DownloadsView: View {
                     .font(.system(size: 17, weight: .bold))
                     .foregroundColor(.primary)
                     .lineLimit(2)
+                
+                if let season = item.season, let episode = item.episode {
+                    Text("\(season) сезон, \(episode) серия")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(.primary)
+                }
                 
                 if let voice = item.translationName, !voice.isEmpty {
                     Text(voice)
@@ -353,158 +286,6 @@ struct DownloadsView: View {
             } label: {
                 Label("Удалить", systemImage: "trash.fill")
             }
-        }
-    }
-    
-    @ViewBuilder
-    private func showRow(show: GroupedShow) -> some View {
-        NavigationLink(destination: DownloadedShowEpisodesView(show: show)) {
-            HStack(spacing: 14) {
-                DownloadPosterImage(localUrl: show.items.first?.localPosterUrl, remoteUrl: show.posterUrl)
-                    .frame(width: 66, height: 96)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                    .shadow(color: .black.opacity(0.15), radius: 4, x: 0, y: 2)
-                
-                VStack(alignment: .leading, spacing: 6) {
-                    Text(show.title)
-                        .font(.system(size: 17, weight: .bold))
-                        .foregroundColor(.primary)
-                        .lineLimit(2)
-                    
-                    Text("\(show.items.count) \(pluralizeEpisodes(show.items.count))")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(.secondary)
-                    
-                    Spacer()
-                    
-                    Text(show.items.first?.translationName ?? "")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(.secondary)
-                }
-                .padding(.vertical, 6)
-                
-                Spacer()
-                
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundColor(.secondary.opacity(0.6))
-                    .padding(.trailing, 4)
-            }
-            .padding(10)
-            .glassEffect(in: RoundedRectangle(cornerRadius: 14))
-            .padding(.vertical, 4)
-        }
-        .buttonStyle(.plain)
-        .swipeActions(edge: .trailing) {
-            Button(role: .destructive) {
-                withAnimation {
-                    for item in show.items {
-                        DownloadManager.shared.deleteDownload(id: item.id)
-                    }
-                }
-            } label: {
-                Label("Удалить все", systemImage: "trash.fill")
-            }
-        }
-    }
-    
-    private func pluralizeEpisodes(_ count: Int) -> String {
-        let remainder10 = count % 10
-        let remainder100 = count % 100
-        
-        if remainder100 >= 11 && remainder100 <= 19 {
-            return "серий"
-        }
-        if remainder10 == 1 {
-            return "серия"
-        }
-        if remainder10 >= 2 && remainder10 <= 4 {
-            return "серии"
-        }
-        return "серий"
-    }
-}
-
-struct DownloadedShowEpisodesView: View {
-    let show: GroupedShow
-    @ObservedObject private var downloadManager = DownloadManager.shared
-    @State private var playerItem: DownloadItem? = nil
-    
-    var body: some View {
-        ScrollView {
-            LazyVStack(spacing: 12) {
-                ForEach(show.items) { item in
-                    HStack(spacing: 14) {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(item.episodeTitle ?? "Эпизод")
-                                .font(.system(size: 16, weight: .bold))
-                                .foregroundColor(.primary)
-                            
-                            if let voice = item.translationName, !voice.isEmpty {
-                                Text(voice)
-                                    .font(.system(size: 13, weight: .medium))
-                                    .foregroundColor(.secondary)
-                            }
-                            
-                            HStack(spacing: 8) {
-                                Text(item.sizeString)
-                                    .font(.system(size: 12, weight: .semibold))
-                                    .foregroundColor(.secondary)
-                                
-                                if item.status == .downloading {
-                                    Text("• Скачивание...")
-                                        .font(.system(size: 12, weight: .semibold))
-                                        .foregroundColor(Color.slooshAccent)
-                                }
-                            }
-                        }
-                        
-                        Spacer()
-                        
-                        // Play Button
-                        if item.status == .completed {
-                            Button(action: {
-                                playerItem = item
-                            }) {
-                                Image(systemName: "play.fill")
-                                    .font(.system(size: 16))
-                                    .foregroundColor(.primary)
-                                    .frame(width: 38, height: 38)
-                                    .background(Color.white.opacity(0.08))
-                                    .clipShape(Circle())
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
-                    .glassEffect(in: RoundedRectangle(cornerRadius: 12))
-                    .swipeActions(edge: .trailing) {
-                        Button(role: .destructive) {
-                            withAnimation {
-                                DownloadManager.shared.deleteDownload(id: item.id)
-                            }
-                        } label: {
-                            Label("Удалить", systemImage: "trash.fill")
-                        }
-                    }
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.top, 16)
-        }
-        .navigationTitle(show.title)
-        .navigationBarTitleDisplayMode(.inline)
-        .background(Color(UIColor.systemBackground))
-        .fullScreenCover(item: $playerItem) { item in
-            PlayerView(
-                fallbackTitle: item.title,
-                kpId: item.kpId,
-                season: item.season,
-                episode: item.episode,
-                selectedVoiceover: item.translationName,
-                directStreamUrl: item.localPlayableUrl.absoluteString
-            )
         }
     }
 }
