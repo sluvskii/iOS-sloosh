@@ -38,23 +38,22 @@ struct QualitySelectionSheet: View {
             }
             .navigationTitle("Качество видео")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .bottomBar) {
-                    Button(action: {
-                        if rememberChoice {
-                            preferredQuality = selectedQuality
-                        }
-                        onSelect(selectedQuality)
-                    }) {
-                        HStack(spacing: 8) {
-                            Text("Продолжить")
-                                .font(.system(size: 19, weight: .heavy))
-                        }
-                        .frame(maxWidth: .infinity, minHeight: 50)
+            .safeAreaInset(edge: .bottom) {
+                Button(action: {
+                    if rememberChoice {
+                        preferredQuality = selectedQuality
                     }
-                    .buttonStyle(GlassPlayButtonStyle())
-                    .padding(.horizontal)
+                    onSelect(selectedQuality)
+                }) {
+                    HStack(spacing: 8) {
+                        Text("Продолжить")
+                            .font(.system(size: 19, weight: .heavy))
+                    }
+                    .frame(height: 50)
+                    .padding(.horizontal, 24)
                 }
+                .buttonStyle(GlassPlayButtonStyle())
+                .padding(.bottom, 16)
             }
         }
         .presentationDetents([.medium, .large])
