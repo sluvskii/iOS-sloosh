@@ -11,6 +11,7 @@ struct DownloadPosterImage: View {
                     Image(uiImage: image)
                         .resizable()
                         .aspectRatio(contentMode: .fill)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     fallbackView
                 }
@@ -23,6 +24,7 @@ struct DownloadPosterImage: View {
                     Image(uiImage: image)
                         .resizable()
                         .aspectRatio(contentMode: .fill)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } fallback: {
                     fallbackView
                 }
@@ -30,6 +32,7 @@ struct DownloadPosterImage: View {
                 fallbackView
             }
         }
+        .background(Color(UIColor.secondarySystemFill))
     }
     
     private var fallbackView: some View {
@@ -39,6 +42,7 @@ struct DownloadPosterImage: View {
                 .font(.system(size: 20))
                 .foregroundColor(.secondary)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
@@ -76,6 +80,9 @@ struct DownloadsView: View {
                                 DownloadCardView(item: item)
                             }
                             .buttonStyle(DownloadCardScaleButtonStyle())
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
+                            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
                         }
                     }
                     .listStyle(.plain)
