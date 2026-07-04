@@ -79,7 +79,6 @@ struct DownloadsView: View {
                     .contentMargins(.top, 16, for: .scrollContent)
                 }
             }
-            }
             .safeAreaBar(edge: .top, spacing: 0) {
                 DownloadsCategoryTextTabs(selectedFilter: $selectedFilter)
                     .padding(.top, 4)
