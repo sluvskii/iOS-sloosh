@@ -81,15 +81,38 @@ struct DownloadsView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                // Custom Segmented Picker (Floating Glass Capsule)
-                Picker("Категория", selection: $selectedFilter) {
-                    Text("Все").tag(0)
-                    Text("Фильмы").tag(1)
-                    Text("Сериалы").tag(2)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 22) {
+                        ForEach(Array(["Все", "Фильмы", "Сериалы"].enumerated()), id: \.offset) { index, title in
+                            let isSelected = selectedFilter == index
+                            let isFirst = index == 0
+                            let isLast = index == 2
+                            
+                            Button(action: {
+                                let generator = UIImpactFeedbackGenerator(style: .light)
+                                generator.prepare()
+                                generator.impactOccurred()
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.78, blendDuration: 0.1)) {
+                                    selectedFilter = index
+                                }
+                            }) {
+                                Text(title)
+                                    .font(.system(size: 24, weight: isSelected ? .bold : .semibold))
+                                    .foregroundStyle(isSelected ? Color.primary : Color.secondary)
+                                    .lineLimit(1)
+                                    .fixedSize(horizontal: true, vertical: false)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(DownloadsTabScaleButtonStyle())
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 2)
+                            .padding(.leading, isFirst ? 16 : 0)
+                            .padding(.trailing, isLast ? 16 : 0)
+                        }
+                    }
                 }
-                .pickerStyle(.segmented)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 10)
+                .padding(.top, 16)
+                .padding(.bottom, 12)
                 
                 if downloadManager.downloads.isEmpty {
                     emptyView
@@ -444,5 +467,14 @@ struct DownloadedShowEpisodesView: View {
                 directStreamUrl: item.localPlayableUrl.absoluteString
             )
         }
+    }
+}
+
+struct DownloadsTabScaleButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
+            .opacity(configuration.isPressed ? 0.8 : 1.0)
+            .animation(.spring(response: 0.25, dampingFraction: 0.75), value: configuration.isPressed)
     }
 }
