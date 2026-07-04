@@ -30,8 +30,8 @@ struct DownloadItem: Identifiable, Codable, Equatable {
     var errorMessage: String?
     
     var localPlayableUrl: URL {
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        return docs.appendingPathComponent(localDirectory).appendingPathComponent(localPlayableFileName)
+        let relative = "\(localDirectory)/\(localPlayableFileName)"
+        return URL(string: "http://127.0.0.1:8181/local/\(relative)")!
     }
     
     var localPosterUrl: URL? {

@@ -169,6 +169,31 @@ class HlsProxyServer {
             } else {
                 self.send404(on: connection)
             }
+        } else if urlComponents.path.hasPrefix("/local/") {
+            let relativePath = String(urlComponents.path.dropFirst(7)) // drop "/local/"
+            let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+            let fileUrl = docs.appendingPathComponent(relativePath)
+            
+            if FileManager.default.fileExists(atPath: fileUrl.path) {
+                do {
+                    let fileData = try Data(contentsOf: fileUrl)
+                    let contentType: String
+                    if fileUrl.pathExtension == "m3u8" {
+                        contentType = "application/vnd.apple.mpegurl"
+                    } else if fileUrl.pathExtension == "ts" {
+                        contentType = "video/MP2T"
+                    } else if fileUrl.pathExtension == "bin" {
+                        contentType = "application/octet-stream"
+                    } else {
+                        contentType = "application/octet-stream"
+                    }
+                    self.sendResponse(data: fileData, statusCode: 200, contentType: contentType, contentRange: nil, connection: connection)
+                } catch {
+                    self.send404(on: connection)
+                }
+            } else {
+                self.send404(on: connection)
+            }
         } else {
             self.send404(on: connection)
         }
