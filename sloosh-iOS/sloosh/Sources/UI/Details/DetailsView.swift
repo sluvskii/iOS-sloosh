@@ -356,7 +356,7 @@ struct DetailsView: View {
                     .font(.system(size: 19, weight: .heavy))
             }
             .frame(height: 50)
-            .padding(.horizontal, 32)
+            .padding(.horizontal, 16)
         }
         .buttonStyle(GlassPlayButtonStyle())
         .matchedTransitionSource(id: "playBtn", in: transition) { source in
