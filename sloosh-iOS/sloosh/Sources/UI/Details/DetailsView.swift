@@ -909,7 +909,7 @@ struct EpisodeDetailsSheet: View {
                     .clipped()
                     
                     // Content
-                    VStack(alignment: .leading, spacing: 18) {
+                    VStack(alignment: .leading, spacing: 14) {
                         // Title
                         let title = item.meta?.name ?? item.fallbackTitle
                         Text(title)
@@ -934,9 +934,7 @@ struct EpisodeDetailsSheet: View {
                                     .foregroundColor(.secondary)
                             }
                         }
-                        
-                        Divider()
-                            .padding(.vertical, 4)
+                        .padding(.bottom, 2)
                         
                         // Description / Overview
                         if let overview = item.meta?.overview, !overview.isEmpty {
