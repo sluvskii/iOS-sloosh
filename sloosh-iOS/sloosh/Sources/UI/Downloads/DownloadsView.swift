@@ -6,16 +6,11 @@ struct DownloadPosterImage: View {
     
     var body: some View {
         Group {
-            if let localUrl = localUrl, FileManager.default.fileExists(atPath: localUrl.path) {
-                if let image = UIImage(contentsOfFile: localUrl.path) {
-                    Image(uiImage: image)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    fallbackView
-                }
-            } else if let remoteUrl = remoteUrl, let url = URL(string: remoteUrl) {
+            if let localUrl = localUrl, let image = UIImage(contentsOfFile: localUrl.path) {
+                Image(uiImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+            } else if let remoteUrl = remoteUrl, let url = URL(string: remoteUrl.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? remoteUrl) {
                 AsyncCachedImage(url: url) {
                     Rectangle()
                         .fill(Color.gray.opacity(0.15))
@@ -24,7 +19,6 @@ struct DownloadPosterImage: View {
                     Image(uiImage: image)
                         .resizable()
                         .aspectRatio(contentMode: .fill)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } fallback: {
                     fallbackView
                 }
@@ -32,17 +26,18 @@ struct DownloadPosterImage: View {
                 fallbackView
             }
         }
+        .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
+        .clipped()
         .background(Color(UIColor.secondarySystemFill))
     }
     
     private var fallbackView: some View {
         ZStack {
-            Color.gray.opacity(0.12)
+            Color(UIColor.secondarySystemFill)
             Image(systemName: "film")
-                .font(.system(size: 20))
-                .foregroundColor(.secondary)
+                .font(.system(size: 30))
+                .foregroundColor(.secondary.opacity(0.5))
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
