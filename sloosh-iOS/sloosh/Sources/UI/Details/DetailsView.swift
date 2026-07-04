@@ -79,6 +79,7 @@ struct DetailsView: View {
     @State private var sourceSheetTitle = ""
     @State private var sourceFetchTask: Task<Void, Never>?
     @State private var sourceSheetDetent: PresentationDetent = .medium
+    @State private var sourceSheetMode: SourceSelectionMode = .play
     @Namespace private var transition
     
     @State private var playerKpId: Int?
@@ -200,18 +201,31 @@ struct DetailsView: View {
                         )
                     } else if let wrapper = viewModel.sourceResultWrapper,
                               let result = wrapper.allohaResult {
-                        SourceSelectionView(result: result, kpId: wrapper.kpId, details: viewModel.details) { translation, season, episode, quality in
-                            playerKpId = wrapper.kpId
-                            playerSeason = season
-                            playerEpisode = episode
-                            playerQuality = quality
-                            playerSeriesResult = result
-                            selectedIframeUrl = translation.iframeUrl
-                            playerVoiceover = translation.name
-                            playerStreamUrl = translation.streamUrl
-                            showPlayer = true
-                            showSourceSheet = false
-                            viewModel.saveAllohaTranslation(translation.name)
+                        SourceSelectionView(mode: sourceSheetMode, result: result, kpId: wrapper.kpId, details: viewModel.details) { translation, season, episode, quality in
+                            if sourceSheetMode == .play {
+                                playerKpId = wrapper.kpId
+                                playerSeason = season
+                                playerEpisode = episode
+                                playerQuality = quality
+                                playerSeriesResult = result
+                                selectedIframeUrl = translation.iframeUrl
+                                playerVoiceover = translation.name
+                                playerStreamUrl = translation.streamUrl
+                                showPlayer = true
+                                showSourceSheet = false
+                                viewModel.saveAllohaTranslation(translation.name)
+                            } else {
+                                if let details = viewModel.details {
+                                    DownloadManager.shared.startDownload(
+                                        details: details,
+                                        season: season,
+                                        episode: episode,
+                                        translation: translation,
+                                        preferredQuality: quality
+                                    )
+                                }
+                                showSourceSheet = false
+                            }
                         }
                     } else {
                         SourceSelectionEmptyView(title: sourceSheetTitle)
@@ -277,6 +291,7 @@ struct DetailsView: View {
 
         sourceSheetTitle = details.title ?? details.name ?? ""
         sourceSheetDetent = .medium
+        sourceSheetMode = .play
         viewModel.resetSourceSheet()
         showSourceSheet = true
 
@@ -312,6 +327,7 @@ struct DetailsView: View {
 
         sourceSheetTitle = details.title ?? details.name ?? ""
         sourceSheetDetent = .medium
+        sourceSheetMode = .play
         viewModel.resetSourceSheet()
         showSourceSheet = true
 
@@ -424,38 +440,15 @@ struct DetailsView: View {
     private func startDownloadWithPreferredTranslation(details: MediaDetailsDto, season: Int?, episode: Int?) {
         guard let kpId = details.externalIds?.kp else { return }
         
-        Task {
-            let title = details.title ?? details.name ?? ""
-            await viewModel.fetchSources(kpId: kpId, title: title)
-            guard let result = viewModel.sourceResultWrapper?.allohaResult else { return }
-            
-            let savedVoiceover = PlaybackProgressStore.shared.loadLastVoiceover(kpId: kpId, source: "alloha")
-            let globalVoiceover = UserDefaults.standard.string(forKey: "alloha_last_translation_name")
-            let translation: AllohaTranslation
-            
-            if details.type == "tv" {
-                guard let s = season, let e = episode,
-                      let seasonObj = result.seasons.first(where: { $0.season == s }),
-                      let epObj = seasonObj.episodes.first(where: { $0.episode == e }) else { return }
-                
-                let matching = epObj.translations.first(where: { allohaTranslationNamesMatch($0.name, savedVoiceover, exactOnly: true) })
-                let globalMatching = epObj.translations.first(where: { allohaTranslationNamesMatch($0.name, globalVoiceover, exactOnly: false) })
-                translation = matching ?? globalMatching ?? epObj.translations.first!
-            } else {
-                guard let movie = result.movie else { return }
-                let matching = movie.translations.first(where: { allohaTranslationNamesMatch($0.name, savedVoiceover, exactOnly: true) })
-                let globalMatching = movie.translations.first(where: { allohaTranslationNamesMatch($0.name, globalVoiceover, exactOnly: false) })
-                translation = matching ?? globalMatching ?? movie.translations.first!
-            }
-            
-            let preferredQuality = VideoQualityPreference(rawValue: UserDefaults.standard.string(forKey: "preferredVideoQuality") ?? "Спрашивать каждый раз") ?? .ask
-            DownloadManager.shared.startDownload(
-                details: details,
-                season: season,
-                episode: episode,
-                translation: translation,
-                preferredQuality: preferredQuality
-            )
+        sourceSheetTitle = details.title ?? details.name ?? ""
+        sourceSheetDetent = .medium
+        sourceSheetMode = .download
+        viewModel.resetSourceSheet()
+        showSourceSheet = true
+        
+        sourceFetchTask?.cancel()
+        sourceFetchTask = Task {
+            await viewModel.fetchSources(kpId: kpId, title: sourceSheetTitle)
         }
     }
 
@@ -525,6 +518,8 @@ struct DetailsView: View {
                         if details.type == "tv" {
                             InlineEpisodesSection(viewModel: viewModel, details: details) { season, episode in
                                 handleEpisodeSelection(details: details, season: season, episode: episode)
+                            } onDownloadTap: { season, episode in
+                                startDownloadWithPreferredTranslation(details: details, season: season, episode: episode)
                             }
                             .padding(.top, 24)
                             .padding(.bottom, 20)
@@ -1033,6 +1028,7 @@ struct EpisodeDetailsSheetItem: Identifiable {
 struct EpisodeDetailsSheet: View {
     let item: EpisodeDetailsSheetItem
     let onPlay: () -> Void
+    let onDownload: () -> Void
     let onWatchedToggle: (Bool) -> Void
     
     @State private var isWatched: Bool = false
@@ -1171,7 +1167,24 @@ struct EpisodeDetailsSheet: View {
                                 let downloadItem = downloadManager.getDownloadItem(kpId: kpId, season: item.season, episode: item.episode)
                                 
                                 Button(action: {
-                                    handleEpisodeDownload(kpId: kpId, details: details, item: downloadItem)
+                                    let generator = UIImpactFeedbackGenerator(style: .medium)
+                                    generator.prepare()
+                                    generator.impactOccurred()
+                                    
+                                    if let item = downloadItem {
+                                        switch item.status {
+                                        case .downloading, .pending:
+                                            DownloadManager.shared.pauseDownload(id: item.id)
+                                        case .failed:
+                                            dismiss()
+                                            onDownload()
+                                        case .completed:
+                                            DownloadManager.shared.deleteDownload(id: item.id)
+                                        }
+                                    } else {
+                                        dismiss()
+                                        onDownload()
+                                    }
                                 }) {
                                     Group {
                                         if let dlItem = downloadItem {
@@ -1318,6 +1331,7 @@ struct EpisodeCellView: View {
     let episode: Int
     let fallbackTitle: String
     let onPlayTap: () -> Void
+    let onDownloadTap: () -> Void
     let onUpdate: () -> Void
     let onInfoTap: (TvEpisodeDetailsDto?) -> Void
     
@@ -1360,40 +1374,12 @@ struct EpisodeCellView: View {
             case .downloading, .pending:
                 DownloadManager.shared.pauseDownload(id: item.id)
             case .failed:
-                startDownload(kpId: kpId)
+                onDownloadTap()
             case .completed:
                 DownloadManager.shared.deleteDownload(id: item.id)
             }
         } else {
-            startDownload(kpId: kpId)
-        }
-    }
-    
-    private func startDownload(kpId: Int) {
-        guard let details = viewModel.details else { return }
-        Task {
-            let title = details.title ?? details.name ?? ""
-            await viewModel.fetchSources(kpId: kpId, title: title)
-            guard let result = viewModel.sourceResultWrapper?.allohaResult else { return }
-            
-            let savedVoiceover = PlaybackProgressStore.shared.loadLastVoiceover(kpId: kpId, source: "alloha")
-            let globalVoiceover = UserDefaults.standard.string(forKey: "alloha_last_translation_name")
-            
-            guard let seasonObj = result.seasons.first(where: { $0.season == season }),
-                  let epObj = seasonObj.episodes.first(where: { $0.episode == episode }) else { return }
-            
-            let matching = epObj.translations.first(where: { allohaTranslationNamesMatch($0.name, savedVoiceover, exactOnly: true) })
-            let globalMatching = epObj.translations.first(where: { allohaTranslationNamesMatch($0.name, globalVoiceover, exactOnly: false) })
-            let translation = matching ?? globalMatching ?? epObj.translations.first!
-            
-            let preferredQuality = VideoQualityPreference(rawValue: UserDefaults.standard.string(forKey: "preferredVideoQuality") ?? "Спрашивать каждый раз") ?? .ask
-            DownloadManager.shared.startDownload(
-                details: details,
-                season: season,
-                episode: episode,
-                translation: translation,
-                preferredQuality: preferredQuality
-            )
+            onDownloadTap()
         }
     }
 
@@ -1696,6 +1682,7 @@ struct InlineEpisodesSection: View {
     let details: MediaDetailsDto
     var horizontalPadding: CGFloat = 16
     let onEpisodeTap: (Int, Int) -> Void
+    let onDownloadTap: (Int, Int) -> Void
 
     @State private var selectedSeason: Int = 1
     @State private var selectedEpisodeForSheet: EpisodeDetailsSheetItem? = nil
@@ -1817,6 +1804,9 @@ struct InlineEpisodesSection: View {
                                         fallbackTitle: "Серия",
                                         onPlayTap: {
                                             onEpisodeTap(selectedSeason, episode)
+                                        },
+                                        onDownloadTap: {
+                                            onDownloadTap(selectedSeason, episode)
                                         },
                                         onUpdate: {
                                             updateWatchedSeasons()

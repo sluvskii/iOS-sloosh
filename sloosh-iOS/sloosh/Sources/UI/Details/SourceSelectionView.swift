@@ -1,10 +1,16 @@
 import SwiftUI
 
+enum SourceSelectionMode {
+    case play
+    case download
+}
+
 struct SourceSelectionView: View {
+    let mode: SourceSelectionMode
     let result: AllohaApiResult
     let kpId: Int?
     let details: MediaDetailsDto?
-    let onPlay: (AllohaTranslation, Int?, Int?, VideoQualityPreference) -> Void
+    let onAction: (AllohaTranslation, Int?, Int?, VideoQualityPreference) -> Void
     @Environment(\.dismiss) private var dismiss
     
     @State private var selectedSeason: Int?
@@ -190,38 +196,38 @@ struct SourceSelectionView: View {
         }
     }
     
-    func playSelected() {
+    func actionSelected() {
         if preferredQuality == .ask {
             showQualitySelection = true
         } else {
-            finishPlay(quality: preferredQuality)
+            finishAction(quality: preferredQuality)
         }
     }
     
-    func finishPlay(quality: VideoQualityPreference) {
+    func finishAction(quality: VideoQualityPreference) {
         if result.isSerial {
             guard let s = selectedSeason, let e = selectedEpisode, let tName = selectedTranslationName else { return }
             guard let seasonObj = result.seasons.first(where: { $0.season == s }),
                   let epObj = seasonObj.episodes.first(where: { $0.episode == e }),
                   let translation = epObj.translations.first(where: { allohaTranslationNamesMatch($0.name, tName, exactOnly: true) }) else { return }
             
-            if let kpId = kpId {
+            if mode == .play, let kpId = kpId {
                 PlaybackProgressStore.shared.saveLastPlayed(kpId: kpId, season: s, episode: e)
                 PlaybackProgressStore.shared.saveLastVoiceover(kpId: kpId, source: "alloha", voiceover: translation.name)
             }
             
-            onPlay(translation, s, e, quality)
+            onAction(translation, s, e, quality)
             dismiss()
         } else if let movie = result.movie {
             guard let tName = selectedTranslationName,
                   let translation = movie.translations.first(where: { allohaTranslationNamesMatch($0.name, tName, exactOnly: true) }) else { return }
             
-            if let kpId = kpId {
+            if mode == .play, let kpId = kpId {
                 PlaybackProgressStore.shared.saveLastPlayed(kpId: kpId, season: nil, episode: nil)
                 PlaybackProgressStore.shared.saveLastVoiceover(kpId: kpId, source: "alloha", voiceover: translation.name)
             }
             
-            onPlay(translation, nil, nil, quality)
+            onAction(translation, nil, nil, quality)
             dismiss()
         }
     }
@@ -320,11 +326,11 @@ struct SourceSelectionView: View {
                 }
                 ToolbarItem(placement: .bottomBar) {
                     Button(action: {
-                        playSelected()
+                        actionSelected()
                     }) {
                         HStack {
-                            Image(systemName: "play.fill")
-                            Text("Смотреть")
+                            Image(systemName: mode == .play ? "play.fill" : "arrow.down.circle.fill")
+                            Text(mode == .play ? "Смотреть" : "Скачать")
                         }
                         .font(.system(size: 17, weight: .bold))
                         .frame(maxWidth: .infinity)
@@ -347,7 +353,7 @@ struct SourceSelectionView: View {
         .sheet(isPresented: $showQualitySelection) {
             QualitySelectionSheet { selectedQuality in
                 showQualitySelection = false
-                finishPlay(quality: selectedQuality)
+                finishAction(quality: selectedQuality)
             }
         }
     }
