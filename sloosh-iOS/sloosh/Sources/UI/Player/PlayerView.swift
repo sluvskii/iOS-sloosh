@@ -208,8 +208,8 @@ struct PlayerView: View {
                 viewModel.targetQualityPreference = initialQuality
                 viewModel.seriesResult = seriesResult
                 
-                if let iframe = iframeUrl {
-                    viewModel.load(iframeUrl: iframe, kpId: kpId, season: season, episode: episode, selectedVoiceover: selectedVoiceover, directStreamUrl: directStreamUrl, voices: voices, subtitles: subtitles)
+                if iframeUrl != nil || directStreamUrl != nil {
+                    viewModel.load(iframeUrl: iframeUrl, kpId: kpId, season: season, episode: episode, selectedVoiceover: selectedVoiceover, directStreamUrl: directStreamUrl, voices: voices, subtitles: subtitles)
                 } else {
                     viewModel.error = "Нет URL для воспроизведения"
                     viewModel.isLoading = false
@@ -274,13 +274,13 @@ class PlayerViewModel: ObservableObject {
         return host == "127.0.0.1" || host == "localhost"
     }
     
-    func load(iframeUrl: String, kpId: Int?, season: Int?, episode: Int?, selectedVoiceover: String?, directStreamUrl: String? = nil, voices: [String] = [], subtitles: [PlaybackSubtitle] = []) {
+    func load(iframeUrl: String?, kpId: Int?, season: Int?, episode: Int?, selectedVoiceover: String?, directStreamUrl: String? = nil, voices: [String] = [], subtitles: [PlaybackSubtitle] = []) {
         if hasStartedLoading { return } // Защита от двойного вызова
         hasStartedLoading = true
         beginLoad(iframeUrl: iframeUrl, kpId: kpId, season: season, episode: episode, selectedVoiceover: selectedVoiceover, directStreamUrl: directStreamUrl, voices: voices, subtitles: subtitles)
     }
 
-    private func beginLoad(iframeUrl: String, kpId: Int?, season: Int?, episode: Int?, selectedVoiceover: String?, directStreamUrl: String? = nil, voices: [String] = [], subtitles: [PlaybackSubtitle] = []) {
+    private func beginLoad(iframeUrl: String?, kpId: Int?, season: Int?, episode: Int?, selectedVoiceover: String?, directStreamUrl: String? = nil, voices: [String] = [], subtitles: [PlaybackSubtitle] = []) {
         self.currentKpId = kpId
         self.currentSeason = season
         self.currentEpisode = episode
@@ -296,7 +296,25 @@ class PlayerViewModel: ObservableObject {
         isLoading = true
         error = nil
         
-        startParsing(iframeUrl: iframeUrl, voices: voices, subtitles: subtitles)
+        if let directUrlString = directStreamUrl, let directUrl = URL(string: directUrlString) {
+            // Direct HLS playback (local file URL)
+            availableQualities = [
+                PlaybackQualityOption(
+                    key: "Локальный",
+                    url: directUrl,
+                    preferredPeakBitRate: nil,
+                    isAuto: false,
+                    shouldReloadOnSelect: false
+                )
+            ]
+            currentQualityKey = "Локальный"
+            playVideo(url: directUrl, headers: [:], voices: [], subtitles: [])
+        } else if let iframe = iframeUrl {
+            startParsing(iframeUrl: iframe, voices: voices, subtitles: subtitles)
+        } else {
+            error = "Нет URL для воспроизведения"
+            isLoading = false
+        }
     }
     
     private func parseMasterPlaylist(content: String, baseUrl: URL) {
@@ -527,9 +545,14 @@ class PlayerViewModel: ObservableObject {
         let currentTime = player?.currentTime() ?? .zero
         let wasPlaying = player?.timeControlStatus == .playing
 
-        guard let proxyUrl = proxiedPlaybackURL(for: sourceURL) else { return }
+        let asset: AVURLAsset
+        if sourceURL.isFileURL {
+            asset = AVURLAsset(url: sourceURL)
+        } else {
+            guard let proxyUrl = proxiedPlaybackURL(for: sourceURL) else { return }
+            asset = AVURLAsset(url: proxyUrl)
+        }
 
-        let asset = AVURLAsset(url: proxyUrl)
         let playerItem = AVPlayerItem(asset: asset)
         playerItem.preferredPeakBitRate = max(0, preferredPeakBitRate ?? 0)
         currentPlaybackSourceURL = sourceURL.absoluteURL
@@ -679,26 +702,31 @@ class PlayerViewModel: ObservableObject {
     private func playVideo(url: URL, headers: [String: String], voices: [String] = [], subtitles: [PlaybackSubtitle] = []) {
         currentPlaybackSourceURL = url.absoluteURL
 
-        guard let proxyUrl = proxiedPlaybackURL(for: url) else {
-            self.error = "Ошибка формирования URL"
-            self.isLoading = false
-            return
-        }
-        
-        let mediaId: String
-        if let kpId = currentKpId {
-            if let season = currentSeason, let episode = currentEpisode {
-                mediaId = "kp_\(kpId)_s\(season)_e\(episode)"
-            } else {
-                mediaId = "kp_\(kpId)"
-            }
+        let asset: AVURLAsset
+        if url.isFileURL {
+            asset = AVURLAsset(url: url)
         } else {
-            mediaId = "unknown"
+            guard let proxyUrl = proxiedPlaybackURL(for: url) else {
+                self.error = "Ошибка формирования URL"
+                self.isLoading = false
+                return
+            }
+            
+            let mediaId: String
+            if let kpId = currentKpId {
+                if let season = currentSeason, let episode = currentEpisode {
+                    mediaId = "kp_\(kpId)_s\(season)_e\(episode)"
+                } else {
+                    mediaId = "kp_\(kpId)"
+                }
+            } else {
+                mediaId = "unknown"
+            }
+            
+            HlsProxyServer.shared.start(headers: headers, voices: voices, subtitles: subtitles, mediaId: mediaId)
+            asset = AVURLAsset(url: proxyUrl)
         }
         
-        HlsProxyServer.shared.start(headers: headers, voices: voices, subtitles: subtitles, mediaId: mediaId)
-        
-        let asset = AVURLAsset(url: proxyUrl)
         let playerItem = AVPlayerItem(asset: asset)
         itemObservation?.invalidate()
         itemObservation = nil

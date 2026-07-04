@@ -198,7 +198,7 @@ struct DetailsView: View {
                         )
                     } else if let wrapper = viewModel.sourceResultWrapper,
                               let result = wrapper.allohaResult {
-                        SourceSelectionView(result: result, kpId: wrapper.kpId) { translation, season, episode, quality in
+                        SourceSelectionView(result: result, kpId: wrapper.kpId, details: viewModel.details) { translation, season, episode, quality in
                             playerKpId = wrapper.kpId
                             playerSeason = season
                             playerEpisode = episode
@@ -247,6 +247,22 @@ struct DetailsView: View {
 
         guard let kpId = details.externalIds?.kp else { return }
 
+        if details.type != "tv" {
+            if DownloadManager.shared.isDownloaded(kpId: kpId, season: nil, episode: nil),
+               let downloadItem = DownloadManager.shared.getDownloadItem(kpId: kpId, season: nil, episode: nil) {
+                playerKpId = kpId
+                playerSeason = nil
+                playerEpisode = nil
+                playerQuality = .ask
+                playerSeriesResult = nil
+                selectedIframeUrl = nil
+                playerVoiceover = downloadItem.translationName
+                playerStreamUrl = downloadItem.localPlayableUrl.absoluteString
+                showPlayer = true
+                return
+            }
+        }
+
         sourceSheetTitle = details.title ?? details.name ?? ""
         sourceSheetDetent = .medium
         viewModel.resetSourceSheet()
@@ -260,6 +276,21 @@ struct DetailsView: View {
 
     private func handleEpisodeSelection(details: MediaDetailsDto, season: Int, episode: Int) {
         guard let kpId = details.externalIds?.kp else { return }
+
+        if DownloadManager.shared.isDownloaded(kpId: kpId, season: season, episode: episode),
+           let downloadItem = DownloadManager.shared.getDownloadItem(kpId: kpId, season: season, episode: episode) {
+            PlaybackProgressStore.shared.saveLastPlayed(kpId: kpId, season: season, episode: episode)
+            playerKpId = kpId
+            playerSeason = season
+            playerEpisode = episode
+            playerQuality = .ask
+            playerSeriesResult = nil
+            selectedIframeUrl = nil
+            playerVoiceover = downloadItem.translationName
+            playerStreamUrl = downloadItem.localPlayableUrl.absoluteString
+            showPlayer = true
+            return
+        }
 
         PlaybackProgressStore.shared.saveLastPlayed(
             kpId: kpId,
@@ -878,6 +909,7 @@ struct EpisodeDetailsSheet: View {
     
     @State private var isWatched: Bool = false
     @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var downloadManager = DownloadManager.shared
     
     var body: some View {
         NavigationStack {
@@ -935,6 +967,37 @@ struct EpisodeDetailsSheet: View {
                             }
                         }
                         .padding(.bottom, 2)
+                        
+                        // Download Status
+                        if let kpIdInt = Int(item.movieId) {
+                            let downloadItem = downloadManager.getDownloadItem(kpId: kpIdInt, season: item.season, episode: item.episode)
+                            if let dlItem = downloadItem {
+                                HStack(spacing: 6) {
+                                    switch dlItem.status {
+                                    case .pending:
+                                        ProgressView()
+                                            .controlSize(.mini)
+                                        Text("В очереди...")
+                                    case .downloading:
+                                        ProgressView(value: dlItem.progress)
+                                            .frame(width: 80)
+                                        Text("Скачивание (\(Int(dlItem.progress * 100))%)")
+                                    case .completed:
+                                        Image(systemName: "arrow.down.circle.fill")
+                                            .foregroundColor(Color.slooshAccent)
+                                        Text("Скачано (\(dlItem.sizeString))")
+                                            .foregroundColor(Color.slooshAccent)
+                                    case .failed:
+                                        Image(systemName: "exclamationmark.circle.fill")
+                                            .foregroundColor(.red)
+                                        Text("Ошибка: \(dlItem.errorMessage ?? "неизвестно")")
+                                            .foregroundColor(.red)
+                                    }
+                                }
+                                .font(.system(size: 14, weight: .semibold))
+                                .padding(.vertical, 2)
+                            }
+                        }
                         
                         // Description / Overview
                         if let overview = item.meta?.overview, !overview.isEmpty {
@@ -1042,6 +1105,7 @@ struct EpisodeCellView: View {
     @State private var isWatchedState: Bool = false
     
     @EnvironmentObject private var viewModel: DetailsViewModel
+    @ObservedObject private var downloadManager = DownloadManager.shared
     
     var previewUrl: URL? {
         URL(string: "https://api.neome.uk/api/v1/images/screens/\(movieId)/\(season)/\(episode)/large")
@@ -1165,6 +1229,41 @@ struct EpisodeCellView: View {
                                 .padding([.top, .trailing], 8)
                         }
                         Spacer()
+                    }
+                }
+                
+                // Download Badge (Top-Right, shifted left if watched is present)
+                if let kpIdInt = Int(movieId) {
+                    let downloadItem = downloadManager.getDownloadItem(kpId: kpIdInt, season: season, episode: episode)
+                    if let dlItem = downloadItem {
+                        VStack {
+                            HStack {
+                                Spacer()
+                                if dlItem.status == .completed {
+                                    Image(systemName: "arrow.down.circle.fill")
+                                        .font(.system(size: 16))
+                                        .foregroundColor(Color.slooshAccent)
+                                        .shadow(color: .black.opacity(0.8), radius: 3, x: 0, y: 1)
+                                        .padding([.top, .trailing], 8)
+                                        .padding(.trailing, isWatchedState ? 20 : 0) // Shift left if checkmark is there
+                                } else if dlItem.status == .downloading {
+                                    ZStack {
+                                        Circle()
+                                            .stroke(Color.black.opacity(0.4), lineWidth: 1.5)
+                                            .frame(width: 14, height: 14)
+                                        Circle()
+                                            .trim(from: 0.0, to: dlItem.progress)
+                                            .stroke(Color.slooshAccent, lineWidth: 1.5)
+                                            .frame(width: 14, height: 14)
+                                            .rotationEffect(Angle(degrees: -90))
+                                    }
+                                    .shadow(color: .black.opacity(0.8), radius: 3, x: 0, y: 1)
+                                    .padding([.top, .trailing], 8)
+                                    .padding(.trailing, isWatchedState ? 20 : 0)
+                                }
+                            }
+                            Spacer()
+                        }
                     }
                 }
 
