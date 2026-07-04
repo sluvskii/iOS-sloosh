@@ -68,10 +68,14 @@ struct DownloadsView: View {
                 } else {
                     List {
                         ForEach(listItems) { item in
-                            movieRow(item: item)
-                                .listRowBackground(Color.clear)
-                                .listRowSeparator(.hidden)
-                                .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                            Button {
+                                if item.status == .completed {
+                                    playerItem = item
+                                }
+                            } label: {
+                                DownloadCardView(item: item)
+                            }
+                            .buttonStyle(DownloadCardScaleButtonStyle())
                         }
                     }
                     .listStyle(.plain)
@@ -100,6 +104,7 @@ struct DownloadsView: View {
         }
     }
     
+    @ViewBuilder
     private var emptyView: some View {
         VStack {
             Image(systemName: "arrow.down.circle")
@@ -116,137 +121,90 @@ struct DownloadsView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
+}
+
+private struct DownloadCardScaleButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
+            .animation(.spring(response: 0.25, dampingFraction: 0.7), value: configuration.isPressed)
+    }
+}
+
+private struct DownloadCardView: View {
+    let item: DownloadItem
     
-    @ViewBuilder
-    private func movieRow(item: DownloadItem) -> some View {
-        HStack(spacing: 14) {
+    var body: some View {
+        ZStack(alignment: .bottomLeading) {
             DownloadPosterImage(localUrl: item.localPosterUrl, remoteUrl: item.posterUrl)
-                .frame(width: 66, height: 96)
-                .clipShape(RoundedRectangle(cornerRadius: 8))
-                .shadow(color: .black.opacity(0.15), radius: 4, x: 0, y: 2)
-            
-            VStack(alignment: .leading, spacing: 6) {
-                Text(item.title)
-                    .font(.system(size: 17, weight: .bold))
-                    .foregroundColor(.primary)
-                    .lineLimit(2)
-                
-                if let season = item.season, let episode = item.episode {
-                    Text("\(season) сезон, \(episode) серия")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(.primary)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            LinearGradient(
+                colors: [.black.opacity(0.1), .black.opacity(0.3), .black.opacity(0.9)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+
+            // Status Badge at top right
+            VStack {
+                HStack {
+                    Spacer()
+                    statusBadge
                 }
-                
-                if let voice = item.translationName, !voice.isEmpty {
-                    Text(voice)
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundColor(.secondary)
-                }
-                
+                Spacer()
+            }
+            .padding(16)
+
+            VStack(alignment: .leading, spacing: 10) {
                 Spacer(minLength: 0)
                 
-                // Progress or Completed details
-                if item.status == .downloading {
-                    VStack(alignment: .leading, spacing: 4) {
-                        ProgressView(value: item.progress)
-                            .tint(Color.slooshAccent)
-                            .scaleEffect(x: 1, y: 0.8, anchor: .center)
-                        
-                        Text("Скачивание... \(Int(item.progress * 100))%")
-                            .font(.system(size: 11, weight: .medium))
-                            .foregroundColor(.secondary)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(item.title)
+                        .font(.system(size: 22, weight: .bold))
+                        .foregroundStyle(.white)
+                        .lineLimit(2)
+                    
+                    if let subtitle = subtitleText {
+                        Text(subtitle)
+                            .font(.system(size: 14, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.74))
+                            .lineLimit(1)
                     }
+                }
+
+                if item.status == .downloading {
+                    DownloadProgressBar(progress: item.progress)
+                    HStack {
+                        Text("Скачивание...")
+                        Spacer()
+                        Text("\(Int(item.progress * 100))%")
+                    }
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.92))
                 } else if item.status == .pending {
                     Text("В очереди...")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(.secondary)
-                } else if item.status == .completed {
-                    Text(item.sizeString)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(.secondary)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.74))
                 } else if item.status == .failed {
                     Text(item.errorMessage ?? "Ошибка загрузки")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(.red)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(.red)
+                } else if item.status == .completed {
+                    Text(item.sizeString)
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.74))
                 }
             }
-            .padding(.vertical, 4)
-            
-            Spacer()
-            
-            // Action button
-            if item.status == .completed {
-                Button(action: {
-                    playerItem = item
-                }) {
-                    Image(systemName: "play.fill")
-                        .font(.system(size: 16))
-                        .foregroundColor(.primary)
-                        .frame(width: 40, height: 40)
-                        .background(Color.white.opacity(0.08))
-                        .clipShape(Circle())
-                }
-                .buttonStyle(.plain)
-            } else if item.status == .downloading || item.status == .pending {
-                Button(action: {
-                    DownloadManager.shared.pauseDownload(id: item.id)
-                }) {
-                    Image(systemName: "pause.fill")
-                        .font(.system(size: 15))
-                        .foregroundColor(.primary)
-                        .frame(width: 40, height: 40)
-                        .background(Color.white.opacity(0.08))
-                        .clipShape(Circle())
-                }
-                .buttonStyle(.plain)
-            } else if item.status == .failed {
-                // Retry action
-                Button(action: {
-                    // Start resolved downloader through DetailsViewModel fetch or manager
-                    // Since it requires MediaDetailsDto, the easiest way to download failed is deleting and doing it from details page, or simple restart if we store metadata. For simplicity, we can let user delete it or resume if it's paused.
-                    if item.errorMessage == "Приостановлено" {
-                        // Let's create dummy MediaDetailsDto from item data to resume
-                        let details = MediaDetailsDto(
-                            id: "kp_\(item.kpId)",
-                            sourceId: String(item.kpId),
-                            title: item.title,
-                            name: item.title,
-                            originalTitle: nil,
-                            description: nil,
-                            releaseDate: nil,
-                            type: item.mediaType,
-                            genres: nil,
-                            rating: nil,
-                            posterUrl: item.posterUrl,
-                            backdropUrl: nil,
-                            duration: nil,
-                            country: nil,
-                            language: nil,
-                            externalIds: ExternalIdsDto(kp: item.kpId, tmdb: nil, imdb: nil)
-                        )
-                        DownloadManager.shared.startDownload(
-                            details: details,
-                            season: item.season,
-                            episode: item.episode,
-                            translation: AllohaTranslation(id: "", name: item.translationName ?? "", iframeUrl: item.iframeUrl, streamUrl: nil),
-                            preferredQuality: .ask
-                        )
-                    } else {
-                        DownloadManager.shared.deleteDownload(id: item.id)
-                    }
-                }) {
-                    Image(systemName: item.errorMessage == "Приостановлено" ? "arrow.clockwise" : "trash.fill")
-                        .font(.system(size: 15))
-                        .foregroundColor(item.errorMessage == "Приостановлено" ? .primary : .red)
-                        .frame(width: 40, height: 40)
-                        .background(Color.white.opacity(0.08))
-                        .clipShape(Circle())
-                }
-                .buttonStyle(.plain)
-            }
+            .padding(16)
         }
-        .padding(10)
-        .glassEffect(in: RoundedRectangle(cornerRadius: 14))
+        .frame(maxWidth: .infinity)
+        .frame(height: 190)
+        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 24, style: .continuous)
+                .stroke(.white.opacity(0.08), lineWidth: 1)
+        }
+        .shadow(color: .black.opacity(0.18), radius: 18, x: 0, y: 8)
         .padding(.vertical, 4)
         .swipeActions(edge: .trailing) {
             Button(role: .destructive) {
@@ -257,6 +215,86 @@ struct DownloadsView: View {
                 Label("Удалить", systemImage: "trash.fill")
             }
         }
+    }
+
+    private var subtitleText: String? {
+        var parts: [String] = []
+        if let season = item.season, let episode = item.episode {
+            parts.append("\(season) сезон, \(episode) серия")
+        }
+        if let voice = item.translationName, !voice.isEmpty {
+            parts.append(voice)
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " • ")
+    }
+
+    @ViewBuilder
+    private var statusBadge: some View {
+        if item.status == .downloading || item.status == .pending {
+            Button(action: { DownloadManager.shared.pauseDownload(id: item.id) }) {
+                Image(systemName: "pause.fill")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 36, height: 36)
+                    .background(.black.opacity(0.4), in: Circle())
+                    .overlay(Circle().stroke(.white.opacity(0.2), lineWidth: 1))
+            }
+        } else if item.status == .failed || item.errorMessage == "Приостановлено" {
+            Button(action: {
+                if item.errorMessage == "Приостановлено" {
+                    let details = MediaDetailsDto(
+                        id: "kp_\(item.kpId)",
+                        sourceId: String(item.kpId),
+                        title: item.title,
+                        name: item.title,
+                        originalTitle: nil,
+                        description: nil,
+                        releaseDate: nil,
+                        type: item.mediaType,
+                        genres: nil,
+                        rating: nil,
+                        posterUrl: item.posterUrl,
+                        backdropUrl: nil,
+                        duration: nil,
+                        country: nil,
+                        language: nil,
+                        externalIds: ExternalIdsDto(kp: item.kpId, tmdb: nil, imdb: nil)
+                    )
+                    DownloadManager.shared.startDownload(
+                        details: details,
+                        season: item.season,
+                        episode: item.episode,
+                        translation: AllohaTranslation(id: "", name: item.translationName ?? "", iframeUrl: item.iframeUrl, streamUrl: nil),
+                        preferredQuality: .ask
+                    )
+                } else {
+                    DownloadManager.shared.deleteDownload(id: item.id)
+                }
+            }) {
+                Image(systemName: item.errorMessage == "Приостановлено" ? "arrow.clockwise" : "trash.fill")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 36, height: 36)
+                    .background(.black.opacity(0.4), in: Circle())
+                    .overlay(Circle().stroke(.white.opacity(0.2), lineWidth: 1))
+            }
+        }
+    }
+}
+
+private struct DownloadProgressBar: View {
+    let progress: Double
+    var body: some View {
+        GeometryReader { geo in
+            Capsule()
+                .fill(Color.white.opacity(0.2))
+                .overlay(alignment: .leading) {
+                    Capsule()
+                        .fill(Color.slooshAccent)
+                        .frame(width: max(0, geo.size.width * progress))
+                }
+        }
+        .frame(height: 4)
     }
 }
 
