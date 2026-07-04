@@ -1019,7 +1019,6 @@ struct EpisodeDetailsSheetItem: Identifiable {
 struct EpisodeDetailsSheet: View {
     let item: EpisodeDetailsSheetItem
     let onPlay: () -> Void
-    let onDownload: () -> Void
     let onWatchedToggle: (Bool) -> Void
     
     @State private var isWatched: Bool = false
@@ -1084,37 +1083,6 @@ struct EpisodeDetailsSheet: View {
                         }
                         .padding(.bottom, 2)
                         
-                        // Download Status
-                        if let kpIdInt = Int(item.movieId) {
-                            let downloadItem = downloadManager.getDownloadItem(kpId: kpIdInt, season: item.season, episode: item.episode)
-                            if let dlItem = downloadItem {
-                                HStack(spacing: 6) {
-                                    switch dlItem.status {
-                                    case .pending:
-                                        ProgressView()
-                                            .controlSize(.mini)
-                                        Text("В очереди...")
-                                    case .downloading:
-                                        ProgressView(value: dlItem.progress)
-                                            .frame(width: 80)
-                                        Text("Скачивание (\(Int(dlItem.progress * 100))%)")
-                                    case .completed:
-                                        Image(systemName: "arrow.down.circle.fill")
-                                            .foregroundColor(Color.slooshAccent)
-                                        Text("Скачано (\(dlItem.sizeString))")
-                                            .foregroundColor(Color.slooshAccent)
-                                    case .failed:
-                                        Image(systemName: "exclamationmark.circle.fill")
-                                            .foregroundColor(.red)
-                                        Text("Ошибка: \(dlItem.errorMessage ?? "неизвестно")")
-                                            .foregroundColor(.red)
-                                    }
-                                }
-                                .font(.system(size: 14, weight: .semibold))
-                                .padding(.vertical, 2)
-                            }
-                        }
-                        
                         // Description / Overview
                         if let overview = item.meta?.overview, !overview.isEmpty {
                             VStack(alignment: .leading, spacing: 8) {
@@ -1152,70 +1120,6 @@ struct EpisodeDetailsSheet: View {
                             .buttonBorderShape(.capsule)
                             .tint(.primary)
                             .foregroundStyle(Color(UIColor.systemBackground))
-                            
-                            if let kpId = Int(item.movieId) {
-                                let downloadItem = downloadManager.getDownloadItem(kpId: kpId, season: item.season, episode: item.episode)
-                                
-                                Button(action: {
-                                    let generator = UIImpactFeedbackGenerator(style: .medium)
-                                    generator.prepare()
-                                    generator.impactOccurred()
-                                    
-                                    if let item = downloadItem {
-                                        switch item.status {
-                                        case .downloading, .pending:
-                                            DownloadManager.shared.pauseDownload(id: item.id)
-                                        case .failed:
-                                            dismiss()
-                                            onDownload()
-                                        case .completed:
-                                            DownloadManager.shared.deleteDownload(id: item.id)
-                                        }
-                                    } else {
-                                        dismiss()
-                                        onDownload()
-                                    }
-                                }) {
-                                    Group {
-                                        if let dlItem = downloadItem {
-                                            switch dlItem.status {
-                                            case .pending:
-                                                ProgressView()
-                                                    .controlSize(.small)
-                                            case .downloading:
-                                                ZStack {
-                                                    Circle()
-                                                        .stroke(Color.primary.opacity(0.15), lineWidth: 2)
-                                                        .frame(width: 20, height: 20)
-                                                    Circle()
-                                                        .trim(from: 0.0, to: dlItem.progress)
-                                                        .stroke(Color.slooshAccent, lineWidth: 2)
-                                                        .frame(width: 20, height: 20)
-                                                        .rotationEffect(Angle(degrees: -90))
-                                                    Image(systemName: "square.fill")
-                                                        .font(.system(size: 6))
-                                                }
-                                            case .completed:
-                                                Image(systemName: "arrow.down.circle.fill")
-                                                    .font(.system(size: 20))
-                                                    .foregroundColor(Color.slooshAccent)
-                                            case .failed:
-                                                Image(systemName: "arrow.clockwise.circle.fill")
-                                                    .font(.system(size: 20))
-                                                    .foregroundColor(.red)
-                                            }
-                                        } else {
-                                            Image(systemName: "arrow.down.circle")
-                                                .font(.system(size: 20))
-                                                .foregroundColor(.primary)
-                                        }
-                                    }
-                                    .frame(width: 44, height: 44)
-                                    .background(Color.white.opacity(0.08))
-                                    .clipShape(Circle())
-                                }
-                                .buttonStyle(.plain)
-                            }
                         }
                         .padding(.top, 8)
                     }
@@ -1617,6 +1521,10 @@ struct InlineEpisodesSection: View {
     var allSeasons: [Int] {
         viewModel.inlineSourceWrapper?.allohaResult?.seasons.map { $0.season }.sorted() ?? []
     }
+    
+    var rawId: String {
+        details.externalIds?.kp?.description ?? details.id?.replacingOccurrences(of: "kp_", with: "") ?? ""
+    }
 
     var episodesForSelectedSeason: [Int] {
         if let season = viewModel.inlineSourceWrapper?.allohaResult?.seasons.first(where: { $0.season == selectedSeason }) {
@@ -1632,7 +1540,6 @@ struct InlineEpisodesSection: View {
     private func updateWatchedSeasons() {
         guard let seasons = viewModel.inlineSourceWrapper?.allohaResult?.seasons else { return }
         var completed = Set<Int>()
-        let rawId = details.externalIds?.kp?.description ?? details.id?.replacingOccurrences(of: "kp_", with: "") ?? ""
         
         for s in seasons {
             let episodes = s.episodes.map { $0.episode }
@@ -1714,7 +1621,6 @@ struct InlineEpisodesSection: View {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 12) {
                             ForEach(episodesForSelectedSeason, id: \.self) { episode in
-                                let rawId = details.externalIds?.kp?.description ?? details.id?.replacingOccurrences(of: "kp_", with: "") ?? ""
                                 
                                 Button(action: {
                                     let generator = UIImpactFeedbackGenerator(style: .medium)
@@ -1727,14 +1633,14 @@ struct InlineEpisodesSection: View {
                                         season: selectedSeason,
                                         episode: episode,
                                         fallbackTitle: "Серия",
-                                        onPlayTap: {
+                                        onPlayTap: { () -> Void in
                                             onEpisodeTap(selectedSeason, episode)
                                         },
-                                        onUpdate: {
+                                        onUpdate: { () -> Void in
                                             updateWatchedSeasons()
                                             redrawTrigger.toggle()
                                         },
-                                        onInfoTap: { fetchedMeta in
+                                        onInfoTap: { (fetchedMeta: TvEpisodeDetailsDto?) -> Void in
                                             selectedEpisodeForSheet = EpisodeDetailsSheetItem(
                                                 movieId: rawId,
                                                 season: selectedSeason,
@@ -1784,10 +1690,10 @@ struct InlineEpisodesSection: View {
         .sheet(item: $selectedEpisodeForSheet) { item in
             EpisodeDetailsSheet(
                 item: item,
-                onPlay: {
+                onPlay: { () -> Void in
                     onEpisodeTap(item.season, item.episode)
                 },
-                onWatchedToggle: { isWatched in
+                onWatchedToggle: { (isWatched: Bool) -> Void in
                     let progressKey = "kp_\(item.movieId)_s\(item.season)_e\(item.episode)"
                     if isWatched {
                         PlaybackProgressStore.shared.markAsWatched(mediaId: progressKey)
