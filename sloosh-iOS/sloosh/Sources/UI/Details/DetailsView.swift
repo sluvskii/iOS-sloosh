@@ -249,8 +249,24 @@ struct DetailsView: View {
                 if let details = viewModel.details {
                     if let iframeUrl = selectedIframeUrl {
                         PlayerView(iframeUrl: iframeUrl, fallbackTitle: details.title ?? details.name ?? "", kpId: playerKpId, season: playerSeason, episode: playerEpisode, selectedVoiceover: playerVoiceover, directStreamUrl: playerStreamUrl, voices: playerVoices, subtitles: playerSubtitles, initialQuality: playerQuality, seriesResult: playerSeriesResult)
+                    } else if let streamUrl = playerStreamUrl {
+                        PlayerView(iframeUrl: "", fallbackTitle: details.title ?? details.name ?? "", kpId: playerKpId, season: playerSeason, episode: playerEpisode, selectedVoiceover: playerVoiceover, directStreamUrl: streamUrl, voices: playerVoices, subtitles: playerSubtitles, initialQuality: playerQuality, seriesResult: playerSeriesResult)
                     } else {
-                        Text("Видео не найдено")
+                        ZStack {
+                            Color.black.ignoresSafeArea()
+                            VStack(spacing: 20) {
+                                Text("Видео не найдено")
+                                    .foregroundColor(.white)
+                                    .font(.headline)
+                                Button("Закрыть") {
+                                    showPlayer = false
+                                }
+                                .foregroundColor(.white)
+                                .padding()
+                                .background(Color.white.opacity(0.2))
+                                .cornerRadius(8)
+                            }
+                        }
                     }
                 }
             }
