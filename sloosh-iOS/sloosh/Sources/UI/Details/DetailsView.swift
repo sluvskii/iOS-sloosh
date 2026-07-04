@@ -862,14 +862,209 @@ private struct DetailsInfoSection: View {
     }
 }
 
+struct EpisodeButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
+            .opacity(configuration.isPressed ? 0.9 : 1.0)
+            .animation(.spring(response: 0.25, dampingFraction: 0.7), value: configuration.isPressed)
+    }
+}
+
+struct EpisodeDetailsSheetItem: Identifiable {
+    let id = UUID()
+    let movieId: String
+    let season: Int
+    let episode: Int
+    let meta: TvEpisodeDetailsDto?
+    let fallbackTitle: String
+}
+
+struct EpisodeDetailsSheet: View {
+    let item: EpisodeDetailsSheetItem
+    let onPlay: () -> Void
+    let onWatchedToggle: (Bool) -> Void
+    
+    @State private var isWatched: Bool = false
+    @Environment(\.dismiss) private var dismiss
+    
+    var body: some View {
+        VStack(spacing: 0) {
+            // Still Image
+            ZStack(alignment: .topTrailing) {
+                let previewUrl = URL(string: "https://api.neome.uk/api/v1/images/screens/\(item.movieId)/\(item.season)/\(item.episode)/large")
+                
+                AsyncCachedImage(url: previewUrl) {
+                    Rectangle()
+                        .fill(Color.gray.opacity(0.15))
+                        .aspectRatio(16/9, contentMode: .fit)
+                        .shimmer()
+                } content: { image in
+                    Image(uiImage: image)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                } fallback: {
+                    ZStack {
+                        Color(UIColor.secondarySystemBackground)
+                        Image(systemName: "photo")
+                            .font(.system(size: 30))
+                            .foregroundColor(.secondary)
+                    }
+                    .aspectRatio(16/9, contentMode: .fit)
+                }
+                
+                // Dismiss button
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 28))
+                        .foregroundColor(.white.opacity(0.7))
+                        .background(Circle().fill(.black.opacity(0.2)))
+                }
+                .padding(16)
+                .buttonStyle(.plain)
+            }
+            .frame(maxWidth: .infinity)
+            .aspectRatio(16/9, contentMode: .fit)
+            .clipped()
+            
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    // Season/Episode and Title
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("\(item.season) сезон, \(item.episode) серия")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundColor(Color.slooshAccent)
+                            .textCase(.uppercase)
+                        
+                        let title = item.meta?.name ?? item.fallbackTitle
+                        Text(title)
+                            .font(.system(size: 24, weight: .heavy))
+                            .foregroundColor(.primary)
+                    }
+                    
+                    // Metadata: Rating & Date
+                    HStack(spacing: 12) {
+                        if let rating = item.meta?.ratings?.tmdb ?? item.meta?.ratings?.imdb, rating > 0 {
+                            Label(String(format: "%.1f", rating), systemImage: "star.fill")
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundColor(.rating(rating))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 4)
+                                .background(Color.rating(rating).opacity(0.1))
+                                .cornerRadius(6)
+                        }
+                        
+                        if let airDate = item.meta?.airDate, !airDate.isEmpty {
+                            Text(formatAirDate(airDate))
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    
+                    Divider()
+                        .padding(.vertical, 4)
+                    
+                    // Description / Overview
+                    if let overview = item.meta?.overview, !overview.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Описание серии")
+                                .font(.system(size: 16, weight: .bold))
+                            
+                            Text(overview)
+                                .font(.system(size: 15))
+                                .foregroundColor(.primary.opacity(0.85))
+                                .lineSpacing(4)
+                        }
+                    } else {
+                        Text("Описание для этой серии отсутствует.")
+                            .font(.system(size: 15))
+                            .foregroundColor(.secondary)
+                            .italic()
+                    }
+                }
+                .padding(24)
+            }
+            
+            // Bottom Buttons
+            VStack(spacing: 12) {
+                // Play Button
+                Button {
+                    dismiss()
+                    onPlay()
+                } label: {
+                    HStack {
+                        Image(systemName: "play.fill")
+                            .font(.system(size: 16, weight: .bold))
+                        Text("Смотреть серию")
+                            .font(.system(size: 16, weight: .bold))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 50)
+                    .background(Color.slooshAccent)
+                    .foregroundColor(.black)
+                    .cornerRadius(25)
+                }
+                .buttonStyle(.plain)
+                
+                // Mark as Watched Toggle Button
+                Button {
+                    isWatched.toggle()
+                    onWatchedToggle(isWatched)
+                } label: {
+                    HStack {
+                        Image(systemName: isWatched ? "checkmark.circle.fill" : "circle")
+                            .font(.system(size: 16))
+                        Text(isWatched ? "Просмотрено" : "Отметить как просмотренное")
+                            .font(.system(size: 15, weight: .semibold))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 44)
+                    .background(Color(UIColor.secondarySystemBackground))
+                    .foregroundColor(.primary)
+                    .cornerRadius(22)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 24)
+            .padding(.bottom, 34)
+            .padding(.top, 12)
+            .background(Color(UIColor.systemBackground))
+        }
+        .background(Color(UIColor.systemBackground))
+        .onAppear {
+            let progressKey = "kp_\(item.movieId)_s\(item.season)_e\(item.episode)"
+            let progressFraction = PlaybackProgressStore.shared.normalizedProgress(mediaId: progressKey)
+            isWatched = PlaybackProgressStore.shared.loadWatched(mediaId: progressKey) || (progressFraction ?? 0) >= 0.9
+        }
+    }
+    
+    private func formatAirDate(_ dateStr: String) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        guard let date = formatter.date(from: dateStr) else { return dateStr }
+        
+        formatter.locale = Locale(identifier: "ru_RU")
+        formatter.dateFormat = "d MMMM yyyy"
+        return formatter.string(from: date)
+    }
+}
+
 struct EpisodeCellView: View {
     let movieId: String
     let season: Int
     let episode: Int
     let fallbackTitle: String
+    let onPlayTap: () -> Void
+    let onUpdate: () -> Void
+    let onInfoTap: (TvEpisodeDetailsDto?) -> Void
     
     @State private var meta: TvEpisodeDetailsDto?
     @State private var isLoading = false
+    
+    @State private var progressFractionState: Double?
+    @State private var isWatchedState: Bool = false
     
     @EnvironmentObject private var viewModel: DetailsViewModel
     
@@ -877,94 +1072,205 @@ struct EpisodeCellView: View {
         URL(string: "https://api.neome.uk/api/v1/images/screens/\(movieId)/\(season)/\(episode)/large")
     }
     
+    private var progressKey: String {
+        "kp_\(movieId)_s\(season)_e\(episode)"
+    }
+    
+    private var isLastPlayed: Bool {
+        guard let kpId = viewModel.details?.externalIds?.kp else { return false }
+        let lastSeason = PlaybackProgressStore.shared.loadLastSeason(kpId: kpId)
+        let lastEpisode = PlaybackProgressStore.shared.loadLastEpisode(kpId: kpId)
+        return lastSeason == season && lastEpisode == episode
+    }
+
+    private func updateProgressState() {
+        progressFractionState = PlaybackProgressStore.shared.normalizedProgress(mediaId: progressKey)
+        isWatchedState = PlaybackProgressStore.shared.loadWatched(mediaId: progressKey) || (progressFractionState ?? 0) >= 0.9
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            ZStack {
-                Rectangle()
+            ZStack(alignment: .bottom) {
+                // Background Card
+                RoundedRectangle(cornerRadius: 12)
                     .fill(Color(UIColor.tertiarySystemFill))
-                    .frame(width: 150, height: 85)
-                    .cornerRadius(12)
+                    .frame(width: 160, height: 90)
                 
+                // Preview Image
                 AsyncCachedImage(url: previewUrl) {
-                    Rectangle()
-                        .fill(Color.gray.opacity(0.2))
-                        .frame(width: 150, height: 85)
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color.gray.opacity(0.15))
+                        .frame(width: 160, height: 90)
                         .shimmer()
                 } content: { image in
                     Image(uiImage: image)
                         .resizable()
                         .aspectRatio(contentMode: .fill)
-                        .frame(width: 150, height: 85)
+                        .frame(width: 160, height: 90)
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                 } fallback: {
-                    Image(systemName: "photo")
-                        .font(.system(size: 24))
-                        .foregroundColor(.secondary)
-                        .frame(width: 150, height: 85)
-                        .background(Color(UIColor.tertiarySystemFill))
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                    ZStack {
+                        Color(UIColor.tertiarySystemFill)
+                        Image(systemName: "photo")
+                            .font(.system(size: 20))
+                            .foregroundColor(.secondary)
+                    }
+                    .frame(width: 160, height: 90)
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
-                .animation(.easeInOut(duration: 0.3), value: previewUrl)
+                .animation(.easeInOut(duration: 0.25), value: previewUrl)
                 
-                Image(systemName: "play.circle.fill")
-                    .font(.system(size: 32))
-                    .foregroundColor(.white.opacity(0.8))
-                    .shadow(radius: 2)
+                // Dark gradient overlay
+                LinearGradient(
+                    gradient: Gradient(colors: [.clear, .black.opacity(0.35)]),
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(height: 24)
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                
+                // Play Overlay
+                Image(systemName: "play.fill")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundColor(.white)
+                    .padding(10)
+                    .background(.black.opacity(0.45))
+                    .clipShape(Circle())
+                    .shadow(radius: 4)
+                    .opacity(isLastPlayed ? 1.0 : 0.75)
+                
+                // Progress Bar
+                if let progress = progressFractionState, progress > 0.02 {
+                    VStack(spacing: 0) {
+                        Spacer()
+                        ZStack(alignment: .leading) {
+                            Rectangle()
+                                .fill(.white.opacity(0.2))
+                                .frame(height: 3)
+                            
+                            Rectangle()
+                                .fill(isWatchedState ? Color.gray : Color.slooshAccent)
+                                .frame(width: 160 * CGFloat(progress), height: 3)
+                        }
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: 12))
+                }
+                
+                // Watched Checkmark Badge (top-right)
+                if isWatchedState {
+                    VStack {
+                        HStack {
+                            Spacer()
+                            Image(systemName: "checkmark.circle.fill")
+                                .font(.system(size: 14))
+                                .foregroundColor(Color.slooshAccent)
+                                .padding(4)
+                                .background(.black.opacity(0.6))
+                                .clipShape(Circle())
+                                .padding([.top, .trailing], 6)
+                        }
+                        Spacer()
+                    }
+                    .frame(width: 160, height: 90)
+                }
+
+                // Last Played Border
+                if isLastPlayed {
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color.slooshAccent, lineWidth: 2)
+                        .frame(width: 160, height: 90)
+                }
             }
-            
-            VStack(alignment: .leading, spacing: 2) {
-                if isLoading {
-                    Rectangle()
-                        .fill(Color.gray.opacity(0.2))
-                        .frame(width: 100, height: 16)
-                        .cornerRadius(4)
-                        .shimmer()
-                    
-                    Rectangle()
-                        .fill(Color.gray.opacity(0.2))
-                        .frame(width: 60, height: 14)
-                        .cornerRadius(4)
-                        .shimmer()
+            .contextMenu {
+                Button {
+                    onPlayTap()
+                } label: {
+                    Label("Смотреть", systemImage: "play.fill")
+                }
+                
+                Button {
+                    onInfoTap(meta)
+                } label: {
+                    Label("О серии", systemImage: "info.circle")
+                }
+                
+                Divider()
+                
+                if isWatchedState {
+                    Button(role: .destructive) {
+                        PlaybackProgressStore.shared.setWatched(mediaId: progressKey, watched: false)
+                        UserDefaults.standard.removeObject(forKey: PlaybackProgressStore.shared.positionKeyPrefix + progressKey)
+                        updateProgressState()
+                        onUpdate()
+                    } label: {
+                        Label("Сбросить прогресс", systemImage: "arrow.counterclockwise")
+                    }
                 } else {
-                    let title = meta?.name ?? fallbackTitle
-                    let displayTitle = title.hasPrefix("\(episode).") ? title : "\(episode). \(title)"
-                    Text(displayTitle)
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundColor(.primary)
-                        .lineLimit(1)
-                        .frame(width: 150, alignment: .leading)
-                    
-                    if let rating = meta?.ratings?.tmdb, rating > 0 {
-                        HStack(spacing: 4) {
-                            Image(systemName: "star.fill")
-                                .font(.system(size: 10))
-                                .foregroundColor(.rating(rating))
-                            Text(String(format: "%.1f", rating))
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundColor(.rating(rating))
-                        }
-                    } else if let rating = meta?.ratings?.imdb, rating > 0 {
-                        HStack(spacing: 4) {
-                            Image(systemName: "star.fill")
-                                .font(.system(size: 10))
-                                .foregroundColor(.rating(rating))
-                            Text(String(format: "%.1f", rating))
-                                .font(.system(size: 12, weight: .medium))
-                                .foregroundColor(.rating(rating))
-                        }
+                    Button {
+                        PlaybackProgressStore.shared.markAsWatched(mediaId: progressKey)
+                        updateProgressState()
+                        onUpdate()
+                    } label: {
+                        Label("Отметить как просмотренную", systemImage: "checkmark.circle")
                     }
                 }
             }
+            
+            let title = meta?.name ?? fallbackTitle
+            let displayTitle = title.hasPrefix("\(episode).") ? title : "\(episode). \(title)"
+            
+            HStack(alignment: .top, spacing: 4) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(displayTitle)
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(isLastPlayed ? Color.slooshAccent : .primary)
+                        .lineLimit(1)
+                    
+                    HStack(spacing: 8) {
+                        if let rating = meta?.ratings?.tmdb ?? meta?.ratings?.imdb, rating > 0 {
+                            HStack(spacing: 3) {
+                                Image(systemName: "star.fill")
+                                    .font(.system(size: 9))
+                                    .foregroundColor(.rating(rating))
+                                Text(String(format: "%.1f", rating))
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundColor(.rating(rating))
+                            }
+                        }
+                        
+                        if let airDate = meta?.airDate, !airDate.isEmpty {
+                            let year = airDate.prefix(4)
+                            Text(year)
+                                .font(.system(size: 11, weight: .medium))
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                
+                Button {
+                    let generator = UIImpactFeedbackGenerator(style: .light)
+                    generator.prepare()
+                    generator.impactOccurred()
+                    onInfoTap(meta)
+                } label: {
+                    Image(systemName: "info.circle")
+                        .font(.system(size: 15))
+                        .foregroundColor(.secondary.opacity(0.8))
+                        .padding(.leading, 4)
+                        .padding(.vertical, 2)
+                }
+                .buttonStyle(.plain)
+            }
+            .frame(width: 160)
         }
-        .animation(.easeInOut(duration: 0.3), value: isLoading)
+        .animation(.easeInOut(duration: 0.25), value: isLoading)
         .task(id: "\(season)-\(episode)") {
+            updateProgressState()
             if isLoading { return }
             isLoading = true
             meta = nil
             do {
-                // Пытаемся получить данные по ID (внутреннему) или по SourceId
                 var fetchedMeta: TvEpisodeDetailsDto? = nil
                 let candidateIds = [movieId, viewModel.details?.sourceId].compactMap { $0 }.filter { !$0.isEmpty }
                 
@@ -983,7 +1289,6 @@ struct EpisodeCellView: View {
                 if let fetchedMeta = fetchedMeta {
                     meta = fetchedMeta
                 } else {
-                    // Fallback to basic fetch if loop failed to find useful data
                     meta = try await MoviesRepository.shared.getEpisodeDetails(id: movieId, season: season, episode: episode)
                 }
             } catch {
@@ -1001,6 +1306,9 @@ struct InlineEpisodesSection: View {
     let onEpisodeTap: (Int, Int) -> Void
 
     @State private var selectedSeason: Int = 1
+    @State private var selectedEpisodeForSheet: EpisodeDetailsSheetItem? = nil
+    @State private var fullyWatchedSeasons: Set<Int> = []
+    @State private var redrawTrigger: Bool = false
 
     var allSeasons: [Int] {
         viewModel.inlineSourceWrapper?.allohaResult?.seasons.map { $0.season }.sorted() ?? []
@@ -1011,6 +1319,31 @@ struct InlineEpisodesSection: View {
             return season.episodes.map { $0.episode }.sorted()
         }
         return []
+    }
+
+    private func episodesCount(for seasonNum: Int) -> Int {
+        viewModel.inlineSourceWrapper?.allohaResult?.seasons.first(where: { $0.season == seasonNum })?.episodes.count ?? 0
+    }
+
+    private func updateWatchedSeasons() {
+        guard let seasons = viewModel.inlineSourceWrapper?.allohaResult?.seasons else { return }
+        var completed = Set<Int>()
+        let rawId = details.externalIds?.kp?.description ?? details.id?.replacingOccurrences(of: "kp_", with: "") ?? ""
+        
+        for s in seasons {
+            let episodes = s.episodes.map { $0.episode }
+            if !episodes.isEmpty {
+                let allWatched = episodes.allSatisfy { ep in
+                    let progressKey = "kp_\(rawId)_s\(s.season)_e\(ep)"
+                    let progressFraction = PlaybackProgressStore.shared.normalizedProgress(mediaId: progressKey)
+                    return PlaybackProgressStore.shared.loadWatched(mediaId: progressKey) || (progressFraction ?? 0) >= 0.9
+                }
+                if allWatched {
+                    completed.insert(s.season)
+                }
+            }
+        }
+        self.fullyWatchedSeasons = completed
     }
 
     var body: some View {
@@ -1024,8 +1357,8 @@ struct InlineEpisodesSection: View {
                     HStack(spacing: 12) {
                         ForEach(0..<4) { _ in
                             RoundedRectangle(cornerRadius: 12)
-                                .fill(Color.gray.opacity(0.2))
-                                .frame(width: 140, height: 80)
+                                .fill(Color.gray.opacity(0.15))
+                                .frame(width: 160, height: 90)
                                 .shimmer()
                         }
                     }
@@ -1045,51 +1378,148 @@ struct InlineEpisodesSection: View {
                                 let generator = UIImpactFeedbackGenerator(style: .light)
                                 generator.prepare()
                                 generator.impactOccurred()
-                                selectedSeason = season
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                    selectedSeason = season
+                                }
                             }) {
-                                Text("\(season) сезон")
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .padding(.horizontal, 16)
-                                    .padding(.vertical, 8)
-                                    .background(selectedSeason == season ? Color.primary : Color(UIColor.secondarySystemFill))
-                                    .foregroundColor(selectedSeason == season ? Color(UIColor.systemBackground) : .primary)
-                                    .clipShape(Capsule())
+                                VStack(spacing: 2) {
+                                    HStack(spacing: 4) {
+                                        Text("\(season) сезон")
+                                            .font(.system(size: 14, weight: .bold))
+                                        if fullyWatchedSeasons.contains(season) {
+                                            Image(systemName: "checkmark.circle.fill")
+                                                .foregroundColor(selectedSeason == season ? .black : Color.slooshAccent)
+                                                .font(.system(size: 11, weight: .bold))
+                                        }
+                                    }
+                                    
+                                    let count = episodesCount(for: season)
+                                    if count > 0 {
+                                        Text("\(count) сер.")
+                                            .font(.system(size: 10, weight: .medium))
+                                            .foregroundColor(selectedSeason == season ? .black.opacity(0.6) : .secondary)
+                                    }
+                                }
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 8)
+                                .background(
+                                    Capsule()
+                                        .fill(selectedSeason == season ? Color.white : Color.white.opacity(0.06))
+                                )
+                                .foregroundColor(selectedSeason == season ? .black : .primary)
+                                .scaleEffect(selectedSeason == season ? 1.04 : 1.0)
                             }
+                            .buttonStyle(.plain)
                         }
                     }
                     .padding(.horizontal, horizontalPadding)
                 }
 
                 // Episodes List
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 12) {
-                        ForEach(episodesForSelectedSeason, id: \.self) { episode in
-                            Button(action: {
-                                let generator = UIImpactFeedbackGenerator(style: .medium)
-                                generator.prepare()
-                                generator.impactOccurred()
-                                onEpisodeTap(selectedSeason, episode)
-                            }) {
+                ScrollViewReader { proxy in
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 12) {
+                            ForEach(episodesForSelectedSeason, id: \.self) { episode in
                                 let rawId = details.externalIds?.kp?.description ?? details.id?.replacingOccurrences(of: "kp_", with: "") ?? ""
-                                EpisodeCellView(movieId: rawId, season: selectedSeason, episode: episode, fallbackTitle: "Серия")
+                                
+                                Button(action: {
+                                    let generator = UIImpactFeedbackGenerator(style: .medium)
+                                    generator.prepare()
+                                    generator.impactOccurred()
+                                    onEpisodeTap(selectedSeason, episode)
+                                }) {
+                                    EpisodeCellView(
+                                        movieId: rawId,
+                                        season: selectedSeason,
+                                        episode: episode,
+                                        fallbackTitle: "Серия",
+                                        onPlayTap: {
+                                            onEpisodeTap(selectedSeason, episode)
+                                        },
+                                        onUpdate: {
+                                            updateWatchedSeasons()
+                                            redrawTrigger.toggle()
+                                        },
+                                        onInfoTap: { fetchedMeta in
+                                            selectedEpisodeForSheet = EpisodeDetailsSheetItem(
+                                                movieId: rawId,
+                                                season: selectedSeason,
+                                                episode: episode,
+                                                meta: fetchedMeta,
+                                                fallbackTitle: "Серия"
+                                            )
+                                        }
+                                    )
                                     .environmentObject(viewModel)
+                                    .id(redrawTrigger)
+                                }
+                                .buttonStyle(EpisodeButtonStyle())
+                                .id("\(selectedSeason)-\(episode)")
                             }
-                            .buttonStyle(.plain)
-                            .id("\(selectedSeason)-\(episode)")
                         }
+                        .padding(.horizontal, horizontalPadding)
                     }
-                    .padding(.horizontal, horizontalPadding)
+                    .onAppear {
+                        scrollToLastPlayed(proxy: proxy)
+                    }
+                    .onChange(of: selectedSeason) { _, _ in
+                        scrollToLastPlayed(proxy: proxy)
+                    }
+                    .onChange(of: episodesForSelectedSeason) { _, _ in
+                        scrollToLastPlayed(proxy: proxy)
+                    }
                 }
             }
         }
         .onAppear {
-            if let firstSeason = allSeasons.first {
+            updateWatchedSeasons()
+            guard let kpId = details.externalIds?.kp else { return }
+            let lastSeason = PlaybackProgressStore.shared.loadLastSeason(kpId: kpId)
+            if let lastSeason, allSeasons.contains(lastSeason) {
+                selectedSeason = lastSeason
+            } else if let firstSeason = allSeasons.first {
                 selectedSeason = firstSeason
             }
         }
         .onChange(of: allSeasons) { _, newSeasons in
+            updateWatchedSeasons()
             if !newSeasons.contains(selectedSeason), let first = newSeasons.first {
                 selectedSeason = first
+            }
+        }
+        .sheet(item: $selectedEpisodeForSheet) { item in
+            EpisodeDetailsSheet(
+                item: item,
+                onPlay: {
+                    onEpisodeTap(item.season, item.episode)
+                },
+                onWatchedToggle: { isWatched in
+                    let progressKey = "kp_\(item.movieId)_s\(item.season)_e\(item.episode)"
+                    if isWatched {
+                        PlaybackProgressStore.shared.markAsWatched(mediaId: progressKey)
+                    } else {
+                        PlaybackProgressStore.shared.setWatched(mediaId: progressKey, watched: false)
+                        UserDefaults.standard.removeObject(forKey: PlaybackProgressStore.shared.positionKeyPrefix + progressKey)
+                    }
+                    updateWatchedSeasons()
+                    redrawTrigger.toggle()
+                }
+            )
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+        }
+    }
+
+    private func scrollToLastPlayed(proxy: ScrollViewProxy) {
+        guard let kpId = details.externalIds?.kp else { return }
+        let lastSeason = PlaybackProgressStore.shared.loadLastSeason(kpId: kpId) ?? 1
+        let lastEpisode = PlaybackProgressStore.shared.loadLastEpisode(kpId: kpId) ?? 1
+        
+        if selectedSeason == lastSeason {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                withAnimation(.spring(response: 0.45, dampingFraction: 0.82)) {
+                    proxy.scrollTo("\(lastSeason)-\(lastEpisode)", anchor: .center)
+                }
             }
         }
     }
