@@ -57,11 +57,24 @@ struct DownloadsView: View {
     @State private var playerItem: DownloadItem? = nil
     
     private var filteredMovies: [DownloadItem] {
-        downloadManager.downloads.filter { $0.mediaType == "movie" }
+        downloadManager.downloads.filter { $0.mediaType == "movie" && !isCartoonByTitle($0.title) }
+    }
+    
+    private var filteredCartoonsMovies: [DownloadItem] {
+        downloadManager.downloads.filter { $0.mediaType == "movie" && isCartoonByTitle($0.title) }
     }
     
     private var groupedShows: [GroupedShow] {
-        let seriesItems = downloadManager.downloads.filter { $0.mediaType == "tv" }
+        let seriesItems = downloadManager.downloads.filter { $0.mediaType == "tv" && !isCartoonByTitle($0.title) }
+        return groupSeries(seriesItems)
+    }
+    
+    private var groupedCartoonsShows: [GroupedShow] {
+        let seriesItems = downloadManager.downloads.filter { $0.mediaType == "tv" && isCartoonByTitle($0.title) }
+        return groupSeries(seriesItems)
+    }
+    
+    private func groupSeries(_ seriesItems: [DownloadItem]) -> [GroupedShow] {
         let grouped = Dictionary(grouping: seriesItems, by: { $0.kpId })
         return grouped.map { kpId, items -> GroupedShow in
             let first = items.first!
@@ -83,10 +96,10 @@ struct DownloadsView: View {
             VStack(spacing: 0) {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 22) {
-                        ForEach(Array(["Все", "Фильмы", "Сериалы"].enumerated()), id: \.offset) { index, title in
+                        ForEach(Array(["Все", "Фильмы", "Сериалы", "Мультфильмы"].enumerated()), id: \.offset) { index, title in
                             let isSelected = selectedFilter == index
                             let isFirst = index == 0
-                            let isLast = index == 2
+                            let isLast = index == 3
                             
                             Button(action: {
                                 let generator = UIImpactFeedbackGenerator(style: .light)
@@ -118,10 +131,10 @@ struct DownloadsView: View {
                     emptyView
                 } else {
                     List {
-                        // 1. Movies Section
+                        // 1. Movies Section (not cartoons)
                         if selectedFilter == 0 || selectedFilter == 1 {
                             if !filteredMovies.isEmpty {
-                                Section("Фильмы") {
+                                Section(selectedFilter == 0 ? "Фильмы" : "") {
                                     ForEach(filteredMovies) { item in
                                         movieRow(item: item)
                                     }
@@ -131,11 +144,37 @@ struct DownloadsView: View {
                             }
                         }
                         
-                        // 2. Shows Section
+                        // 2. Cartoon Movies Section
+                        if selectedFilter == 0 || selectedFilter == 3 {
+                            if !filteredCartoonsMovies.isEmpty {
+                                Section(selectedFilter == 0 ? "Мультфильмы" : "Мультфильмы (фильмы)") {
+                                    ForEach(filteredCartoonsMovies) { item in
+                                        movieRow(item: item)
+                                    }
+                                }
+                                .listRowBackground(Color.clear)
+                                .listRowSeparator(.hidden)
+                            }
+                        }
+                        
+                        // 3. Shows Section (not cartoons)
                         if selectedFilter == 0 || selectedFilter == 2 {
                             if !groupedShows.isEmpty {
-                                Section("Сериалы") {
+                                Section(selectedFilter == 0 ? "Сериалы" : "") {
                                     ForEach(groupedShows) { show in
+                                        showRow(show: show)
+                                    }
+                                }
+                                .listRowBackground(Color.clear)
+                                .listRowSeparator(.hidden)
+                            }
+                        }
+                        
+                        // 4. Cartoon Series Section
+                        if selectedFilter == 0 || selectedFilter == 3 {
+                            if !groupedCartoonsShows.isEmpty {
+                                Section(selectedFilter == 0 ? "Мультсериалы" : "Мультсериалы") {
+                                    ForEach(groupedCartoonsShows) { show in
                                         showRow(show: show)
                                     }
                                 }
