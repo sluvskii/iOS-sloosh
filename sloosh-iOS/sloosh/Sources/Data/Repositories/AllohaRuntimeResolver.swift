@@ -141,6 +141,12 @@ final class AllohaRuntimeResolver: NSObject, WKNavigationDelegate, WKScriptMessa
             pendingPayloads.removeFirst(pendingPayloads.count - 12)
         }
 
+        let trimmed = payload.trimmingCharacters(in: .whitespaces)
+        if trimmed.hasPrefix("{") && trimmed.contains("hlsSource") {
+            resolveIfReady(payload)
+            return
+        }
+
         if isMasterPlaylistPayload(payload) {
             bestMasterPayload = payload
             scheduleFallbackResolve(for: payload, delay: bestHlsSourcePayload == nil ? 2.4 : 0.8)
