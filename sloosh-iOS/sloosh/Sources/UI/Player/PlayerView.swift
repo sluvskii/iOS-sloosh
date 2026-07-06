@@ -44,7 +44,7 @@ class PlayerPresenterViewController: UIViewController {
             pc.modalPresentationStyle = .fullScreen
             self.playerController = pc
             
-            self.present(pc, animated: true) {
+            self.present(pc, animated: false) {
                 self.player?.play()
             }
         } else {
