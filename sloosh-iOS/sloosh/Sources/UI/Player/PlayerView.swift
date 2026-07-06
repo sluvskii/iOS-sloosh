@@ -159,6 +159,7 @@ class PlayerViewModel: ObservableObject {
     @Published var currentTime: Double = 0
     @Published var currentDuration: Double = 0
     @Published var bufferedProgress: Double = 0
+    @Published var screenScrubTime: Double?
 
     // MARK: - Quality & Rate
     @Published var availableQualities: [PlaybackQualityOption] = []

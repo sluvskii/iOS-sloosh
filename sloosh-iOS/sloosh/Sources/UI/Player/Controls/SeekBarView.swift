@@ -10,10 +10,12 @@ struct SeekBarView: View {
 
     private var progress: Double {
         guard vm.currentDuration > 0 else { return 0 }
+        if let scrub = vm.screenScrubTime { return scrub / vm.currentDuration }
         return isDragging ? dragProgress : (vm.currentTime / vm.currentDuration)
     }
 
     private var displayTime: Double {
+        if let scrub = vm.screenScrubTime { return scrub }
         return isDragging ? (dragProgress * vm.currentDuration) : vm.currentTime
     }
 
