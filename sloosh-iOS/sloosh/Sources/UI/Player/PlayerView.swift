@@ -194,6 +194,7 @@ class PlayerViewModel: ObservableObject {
     private var foregroundObserver: NSObjectProtocol?
     private var rateObserver: NSKeyValueObservation?
     private var currentPlaybackSourceURL: URL?
+    private var currentHeaders: [String: String] = [:]
     private var bufferingTask: Task<Void, Never>?
 
     private(set) var currentKpId: Int?
@@ -608,6 +609,12 @@ class PlayerViewModel: ObservableObject {
         let asset: AVURLAsset
         if sourceURL.isFileURL {
             asset = AVURLAsset(url: sourceURL)
+        } else if sourceURL.absoluteString.lowercased().contains(".mp4") {
+            var options: [String: Any] = [:]
+            if !currentHeaders.isEmpty {
+                options["AVURLAssetHTTPHeaderFieldsKey"] = currentHeaders
+            }
+            asset = AVURLAsset(url: sourceURL, options: options)
         } else {
             guard let proxyUrl = proxiedPlaybackURL(for: sourceURL) else { return }
             asset = AVURLAsset(url: proxyUrl)
@@ -761,6 +768,7 @@ class PlayerViewModel: ObservableObject {
     
     private func playVideo(url: URL, headers: [String: String], voices: [String] = [], subtitles: [PlaybackSubtitle] = []) {
         currentPlaybackSourceURL = url.absoluteURL
+        currentHeaders = headers
 
         let asset: AVURLAsset
         if url.absoluteString.contains("127.0.0.1") || url.absoluteString.contains("localhost") {
@@ -768,6 +776,12 @@ class PlayerViewModel: ObservableObject {
             asset = AVURLAsset(url: url)
         } else if url.isFileURL {
             asset = AVURLAsset(url: url)
+        } else if url.absoluteString.lowercased().contains(".mp4") {
+            var options: [String: Any] = [:]
+            if !headers.isEmpty {
+                options["AVURLAssetHTTPHeaderFieldsKey"] = headers
+            }
+            asset = AVURLAsset(url: url, options: options)
         } else {
             guard let proxyUrl = proxiedPlaybackURL(for: url) else {
                 self.error = "Ошибка формирования URL"
