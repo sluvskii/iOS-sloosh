@@ -2,6 +2,8 @@ import Foundation
 import Network
 import os.log
 
+import UIKit
+
 class HlsProxyServer {
     static let shared = HlsProxyServer()
     private var listener: NWListener?
@@ -25,6 +27,24 @@ class HlsProxyServer {
         return URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
     }()
     
+    private init() {
+        NotificationCenter.default.addObserver(self, selector: #selector(appWillEnterForeground), name: UIApplication.willEnterForegroundNotification, object: nil)
+    }
+    
+    @objc private func appWillEnterForeground() {
+        let params: (headers: [String: String], voices: [String], subtitles: [PlaybackSubtitle], mediaId: String)? = stateLock.withLock {
+            if !self.mediaId.isEmpty && self.listener == nil {
+                return (self.headers, self.voices, self.subtitles, self.mediaId)
+            }
+            return nil
+        }
+        
+        if let p = params {
+            print("HlsProxyServer: restarting listener on foreground")
+            start(headers: p.headers, voices: p.voices, subtitles: p.subtitles, mediaId: p.mediaId)
+        }
+    }
+    
     func start(headers: [String: String], voices: [String] = [], subtitles: [PlaybackSubtitle] = [], mediaId: String = "") {
         let isRunning = stateLock.withLock {
             self.headers = headers
@@ -40,6 +60,18 @@ class HlsProxyServer {
             let newListener = try NWListener(using: .tcp, on: port)
             newListener.newConnectionHandler = { [weak self] connection in
                 self?.handleConnection(connection)
+            }
+            newListener.stateUpdateHandler = { [weak self] state in
+                guard let self = self else { return }
+                switch state {
+                case .failed(let error):
+                    print("HlsProxyServer listener failed: \(error)")
+                    self.stateLock.withLock { self.listener = nil }
+                case .cancelled:
+                    print("HlsProxyServer listener cancelled")
+                    self.stateLock.withLock { self.listener = nil }
+                default: break
+                }
             }
             newListener.start(queue: queue)
             
