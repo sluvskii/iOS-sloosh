@@ -53,7 +53,7 @@ struct SourceSelectionView: View {
             guard let s = selectedSeason, let e = selectedEpisode else { return false }
             return episodeHasTranslation(season: s, episode: e, t: name)
         } else if let movie = result.movie {
-            return movie.translations.contains { allohaTranslationNamesMatch($0.name, name, exactOnly: true) }
+            return movie.translations.contains { $0.name == name }
         }
         return false
     }
@@ -220,7 +220,7 @@ struct SourceSelectionView: View {
             dismiss()
         } else if let movie = result.movie {
             guard let tName = selectedTranslationName,
-                  let translation = movie.translations.first(where: { allohaTranslationNamesMatch($0.name, tName, exactOnly: true) }) else { return }
+                  let translation = movie.translations.first(where: { $0.name == tName }) else { return }
             
             if mode == .play, let kpId = kpId {
                 PlaybackProgressStore.shared.saveLastPlayed(kpId: kpId, season: nil, episode: nil)
