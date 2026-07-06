@@ -42,6 +42,13 @@ struct PlayerContainerView: View {
             // 5. Жесты (двойной тап = перемотка, одинарный = контролы)
             gestureLayer
 
+            // DEBUG OVERLAY
+            Text("DEBUG ZOOM: \(isZoomedToFill ? "FILL" : "FIT")")
+                .foregroundColor(.red)
+                .font(.largeTitle)
+                .padding(.top, 100)
+                .allowsHitTesting(false)
+
             // 6. Seek feedback
             if let feedback = seekFeedback {
                 SeekFeedbackView(isForward: feedback.isForward)
