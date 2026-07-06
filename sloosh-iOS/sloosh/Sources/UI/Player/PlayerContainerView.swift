@@ -28,7 +28,7 @@ struct PlayerContainerView: View {
 
             // 2. Видеослой
             VideoLayerView(player: vm.player, pipController: $pipController, videoGravity: isZoomedToFill ? .resizeAspectFill : .resizeAspect)
-                .ignoresSafeArea()
+                .ignoresSafeArea(edges: isZoomedToFill ? .all : .vertical)
                 .onAppear { vm.pipController = pipController }
                 .onChange(of: pipController) { _, newVal in vm.pipController = newVal }
 
