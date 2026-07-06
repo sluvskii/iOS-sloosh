@@ -68,6 +68,8 @@ struct PlayerContainerView: View {
             }
         }
     }
+    
+    private let controlsAnimation: Animation = .spring(response: 0.35, dampingFraction: 0.85)
 
     // MARK: - Gesture layer
 
@@ -79,7 +81,7 @@ struct PlayerContainerView: View {
                 .onTapGesture {
                     let now = Date()
                     if now.timeIntervalSince(lastLeftTap) < 0.35 {
-                        showControls = true
+                        withAnimation(controlsAnimation) { showControls = true }
                         vm.seek(by: -10)
                         showSeekFeedback(forward: false)
                         resetHideTimer()
@@ -96,7 +98,7 @@ struct PlayerContainerView: View {
                 .onTapGesture {
                     let now = Date()
                     if now.timeIntervalSince(lastRightTap) < 0.35 {
-                        showControls = true
+                        withAnimation(controlsAnimation) { showControls = true }
                         vm.seek(by: 10)
                         showSeekFeedback(forward: true)
                         resetHideTimer()
@@ -136,7 +138,7 @@ struct PlayerContainerView: View {
     // MARK: - Auto-hide
 
     private func toggleControls() {
-        withAnimation { showControls.toggle() }
+        withAnimation(controlsAnimation) { showControls.toggle() }
         if showControls { scheduleAutoHide() } else { hideTask?.cancel() }
     }
 
@@ -145,12 +147,12 @@ struct PlayerContainerView: View {
         hideTask = Task { @MainActor in
             try? await Task.sleep(for: .seconds(3.5))
             guard !Task.isCancelled, vm.isPlaying, !isInteracting else { return }
-            withAnimation { showControls = false }
+            withAnimation(controlsAnimation) { showControls = false }
         }
     }
 
     func resetHideTimer() {
-        if !showControls { withAnimation { showControls = true } }
+        if !showControls { withAnimation(controlsAnimation) { showControls = true } }
         scheduleAutoHide()
     }
 
