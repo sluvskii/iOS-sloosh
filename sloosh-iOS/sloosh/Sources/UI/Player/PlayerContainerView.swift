@@ -69,7 +69,8 @@ struct PlayerContainerView: View {
         }
     }
     
-    private let controlsAnimation: Animation = .spring(response: 0.35, dampingFraction: 0.85)
+    private let showAnimation: Animation = .spring(response: 0.35, dampingFraction: 0.85)
+    private let hideAnimation: Animation = .easeOut(duration: 0.5)
 
     // MARK: - Gesture layer
 
@@ -81,7 +82,7 @@ struct PlayerContainerView: View {
                 .onTapGesture {
                     let now = Date()
                     if now.timeIntervalSince(lastLeftTap) < 0.35 {
-                        withAnimation(controlsAnimation) { showControls = true }
+                        withAnimation(showAnimation) { showControls = true }
                         vm.seek(by: -10)
                         showSeekFeedback(forward: false)
                         resetHideTimer()
@@ -98,7 +99,7 @@ struct PlayerContainerView: View {
                 .onTapGesture {
                     let now = Date()
                     if now.timeIntervalSince(lastRightTap) < 0.35 {
-                        withAnimation(controlsAnimation) { showControls = true }
+                        withAnimation(showAnimation) { showControls = true }
                         vm.seek(by: 10)
                         showSeekFeedback(forward: true)
                         resetHideTimer()
@@ -138,8 +139,13 @@ struct PlayerContainerView: View {
     // MARK: - Auto-hide
 
     private func toggleControls() {
-        withAnimation(controlsAnimation) { showControls.toggle() }
-        if showControls { scheduleAutoHide() } else { hideTask?.cancel() }
+        if showControls {
+            withAnimation(hideAnimation) { showControls = false }
+            hideTask?.cancel()
+        } else {
+            withAnimation(showAnimation) { showControls = true }
+            scheduleAutoHide()
+        }
     }
 
     private func scheduleAutoHide() {
@@ -147,12 +153,12 @@ struct PlayerContainerView: View {
         hideTask = Task { @MainActor in
             try? await Task.sleep(for: .seconds(3.5))
             guard !Task.isCancelled, vm.isPlaying, !isInteracting else { return }
-            withAnimation(controlsAnimation) { showControls = false }
+            withAnimation(hideAnimation) { showControls = false }
         }
     }
 
     func resetHideTimer() {
-        if !showControls { withAnimation(controlsAnimation) { showControls = true } }
+        if !showControls { withAnimation(showAnimation) { showControls = true } }
         scheduleAutoHide()
     }
 
@@ -204,8 +210,8 @@ struct BlurModifier: ViewModifier {
     let isActive: Bool
     func body(content: Content) -> some View {
         content
+            .blur(radius: isActive ? 16 : 0)
             .opacity(isActive ? 0 : 1)
-            .blur(radius: isActive ? 12 : 0)
     }
 }
 
