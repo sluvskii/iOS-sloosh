@@ -38,11 +38,11 @@ struct SeekBarView: View {
                         .frame(width: geo.size.width * progress, height: 4)
 
                     // Thumb
-                    Circle()
+                    Capsule()
                         .fill(.white)
-                        .frame(width: isDragging ? 18 : 14, height: isDragging ? 18 : 14)
+                        .frame(width: isDragging ? 32 : 28, height: isDragging ? 18 : 14)
                         .shadow(radius: isDragging ? 6 : 2)
-                        .offset(x: geo.size.width * progress - (isDragging ? 9 : 7))
+                        .offset(x: geo.size.width * progress - (isDragging ? 16 : 14))
                         .animation(.spring(response: 0.2, dampingFraction: 0.7), value: isDragging)
                 }
                 .frame(maxHeight: .infinity)
