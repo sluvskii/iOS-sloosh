@@ -46,7 +46,6 @@ struct PlayerContainerView: View {
             if let feedback = seekFeedback {
                 SeekFeedbackView(isForward: feedback.isForward)
                     .id(feedback.id)
-                    .transition(.opacity)
                     .allowsHitTesting(false)
             }
 
@@ -91,35 +90,27 @@ struct PlayerContainerView: View {
             // Левая половина — -10с
             Color.clear
                 .contentShape(Rectangle())
-                .onTapGesture {
-                    let now = Date()
-                    if now.timeIntervalSince(lastLeftTap) < 0.35 {
-                        withAnimation(showAnimation) { showControls = true }
-                        vm.seek(by: -10)
-                        showSeekFeedback(forward: false)
-                        resetHideTimer()
-                        lastLeftTap = .distantPast
-                    } else {
-                        lastLeftTap = now
-                        toggleControls()
-                    }
+                .onTapGesture(count: 2) {
+                    vm.seek(by: -10)
+                    showSeekFeedback(forward: false)
+                    withAnimation(showAnimation) { showControls = true }
+                    resetHideTimer()
+                }
+                .onTapGesture(count: 1) {
+                    toggleControls()
                 }
 
             // Правая половина — +10с
             Color.clear
                 .contentShape(Rectangle())
-                .onTapGesture {
-                    let now = Date()
-                    if now.timeIntervalSince(lastRightTap) < 0.35 {
-                        withAnimation(showAnimation) { showControls = true }
-                        vm.seek(by: 10)
-                        showSeekFeedback(forward: true)
-                        resetHideTimer()
-                        lastRightTap = .distantPast
-                    } else {
-                        lastRightTap = now
-                        toggleControls()
-                    }
+                .onTapGesture(count: 2) {
+                    vm.seek(by: 10)
+                    showSeekFeedback(forward: true)
+                    withAnimation(showAnimation) { showControls = true }
+                    resetHideTimer()
+                }
+                .onTapGesture(count: 1) {
+                    toggleControls()
                 }
         }
     }
@@ -177,9 +168,9 @@ struct PlayerContainerView: View {
     // MARK: - Seek feedback
 
     private func showSeekFeedback(forward: Bool) {
-        withAnimation { seekFeedback = SeekFeedback(isForward: forward) }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.65) {
-            withAnimation { seekFeedback = nil }
+        seekFeedback = SeekFeedback(isForward: forward)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+            seekFeedback = nil
         }
     }
 }
@@ -188,8 +179,7 @@ struct PlayerContainerView: View {
 
 private struct SeekFeedbackView: View {
     let isForward: Bool
-    @State private var scale: CGFloat = 0.7
-    @State private var opacity: Double = 1.0
+    @State private var isVisible: Bool = false
 
     var body: some View {
         HStack {
@@ -198,16 +188,14 @@ private struct SeekFeedbackView: View {
                 .font(.system(size: 32, weight: .medium))
                 .foregroundStyle(.white)
                 .frame(width: 72, height: 72)
-                // Liquid Glass капсула вместо кастомного кружка
                 .glassEffect(.regular, in: .circle)
-                .scaleEffect(scale)
-                .opacity(opacity)
+                .scaleEffect(isVisible ? 1.0 : 0.95)
+                .blur(radius: isVisible ? 0 : 20)
+                .opacity(isVisible ? 1 : 0)
                 .onAppear {
-                    withAnimation(.spring(response: 0.25, dampingFraction: 0.65)) {
-                        scale = 1.0
-                    }
-                    withAnimation(.easeOut(duration: 0.28).delay(0.32)) {
-                        opacity = 0
+                    withAnimation(.easeOut(duration: 0.2)) { isVisible = true }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                        withAnimation(.easeOut(duration: 0.25)) { isVisible = false }
                     }
                 }
             if !isForward { Spacer() }
