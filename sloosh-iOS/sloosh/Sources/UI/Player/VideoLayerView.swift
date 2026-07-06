@@ -50,7 +50,9 @@ struct VideoLayerView: UIViewRepresentable {
             uiView.player = player
         }
         if uiView.playerLayer.videoGravity != videoGravity {
-            uiView.playerLayer.videoGravity = videoGravity
+            UIView.animate(withDuration: 0.35, delay: 0, options: [.curveEaseInOut]) {
+                uiView.playerLayer.videoGravity = videoGravity
+            }
         }
     }
 }
