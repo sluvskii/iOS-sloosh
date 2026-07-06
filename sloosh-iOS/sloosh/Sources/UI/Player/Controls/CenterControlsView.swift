@@ -10,22 +10,27 @@ struct CenterControlsView: View {
     @State private var seekForwardFlash = false
 
     var body: some View {
-        GlassEffectContainer(spacing: 20) {
-            HStack(spacing: 20) {
-                // −10 с
-                Button {
-                    vm.seek(by: -10)
-                    flash($seekBackwardFlash)
-                } label: {
-                    Image(systemName: "gobackward.10")
-                        .font(.system(size: 26, weight: .medium))
-                        .foregroundStyle(.white)
-                        .frame(width: 52, height: 52)
-                        .scaleEffect(seekBackwardFlash ? 0.82 : 1.0)
-                        .animation(.spring(response: 0.2, dampingFraction: 0.6), value: seekBackwardFlash)
+        GlassEffectContainer(spacing: 24) {
+            HStack(spacing: 24) {
+                
+                if !vm.isMovie {
+                    // Previous Episode
+                    Button {
+                        vm.playPreviousEpisode()
+                        flash($seekBackwardFlash)
+                    } label: {
+                        Image(systemName: "backward.end.fill")
+                            .font(.system(size: 28, weight: .medium))
+                            .foregroundStyle(.white)
+                            .frame(width: 56, height: 56)
+                            .scaleEffect(seekBackwardFlash ? 0.82 : 1.0)
+                            .animation(.spring(response: 0.2, dampingFraction: 0.6), value: seekBackwardFlash)
+                            .opacity(vm.hasPreviousEpisode ? 1.0 : 0.4)
+                    }
+                    .disabled(!vm.hasPreviousEpisode)
+                    .glassEffect(.regular.interactive(), in: .circle)
+                    .glassEffectID("backward", in: glassNS)
                 }
-                .glassEffect(.regular.interactive(), in: .circle)
-                .glassEffectID("backward", in: glassNS)
 
                 // Play / Pause
                 Button {
@@ -38,32 +43,37 @@ struct CenterControlsView: View {
                                 .tint(.white)
                         } else {
                             Image(systemName: vm.isPlaying ? "pause.fill" : "play.fill")
-                                .font(.system(size: 28, weight: .bold))
+                                .font(.system(size: 34, weight: .bold))
                                 .foregroundStyle(.white)
                                 .offset(x: vm.isPlaying ? 0 : 2)
                                 .contentTransition(.symbolEffect(.replace))
                         }
                     }
-                    .frame(width: 64, height: 64)
+                    .frame(width: 72, height: 72)
                 }
                 .glassEffect(.regular.interactive(), in: .circle)
                 .glassEffectID("playPause", in: glassNS)
                 .animation(.spring(response: 0.3, dampingFraction: 0.7), value: vm.isPlaying)
 
-                // +10 с
-                Button {
-                    vm.seek(by: 10)
-                    flash($seekForwardFlash)
-                } label: {
-                    Image(systemName: "goforward.10")
-                        .font(.system(size: 26, weight: .medium))
-                        .foregroundStyle(.white)
-                        .frame(width: 52, height: 52)
-                        .scaleEffect(seekForwardFlash ? 0.82 : 1.0)
-                        .animation(.spring(response: 0.2, dampingFraction: 0.6), value: seekForwardFlash)
+                if !vm.isMovie {
+                    // Next Episode
+                    Button {
+                        vm.playNextEpisode()
+                        flash($seekForwardFlash)
+                    } label: {
+                        Image(systemName: "forward.end.fill")
+                            .font(.system(size: 28, weight: .medium))
+                            .foregroundStyle(.white)
+                            .frame(width: 56, height: 56)
+                            .scaleEffect(seekForwardFlash ? 0.82 : 1.0)
+                            .animation(.spring(response: 0.2, dampingFraction: 0.6), value: seekForwardFlash)
+                            .opacity(vm.hasNextEpisode ? 1.0 : 0.4)
+                    }
+                    .disabled(!vm.hasNextEpisode)
+                    .glassEffect(.regular.interactive(), in: .circle)
+                    .glassEffectID("forward", in: glassNS)
                 }
-                .glassEffect(.regular.interactive(), in: .circle)
-                .glassEffectID("forward", in: glassNS)
+                
             }
         }
     }
