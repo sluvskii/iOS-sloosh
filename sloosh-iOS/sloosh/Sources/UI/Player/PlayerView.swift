@@ -191,6 +191,7 @@ class PlayerViewModel: ObservableObject {
     private var itemObservation: NSKeyValueObservation?
     private var playbackEndObserver: NSObjectProtocol?
     private var resignActiveObserver: NSObjectProtocol?
+    private var foregroundObserver: NSObjectProtocol?
     private var rateObserver: NSKeyValueObservation?
     private var currentPlaybackSourceURL: URL?
     private var bufferingTask: Task<Void, Never>?
@@ -435,6 +436,10 @@ class PlayerViewModel: ObservableObject {
             NotificationCenter.default.removeObserver(resignActiveObserver)
             self.resignActiveObserver = nil
         }
+        if let foregroundObserver {
+            NotificationCenter.default.removeObserver(foregroundObserver)
+            self.foregroundObserver = nil
+        }
         itemObservation?.invalidate()
         itemObservation = nil
         statusObserver?.invalidate()
@@ -598,7 +603,7 @@ class PlayerViewModel: ObservableObject {
 
     private func reloadPlayback(to sourceURL: URL, preferredPeakBitRate: Double?) {
         let currentTime = player?.currentTime() ?? .zero
-        let wasPlaying = player?.timeControlStatus == .playing
+        let wasPlaying = player?.timeControlStatus == .playing || player?.timeControlStatus == .waitingToPlayAtSpecifiedRate
 
         let asset: AVURLAsset
         if sourceURL.isFileURL {
@@ -924,6 +929,25 @@ class PlayerViewModel: ObservableObject {
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
                 self?.saveCurrentProgress()
+            }
+        }
+        
+        if let existingFg = foregroundObserver {
+            NotificationCenter.default.removeObserver(existingFg)
+        }
+        foregroundObserver = NotificationCenter.default.addObserver(
+            forName: UIApplication.willEnterForegroundNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self = self, let player = self.player else { return }
+                // Если плеер завис на буферизации после возврата из фона, "пинаем" его перезагрузкой
+                if player.timeControlStatus == .waitingToPlayAtSpecifiedRate || self.isBuffering {
+                    if let url = self.currentPlaybackSourceURL {
+                        self.reloadPlayback(to: url, preferredPeakBitRate: player.currentItem?.preferredPeakBitRate)
+                    }
+                }
             }
         }
     }
