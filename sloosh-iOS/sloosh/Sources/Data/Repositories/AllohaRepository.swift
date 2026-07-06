@@ -295,6 +295,17 @@ final class AllohaRepository: @unchecked Sendable {
                     parsedTrans.append(AllohaTranslation(id: String(index), name: cleanTitle, iframeUrl: iframe, streamUrl: nil))
                 }
                 parsedTrans.sort { $0.name < $1.name }
+            } else if let transStr = dataObj["translation"] as? String {
+                // Если translation пришел как просто строка с названием озвучки
+                var iframe = dataObj["iframe"] as? String ?? ""
+                if iframe.hasPrefix("//") {
+                    iframe = "https:" + iframe
+                }
+                if !iframe.isEmpty {
+                    let cleanTitle = normalizedAllohaTranslationName(transStr)
+                    let finalName = cleanTitle.isEmpty ? transStr : cleanTitle
+                    parsedTrans.append(AllohaTranslation(id: "default", name: finalName, iframeUrl: iframe, streamUrl: nil))
+                }
             }
             
             var movie: AllohaMovie? = nil
