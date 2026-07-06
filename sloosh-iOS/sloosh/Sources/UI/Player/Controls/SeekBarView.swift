@@ -28,17 +28,21 @@ struct SeekBarView: View {
                 .font(.system(size: 13, weight: .medium).monospacedDigit())
                 .foregroundStyle(.white)
 
-            // Нативный слайдер — обеспечивает эффект стекла, как у MPVolumeView
-            SystemUISliderView(
-                value: Binding(
-                    get: { progress },
-                    set: { dragProgress = $0 }
-                ),
-                isDragging: $isDragging,
-                onSeek: { val in
-                    vm.seek(to: val * vm.currentDuration)
+            // Чистый SwiftUI слайдер для динамической толщины
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(.white.opacity(0.25))
+                        .frame(height: isHStackScrubbing ? 8 : 4)
+
+                    Capsule()
+                        .fill(.white)
+                        .frame(width: max(0, min(geo.size.width, geo.size.width * progress)),
+                               height: isHStackScrubbing ? 8 : 4)
                 }
-            )
+                .frame(maxHeight: .infinity)
+                .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isHStackScrubbing)
+            }
             .frame(height: 24)
 
             Text("-" + formatTime(max(0, vm.currentDuration - displayTime)))
@@ -50,7 +54,7 @@ struct SeekBarView: View {
         // Liquid Glass — нативный iOS 26, без fallback
         .glassEffect(.regular, in: .capsule)
         .simultaneousGesture(
-            DragGesture(minimumDistance: 10)
+            DragGesture(minimumDistance: 0)
                 .onChanged { value in
                     if abs(value.translation.height) > abs(value.translation.width) && !isHStackScrubbing {
                         return
@@ -80,6 +84,16 @@ struct SeekBarView: View {
                     guard isHStackScrubbing else { return }
                     isHStackScrubbing = false
                     isInteracting = false
+                    
+                    // Если это был просто тап (не тянули), прыгаем в точку касания
+                    if value.translation.width == 0 {
+                        let trackWidth = UIScreen.main.bounds.width - 32
+                        let tapX = max(0, min(trackWidth, value.startLocation.x))
+                        vm.seek(to: (Double(tapX) / Double(trackWidth)) * vm.currentDuration)
+                        vm.screenScrubTime = nil
+                        return
+                    }
+                    
                     if let target = vm.screenScrubTime {
                         vm.seek(to: target)
                         vm.screenScrubTime = nil
@@ -102,72 +116,6 @@ struct SeekBarView: View {
             return String(format: "%d:%02d:%02d", h, m, s)
         } else {
             return String(format: "%d:%02d", m, s)
-        }
-    }
-}
-
-// MARK: - Native UISlider Wrapper
-
-struct SystemUISliderView: UIViewRepresentable {
-    @Binding var value: Double
-    @Binding var isDragging: Bool
-    let onSeek: (Double) -> Void
-
-    func makeUIView(context: Context) -> UISlider {
-        let slider = UISlider()
-        slider.minimumValue = 0
-        slider.maximumValue = 1
-        
-        // Убираем кружок-ползунок, как в нативном плеере
-        slider.setThumbImage(UIImage(), for: .normal)
-        
-        // В iOS 26 нативный слайдер имеет Liquid Glass эффект на ползунке
-        slider.tintColor = .white
-        slider.minimumTrackTintColor = .white
-        slider.maximumTrackTintColor = .white.withAlphaComponent(0.25)
-        
-        slider.addTarget(context.coordinator, action: #selector(Coordinator.valueChanged(_:)), for: .valueChanged)
-        slider.addTarget(context.coordinator, action: #selector(Coordinator.editingDidBegin(_:)), for: .touchDown)
-        slider.addTarget(context.coordinator, action: #selector(Coordinator.editingDidEnd(_:)), for: [.touchUpInside, .touchUpOutside, .touchCancel])
-        
-        return slider
-    }
-
-    func updateUIView(_ uiView: UISlider, context: Context) {
-        if !context.coordinator.isEditing {
-            uiView.value = Float(value)
-        }
-    }
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(value: $value, isDragging: $isDragging, onSeek: onSeek)
-    }
-
-    class Coordinator: NSObject {
-        var value: Binding<Double>
-        var isDragging: Binding<Bool>
-        let onSeek: (Double) -> Void
-        var isEditing = false
-
-        init(value: Binding<Double>, isDragging: Binding<Bool>, onSeek: @escaping (Double) -> Void) {
-            self.value = value
-            self.isDragging = isDragging
-            self.onSeek = onSeek
-        }
-
-        @objc func valueChanged(_ sender: UISlider) {
-            value.wrappedValue = Double(sender.value)
-        }
-
-        @objc func editingDidBegin(_ sender: UISlider) {
-            isEditing = true
-            isDragging.wrappedValue = true
-        }
-
-        @objc func editingDidEnd(_ sender: UISlider) {
-            isEditing = false
-            isDragging.wrappedValue = false
-            onSeek(Double(sender.value))
         }
     }
 }
