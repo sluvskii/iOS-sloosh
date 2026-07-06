@@ -7,7 +7,12 @@ import AVKit
 final class PlayerLayerView: UIView {
     override static var layerClass: AnyClass { AVPlayerLayer.self }
 
-    var playerLayer: AVPlayerLayer { layer as! AVPlayerLayer }
+    var playerLayer: AVPlayerLayer {
+        guard let layer = layer as? AVPlayerLayer else {
+            fatalError("PlayerLayerView: expected AVPlayerLayer as backing layer")
+        }
+        return layer
+    }
 
     var player: AVPlayer? {
         get { playerLayer.player }
@@ -36,6 +41,10 @@ final class PlayerLayerView: UIView {
         NotificationCenter.default.addObserver(self, selector: #selector(didEnterBackground), name: UIApplication.didEnterBackgroundNotification, object: nil)
         NotificationCenter.default.addObserver(self, selector: #selector(willEnterForeground), name: UIApplication.willEnterForegroundNotification, object: nil)
     }
+    
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
 
     @objc private func didEnterBackground() {
         if let pip = pipController, pip.isPictureInPictureActive { return }
@@ -44,10 +53,9 @@ final class PlayerLayerView: UIView {
     }
 
     @objc private func willEnterForeground() {
-        if let stashed = stashedPlayer {
-            playerLayer.player = stashed
-            stashedPlayer = nil
-        }
+        guard let stashed = stashedPlayer else { return }
+        playerLayer.player = stashed
+        stashedPlayer = nil
     }
 }
 

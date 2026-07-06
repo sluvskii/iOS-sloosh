@@ -12,8 +12,6 @@ struct PlayerContainerView: View {
     @State private var hideTask: Task<Void, Never>?
     @State private var seekFeedback: SeekFeedback?
     @State private var isInteracting = false
-    @State private var lastLeftTap: Date = .distantPast
-    @State private var lastRightTap: Date = .distantPast
     @State private var isZoomedToFill = false
 
     struct SeekFeedback: Identifiable {
@@ -56,6 +54,7 @@ struct PlayerContainerView: View {
                 .allowsHitTesting(showControls)
         }
         .onAppear { scheduleAutoHide() }
+        .onDisappear { hideTask?.cancel() }
         .onChange(of: vm.isPlaying) { _, _ in
             if vm.isPlaying { scheduleAutoHide() }
         }
@@ -169,7 +168,8 @@ struct PlayerContainerView: View {
 
     private func showSeekFeedback(forward: Bool) {
         seekFeedback = SeekFeedback(isForward: forward)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(600))
             seekFeedback = nil
         }
     }

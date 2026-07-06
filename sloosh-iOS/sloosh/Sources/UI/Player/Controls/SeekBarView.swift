@@ -55,6 +55,7 @@ struct SeekBarView: View {
                     if abs(value.translation.height) > abs(value.translation.width) && !isHStackScrubbing {
                         return
                     }
+                    guard vm.currentDuration > 0 else { return }
                     if !isHStackScrubbing {
                         isHStackScrubbing = true
                         screenScrubInitialTime = vm.currentTime
