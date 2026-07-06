@@ -1,7 +1,6 @@
 import SwiftUI
-import AVKit
 
-// MARK: - Seek Bar с Liquid Glass
+// MARK: - Seek Bar с нативным Liquid Glass (iOS 26)
 
 struct SeekBarView: View {
     @ObservedObject var vm: PlayerViewModel
@@ -14,11 +13,8 @@ struct SeekBarView: View {
     }
 
     var body: some View {
-        let elapsed = formatTime(vm.currentTime)
-        let remaining = "-" + formatTime(max(0, vm.currentDuration - vm.currentTime))
-
         HStack(spacing: 12) {
-            Text(elapsed)
+            Text(formatTime(vm.currentTime))
                 .font(.system(size: 13, weight: .medium).monospacedDigit())
                 .foregroundStyle(.white)
                 .frame(width: 52, alignment: .leading)
@@ -65,28 +61,19 @@ struct SeekBarView: View {
                 )
             }
 
-            Text(remaining)
+            Text("-" + formatTime(max(0, vm.currentDuration - vm.currentTime)))
                 .font(.system(size: 13, weight: .medium).monospacedDigit())
                 .foregroundStyle(.white)
                 .frame(width: 56, alignment: .trailing)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
-        .background {
-            if #available(iOS 26.0, *) {
-                // Liquid Glass
-                Color.clear
-            } else {
-                Capsule()
-                    .fill(.ultraThinMaterial)
-                    .environment(\.colorScheme, .dark)
-            }
-        }
-        .modifier(GlassSeekBarModifier())
+        // Liquid Glass — нативный iOS 26, без fallback
+        .glassEffect(.regular, in: .capsule)
     }
 
     private func formatTime(_ seconds: Double) -> String {
-        guard seconds.isFinite, !seconds.isNaN else { return "0:00:00" }
+        guard seconds.isFinite, !seconds.isNaN else { return "0:00" }
         let total = Int(seconds)
         let h = total / 3600
         let m = (total % 3600) / 60
@@ -95,24 +82,6 @@ struct SeekBarView: View {
             return String(format: "%d:%02d:%02d", h, m, s)
         } else {
             return String(format: "%d:%02d", m, s)
-        }
-    }
-}
-
-// MARK: - Glass modifier с fallback
-
-private struct GlassSeekBarModifier: ViewModifier {
-    func body(content: Content) -> some View {
-        if #available(iOS 26.0, *) {
-            content
-                .glassEffect(.regular, in: .capsule)
-        } else {
-            content
-                .background(
-                    Capsule()
-                        .fill(.ultraThinMaterial)
-                        .environment(\.colorScheme, .dark)
-                )
         }
     }
 }

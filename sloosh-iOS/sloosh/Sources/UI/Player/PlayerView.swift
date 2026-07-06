@@ -844,22 +844,27 @@ class PlayerViewModel: ObservableObject {
             forInterval: CMTime(seconds: 0.5, preferredTimescale: 600),
             queue: .main
         ) { [weak self, weak player] time in
-            guard let self, let player else { return }
-            let t = time.seconds
-            self.currentTime = t.isFinite && !t.isNaN ? t : 0
-            let d = player.currentItem?.duration.seconds ?? 0
-            if d.isFinite && !d.isNaN && d > 0 {
-                self.currentDuration = d
-            }
-            // Сохраняем прогресс каждые 5 секунд
-            if Int(t) % 5 == 0 {
-                PlaybackProgressStore.shared.save(
-                    mediaId: mediaId,
-                    positionSec: t,
-                    durationSec: self.currentDuration > 0 ? self.currentDuration : nil
-                )
+            // Closure доставляется на .main очереди — безопасно вызывать main-actor-isolated свойства
+            MainActor.assumeIsolated {
+                guard let self, let player else { return }
+                let t = time.seconds
+                self.currentTime = t.isFinite && !t.isNaN ? t : 0
+                let d = player.currentItem?.duration.seconds ?? 0
+                if d.isFinite && !d.isNaN && d > 0 {
+                    self.currentDuration = d
+                }
+                // Сохраняем прогресс каждые 5 секунд
+                if Int(t) % 5 == 0 {
+                    let dur = self.currentDuration > 0 ? self.currentDuration : nil
+                    PlaybackProgressStore.shared.save(
+                        mediaId: mediaId,
+                        positionSec: t,
+                        durationSec: dur
+                    )
+                }
             }
         }
+
 
         setupRemoteCommands()
         updateNowPlaying()
