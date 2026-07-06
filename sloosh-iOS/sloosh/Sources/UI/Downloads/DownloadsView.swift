@@ -86,7 +86,7 @@ struct DownloadsView: View {
                                     playerItem = item
                                 }
                             } label: {
-                                DownloadCardView(item: item)
+                                DownloadRowView(item: item)
                             }
                             .buttonStyle(DownloadCardScaleButtonStyle())
                             .listRowBackground(Color.clear)
@@ -147,59 +147,45 @@ private struct DownloadCardScaleButtonStyle: ButtonStyle {
     }
 }
 
-private struct DownloadCardView: View {
+private struct DownloadRowView: View {
     let item: DownloadItem
     
     var body: some View {
-        ZStack(alignment: .bottomLeading) {
+        HStack(spacing: 16) {
             DownloadArtworkView(localUrl: item.localPosterUrl, remoteUrl: item.posterUrl)
+                .frame(width: 100, height: 150)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .shadow(color: .black.opacity(0.1), radius: 4, x: 0, y: 2)
 
-            LinearGradient(
-                colors: [.black.opacity(0.1), .black.opacity(0.3), .black.opacity(0.9)],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-
-            // Status Badge at top right
-            VStack {
-                HStack {
-                    Spacer()
-                    statusBadge
-                }
-                Spacer()
-            }
-            .padding(16)
-
-            VStack(alignment: .leading, spacing: 10) {
-                Spacer(minLength: 0)
+            VStack(alignment: .leading, spacing: 6) {
+                Text(item.title)
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(2)
                 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(item.title)
-                        .font(.system(size: 22, weight: .bold))
-                        .foregroundStyle(.white)
+                if let subtitle = subtitleText {
+                    Text(subtitle)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(.secondary)
                         .lineLimit(2)
-                    
-                    if let subtitle = subtitleText {
-                        Text(subtitle)
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.74))
-                            .lineLimit(1)
-                    }
                 }
+
+                Spacer(minLength: 0)
 
                 if item.status == .downloading {
                     DownloadProgressBar(progress: item.progress)
+                        .padding(.top, 4)
                     HStack {
                         Text("Скачивание...")
                         Spacer()
                         Text("\(Int(item.progress * 100))%")
                     }
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.92))
+                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.secondary)
                 } else if item.status == .pending {
                     Text("В очереди...")
                         .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.74))
+                        .foregroundStyle(.secondary)
                 } else if item.status == .failed {
                     Text(item.errorMessage ?? "Ошибка загрузки")
                         .font(.system(size: 13, weight: .medium))
@@ -207,19 +193,16 @@ private struct DownloadCardView: View {
                 } else if item.status == .completed {
                     Text(item.sizeString)
                         .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.74))
+                        .foregroundStyle(.secondary)
                 }
             }
-            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 8)
+
+            statusBadge
         }
-        .frame(maxWidth: .infinity)
-        .frame(height: 190)
-        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .overlay {
-            RoundedRectangle(cornerRadius: 24, style: .continuous)
-                .stroke(.white.opacity(0.08), lineWidth: 1)
-        }
-        .shadow(color: .black.opacity(0.18), radius: 18, x: 0, y: 8)
+        .frame(height: 150)
+        .contentShape(Rectangle())
         .padding(.vertical, 4)
         .swipeActions(edge: .trailing) {
             Button(role: .destructive) {
@@ -249,11 +232,11 @@ private struct DownloadCardView: View {
             Button(action: { DownloadManager.shared.pauseDownload(id: item.id) }) {
                 Image(systemName: "pause.fill")
                     .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 36, height: 36)
-                    .background(.black.opacity(0.4), in: Circle())
-                    .overlay(Circle().stroke(.white.opacity(0.2), lineWidth: 1))
+                    .foregroundStyle(.primary)
+                    .frame(width: 32, height: 32)
+                    .background(Color(UIColor.tertiarySystemFill), in: Circle())
             }
+            .buttonStyle(.plain)
         } else if item.status == .failed || item.errorMessage == "Приостановлено" {
             Button(action: {
                 if item.errorMessage == "Приостановлено" {
@@ -288,11 +271,11 @@ private struct DownloadCardView: View {
             }) {
                 Image(systemName: item.errorMessage == "Приостановлено" ? "arrow.clockwise" : "trash.fill")
                     .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 36, height: 36)
-                    .background(.black.opacity(0.4), in: Circle())
-                    .overlay(Circle().stroke(.white.opacity(0.2), lineWidth: 1))
+                    .foregroundStyle(.primary)
+                    .frame(width: 32, height: 32)
+                    .background(Color(UIColor.tertiarySystemFill), in: Circle())
             }
+            .buttonStyle(.plain)
         }
     }
 }
