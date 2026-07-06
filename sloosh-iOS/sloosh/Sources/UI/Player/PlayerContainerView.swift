@@ -67,18 +67,6 @@ struct PlayerContainerView: View {
                 scheduleAutoHide()
             }
         }
-        .gesture(
-            MagnificationGesture()
-                .onEnded { val in
-                    if !isZoomedToFill && val > 1.1 {
-                        withAnimation(showAnimation) { isZoomedToFill = true }
-                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    } else if isZoomedToFill && val < 0.9 {
-                        withAnimation(showAnimation) { isZoomedToFill = false }
-                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    }
-                }
-        )
     }
     
     private let showAnimation: Animation = .spring(response: 0.35, dampingFraction: 0.85)
