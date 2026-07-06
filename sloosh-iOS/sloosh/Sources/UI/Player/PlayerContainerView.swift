@@ -15,6 +15,7 @@ struct PlayerContainerView: View {
     @State private var lastLeftTap: Date = .distantPast
     @State private var lastRightTap: Date = .distantPast
     @State private var isZoomedToFill = false
+    @State private var bounceScale: CGFloat = 1.0
 
     struct SeekFeedback: Identifiable {
         let id = UUID()
@@ -29,6 +30,7 @@ struct PlayerContainerView: View {
             // 2. Видеослой
             VideoLayerView(player: vm.player, pipController: $pipController, videoGravity: isZoomedToFill ? .resizeAspectFill : .resizeAspect)
                 .ignoresSafeArea(edges: isZoomedToFill ? .all : .vertical)
+                .scaleEffect(bounceScale)
                 .onAppear { vm.pipController = pipController }
                 .onChange(of: pipController) { _, newVal in vm.pipController = newVal }
 
@@ -72,16 +74,20 @@ struct PlayerContainerView: View {
                 .onEnded { val in
                     if !isZoomedToFill && val > 1.25 {
                         withAnimation(showAnimation) { isZoomedToFill = true }
+                        bounceScale = 1.04
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.4).delay(0.1)) { bounceScale = 1.0 }
                         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     } else if isZoomedToFill && val < 0.85 {
                         withAnimation(showAnimation) { isZoomedToFill = false }
+                        bounceScale = 0.96
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.4).delay(0.1)) { bounceScale = 1.0 }
                         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     }
                 }
         )
     }
     
-    private let showAnimation: Animation = .spring(response: 0.5, dampingFraction: 0.75)
+    private let showAnimation: Animation = .easeOut(duration: 0.3)
     private let hideAnimation: Animation = .easeOut(duration: 0.5)
 
     // MARK: - Gesture layer
