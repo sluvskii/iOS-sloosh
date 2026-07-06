@@ -51,6 +51,7 @@ struct PlayerContainerView: View {
 
             // 7. Контролы
             PlayerControlsView(vm: vm, onDismiss: onDismiss, isInteracting: $isInteracting)
+                .scaleEffect(showControls ? 1.0 : 0.95)
                 .blur(radius: showControls ? 0 : 20)
                 .opacity(showControls ? 1 : 0)
                 .allowsHitTesting(showControls)
