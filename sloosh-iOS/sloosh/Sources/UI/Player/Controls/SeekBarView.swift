@@ -10,6 +10,12 @@ struct SeekBarView: View {
     @State private var isHStackScrubbing = false
     @State private var screenScrubInitialTime: Double = 0
     @State private var scrubStartLocationX: CGFloat = 0
+    @State private var dragVerticalTranslation: CGFloat = 0
+
+    private var currentThickness: CGFloat {
+        if !isHStackScrubbing { return 6 } // Базовая толщина
+        return abs(dragVerticalTranslation) > 30 ? 4 : 12 // Утоньшается при оттягивании пальца по вертикали
+    }
 
     private var progress: Double {
         guard vm.currentDuration > 0 else { return 0 }
@@ -28,22 +34,23 @@ struct SeekBarView: View {
                 .font(.system(size: 13, weight: .medium).monospacedDigit())
                 .foregroundStyle(.white)
 
-            // Чистый SwiftUI слайдер для динамической толщины
+            // Чистый SwiftUI слайдер с правильной обработкой области нажатия и толщины
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     Capsule()
-                        .fill(.white.opacity(0.25))
-                        .frame(height: isHStackScrubbing ? 8 : 4)
+                        .fill(.white.opacity(0.3))
+                        .frame(height: currentThickness)
 
                     Capsule()
                         .fill(.white)
                         .frame(width: max(0, min(geo.size.width, geo.size.width * progress)),
-                               height: isHStackScrubbing ? 8 : 4)
+                               height: currentThickness)
                 }
                 .frame(maxHeight: .infinity)
-                .animation(.spring(response: 0.3, dampingFraction: 0.7), value: isHStackScrubbing)
+                .animation(.spring(response: 0.3, dampingFraction: 0.7), value: currentThickness)
             }
             .frame(height: 24)
+            .contentShape(Rectangle()) // Гарантирует, что тапы работают по всей высоте
 
             Text("-" + formatTime(max(0, vm.currentDuration - displayTime)))
                 .font(.system(size: 13, weight: .medium).monospacedDigit())
@@ -66,6 +73,8 @@ struct SeekBarView: View {
                         isInteracting = true
                     }
                     
+                    dragVerticalTranslation = value.translation.height
+                    
                     let trackWidth = UIScreen.main.bounds.width - 32 // Примерная ширина рабочей области
                     let startX = max(1, min(trackWidth - 1, scrubStartLocationX))
                     
@@ -84,9 +93,10 @@ struct SeekBarView: View {
                     guard isHStackScrubbing else { return }
                     isHStackScrubbing = false
                     isInteracting = false
+                    dragVerticalTranslation = 0
                     
-                    // Если это был просто тап (не тянули), прыгаем в точку касания
-                    if value.translation.width == 0 {
+                    // Если это был просто тап или микродвижение (меньше 5 поинтов), прыгаем в точку касания
+                    if abs(value.translation.width) < 5 && abs(value.translation.height) < 5 {
                         let trackWidth = UIScreen.main.bounds.width - 32
                         let tapX = max(0, min(trackWidth, value.startLocation.x))
                         vm.seek(to: (Double(tapX) / Double(trackWidth)) * vm.currentDuration)
