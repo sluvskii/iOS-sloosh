@@ -15,8 +15,6 @@ struct PlayerContainerView: View {
     @State private var lastLeftTap: Date = .distantPast
     @State private var lastRightTap: Date = .distantPast
     @State private var isZoomedToFill = false
-    @State private var isScreenScrubbing = false
-    @State private var screenScrubInitialTime: Double = 0
 
     struct SeekFeedback: Identifiable {
         let id = UUID()
@@ -115,35 +113,6 @@ struct PlayerContainerView: View {
                     toggleControls()
                 }
         }
-        .gesture(
-            DragGesture(minimumDistance: 20)
-                .onChanged { value in
-                    if abs(value.translation.height) > abs(value.translation.width) && !isScreenScrubbing {
-                        return
-                    }
-                    if !isScreenScrubbing {
-                        isScreenScrubbing = true
-                        screenScrubInitialTime = vm.currentTime
-                        withAnimation(showAnimation) { showControls = true }
-                        isInteracting = true
-                        hideTask?.cancel()
-                    }
-                    let width = UIScreen.main.bounds.width
-                    let delta = (value.translation.width / width) * vm.currentDuration
-                    let newTime = max(0, min(vm.currentDuration, screenScrubInitialTime + delta))
-                    vm.screenScrubTime = newTime
-                }
-                .onEnded { value in
-                    guard isScreenScrubbing else { return }
-                    isScreenScrubbing = false
-                    isInteracting = false
-                    if let target = vm.screenScrubTime {
-                        vm.seek(to: target)
-                    }
-                    vm.screenScrubTime = nil
-                    scheduleAutoHide()
-                }
-        )
     }
 
     // MARK: - Error view

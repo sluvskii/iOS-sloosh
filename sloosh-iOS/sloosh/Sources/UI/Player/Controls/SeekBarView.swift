@@ -7,6 +7,8 @@ struct SeekBarView: View {
     @Binding var isInteracting: Bool
     @State private var isDragging = false
     @State private var dragProgress: Double = 0
+    @State private var isHStackScrubbing = false
+    @State private var screenScrubInitialTime: Double = 0
 
     private var progress: Double {
         guard vm.currentDuration > 0 else { return 0 }
@@ -46,8 +48,34 @@ struct SeekBarView: View {
         .padding(.vertical, 12)
         // Liquid Glass — нативный iOS 26, без fallback
         .glassEffect(.regular, in: .capsule)
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 10)
+                .onChanged { value in
+                    if abs(value.translation.height) > abs(value.translation.width) && !isHStackScrubbing {
+                        return
+                    }
+                    if !isHStackScrubbing {
+                        isHStackScrubbing = true
+                        screenScrubInitialTime = vm.currentTime
+                        isInteracting = true
+                    }
+                    let width = UIScreen.main.bounds.width
+                    let delta = (value.translation.width / width) * vm.currentDuration
+                    vm.screenScrubTime = max(0, min(vm.currentDuration, screenScrubInitialTime + delta))
+                }
+                .onEnded { value in
+                    guard isHStackScrubbing else { return }
+                    isHStackScrubbing = false
+                    isInteracting = false
+                    if let target = vm.screenScrubTime {
+                        vm.seek(to: target)
+                        vm.screenScrubTime = nil
+                    }
+                }
+        )
         .onChange(of: isDragging) { _, dragging in
-            isInteracting = dragging
+            if dragging { isInteracting = true }
+            else if !isHStackScrubbing { isInteracting = false }
         }
     }
 
