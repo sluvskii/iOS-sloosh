@@ -230,9 +230,11 @@ class PlayerViewModel: ObservableObject {
     private func setupControlsTimer() {
         controlsHideTimer?.invalidate()
         controlsHideTimer = Timer.scheduledTimer(withTimeInterval: 4.0, repeats: false) { [weak self] _ in
-            guard let self = self, self.isPlaying else { return }
-            withAnimation(.easeInOut(duration: 0.3)) {
-                self.showControls = false
+            Task { @MainActor [weak self] in
+                guard let self = self, self.isPlaying else { return }
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    self.showControls = false
+                }
             }
         }
     }
@@ -758,8 +760,10 @@ class PlayerViewModel: ObservableObject {
         
         // Setup state observers
         NotificationCenter.default.addObserver(forName: AVPlayer.rateDidChangeNotification, object: self.player, queue: .main) { [weak self] _ in
-            guard let self = self, let player = self.player else { return }
-            self.isPlaying = player.rate != 0
+            Task { @MainActor [weak self] in
+                guard let self = self, let player = self.player else { return }
+                self.isPlaying = player.rate != 0
+            }
         }
         
         setupControlsTimer()
@@ -790,19 +794,22 @@ class PlayerViewModel: ObservableObject {
         
         // Set high-frequency time observer for the custom UI scrubber
         timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.5, preferredTimescale: 600), queue: .main) { [weak self, weak player] time in
-            guard let self = self, let player = player else { return }
-            
-            let seconds = time.seconds
-            self.currentTime = seconds.isNaN ? 0 : seconds
-            
-            let dur = player.currentItem?.duration.seconds
-            self.duration = (dur?.isNaN == false) ? dur! : 0
-            
-            self.isBuffering = player.currentItem?.isPlaybackBufferEmpty ?? false
-            
-            // Save progress to store less frequently
-            if Int(seconds) % 5 == 0 {
-                PlaybackProgressStore.shared.save(mediaId: mediaId, positionSec: seconds, durationSec: self.duration > 0 ? self.duration : nil)
+            Task { @MainActor [weak self, weak player] in
+                guard let self = self, let player = player else { return }
+                
+                let seconds = time.seconds
+                self.currentTime = seconds.isNaN ? 0 : seconds
+                
+                let dur = player.currentItem?.duration.seconds
+                self.duration = (dur?.isNaN == false) ? dur! : 0
+                
+                self.isBuffering = player.currentItem?.isPlaybackBufferEmpty ?? false
+                
+                // Save progress to store less frequently
+                if Int(seconds) % 5 == 0 {
+                    let durToSave = self.duration > 0 ? self.duration : nil
+                    PlaybackProgressStore.shared.save(mediaId: mediaId, positionSec: seconds, durationSec: durToSave)
+                }
             }
         }
 
