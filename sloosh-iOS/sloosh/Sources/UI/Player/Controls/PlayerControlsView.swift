@@ -26,7 +26,7 @@ struct PlayerControlsView: View {
             // ── Верхний и нижний блоки ───────────────────────
             VStack {
                 TopBarView(vm: vm, onDismiss: onDismiss)
-                    .padding(.top, 8) // Увеличиваем отступ сверху
+                    .padding(.top, 16) // Стандартизированный отступ сверху
 
                 Spacer()
 
@@ -46,7 +46,7 @@ struct PlayerControlsView: View {
 
                     SeekBarView(vm: vm, isInteracting: $isInteracting)
                         .padding(.horizontal, 16)
-                        .padding(.bottom, 8) // Уменьшен отступ снизу
+                        .padding(.bottom, 16) // Стандартизированный отступ снизу
                 }
             }
 

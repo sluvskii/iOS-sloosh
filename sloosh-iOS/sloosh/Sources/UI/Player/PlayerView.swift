@@ -141,6 +141,8 @@ class PlayerViewModel: ObservableObject {
     @Published var isPlaying = false
     @Published var error: String?
 
+    var isUserSeeking = false
+
     // MARK: - Timing
     @Published var currentTime: Double = 0
     @Published var currentDuration: Double = 0
@@ -456,7 +458,12 @@ class PlayerViewModel: ObservableObject {
     func seek(to seconds: Double) {
         guard let player else { return }
         let time = CMTime(seconds: seconds, preferredTimescale: 600)
-        player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
+        isUserSeeking = true
+        player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.isUserSeeking = false
+            }
+        }
         currentTime = seconds
         updateNowPlaying()
     }
@@ -847,6 +854,7 @@ class PlayerViewModel: ObservableObject {
             // Closure доставляется на .main очереди — безопасно вызывать main-actor-isolated свойства
             MainActor.assumeIsolated {
                 guard let self, let player else { return }
+                if self.isUserSeeking { return }
                 let t = time.seconds
                 self.currentTime = t.isFinite && !t.isNaN ? t : 0
                 let d = player.currentItem?.duration.seconds ?? 0

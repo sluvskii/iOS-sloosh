@@ -15,7 +15,6 @@ struct TopBarView: View {
             volumeGroup
         }
         .padding(.horizontal, 16)
-        .padding(.top, 8)
     }
 
     // MARK: Левая группа: закрыть | PiP | AirPlay
