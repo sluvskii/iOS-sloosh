@@ -194,7 +194,6 @@ class PlayerViewModel: ObservableObject {
     private var foregroundObserver: NSObjectProtocol?
     private var rateObserver: NSKeyValueObservation?
     private var currentPlaybackSourceURL: URL?
-    private var currentHeaders: [String: String] = [:]
     private var bufferingTask: Task<Void, Never>?
 
     private(set) var currentKpId: Int?
