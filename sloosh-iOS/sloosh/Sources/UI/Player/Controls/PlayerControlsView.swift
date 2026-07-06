@@ -27,6 +27,7 @@ struct PlayerControlsView: View {
             // ── Верхний и нижний блоки ───────────────────────
             VStack {
                 TopBarView(vm: vm, onDismiss: onDismiss)
+                    .scaleEffect(showControls ? 1.0 : 0.95)
                     .padding(.top, 32) // Абсолютный отступ от края экрана
 
                 Spacer()
@@ -49,8 +50,8 @@ struct PlayerControlsView: View {
                         .padding(.horizontal, 16)
                         .padding(.bottom, 32) // Абсолютный отступ от края экрана
                 }
+                .scaleEffect(showControls ? 1.0 : 0.95)
             }
-            .scaleEffect(showControls ? 1.0 : 0.95)
             .ignoresSafeArea(edges: .vertical) // Игнорируем safe area для идеальной симметрии
 
             // ── Центральные кнопки (ровно по центру экрана) ───
