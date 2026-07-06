@@ -339,7 +339,7 @@ final class AllohaRepository: @unchecked Sendable {
                             id: "dub_\(index)",
                             name: cleanTitle.isEmpty ? vTitle : cleanTitle,
                             iframeUrl: m.iframeUrl,
-                            streamUrl: streamUrl  // pre-resolved: used directly at playback, no re-matching needed
+                            streamUrl: nil
                         )
                     }
                     if !newTranslations.isEmpty {
