@@ -35,6 +35,7 @@ struct PlayerContainerView: View {
             // 4. Ошибка
             if let error = vm.error {
                 errorView(error)
+                    .zIndex(10)
             }
 
             // 5. Жесты (двойной тап = перемотка, одинарный = контролы)
