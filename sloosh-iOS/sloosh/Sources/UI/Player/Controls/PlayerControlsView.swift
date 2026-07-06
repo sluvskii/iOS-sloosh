@@ -76,10 +76,10 @@ struct PlayerControlsView: View {
         .sheet(isPresented: $showSubtitleSheet) {
             SubtitlePickerSheet(vm: vm)
         }
-        .onChange(of: showVoiceoverSheet) { _, val in isInteracting = val }
-        .onChange(of: showQualitySheet) { _, val in isInteracting = val }
-        .onChange(of: showSpeedSheet) { _, val in isInteracting = val }
-        .onChange(of: showSubtitleSheet) { _, val in isInteracting = val }
+        .onChange(of: showVoiceoverSheet) { _, _ in isInteracting = showVoiceoverSheet || showQualitySheet || showSpeedSheet || showSubtitleSheet }
+        .onChange(of: showQualitySheet)   { _, _ in isInteracting = showVoiceoverSheet || showQualitySheet || showSpeedSheet || showSubtitleSheet }
+        .onChange(of: showSpeedSheet)     { _, _ in isInteracting = showVoiceoverSheet || showQualitySheet || showSpeedSheet || showSubtitleSheet }
+        .onChange(of: showSubtitleSheet)  { _, _ in isInteracting = showVoiceoverSheet || showQualitySheet || showSpeedSheet || showSubtitleSheet }
     }
 }
 

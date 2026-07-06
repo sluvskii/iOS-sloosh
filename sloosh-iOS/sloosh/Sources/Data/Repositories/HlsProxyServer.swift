@@ -73,11 +73,11 @@ class HlsProxyServer {
                 default: break
                 }
             }
-            newListener.start(queue: queue)
-            
+            // Сохраняем listener ДО start(), чтобы stateUpdateHandler не увидел nil при немедленном сбое
             stateLock.withLock {
                 self.listener = newListener
             }
+            newListener.start(queue: queue)
             
             print("HlsProxyServer started on port \(port)")
         } catch {
@@ -127,6 +127,12 @@ class HlsProxyServer {
                 currentData.append(newData)
             }
             
+            // Защита от неограниченно большого запроса (макс 256 KB)
+            if currentData.count > 262_144 {
+                connection.cancel()
+                return
+            }
+            
             if let requestString = String(data: currentData, encoding: .utf8),
                requestString.contains("\r\n\r\n") {
                 Task {
@@ -155,7 +161,11 @@ class HlsProxyServer {
         let method = parts[0].uppercased()
         if method == "HEAD" {
             let header = "HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nAccept-Ranges: bytes\r\nConnection: close\r\n\r\n"
-            connection.send(content: header.data(using: .utf8)!, completion: .contentProcessed({ _ in connection.cancel() }))
+            if let data = header.data(using: .utf8) {
+                connection.send(content: data, completion: .contentProcessed({ _ in connection.cancel() }))
+            } else {
+                connection.cancel()
+            }
             return
         }
         
@@ -275,7 +285,7 @@ class HlsProxyServer {
                     rewritten = self.rewriteM3u8(content: content, baseUrl: realUrl)
                 }
                 
-                let rewrittenData = rewritten.data(using: .utf8)!
+                let rewrittenData = rewritten.data(using: .utf8) ?? Data()
                 self.sendResponse(data: rewrittenData, statusCode: 200, contentType: "application/vnd.apple.mpegurl", contentRange: nil, connection: connection)
             } else {
                 let contentType = httpResponse.mimeType ?? "video/MP2T"
@@ -353,7 +363,7 @@ class HlsProxyServer {
             header += "Content-Range: \(cr)\r\n"
         }
         header += "Accept-Ranges: bytes\r\n\r\n"
-        let headerData = header.data(using: .utf8)!
+        guard let headerData = header.data(using: .utf8) else { connection.cancel(); return }
         
         connection.send(content: headerData, completion: .contentProcessed({ _ in
             connection.send(content: data, completion: .contentProcessed({ _ in
@@ -364,7 +374,8 @@ class HlsProxyServer {
     
     private func send404(on connection: NWConnection) {
         let response = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
-        connection.send(content: response.data(using: .utf8)!, completion: .contentProcessed({ _ in
+        guard let data = response.data(using: .utf8) else { connection.cancel(); return }
+        connection.send(content: data, completion: .contentProcessed({ _ in
             connection.cancel()
         }))
     }

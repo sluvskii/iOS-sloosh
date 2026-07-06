@@ -2,6 +2,23 @@ import SwiftUI
 import AVKit
 import MediaPlayer
 
+// MARK: - Наблюдатель за громкостью (class — корректно захватывает KVO)
+
+final class VolumeObserver: ObservableObject {
+    @Published var volume: Float = AVAudioSession.sharedInstance().outputVolume
+    private var observation: NSKeyValueObservation?
+    
+    init() {
+        observation = AVAudioSession.sharedInstance().observe(\.outputVolume, options: [.initial, .new]) { [weak self] session, _ in
+            DispatchQueue.main.async {
+                self?.volume = session.outputVolume
+            }
+        }
+    }
+    
+    deinit { observation?.invalidate() }
+}
+
 // MARK: - Верхняя панель: [X | PiP | AirPlay]          [━━● ─] 🔊
 
 struct TopBarView: View {
@@ -9,8 +26,7 @@ struct TopBarView: View {
     let onDismiss: () -> Void
     @Binding var isInteracting: Bool
     
-    @State private var currentVolume: Float = AVAudioSession.sharedInstance().outputVolume
-    @State private var volumeObservation: NSKeyValueObservation?
+    @StateObject private var volumeObserver = VolumeObserver()
     
     @State private var overrideVolume: Float? = nil
     @State private var dragInitialVolume: Float = 0
@@ -24,17 +40,6 @@ struct TopBarView: View {
             volumeGroup
         }
         .padding(.horizontal, 16)
-        .onAppear {
-            do { try AVAudioSession.sharedInstance().setActive(true) } catch {}
-            volumeObservation = AVAudioSession.sharedInstance().observe(\.outputVolume, options: [.initial, .new]) { session, _ in
-                DispatchQueue.main.async {
-                    self.currentVolume = session.outputVolume
-                }
-            }
-        }
-        .onDisappear {
-            volumeObservation?.invalidate()
-        }
     }
 
     // MARK: Левая группа: закрыть | PiP | AirPlay
@@ -122,7 +127,7 @@ struct TopBarView: View {
     }
 
     private var volumeIcon: String {
-        let vol = currentVolume
+        let vol = volumeObserver.volume
         if vol == 0 { return "speaker.slash.fill" }
         else if vol < 0.33 { return "speaker.wave.1.fill" }
         else if vol < 0.66 { return "speaker.wave.2.fill" }

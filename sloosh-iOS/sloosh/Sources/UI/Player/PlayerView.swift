@@ -308,9 +308,11 @@ class PlayerViewModel: ObservableObject {
                 if let res = currentResolution {
                     let variantUrl: URL
                     if line.hasPrefix("http") {
-                        variantUrl = URL(string: line)!.absoluteURL
+                        guard let u = URL(string: line)?.absoluteURL else { continue }
+                        variantUrl = u
                     } else {
-                        variantUrl = URL(string: line, relativeTo: baseUrl)!.absoluteURL
+                        guard let u = URL(string: line, relativeTo: baseUrl)?.absoluteURL else { continue }
+                        variantUrl = u
                     }
                     if !qualities.contains(where: { $0.key == res }) {
                         qualities.append(
@@ -446,6 +448,8 @@ class PlayerViewModel: ObservableObject {
         saveCurrentProgress()
         clearNowPlaying()
 
+        bufferingTask?.cancel()
+        bufferingTask = nil
         resolveTask?.cancel()
         resolveTask = nil
         resolver?.cancel()
@@ -554,11 +558,13 @@ class PlayerViewModel: ObservableObject {
         } else {
             mediaId = "kp_\(currentKpId)"
         }
+        let pos = player.currentTime().seconds
+        guard pos.isFinite, !pos.isNaN else { return }
         let duration = player.currentItem?.duration.seconds
         PlaybackProgressStore.shared.save(
             mediaId: mediaId,
-            positionSec: player.currentTime().seconds,
-            durationSec: duration?.isNaN == false ? duration : nil
+            positionSec: pos,
+            durationSec: duration?.isFinite == true && duration?.isNaN == false ? duration : nil
         )
     }
     
@@ -817,11 +823,10 @@ class PlayerViewModel: ObservableObject {
                 
                 self.bufferingTask?.cancel()
                 if status == .waitingToPlayAtSpecifiedRate {
-                    self.bufferingTask = Task {
+                    self.bufferingTask = Task { [weak self] in
                         try? await Task.sleep(for: .seconds(0.5))
-                        if !Task.isCancelled {
-                            self.isBuffering = true
-                        }
+                        guard !Task.isCancelled else { return }
+                        await MainActor.run { self?.isBuffering = true }
                     }
                 } else {
                     self.isBuffering = false
@@ -851,7 +856,7 @@ class PlayerViewModel: ObservableObject {
         self.isLoading = false
         self.startTrackingProgress()
         self.player?.play()
-        self.isPlaying = true
+        // isPlaying обновляется через rateObserver — выставлять здесь вручную не нужно
     }
     
     private func startTrackingProgress() {
@@ -882,9 +887,9 @@ class PlayerViewModel: ObservableObject {
             forInterval: CMTime(seconds: 0.5, preferredTimescale: 600),
             queue: .main
         ) { [weak self, weak player] time in
-            // Closure доставляется на .main очереди — безопасно вызывать main-actor-isolated свойства
-            MainActor.assumeIsolated {
-                guard let self, let player else { return }
+            guard let self, let player else { return }
+            Task { @MainActor [weak self] in
+                guard let self else { return }
                 if self.isUserSeeking { return }
                 let t = time.seconds
                 self.currentTime = t.isFinite && !t.isNaN ? t : 0
@@ -927,6 +932,14 @@ class PlayerViewModel: ObservableObject {
 
     private func setupRemoteCommands() {
         let cc = MPRemoteCommandCenter.shared()
+        // Сначала удаляем все предыдущие обработчики, чтобы не накапливались при переключении серий
+        cc.playCommand.removeAllTargets()
+        cc.pauseCommand.removeAllTargets()
+        cc.togglePlayPauseCommand.removeAllTargets()
+        cc.changePlaybackPositionCommand.removeAllTargets()
+        cc.skipForwardCommand.removeAllTargets()
+        cc.skipBackwardCommand.removeAllTargets()
+        
         cc.playCommand.isEnabled = true
         cc.playCommand.addTarget { [weak self] _ in
             self?.player?.play(); return .success
