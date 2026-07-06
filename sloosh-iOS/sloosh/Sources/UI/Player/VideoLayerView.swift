@@ -18,6 +18,37 @@ final class PlayerLayerView: UIView {
         super.layoutSubviews()
         playerLayer.frame = bounds
     }
+
+    private var stashedPlayer: AVPlayer?
+    var pipController: AVPictureInPictureController?
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        setupObservers()
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+        setupObservers()
+    }
+
+    private func setupObservers() {
+        NotificationCenter.default.addObserver(self, selector: #selector(didEnterBackground), name: UIApplication.didEnterBackgroundNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(willEnterForeground), name: UIApplication.willEnterForegroundNotification, object: nil)
+    }
+
+    @objc private func didEnterBackground() {
+        if let pip = pipController, pip.isPictureInPictureActive { return }
+        stashedPlayer = playerLayer.player
+        playerLayer.player = nil
+    }
+
+    @objc private func willEnterForeground() {
+        if let stashed = stashedPlayer {
+            playerLayer.player = stashed
+            stashedPlayer = nil
+        }
+    }
 }
 
 // MARK: - SwiftUI обёртка
@@ -37,6 +68,7 @@ struct VideoLayerView: UIViewRepresentable {
         if AVPictureInPictureController.isPictureInPictureSupported() {
             let pip = AVPictureInPictureController(playerLayer: view.playerLayer)
             pip?.canStartPictureInPictureAutomaticallyFromInline = true
+            view.pipController = pip
             DispatchQueue.main.async {
                 pipController = pip
             }
