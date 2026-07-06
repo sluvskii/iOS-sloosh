@@ -11,6 +11,7 @@ struct PlayerContainerView: View {
     @State private var pipController: AVPictureInPictureController?
     @State private var hideTask: Task<Void, Never>?
     @State private var seekFeedback: SeekFeedback?
+    @State private var isInteracting = false
 
     struct SeekFeedback: Identifiable {
         let id = UUID()
@@ -54,7 +55,7 @@ struct PlayerContainerView: View {
 
             // 7. Контролы
             if showControls {
-                PlayerControlsView(vm: vm, onDismiss: onDismiss)
+                PlayerControlsView(vm: vm, onDismiss: onDismiss, isInteracting: $isInteracting)
                     .transition(.opacity)
             }
         }
@@ -62,6 +63,13 @@ struct PlayerContainerView: View {
         .onAppear { scheduleAutoHide() }
         .onChange(of: vm.isPlaying) { _, _ in
             if vm.isPlaying { scheduleAutoHide() }
+        }
+        .onChange(of: isInteracting) { _, interacting in
+            if interacting {
+                hideTask?.cancel()
+            } else if showControls {
+                scheduleAutoHide()
+            }
         }
     }
 
@@ -126,7 +134,7 @@ struct PlayerContainerView: View {
         hideTask?.cancel()
         hideTask = Task { @MainActor in
             try? await Task.sleep(for: .seconds(3.5))
-            guard !Task.isCancelled, vm.isPlaying else { return }
+            guard !Task.isCancelled, vm.isPlaying, !isInteracting else { return }
             withAnimation { showControls = false }
         }
     }
