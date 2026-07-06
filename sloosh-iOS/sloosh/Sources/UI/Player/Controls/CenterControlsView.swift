@@ -15,7 +15,7 @@ struct CenterControlsView: View {
                 // −10 с
                 Button {
                     vm.seek(by: -10)
-                    flash(&seekBackwardFlash)
+                    flash($seekBackwardFlash)
                 } label: {
                     Image(systemName: "gobackward.10")
                         .font(.system(size: 26, weight: .medium))
@@ -53,7 +53,7 @@ struct CenterControlsView: View {
                 // +10 с
                 Button {
                     vm.seek(by: 10)
-                    flash(&seekForwardFlash)
+                    flash($seekForwardFlash)
                 } label: {
                     Image(systemName: "goforward.10")
                         .font(.system(size: 26, weight: .medium))
@@ -68,8 +68,8 @@ struct CenterControlsView: View {
         }
     }
 
-    private func flash(_ flag: inout Bool) {
-        flag = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { flag = false }
+    private func flash(_ flag: Binding<Bool>) {
+        flag.wrappedValue = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { flag.wrappedValue = false }
     }
 }
