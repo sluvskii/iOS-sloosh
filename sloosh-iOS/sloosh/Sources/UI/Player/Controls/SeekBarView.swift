@@ -75,6 +75,9 @@ struct SystemUISliderView: UIViewRepresentable {
         slider.minimumValue = 0
         slider.maximumValue = 1
         
+        // Убираем кружок-ползунок, как в нативном плеере
+        slider.setThumbImage(UIImage(), for: .normal)
+        
         // В iOS 26 нативный слайдер имеет Liquid Glass эффект на ползунке
         slider.tintColor = .white
         slider.minimumTrackTintColor = .white
