@@ -52,7 +52,7 @@ struct PlayerContainerView: View {
             // 7. Контролы
             if showControls {
                 PlayerControlsView(vm: vm, onDismiss: onDismiss, isInteracting: $isInteracting)
-                    .transition(.opacity)
+                    .transition(.opacityAndBlur)
             }
         }
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: showControls)
@@ -195,5 +195,25 @@ private struct SeekFeedbackView: View {
             if !isForward { Spacer() }
         }
         .padding(.horizontal, 40)
+    }
+}
+
+// MARK: - Custom Blur Transition
+
+struct BlurModifier: ViewModifier {
+    let isActive: Bool
+    func body(content: Content) -> some View {
+        content
+            .opacity(isActive ? 0 : 1)
+            .blur(radius: isActive ? 12 : 0)
+    }
+}
+
+extension AnyTransition {
+    static var opacityAndBlur: AnyTransition {
+        AnyTransition.modifier(
+            active: BlurModifier(isActive: true),
+            identity: BlurModifier(isActive: false)
+        )
     }
 }
