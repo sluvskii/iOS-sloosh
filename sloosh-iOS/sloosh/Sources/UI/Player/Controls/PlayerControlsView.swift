@@ -32,10 +32,15 @@ struct PlayerControlsView: View {
 
                 Spacer()
 
-                // ── Нижний блок: правые кнопки + seek bar ───────
+                // ── Нижний блок: инфо слева + правые кнопки + seek bar ───────
                 VStack(alignment: .trailing, spacing: 8) {
-                    HStack {
+                    HStack(alignment: .bottom) {
+                        PlayerTitleInfoView(vm: vm)
+                            .padding(.leading, 16)
+                            .padding(.bottom, 4)
+                        
                         Spacer()
+                        
                         BottomRowView(
                             vm: vm,
                             showVoiceoverSheet: $showVoiceoverSheet,
@@ -75,5 +80,50 @@ struct PlayerControlsView: View {
         .onChange(of: showQualitySheet) { _, val in isInteracting = val }
         .onChange(of: showSpeedSheet) { _, val in isInteracting = val }
         .onChange(of: showSubtitleSheet) { _, val in isInteracting = val }
+    }
+}
+
+// MARK: - Инфо о текущем видео (Логотип, Сезон, Серия)
+
+struct PlayerTitleInfoView: View {
+    @ObservedObject var vm: PlayerViewModel
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            // Логотип или текстовое название
+            if let logoUrl = vm.displayLogoUrl {
+                AsyncCachedImage(url: logoUrl) {
+                    fallbackTextView
+                } content: { image in
+                    Image(uiImage: image)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(height: 36, alignment: .leading)
+                        .shadow(color: .black.opacity(0.4), radius: 4, x: 0, y: 2)
+                } fallback: {
+                    fallbackTextView
+                }
+            } else {
+                fallbackTextView
+            }
+            
+            // Сезон и Серия (если это сериал)
+            if !vm.isMovie, let season = vm.currentSeason, let episode = vm.currentEpisode {
+                Text("\(season) сезон, \(episode) серия")
+                    .font(.subheadline)
+                    .fontWeight(.medium)
+                    .foregroundColor(.white.opacity(0.85))
+                    .shadow(color: .black.opacity(0.6), radius: 3, x: 0, y: 1)
+            }
+        }
+    }
+    
+    private var fallbackTextView: some View {
+        Text(vm.fallbackTitle)
+            .font(.title3)
+            .fontWeight(.bold)
+            .foregroundColor(.white)
+            .lineLimit(2)
+            .shadow(color: .black.opacity(0.6), radius: 3, x: 0, y: 1)
     }
 }
