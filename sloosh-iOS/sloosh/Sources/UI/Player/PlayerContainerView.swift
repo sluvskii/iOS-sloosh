@@ -69,12 +69,12 @@ struct PlayerContainerView: View {
         }
         .gesture(
             MagnificationGesture()
-                .onChanged { val in
-                    if !isZoomedToFill && val > 1.15 {
-                        isZoomedToFill = true
+                .onEnded { val in
+                    if !isZoomedToFill && val > 1.1 {
+                        withAnimation(showAnimation) { isZoomedToFill = true }
                         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    } else if isZoomedToFill && val < 0.85 {
-                        isZoomedToFill = false
+                    } else if isZoomedToFill && val < 0.9 {
+                        withAnimation(showAnimation) { isZoomedToFill = false }
                         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     }
                 }
