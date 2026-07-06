@@ -74,9 +74,9 @@ struct TopBarView: View {
 
     @ViewBuilder
     private var volumeGroup: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 6) {
             SystemVolumeSlider(overrideVolume: $overrideVolume)
-                .frame(width: 150, height: 20)
+                .frame(width: 100, height: 20)
 
             Image(systemName: volumeIcon)
                 .font(.system(size: 14, weight: .medium))
@@ -99,7 +99,7 @@ struct TopBarView: View {
                         isInteracting = true
                     }
                     
-                    let trackWidth = 150.0 + 10.0 + 18.0 + 28.0 // Примерная ширина всей капсулы
+                    let trackWidth = 100.0 + 6.0 + 18.0 + 28.0 // Примерная ширина всей капсулы (100 + spacing + icon + padding)
                     let startX = max(1, min(trackWidth - 1, scrubStartLocationX))
                     
                     let thumbX = Double(dragInitialVolume) * Double(trackWidth)
