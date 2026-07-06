@@ -25,12 +25,8 @@ struct PlayerContainerView: View {
             // 2. Видеослой
             VideoLayerView(player: vm.player, pipController: $pipController)
                 .ignoresSafeArea()
-                .onAppear {
-                    vm.pipController = pipController
-                }
-                .onChange(of: pipController) { _, newVal in
-                    vm.pipController = newVal
-                }
+                .onAppear { vm.pipController = pipController }
+                .onChange(of: pipController) { _, newVal in vm.pipController = newVal }
 
             // 3. Буферизация
             if vm.isBuffering && !vm.isLoading {
@@ -45,10 +41,10 @@ struct PlayerContainerView: View {
                 errorView(error)
             }
 
-            // 5. Overlay жестов (двойной тап = перемотка, одинарный = показать контролы)
+            // 5. Жесты (двойной тап = перемотка, одинарный = контролы)
             gestureLayer
 
-            // 6. Анимация seek feedback
+            // 6. Seek feedback
             if let feedback = seekFeedback {
                 SeekFeedbackView(isForward: feedback.isForward)
                     .id(feedback.id)
@@ -56,17 +52,14 @@ struct PlayerContainerView: View {
                     .allowsHitTesting(false)
             }
 
-            // 7. Контролы (поверх всего)
+            // 7. Контролы
             if showControls {
                 PlayerControlsView(vm: vm, onDismiss: onDismiss)
                     .transition(.opacity)
             }
         }
-        .animation(.easeInOut(duration: 0.2), value: showControls)
-        .onAppear {
-            scheduleAutoHide()
-        }
-        // Сбрасываем таймер если взаимодействуем с плеером
+        .animation(.easeInOut(duration: 0.22), value: showControls)
+        .onAppear { scheduleAutoHide() }
         .onChange(of: vm.isPlaying) { _, _ in
             if vm.isPlaying { scheduleAutoHide() }
         }
@@ -75,32 +68,26 @@ struct PlayerContainerView: View {
     // MARK: - Gesture layer
 
     private var gestureLayer: some View {
-        GeometryReader { geo in
-            HStack(spacing: 0) {
-                // Левая половина — перемотка -10
-                Color.clear
-                    .contentShape(Rectangle())
-                    .onTapGesture(count: 2) {
-                        vm.seek(by: -10)
-                        showSeekFeedback(forward: false)
-                        resetHideTimer()
-                    }
-                    .onTapGesture(count: 1) {
-                        toggleControls()
-                    }
+        HStack(spacing: 0) {
+            // Левая половина — -10с
+            Color.clear
+                .contentShape(Rectangle())
+                .onTapGesture(count: 2) {
+                    vm.seek(by: -10)
+                    showSeekFeedback(forward: false)
+                    resetHideTimer()
+                }
+                .onTapGesture(count: 1) { toggleControls() }
 
-                // Правая половина — перемотка +10
-                Color.clear
-                    .contentShape(Rectangle())
-                    .onTapGesture(count: 2) {
-                        vm.seek(by: 10)
-                        showSeekFeedback(forward: true)
-                        resetHideTimer()
-                    }
-                    .onTapGesture(count: 1) {
-                        toggleControls()
-                    }
-            }
+            // Правая половина — +10с
+            Color.clear
+                .contentShape(Rectangle())
+                .onTapGesture(count: 2) {
+                    vm.seek(by: 10)
+                    showSeekFeedback(forward: true)
+                    resetHideTimer()
+                }
+                .onTapGesture(count: 1) { toggleControls() }
         }
     }
 
@@ -124,11 +111,11 @@ struct PlayerContainerView: View {
             .foregroundStyle(.white)
             .padding(.horizontal, 24)
             .padding(.vertical, 10)
-            .modifier(GlassCapsuleModifier())
+            .glassEffect(.regular.interactive(), in: .capsule)
         }
     }
 
-    // MARK: - Controls visibility
+    // MARK: - Auto-hide
 
     private func toggleControls() {
         withAnimation { showControls.toggle() }
@@ -153,39 +140,38 @@ struct PlayerContainerView: View {
 
     private func showSeekFeedback(forward: Bool) {
         withAnimation { seekFeedback = SeekFeedback(isForward: forward) }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.65) {
             withAnimation { seekFeedback = nil }
         }
     }
 }
 
-// MARK: - Seek ripple animation
+// MARK: - Seek ripple
 
 private struct SeekFeedbackView: View {
     let isForward: Bool
     @State private var scale: CGFloat = 0.7
-    @State private var opacity: Double = 0.9
+    @State private var opacity: Double = 1.0
 
     var body: some View {
         HStack {
             if isForward { Spacer() }
-            VStack {
-                Image(systemName: isForward ? "goforward.10" : "gobackward.10")
-                    .font(.system(size: 36, weight: .medium))
-                    .foregroundStyle(.white)
-                    .padding(24)
-                    .modifier(GlassCircleEffect(diameter: 80))
-                    .scaleEffect(scale)
-                    .opacity(opacity)
-                    .onAppear {
-                        withAnimation(.spring(response: 0.25, dampingFraction: 0.6)) {
-                            scale = 1.0
-                        }
-                        withAnimation(.easeOut(duration: 0.3).delay(0.35)) {
-                            opacity = 0
-                        }
+            Image(systemName: isForward ? "goforward.10" : "gobackward.10")
+                .font(.system(size: 32, weight: .medium))
+                .foregroundStyle(.white)
+                .frame(width: 72, height: 72)
+                // Liquid Glass капсула вместо кастомного кружка
+                .glassEffect(.regular, in: .circle)
+                .scaleEffect(scale)
+                .opacity(opacity)
+                .onAppear {
+                    withAnimation(.spring(response: 0.25, dampingFraction: 0.65)) {
+                        scale = 1.0
                     }
-            }
+                    withAnimation(.easeOut(duration: 0.28).delay(0.32)) {
+                        opacity = 0
+                    }
+                }
             if !isForward { Spacer() }
         }
         .padding(.horizontal, 40)
