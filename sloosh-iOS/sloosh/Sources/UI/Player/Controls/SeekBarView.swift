@@ -20,30 +20,17 @@ struct SeekBarView: View {
                 .foregroundStyle(.white)
                 .frame(width: 52, alignment: .leading)
 
-            // Ползунок (нативный UISlider + трек буфера)
-            ZStack(alignment: .leading) {
-                // Буфер
-                GeometryReader { geo in
-                    Capsule()
-                        .fill(.white.opacity(0.4))
-                        .frame(width: geo.size.width * min(1, vm.bufferedProgress), height: 4)
-                        // Выравниваем буфер по треку UISlider (отступы по краям)
-                        .padding(.horizontal, 2)
+            // Нативный слайдер — обеспечивает эффект стекла, как у MPVolumeView
+            SystemUISliderView(
+                value: Binding(
+                    get: { progress },
+                    set: { dragProgress = $0 }
+                ),
+                isDragging: $isDragging,
+                onSeek: { val in
+                    vm.seek(to: val * vm.currentDuration)
                 }
-                .frame(height: 4)
-                
-                // Нативный слайдер — обеспечивает эффект стекла, как у MPVolumeView
-                SystemUISliderView(
-                    value: Binding(
-                        get: { progress },
-                        set: { dragProgress = $0 }
-                    ),
-                    isDragging: $isDragging,
-                    onSeek: { val in
-                        vm.seek(to: val * vm.currentDuration)
-                    }
-                )
-            }
+            )
             .frame(height: 24)
 
             Text("-" + formatTime(max(0, vm.currentDuration - vm.currentTime)))
