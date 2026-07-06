@@ -125,6 +125,10 @@ struct SystemVolumeSlider: UIViewRepresentable {
         v.subviews
             .compactMap { $0 as? UIButton }
             .forEach { $0.isHidden = true }
+        
+        // Убираем кружок-ползунок
+        v.setVolumeThumbImage(UIImage(), for: .normal)
+        
         v.tintColor = .white
         return v
     }
