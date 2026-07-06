@@ -10,49 +10,42 @@ struct BottomRowView: View {
     @Binding var showSubtitleSheet: Bool
 
     var body: some View {
-        // GlassEffectContainer — кнопки в одном стеклянном сосуде
-        GlassEffectContainer(spacing: 0) {
-            HStack(spacing: 0) {
-                // Скорость
-                Button { showSpeedSheet = true } label: {
-                    Text(speedLabel)
-                        .font(.system(size: 13, weight: .semibold, design: .rounded))
+        HStack(spacing: 0) {
+            // Скорость
+            Button { showSpeedSheet = true } label: {
+                Text(speedLabel)
+                    .font(.system(size: 13, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .frame(width: 44, height: 40)
+            }
+
+            if vm.availableVoiceovers.count > 1 {
+                divider
+                Button { showVoiceoverSheet = true } label: {
+                    Image(systemName: "waveform")
+                        .font(.system(size: 15, weight: .medium))
                         .foregroundStyle(.white)
                         .frame(width: 44, height: 40)
                 }
-                .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 20))
+            }
 
-                if vm.availableVoiceovers.count > 1 {
-                    divider
-                    Button { showVoiceoverSheet = true } label: {
-                        Image(systemName: "waveform")
-                            .font(.system(size: 15, weight: .medium))
-                            .foregroundStyle(.white)
-                            .frame(width: 44, height: 40)
-                    }
-                    .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 20))
+            if vm.availableQualities.count > 1 {
+                divider
+                Button { showQualitySheet = true } label: {
+                    Image(systemName: "rectangle.3.group")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(.white)
+                        .frame(width: 44, height: 40)
                 }
+            }
 
-                if vm.availableQualities.count > 1 {
-                    divider
-                    Button { showQualitySheet = true } label: {
-                        Image(systemName: "rectangle.3.group")
-                            .font(.system(size: 15, weight: .medium))
-                            .foregroundStyle(.white)
-                            .frame(width: 44, height: 40)
-                    }
-                    .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 20))
-                }
-
-                if !vm.availableSubtitles.isEmpty {
-                    divider
-                    Button { showSubtitleSheet = true } label: {
-                        Image(systemName: vm.currentSubtitle != nil ? "text.bubble.fill" : "text.bubble")
-                            .font(.system(size: 15, weight: .medium))
-                            .foregroundStyle(.white)
-                            .frame(width: 44, height: 40)
-                    }
-                    .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 20))
+            if !vm.availableSubtitles.isEmpty {
+                divider
+                Button { showSubtitleSheet = true } label: {
+                    Image(systemName: vm.currentSubtitle != nil ? "text.bubble.fill" : "text.bubble")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundStyle(.white)
+                        .frame(width: 44, height: 40)
                 }
             }
         }

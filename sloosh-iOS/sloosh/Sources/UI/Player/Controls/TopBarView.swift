@@ -20,40 +20,33 @@ struct TopBarView: View {
 
     // MARK: Левая группа: закрыть | PiP | AirPlay
 
-    @ViewBuilder
     private var leftGroup: some View {
-        // GlassEffectContainer — все кнопки образуют ЕДИНУЮ стеклянную поверхность
-        GlassEffectContainer(spacing: 0) {
-            HStack(spacing: 0) {
-                // Закрыть
-                Button(action: onDismiss) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 14, weight: .semibold))
+        HStack(spacing: 0) {
+            // Закрыть
+            Button(action: onDismiss) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 44, height: 40)
+            }
+
+            divider
+
+            // PiP
+            if AVPictureInPictureController.isPictureInPictureSupported() {
+                Button { vm.togglePiP() } label: {
+                    Image(systemName: vm.isPiPActive ? "pip.exit" : "pip.enter")
+                        .font(.system(size: 15, weight: .medium))
                         .foregroundStyle(.white)
                         .frame(width: 44, height: 40)
                 }
-                .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 20))
 
                 divider
-
-                // PiP
-                if AVPictureInPictureController.isPictureInPictureSupported() {
-                    Button { vm.togglePiP() } label: {
-                        Image(systemName: vm.isPiPActive ? "pip.exit" : "pip.enter")
-                            .font(.system(size: 15, weight: .medium))
-                            .foregroundStyle(.white)
-                            .frame(width: 44, height: 40)
-                    }
-                    .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 20))
-
-                    divider
-                }
-
-                // AirPlay (системная кнопка Apple)
-                AirPlayButton()
-                    .frame(width: 44, height: 40)
-                    .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 20))
             }
+
+            // AirPlay (системная кнопка Apple)
+            AirPlayButton()
+                .frame(width: 44, height: 40)
         }
         .glassEffect(.regular, in: .capsule)
     }
