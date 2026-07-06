@@ -4,6 +4,7 @@ import SwiftUI
 
 struct SeekBarView: View {
     @ObservedObject var vm: PlayerViewModel
+    @Binding var isInteracting: Bool
     @State private var isDragging = false
     @State private var dragProgress: Double = 0
 
@@ -54,6 +55,9 @@ struct SeekBarView: View {
         .padding(.vertical, 12)
         // Liquid Glass — нативный iOS 26, без fallback
         .glassEffect(.regular, in: .capsule)
+        .onChange(of: isDragging) { _, dragging in
+            isInteracting = dragging
+        }
     }
 
     private func formatTime(_ seconds: Double) -> String {

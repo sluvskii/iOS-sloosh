@@ -10,6 +10,7 @@ struct PlayerControlsView: View {
     @State private var showQualitySheet = false
     @State private var showSpeedSheet = false
     @State private var showSubtitleSheet = false
+    @Binding var isInteracting: Bool
 
     var body: some View {
         ZStack {
@@ -22,14 +23,10 @@ struct PlayerControlsView: View {
             .ignoresSafeArea()
             .allowsHitTesting(false)
 
+            // ── Верхний и нижний блоки ───────────────────────
             VStack {
-                // ── Верхняя панель ──────────────────────────────
                 TopBarView(vm: vm, onDismiss: onDismiss)
-
-                Spacer()
-
-                // ── Центральные кнопки ──────────────────────────
-                CenterControlsView(vm: vm)
+                    .padding(.top, 8) // Увеличиваем отступ сверху
 
                 Spacer()
 
@@ -47,11 +44,14 @@ struct PlayerControlsView: View {
                         .padding(.trailing, 16)
                     }
 
-                    SeekBarView(vm: vm)
+                    SeekBarView(vm: vm, isInteracting: $isInteracting)
                         .padding(.horizontal, 16)
-                        .padding(.bottom, 20)
+                        .padding(.bottom, 8) // Уменьшен отступ снизу
                 }
             }
+
+            // ── Центральные кнопки (ровно по центру экрана) ───
+            CenterControlsView(vm: vm)
         }
         // Sheets
         .sheet(isPresented: $showVoiceoverSheet) {
@@ -66,5 +66,9 @@ struct PlayerControlsView: View {
         .sheet(isPresented: $showSubtitleSheet) {
             SubtitlePickerSheet(vm: vm)
         }
+        .onChange(of: showVoiceoverSheet) { _, val in isInteracting = val }
+        .onChange(of: showQualitySheet) { _, val in isInteracting = val }
+        .onChange(of: showSpeedSheet) { _, val in isInteracting = val }
+        .onChange(of: showSubtitleSheet) { _, val in isInteracting = val }
     }
 }
