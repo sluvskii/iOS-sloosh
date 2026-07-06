@@ -69,14 +69,27 @@ class PlayerPresenterViewController: UIViewController {
         guard !isDismissed else { return }
         isDismissed = true
         
-        // Restore orientation
-        AppDelegate.orientationLock = .all
+        // Жестко форсируем портретную ориентацию, чтобы сработал поворот даже при заблокированной ориентации
+        AppDelegate.orientationLock = .portrait
+        
         if #available(iOS 16.0, *) {
+            self.setNeedsUpdateOfSupportedInterfaceOrientations()
             if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
                 windowScene.requestGeometryUpdate(.iOS(interfaceOrientations: .portrait))
             }
         } else {
             UIDevice.current.setValue(UIInterfaceOrientation.portrait.rawValue, forKey: "orientation")
+            UIViewController.attemptRotationToDeviceOrientation()
+        }
+        
+        // Через небольшую задержку возвращаем возможность вращения экрана (если это было задумано)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            AppDelegate.orientationLock = .all
+            if #available(iOS 16.0, *) {
+                if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+                    windowScene.windows.first?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
+                }
+            }
         }
         
         onDismiss?()
