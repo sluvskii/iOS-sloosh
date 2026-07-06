@@ -37,15 +37,15 @@ struct CenterControlsView: View {
                     vm.togglePlayPause()
                 } label: {
                     Group {
-                        if vm.isLoading {
+                        if vm.isLoading || vm.isBuffering {
                             ProgressView()
                                 .progressViewStyle(.circular)
                                 .tint(.white)
+                                .scaleEffect(1.6)
                         } else {
                             Image(systemName: vm.isPlaying ? "pause.fill" : "play.fill")
                                 .font(.system(size: 34, weight: .bold))
                                 .foregroundStyle(.white)
-                                .offset(x: vm.isPlaying ? 0 : 2)
                                 .contentTransition(.symbolEffect(.replace))
                         }
                     }
