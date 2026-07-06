@@ -227,41 +227,6 @@ final class AllohaRepository: @unchecked Sendable {
             
             parsedSeasons.sort { $0.season < $1.season }
             
-            // For series, the API often returns translations that aren't actually in the video player.
-            // We resolve the first episode's iframe to get the definitive audioVariants list,
-            // and filter out API translations that don't match anything in the player.
-            if let firstIframe = parsedSeasons.first?.episodes.first?.translations.first?.iframeUrl {
-                let resolver = await AllohaRuntimeResolver()
-                if let resolved = try? await resolver.resolve(iframeUrl: firstIframe),
-                   let audioVariants = resolved["audioVariants"] as? [[String: Any]], !audioVariants.isEmpty {
-                    
-                    let validVariantTitles = audioVariants.compactMap { $0["title"] as? String }
-                    
-                    var filteredSeasons: [AllohaSeason] = []
-                    for season in parsedSeasons {
-                        var filteredEpisodes: [AllohaEpisode] = []
-                        for episode in season.episodes {
-                            let filteredTranslations = episode.translations.filter { apiTrans in
-                                validVariantTitles.contains { variantTitle in
-                                    allohaTranslationNamesMatch(apiTrans.name, variantTitle)
-                                }
-                            }
-                            // Only add the episode if it still has translations
-                            if !filteredTranslations.isEmpty {
-                                filteredEpisodes.append(AllohaEpisode(season: episode.season, episode: episode.episode, translations: filteredTranslations))
-                            } else {
-                                // If filtering removed everything, keep the original translations as a safety fallback
-                                filteredEpisodes.append(episode)
-                            }
-                        }
-                        if !filteredEpisodes.isEmpty {
-                            filteredSeasons.append(AllohaSeason(season: season.season, episodes: filteredEpisodes))
-                        }
-                    }
-                    parsedSeasons = filteredSeasons
-                }
-            }
-            
             let result = AllohaApiResult(title: title, isSerial: true, movie: nil, seasons: parsedSeasons)
             cacheQueue.async(flags: .barrier) {
                 self.catalogCache[kpId] = (result: result, expiresAt: Date().addingTimeInterval(self.cacheTtl))

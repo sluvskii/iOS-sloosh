@@ -155,13 +155,19 @@ final class AllohaRuntimeResolver: NSObject, WKNavigationDelegate, WKScriptMessa
 
         if payload.contains("hlsSource") {
             bestHlsSourcePayload = payload
-            scheduleFallbackResolve(for: payload, delay: hasAllohaPlaybackHeaders ? 3.0 : 3.8)
+            // Если заголовки уже есть — парсим быстро, иначе даём время WS config_update
+            let delay: TimeInterval = hasAllohaPlaybackHeaders ? 0.5 : 4.5
+            scheduleFallbackResolve(for: payload, delay: delay)
+            // Если заголовки уже есть — попробуем сразу
+            if hasAllohaPlaybackHeaders {
+                resolveBestAvailablePayload(fallback: payload)
+            }
             return
         }
 
         if isPlayablePayload(payload) {
             bestDirectPayload = payload
-            scheduleFallbackResolve(for: payload, delay: 5.0)
+            scheduleFallbackResolve(for: payload, delay: hasAllohaPlaybackHeaders ? 1.5 : 5.0)
         }
     }
 
@@ -169,6 +175,9 @@ final class AllohaRuntimeResolver: NSObject, WKNavigationDelegate, WKScriptMessa
         guard !didFinish else { return }
         if hasAllohaPlaybackHeaders && (bestHlsSourcePayload != nil || bestMasterPayload != nil) {
             resolveBestAvailablePayload(fallback: bestHlsSourcePayload ?? bestMasterPayload ?? "")
+        } else if hasAllohaPlaybackHeaders && bestDirectPayload != nil {
+            // Нет hlsSource, но есть прямая ссылка + заголовки
+            resolveBestAvailablePayload(fallback: bestDirectPayload ?? "")
         }
     }
 
@@ -219,6 +228,30 @@ final class AllohaRuntimeResolver: NSObject, WKNavigationDelegate, WKScriptMessa
                 return
             }
         }
+        // Если ни один payload не дал результат, но у нас есть мастер-плейлист URL — вернём его напрямую
+        if let masterUrl = bestMasterPayload, !masterUrl.isEmpty,
+           masterUrl.contains("http"), masterUrl.contains(".m3u8") {
+            finish(with: [
+                "url": masterUrl,
+                "subtitles": [],
+                "audioVariants": [],
+                "qualityVariants": [],
+                "headers": headers
+            ])
+            return
+        }
+        // Если есть любая прямая воспроизводимая ссылка — вернём её
+        if let directUrl = bestDirectPayload, !directUrl.isEmpty,
+           directUrl.contains("http"), isPlayableURL(directUrl) {
+            finish(with: [
+                "url": directUrl,
+                "subtitles": [],
+                "audioVariants": [],
+                "qualityVariants": [],
+                "headers": headers
+            ])
+        }
+        // Иначе ждём следующего payload или таймаута
     }
 
     private func scheduleFallbackResolve(for payload: String, delay: TimeInterval) {
@@ -232,7 +265,14 @@ final class AllohaRuntimeResolver: NSObject, WKNavigationDelegate, WKScriptMessa
     }
 
     private var hasAllohaPlaybackHeaders: Bool {
-        headers["authorizations"]?.isEmpty == false || headers["accepts-controls"]?.isEmpty == false
+        headers["authorizations"]?.isEmpty == false
+            || headers["accepts-controls"]?.isEmpty == false
+            || headers["authorization"]?.isEmpty == false
+    }
+
+    private func isPlayableURL(_ url: String) -> Bool {
+        let lower = url.lowercased()
+        return lower.contains(".m3u8") || lower.contains(".mp4") || lower.contains(".mpd")
     }
 
     private func isMasterPlaylistPayload(_ payload: String) -> Bool {
@@ -387,7 +427,9 @@ final class AllohaRuntimeResolver: NSObject, WKNavigationDelegate, WKScriptMessa
                 var responseUrl = this.responseURL || this.__neoAllohaUrl || '';
                 var responseText = '';
                 try { responseText = this.responseText || ''; } catch(e) {}
+                // Перехватываем /bnsi/ и любой JSON, содержащий hlsSource
                 if (responseUrl.indexOf('/bnsi/') !== -1 && responseText) report(responseText);
+                if (responseText && responseText.indexOf('hlsSource') !== -1) report(responseText);
                 if (looksPlayable(responseText)) report(responseText);
                 if (responseUrl.indexOf('master.m3u8') !== -1 && responseUrl !== lastM3u8) { lastM3u8 = responseUrl; post('payload', responseUrl); }
               });
