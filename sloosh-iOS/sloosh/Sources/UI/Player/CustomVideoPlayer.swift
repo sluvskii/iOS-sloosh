@@ -35,6 +35,7 @@ struct CustomVideoPlayer: UIViewRepresentable {
         Coordinator(viewModel: viewModel)
     }
     
+    @MainActor
     class Coordinator: NSObject, AVPictureInPictureControllerDelegate {
         var viewModel: PlayerViewModel
         
@@ -42,15 +43,19 @@ struct CustomVideoPlayer: UIViewRepresentable {
             self.viewModel = viewModel
         }
         
-        func pictureInPictureControllerWillStartPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
-            viewModel.isPiPActive = true
+        nonisolated func pictureInPictureControllerWillStartPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
+            Task { @MainActor in
+                viewModel.isPiPActive = true
+            }
         }
         
-        func pictureInPictureControllerDidStopPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
-            viewModel.isPiPActive = false
+        nonisolated func pictureInPictureControllerDidStopPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
+            Task { @MainActor in
+                viewModel.isPiPActive = false
+            }
         }
         
-        func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, restoreUserInterfaceForPictureInPictureStopWithCompletionHandler completionHandler: @escaping (Bool) -> Void) {
+        nonisolated func pictureInPictureController(_ pictureInPictureController: AVPictureInPictureController, restoreUserInterfaceForPictureInPictureStopWithCompletionHandler completionHandler: @escaping (Bool) -> Void) {
             completionHandler(true)
         }
     }
