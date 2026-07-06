@@ -80,8 +80,8 @@ struct PlayerContainerView: View {
         )
     }
     
-    private let showAnimation: Animation = .easeInOut(duration: 0.35)
-    private let hideAnimation: Animation = .easeOut(duration: 0.5)
+    private let showAnimation: Animation = .easeInOut(duration: 0.15)
+    private let hideAnimation: Animation = .easeOut(duration: 0.25)
 
     // MARK: - Gesture layer
 
@@ -154,7 +154,7 @@ struct PlayerContainerView: View {
     private func scheduleAutoHide() {
         hideTask?.cancel()
         hideTask = Task { @MainActor in
-            try? await Task.sleep(for: .seconds(3.5))
+            try? await Task.sleep(for: .seconds(2.5))
             guard !Task.isCancelled, vm.isPlaying, !isInteracting else { return }
             withAnimation(hideAnimation) { showControls = false }
         }
