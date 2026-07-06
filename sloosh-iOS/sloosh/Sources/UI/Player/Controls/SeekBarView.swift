@@ -4,7 +4,7 @@ import SwiftUI
 
 struct SeekBarView: View {
     @ObservedObject var vm: PlayerViewModel
-    @GestureState private var isDragging = false
+    @State private var isDragging = false
     @State private var dragProgress: Double = 0
 
     private var progress: Double {
@@ -19,48 +19,31 @@ struct SeekBarView: View {
                 .foregroundStyle(.white)
                 .frame(width: 52, alignment: .leading)
 
-            // Ползунок
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    // Фоновый трек
-                    Capsule()
-                        .fill(.white.opacity(0.25))
-                        .frame(height: 4)
-
-                    // Буфер
+            // Ползунок (нативный UISlider + трек буфера)
+            ZStack(alignment: .leading) {
+                // Буфер
+                GeometryReader { geo in
                     Capsule()
                         .fill(.white.opacity(0.4))
                         .frame(width: geo.size.width * min(1, vm.bufferedProgress), height: 4)
-
-                    // Прогресс
-                    Capsule()
-                        .fill(.white)
-                        .frame(width: geo.size.width * progress, height: 4)
-
-                    // Thumb
-                    Capsule()
-                        .fill(.white)
-                        .frame(width: isDragging ? 40 : 36, height: isDragging ? 24 : 20)
-                        .shadow(color: .black.opacity(0.15), radius: isDragging ? 8 : 4, y: isDragging ? 4 : 2)
-                        .offset(x: geo.size.width * progress - (isDragging ? 20 : 18))
-                        .animation(.spring(response: 0.2, dampingFraction: 0.7), value: isDragging)
+                        // Выравниваем буфер по треку UISlider (отступы по краям)
+                        .padding(.horizontal, 2)
                 }
-                .frame(maxHeight: .infinity)
-                .contentShape(Rectangle())
-                .gesture(
-                    DragGesture(minimumDistance: 0)
-                        .updating($isDragging) { _, state, _ in state = true }
-                        .onChanged { value in
-                            let newProgress = (value.location.x / geo.size.width).clamped(to: 0...1)
-                            dragProgress = newProgress
-                        }
-                        .onEnded { value in
-                            let newProgress = (value.location.x / geo.size.width).clamped(to: 0...1)
-                            vm.seek(to: newProgress * vm.currentDuration)
-                        }
+                .frame(height: 4)
+                
+                // Нативный слайдер — обеспечивает эффект стекла, как у MPVolumeView
+                SystemUISliderView(
+                    value: Binding(
+                        get: { progress },
+                        set: { dragProgress = $0 }
+                    ),
+                    isDragging: $isDragging,
+                    onSeek: { val in
+                        vm.seek(to: val * vm.currentDuration)
+                    }
                 )
             }
-            .frame(height: 18) // Fixes the GeometryReader from expanding to infinity vertically
+            .frame(height: 24)
 
             Text("-" + formatTime(max(0, vm.currentDuration - vm.currentTime)))
                 .font(.system(size: 13, weight: .medium).monospacedDigit())
@@ -83,6 +66,69 @@ struct SeekBarView: View {
             return String(format: "%d:%02d:%02d", h, m, s)
         } else {
             return String(format: "%d:%02d", m, s)
+        }
+    }
+}
+
+// MARK: - Native UISlider Wrapper
+
+struct SystemUISliderView: UIViewRepresentable {
+    @Binding var value: Double
+    @Binding var isDragging: Bool
+    let onSeek: (Double) -> Void
+
+    func makeUIView(context: Context) -> UISlider {
+        let slider = UISlider()
+        slider.minimumValue = 0
+        slider.maximumValue = 1
+        
+        // В iOS 26 нативный слайдер имеет Liquid Glass эффект на ползунке
+        slider.tintColor = .white
+        slider.minimumTrackTintColor = .white
+        slider.maximumTrackTintColor = .white.withAlphaComponent(0.25)
+        
+        slider.addTarget(context.coordinator, action: #selector(Coordinator.valueChanged(_:)), for: .valueChanged)
+        slider.addTarget(context.coordinator, action: #selector(Coordinator.editingDidBegin(_:)), for: .touchDown)
+        slider.addTarget(context.coordinator, action: #selector(Coordinator.editingDidEnd(_:)), for: [.touchUpInside, .touchUpOutside, .touchCancel])
+        
+        return slider
+    }
+
+    func updateUIView(_ uiView: UISlider, context: Context) {
+        if !context.coordinator.isEditing {
+            uiView.value = Float(value)
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(value: $value, isDragging: $isDragging, onSeek: onSeek)
+    }
+
+    class Coordinator: NSObject {
+        var value: Binding<Double>
+        var isDragging: Binding<Bool>
+        let onSeek: (Double) -> Void
+        var isEditing = false
+
+        init(value: Binding<Double>, isDragging: Binding<Bool>, onSeek: @escaping (Double) -> Void) {
+            self.value = value
+            self.isDragging = isDragging
+            self.onSeek = onSeek
+        }
+
+        @objc func valueChanged(_ sender: UISlider) {
+            value.wrappedValue = Double(sender.value)
+        }
+
+        @objc func editingDidBegin(_ sender: UISlider) {
+            isEditing = true
+            isDragging.wrappedValue = true
+        }
+
+        @objc func editingDidEnd(_ sender: UISlider) {
+            isEditing = false
+            isDragging.wrappedValue = false
+            onSeek(Double(sender.value))
         }
     }
 }
