@@ -13,9 +13,13 @@ struct SeekBarView: View {
         return isDragging ? dragProgress : (vm.currentTime / vm.currentDuration)
     }
 
+    private var displayTime: Double {
+        return isDragging ? (dragProgress * vm.currentDuration) : vm.currentTime
+    }
+
     var body: some View {
         HStack(spacing: 12) {
-            Text(formatTime(vm.currentTime))
+            Text(formatTime(displayTime))
                 .font(.system(size: 13, weight: .medium).monospacedDigit())
                 .foregroundStyle(.white)
 
@@ -32,7 +36,7 @@ struct SeekBarView: View {
             )
             .frame(height: 24)
 
-            Text("-" + formatTime(max(0, vm.currentDuration - vm.currentTime)))
+            Text("-" + formatTime(max(0, vm.currentDuration - displayTime)))
                 .font(.system(size: 13, weight: .medium).monospacedDigit())
                 .foregroundStyle(.white)
         }
