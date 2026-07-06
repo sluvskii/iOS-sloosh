@@ -14,6 +14,7 @@ struct PlayerContainerView: View {
     @State private var isInteracting = false
     @State private var lastLeftTap: Date = .distantPast
     @State private var lastRightTap: Date = .distantPast
+    @State private var isZoomedToFill = false
 
     struct SeekFeedback: Identifiable {
         let id = UUID()
@@ -26,7 +27,7 @@ struct PlayerContainerView: View {
             Color.black.ignoresSafeArea()
 
             // 2. Видеослой
-            VideoLayerView(player: vm.player, pipController: $pipController)
+            VideoLayerView(player: vm.player, pipController: $pipController, videoGravity: isZoomedToFill ? .resizeAspectFill : .resizeAspect)
                 .ignoresSafeArea()
                 .onAppear { vm.pipController = pipController }
                 .onChange(of: pipController) { _, newVal in vm.pipController = newVal }
@@ -66,6 +67,18 @@ struct PlayerContainerView: View {
                 scheduleAutoHide()
             }
         }
+        .gesture(
+            MagnificationGesture()
+                .onChanged { val in
+                    if !isZoomedToFill && val > 1.15 {
+                        isZoomedToFill = true
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    } else if isZoomedToFill && val < 0.85 {
+                        isZoomedToFill = false
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    }
+                }
+        )
     }
     
     private let showAnimation: Animation = .spring(response: 0.35, dampingFraction: 0.85)

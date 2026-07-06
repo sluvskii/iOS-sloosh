@@ -25,11 +25,12 @@ final class PlayerLayerView: UIView {
 struct VideoLayerView: UIViewRepresentable {
     let player: AVPlayer?
     @Binding var pipController: AVPictureInPictureController?
+    var videoGravity: AVLayerVideoGravity = .resizeAspect
 
     func makeUIView(context: Context) -> PlayerLayerView {
         let view = PlayerLayerView()
         view.backgroundColor = .black
-        view.playerLayer.videoGravity = .resizeAspect
+        view.playerLayer.videoGravity = videoGravity
         view.playerLayer.player = player
 
         // PiP
@@ -47,6 +48,9 @@ struct VideoLayerView: UIViewRepresentable {
     func updateUIView(_ uiView: PlayerLayerView, context: Context) {
         if uiView.player !== player {
             uiView.player = player
+        }
+        if uiView.playerLayer.videoGravity != videoGravity {
+            uiView.playerLayer.videoGravity = videoGravity
         }
     }
 }
