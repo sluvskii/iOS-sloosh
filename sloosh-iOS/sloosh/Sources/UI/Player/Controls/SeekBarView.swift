@@ -18,7 +18,6 @@ struct SeekBarView: View {
             Text(formatTime(vm.currentTime))
                 .font(.system(size: 13, weight: .medium).monospacedDigit())
                 .foregroundStyle(.white)
-                .frame(width: 52, alignment: .leading)
 
             // Нативный слайдер — обеспечивает эффект стекла, как у MPVolumeView
             SystemUISliderView(
@@ -36,7 +35,6 @@ struct SeekBarView: View {
             Text("-" + formatTime(max(0, vm.currentDuration - vm.currentTime)))
                 .font(.system(size: 13, weight: .medium).monospacedDigit())
                 .foregroundStyle(.white)
-                .frame(width: 56, alignment: .trailing)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
