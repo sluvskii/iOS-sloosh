@@ -192,6 +192,7 @@ class PlayerViewModel: ObservableObject {
     private var resignActiveObserver: NSObjectProtocol?
     private var rateObserver: NSKeyValueObservation?
     private var currentPlaybackSourceURL: URL?
+    private var bufferingTask: Task<Void, Never>?
 
     private var currentKpId: Int?
     private var currentSeason: Int?
@@ -807,7 +808,19 @@ class PlayerViewModel: ObservableObject {
                 guard let self else { return }
                 let status = player.timeControlStatus
                 self.isPlaying = (status == .playing)
-                self.isBuffering = (status == .waitingToPlayAtSpecifiedRate)
+                
+                self.bufferingTask?.cancel()
+                if status == .waitingToPlayAtSpecifiedRate {
+                    self.bufferingTask = Task {
+                        try? await Task.sleep(for: .seconds(0.5))
+                        if !Task.isCancelled {
+                            self.isBuffering = true
+                        }
+                    }
+                } else {
+                    self.isBuffering = false
+                }
+                
                 self.updateNowPlaying()
             }
         }
