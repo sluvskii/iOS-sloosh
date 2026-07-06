@@ -27,11 +27,8 @@ struct TopBarView: View {
     @Binding var isInteracting: Bool
     
     @StateObject private var volumeObserver = VolumeObserver()
-    
     @State private var overrideVolume: Float? = nil
-    @State private var dragInitialVolume: Float = 0
-    @State private var scrubStartLocationX: CGFloat = 0
-    @State private var isVolumeScrubbing = false
+    @State private var isVolumeDragging = false
 
     var body: some View {
         HStack(alignment: .center) {
@@ -79,51 +76,32 @@ struct TopBarView: View {
 
     @ViewBuilder
     private var volumeGroup: some View {
-        HStack(spacing: 6) {
-            SystemVolumeSlider(overrideVolume: $overrideVolume)
-                .frame(width: 100, height: 20)
-
+        HStack(spacing: 8) {
             Image(systemName: volumeIcon)
                 .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(.white)
-                .frame(width: 18)
+            
+            LiquidSliderView(
+                value: Binding(
+                    get: { Double(overrideVolume ?? volumeObserver.volume) },
+                    set: { overrideVolume = Float($0) }
+                ),
+                isDragging: $isVolumeDragging
+            )
+            .frame(height: 24)
+
+            // Невидимый системный слайдер для фактического изменения громкости системы
+            SystemVolumeSlider(overrideVolume: $overrideVolume)
+                .frame(width: 0, height: 0)
+                .opacity(0)
         }
+        .frame(width: 80) // Сделали компактнее (было 100)
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .glassEffect(.regular, in: .capsule)
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 10)
-                .onChanged { value in
-                    if abs(value.translation.height) > abs(value.translation.width) && !isVolumeScrubbing {
-                        return
-                    }
-                    if !isVolumeScrubbing {
-                        isVolumeScrubbing = true
-                        dragInitialVolume = volumeObserver.volume
-                        scrubStartLocationX = value.startLocation.x
-                        isInteracting = true
-                    }
-                    
-                    let trackWidth = 100.0 + 6.0 + 18.0 + 28.0 // Примерная ширина всей капсулы (100 + spacing + icon + padding)
-                    let startX = max(1, min(trackWidth - 1, scrubStartLocationX))
-                    
-                    let thumbX = Double(dragInitialVolume) * Double(trackWidth)
-                    let distanceToThumb = abs(Double(startX) - thumbX)
-                    
-                    let speedFactor = 1.0 + (distanceToThumb / Double(trackWidth)) * 5.0
-                    let baseMultiplier = 1.0 / Double(trackWidth) // Макс громкость = 1.0
-                    
-                    let deltaVol = Double(value.translation.width) * baseMultiplier * speedFactor
-                    let newVol = Float(max(0, min(1.0, Double(dragInitialVolume) + deltaVol)))
-                    
-                    overrideVolume = newVol
-                }
-                .onEnded { value in
-                    guard isVolumeScrubbing else { return }
-                    isVolumeScrubbing = false
-                    isInteracting = false
-                }
-        )
+        .onChange(of: isVolumeDragging) { _, dragging in
+            if dragging { isInteracting = true }
+        }
     }
 
     private var volumeIcon: String {
