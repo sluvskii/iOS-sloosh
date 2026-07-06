@@ -1,6 +1,54 @@
 import SwiftUI
 import AVKit
+import AVFoundation
+import MediaPlayer
 
+// MARK: - UIViewControllerRepresentable: запускает PlayerHostingController
+// Это точка входа из SwiftUI fullScreenCover → UIKit-контроллер, который управляет landscape-ориентацией
+
+struct PlayerPresenter: UIViewControllerRepresentable {
+    @ObservedObject var vm: PlayerViewModel
+    var onDismiss: () -> Void
+
+    func makeUIViewController(context: Context) -> PlayerHostingController<PlayerContainerView> {
+        let container = PlayerContainerView(vm: vm, onDismiss: {
+            context.coordinator.dismissPlayer()
+        })
+        let hc = PlayerHostingController(rootView: container)
+        hc.onDismissed = {
+            context.coordinator.didDismiss()
+        }
+        context.coordinator.hostingController = hc
+        return hc
+    }
+
+    func updateUIViewController(_ uiViewController: PlayerHostingController<PlayerContainerView>, context: Context) {
+        // vm обновляется через @ObservedObject, перерисовка SwiftUI-view автоматическая
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(onDismiss: onDismiss) }
+
+    class Coordinator {
+        weak var hostingController: UIViewController?
+        private let onDismiss: () -> Void
+        private var dismissCalled = false
+
+        init(onDismiss: @escaping () -> Void) { self.onDismiss = onDismiss }
+
+        func dismissPlayer() {
+            guard !dismissCalled else { return }
+            hostingController?.dismiss(animated: true)
+        }
+
+        func didDismiss() {
+            guard !dismissCalled else { return }
+            dismissCalled = true
+            onDismiss()
+        }
+    }
+}
+
+// MARK: - PlayerView — публичная SwiftUI точка входа
 
 struct PlayerView: View {
     let iframeUrl: String?
@@ -15,11 +63,22 @@ struct PlayerView: View {
     let subtitles: [PlaybackSubtitle]
     let initialQuality: VideoQualityPreference?
     let seriesResult: AllohaApiResult?
-    
+
     @StateObject private var viewModel = PlayerViewModel()
-    @Environment(\.presentationMode) var presentationMode
-    
-    init(iframeUrl: String? = nil, fallbackTitle: String, kpId: Int? = nil, season: Int? = nil, episode: Int? = nil, selectedVoiceover: String? = nil, directStreamUrl: String? = nil, voices: [String] = [], subtitles: [PlaybackSubtitle] = [], initialQuality: VideoQualityPreference? = nil, seriesResult: AllohaApiResult? = nil) {
+
+    init(
+        iframeUrl: String? = nil,
+        fallbackTitle: String,
+        kpId: Int? = nil,
+        season: Int? = nil,
+        episode: Int? = nil,
+        selectedVoiceover: String? = nil,
+        directStreamUrl: String? = nil,
+        voices: [String] = [],
+        subtitles: [PlaybackSubtitle] = [],
+        initialQuality: VideoQualityPreference? = nil,
+        seriesResult: AllohaApiResult? = nil
+    ) {
         self.iframeUrl = iframeUrl
         self.fallbackTitle = fallbackTitle
         self.kpId = kpId
@@ -32,143 +91,38 @@ struct PlayerView: View {
         self.initialQuality = initialQuality
         self.seriesResult = seriesResult
     }
-    
-    @State private var showSettings = false
-    
+
     var body: some View {
-        ZStack {
-            Color.black.edgesIgnoringSafeArea(.all)
-            
-            if let error = viewModel.error {
-                VStack(spacing: 16) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 48))
-                        .foregroundColor(.red)
-                    Text(error)
-                        .font(.system(size: 16, weight: .medium, design: .rounded))
-                        .foregroundColor(.white)
-                        .multilineTextAlignment(.center)
-                        .padding()
-                    
-                    Text("Нажмите, чтобы закрыть")
-                        .font(.system(size: 14, weight: .regular))
-                        .foregroundColor(.white.opacity(0.6))
-                        .padding(.top, 8)
-                }
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    dismissPlayer()
-                }
-            } else {
-                CustomVideoPlayer(viewModel: viewModel)
-                    .edgesIgnoringSafeArea(.all)
-                
-                PlayerControlsOverlay(
-                    viewModel: viewModel,
-                    title: fallbackTitle,
-                    onClose: dismissPlayer,
-                    onSettings: { showSettings = true }
-                )
-            }
+        PlayerPresenter(vm: viewModel) {
+            viewModel.cleanup()
         }
-        .sheet(isPresented: $showSettings) {
-            // Placeholder for settings sheet (qualities, subtitles, voiceovers)
-            // Can be expanded later. For now, we'll re-use the UI from before if needed.
-            PlayerSettingsView(viewModel: viewModel)
-                .presentationDetents([.medium, .large])
-        }
+        .ignoresSafeArea()
         .onAppear {
-            if viewModel.player == nil { 
-                viewModel.player = AVPlayer() 
-                viewModel.targetQualityPreference = initialQuality
-                viewModel.seriesResult = seriesResult
-                
-                if iframeUrl != nil || directStreamUrl != nil {
-                    viewModel.load(iframeUrl: iframeUrl, kpId: kpId, season: season, episode: episode, selectedVoiceover: selectedVoiceover, directStreamUrl: directStreamUrl, voices: voices, subtitles: subtitles)
-                } else {
-                    viewModel.error = "Нет URL для воспроизведения"
-                    viewModel.isLoading = false
-                }
-            }
-            
-            // Force landscape when opening
-            AppDelegate.orientationLock = .landscape
-            if #available(iOS 16.0, *) {
-                if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
-                    windowScene.requestGeometryUpdate(.iOS(interfaceOrientations: .landscape))
-                }
+            guard viewModel.player == nil else { return }
+            viewModel.player = AVPlayer()
+            viewModel.fallbackTitle = fallbackTitle
+            viewModel.targetQualityPreference = initialQuality
+            viewModel.seriesResult = seriesResult
+
+            if iframeUrl != nil || directStreamUrl != nil {
+                viewModel.load(
+                    iframeUrl: iframeUrl,
+                    kpId: kpId,
+                    season: season,
+                    episode: episode,
+                    selectedVoiceover: selectedVoiceover,
+                    directStreamUrl: directStreamUrl,
+                    voices: voices,
+                    subtitles: subtitles
+                )
             } else {
-                UIDevice.current.setValue(UIInterfaceOrientation.landscapeRight.rawValue, forKey: "orientation")
-            }
-        }
-        .navigationBarHidden(true)
-        .navigationBarBackButtonHidden(true)
-        .statusBarHidden(true)
-    }
-    
-    private func dismissPlayer() {
-        // Force portrait when closing
-        AppDelegate.orientationLock = .portrait
-        if #available(iOS 16.0, *) {
-            if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
-                windowScene.requestGeometryUpdate(.iOS(interfaceOrientations: .portrait))
-            }
-        } else {
-            UIDevice.current.setValue(UIInterfaceOrientation.portrait.rawValue, forKey: "orientation")
-            UIViewController.attemptRotationToDeviceOrientation()
-        }
-        
-        viewModel.cleanup()
-        presentationMode.wrappedValue.dismiss()
-        
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            AppDelegate.orientationLock = .all
-            if #available(iOS 16.0, *) {
-                if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
-                    windowScene.windows.first?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
-                }
+                viewModel.error = "Нет URL для воспроизведения"
+                viewModel.isLoading = false
             }
         }
     }
 }
 
-// Temporary placeholder for settings
-struct PlayerSettingsView: View {
-    @ObservedObject var viewModel: PlayerViewModel
-    @Environment(\.dismiss) private var dismiss
-    
-    var body: some View {
-        NavigationView {
-            List {
-                Section(header: Text("Качество видео")) {
-                    ForEach(viewModel.availableQualities, id: \.key) { q in
-                        Button(action: {
-                            viewModel.changeQuality(to: q.key)
-                            dismiss()
-                        }) {
-                            HStack {
-                                Text(q.key)
-                                    .foregroundColor(.primary)
-                                Spacer()
-                                if viewModel.currentQualityKey == q.key {
-                                    Image(systemName: "checkmark")
-                                        .foregroundColor(.blue)
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            .navigationTitle("Настройки")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Закрыть") { dismiss() }
-                }
-            }
-        }
-    }
-}
 
 @MainActor
 class PlayerViewModel: ObservableObject {
@@ -180,79 +134,55 @@ class PlayerViewModel: ObservableObject {
         let shouldReloadOnSelect: Bool
     }
 
+    // MARK: - Playback state
     @Published var player: AVPlayer?
     @Published var isLoading = true
+    @Published var isBuffering = false
+    @Published var isPlaying = false
     @Published var error: String?
-    
+
+    // MARK: - Timing
+    @Published var currentTime: Double = 0
+    @Published var currentDuration: Double = 0
+    @Published var bufferedProgress: Double = 0
+
+    // MARK: - Quality & Rate
     @Published var availableQualities: [PlaybackQualityOption] = []
     @Published var currentQualityKey: String?
-    
-    // Custom Player UI State
-    @Published var isPlaying: Bool = false
-    @Published var isBuffering: Bool = false
-    @Published var currentTime: Double = 0
-    @Published var duration: Double = 0
-    @Published var showControls: Bool = true
-    @Published var isPiPActive: Bool = false
+    @Published var playbackRate: Float = 1.0
+
+    // MARK: - Voiceovers
+    @Published var availableVoiceovers: [String] = []
+    var currentTranslationName: String? { _currentTranslationName }
+    private var _currentTranslationName: String?
+
+    // MARK: - Subtitles
+    @Published var availableSubtitles: [PlaybackSubtitle] = []
+    @Published var currentSubtitle: PlaybackSubtitle?
+
+    // MARK: - PiP
+    @Published var isPiPActive = false
     var pipController: AVPictureInPictureController?
-    
-    private var controlsHideTimer: Timer?
-    
-    // UI Helpers
-    func togglePlayPause() {
-        guard let player = player else { return }
-        if player.rate == 0 {
-            player.play()
-        } else {
-            player.pause()
-        }
-        resetControlsTimer()
-    }
-    
-    func seek(to time: Double) {
-        player?.seek(to: CMTime(seconds: time, preferredTimescale: 600))
-        resetControlsTimer()
-    }
-    
-    func seekBy(_ seconds: Double) {
-        let newTime = max(0, min(currentTime + seconds, duration))
-        seek(to: newTime)
-    }
-    
-    func resetControlsTimer() {
-        controlsHideTimer?.invalidate()
-        showControls = true
-        if isPlaying {
-            setupControlsTimer()
-        }
-    }
-    
-    private func setupControlsTimer() {
-        controlsHideTimer?.invalidate()
-        controlsHideTimer = Timer.scheduledTimer(withTimeInterval: 4.0, repeats: false) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                guard let self = self, self.isPlaying else { return }
-                withAnimation(.easeInOut(duration: 0.3)) {
-                    self.showControls = false
-                }
-            }
-        }
-    }
-    
+
+    // MARK: - Meta
+    var fallbackTitle: String = ""
+
     private var resolver: AllohaRuntimeResolver?
     private var resolveTask: Task<Void, Never>?
     private var currentHeaders: [String: String] = [:]
     private var timeObserver: Any?
+    private var statusObserver: NSKeyValueObservation?
+    private var bufferObserver: NSKeyValueObservation?
     private var itemObservation: NSKeyValueObservation?
     private var playbackEndObserver: NSObjectProtocol?
     private var resignActiveObserver: NSObjectProtocol?
+    private var rateObserver: NSKeyValueObservation?
     private var currentPlaybackSourceURL: URL?
-    
+
     private var currentKpId: Int?
     private var currentSeason: Int?
     private var currentEpisode: Int?
     private var targetVoiceover: String?
-    private var currentTranslationName: String?
     /// Pre-resolved direct stream URL; bypasses audioVariant matching when set.
     private var targetDirectStreamUrl: String?
     private var isAdvancingToNextEpisode = false
@@ -285,17 +215,18 @@ class PlayerViewModel: ObservableObject {
         self.currentSeason = season
         self.currentEpisode = episode
         self.targetVoiceover = selectedVoiceover
-        self.currentTranslationName = selectedVoiceover
+        self._currentTranslationName = selectedVoiceover
         self.targetDirectStreamUrl = directStreamUrl
         self.isAdvancingToNextEpisode = false
 
         if kpId != nil, let selectedVoiceover, !selectedVoiceover.isEmpty {
             persistVoiceoverSelection(selectedVoiceover)
         }
-        
+
         isLoading = true
+        isPlaying = false
         error = nil
-        
+
         if let directUrlString = directStreamUrl, let directUrl = URL(string: directUrlString) {
             // Direct HLS playback (local file URL)
             availableQualities = [
@@ -309,7 +240,7 @@ class PlayerViewModel: ObservableObject {
             ]
             currentQualityKey = "Локальный"
             playVideo(url: directUrl, headers: [:], voices: [], subtitles: [])
-        } else if let iframe = iframeUrl {
+        } else if let iframe = iframeUrl, !iframe.isEmpty {
             startParsing(iframeUrl: iframe, voices: voices, subtitles: subtitles)
         } else {
             error = "Нет URL для воспроизведения"
@@ -483,9 +414,16 @@ class PlayerViewModel: ObservableObject {
         }
         itemObservation?.invalidate()
         itemObservation = nil
-        
+        statusObserver?.invalidate()
+        statusObserver = nil
+        bufferObserver?.invalidate()
+        bufferObserver = nil
+        rateObserver?.invalidate()
+        rateObserver = nil
+
         // Final progress save before cleanup
         saveCurrentProgress()
+        clearNowPlaying()
 
         resolveTask?.cancel()
         resolveTask = nil
@@ -494,11 +432,91 @@ class PlayerViewModel: ObservableObject {
         player?.pause()
         player = nil
         HlsProxyServer.shared.stop()
-        
-        controlsHideTimer?.invalidate()
-        controlsHideTimer = nil
-        pipController?.stopPictureInPicture()
-        pipController = nil
+    }
+
+    // MARK: - Playback actions
+
+    func togglePlayPause() {
+        guard let player else { return }
+        if player.timeControlStatus == .playing {
+            player.pause()
+        } else {
+            player.play()
+        }
+        updateNowPlaying()
+    }
+
+    func seek(by seconds: Double) {
+        guard let player else { return }
+        let current = player.currentTime().seconds
+        let target = max(0, min(currentDuration, current + seconds))
+        seek(to: target)
+    }
+
+    func seek(to seconds: Double) {
+        guard let player else { return }
+        let time = CMTime(seconds: seconds, preferredTimescale: 600)
+        player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
+        currentTime = seconds
+        updateNowPlaying()
+    }
+
+    func togglePiP() {
+        guard let pip = pipController else { return }
+        if pip.isPictureInPictureActive {
+            pip.stopPictureInPicture()
+        } else {
+            pip.startPictureInPicture()
+        }
+    }
+
+    func setPlaybackRate(_ rate: Float) {
+        playbackRate = rate
+        player?.rate = rate
+        updateNowPlaying()
+    }
+
+    func setSubtitle(_ subtitle: PlaybackSubtitle?) {
+        currentSubtitle = subtitle
+        // TODO: инъекция субтитров через HlsProxyServer в следующей фазе
+    }
+
+    /// Переключает озвучку без закрытия плеера
+    func switchVoiceover(to name: String) {
+        guard let seriesResult else {
+            // Для фильма — перезапускаем текущий iframe с новой озвучкой
+            if let iframeUrl = availableQualities.first?.url.absoluteString {
+                _currentTranslationName = name
+                targetVoiceover = name
+                hasStartedLoading = false
+                beginLoad(
+                    iframeUrl: iframeUrl,
+                    kpId: currentKpId,
+                    season: nil,
+                    episode: nil,
+                    selectedVoiceover: name
+                )
+            }
+            return
+        }
+
+        // Для сериала — ищем нужный iframe
+        guard let season = currentSeason,
+              let episode = currentEpisode,
+              let seasonObj = seriesResult.seasons.first(where: { $0.season == season }),
+              let epObj = seasonObj.episodes.first(where: { $0.episode == episode }),
+              let translation = epObj.translations.first(where: { $0.name == name }) else { return }
+
+        _currentTranslationName = name
+        targetVoiceover = name
+        hasStartedLoading = false
+        beginLoad(
+            iframeUrl: translation.iframeUrl,
+            kpId: currentKpId,
+            season: season,
+            episode: episode,
+            selectedVoiceover: name
+        )
     }
 
     /// Сохраняет текущую позицию воспроизведения. Вызывается и по таймеру, и при сворачивании приложения.
@@ -719,7 +737,7 @@ class PlayerViewModel: ObservableObject {
                 self.isLoading = false
                 return
             }
-            
+
             let mediaId: String
             if let kpId = currentKpId {
                 if let season = currentSeason, let episode = currentEpisode {
@@ -730,43 +748,72 @@ class PlayerViewModel: ObservableObject {
             } else {
                 mediaId = "unknown"
             }
-            
+
             HlsProxyServer.shared.start(headers: headers, voices: voices, subtitles: subtitles, mediaId: mediaId)
             asset = AVURLAsset(url: proxyUrl)
         }
-        
+
         let playerItem = AVPlayerItem(asset: asset)
         itemObservation?.invalidate()
         itemObservation = nil
+        statusObserver?.invalidate()
+        statusObserver = nil
+        bufferObserver?.invalidate()
+        bufferObserver = nil
+        rateObserver?.invalidate()
+        rateObserver = nil
         if let playbackEndObserver {
             NotificationCenter.default.removeObserver(playbackEndObserver)
             self.playbackEndObserver = nil
         }
-        
+
         if self.player == nil { self.player = AVPlayer() }
         self.player?.replaceCurrentItem(with: playerItem)
         self.player?.automaticallyWaitsToMinimizeStalling = true
-        
+        self.player?.rate = playbackRate
 
-        
+        // Наблюдаем состояние плеера
+        statusObserver = playerItem.observe(\.status, options: [.new]) { [weak self] item, _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                if item.status == .failed {
+                    self.error = item.error?.localizedDescription ?? "Ошибка воспроизведения"
+                    self.isLoading = false
+                }
+            }
+        }
+
+        rateObserver = self.player?.observe(\.timeControlStatus, options: [.new]) { [weak self] player, _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                let status = player.timeControlStatus
+                self.isPlaying = (status == .playing)
+                self.isBuffering = (status == .waitingToPlayAtSpecifiedRate)
+                self.updateNowPlaying()
+            }
+        }
+
+        // Наблюдаем буфер
+        bufferObserver = playerItem.observe(\.loadedTimeRanges, options: [.new]) { [weak self] item, _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                let duration = item.duration.seconds
+                guard duration > 0 else { return }
+                let buffered = item.loadedTimeRanges
+                    .map { $0.timeRangeValue }
+                    .filter { $0.start.seconds <= self.currentTime }
+                    .map { $0.start.seconds + $0.duration.seconds }
+                    .max() ?? 0
+                self.bufferedProgress = buffered / duration
+            }
+        }
+
         observePlaybackCompletion(for: playerItem)
-        
+
         self.isLoading = false
         self.startTrackingProgress()
         self.player?.play()
         self.isPlaying = true
-        
-        self.itemObservation = playerItem.observe(\.status) { _, _ in }
-        
-        // Setup state observers
-        NotificationCenter.default.addObserver(forName: AVPlayer.rateDidChangeNotification, object: self.player, queue: .main) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                guard let self = self, let player = self.player else { return }
-                self.isPlaying = player.rate != 0
-            }
-        }
-        
-        setupControlsTimer()
     }
     
     private func startTrackingProgress() {
@@ -775,7 +822,7 @@ class PlayerViewModel: ObservableObject {
             player.removeTimeObserver(observer)
             timeObserver = nil
         }
-        
+
         let mediaId: String
         if let kpId = currentKpId {
             if let season = currentSeason, let episode = currentEpisode {
@@ -786,32 +833,36 @@ class PlayerViewModel: ObservableObject {
         } else {
             return
         }
-        
+
         let savedPosition = PlaybackProgressStore.shared.load(mediaId: mediaId)
         if savedPosition > 0 {
             player.seek(to: CMTime(seconds: savedPosition, preferredTimescale: 600))
+            currentTime = savedPosition
         }
-        
-        // Set high-frequency time observer for the custom UI scrubber
-        timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.5, preferredTimescale: 600), queue: .main) { [weak self, weak player] time in
-            Task { @MainActor [weak self, weak player] in
-                guard let self = self, let player = player else { return }
-                
-                let seconds = time.seconds
-                self.currentTime = seconds.isNaN ? 0 : seconds
-                
-                let dur = player.currentItem?.duration.seconds
-                self.duration = (dur?.isNaN == false) ? dur! : 0
-                
-                self.isBuffering = player.currentItem?.isPlaybackBufferEmpty ?? false
-                
-                // Save progress to store less frequently
-                if Int(seconds) % 5 == 0 {
-                    let durToSave = self.duration > 0 ? self.duration : nil
-                    PlaybackProgressStore.shared.save(mediaId: mediaId, positionSec: seconds, durationSec: durToSave)
-                }
+
+        timeObserver = player.addPeriodicTimeObserver(
+            forInterval: CMTime(seconds: 0.5, preferredTimescale: 600),
+            queue: .main
+        ) { [weak self, weak player] time in
+            guard let self, let player else { return }
+            let t = time.seconds
+            self.currentTime = t.isFinite && !t.isNaN ? t : 0
+            let d = player.currentItem?.duration.seconds ?? 0
+            if d.isFinite && !d.isNaN && d > 0 {
+                self.currentDuration = d
+            }
+            // Сохраняем прогресс каждые 5 секунд
+            if Int(t) % 5 == 0 {
+                PlaybackProgressStore.shared.save(
+                    mediaId: mediaId,
+                    positionSec: t,
+                    durationSec: self.currentDuration > 0 ? self.currentDuration : nil
+                )
             }
         }
+
+        setupRemoteCommands()
+        updateNowPlaying()
 
         // Сохраняем прогресс немедленно при сворачивании — даже если система потом убьёт процесс
         if let existing = resignActiveObserver {
@@ -826,6 +877,62 @@ class PlayerViewModel: ObservableObject {
                 self?.saveCurrentProgress()
             }
         }
+    }
+
+    // MARK: - Now Playing
+
+    private func setupRemoteCommands() {
+        let cc = MPRemoteCommandCenter.shared()
+        cc.playCommand.isEnabled = true
+        cc.playCommand.addTarget { [weak self] _ in
+            self?.player?.play(); return .success
+        }
+        cc.pauseCommand.isEnabled = true
+        cc.pauseCommand.addTarget { [weak self] _ in
+            self?.player?.pause(); return .success
+        }
+        cc.togglePlayPauseCommand.isEnabled = true
+        cc.togglePlayPauseCommand.addTarget { [weak self] _ in
+            self?.togglePlayPause(); return .success
+        }
+        cc.changePlaybackPositionCommand.isEnabled = true
+        cc.changePlaybackPositionCommand.addTarget { [weak self] event in
+            guard let e = event as? MPChangePlaybackPositionCommandEvent else { return .commandFailed }
+            self?.seek(to: e.positionTime)
+            return .success
+        }
+        cc.skipForwardCommand.isEnabled = true
+        cc.skipForwardCommand.preferredIntervals = [10]
+        cc.skipForwardCommand.addTarget { [weak self] _ in
+            self?.seek(by: 10); return .success
+        }
+        cc.skipBackwardCommand.isEnabled = true
+        cc.skipBackwardCommand.preferredIntervals = [10]
+        cc.skipBackwardCommand.addTarget { [weak self] _ in
+            self?.seek(by: -10); return .success
+        }
+    }
+
+    func updateNowPlaying() {
+        guard let player else { return }
+        var info: [String: Any] = [
+            MPMediaItemPropertyTitle: fallbackTitle.isEmpty ? "Смотреть" : fallbackTitle,
+            MPMediaItemPropertyPlaybackDuration: currentDuration > 0 ? currentDuration : 0,
+            MPNowPlayingInfoPropertyElapsedPlaybackTime: currentTime,
+            MPNowPlayingInfoPropertyPlaybackRate: player.rate,
+            MPNowPlayingInfoPropertyMediaType: MPNowPlayingInfoMediaType.video.rawValue
+        ]
+        if let season = currentSeason, let episode = currentEpisode {
+            info[MPMediaItemPropertyArtist] = "Сезон \(season), Серия \(episode)"
+        } else if let voiceover = _currentTranslationName, !voiceover.isEmpty {
+            info[MPMediaItemPropertyArtist] = voiceover
+        }
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+        MPNowPlayingInfoCenter.default().playbackState = player.timeControlStatus == .playing ? .playing : .paused
+    }
+
+    private func clearNowPlaying() {
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
     }
 
     private func observePlaybackCompletion(for item: AVPlayerItem) {
@@ -852,7 +959,7 @@ class PlayerViewModel: ObservableObject {
 
         currentSeason = nextEpisode.season
         currentEpisode = nextEpisode.episode
-        currentTranslationName = nextEpisode.translation.name
+        _currentTranslationName = nextEpisode.translation.name
         targetVoiceover = nextEpisode.translation.name
 
         if let kpId = currentKpId {
@@ -894,8 +1001,8 @@ class PlayerViewModel: ObservableObject {
     }
 
     private func preferredTranslation(in episode: AllohaEpisode) -> AllohaTranslation? {
-        if let currentTranslationName,
-           let exactMatch = episode.translations.first(where: { allohaTranslationNamesMatch($0.name, currentTranslationName) }) {
+        if let name = _currentTranslationName,
+           let exactMatch = episode.translations.first(where: { allohaTranslationNamesMatch($0.name, name) }) {
             return exactMatch
         }
 
@@ -917,7 +1024,7 @@ class PlayerViewModel: ObservableObject {
         } else {
             // Pick the URL for the selected voiceover from audioVariants by name.
             // Exact match first, then fuzzy.
-            let voiceToMatch = targetVoiceover ?? currentTranslationName
+            let voiceToMatch = targetVoiceover ?? _currentTranslationName
             if let voiceToMatch, !voiceToMatch.isEmpty {
                 let exactMatch = audioVariants.first(where: { variant in
                     let title = variant["title"] as? String
@@ -942,6 +1049,13 @@ class PlayerViewModel: ObservableObject {
         let headers = (resolved["headers"] as? [String: String]) ?? [:]
         currentHeaders = headers
         let resolvedSubtitles = resolvedSubtitles(from: resolved)
+        self.availableSubtitles = resolvedSubtitles
+
+        // Заполняем список доступных озвучек из audioVariants
+        let voices = resolvedVoiceovers(from: resolved)
+        if !voices.isEmpty {
+            self.availableVoiceovers = voices
+        }
 
         let qualityVariants = (resolved["qualityVariants"] as? [[String: Any]]) ?? []
 
@@ -953,6 +1067,7 @@ class PlayerViewModel: ObservableObject {
         currentQualityKey = "Авто"
         playVideo(url: resolvedUrl, headers: headers, voices: [], subtitles: resolvedSubtitles)
         NotificationCenter.default.post(name: NSNotification.Name("QualitiesUpdated"), object: nil)
+
         applyInitialQuality()
     }
 
