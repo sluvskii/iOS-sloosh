@@ -933,12 +933,12 @@ class PlayerViewModel: ObservableObject {
     private func setupRemoteCommands() {
         let cc = MPRemoteCommandCenter.shared()
         // Сначала удаляем все предыдущие обработчики, чтобы не накапливались при переключении серий
-        cc.playCommand.removeAllTargets()
-        cc.pauseCommand.removeAllTargets()
-        cc.togglePlayPauseCommand.removeAllTargets()
-        cc.changePlaybackPositionCommand.removeAllTargets()
-        cc.skipForwardCommand.removeAllTargets()
-        cc.skipBackwardCommand.removeAllTargets()
+        cc.playCommand.removeTarget(nil)
+        cc.pauseCommand.removeTarget(nil)
+        cc.togglePlayPauseCommand.removeTarget(nil)
+        cc.changePlaybackPositionCommand.removeTarget(nil)
+        cc.skipForwardCommand.removeTarget(nil)
+        cc.skipBackwardCommand.removeTarget(nil)
         
         cc.playCommand.isEnabled = true
         cc.playCommand.addTarget { [weak self] _ in

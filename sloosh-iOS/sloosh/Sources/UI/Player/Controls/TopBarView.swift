@@ -99,7 +99,7 @@ struct TopBarView: View {
                     }
                     if !isVolumeScrubbing {
                         isVolumeScrubbing = true
-                        dragInitialVolume = currentVolume
+                        dragInitialVolume = volumeObserver.volume
                         scrubStartLocationX = value.startLocation.x
                         isInteracting = true
                     }
