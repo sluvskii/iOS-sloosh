@@ -1,170 +1,6 @@
 import SwiftUI
 import AVKit
 
-class CustomPlayerViewController: AVPlayerViewController {
-    var onWillDismiss: (() -> Void)?
-    
-    override func viewWillDisappear(_ animated: Bool) {
-        super.viewWillDisappear(animated)
-        if self.isBeingDismissed {
-            onWillDismiss?()
-        }
-    }
-}
-
-class PlayerPresenterViewController: UIViewController {
-    var player: AVPlayer? {
-        didSet {
-            if playerController?.player !== player {
-                playerController?.player = player
-            }
-            if player != nil && player?.timeControlStatus != .playing {
-                player?.play()
-            }
-        }
-    }
-    var viewModel: PlayerViewModel?
-    
-    var onDismiss: (() -> Void)?
-    private var didPresent = false
-    private var isDismissed = false
-    private var playerController: CustomPlayerViewController?
-    private var observation: NSKeyValueObservation?
-    
-    override var prefersStatusBarHidden: Bool {
-        return true
-    }
-
-    override func viewDidAppear(_ animated: Bool) {
-        super.viewDidAppear(animated)
-        
-        if !didPresent {
-            didPresent = true
-            
-            // 1. Плавно переводим ориентацию в горизонтальную ТОЛЬКО перед показом самого видео
-            AppDelegate.orientationLock = .landscape
-            if #available(iOS 16.0, *) {
-                if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
-                    windowScene.requestGeometryUpdate(.iOS(interfaceOrientations: .landscape))
-                }
-            } else {
-                UIDevice.current.setValue(UIInterfaceOrientation.landscapeRight.rawValue, forKey: "orientation")
-            }
-            
-            let pc = CustomPlayerViewController()
-            pc.player = player
-            pc.showsPlaybackControls = true
-            pc.allowsPictureInPicturePlayback = true
-            pc.modalPresentationStyle = .fullScreen
-            
-            pc.onWillDismiss = { [weak self] in
-                self?.forcePortraitOrientation()
-            }
-            
-            self.playerController = pc
-            
-            self.present(pc, animated: true) {
-                self.player?.play()
-            }
-        } else {
-            // Если мы вернулись на этот экран и плеера больше нет (смахнули вниз)
-            if self.presentedViewController == nil {
-                handleDismissal()
-            }
-        }
-    }
-    
-    override func viewDidDisappear(_ animated: Bool) {
-        super.viewDidDisappear(animated)
-        
-        // Ensure dismiss is called only when the view controller is ACTUALLY being dismissed from SwiftUI
-        // or when the child AVPlayerViewController has been fully dismissed
-        if self.isBeingDismissed || self.isMovingFromParent || (self.presentedViewController == nil && self.didPresent) {
-            handleDismissal()
-        }
-    }
-    
-    private func forcePortraitOrientation() {
-        // Жестко форсируем портретную ориентацию ДО окончания анимации закрытия
-        AppDelegate.orientationLock = .portrait
-        
-        if #available(iOS 16.0, *) {
-            self.setNeedsUpdateOfSupportedInterfaceOrientations()
-            if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
-                windowScene.requestGeometryUpdate(.iOS(interfaceOrientations: .portrait))
-            }
-        } else {
-            UIDevice.current.setValue(UIInterfaceOrientation.portrait.rawValue, forKey: "orientation")
-            UIViewController.attemptRotationToDeviceOrientation()
-        }
-    }
-
-    private func handleDismissal() {
-        guard !isDismissed else { return }
-        isDismissed = true
-        
-        forcePortraitOrientation()
-        
-        // Через небольшую задержку возвращаем возможность вращения экрана (если это было задумано)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            AppDelegate.orientationLock = .all
-            if #available(iOS 16.0, *) {
-                if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
-                    windowScene.windows.first?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
-                }
-            }
-        }
-        
-        onDismiss?()
-    }
-    
-    deinit {
-        observation?.invalidate()
-    }
-}
-
-struct ModalPlayerPresenter: UIViewControllerRepresentable {
-    var player: AVPlayer?
-    var viewModel: PlayerViewModel
-    var onDismiss: () -> Void
-    
-    class Coordinator: NSObject {
-        var didDismiss = false
-    }
-    
-    func makeCoordinator() -> Coordinator {
-        Coordinator()
-    }
-    
-    func makeUIViewController(context: Context) -> PlayerPresenterViewController {
-        let controller = PlayerPresenterViewController()
-        controller.view.backgroundColor = .clear
-        controller.player = player
-        controller.viewModel = viewModel
-        controller.onDismiss = {
-            DispatchQueue.main.async {
-                if !context.coordinator.didDismiss {
-                    context.coordinator.didDismiss = true
-                    onDismiss()
-                }
-            }
-        }
-        
-        // Make the parent SwiftUI UIHostingController view transparent
-        DispatchQueue.main.async { [weak controller] in
-            guard let controller = controller else { return }
-            controller.parent?.view.backgroundColor = .clear
-            controller.view.superview?.backgroundColor = .clear
-        }
-        
-        return controller
-    }
-    
-    func updateUIViewController(_ uiViewController: PlayerPresenterViewController, context: Context) {
-        uiViewController.player = player
-        uiViewController.viewModel = viewModel
-    }
-}
 
 struct PlayerView: View {
     let iframeUrl: String?
@@ -197,13 +33,11 @@ struct PlayerView: View {
         self.seriesResult = seriesResult
     }
     
+    @State private var showSettings = false
+    
     var body: some View {
         ZStack {
-            if viewModel.isLoading || viewModel.error != nil {
-                Color.black.edgesIgnoringSafeArea(.all)
-            } else {
-                Color.clear.edgesIgnoringSafeArea(.all)
-            }
+            Color.black.edgesIgnoringSafeArea(.all)
             
             if let error = viewModel.error {
                 VStack(spacing: 16) {
@@ -223,24 +57,29 @@ struct PlayerView: View {
                 }
                 .contentShape(Rectangle())
                 .onTapGesture {
-                    viewModel.cleanup()
-                    presentationMode.wrappedValue.dismiss()
+                    dismissPlayer()
                 }
-            } else if viewModel.isLoading {
-                ProgressView()
-                    .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                    .scaleEffect(1.5)
             } else {
-                ModalPlayerPresenter(player: viewModel.player, viewModel: viewModel) {
-                    viewModel.cleanup() // Теперь очистка происходит ТОЛЬКО когда плеер реально закрылся
-                    presentationMode.wrappedValue.dismiss()
-                }
-                .edgesIgnoringSafeArea(.all)
+                CustomVideoPlayer(viewModel: viewModel)
+                    .edgesIgnoringSafeArea(.all)
+                
+                PlayerControlsOverlay(
+                    viewModel: viewModel,
+                    title: fallbackTitle,
+                    onClose: dismissPlayer,
+                    onSettings: { showSettings = true }
+                )
             }
         }
+        .sheet(isPresented: $showSettings) {
+            // Placeholder for settings sheet (qualities, subtitles, voiceovers)
+            // Can be expanded later. For now, we'll re-use the UI from before if needed.
+            PlayerSettingsView(viewModel: viewModel)
+                .presentationDetents([.medium, .large])
+        }
         .onAppear {
-            if viewModel.player == nil { // Избегаем повторной загрузки при перерисовках
-                viewModel.player = AVPlayer() // СРАЗУ СОЗДАЕМ ПЛЕЕР, ЧТОБЫ AVPlayerViewController ПОЛУЧИЛ ЕГО ПРИ СТАРТЕ
+            if viewModel.player == nil { 
+                viewModel.player = AVPlayer() 
                 viewModel.targetQualityPreference = initialQuality
                 viewModel.seriesResult = seriesResult
                 
@@ -251,10 +90,83 @@ struct PlayerView: View {
                     viewModel.isLoading = false
                 }
             }
+            
+            // Force landscape when opening
+            AppDelegate.orientationLock = .landscape
+            if #available(iOS 16.0, *) {
+                if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+                    windowScene.requestGeometryUpdate(.iOS(interfaceOrientations: .landscape))
+                }
+            } else {
+                UIDevice.current.setValue(UIInterfaceOrientation.landscapeRight.rawValue, forKey: "orientation")
+            }
         }
-        // Убрали .onDisappear с cleanup, чтобы он не убивал видео при показе плеера
         .navigationBarHidden(true)
         .navigationBarBackButtonHidden(true)
+        .statusBarHidden(true)
+    }
+    
+    private func dismissPlayer() {
+        // Force portrait when closing
+        AppDelegate.orientationLock = .portrait
+        if #available(iOS 16.0, *) {
+            if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+                windowScene.requestGeometryUpdate(.iOS(interfaceOrientations: .portrait))
+            }
+        } else {
+            UIDevice.current.setValue(UIInterfaceOrientation.portrait.rawValue, forKey: "orientation")
+            UIViewController.attemptRotationToDeviceOrientation()
+        }
+        
+        viewModel.cleanup()
+        presentationMode.wrappedValue.dismiss()
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            AppDelegate.orientationLock = .all
+            if #available(iOS 16.0, *) {
+                if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+                    windowScene.windows.first?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
+                }
+            }
+        }
+    }
+}
+
+// Temporary placeholder for settings
+struct PlayerSettingsView: View {
+    @ObservedObject var viewModel: PlayerViewModel
+    @Environment(\.dismiss) private var dismiss
+    
+    var body: some View {
+        NavigationView {
+            List {
+                Section(header: Text("Качество видео")) {
+                    ForEach(viewModel.availableQualities, id: \.key) { q in
+                        Button(action: {
+                            viewModel.changeQuality(to: q.key)
+                            dismiss()
+                        }) {
+                            HStack {
+                                Text(q.key)
+                                    .foregroundColor(.primary)
+                                Spacer()
+                                if viewModel.currentQualityKey == q.key {
+                                    Image(systemName: "checkmark")
+                                        .foregroundColor(.blue)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            .navigationTitle("Настройки")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Закрыть") { dismiss() }
+                }
+            }
+        }
     }
 }
 
@@ -274,6 +186,56 @@ class PlayerViewModel: ObservableObject {
     
     @Published var availableQualities: [PlaybackQualityOption] = []
     @Published var currentQualityKey: String?
+    
+    // Custom Player UI State
+    @Published var isPlaying: Bool = false
+    @Published var isBuffering: Bool = false
+    @Published var currentTime: Double = 0
+    @Published var duration: Double = 0
+    @Published var showControls: Bool = true
+    @Published var isPiPActive: Bool = false
+    var pipController: AVPictureInPictureController?
+    
+    private var controlsHideTimer: Timer?
+    
+    // UI Helpers
+    func togglePlayPause() {
+        guard let player = player else { return }
+        if player.rate == 0 {
+            player.play()
+        } else {
+            player.pause()
+        }
+        resetControlsTimer()
+    }
+    
+    func seek(to time: Double) {
+        player?.seek(to: CMTime(seconds: time, preferredTimescale: 600))
+        resetControlsTimer()
+    }
+    
+    func seekBy(_ seconds: Double) {
+        let newTime = max(0, min(currentTime + seconds, duration))
+        seek(to: newTime)
+    }
+    
+    func resetControlsTimer() {
+        controlsHideTimer?.invalidate()
+        showControls = true
+        if isPlaying {
+            setupControlsTimer()
+        }
+    }
+    
+    private func setupControlsTimer() {
+        controlsHideTimer?.invalidate()
+        controlsHideTimer = Timer.scheduledTimer(withTimeInterval: 4.0, repeats: false) { [weak self] _ in
+            guard let self = self, self.isPlaying else { return }
+            withAnimation(.easeInOut(duration: 0.3)) {
+                self.showControls = false
+            }
+        }
+    }
     
     private var resolver: AllohaRuntimeResolver?
     private var resolveTask: Task<Void, Never>?
@@ -530,6 +492,11 @@ class PlayerViewModel: ObservableObject {
         player?.pause()
         player = nil
         HlsProxyServer.shared.stop()
+        
+        controlsHideTimer?.invalidate()
+        controlsHideTimer = nil
+        pipController?.stopPictureInPicture()
+        pipController = nil
     }
 
     /// Сохраняет текущую позицию воспроизведения. Вызывается и по таймеру, и при сворачивании приложения.
@@ -785,8 +752,17 @@ class PlayerViewModel: ObservableObject {
         self.isLoading = false
         self.startTrackingProgress()
         self.player?.play()
+        self.isPlaying = true
         
         self.itemObservation = playerItem.observe(\.status) { _, _ in }
+        
+        // Setup state observers
+        NotificationCenter.default.addObserver(forName: AVPlayer.rateDidChangeNotification, object: self.player, queue: .main) { [weak self] _ in
+            guard let self = self, let player = self.player else { return }
+            self.isPlaying = player.rate != 0
+        }
+        
+        setupControlsTimer()
     }
     
     private func startTrackingProgress() {
@@ -812,10 +788,22 @@ class PlayerViewModel: ObservableObject {
             player.seek(to: CMTime(seconds: savedPosition, preferredTimescale: 600))
         }
         
-        timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 5, preferredTimescale: 600), queue: .main) { [weak player] time in
-            guard let player = player else { return }
-            let duration = player.currentItem?.duration.seconds
-            PlaybackProgressStore.shared.save(mediaId: mediaId, positionSec: time.seconds, durationSec: duration?.isNaN == false ? duration : nil)
+        // Set high-frequency time observer for the custom UI scrubber
+        timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(seconds: 0.5, preferredTimescale: 600), queue: .main) { [weak self, weak player] time in
+            guard let self = self, let player = player else { return }
+            
+            let seconds = time.seconds
+            self.currentTime = seconds.isNaN ? 0 : seconds
+            
+            let dur = player.currentItem?.duration.seconds
+            self.duration = (dur?.isNaN == false) ? dur! : 0
+            
+            self.isBuffering = player.currentItem?.isPlaybackBufferEmpty ?? false
+            
+            // Save progress to store less frequently
+            if Int(seconds) % 5 == 0 {
+                PlaybackProgressStore.shared.save(mediaId: mediaId, positionSec: seconds, durationSec: self.duration > 0 ? self.duration : nil)
+            }
         }
 
         // Сохраняем прогресс немедленно при сворачивании — даже если система потом убьёт процесс
