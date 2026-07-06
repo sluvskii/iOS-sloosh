@@ -62,24 +62,33 @@ struct ContinueView: View {
                     await viewModel.reload()
                 }
             }
-            .fullScreenCover(item: $viewModel.activePlayback, onDismiss: {
+            .fullScreenCover(item: $viewModel.activePresentation, onDismiss: {
                 Task {
                     await viewModel.reload()
                 }
-            }) { playback in
-                PlayerView(
-                    iframeUrl: playback.iframeUrl,
-                    fallbackTitle: playback.title,
-                    kpId: playback.kpId,
-                    season: playback.season,
-                    episode: playback.episode,
-                    selectedVoiceover: playback.voiceover,
-                    directStreamUrl: playback.streamUrl,
-                    voices: [],
-                    subtitles: [],
-                    initialQuality: playback.initialQuality,
-                    seriesResult: playback.seriesResult
-                )
+            }) { presentation in
+                if presentation.isReady, let playback = presentation.route {
+                    PlayerView(
+                        iframeUrl: playback.iframeUrl,
+                        fallbackTitle: playback.title,
+                        kpId: playback.kpId,
+                        season: playback.season,
+                        episode: playback.episode,
+                        selectedVoiceover: playback.voiceover,
+                        directStreamUrl: playback.streamUrl,
+                        voices: [],
+                        subtitles: [],
+                        initialQuality: playback.initialQuality,
+                        seriesResult: playback.seriesResult
+                    )
+                } else {
+                    ZStack {
+                        Color.black.edgesIgnoringSafeArea(.all)
+                        ProgressView()
+                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                            .scaleEffect(1.5)
+                    }
+                }
             }
             .alert("Не удалось начать воспроизведение", isPresented: launchErrorBinding) {
                 Button("OK", role: .cancel) {
@@ -194,7 +203,7 @@ private final class ContinueViewModel: ObservableObject {
     @Published var isLoading = false
     @Published var isLaunching = false
     @Published var launchingTitle: String?
-    @Published var activePlayback: ContinuePlaybackRoute?
+    @Published var activePresentation: ContinuePresentation?
     @Published var launchErrorMessage: String?
 
     private let store = PlaybackProgressStore.shared
@@ -337,6 +346,10 @@ private final class ContinueViewModel: ObservableObject {
         isLaunching = true
         launchingTitle = item.title
         launchErrorMessage = nil
+        
+        // Показываем загрузочный экран плеера моментально
+        activePresentation = ContinuePresentation(id: item.kpId, isReady: false, title: item.title, route: nil)
+        
         defer {
             isLaunching = false
             launchingTitle = nil
@@ -345,12 +358,15 @@ private final class ContinueViewModel: ObservableObject {
         do {
             let result = try await AllohaRepository.shared.fetchByKpId(kpId: item.kpId)
             guard let route = makePlaybackRoute(for: item, result: result) else {
+                activePresentation = nil
                 launchErrorMessage = "Не удалось подобрать источник для продолжения просмотра."
                 return
             }
 
-            activePlayback = route
+            // Обновляем презентацию In-Place (ID тот же, поэтому SwiftUI просто обновит содержимое модального окна)
+            activePresentation = ContinuePresentation(id: item.kpId, isReady: true, title: item.title, route: route)
         } catch {
+            activePresentation = nil
             launchErrorMessage = "Не удалось загрузить источник. Попробуй еще раз."
         }
     }
@@ -504,6 +520,13 @@ private struct ContinuePlaybackRoute: Identifiable {
     let streamUrl: String?
     let initialQuality: VideoQualityPreference?
     let seriesResult: AllohaApiResult?
+}
+
+private struct ContinuePresentation: Identifiable {
+    let id: Int // kpId
+    var isReady: Bool = false
+    var title: String
+    var route: ContinuePlaybackRoute?
 }
 
 private struct ContinueWatchingCard: View {
