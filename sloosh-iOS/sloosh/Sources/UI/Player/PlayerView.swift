@@ -194,9 +194,9 @@ class PlayerViewModel: ObservableObject {
     private var currentPlaybackSourceURL: URL?
     private var bufferingTask: Task<Void, Never>?
 
-    private var currentKpId: Int?
-    private var currentSeason: Int?
-    private var currentEpisode: Int?
+    private(set) var currentKpId: Int?
+    private(set) var currentSeason: Int?
+    private(set) var currentEpisode: Int?
     private var targetVoiceover: String?
     /// Pre-resolved direct stream URL; bypasses audioVariant matching when set.
     private var targetDirectStreamUrl: String?
@@ -205,6 +205,11 @@ class PlayerViewModel: ObservableObject {
     var targetQualityPreference: VideoQualityPreference?
     var seriesResult: AllohaApiResult?
     private var hasStartedLoading = false
+
+    var displayLogoUrl: URL? {
+        guard let kpId = currentKpId, kpId > 0 else { return nil }
+        return URL(string: "https://api.neome.uk/api/v1/images/logos/\(kpId)/original")
+    }
 
     private var autoplayNextEpisodeEnabled: Bool {
         let defaults = UserDefaults.standard
