@@ -83,8 +83,8 @@ struct VideoLayerView: UIViewRepresentable {
         }
         if uiView.playerLayer.videoGravity != videoGravity {
             CATransaction.begin()
-            CATransaction.setAnimationDuration(0.3)
-            CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .easeOut))
+            CATransaction.setAnimationDuration(0.35)
+            CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .easeInEaseOut))
             uiView.playerLayer.videoGravity = videoGravity
             CATransaction.commit()
         }
