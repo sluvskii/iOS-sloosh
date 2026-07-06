@@ -36,7 +36,7 @@ struct PlayerControlsView: View {
                 VStack(alignment: .trailing, spacing: 8) {
                     HStack(alignment: .bottom) {
                         PlayerTitleInfoView(vm: vm)
-                            .padding(.leading, 16)
+                            .padding(.leading, 32)
                             .padding(.bottom, 4)
                         
                         Spacer()
