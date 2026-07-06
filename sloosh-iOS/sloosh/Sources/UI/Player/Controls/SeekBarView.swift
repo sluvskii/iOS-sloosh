@@ -9,6 +9,7 @@ struct SeekBarView: View {
     @State private var dragProgress: Double = 0
     @State private var isHStackScrubbing = false
     @State private var screenScrubInitialTime: Double = 0
+    @State private var scrubStartLocationX: CGFloat = 0
 
     private var progress: Double {
         guard vm.currentDuration > 0 else { return 0 }
@@ -57,11 +58,25 @@ struct SeekBarView: View {
                     if !isHStackScrubbing {
                         isHStackScrubbing = true
                         screenScrubInitialTime = vm.currentTime
+                        scrubStartLocationX = value.startLocation.x
                         isInteracting = true
                     }
-                    let width = UIScreen.main.bounds.width
-                    let delta = (value.translation.width / width) * vm.currentDuration
-                    vm.screenScrubTime = max(0, min(vm.currentDuration, screenScrubInitialTime + delta))
+                    
+                    let trackWidth = UIScreen.main.bounds.width - 32 // Примерная ширина рабочей области (минус padding)
+                    let startX = max(1, min(trackWidth - 1, scrubStartLocationX))
+                    
+                    let deltaSeconds: Double
+                    if value.translation.width < 0 {
+                        // Тянем влево
+                        let leftMultiplier = screenScrubInitialTime / Double(startX)
+                        deltaSeconds = Double(value.translation.width) * leftMultiplier
+                    } else {
+                        // Тянем вправо
+                        let rightMultiplier = (vm.currentDuration - screenScrubInitialTime) / Double(trackWidth - startX)
+                        deltaSeconds = Double(value.translation.width) * rightMultiplier
+                    }
+                    
+                    vm.screenScrubTime = max(0, min(vm.currentDuration, screenScrubInitialTime + deltaSeconds))
                 }
                 .onEnded { value in
                     guard isHStackScrubbing else { return }
