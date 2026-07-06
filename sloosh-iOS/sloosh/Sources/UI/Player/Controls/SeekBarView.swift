@@ -60,6 +60,7 @@ struct SeekBarView: View {
                         }
                 )
             }
+            .frame(height: 18) // Fixes the GeometryReader from expanding to infinity vertically
 
             Text("-" + formatTime(max(0, vm.currentDuration - vm.currentTime)))
                 .font(.system(size: 13, weight: .medium).monospacedDigit())
