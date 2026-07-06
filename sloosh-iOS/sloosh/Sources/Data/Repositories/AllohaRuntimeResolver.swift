@@ -141,12 +141,6 @@ final class AllohaRuntimeResolver: NSObject, WKNavigationDelegate, WKScriptMessa
             pendingPayloads.removeFirst(pendingPayloads.count - 12)
         }
 
-        let trimmed = payload.trimmingCharacters(in: .whitespaces)
-        if trimmed.hasPrefix("{") && trimmed.contains("hlsSource") {
-            resolveIfReady(payload)
-            return
-        }
-
         if isMasterPlaylistPayload(payload) {
             bestMasterPayload = payload
             scheduleFallbackResolve(for: payload, delay: bestHlsSourcePayload == nil ? 2.4 : 0.8)
@@ -276,17 +270,25 @@ final class AllohaRuntimeResolver: NSObject, WKNavigationDelegate, WKScriptMessa
             || headers["authorization"]?.isEmpty == false
     }
 
+    private func isLikelyURL(_ payload: String) -> Bool {
+        let trimmed = payload.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.hasPrefix("{") || trimmed.hasPrefix("<") || trimmed.contains(" ") { return false }
+        return trimmed.hasPrefix("http") || trimmed.hasPrefix("//")
+    }
+
+    private func isMasterPlaylistPayload(_ payload: String) -> Bool {
+        guard isLikelyURL(payload) else { return false }
+        return payload.localizedCaseInsensitiveContains("master.m3u8")
+    }
+
     private func isPlayableURL(_ url: String) -> Bool {
         let lower = url.lowercased()
         if lower.contains("blank.mp4") || lower.contains("cdn.plyr.io") { return false }
         return lower.contains(".m3u8") || lower.contains(".mp4") || lower.contains(".mpd")
     }
 
-    private func isMasterPlaylistPayload(_ payload: String) -> Bool {
-        payload.localizedCaseInsensitiveContains("master.m3u8")
-    }
-
     private func isPlayablePayload(_ payload: String) -> Bool {
+        guard isLikelyURL(payload) else { return false }
         let lower = payload.lowercased()
         if lower.contains("blank.mp4") || lower.contains("cdn.plyr.io") { return false }
         return lower.contains(".m3u8")
