@@ -7,6 +7,10 @@ import MediaPlayer
 struct TopBarView: View {
     @ObservedObject var vm: PlayerViewModel
     let onDismiss: () -> Void
+    @Binding var isInteracting: Bool
+    
+    @State private var currentVolume: Float = AVAudioSession.sharedInstance().outputVolume
+    @State private var volumeObservation: NSKeyValueObservation?
 
     var body: some View {
         HStack(alignment: .center) {
@@ -15,6 +19,17 @@ struct TopBarView: View {
             volumeGroup
         }
         .padding(.horizontal, 16)
+        .onAppear {
+            do { try AVAudioSession.sharedInstance().setActive(true) } catch {}
+            volumeObservation = AVAudioSession.sharedInstance().observe(\.outputVolume, options: [.initial, .new]) { session, _ in
+                DispatchQueue.main.async {
+                    self.currentVolume = session.outputVolume
+                }
+            }
+        }
+        .onDisappear {
+            volumeObservation?.invalidate()
+        }
     }
 
     // MARK: Левая группа: закрыть | PiP | AirPlay
@@ -57,6 +72,11 @@ struct TopBarView: View {
         HStack(spacing: 10) {
             SystemVolumeSlider()
                 .frame(width: 150, height: 20)
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { _ in isInteracting = true }
+                        .onEnded { _ in isInteracting = false }
+                )
 
             Image(systemName: volumeIcon)
                 .font(.system(size: 14, weight: .medium))
@@ -69,7 +89,7 @@ struct TopBarView: View {
     }
 
     private var volumeIcon: String {
-        let vol = AVAudioSession.sharedInstance().outputVolume
+        let vol = currentVolume
         if vol == 0 { return "speaker.slash.fill" }
         else if vol < 0.33 { return "speaker.wave.1.fill" }
         else if vol < 0.66 { return "speaker.wave.2.fill" }

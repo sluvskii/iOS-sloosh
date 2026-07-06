@@ -26,7 +26,7 @@ struct PlayerControlsView: View {
 
             // ── Верхний и нижний блоки ───────────────────────
             VStack {
-                TopBarView(vm: vm, onDismiss: onDismiss)
+                TopBarView(vm: vm, onDismiss: onDismiss, isInteracting: $isInteracting)
                     .scaleEffect(showControls ? 1.0 : 0.95)
                     .padding(.top, 32) // Абсолютный отступ от края экрана
 
