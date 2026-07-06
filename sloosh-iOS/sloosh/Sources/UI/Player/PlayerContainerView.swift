@@ -12,6 +12,8 @@ struct PlayerContainerView: View {
     @State private var hideTask: Task<Void, Never>?
     @State private var seekFeedback: SeekFeedback?
     @State private var isInteracting = false
+    @State private var lastLeftTap: Date = .distantPast
+    @State private var lastRightTap: Date = .distantPast
 
     struct SeekFeedback: Identifiable {
         let id = UUID()
@@ -53,7 +55,7 @@ struct PlayerContainerView: View {
                     .transition(.opacity)
             }
         }
-        .animation(.easeInOut(duration: 0.22), value: showControls)
+        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: showControls)
         .onAppear { scheduleAutoHide() }
         .onChange(of: vm.isPlaying) { _, _ in
             if vm.isPlaying { scheduleAutoHide() }
@@ -74,22 +76,36 @@ struct PlayerContainerView: View {
             // Левая половина — -10с
             Color.clear
                 .contentShape(Rectangle())
-                .onTapGesture(count: 2) {
-                    vm.seek(by: -10)
-                    showSeekFeedback(forward: false)
-                    resetHideTimer()
+                .onTapGesture {
+                    let now = Date()
+                    if now.timeIntervalSince(lastLeftTap) < 0.35 {
+                        showControls = true
+                        vm.seek(by: -10)
+                        showSeekFeedback(forward: false)
+                        resetHideTimer()
+                        lastLeftTap = .distantPast
+                    } else {
+                        lastLeftTap = now
+                        toggleControls()
+                    }
                 }
-                .onTapGesture(count: 1) { toggleControls() }
 
             // Правая половина — +10с
             Color.clear
                 .contentShape(Rectangle())
-                .onTapGesture(count: 2) {
-                    vm.seek(by: 10)
-                    showSeekFeedback(forward: true)
-                    resetHideTimer()
+                .onTapGesture {
+                    let now = Date()
+                    if now.timeIntervalSince(lastRightTap) < 0.35 {
+                        showControls = true
+                        vm.seek(by: 10)
+                        showSeekFeedback(forward: true)
+                        resetHideTimer()
+                        lastRightTap = .distantPast
+                    } else {
+                        lastRightTap = now
+                        toggleControls()
+                    }
                 }
-                .onTapGesture(count: 1) { toggleControls() }
         }
     }
 
