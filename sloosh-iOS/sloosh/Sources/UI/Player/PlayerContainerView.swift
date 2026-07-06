@@ -81,7 +81,7 @@ struct PlayerContainerView: View {
         )
     }
     
-    private let showAnimation: Animation = .spring(response: 0.35, dampingFraction: 0.85)
+    private let showAnimation: Animation = .spring(response: 0.5, dampingFraction: 0.75)
     private let hideAnimation: Animation = .easeOut(duration: 0.5)
 
     // MARK: - Gesture layer
