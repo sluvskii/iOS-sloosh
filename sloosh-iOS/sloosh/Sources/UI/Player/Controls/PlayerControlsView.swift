@@ -98,7 +98,7 @@ struct PlayerTitleInfoView: View {
                     Image(uiImage: image)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
-                        .frame(height: 36, alignment: .leading)
+                        .frame(height: 56, alignment: .leading)
                         .shadow(color: .black.opacity(0.4), radius: 4, x: 0, y: 2)
                 } fallback: {
                     fallbackTextView
@@ -110,7 +110,7 @@ struct PlayerTitleInfoView: View {
             // Сезон и Серия (если это сериал)
             if !vm.isMovie, let season = vm.currentSeason, let episode = vm.currentEpisode {
                 Text("\(season) сезон, \(episode) серия")
-                    .font(.subheadline)
+                    .font(.footnote)
                     .fontWeight(.medium)
                     .foregroundColor(.white.opacity(0.85))
                     .shadow(color: .black.opacity(0.6), radius: 3, x: 0, y: 1)
