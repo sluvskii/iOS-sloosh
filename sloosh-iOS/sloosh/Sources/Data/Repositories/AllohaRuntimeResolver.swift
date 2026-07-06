@@ -272,6 +272,7 @@ final class AllohaRuntimeResolver: NSObject, WKNavigationDelegate, WKScriptMessa
 
     private func isPlayableURL(_ url: String) -> Bool {
         let lower = url.lowercased()
+        if lower.contains("blank.mp4") || lower.contains("cdn.plyr.io") { return false }
         return lower.contains(".m3u8") || lower.contains(".mp4") || lower.contains(".mpd")
     }
 
@@ -280,9 +281,11 @@ final class AllohaRuntimeResolver: NSObject, WKNavigationDelegate, WKScriptMessa
     }
 
     private func isPlayablePayload(_ payload: String) -> Bool {
-        payload.localizedCaseInsensitiveContains(".m3u8")
-            || payload.localizedCaseInsensitiveContains(".mp4")
-            || payload.localizedCaseInsensitiveContains(".mpd")
+        let lower = payload.lowercased()
+        if lower.contains("blank.mp4") || lower.contains("cdn.plyr.io") { return false }
+        return lower.contains(".m3u8")
+            || lower.contains(".mp4")
+            || lower.contains(".mpd")
     }
 
     private func finish(with result: [String: Any]) {
