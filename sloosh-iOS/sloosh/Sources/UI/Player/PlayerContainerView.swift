@@ -29,13 +29,7 @@ struct PlayerContainerView: View {
                 .onAppear { vm.pipController = pipController }
                 .onChange(of: pipController) { _, newVal in vm.pipController = newVal }
 
-            // 3. Буферизация
-            if vm.isBuffering && !vm.isLoading {
-                ProgressView()
-                    .progressViewStyle(.circular)
-                    .tint(.white)
-                    .scaleEffect(1.4)
-            }
+            // 3. (Буферизация перенесена в саму кнопку Play)
 
             // 4. Ошибка
             if let error = vm.error {
