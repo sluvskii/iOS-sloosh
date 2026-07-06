@@ -62,19 +62,17 @@ struct SeekBarView: View {
                         isInteracting = true
                     }
                     
-                    let trackWidth = UIScreen.main.bounds.width - 32 // Примерная ширина рабочей области (минус padding)
+                    let trackWidth = UIScreen.main.bounds.width - 32 // Примерная ширина рабочей области
                     let startX = max(1, min(trackWidth - 1, scrubStartLocationX))
                     
-                    let deltaSeconds: Double
-                    if value.translation.width < 0 {
-                        // Тянем влево
-                        let leftMultiplier = screenScrubInitialTime / Double(startX)
-                        deltaSeconds = Double(value.translation.width) * leftMultiplier
-                    } else {
-                        // Тянем вправо
-                        let rightMultiplier = (vm.currentDuration - screenScrubInitialTime) / Double(trackWidth - startX)
-                        deltaSeconds = Double(value.translation.width) * rightMultiplier
-                    }
+                    let thumbX = (screenScrubInitialTime / vm.currentDuration) * Double(trackWidth)
+                    let distanceToThumb = abs(Double(startX) - thumbX)
+                    
+                    // Чем дальше тап от ползунка, тем быстрее свайп (до 6 раз быстрее)
+                    let speedFactor = 1.0 + (distanceToThumb / Double(trackWidth)) * 5.0
+                    
+                    let baseMultiplier = vm.currentDuration / Double(trackWidth)
+                    let deltaSeconds = Double(value.translation.width) * baseMultiplier * speedFactor
                     
                     vm.screenScrubTime = max(0, min(vm.currentDuration, screenScrubInitialTime + deltaSeconds))
                 }
