@@ -1,6 +1,17 @@
 import SwiftUI
 import AVKit
 
+class CustomPlayerViewController: AVPlayerViewController {
+    var onWillDismiss: (() -> Void)?
+    
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        if self.isBeingDismissed {
+            onWillDismiss?()
+        }
+    }
+}
+
 class PlayerPresenterViewController: UIViewController {
     var player: AVPlayer? {
         didSet {
@@ -17,7 +28,7 @@ class PlayerPresenterViewController: UIViewController {
     var onDismiss: (() -> Void)?
     private var didPresent = false
     private var isDismissed = false
-    private var playerController: AVPlayerViewController?
+    private var playerController: CustomPlayerViewController?
     private var observation: NSKeyValueObservation?
     
 
@@ -37,11 +48,16 @@ class PlayerPresenterViewController: UIViewController {
                 UIDevice.current.setValue(UIInterfaceOrientation.landscapeRight.rawValue, forKey: "orientation")
             }
             
-            let pc = AVPlayerViewController()
+            let pc = CustomPlayerViewController()
             pc.player = player
             pc.showsPlaybackControls = true
             pc.allowsPictureInPicturePlayback = true
             pc.modalPresentationStyle = .fullScreen
+            
+            pc.onWillDismiss = { [weak self] in
+                self?.forcePortraitOrientation()
+            }
+            
             self.playerController = pc
             
             self.present(pc, animated: false) {
@@ -65,11 +81,8 @@ class PlayerPresenterViewController: UIViewController {
         }
     }
     
-    private func handleDismissal() {
-        guard !isDismissed else { return }
-        isDismissed = true
-        
-        // Жестко форсируем портретную ориентацию, чтобы сработал поворот даже при заблокированной ориентации
+    private func forcePortraitOrientation() {
+        // Жестко форсируем портретную ориентацию ДО окончания анимации закрытия
         AppDelegate.orientationLock = .portrait
         
         if #available(iOS 16.0, *) {
@@ -81,6 +94,13 @@ class PlayerPresenterViewController: UIViewController {
             UIDevice.current.setValue(UIInterfaceOrientation.portrait.rawValue, forKey: "orientation")
             UIViewController.attemptRotationToDeviceOrientation()
         }
+    }
+
+    private func handleDismissal() {
+        guard !isDismissed else { return }
+        isDismissed = true
+        
+        forcePortraitOrientation()
         
         // Через небольшую задержку возвращаем возможность вращения экрана (если это было задумано)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
