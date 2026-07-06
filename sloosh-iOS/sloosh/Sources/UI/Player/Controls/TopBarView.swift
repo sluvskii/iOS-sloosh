@@ -11,6 +11,11 @@ struct TopBarView: View {
     
     @State private var currentVolume: Float = AVAudioSession.sharedInstance().outputVolume
     @State private var volumeObservation: NSKeyValueObservation?
+    
+    @State private var overrideVolume: Float? = nil
+    @State private var dragInitialVolume: Float = 0
+    @State private var scrubStartLocationX: CGFloat = 0
+    @State private var isVolumeScrubbing = false
 
     var body: some View {
         HStack(alignment: .center) {
@@ -70,13 +75,8 @@ struct TopBarView: View {
     @ViewBuilder
     private var volumeGroup: some View {
         HStack(spacing: 10) {
-            SystemVolumeSlider()
+            SystemVolumeSlider(overrideVolume: $overrideVolume)
                 .frame(width: 150, height: 20)
-                .simultaneousGesture(
-                    DragGesture(minimumDistance: 0)
-                        .onChanged { _ in isInteracting = true }
-                        .onEnded { _ in isInteracting = false }
-                )
 
             Image(systemName: volumeIcon)
                 .font(.system(size: 14, weight: .medium))
@@ -86,6 +86,39 @@ struct TopBarView: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
         .glassEffect(.regular, in: .capsule)
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 10)
+                .onChanged { value in
+                    if abs(value.translation.height) > abs(value.translation.width) && !isVolumeScrubbing {
+                        return
+                    }
+                    if !isVolumeScrubbing {
+                        isVolumeScrubbing = true
+                        dragInitialVolume = currentVolume
+                        scrubStartLocationX = value.startLocation.x
+                        isInteracting = true
+                    }
+                    
+                    let trackWidth = 150.0 + 10.0 + 18.0 + 28.0 // Примерная ширина всей капсулы
+                    let startX = max(1, min(trackWidth - 1, scrubStartLocationX))
+                    
+                    let thumbX = Double(dragInitialVolume) * Double(trackWidth)
+                    let distanceToThumb = abs(Double(startX) - thumbX)
+                    
+                    let speedFactor = 1.0 + (distanceToThumb / Double(trackWidth)) * 5.0
+                    let baseMultiplier = 1.0 / Double(trackWidth) // Макс громкость = 1.0
+                    
+                    let deltaVol = Double(value.translation.width) * baseMultiplier * speedFactor
+                    let newVol = Float(max(0, min(1.0, Double(dragInitialVolume) + deltaVol)))
+                    
+                    overrideVolume = newVol
+                }
+                .onEnded { value in
+                    guard isVolumeScrubbing else { return }
+                    isVolumeScrubbing = false
+                    isInteracting = false
+                }
+        )
     }
 
     private var volumeIcon: String {
@@ -119,6 +152,8 @@ struct AirPlayButton: UIViewRepresentable {
 // MARK: - Системный слайдер громкости
 
 struct SystemVolumeSlider: UIViewRepresentable {
+    @Binding var overrideVolume: Float?
+
     func makeUIView(context: Context) -> MPVolumeView {
         let v = MPVolumeView()
         // Скрываем кнопку AirPlay — она уже есть отдельно
@@ -132,5 +167,14 @@ struct SystemVolumeSlider: UIViewRepresentable {
         v.tintColor = .white
         return v
     }
-    func updateUIView(_ uiView: MPVolumeView, context: Context) {}
+    func updateUIView(_ uiView: MPVolumeView, context: Context) {
+        if let vol = overrideVolume {
+            if let slider = uiView.subviews.first(where: { $0 is UISlider }) as? UISlider {
+                slider.value = vol
+            }
+            DispatchQueue.main.async {
+                self.overrideVolume = nil
+            }
+        }
+    }
 }
