@@ -143,6 +143,18 @@ class PlayerViewModel: ObservableObject {
 
     var isUserSeeking = false
 
+    var isMovie: Bool {
+        return seriesResult?.isSerial == false || seriesResult?.movie != nil
+    }
+
+    var hasNextEpisode: Bool {
+        return nextEpisodeCandidate() != nil
+    }
+
+    var hasPreviousEpisode: Bool {
+        return previousEpisodeCandidate() != nil
+    }
+
     // MARK: - Timing
     @Published var currentTime: Double = 0
     @Published var currentDuration: Double = 0
@@ -963,28 +975,42 @@ class PlayerViewModel: ObservableObject {
     private func handlePlaybackEnded() async {
         guard autoplayNextEpisodeEnabled,
               !isAdvancingToNextEpisode,
-              let nextEpisode = nextEpisodeCandidate() else {
+              hasNextEpisode else {
             return
         }
 
         isAdvancingToNextEpisode = true
         defer { isAdvancingToNextEpisode = false }
+        
+        playNextEpisode()
+    }
 
-        currentSeason = nextEpisode.season
-        currentEpisode = nextEpisode.episode
-        _currentTranslationName = nextEpisode.translation.name
-        targetVoiceover = nextEpisode.translation.name
+    func playNextEpisode() {
+        guard let nextEpisode = nextEpisodeCandidate() else { return }
+        playEpisode(nextEpisode)
+    }
+
+    func playPreviousEpisode() {
+        guard let prevEpisode = previousEpisodeCandidate() else { return }
+        playEpisode(prevEpisode)
+    }
+
+    private func playEpisode(_ episode: (season: Int, episode: Int, translation: AllohaTranslation)) {
+        currentSeason = episode.season
+        currentEpisode = episode.episode
+        _currentTranslationName = episode.translation.name
+        targetVoiceover = episode.translation.name
 
         if let kpId = currentKpId {
-            PlaybackProgressStore.shared.saveLastPlayed(kpId: kpId, season: nextEpisode.season, episode: nextEpisode.episode)
+            PlaybackProgressStore.shared.saveLastPlayed(kpId: kpId, season: episode.season, episode: episode.episode)
         }
 
         beginLoad(
-            iframeUrl: nextEpisode.translation.iframeUrl,
+            iframeUrl: episode.translation.iframeUrl,
             kpId: currentKpId,
-            season: nextEpisode.season,
-            episode: nextEpisode.episode,
-            selectedVoiceover: nextEpisode.translation.name
+            season: episode.season,
+            episode: episode.episode,
+            selectedVoiceover: episode.translation.name
         )
     }
 
@@ -1006,6 +1032,29 @@ class PlayerViewModel: ObservableObject {
 
                 if season.season == currentSeason && episode.episode == currentEpisode {
                     foundCurrentEpisode = true
+                }
+            }
+        }
+
+        return nil
+    }
+
+    private func previousEpisodeCandidate() -> (season: Int, episode: Int, translation: AllohaTranslation)? {
+        guard let seriesResult, seriesResult.isSerial,
+              let currentSeason, let currentEpisode else {
+            return nil
+        }
+
+        let sortedSeasons = seriesResult.seasons.sorted { $0.season < $1.season }
+        var lastSeenEpisode: (season: Int, episode: Int, translation: AllohaTranslation)? = nil
+
+        for season in sortedSeasons {
+            for episode in season.episodes.sorted(by: { $0.episode < $1.episode }) {
+                if season.season == currentSeason && episode.episode == currentEpisode {
+                    return lastSeenEpisode
+                }
+                if let translation = preferredTranslation(in: episode) {
+                    lastSeenEpisode = (season.season, episode.episode, translation)
                 }
             }
         }
