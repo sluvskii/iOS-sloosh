@@ -11,6 +11,7 @@ struct PlayerControlsView: View {
     @State private var showSpeedSheet = false
     @State private var showSubtitleSheet = false
     @Binding var isInteracting: Bool
+    var showControls: Bool
 
     var body: some View {
         ZStack {
@@ -49,10 +50,12 @@ struct PlayerControlsView: View {
                         .padding(.bottom, 32) // Абсолютный отступ от края экрана
                 }
             }
+            .scaleEffect(showControls ? 1.0 : 0.95)
             .ignoresSafeArea(edges: .vertical) // Игнорируем safe area для идеальной симметрии
 
             // ── Центральные кнопки (ровно по центру экрана) ───
             CenterControlsView(vm: vm)
+                .scaleEffect(showControls ? 1.0 : 0.95)
         }
         // Sheets
         .sheet(isPresented: $showVoiceoverSheet) {
