@@ -26,7 +26,7 @@ struct PlayerControlsView: View {
             // ── Верхний и нижний блоки ───────────────────────
             VStack {
                 TopBarView(vm: vm, onDismiss: onDismiss)
-                    .padding(.top, 16) // Стандартизированный отступ сверху
+                    .padding(.top, 32) // Абсолютный отступ от края экрана
 
                 Spacer()
 
@@ -46,9 +46,10 @@ struct PlayerControlsView: View {
 
                     SeekBarView(vm: vm, isInteracting: $isInteracting)
                         .padding(.horizontal, 16)
-                        .padding(.bottom, 16) // Стандартизированный отступ снизу
+                        .padding(.bottom, 32) // Абсолютный отступ от края экрана
                 }
             }
+            .ignoresSafeArea(edges: .vertical) // Игнорируем safe area для идеальной симметрии
 
             // ── Центральные кнопки (ровно по центру экрана) ───
             CenterControlsView(vm: vm)
