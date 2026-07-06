@@ -8,6 +8,13 @@ enum AllohaRuntimeParser {
             return stream
         }
 
+        // Дополнительная попытка: ищем hlsSource внутри других ключей (сериалы)
+        if let nested = extractNestedHlsSourcePayload(payload) {
+            if let stream = parseAllohaBNsiStream(nested, baseURL: url, headers: headers) {
+                return stream
+            }
+        }
+
         if let fallback = firstPreferredStreamURL(in: payload, baseURL: url) {
             return [
                 "videoURL": fallback.absoluteString,
@@ -19,6 +26,27 @@ enum AllohaRuntimeParser {
             ]
         }
 
+        return nil
+    }
+
+    /// Ищет hlsSource внутри прочих JSON-общектов (для сериалов Alloha)
+    private static func extractNestedHlsSourcePayload(_ payload: String) -> String? {
+        guard let data = payload.data(using: .utf8),
+              let root = try? JSONSerialization.jsonObject(with: data) else { return nil }
+        // Обходим возможные обёртки: ["data"]["hlsSource"], ["result"]["hlsSource"], и т..д.
+        let wrapperKeys = ["data", "result", "payload", "response", "content", "body"]
+        if let dict = root as? [String: Any] {
+            for key in wrapperKeys {
+                if let nested = dict[key] as? [String: Any],
+                   nested["hlsSource"] != nil,
+                   let nestedData = try? JSONSerialization.data(withJSONObject: nested),
+                   let nestedStr = String(data: nestedData, encoding: .utf8) {
+                    return nestedStr
+                }
+            }
+            // Также проверяем если корень сам содержит hlsSource (это уже обработается в parseAllohaBNsiStream)
+            if dict["hlsSource"] != nil { return nil }
+        }
         return nil
     }
 
