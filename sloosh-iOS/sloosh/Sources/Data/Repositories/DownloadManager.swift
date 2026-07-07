@@ -184,6 +184,13 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             )
             downloads.append(item)
         }
+        
+        ToastManager.shared.show(
+            title: "Загрузка началась",
+            subtitle: "Скачивание «\(item.title)» добавлено в очередь",
+            icon: "arrow.down.circle.fill"
+        )
+        
         saveDownloads()
         
         Task {
@@ -194,6 +201,12 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     func resumeDownload(id: String) {
         guard let item = downloads.first(where: { $0.id == id }) else { return }
         updateItem(id: id) { $0.status = .pending; $0.errorMessage = nil }
+        
+        ToastManager.shared.show(
+            title: "Загрузка возобновлена",
+            subtitle: "Скачивание «\(item.title)» продолжено",
+            icon: "play.circle.fill"
+        )
         
         Task {
             let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
@@ -212,10 +225,17 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         }
     }
     
-    func pauseDownload(id: String) {
+    func pauseDownload(id: String, silent: Bool = false) {
         updateItem(id: id) {
             $0.status = .paused
             $0.errorMessage = "Приостановлено"
+        }
+        
+        if !silent {
+            ToastManager.shared.show(
+                title: "Пауза",
+                icon: "pause.circle.fill"
+            )
         }
         
         session.getAllTasks { tasks in
@@ -228,10 +248,17 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     }
     
     func deleteDownload(id: String) {
-        pauseDownload(id: id)
+        pauseDownload(id: id, silent: true)
         
         if let idx = downloads.firstIndex(where: { $0.id == id }) {
             let item = downloads[idx]
+            
+            ToastManager.shared.show(
+                title: "Удалено",
+                subtitle: item.title,
+                icon: "trash.fill"
+            )
+            
             downloads.remove(at: idx)
             saveDownloads()
             
@@ -439,6 +466,14 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         }
         
         if downloadedCount == totalSegments {
+            if let downloadedItem = downloads.first(where: { $0.id == itemId }) {
+                ToastManager.shared.show(
+                    title: "Загрузка завершена",
+                    subtitle: "«\(downloadedItem.title)» сохранено",
+                    icon: "checkmark.circle.fill"
+                )
+            }
+            activeManifests.removeValue(forKey: itemId)
             return
         }
         
@@ -533,6 +568,14 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         updateItem(id: id) {
             $0.status = .failed
             $0.errorMessage = message
+        }
+        
+        if let item = downloads.first(where: { $0.id == id }) {
+            ToastManager.shared.show(
+                title: "Ошибка",
+                subtitle: "Не удалось скачать «\(item.title)»",
+                icon: "exclamationmark.triangle.fill"
+            )
         }
     }
     
