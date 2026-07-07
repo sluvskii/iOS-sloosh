@@ -135,9 +135,18 @@ class PlaybackHlsRewriter {
         guard let index, index >= 0, index < voices.count else { return line }
         let voiceName = voices[index]
         
+        let lowerName = voiceName.lowercased()
         let normalizedLang: String
-        if voiceName.lowercased().contains("eng") || voiceName.lowercased().contains("original") {
+        if lowerName.contains("eng") || lowerName.contains("original") || lowerName.contains("англ") || lowerName.contains("ориг") {
             normalizedLang = "en"
+        } else if lowerName.contains("ukr") || lowerName.contains("укр") {
+            normalizedLang = "uk"
+        } else if lowerName.contains("fra") || lowerName.contains("фр") {
+            normalizedLang = "fr"
+        } else if lowerName.contains("ger") || lowerName.contains("нем") {
+            normalizedLang = "de"
+        } else if lowerName.contains("esp") || lowerName.contains("исп") {
+            normalizedLang = "es"
         } else {
             normalizedLang = "ru"
         }

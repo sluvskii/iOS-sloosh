@@ -29,15 +29,15 @@ struct DownloadItem: Identifiable, Codable, Equatable {
     let addedAt: Date
     var errorMessage: String?
     
-    var localPlayableUrl: URL {
+    var localPlayableUrl: URL? {
         let relative = "\(localDirectory)/\(localPlayableFileName)"
-        return URL(string: "http://127.0.0.1:8181/local/\(relative)")!
+        guard let encoded = relative.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) else { return nil }
+        return URL(string: "http://127.0.0.1:8181/local/\(encoded)")
     }
     
     var localPosterUrl: URL? {
         guard posterUrl != nil else { return nil }
-        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        return docs.appendingPathComponent(localDirectory).appendingPathComponent("poster.jpg")
+        return FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first?.appendingPathComponent(localDirectory).appendingPathComponent("poster.jpg")
     }
     
     var sizeString: String {
@@ -355,12 +355,16 @@ final class DownloadManager: ObservableObject {
                     }
                 }
             } else {
-                // Segment URL
-                let url: URL
+                // Segment URL — skip lines that don't parse to a valid URL
+                let url: URL?
                 if trimmed.hasPrefix("http") {
-                    url = URL(string: trimmed)!
+                    url = URL(string: trimmed)
                 } else {
-                    url = URL(string: trimmed, relativeTo: mediaPlaylistUrl)!
+                    url = URL(string: trimmed, relativeTo: mediaPlaylistUrl)
+                }
+                guard let url else {
+                    print("[DownloadManager] Skipping malformed segment URL: \(trimmed)")
+                    continue
                 }
                 segmentUrls.append(url)
                 segmentLines.append(i)
@@ -381,7 +385,12 @@ final class DownloadManager: ObservableObject {
         if let keyUrl {
             do {
                 let keyData = try await downloadData(from: keyUrl, headers: headers)
-                try keyData.write(to: taskDir.appendingPathComponent("key.bin"))
+                let keyFile = taskDir.appendingPathComponent("key.bin")
+                try keyData.write(to: keyFile, options: [.atomic, .completeFileProtection])
+                var rv = URLResourceValues()
+                rv.isExcludedFromBackup = true
+                var mutableKeyFile = keyFile
+                try mutableKeyFile.setResourceValues(rv)
             } catch {
                 await finishWithError(id: itemId, message: "Ошибка скачивания ключа дешифрования")
                 return
@@ -550,11 +559,16 @@ final class DownloadManager: ObservableObject {
                     }
                 }
             } else if !trimmed.hasPrefix("#") {
-                let variantUrl: URL
+                // Variant URL — skip lines that don't parse to a valid URL
+                let variantUrl: URL?
                 if trimmed.hasPrefix("http") {
-                    variantUrl = URL(string: trimmed)!
+                    variantUrl = URL(string: trimmed)
                 } else {
-                    variantUrl = URL(string: trimmed, relativeTo: baseUrl)!
+                    variantUrl = URL(string: trimmed, relativeTo: baseUrl)
+                }
+                guard let variantUrl else {
+                    print("[DownloadManager] Skipping malformed variant URL: \(trimmed)")
+                    continue
                 }
                 variants.append((url: variantUrl, height: currentHeight, bandwidth: currentBandwidth))
             }

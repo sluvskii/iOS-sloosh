@@ -118,21 +118,57 @@ func allohaTranslationNamesMatch(_ lhs: String?, _ rhs: String?, exactOnly: Bool
     return false
 }
 
-class TrustAllSessionDelegate: NSObject, @preconcurrency URLSessionDelegate, @unchecked Sendable {
+// MARK: - Selective SSL Delegate
+// Bypasses certificate validation only for Alloha CDN hosts that use self-signed certs.
+// This is intentionally narrow — all other hosts still go through default cert validation.
+class AllohaTrustedSessionDelegate: NSObject, @preconcurrency URLSessionDelegate, @unchecked Sendable {
+    
+    private static let trustedHosts: Set<String> = [
+        "alloha.tv", "alloh.tv",
+        "feeds.alloha.tv", "static.alloha.tv",
+        "cdn.alloha.tv",
+        "vgif.ru", "allohalive.ru",
+        "videocdn.tv", "dhklxm.ru", "cdnhl.ru"
+    ]
+    
     @MainActor
     func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge, completionHandler: @escaping @MainActor @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
-        if challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
-           let serverTrust = challenge.protectionSpace.serverTrust {
-            completionHandler(.useCredential, URLCredential(trust: serverTrust))
+        guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
+              let serverTrust = challenge.protectionSpace.serverTrust else {
+            completionHandler(.performDefaultHandling, nil)
             return
         }
-        completionHandler(.performDefaultHandling, nil)
+        let host = challenge.protectionSpace.host.lowercased()
+        let isTrustedHost = Self.trustedHosts.contains(where: { host == $0 || host.hasSuffix("." + $0) })
+        if isTrustedHost {
+            completionHandler(.useCredential, URLCredential(trust: serverTrust))
+        } else {
+            completionHandler(.performDefaultHandling, nil)
+        }
     }
 }
 
+// Legacy alias kept for compilation — remove when all usages are updated
+typealias TrustAllSessionDelegate = AllohaTrustedSessionDelegate
+
+
 final class AllohaRepository: @unchecked Sendable {
     static let shared = AllohaRepository()
-    private let token = "ffbd312217e27c4245f2678afe1881"
+    
+    /// Reads AllohaToken from Info.plist (set via ALLOHA_TOKEN build variable or Secrets.xcconfig).
+    /// Never hardcode this value in source — it lives in the project's build settings instead.
+    private static let token: String = {
+        if let t = Bundle.main.object(forInfoDictionaryKey: "AllohaToken") as? String, !t.isEmpty, t != "$(ALLOHA_TOKEN)" {
+            return t
+        }
+        // Fallback for local dev without xcconfig: read from environment
+        if let t = ProcessInfo.processInfo.environment["ALLOHA_TOKEN"], !t.isEmpty {
+            return t
+        }
+        assertionFailure("AllohaToken not set. Add ALLOHA_TOKEN to your Secrets.xcconfig or build settings.")
+        return ""
+    }()
+    private var token: String { Self.token }
     
     private var catalogCache: [Int: (result: AllohaApiResult, expiresAt: Date)] = [:]
     private let cacheTtl: TimeInterval = 5 * 60 // 5 minutes

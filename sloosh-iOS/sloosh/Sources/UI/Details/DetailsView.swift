@@ -216,7 +216,7 @@ struct DetailsView: View {
                                    downloadItem.translationName == translation.name {
                                     selectedIframeUrl = nil
                                     playerVoiceover = downloadItem.translationName
-                                    playerStreamUrl = downloadItem.localPlayableUrl.absoluteString
+                                    playerStreamUrl = downloadItem.localPlayableUrl?.absoluteString
                                 } else {
                                     selectedIframeUrl = translation.iframeUrl
                                     playerVoiceover = translation.name

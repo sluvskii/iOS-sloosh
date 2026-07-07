@@ -119,7 +119,7 @@ struct SourceSelectionView: View {
     
     func selectSeason(_ s: Int) {
         selectedSeason = s
-        let seasonObj = result.seasons.first(where: { $0.season == s })!
+        guard let seasonObj = result.seasons.first(where: { $0.season == s }) else { return }
         if let e = selectedEpisode, !seasonObj.episodes.contains(where: { $0.episode == e }) {
             selectedEpisode = seasonObj.episodes.first?.episode ?? 1
         }
