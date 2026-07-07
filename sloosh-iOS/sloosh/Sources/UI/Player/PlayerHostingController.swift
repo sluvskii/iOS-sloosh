@@ -22,33 +22,23 @@ final class PlayerHostingController<Content: View>: UIHostingController<Content>
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        AppDelegate.orientationLock = .landscape
-        
-        if #available(iOS 16.0, *) {
-            if let scene = view.window?.windowScene {
-                scene.requestGeometryUpdate(.iOS(interfaceOrientations: .landscape)) { error in
-                    print("[PlayerHostingController] rotation error: \(error)")
-                }
-                setNeedsUpdateOfSupportedInterfaceOrientations()
-            }
-        } else {
-            UIDevice.current.setValue(UIInterfaceOrientation.landscapeRight.rawValue, forKey: "orientation")
-        }
+        AppDelegate.lockToLandscape()
     }
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
         guard isBeingDismissed || isMovingFromParent else { return }
         
-        AppDelegate.orientationLock = .portrait
+        // Жестко форсируем систему вернуться в портретный режим при закрытии плеера
+        AppDelegate.lockToPortrait()
         
-        if #available(iOS 16.0, *) {
-            if let scene = view.window?.windowScene {
-                scene.requestGeometryUpdate(.iOS(interfaceOrientations: .portrait)) { _ in }
-                scene.windows.first?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
+        // Даем небольшую задержку (пока плеер закрывается), а затем возвращаем приложению 
+        // возможность вращаться (если это разрешено), чтобы юзер не застрял в портрете навсегда
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+            AppDelegate.orientationLock = .all
+            if #available(iOS 16.0, *) {
+                UIApplication.shared.windows.first?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
             }
-        } else {
-            UIDevice.current.setValue(UIInterfaceOrientation.portrait.rawValue, forKey: "orientation")
         }
     }
 
