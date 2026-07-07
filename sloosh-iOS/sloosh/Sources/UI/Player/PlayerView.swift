@@ -628,21 +628,27 @@ class PlayerViewModel: ObservableObject {
         playerItem.preferredPeakBitRate = max(0, preferredPeakBitRate ?? 0)
         currentPlaybackSourceURL = sourceURL.absoluteURL
 
-        itemObservation?.invalidate()
-        itemObservation = nil
-        if let playbackEndObserver {
-            NotificationCenter.default.removeObserver(playbackEndObserver)
-            self.playbackEndObserver = nil
-        }
+        self.isLoading = true
 
         self.player?.replaceCurrentItem(with: playerItem)
-        self.player?.seek(to: currentTime)
-        if wasPlaying {
-            self.player?.play()
-        }
-        observePlaybackCompletion(for: playerItem)
+        setupPlayerItemObservers(for: playerItem)
 
-        self.itemObservation = playerItem.observe(\.status) { _, _ in }
+        // Дожидаемся готовности перед seek и play
+        itemObservation = playerItem.observe(\.status, options: [.new]) { [weak self] item, _ in
+            Task { @MainActor [weak self] in
+                guard let self = self else { return }
+                if item.status == .readyToPlay {
+                    self.itemObservation?.invalidate()
+                    self.itemObservation = nil
+                    
+                    self.player?.seek(to: CMTime(seconds: currentTime.seconds, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero) { _ in
+                        if wasPlaying {
+                            self.player?.play()
+                        }
+                    }
+                }
+            }
+        }
     }
 
     private func proxiedPlaybackURL(for sourceURL: URL) -> URL? {
@@ -809,23 +815,13 @@ class PlayerViewModel: ObservableObject {
         }
 
         let playerItem = AVPlayerItem(asset: asset)
-        itemObservation?.invalidate()
-        itemObservation = nil
-        statusObserver?.invalidate()
-        statusObserver = nil
-        bufferObserver?.invalidate()
-        bufferObserver = nil
-        rateObserver?.invalidate()
-        rateObserver = nil
-        if let playbackEndObserver {
-            NotificationCenter.default.removeObserver(playbackEndObserver)
-            self.playbackEndObserver = nil
-        }
-
+        
         if self.player == nil { self.player = AVPlayer() }
         self.player?.replaceCurrentItem(with: playerItem)
         self.player?.automaticallyWaitsToMinimizeStalling = true
         self.player?.rate = playbackRate
+
+        setupPlayerItemObservers(for: playerItem)
 
         // Наблюдаем состояние плеера
         statusObserver = playerItem.observe(\.status, options: [.new]) { [weak self] item, _ in
@@ -847,9 +843,22 @@ class PlayerViewModel: ObservableObject {
                 self.bufferingTask?.cancel()
                 if status == .waitingToPlayAtSpecifiedRate {
                     self.bufferingTask = Task { [weak self] in
+                        // Ждем 0.5с прежде чем показать лоадер
                         try? await Task.sleep(for: .seconds(0.5))
                         guard !Task.isCancelled else { return }
                         await MainActor.run { self?.isBuffering = true }
+                        
+                        // Если буферизация зависла дольше 5 секунд (часто бывает после фона), перезапускаем стрим
+                        try? await Task.sleep(for: .seconds(5.0))
+                        guard !Task.isCancelled else { return }
+                        await MainActor.run {
+                            if self?.player?.timeControlStatus == .waitingToPlayAtSpecifiedRate {
+                                print("Player stuck buffering for 5.5s, reloading playback...")
+                                if let url = self?.currentPlaybackSourceURL {
+                                    self?.reloadPlayback(to: url, preferredPeakBitRate: self?.player?.currentItem?.preferredPeakBitRate)
+                                }
+                            }
+                        }
                     }
                 } else {
                     self.isBuffering = false
@@ -859,7 +868,33 @@ class PlayerViewModel: ObservableObject {
             }
         }
 
-        // Наблюдаем буфер
+        self.isLoading = false
+        self.startTrackingProgress()
+        self.player?.play()
+    }
+    
+    private func setupPlayerItemObservers(for playerItem: AVPlayerItem) {
+        statusObserver?.invalidate()
+        bufferObserver?.invalidate()
+        itemObservation?.invalidate()
+        
+        if let playbackEndObserver {
+            NotificationCenter.default.removeObserver(playbackEndObserver)
+            self.playbackEndObserver = nil
+        }
+
+        statusObserver = playerItem.observe(\.status, options: [.new]) { [weak self] item, _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                if item.status == .failed {
+                    self.error = item.error?.localizedDescription ?? "Ошибка воспроизведения"
+                    self.isLoading = false
+                } else if item.status == .readyToPlay {
+                    self.isLoading = false
+                }
+            }
+        }
+
         bufferObserver = playerItem.observe(\.loadedTimeRanges, options: [.new]) { [weak self] item, _ in
             Task { @MainActor [weak self] in
                 guard let self else { return }
@@ -875,11 +910,6 @@ class PlayerViewModel: ObservableObject {
         }
 
         observePlaybackCompletion(for: playerItem)
-
-        self.isLoading = false
-        self.startTrackingProgress()
-        self.player?.play()
-        // isPlaying обновляется через rateObserver — выставлять здесь вручную не нужно
     }
     
     private func startTrackingProgress() {
@@ -959,13 +989,12 @@ class PlayerViewModel: ObservableObject {
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
-                guard let self = self, let player = self.player else { return }
-                // Если плеер завис на буферизации после возврата из фона, "пинаем" его перезагрузкой
-                if player.timeControlStatus == .waitingToPlayAtSpecifiedRate || self.isBuffering {
-                    if let url = self.currentPlaybackSourceURL {
-                        self.reloadPlayback(to: url, preferredPeakBitRate: player.currentItem?.preferredPeakBitRate)
-                    }
-                }
+                // Мы больше не перезагружаем плеер немедленно при возврате из фона,
+                // так как это может прервать нормальное возобновление кэшированного HLS-стрима.
+                // Вместо этого сработает timeout в rateObserver, если плеер реально зависнет.
+                
+                // Просто пнем HlsProxyServer на случай если он упал
+                HlsProxyServer.shared.appWillEnterForeground()
             }
         }
     }

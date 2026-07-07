@@ -31,7 +31,7 @@ class HlsProxyServer {
         NotificationCenter.default.addObserver(self, selector: #selector(appWillEnterForeground), name: UIApplication.willEnterForegroundNotification, object: nil)
     }
     
-    @objc private func appWillEnterForeground() {
+    @objc func appWillEnterForeground() {
         let params: (headers: [String: String], voices: [String], subtitles: [PlaybackSubtitle], mediaId: String)? = stateLock.withLock {
             if !self.mediaId.isEmpty && self.listener == nil {
                 return (self.headers, self.voices, self.subtitles, self.mediaId)
