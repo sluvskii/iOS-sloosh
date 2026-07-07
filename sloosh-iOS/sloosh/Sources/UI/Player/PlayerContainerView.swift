@@ -13,6 +13,8 @@ struct PlayerContainerView: View {
     @State private var seekFeedback: SeekFeedback?
     @State private var isInteracting = false
     @State private var isZoomedToFill = false
+    @State private var leftLastTapTime: Date = .distantPast
+    @State private var rightLastTapTime: Date = .distantPast
 
     struct SeekFeedback: Identifiable {
         let id = UUID()
@@ -90,27 +92,45 @@ struct PlayerContainerView: View {
             // Левая половина — -10с
             Color.clear
                 .contentShape(Rectangle())
-                .onTapGesture(count: 2) {
-                    vm.seek(by: -10)
-                    showSeekFeedback(forward: false)
-                    withAnimation(showAnimation) { showControls = true }
-                    resetHideTimer()
-                }
-                .onTapGesture(count: 1) {
-                    toggleControls()
+                .onTapGesture {
+                    let now = Date()
+                    if now.timeIntervalSince(leftLastTapTime) < 0.3 {
+                        // Это двойной тап
+                        leftLastTapTime = .distantPast
+                        vm.seek(by: -10)
+                        showSeekFeedback(forward: false)
+                        if !showControls {
+                            withAnimation(showAnimation) { showControls = true }
+                        }
+                        resetHideTimer()
+                    } else {
+                        // Одинарный тап
+                        leftLastTapTime = now
+                        rightLastTapTime = .distantPast
+                        toggleControls()
+                    }
                 }
 
             // Правая половина — +10с
             Color.clear
                 .contentShape(Rectangle())
-                .onTapGesture(count: 2) {
-                    vm.seek(by: 10)
-                    showSeekFeedback(forward: true)
-                    withAnimation(showAnimation) { showControls = true }
-                    resetHideTimer()
-                }
-                .onTapGesture(count: 1) {
-                    toggleControls()
+                .onTapGesture {
+                    let now = Date()
+                    if now.timeIntervalSince(rightLastTapTime) < 0.3 {
+                        // Это двойной тап
+                        rightLastTapTime = .distantPast
+                        vm.seek(by: 10)
+                        showSeekFeedback(forward: true)
+                        if !showControls {
+                            withAnimation(showAnimation) { showControls = true }
+                        }
+                        resetHideTimer()
+                    } else {
+                        // Одинарный тап
+                        rightLastTapTime = now
+                        leftLastTapTime = .distantPast
+                        toggleControls()
+                    }
                 }
         }
     }
