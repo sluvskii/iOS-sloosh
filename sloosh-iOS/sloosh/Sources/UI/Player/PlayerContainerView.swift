@@ -209,40 +209,39 @@ private struct MultiSeekFeedbackView: View {
         GeometryReader { proxy in
             let width = proxy.size.width
             HStack(spacing: 0) {
-                if side == .right { Spacer() }
+                if side == .right { Spacer(minLength: 0) }
                 
                 ZStack {
+                    // Progressive blur using a soft radial gradient mask
                     Rectangle()
-                        .fill(Color.black.opacity(0.25))
+                        .fill(.regularMaterial)
                         .mask(
-                            Ellipse()
-                                .scale(x: 1.5, y: 1.5)
-                                .offset(x: side == .left ? -width * 0.15 : width * 0.15)
+                            RadialGradient(
+                                gradient: Gradient(colors: [.black.opacity(0.8), .clear]),
+                                center: side == .left ? .leading : .trailing,
+                                startRadius: width * 0.05,
+                                endRadius: width * 0.35
+                            )
                         )
                     
                     VStack(spacing: 12) {
-                        HStack(spacing: 4) {
-                            if side == .left {
-                                Image(systemName: "backward.fill")
-                                Image(systemName: "backward.fill")
-                                Image(systemName: "backward.fill")
-                            } else {
-                                Image(systemName: "forward.fill")
-                                Image(systemName: "forward.fill")
-                                Image(systemName: "forward.fill")
-                            }
-                        }
-                        .font(.system(size: 20))
+                        Image(systemName: side == .left ? "gobackward" : "goforward")
+                            .font(.system(size: 32, weight: .medium))
                         
                         Text("\(seconds) сек")
-                            .font(.system(size: 16, weight: .bold))
+                            .font(.system(size: 16, weight: .bold, design: .rounded))
+                            .contentTransition(.numericText(value: Double(seconds)))
+                            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: seconds)
                     }
                     .foregroundStyle(.white)
+                    // Смещение контента немного к краю экрана для лучшего баланса
+                    .offset(x: side == .left ? -20 : 20)
                 }
                 .frame(width: width * 0.4) // 40% of the screen
                 .opacity(isVisible ? 1 : 0)
+                .ignoresSafeArea()
                 
-                if side == .left { Spacer() }
+                if side == .left { Spacer(minLength: 0) }
             }
         }
         .onAppear {
