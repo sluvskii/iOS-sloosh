@@ -47,7 +47,7 @@ class MoviesRepository: ObservableObject {
         if let hit = detailsMemory[id] { return hit }
 
         // 2. Disk hit
-        if let hit = detailsDiskCache.load(id: id) {
+        if let hit = await detailsDiskCache.load(id: id) {
             detailsMemory[id] = hit
             return hit
         }
@@ -112,17 +112,20 @@ final class MediaDetailsDiskCache {
         return cacheDir?.appendingPathComponent("\(safe).json")
     }
 
-    /// Синхронная загрузка (вызывается с main thread через await — нет, через обычный вызов в getDetails)
-    func load(id: String) -> MediaDetailsDto? {
-        guard let url = fileURL(for: id) else { return nil }
-        guard let data = try? Data(contentsOf: url) else { return nil }
-        guard let entry = try? JSONDecoder().decode(Entry.self, from: data) else { return nil }
-        guard Date().timeIntervalSince(entry.savedAt) < ttl else {
-            // Устаревший — удаляем
-            queue.async { try? FileManager.default.removeItem(at: url) }
-            return nil
-        }
-        return entry.details
+    /// Загрузка через фоновый Task, чтобы не блокировать UI
+    func load(id: String) async -> MediaDetailsDto? {
+        return await Task.detached(priority: .userInitiated) { [weak self] () -> MediaDetailsDto? in
+            guard let self = self else { return nil }
+            guard let url = self.fileURL(for: id) else { return nil }
+            guard let data = try? Data(contentsOf: url) else { return nil }
+            guard let entry = try? JSONDecoder().decode(Entry.self, from: data) else { return nil }
+            guard Date().timeIntervalSince(entry.savedAt) < self.ttl else {
+                // Устаревший — удаляем
+                self.queue.async { try? FileManager.default.removeItem(at: url) }
+                return nil
+            }
+            return entry.details
+        }.value
     }
 
     func save(_ details: MediaDetailsDto, id: String) {

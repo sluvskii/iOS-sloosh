@@ -1,1 +1,3 @@
  
+# API secrets — never commit
+Secrets.xcconfig

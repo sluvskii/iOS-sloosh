@@ -114,7 +114,7 @@ struct DownloadsView: View {
                     season: item.season,
                     episode: item.episode,
                     selectedVoiceover: item.translationName,
-                    directStreamUrl: item.localPlayableUrl.absoluteString
+                    directStreamUrl: item.localPlayableUrl?.absoluteString
                 )
             }
         }

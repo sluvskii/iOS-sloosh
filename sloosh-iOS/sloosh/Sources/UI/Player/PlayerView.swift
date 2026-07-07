@@ -353,7 +353,8 @@ class PlayerViewModel: ObservableObject {
             }
             qualities.insert(autoQuality, at: 0)
             
-            DispatchQueue.main.async {
+            DispatchQueue.main.async { [weak self] in
+                guard let self = self else { return }
                 self.availableQualities = qualities
                 NotificationCenter.default.post(name: NSNotification.Name("QualitiesUpdated"), object: nil)
                 self.applyInitialQuality()
@@ -523,6 +524,8 @@ class PlayerViewModel: ObservableObject {
             if let iframeUrl = availableQualities.first?.url.absoluteString {
                 _currentTranslationName = name
                 targetVoiceover = name
+                resolveTask?.cancel()
+                resolver?.cancel()
                 hasStartedLoading = false
                 beginLoad(
                     iframeUrl: iframeUrl,
@@ -544,6 +547,8 @@ class PlayerViewModel: ObservableObject {
 
         _currentTranslationName = name
         targetVoiceover = name
+        resolveTask?.cancel()
+        resolver?.cancel()
         hasStartedLoading = false
         beginLoad(
             iframeUrl: translation.iframeUrl,
@@ -940,9 +945,7 @@ class PlayerViewModel: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            Task { @MainActor [weak self] in
-                self?.saveCurrentProgress()
-            }
+            self?.saveCurrentProgress()
         }
         
         if let existingFg = foregroundObserver {
