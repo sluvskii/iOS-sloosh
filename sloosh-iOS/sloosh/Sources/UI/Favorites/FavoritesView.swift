@@ -51,6 +51,9 @@ struct FavoritesView: View {
                         }
                         .padding(padding)
                     }
+                    .refreshable {
+                        favoritesRepo.refreshMissingMetadataIfNeeded()
+                    }
                 }
             }
             .navigationTitle("Избранное")

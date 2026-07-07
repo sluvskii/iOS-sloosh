@@ -528,6 +528,9 @@ struct DetailsView: View {
         }
         .scrollIndicators(.hidden)
         .background(effectiveBackgroundColor)
+        .refreshable {
+            await viewModel.loadDetails(id: movieId, force: true)
+        }
     }
 
     private var landscapeDetailsContent: some View {
@@ -604,10 +607,12 @@ struct DetailsView: View {
                     }
                 }
             }
-        }
-        .scrollIndicators(.hidden)
-        .background(effectiveBackgroundColor)
-        .ignoresSafeArea()
+            .scrollIndicators(.hidden)
+            .background(effectiveBackgroundColor)
+            .refreshable {
+                await viewModel.loadDetails(id: movieId, force: true)
+            }
+        }.ignoresSafeArea()
     }
 }
 
@@ -1761,8 +1766,8 @@ class DetailsViewModel: ObservableObject {
         UserDefaults.standard.set(name, forKey: allohaTranslationPreferenceKey)
     }
 
-    func loadDetails(id: String) async {
-        if details != nil && (details?.id == id || details?.sourceId == id || details?.externalIds?.kp?.description == id.replacingOccurrences(of: "kp_", with: "")) {
+    func loadDetails(id: String, force: Bool = false) async {
+        if !force && details != nil && (details?.id == id || details?.sourceId == id || details?.externalIds?.kp?.description == id.replacingOccurrences(of: "kp_", with: "")) {
             return
         }
 

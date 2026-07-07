@@ -241,6 +241,9 @@ struct HomeCategoryContentView: View {
             }
         }
         .scrollIndicators(.hidden)
+        .refreshable {
+            await viewModel.applyCurrentSelection(force: true)
+        }
     }
 }
 
