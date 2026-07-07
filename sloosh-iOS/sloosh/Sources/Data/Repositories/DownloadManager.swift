@@ -442,20 +442,23 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
         let taskDir = docs.appendingPathComponent(manifest.localDirectory)
-        
         let totalSegments = manifest.segmentUrls.count
-        var downloadedCount = 0
-        var missingIndices: [Int] = []
         
-        for i in 0..<totalSegments {
-            let fileUrl = taskDir.appendingPathComponent("segment_\(i).ts")
-            let size = (try? FileManager.default.attributesOfItem(atPath: fileUrl.path)[.size] as? Int64) ?? 0
-            if size > 0 {
-                downloadedCount += 1
-            } else {
-                missingIndices.append(i)
+        let (downloadedCount, missingIndices) = await Task.detached(priority: .background) { () -> (Int, [Int]) in
+            var downloaded = 0
+            var missing: [Int] = []
+            let fm = FileManager.default
+            for i in 0..<totalSegments {
+                let fileUrl = taskDir.appendingPathComponent("segment_\(i).ts")
+                let size = (try? fm.attributesOfItem(atPath: fileUrl.path)[.size] as? Int64) ?? 0
+                if size > 0 {
+                    downloaded += 1
+                } else {
+                    missing.append(i)
+                }
             }
-        }
+            return (downloaded, missing)
+        }.value
         
         let progress = Double(downloadedCount) / Double(totalSegments)
         updateItem(id: itemId) {
