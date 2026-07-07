@@ -6,6 +6,7 @@ class FavoritesRepository: ObservableObject {
     
     @Published var favorites: [FavoriteDto] = []
     private let defaultsKey = "local_favorites"
+    private let dataStore = JSONDataStore<[FavoriteDto]>(fileName: "favorites")
     
     private init() {
         loadFavorites()
@@ -16,13 +17,15 @@ class FavoritesRepository: ObservableObject {
         if let data = UserDefaults.standard.data(forKey: defaultsKey),
            let decoded = try? JSONDecoder().decode([FavoriteDto].self, from: data) {
             favorites = decoded
+            dataStore.save(decoded)
+            UserDefaults.standard.removeObject(forKey: defaultsKey)
+        } else {
+            favorites = dataStore.load(defaultValue: [])
         }
     }
     
     private func saveFavorites() {
-        if let encoded = try? JSONEncoder().encode(favorites) {
-            UserDefaults.standard.set(encoded, forKey: defaultsKey)
-        }
+        dataStore.save(favorites)
     }
     
     func getFavorites() -> [FavoriteDto] {
