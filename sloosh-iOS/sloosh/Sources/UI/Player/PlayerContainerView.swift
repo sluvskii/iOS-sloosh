@@ -13,13 +13,12 @@ struct PlayerContainerView: View {
     @State private var seekFeedback: SeekFeedback?
     @State private var isInteracting = false
     @State private var isZoomedToFill = false
-    @State private var leftLastTapTime: Date = .distantPast
-    @State private var rightLastTapTime: Date = .distantPast
+    @State private var tapTask: Task<Void, Never>?
+    @State private var consecutiveTaps: Int = 0
+    @State private var activeTapSide: TapSide? = nil
+    @State private var multiSeekSeconds: Int? = nil
 
-    struct SeekFeedback: Identifiable {
-        let id = UUID()
-        let isForward: Bool
-    }
+    enum TapSide { case left, right }
 
     var body: some View {
         ZStack {
@@ -43,11 +42,11 @@ struct PlayerContainerView: View {
             // 5. Жесты (двойной тап = перемотка, одинарный = контролы)
             gestureLayer
 
-            // 6. Seek feedback
-            if let feedback = seekFeedback {
-                SeekFeedbackView(isForward: feedback.isForward)
-                    .id(feedback.id)
+            // 6. Multi-tap Seek feedback
+            if let seconds = multiSeekSeconds, let side = activeTapSide {
+                MultiSeekFeedbackView(side: side, seconds: seconds)
                     .allowsHitTesting(false)
+                    .transition(.opacity)
             }
 
             // 7. Контролы
@@ -92,46 +91,59 @@ struct PlayerContainerView: View {
             // Левая половина — -10с
             Color.clear
                 .contentShape(Rectangle())
-                .onTapGesture {
-                    let now = Date()
-                    if now.timeIntervalSince(leftLastTapTime) < 0.3 {
-                        // Это двойной тап
-                        leftLastTapTime = .distantPast
-                        vm.seek(by: -10)
-                        showSeekFeedback(forward: false)
-                        if !showControls {
-                            withAnimation(showAnimation) { showControls = true }
-                        }
-                        resetHideTimer()
-                    } else {
-                        // Одинарный тап
-                        leftLastTapTime = now
-                        rightLastTapTime = .distantPast
-                        toggleControls()
-                    }
-                }
+                .onTapGesture { handleTap(side: .left) }
 
             // Правая половина — +10с
             Color.clear
                 .contentShape(Rectangle())
-                .onTapGesture {
-                    let now = Date()
-                    if now.timeIntervalSince(rightLastTapTime) < 0.3 {
-                        // Это двойной тап
-                        rightLastTapTime = .distantPast
-                        vm.seek(by: 10)
-                        showSeekFeedback(forward: true)
-                        if !showControls {
-                            withAnimation(showAnimation) { showControls = true }
-                        }
-                        resetHideTimer()
-                    } else {
-                        // Одинарный тап
-                        rightLastTapTime = now
-                        leftLastTapTime = .distantPast
-                        toggleControls()
-                    }
+                .onTapGesture { handleTap(side: .right) }
+        }
+    }
+
+    private func handleTap(side: TapSide) {
+        tapTask?.cancel()
+        
+        if activeTapSide != side {
+            consecutiveTaps = 0
+            activeTapSide = side
+            multiSeekSeconds = nil
+        }
+        
+        consecutiveTaps += 1
+        let currentTaps = consecutiveTaps
+        
+        if currentTaps == 1 {
+            tapTask = Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(250))
+                guard !Task.isCancelled else { return }
+                
+                self.consecutiveTaps = 0
+                self.activeTapSide = nil
+                self.toggleControls()
+            }
+        } else {
+            let seconds = 10
+            let direction = (side == .right) ? 1.0 : -1.0
+            vm.seek(by: Double(seconds) * direction)
+            
+            let totalSeconds = (currentTaps - 1) * seconds
+            withAnimation(.easeOut(duration: 0.15)) {
+                self.multiSeekSeconds = totalSeconds
+            }
+            
+            resetHideTimer()
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            
+            tapTask = Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(800))
+                guard !Task.isCancelled else { return }
+                
+                self.consecutiveTaps = 0
+                self.activeTapSide = nil
+                withAnimation(.easeOut(duration: 0.3)) {
+                    self.multiSeekSeconds = nil
                 }
+            }
         }
     }
 
@@ -185,42 +197,57 @@ struct PlayerContainerView: View {
         scheduleAutoHide()
     }
 
-    // MARK: - Seek feedback
-
-    private func showSeekFeedback(forward: Bool) {
-        seekFeedback = SeekFeedback(isForward: forward)
-        Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(600))
-            seekFeedback = nil
-        }
-    }
 }
 
 // MARK: - Seek ripple
 
-private struct SeekFeedbackView: View {
-    let isForward: Bool
-    @State private var isVisible: Bool = false
+private struct MultiSeekFeedbackView: View {
+    let side: PlayerContainerView.TapSide
+    let seconds: Int
+    @State private var isVisible = false
 
     var body: some View {
-        HStack {
-            if isForward { Spacer() }
-            Image(systemName: isForward ? "goforward.10" : "gobackward.10")
-                .font(.system(size: 32, weight: .medium))
-                .foregroundStyle(.white)
-                .frame(width: 72, height: 72)
-                .glassEffect(.regular, in: .circle)
-                .scaleEffect(isVisible ? 1.0 : 0.95)
-                .blur(radius: isVisible ? 0 : 20)
-                .opacity(isVisible ? 1 : 0)
-                .onAppear {
-                    withAnimation(.easeOut(duration: 0.2)) { isVisible = true }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                        withAnimation(.easeOut(duration: 0.25)) { isVisible = false }
+        GeometryReader { proxy in
+            let width = proxy.size.width
+            HStack(spacing: 0) {
+                if side == .right { Spacer() }
+                
+                ZStack {
+                    Rectangle()
+                        .fill(Color.black.opacity(0.25))
+                        .mask(
+                            Ellipse()
+                                .scale(x: 1.5, y: 1.5)
+                                .offset(x: side == .left ? -width * 0.15 : width * 0.15)
+                        )
+                    
+                    VStack(spacing: 12) {
+                        HStack(spacing: 4) {
+                            if side == .left {
+                                Image(systemName: "backward.fill")
+                                Image(systemName: "backward.fill")
+                                Image(systemName: "backward.fill")
+                            } else {
+                                Image(systemName: "forward.fill")
+                                Image(systemName: "forward.fill")
+                                Image(systemName: "forward.fill")
+                            }
+                        }
+                        .font(.system(size: 20))
+                        
+                        Text("\(seconds) сек")
+                            .font(.system(size: 16, weight: .bold))
                     }
+                    .foregroundStyle(.white)
                 }
-            if !isForward { Spacer() }
+                .frame(width: width * 0.4) // 40% of the screen
+                .opacity(isVisible ? 1 : 0)
+                
+                if side == .left { Spacer() }
+            }
         }
-        .padding(.horizontal, 40)
+        .onAppear {
+            withAnimation(.easeOut(duration: 0.2)) { isVisible = true }
+        }
     }
 }
