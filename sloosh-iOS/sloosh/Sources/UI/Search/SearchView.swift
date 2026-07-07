@@ -123,6 +123,9 @@ struct SearchView: View {
 
                         // Pagination buttons removed in favor of infinite scroll
                     }
+                    .refreshable {
+                        await viewModel.performSearch(reset: true)
+                    }
                 }
             }
             .navigationTitle("Поиск")
