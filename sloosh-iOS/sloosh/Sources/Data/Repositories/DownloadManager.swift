@@ -593,12 +593,6 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     }
 }
 
-func allohaTranslationNamesMatch(_ title1: String?, _ title2: String?, exactOnly: Bool) -> Bool {
-    guard let t1 = title1?.lowercased(), let t2 = title2?.lowercased() else { return false }
-    if exactOnly { return t1 == t2 }
-    return t1.contains(t2) || t2.contains(t1)
-}
-
 extension Array {
     subscript(safe index: Int) -> Element? {
         return indices.contains(index) ? self[index] : nil

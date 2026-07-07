@@ -237,39 +237,15 @@ private struct DownloadRowView: View {
                     .background(Color(UIColor.tertiarySystemFill), in: Circle())
             }
             .buttonStyle(.plain)
-        } else if item.status == .failed || item.errorMessage == "Приостановлено" {
+        } else if item.status == .failed || item.status == .paused {
             Button(action: {
-                if item.errorMessage == "Приостановлено" {
-                    let details = MediaDetailsDto(
-                        id: "kp_\(item.kpId)",
-                        sourceId: String(item.kpId),
-                        title: item.title,
-                        name: item.title,
-                        originalTitle: nil,
-                        description: nil,
-                        releaseDate: nil,
-                        type: item.mediaType,
-                        genres: nil,
-                        rating: nil,
-                        posterUrl: item.posterUrl,
-                        backdropUrl: nil,
-                        duration: nil,
-                        country: nil,
-                        language: nil,
-                        externalIds: ExternalIdsDto(kp: item.kpId, tmdb: nil, imdb: nil)
-                    )
-                    DownloadManager.shared.startDownload(
-                        details: details,
-                        season: item.season,
-                        episode: item.episode,
-                        translation: AllohaTranslation(id: "", name: item.translationName ?? "", iframeUrl: item.iframeUrl, streamUrl: nil),
-                        preferredQuality: .ask
-                    )
+                if item.status == .paused {
+                    DownloadManager.shared.resumeDownload(id: item.id)
                 } else {
                     DownloadManager.shared.deleteDownload(id: item.id)
                 }
             }) {
-                Image(systemName: item.errorMessage == "Приостановлено" ? "arrow.clockwise" : "trash.fill")
+                Image(systemName: item.status == .paused ? "play.fill" : "trash.fill")
                     .font(.system(size: 14, weight: .bold))
                     .foregroundStyle(.primary)
                     .frame(width: 32, height: 32)
