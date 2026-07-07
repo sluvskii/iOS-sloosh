@@ -421,6 +421,8 @@ struct DetailsView: View {
             switch item.status {
             case .downloading, .pending:
                 DownloadManager.shared.pauseDownload(id: item.id)
+            case .paused:
+                DownloadManager.shared.resumeDownload(id: item.id)
             default:
                 startDownloadWithPreferredTranslation(details: details, season: nil, episode: nil)
             }
@@ -1186,6 +1188,8 @@ struct EpisodeDetailsSheet: View {
             switch item.status {
             case .downloading, .pending:
                 DownloadManager.shared.pauseDownload(id: item.id)
+            case .paused:
+                DownloadManager.shared.resumeDownload(id: item.id)
             case .failed:
                 startDownload(kpId: kpId, details: details)
             case .completed:

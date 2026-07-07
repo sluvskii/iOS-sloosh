@@ -999,8 +999,8 @@ class PlayerViewModel: ObservableObject {
             forName: UIApplication.willEnterForegroundNotification,
             object: nil,
             queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor [weak self] in
+        ) { _ in
+            Task { @MainActor in
                 // Мы больше не перезагружаем плеер немедленно при возврате из фона,
                 // так как это может прервать нормальное возобновление кэшированного HLS-стрима.
                 // Вместо этого сработает timeout в rateObserver, если плеер реально зависнет.
