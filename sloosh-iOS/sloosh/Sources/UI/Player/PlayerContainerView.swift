@@ -212,20 +212,16 @@ private struct MultiSeekFeedbackView: View {
                 if side == .right { Spacer(minLength: 0) }
                 
                 ZStack {
-                    // Истинный progressive blur (плавное растворение стекла)
-                    Rectangle()
-                        .fill(.regularMaterial)
-                        .mask(
-                            LinearGradient(
-                                stops: [
-                                    .init(color: .black, location: 0),
-                                    .init(color: .black, location: 0.4),
-                                    .init(color: .clear, location: 1)
-                                ],
-                                startPoint: side == .left ? .leading : .trailing,
-                                endPoint: side == .left ? .trailing : .leading
-                            )
-                        )
+                    // Плавный черный градиент (как на YouTube, но без резких краев)
+                    LinearGradient(
+                        stops: [
+                            .init(color: .black.opacity(0.6), location: 0),
+                            .init(color: .black.opacity(0.3), location: 0.5),
+                            .init(color: .clear, location: 1)
+                        ],
+                        startPoint: side == .left ? .leading : .trailing,
+                        endPoint: side == .left ? .trailing : .leading
+                    )
                     
                     VStack(spacing: 12) {
                         Image(systemName: side == .left ? "gobackward" : "goforward")
