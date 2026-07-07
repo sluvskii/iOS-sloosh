@@ -59,6 +59,7 @@ final class DownloadManager: ObservableObject {
     @Published private(set) var downloads: [DownloadItem] = []
     
     private let saveKey = "sloosh_downloads"
+    private let dataStore = JSONDataStore<[DownloadItem]>(fileName: "downloads")
     private var activeTasks: [String: Task<Void, Never>] = [:]
     private var backgroundTaskIds: [String: UIBackgroundTaskIdentifier] = [:]
     
@@ -74,26 +75,32 @@ final class DownloadManager: ObservableObject {
         loadDownloads()
     }
     
+    private func processLoadedDownloads(_ list: [DownloadItem]) -> [DownloadItem] {
+        return list.map { item in
+            if item.status == .downloading || item.status == .pending {
+                var updated = item
+                updated.status = .failed
+                updated.errorMessage = "Загрузка прервана"
+                return updated
+            }
+            return item
+        }
+    }
+    
     private func loadDownloads() {
         if let data = UserDefaults.standard.data(forKey: saveKey),
            let list = try? JSONDecoder().decode([DownloadItem].self, from: data) {
-            // If any item was downloading or pending when app terminated, set it to failed with message
-            self.downloads = list.map { item in
-                if item.status == .downloading || item.status == .pending {
-                    var updated = item
-                    updated.status = .failed
-                    updated.errorMessage = "Загрузка прервана"
-                    return updated
-                }
-                return item
-            }
+            self.downloads = processLoadedDownloads(list)
+            dataStore.save(self.downloads)
+            UserDefaults.standard.removeObject(forKey: saveKey)
+        } else {
+            let list = dataStore.load(defaultValue: [])
+            self.downloads = processLoadedDownloads(list)
         }
     }
     
     private func saveDownloads() {
-        if let data = try? JSONEncoder().encode(downloads) {
-            UserDefaults.standard.set(data, forKey: saveKey)
-        }
+        dataStore.save(downloads)
     }
     
     func isDownloaded(kpId: Int, season: Int?, episode: Int?) -> Bool {

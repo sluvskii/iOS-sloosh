@@ -174,6 +174,7 @@ struct DetailsView: View {
                             .symbolEffect(.bounce, value: favoriteBounce)
                     }
                     .disabled(viewModel.details == nil)
+                    .accessibilityLabel(viewModel.isFavorite ? "Убрать из избранного" : "Добавить в избранное")
                 }
             }
             .task {
@@ -774,6 +775,7 @@ struct SourceSelectionLoadingView: View {
                     }
                     .tint(.primary)
                     .buttonStyle(.plain)
+                    .accessibilityLabel("Закрыть")
                 }
             }
         }

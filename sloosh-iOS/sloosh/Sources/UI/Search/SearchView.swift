@@ -121,32 +121,7 @@ struct SearchView: View {
                         }
                         .padding(padding)
 
-                        if viewModel.totalPages > 1 {
-                            HStack(spacing: 12) {
-                                Button("Назад") {
-                                    Task {
-                                        await viewModel.setPage(viewModel.page - 1)
-                                    }
-                                }
-                                .buttonStyle(.bordered)
-                                .disabled(viewModel.page <= 1 || viewModel.isAppending || viewModel.isLoading)
-
-                                Text("\(viewModel.page) / \(viewModel.totalPages)")
-                                    .font(.system(size: 14, weight: .semibold))
-                                    .foregroundColor(.secondary)
-
-                                Button("Далее") {
-                                    Task {
-                                        await viewModel.setPage(viewModel.page + 1)
-                                    }
-                                }
-                                .buttonStyle(.borderedProminent)
-                                .tint(Color.slooshAccent)
-                                .disabled(viewModel.page >= viewModel.totalPages || viewModel.isAppending || viewModel.isLoading)
-                            }
-                            .padding(.horizontal, 16)
-                            .padding(.bottom, 24)
-                        }
+                        // Pagination buttons removed in favor of infinite scroll
                     }
                 }
             }
