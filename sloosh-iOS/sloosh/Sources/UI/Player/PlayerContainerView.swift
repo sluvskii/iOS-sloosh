@@ -42,11 +42,8 @@ struct PlayerContainerView: View {
             gestureLayer
 
             // 6. Multi-tap Seek feedback
-            if let seconds = multiSeekSeconds, let side = activeTapSide {
-                MultiSeekFeedbackView(side: side, seconds: seconds)
-                    .allowsHitTesting(false)
-                    .transition(.blurFade)
-            }
+            MultiSeekFeedbackView(side: activeTapSide, seconds: multiSeekSeconds)
+                .allowsHitTesting(false)
 
             // 7. Контролы
             PlayerControlsView(vm: vm, onDismiss: onDismiss, isInteracting: $isInteracting, showControls: showControls)
@@ -138,8 +135,8 @@ struct PlayerContainerView: View {
                 guard !Task.isCancelled else { return }
                 
                 self.consecutiveTaps = 0
-                self.activeTapSide = nil
                 withAnimation(.easeOut(duration: 0.4)) {
+                    self.activeTapSide = nil
                     self.multiSeekSeconds = nil
                 }
             }
@@ -220,42 +217,49 @@ extension AnyTransition {
 }
 
 private struct MultiSeekFeedbackView: View {
-    let side: PlayerContainerView.TapSide
-    let seconds: Int
+    let side: PlayerContainerView.TapSide?
+    let seconds: Int?
 
     var body: some View {
         GeometryReader { proxy in
             let width = proxy.size.width
-            HStack(spacing: 0) {
-                if side == .right { Spacer(minLength: 0) }
-                
-                ZStack {
-                    // Плавный черный градиент (как на YouTube, но без резких краев)
-                    LinearGradient(
-                        stops: [
-                            .init(color: .black.opacity(0.6), location: 0),
-                            .init(color: .black.opacity(0.3), location: 0.5),
-                            .init(color: .clear, location: 1)
-                        ],
-                        startPoint: side == .left ? .leading : .trailing,
-                        endPoint: side == .left ? .trailing : .leading
-                    )
-                    
-                    VStack(spacing: 12) {
-                        Image(systemName: side == .left ? "gobackward" : "goforward")
-                            .font(.system(size: 32, weight: .medium))
+            
+            ZStack {
+                if let sec = seconds, let s = side {
+                    HStack(spacing: 0) {
+                        if s == .right { Spacer(minLength: 0) }
                         
-                        Text("\(seconds) сек")
-                            .font(.system(size: 16, weight: .bold, design: .rounded))
-                            .contentTransition(.numericText(value: Double(seconds)))
-                            .animation(.spring(response: 0.3, dampingFraction: 0.7), value: seconds)
+                        ZStack {
+                            // Плавный черный градиент (как на YouTube, но без резких краев)
+                            LinearGradient(
+                                stops: [
+                                    .init(color: .black.opacity(0.6), location: 0),
+                                    .init(color: .black.opacity(0.3), location: 0.5),
+                                    .init(color: .clear, location: 1)
+                                ],
+                                startPoint: s == .left ? .leading : .trailing,
+                                endPoint: s == .left ? .trailing : .leading
+                            )
+                            .transition(.opacity)
+                            
+                            VStack(spacing: 12) {
+                                Image(systemName: s == .left ? "gobackward" : "goforward")
+                                    .font(.system(size: 32, weight: .medium))
+                                
+                                Text("\(sec) сек")
+                                    .font(.system(size: 16, weight: .bold, design: .rounded))
+                                    .contentTransition(.numericText(value: Double(sec)))
+                                    .animation(.spring(response: 0.3, dampingFraction: 0.7), value: sec)
+                            }
+                            .foregroundStyle(.white)
+                            .offset(x: s == .left ? -15 : 15)
+                            .transition(.blurFade)
+                        }
+                        .frame(width: width * 0.45) // Чуть шире для более плавного градиента
+                        
+                        if s == .left { Spacer(minLength: 0) }
                     }
-                    .foregroundStyle(.white)
-                    .offset(x: side == .left ? -15 : 15)
                 }
-                .frame(width: width * 0.45) // Чуть шире для более плавного градиента
-                
-                if side == .left { Spacer(minLength: 0) }
             }
         }
         .ignoresSafeArea() // Полностью игнорируем челку/островки для плотного прилегания
