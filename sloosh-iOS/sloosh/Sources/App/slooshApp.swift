@@ -7,6 +7,12 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication, supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {
         return AppDelegate.orientationLock
     }
+    
+    func application(_ application: UIApplication, handleEventsForBackgroundURLSession identifier: String, completionHandler: @escaping () -> Void) {
+        if identifier == "com.sloosh.downloads.bg" {
+            DownloadManager.shared.backgroundCompletionHandler = completionHandler
+        }
+    }
 }
 
 @main
