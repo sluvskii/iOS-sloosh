@@ -61,6 +61,7 @@ struct ToastModifier: ViewModifier {
 
 struct ToastView: View {
     let toast: Toast
+    @State private var dragOffset: CGFloat = 0
     
     var body: some View {
         HStack(spacing: 12) {
@@ -84,10 +85,37 @@ struct ToastView: View {
         .padding(.vertical, 12)
         .background {
             Capsule()
-                .fill(.regularMaterial)
-                .shadow(color: .black.opacity(0.15), radius: 10, x: 0, y: 5)
+                .fill(.ultraThinMaterial)
+                .overlay(
+                    Capsule()
+                        .stroke(Color.primary.opacity(0.1), lineWidth: 0.5)
+                )
+                .shadow(color: .black.opacity(0.2), radius: 15, x: 0, y: 5)
         }
         .padding(.horizontal, 24)
+        .offset(y: dragOffset)
+        .gesture(
+            DragGesture()
+                .onChanged { value in
+                    if value.translation.height > 0 {
+                        dragOffset = value.translation.height
+                    } else {
+                        // slight resistance when dragging up
+                        dragOffset = value.translation.height * 0.2
+                    }
+                }
+                .onEnded { value in
+                    if value.translation.height > 30 || value.predictedEndTranslation.height > 50 {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                            ToastManager.shared.currentToast = nil
+                        }
+                    } else {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                            dragOffset = 0
+                        }
+                    }
+                }
+        )
         .onTapGesture {
             withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                 ToastManager.shared.currentToast = nil
