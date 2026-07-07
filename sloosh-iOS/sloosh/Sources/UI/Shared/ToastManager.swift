@@ -83,15 +83,7 @@ struct ToastView: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
-        .background {
-            Capsule()
-                .fill(.ultraThinMaterial)
-                .overlay(
-                    Capsule()
-                        .stroke(Color.primary.opacity(0.1), lineWidth: 0.5)
-                )
-                .shadow(color: .black.opacity(0.2), radius: 15, x: 0, y: 5)
-        }
+        .glassEffect(in: Capsule())
         .padding(.horizontal, 24)
         .offset(y: dragOffset)
         .gesture(
