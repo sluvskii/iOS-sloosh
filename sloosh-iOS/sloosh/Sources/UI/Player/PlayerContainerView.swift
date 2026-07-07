@@ -45,6 +45,7 @@ struct PlayerContainerView: View {
             if let seconds = multiSeekSeconds, let side = activeTapSide {
                 MultiSeekFeedbackView(side: side, seconds: seconds)
                     .allowsHitTesting(false)
+                    .transition(.blurFade)
             }
 
             // 7. Контролы
@@ -239,7 +240,6 @@ private struct MultiSeekFeedbackView: View {
                         startPoint: side == .left ? .leading : .trailing,
                         endPoint: side == .left ? .trailing : .leading
                     )
-                    .transition(.opacity)
                     
                     VStack(spacing: 12) {
                         Image(systemName: side == .left ? "gobackward" : "goforward")
@@ -252,7 +252,6 @@ private struct MultiSeekFeedbackView: View {
                     }
                     .foregroundStyle(.white)
                     .offset(x: side == .left ? -15 : 15)
-                    .transition(.blurFade)
                 }
                 .frame(width: width * 0.45) // Чуть шире для более плавного градиента
                 
