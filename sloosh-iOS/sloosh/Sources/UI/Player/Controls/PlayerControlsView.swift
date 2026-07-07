@@ -12,6 +12,7 @@ struct PlayerControlsView: View {
     @State private var showSubtitleSheet = false
     @Binding var isInteracting: Bool
     var showControls: Bool
+    var isSeeking: Bool
 
     var body: some View {
         ZStack {
@@ -21,6 +22,8 @@ struct PlayerControlsView: View {
                 startPoint: .top,
                 endPoint: .bottom
             )
+            .opacity(isSeeking ? 0 : 1)
+            .animation(.easeInOut(duration: 0.2), value: isSeeking)
             .ignoresSafeArea()
             .allowsHitTesting(false)
 
@@ -28,6 +31,8 @@ struct PlayerControlsView: View {
             VStack {
                 TopBarView(vm: vm, onDismiss: onDismiss, isInteracting: $isInteracting)
                     .scaleEffect(showControls ? 1.0 : 0.95)
+                    .opacity(isSeeking ? 0 : 1)
+                    .animation(.easeInOut(duration: 0.2), value: isSeeking)
                     .padding(.top, 32) // Абсолютный отступ от края экрана
 
                 Spacer()
@@ -50,6 +55,8 @@ struct PlayerControlsView: View {
                         )
                         .padding(.trailing, 16)
                     }
+                    .opacity(isSeeking ? 0 : 1)
+                    .animation(.easeInOut(duration: 0.2), value: isSeeking)
 
                     SeekBarView(vm: vm, isInteracting: $isInteracting)
                         .padding(.horizontal, 16)
@@ -62,6 +69,8 @@ struct PlayerControlsView: View {
             // ── Центральные кнопки (ровно по центру экрана) ───
             CenterControlsView(vm: vm)
                 .scaleEffect(showControls ? 1.0 : 0.95)
+                .opacity(isSeeking ? 0 : 1)
+                .animation(.easeInOut(duration: 0.2), value: isSeeking)
         }
         // Sheets
         .sheet(isPresented: $showVoiceoverSheet) {

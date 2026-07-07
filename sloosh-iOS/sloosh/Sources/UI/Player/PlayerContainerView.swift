@@ -46,7 +46,8 @@ struct PlayerContainerView: View {
                 .allowsHitTesting(false)
 
             // 7. Контролы
-            PlayerControlsView(vm: vm, onDismiss: onDismiss, isInteracting: $isInteracting, showControls: showControls)
+            let isSeeking = multiSeekSeconds != nil || isInteracting
+            PlayerControlsView(vm: vm, onDismiss: onDismiss, isInteracting: $isInteracting, showControls: showControls, isSeeking: isSeeking)
                 .blur(radius: showControls ? 0 : 20)
                 .opacity(showControls ? 1 : 0)
                 .allowsHitTesting(showControls)
