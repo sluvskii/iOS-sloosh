@@ -40,7 +40,7 @@ final class PlayerHostingController<Content: View>: UIHostingController<Content>
         super.viewWillDisappear(animated)
         guard isBeingDismissed || isMovingFromParent else { return }
         
-        AppDelegate.orientationLock = .all
+        AppDelegate.orientationLock = .portrait
         
         if #available(iOS 16.0, *) {
             if let scene = view.window?.windowScene {
