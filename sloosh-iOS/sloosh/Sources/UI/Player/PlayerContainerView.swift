@@ -45,7 +45,6 @@ struct PlayerContainerView: View {
             if let seconds = multiSeekSeconds, let side = activeTapSide {
                 MultiSeekFeedbackView(side: side, seconds: seconds)
                     .allowsHitTesting(false)
-                    .transition(.opacity)
             }
 
             // 7. Контролы
@@ -126,7 +125,7 @@ struct PlayerContainerView: View {
             vm.seek(by: Double(seconds) * direction)
             
             let totalSeconds = (currentTaps - 1) * seconds
-            withAnimation(.easeOut(duration: 0.15)) {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
                 self.multiSeekSeconds = totalSeconds
             }
             
@@ -139,7 +138,7 @@ struct PlayerContainerView: View {
                 
                 self.consecutiveTaps = 0
                 self.activeTapSide = nil
-                withAnimation(.easeOut(duration: 0.3)) {
+                withAnimation(.easeOut(duration: 0.4)) {
                     self.multiSeekSeconds = nil
                 }
             }
@@ -198,12 +197,30 @@ struct PlayerContainerView: View {
 
 }
 
-// MARK: - Seek ripple
+// MARK: - Seek ripple transitions
+
+private struct BlurTransitionModifier: ViewModifier {
+    let isActive: Bool
+    func body(content: Content) -> some View {
+        content
+            .opacity(isActive ? 0 : 1)
+            .blur(radius: isActive ? 20 : 0)
+            .scaleEffect(isActive ? 1.2 : 1.0)
+    }
+}
+
+extension AnyTransition {
+    static var blurFade: AnyTransition {
+        .modifier(
+            active: BlurTransitionModifier(isActive: true),
+            identity: BlurTransitionModifier(isActive: false)
+        )
+    }
+}
 
 private struct MultiSeekFeedbackView: View {
     let side: PlayerContainerView.TapSide
     let seconds: Int
-    @State private var isVisible = false
 
     var body: some View {
         GeometryReader { proxy in
@@ -222,6 +239,7 @@ private struct MultiSeekFeedbackView: View {
                         startPoint: side == .left ? .leading : .trailing,
                         endPoint: side == .left ? .trailing : .leading
                     )
+                    .transition(.opacity)
                     
                     VStack(spacing: 12) {
                         Image(systemName: side == .left ? "gobackward" : "goforward")
@@ -234,16 +252,13 @@ private struct MultiSeekFeedbackView: View {
                     }
                     .foregroundStyle(.white)
                     .offset(x: side == .left ? -15 : 15)
+                    .transition(.blurFade)
                 }
                 .frame(width: width * 0.45) // Чуть шире для более плавного градиента
-                .opacity(isVisible ? 1 : 0)
                 
                 if side == .left { Spacer(minLength: 0) }
             }
         }
         .ignoresSafeArea() // Полностью игнорируем челку/островки для плотного прилегания
-        .onAppear {
-            withAnimation(.easeOut(duration: 0.2)) { isVisible = true }
-        }
     }
 }
