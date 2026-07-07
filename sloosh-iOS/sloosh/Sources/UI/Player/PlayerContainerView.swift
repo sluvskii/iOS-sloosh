@@ -212,15 +212,18 @@ private struct MultiSeekFeedbackView: View {
                 if side == .right { Spacer(minLength: 0) }
                 
                 ZStack {
-                    // Progressive blur using a soft radial gradient mask
+                    // Истинный progressive blur (плавное растворение стекла)
                     Rectangle()
                         .fill(.regularMaterial)
                         .mask(
-                            RadialGradient(
-                                gradient: Gradient(colors: [.black.opacity(0.8), .clear]),
-                                center: side == .left ? .leading : .trailing,
-                                startRadius: width * 0.05,
-                                endRadius: width * 0.35
+                            LinearGradient(
+                                stops: [
+                                    .init(color: .black, location: 0),
+                                    .init(color: .black, location: 0.4),
+                                    .init(color: .clear, location: 1)
+                                ],
+                                startPoint: side == .left ? .leading : .trailing,
+                                endPoint: side == .left ? .trailing : .leading
                             )
                         )
                     
@@ -234,16 +237,15 @@ private struct MultiSeekFeedbackView: View {
                             .animation(.spring(response: 0.3, dampingFraction: 0.7), value: seconds)
                     }
                     .foregroundStyle(.white)
-                    // Смещение контента немного к краю экрана для лучшего баланса
-                    .offset(x: side == .left ? -20 : 20)
+                    .offset(x: side == .left ? -15 : 15)
                 }
-                .frame(width: width * 0.4) // 40% of the screen
+                .frame(width: width * 0.45) // Чуть шире для более плавного градиента
                 .opacity(isVisible ? 1 : 0)
-                .ignoresSafeArea()
                 
                 if side == .left { Spacer(minLength: 0) }
             }
         }
+        .ignoresSafeArea() // Полностью игнорируем челку/островки для плотного прилегания
         .onAppear {
             withAnimation(.easeOut(duration: 0.2)) { isVisible = true }
         }
