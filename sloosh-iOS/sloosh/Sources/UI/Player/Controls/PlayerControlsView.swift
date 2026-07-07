@@ -71,6 +71,7 @@ struct PlayerControlsView: View {
                 .scaleEffect(showControls ? 1.0 : 0.95)
                 .opacity(isSeeking ? 0 : 1)
                 .animation(.easeInOut(duration: 0.2), value: isSeeking)
+                .ignoresSafeArea()
         }
         // Sheets
         .sheet(isPresented: $showVoiceoverSheet) {
