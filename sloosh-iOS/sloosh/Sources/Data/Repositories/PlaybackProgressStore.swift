@@ -77,7 +77,7 @@ public final class PlaybackProgressStore {
         queue.sync { state.records[mediaId] }
     }
 
-    private func mutateRecord(mediaId: String, mutate: (inout PlaybackProgressRecord) -> Void) {
+    private func mutateRecord(mediaId: String, mutate: @escaping (inout PlaybackProgressRecord) -> Void) {
         queue.async(flags: .barrier) { [weak self] in
             guard let self = self else { return }
             if var record = self.state.records[mediaId] {

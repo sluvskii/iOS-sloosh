@@ -945,7 +945,9 @@ class PlayerViewModel: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.saveCurrentProgress()
+            Task { @MainActor [weak self] in
+                self?.saveCurrentProgress()
+            }
         }
         
         if let existingFg = foregroundObserver {
