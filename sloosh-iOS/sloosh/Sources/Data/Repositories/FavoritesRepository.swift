@@ -58,7 +58,7 @@ class FavoritesRepository: ObservableObject {
         saveFavorites()
     }
 
-    private func refreshMissingMetadataIfNeeded() {
+    func refreshMissingMetadataIfNeeded() {
         let needsRefresh = favorites.contains {
             (($0.rating == nil || $0.rating == 0 || $0.year == nil || $0.genres == nil) && ($0.mediaId?.isEmpty == false))
         }
