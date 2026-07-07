@@ -78,11 +78,13 @@ struct ToastView: View {
                     Text(subtitle)
                         .font(.system(size: 13, weight: .medium))
                         .foregroundColor(.secondary)
+                        .lineLimit(2)
                 }
             }
+            Spacer(minLength: 0)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 14)
         .glassEffect(in: Capsule())
         .padding(.horizontal, 24)
         .offset(y: dragOffset)
