@@ -207,6 +207,7 @@ class PlayerViewModel: ObservableObject {
     var targetQualityPreference: VideoQualityPreference?
     var seriesResult: AllohaApiResult?
     private var hasStartedLoading = false
+    private var hasRetriedPlayback = false
 
     var displayLogoUrl: URL? {
         guard let kpId = currentKpId, kpId > 0 else { return nil }
@@ -240,6 +241,7 @@ class PlayerViewModel: ObservableObject {
         self._currentTranslationName = selectedVoiceover
         self.targetDirectStreamUrl = directStreamUrl
         self.isAdvancingToNextEpisode = false
+        self.hasRetriedPlayback = false
 
         if kpId != nil, let selectedVoiceover, !selectedVoiceover.isEmpty {
             persistVoiceoverSelection(selectedVoiceover)
@@ -627,6 +629,7 @@ class PlayerViewModel: ObservableObject {
         let playerItem = AVPlayerItem(asset: asset)
         playerItem.preferredPeakBitRate = max(0, preferredPeakBitRate ?? 0)
         currentPlaybackSourceURL = sourceURL.absoluteURL
+        hasRetriedPlayback = true
 
         self.isLoading = true
 
@@ -887,9 +890,18 @@ class PlayerViewModel: ObservableObject {
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 if item.status == .failed {
-                    self.error = item.error?.localizedDescription ?? "Ошибка воспроизведения"
-                    self.isLoading = false
+                    let nsError = item.error as NSError?
+                    print("PlayerItem failed: \(nsError?.localizedDescription ?? "Unknown error")")
+                    
+                    if !self.hasRetriedPlayback, let url = self.currentPlaybackSourceURL {
+                        print("Auto-retrying playback after failure...")
+                        self.reloadPlayback(to: url, preferredPeakBitRate: self.player?.currentItem?.preferredPeakBitRate)
+                    } else {
+                        self.error = item.error?.localizedDescription ?? "Ошибка воспроизведения"
+                        self.isLoading = false
+                    }
                 } else if item.status == .readyToPlay {
+                    self.hasRetriedPlayback = false // Успешно загрузилось, сбрасываем флаг
                     self.isLoading = false
                 }
             }

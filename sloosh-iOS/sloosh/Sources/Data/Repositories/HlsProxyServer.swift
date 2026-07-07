@@ -57,7 +57,9 @@ class HlsProxyServer {
         if isRunning { return }
         
         do {
-            let newListener = try NWListener(using: .tcp, on: port)
+            let parameters = NWParameters.tcp
+            parameters.allowLocalEndpointReuse = true
+            let newListener = try NWListener(using: parameters, on: port)
             newListener.newConnectionHandler = { [weak self] connection in
                 self?.handleConnection(connection)
             }
