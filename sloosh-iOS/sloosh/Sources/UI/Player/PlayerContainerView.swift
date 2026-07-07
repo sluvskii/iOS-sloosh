@@ -10,7 +10,6 @@ struct PlayerContainerView: View {
     @State private var showControls = true
     @State private var pipController: AVPictureInPictureController?
     @State private var hideTask: Task<Void, Never>?
-    @State private var seekFeedback: SeekFeedback?
     @State private var isInteracting = false
     @State private var isZoomedToFill = false
     @State private var tapTask: Task<Void, Never>?
