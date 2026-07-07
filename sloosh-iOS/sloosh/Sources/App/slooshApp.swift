@@ -2,10 +2,38 @@ import SwiftUI
 import AVFoundation
 
 class AppDelegate: NSObject, UIApplicationDelegate {
-    static var orientationLock = UIInterfaceOrientationMask.portrait
+    static var orientationLock = UIInterfaceOrientationMask.all
 
     func application(_ application: UIApplication, supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {
         return AppDelegate.orientationLock
+    }
+
+    static func lockToLandscape() {
+        AppDelegate.orientationLock = .landscape
+        if #available(iOS 16.0, *) {
+            if let windowScene = UIApplication.shared.connectedScenes.first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene {
+                windowScene.requestGeometryUpdate(.iOS(interfaceOrientations: .landscape)) { _ in }
+                for window in windowScene.windows {
+                    window.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
+                }
+            }
+        } else {
+            UIDevice.current.setValue(UIInterfaceOrientation.landscapeRight.rawValue, forKey: "orientation")
+        }
+    }
+
+    static func lockToPortrait() {
+        AppDelegate.orientationLock = .portrait
+        if #available(iOS 16.0, *) {
+            if let windowScene = UIApplication.shared.connectedScenes.first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene {
+                windowScene.requestGeometryUpdate(.iOS(interfaceOrientations: .portrait)) { _ in }
+                for window in windowScene.windows {
+                    window.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
+                }
+            }
+        } else {
+            UIDevice.current.setValue(UIInterfaceOrientation.portrait.rawValue, forKey: "orientation")
+        }
     }
     
     func application(_ application: UIApplication, handleEventsForBackgroundURLSession identifier: String, completionHandler: @escaping () -> Void) {
