@@ -83,6 +83,7 @@ struct ContentView: View {
                         .allowsHitTesting(false)
                 }
             }
+            .withToasts()
         }
     }
 }
