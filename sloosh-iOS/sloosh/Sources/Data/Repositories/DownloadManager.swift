@@ -462,7 +462,7 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                 }
                 
                 let task = session.downloadTask(with: request)
-                task.taskDescription = "\(itemId)|\(idx)|0"
+                task.taskDescription = "\(itemId)|\(idx)|0|\(manifest.localDirectory)"
                 task.resume()
             }
         }
@@ -473,17 +473,14 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     nonisolated func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
         guard let desc = downloadTask.taskDescription, let comps = extractTaskInfo(desc: desc) else { return }
         
-        let tempPath = location.path
+        let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+        let taskDir = docs.appendingPathComponent(comps.localDirectory)
+        let finalUrl = taskDir.appendingPathComponent("segment_\(comps.index).ts")
+        
+        try? FileManager.default.removeItem(at: finalUrl)
+        try? FileManager.default.moveItem(at: location, to: finalUrl)
         
         Task { @MainActor in
-            guard let manifest = self.activeManifests[comps.itemId] else { return }
-            let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-            let taskDir = docs.appendingPathComponent(manifest.localDirectory)
-            let finalUrl = taskDir.appendingPathComponent("segment_\(comps.index).ts")
-            
-            try? FileManager.default.removeItem(at: finalUrl)
-            try? FileManager.default.moveItem(atPath: tempPath, toPath: finalUrl.path)
-            
             await self.enqueueNextBatch(for: comps.itemId)
         }
     }
@@ -504,7 +501,7 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                     for (k, v) in manifest.headers { request.setValue(v, forHTTPHeaderField: k) }
                     
                     let newTask = self.session.downloadTask(with: request)
-                    newTask.taskDescription = "\(comps.itemId)|\(comps.index)|\(comps.retries + 1)"
+                    newTask.taskDescription = "\(comps.itemId)|\(comps.index)|\(comps.retries + 1)|\(manifest.localDirectory)"
                     newTask.resume()
                 }
             } else {
@@ -522,11 +519,12 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         }
     }
     
-    private nonisolated func extractTaskInfo(desc: String) -> (itemId: String, index: Int, retries: Int)? {
+    private nonisolated func extractTaskInfo(desc: String) -> (itemId: String, index: Int, retries: Int, localDirectory: String)? {
         let parts = desc.split(separator: "|")
-        if parts.count >= 2, let idx = Int(parts[1]) {
-            let retries = parts.count >= 3 ? (Int(parts[2]) ?? 0) : 0
-            return (String(parts[0]), idx, retries)
+        if parts.count >= 4, let idx = Int(parts[1]) {
+            let retries = Int(parts[2]) ?? 0
+            let localDirectory = String(parts[3])
+            return (String(parts[0]), idx, retries, localDirectory)
         }
         return nil
     }
