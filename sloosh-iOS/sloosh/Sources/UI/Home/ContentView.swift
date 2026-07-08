@@ -60,8 +60,10 @@ struct ContentView: View {
                 
                 if UIDevice.current.userInterfaceIdiom == .phone && proxy.safeAreaInsets.top > 20 {
                     Image("LogoText")
+                        .renderingMode(.template)
                         .resizable()
                         .scaledToFit()
+                        .foregroundColor(.black)
                         .frame(height: 12)
                         .padding(.horizontal, 16)
                         .padding(.vertical, 6)

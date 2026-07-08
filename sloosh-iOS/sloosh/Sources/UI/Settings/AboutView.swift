@@ -16,8 +16,10 @@ struct AboutView: View {
                     
                     if UIImage(named: "LogoText") != nil {
                         Image("LogoText")
+                            .renderingMode(.template)
                             .resizable()
                             .scaledToFit()
+                            .foregroundColor(Color.slooshAccent)
                             .frame(height: 64)
                     } else {
                         Text("sloosh")
