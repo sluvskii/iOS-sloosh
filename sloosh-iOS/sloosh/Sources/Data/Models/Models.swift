@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 struct ApiEnvelope<T: Codable>: Codable {
     let success: Bool?
