@@ -18,7 +18,6 @@ class AppDelegate: NSObject, UIApplicationDelegate {
                     window.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
                 }
             }
-            UIViewController.attemptRotationToDeviceOrientation()
         } else {
             UIDevice.current.setValue(UIInterfaceOrientation.landscapeRight.rawValue, forKey: "orientation")
             UIViewController.attemptRotationToDeviceOrientation()
@@ -35,7 +34,6 @@ class AppDelegate: NSObject, UIApplicationDelegate {
                     window.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
                 }
             }
-            UIViewController.attemptRotationToDeviceOrientation()
         } else {
             UIDevice.current.setValue(UIInterfaceOrientation.portrait.rawValue, forKey: "orientation")
             UIViewController.attemptRotationToDeviceOrientation()

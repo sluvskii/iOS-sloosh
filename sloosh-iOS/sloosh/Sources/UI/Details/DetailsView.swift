@@ -213,8 +213,8 @@ struct DetailsView: View {
                                 playerQuality = quality
                                 playerSeriesResult = result
                                 
-                                if let kpId = wrapper.kpId,
-                                   DownloadManager.shared.isDownloaded(kpId: kpId, season: season, episode: episode),
+                                let kpId = wrapper.kpId
+                                if DownloadManager.shared.isDownloaded(kpId: kpId, season: season, episode: episode),
                                    let downloadItem = DownloadManager.shared.getDownloadItem(kpId: kpId, season: season, episode: episode),
                                    downloadItem.translationName == translation.name {
                                     selectedIframeUrl = nil
@@ -1791,10 +1791,10 @@ class DetailsViewModel: ObservableObject {
                 
                 async let allohaTask = try? AllohaRepository.shared.fetchByKpId(kpId: kpId)
                 
-                async let cdnMoviesTask = try? CdnMoviesRepository.shared.fetchByKpId(
+                async let cdnMoviesTask = try? CdnMoviesRepository.shared.getDetails(
                     kpId: kpId,
                     title: details?.title ?? details?.name ?? "",
-                    isSerial: details?.isSerial ?? false
+                    isSerial: details?.type == "tv"
                 )
                 
                 let (allohaResp, cdnResp) = await (allohaTask, cdnMoviesTask)

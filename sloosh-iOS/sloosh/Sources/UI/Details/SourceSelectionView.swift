@@ -277,7 +277,7 @@ struct SourceSelectionView: View {
                         }
                         .pickerStyle(.segmented)
                         .padding(.horizontal)
-                        .onChange(of: selectedProvider) { _ in
+                        .onChange(of: selectedProvider) { _, _ in
                             autoSelectInitialValues()
                         }
                     }
@@ -326,7 +326,7 @@ struct SourceSelectionView: View {
                                 Text("Серия")
                                     .font(.system(size: 20, weight: .bold))
                                     .foregroundColor(.primary)
-                                
+                            
                                 FlowLayout(spacing: 10) {
                                     ForEach(allEpisodes, id: \.self) { e in
                                         WatchSelectorChip(
