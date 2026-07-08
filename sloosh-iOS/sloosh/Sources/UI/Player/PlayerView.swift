@@ -458,6 +458,7 @@ class PlayerViewModel: ObservableObject {
                 }
             }
         }
+    }
     
     func cleanup() {
         hasStartedLoading = false
