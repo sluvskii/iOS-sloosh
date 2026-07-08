@@ -52,6 +52,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 @main
 struct slooshApp: App {
     @UIApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
+    @AppStorage("appTheme") private var appTheme: AppTheme = .system
     
     init() {
         // Запускаем скрытый отлов крашей
@@ -81,6 +82,7 @@ struct slooshApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .preferredColorScheme(appTheme.colorScheme)
                 .alert("Приложение было закрыто из-за ошибки", isPresented: $diagnostics.hasCrashLog) {
                     Button("Отправить логи") {
                         showShareSheet = true

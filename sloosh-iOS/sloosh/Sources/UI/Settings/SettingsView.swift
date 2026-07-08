@@ -7,6 +7,7 @@ struct SettingsView: View {
     @AppStorage("cardStyle") private var cardStyle: CardStyle = .classic
     @AppStorage("cardDensity") private var cardDensity: CardDensity = .regular
     @AppStorage("posterQuality") private var posterQuality: PosterQuality = .high
+    @AppStorage("appTheme") private var appTheme: AppTheme = .system
     @State private var tabBarShowsLabelsDraft = false
     @State private var applyTabBarLabelsTask: Task<Void, Never>?
     
@@ -82,6 +83,20 @@ struct SettingsView: View {
                         
                         Text("Подписи вкладок")
                             .font(.body)
+                    }
+                }
+                
+                // Тема оформления
+                HStack(spacing: 12) {
+                    Image(systemName: "paintpalette.fill")
+                        .foregroundStyle(Color.slooshAccent)
+                        .font(.system(size: 18))
+                        .frame(width: 24)
+                    
+                    Picker("Тема оформления", selection: $appTheme) {
+                        ForEach(AppTheme.allCases) { theme in
+                            Text(theme.title).tag(theme)
+                        }
                     }
                 }
                 
