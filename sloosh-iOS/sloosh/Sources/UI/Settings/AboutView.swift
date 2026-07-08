@@ -8,47 +8,69 @@ struct AboutView: View {
     }
 
     var body: some View {
-        ZStack {
-            Color(UIColor.systemGroupedBackground)
-                .ignoresSafeArea()
+        List {
+            // Секция заголовка с логотипом
+            Section {
+                VStack(spacing: 12) {
+                    Spacer(minLength: 8)
+                    
+                    if UIImage(named: "LogoText") != nil {
+                        Image("LogoText")
+                            .resizable()
+                            .scaledToFit()
+                            .frame(height: 44)
+                    } else {
+                        Text("sloosh")
+                            .font(.system(size: 32, weight: .bold, design: .rounded))
+                            .foregroundColor(.primary)
+                    }
+                    
+                    Text("Твой проводник в мир кино")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                    
+                    Text(appVersion)
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
+                    
+                    Spacer(minLength: 8)
+                }
+                .frame(maxWidth: .infinity)
+                .listRowBackground(Color.clear)
+            }
             
-            VStack(spacing: 16) {
-                Spacer()
-                
-                // Иконка приложения
-                if let iconDict = Bundle.main.infoDictionary?["CFBundleIcons"] as? [String: Any],
-                   let primaryIcon = iconDict["CFBundlePrimaryIcon"] as? [String: Any],
-                   let iconFiles = primaryIcon["CFBundleIconFiles"] as? [String],
-                   let lastIcon = iconFiles.last,
-                   let uiImage = UIImage(named: lastIcon) {
-                    Image(uiImage: uiImage)
-                        .resizable()
-                        .frame(width: 120, height: 120)
-                        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-                        .shadow(color: Color.black.opacity(0.1), radius: 10, x: 0, y: 5)
-                } else {
-                    // Fallback если иконка не найдена в бандле
-                    RoundedRectangle(cornerRadius: 24, style: .continuous)
-                        .fill(Color.accentColor.opacity(0.8))
-                        .frame(width: 120, height: 120)
-                        .overlay(
-                            Text("S")
-                                .font(.system(size: 60, weight: .bold, design: .rounded))
-                                .foregroundColor(.white)
-                        )
-                        .shadow(color: Color.black.opacity(0.1), radius: 10, x: 0, y: 5)
+            // Секция ссылок сообщества
+            Section("Сообщество") {
+                Link(destination: URL(string: "https://t.me/slooshapp")!) {
+                    HStack {
+                        Image(systemName: "paperplane.fill")
+                            .foregroundColor(.blue)
+                            .font(.system(size: 18))
+                            .frame(width: 24)
+                        Text("Telegram-канал")
+                            .foregroundColor(.primary)
+                        Spacer()
+                        Image(systemName: "arrow.up.forward.app")
+                            .foregroundColor(.secondary)
+                            .font(.system(size: 14))
+                    }
                 }
                 
-                Text("sloosh")
-                    .font(.system(size: 32, weight: .bold, design: .rounded))
-                    .foregroundColor(.primary)
-                
-                Spacer()
-                
-                Text(appVersion)
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(.secondary)
-                    .padding(.bottom, 16)
+                Link(destination: URL(string: "https://t.me/slooshbeta")!) {
+                    HStack {
+                        Image(systemName: "flask.fill")
+                            .foregroundColor(.purple)
+                            .font(.system(size: 18))
+                            .frame(width: 24)
+                        Text("Бета-чат")
+                            .foregroundColor(.primary)
+                        Spacer()
+                        Image(systemName: "arrow.up.forward.app")
+                            .foregroundColor(.secondary)
+                            .font(.system(size: 14))
+                    }
+                }
             }
         }
         .navigationTitle("О приложении")
