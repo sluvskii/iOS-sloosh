@@ -40,13 +40,8 @@ struct SettingsView: View {
                             .font(.system(size: 18))
                             .frame(width: 24)
                         
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Стиль карточек")
-                                .font(.body)
-                            Text("Отображение информации в списках")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
+                        Text("Стиль карточек")
+                            .font(.body)
                     }
                     
                     Picker("Стиль карточек", selection: $cardStyle.animation(.spring(response: 0.35, dampingFraction: 0.75))) {
@@ -65,13 +60,8 @@ struct SettingsView: View {
                             .font(.system(size: 18))
                             .frame(width: 24)
                         
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Сетка списков")
-                                .font(.body)
-                            Text("Отступы между карточками и плотность")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
+                        Text("Сетка списков")
+                            .font(.body)
                     }
                     
                     Picker("Сетка списков", selection: $cardDensity.animation(.spring(response: 0.35, dampingFraction: 0.75))) {
@@ -90,13 +80,8 @@ struct SettingsView: View {
                             .font(.system(size: 18))
                             .frame(width: 24)
                         
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Подписи вкладок")
-                                .font(.body)
-                            Text("Названия разделов в нижней панели")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
+                        Text("Подписи вкладок")
+                            .font(.body)
                     }
                 }
                 
@@ -138,13 +123,8 @@ struct SettingsView: View {
                             .font(.system(size: 18))
                             .frame(width: 24)
                         
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Автопереход к серии")
-                                .font(.body)
-                            Text("Автоматически включать следующий эпизод")
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
-                        }
+                        Text("Автопереход к серии")
+                            .font(.body)
                     }
                 }
             }
