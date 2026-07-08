@@ -50,6 +50,12 @@ jobs:
       - name: Install XcodeGen
         run: brew install xcodegen
 
+      - name: Inject Build Number
+        run: |
+          cd sloosh-iOS
+          sed -i '' "s/890/${{ github.run_number }}/g" project.yml
+          sed -i '' "s/890/${{ github.run_number }}/g" sloosh/Info.plist
+
       - name: Generate Xcode Project
         run: |
           cd sloosh-iOS
