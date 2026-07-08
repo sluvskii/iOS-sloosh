@@ -92,6 +92,7 @@ struct DetailsView: View {
     @State private var playerSubtitles: [PlaybackSubtitle] = []
     @State private var playerQuality: VideoQualityPreference? = nil
     @State private var playerSeriesResult: AllohaApiResult?
+    @State private var playerProvider: String = "Alloha"
     @State private var favoriteBounce = false
     @State private var movieToDelete: DownloadItem? = nil
     @State private var showDeleteMovieAlert = false
@@ -203,8 +204,9 @@ struct DetailsView: View {
                         )
                     } else if let wrapper = viewModel.sourceResultWrapper,
                               let result = wrapper.allohaResult {
-                        SourceSelectionView(mode: sourceSheetMode, result: result, kpId: wrapper.kpId, details: viewModel.details) { translation, season, episode, quality in
+                        SourceSelectionView(mode: sourceSheetMode, allohaResult: viewModel.allohaResult, cdnResult: viewModel.cdnMoviesResult, kpId: wrapper.kpId, details: viewModel.details) { provider, translation, season, episode, quality in
                             if sourceSheetMode == .play {
+                                playerProvider = provider
                                 playerKpId = wrapper.kpId
                                 playerSeason = season
                                 playerEpisode = episode
@@ -261,9 +263,9 @@ struct DetailsView: View {
             }) {
                 if let details = viewModel.details {
                     if let iframeUrl = selectedIframeUrl {
-                        PlayerView(iframeUrl: iframeUrl, fallbackTitle: details.title ?? details.name ?? "", kpId: playerKpId, season: playerSeason, episode: playerEpisode, selectedVoiceover: playerVoiceover, directStreamUrl: playerStreamUrl, voices: playerVoices, subtitles: playerSubtitles, initialQuality: playerQuality, seriesResult: playerSeriesResult)
+                        PlayerView(iframeUrl: iframeUrl, fallbackTitle: details.title ?? details.name ?? "", kpId: playerKpId, season: playerSeason, episode: playerEpisode, selectedVoiceover: playerVoiceover, directStreamUrl: playerStreamUrl, voices: playerVoices, subtitles: playerSubtitles, initialQuality: playerQuality, seriesResult: playerSeriesResult, provider: playerProvider)
                     } else if let streamUrl = playerStreamUrl {
-                        PlayerView(iframeUrl: "", fallbackTitle: details.title ?? details.name ?? "", kpId: playerKpId, season: playerSeason, episode: playerEpisode, selectedVoiceover: playerVoiceover, directStreamUrl: streamUrl, voices: playerVoices, subtitles: playerSubtitles, initialQuality: playerQuality, seriesResult: playerSeriesResult)
+                        PlayerView(iframeUrl: "", fallbackTitle: details.title ?? details.name ?? "", kpId: playerKpId, season: playerSeason, episode: playerEpisode, selectedVoiceover: playerVoiceover, directStreamUrl: streamUrl, voices: playerVoices, subtitles: playerSubtitles, initialQuality: playerQuality, seriesResult: playerSeriesResult, provider: playerProvider)
                     } else {
                         ZStack {
                             Color.black.ignoresSafeArea()
@@ -1737,8 +1739,8 @@ struct InlineEpisodesSection: View {
 // Обертка для Identifiable, чтобы использовать в .sheet(item:)
 struct SourceResultWrapper: Identifiable {
     let id = UUID()
+    let kpId: Int
     var allohaResult: AllohaApiResult?
-    var kpId: Int?
 }
 
 @MainActor
@@ -1747,7 +1749,8 @@ class DetailsViewModel: ObservableObject {
     @Published var isLoading = true
 
     @Published var isFetchingSources = false
-    @Published var sourceResultWrapper: SourceResultWrapper?
+    @Published private(set) var sourceResultWrapper: SourceResultWrapper?
+    @Published private(set) var cdnMoviesResult: AllohaApiResult?
 
     @Published var inlineSourceWrapper: SourceResultWrapper?
     @Published var selectedInlineSeason: Int = 1
@@ -1780,8 +1783,42 @@ class DetailsViewModel: ObservableObject {
 
         do {
             details = try await MoviesRepository.shared.getDetails(id: id)
+            
+            func loadSources(mediaId: String) async {
+                guard let kpId = Int(mediaId.replacingOccurrences(of: "kp_", with: "")) else {
+                    return
+                }
+                
+                async let allohaTask = try? AllohaRepository.shared.fetchByKpId(
+                    kpId: kpId,
+                    title: details?.nameRu ?? details?.nameEn ?? "",
+                    isSerial: details?.isSerial ?? false
+                )
+                
+                async let cdnMoviesTask = try? CdnMoviesRepository.shared.getDetails(
+                    kpId: kpId,
+                    title: details?.nameRu ?? details?.nameEn ?? "",
+                    isSerial: details?.isSerial ?? false
+                )
+                
+                let (allohaResp, cdnResp) = await (allohaTask, cdnMoviesTask)
+                
+                await MainActor.run {
+                    self.cdnMoviesResult = cdnResp
+                    
+                    if let result = allohaResp {
+                        self.sourceResultWrapper = SourceResultWrapper(kpId: kpId, allohaResult: result)
+                    } else if cdnResp != nil {
+                        self.sourceResultWrapper = SourceResultWrapper(kpId: kpId, allohaResult: nil)
+                    }
+                }
+            }
+            
             if let details {
                 PlaybackProgressStore.shared.saveMetadata(details: details)
+                if let id = details.externalIds?.kp?.description ?? details.id {
+                    await loadSources(mediaId: id)
+                }
             }
             checkFavoriteStatus()
 

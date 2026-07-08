@@ -63,6 +63,7 @@ struct PlayerView: View {
     let subtitles: [PlaybackSubtitle]
     let initialQuality: VideoQualityPreference?
     let seriesResult: AllohaApiResult?
+    let provider: String
 
     @StateObject private var viewModel = PlayerViewModel()
 
@@ -77,7 +78,8 @@ struct PlayerView: View {
         voices: [String] = [],
         subtitles: [PlaybackSubtitle] = [],
         initialQuality: VideoQualityPreference? = nil,
-        seriesResult: AllohaApiResult? = nil
+        seriesResult: AllohaApiResult? = nil,
+        provider: String = "Alloha"
     ) {
         self.iframeUrl = iframeUrl
         self.fallbackTitle = fallbackTitle
@@ -90,6 +92,7 @@ struct PlayerView: View {
         self.subtitles = subtitles
         self.initialQuality = initialQuality
         self.seriesResult = seriesResult
+        self.provider = provider
     }
 
     var body: some View {
@@ -113,7 +116,8 @@ struct PlayerView: View {
                     selectedVoiceover: selectedVoiceover,
                     directStreamUrl: directStreamUrl,
                     voices: voices,
-                    subtitles: subtitles
+                    subtitles: subtitles,
+                    provider: provider
                 )
             } else {
                 viewModel.error = "Нет URL для воспроизведения"
@@ -230,13 +234,13 @@ class PlayerViewModel: ObservableObject {
         return host == "127.0.0.1" || host == "localhost"
     }
     
-    func load(iframeUrl: String?, kpId: Int?, season: Int?, episode: Int?, selectedVoiceover: String?, directStreamUrl: String? = nil, voices: [String] = [], subtitles: [PlaybackSubtitle] = []) {
+    func load(iframeUrl: String?, kpId: Int?, season: Int?, episode: Int?, selectedVoiceover: String?, directStreamUrl: String? = nil, voices: [String] = [], subtitles: [PlaybackSubtitle] = [], provider: String = "Alloha") {
         if hasStartedLoading { return } // Защита от двойного вызова
         hasStartedLoading = true
-        beginLoad(iframeUrl: iframeUrl, kpId: kpId, season: season, episode: episode, selectedVoiceover: selectedVoiceover, directStreamUrl: directStreamUrl, voices: voices, subtitles: subtitles)
+        beginLoad(iframeUrl: iframeUrl, kpId: kpId, season: season, episode: episode, selectedVoiceover: selectedVoiceover, directStreamUrl: directStreamUrl, voices: voices, subtitles: subtitles, provider: provider)
     }
 
-    private func beginLoad(iframeUrl: String?, kpId: Int?, season: Int?, episode: Int?, selectedVoiceover: String?, directStreamUrl: String? = nil, voices: [String] = [], subtitles: [PlaybackSubtitle] = []) {
+    private func beginLoad(iframeUrl: String?, kpId: Int?, season: Int?, episode: Int?, selectedVoiceover: String?, directStreamUrl: String? = nil, voices: [String] = [], subtitles: [PlaybackSubtitle] = [], provider: String = "Alloha") {
         self.currentKpId = kpId
         self.currentSeason = season
         self.currentEpisode = episode
@@ -268,7 +272,7 @@ class PlayerViewModel: ObservableObject {
             currentQualityKey = "Локальный"
             playVideo(url: directUrl, headers: [:], voices: [], subtitles: [])
         } else if let iframe = iframeUrl, !iframe.isEmpty {
-            startParsing(iframeUrl: iframe, voices: voices, subtitles: subtitles)
+            startParsing(iframeUrl: iframe, voices: voices, subtitles: subtitles, provider: provider)
         } else {
             error = "Нет URL для воспроизведения"
             isLoading = false
@@ -405,25 +409,55 @@ class PlayerViewModel: ObservableObject {
         }
     }
     
-    private func startParsing(iframeUrl: String, voices: [String] = [], subtitles: [PlaybackSubtitle] = []) {
+    private func startParsing(iframeUrl: String, voices: [String] = [], subtitles: [PlaybackSubtitle] = [], provider: String = "Alloha") {
         resolveTask?.cancel()
         resolver?.cancel()
 
-        let resolver = AllohaRuntimeResolver()
-        self.resolver = resolver
-
-        resolveTask = Task { [weak self] in
-            do {
-                let resolved = try await resolver.resolve(iframeUrl: iframeUrl)
-                guard let self, !Task.isCancelled else { return }
-                self.applyResolvedAllohaStream(resolved)
-            } catch is CancellationError {
-                return
-            } catch {
-                guard let self, !Task.isCancelled else { return }
-                self.error = error.localizedDescription
-                self.isLoading = false
+        if provider == "CDNMovies" {
+            // For CDNMovies, we just use our static CdnMoviesRuntimeResolver 
+            // without a WKWebView state because it's a simple HTML regex parser.
+            resolveTask = Task { [weak self] in
+                do {
+                    let streamUrl = try await CdnMoviesRuntimeResolver.resolve(iframeUrl: iframeUrl)
+                    guard let self, !Task.isCancelled else { return }
+                    
+                    // Mock a resolved payload in the format expected by applyResolvedAllohaStream
+                    let resolved: [String: Any] = [
+                        "videoURL": streamUrl,
+                        "audioTracks": [],
+                        "audioVariants": [],
+                        "subtitles": [],
+                        "qualityVariants": [],
+                        "httpHeaders": [String: String]()
+                    ]
+                    
+                    self.applyResolvedAllohaStream(resolved)
+                } catch is CancellationError {
+                    return
+                } catch {
+                    guard let self, !Task.isCancelled else { return }
+                    self.error = error.localizedDescription
+                    self.isLoading = false
+                }
             }
+        } else {
+            let resolver = AllohaRuntimeResolver()
+            self.resolver = resolver
+
+            resolveTask = Task { [weak self] in
+                do {
+                    let resolved = try await resolver.resolve(iframeUrl: iframeUrl)
+                    guard let self, !Task.isCancelled else { return }
+                    self.applyResolvedAllohaStream(resolved)
+                } catch is CancellationError {
+                    return
+                } catch {
+                    guard let self, !Task.isCancelled else { return }
+                    self.error = error.localizedDescription
+                    self.isLoading = false
+                }
+            }
+        }
         }
     }
     
