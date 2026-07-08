@@ -7,21 +7,32 @@ enum SourceSelectionMode {
 
 struct SourceSelectionView: View {
     let mode: SourceSelectionMode
-    let result: AllohaApiResult
+    let allohaResult: AllohaApiResult?
+    let cdnResult: AllohaApiResult?
     let kpId: Int?
     let details: MediaDetailsDto?
-    let onAction: (AllohaTranslation, Int?, Int?, VideoQualityPreference) -> Void
+    let onAction: (String, AllohaTranslation, Int?, Int?, VideoQualityPreference) -> Void
     @Environment(\.dismiss) private var dismiss
     
     @State private var selectedSeason: Int?
     @State private var selectedEpisode: Int?
     @State private var selectedTranslationName: String?
     
+    @State private var selectedProvider: String = "Alloha"
+    
+    var result: AllohaApiResult? {
+        if selectedProvider == "CDNMovies" {
+            return cdnResult
+        }
+        return allohaResult
+    }
+    
     @AppStorage("preferredVideoQuality") private var preferredQuality: VideoQualityPreference = .ask
     @State private var showQualitySelection = false
     
     // Computed properties for ALL unique values
     var allTranslations: [String] {
+        guard let result = result else { return [] }
         if result.isSerial {
             var names = Set<String>()
             for season in result.seasons {
@@ -39,16 +50,36 @@ struct SourceSelectionView: View {
     }
     
     var allSeasons: [Int] {
+        guard let result = result else { return [] }
         return result.seasons.map { $0.season }.sorted()
     }
     
     var allEpisodes: [Int] {
-        guard let s = selectedSeason, let season = result.seasons.first(where: { $0.season == s }) else { return [] }
+        guard let result = result, let s = selectedSeason, let season = result.seasons.first(where: { $0.season == s }) else { return [] }
         return season.episodes.map { $0.episode }.sorted()
+    }
+    
+    private func autoSelectInitialValues() {
+        guard let result = result else { return }
+        
+        if result.isSerial {
+            if let firstSeason = result.seasons.first {
+                selectedSeason = firstSeason.season
+                if let firstEpisode = firstSeason.episodes.first {
+                    selectedEpisode = firstEpisode.episode
+                    if let firstTranslation = firstEpisode.translations.first {
+                        selectedTranslationName = firstTranslation.name
+                    }
+                }
+            }
+        } else if let movie = result.movie, let firstTranslation = movie.translations.first {
+            selectedTranslationName = firstTranslation.name
+        }
     }
     
     // Available checking
     func isTranslationAvailable(_ name: String) -> Bool {
+        guard let result = result else { return false }
         if result.isSerial {
             guard let s = selectedSeason, let e = selectedEpisode else { return false }
             return episodeHasTranslation(season: s, episode: e, t: name)
@@ -70,11 +101,13 @@ struct SourceSelectionView: View {
     
     // Logic
     func seasonHasTranslation(season: Int, t: String) -> Bool {
-        guard let s = result.seasons.first(where: { $0.season == season }) else { return false }
-        return s.episodes.contains { ep in ep.translations.contains { allohaTranslationNamesMatch($0.name, t, exactOnly: true) } }
+        guard let result = result else { return false }
+        guard let sInfo = result.seasons.first(where: { $0.season == season }) else { return false }
+        return sInfo.episodes.contains { ep in ep.translations.contains { allohaTranslationNamesMatch($0.name, t, exactOnly: true) } }
     }
 
     func episodeHasTranslation(season: Int, episode: Int, t: String) -> Bool {
+        guard let result = result else { return false }
         guard let s = result.seasons.first(where: { $0.season == season }),
               let ep = s.episodes.first(where: { $0.episode == episode }) else { return false }
         return ep.translations.contains { allohaTranslationNamesMatch($0.name, t, exactOnly: true) }
@@ -100,9 +133,22 @@ struct SourceSelectionView: View {
     }
     
     // Selection actions
+    private func getTranslationObject(name: String) -> AllohaTranslation? {
+        guard let result = result else { return nil }
+        if result.isSerial {
+            guard let s = selectedSeason, let e = selectedEpisode else { return nil }
+            guard let season = result.seasons.first(where: { $0.season == s }),
+                  let ep = season.episodes.first(where: { $0.episode == e }) else { return nil }
+            return ep.translations.first(where: { allohaTranslationNamesMatch($0.name, name, exactOnly: true) })
+        } else if let movie = result.movie {
+            return movie.translations.first(where: { $0.name == name })
+        }
+        return nil
+    }
+
     func selectTranslation(_ name: String) {
         selectedTranslationName = name
-        if result.isSerial {
+        if let result = result, result.isSerial {
             if let s = selectedSeason, !seasonHasTranslation(season: s, t: name) {
                 if let newS = result.seasons.first(where: { seasonHasTranslation(season: $0.season, t: name) }) {
                     selectedSeason = newS.season
@@ -119,7 +165,7 @@ struct SourceSelectionView: View {
     
     func selectSeason(_ s: Int) {
         selectedSeason = s
-        guard let seasonObj = result.seasons.first(where: { $0.season == s }) else { return }
+        guard let result = result, let seasonObj = result.seasons.first(where: { $0.season == s }) else { return }
         if let e = selectedEpisode, !seasonObj.episodes.contains(where: { $0.episode == e }) {
             selectedEpisode = seasonObj.episodes.first?.episode ?? 1
         }
@@ -132,7 +178,7 @@ struct SourceSelectionView: View {
     
     func selectEpisode(_ e: Int) {
         selectedEpisode = e
-        if let s = selectedSeason, let t = selectedTranslationName, !episodeHasTranslation(season: s, episode: e, t: t) {
+        if let result = result, let s = selectedSeason, let t = selectedTranslationName, !episodeHasTranslation(season: s, episode: e, t: t) {
             if let seasonObj = result.seasons.first(where: { $0.season == s }),
                let epObj = seasonObj.episodes.first(where: { $0.episode == e }),
                let firstT = epObj.translations.first {
@@ -146,7 +192,7 @@ struct SourceSelectionView: View {
             PlaybackProgressStore.shared.loadLastVoiceover(kpId: $0, source: "alloha")
         } ?? UserDefaults.standard.string(forKey: "alloha_last_translation_name")
 
-        if result.isSerial {
+        if let result = result, result.isSerial {
             var initialSeason = result.seasons.first?.season
             var initialEpisode: Int? = nil
             
@@ -159,7 +205,6 @@ struct SourceSelectionView: View {
                 if let lastEpisode = PlaybackProgressStore.shared.loadLastEpisode(kpId: kpId) {
                     initialEpisode = lastEpisode
                     
-                    // If the user fully watched this episode, auto-select the next one!
                     let mediaId = "kp_\(kpId)_s\(initialSeason ?? 1)_e\(lastEpisode)"
                     if PlaybackProgressStore.shared.loadWatched(mediaId: mediaId) {
                         let allEpisodes = result.seasons
@@ -191,7 +236,7 @@ struct SourceSelectionView: View {
                     selectedTranslationName = preferredTranslation(in: episode.translations, preferredName: savedVoiceover)?.name
                 }
             }
-        } else if let movie = result.movie {
+        } else if let movie = result?.movie {
             selectedTranslationName = preferredTranslation(in: movie.translations, preferredName: savedVoiceover)?.name
         }
     }
@@ -200,42 +245,21 @@ struct SourceSelectionView: View {
         if preferredQuality == .ask {
             showQualitySelection = true
         } else {
-            finishAction(quality: preferredQuality)
-        }
-    }
-    
-    func finishAction(quality: VideoQualityPreference) {
-        if result.isSerial {
-            guard let s = selectedSeason, let e = selectedEpisode, let tName = selectedTranslationName else { return }
-            guard let seasonObj = result.seasons.first(where: { $0.season == s }),
-                  let epObj = seasonObj.episodes.first(where: { $0.episode == e }),
-                  let translation = epObj.translations.first(where: { allohaTranslationNamesMatch($0.name, tName, exactOnly: true) }) else { return }
-            
-            if mode == .play, let kpId = kpId {
-                PlaybackProgressStore.shared.saveLastPlayed(kpId: kpId, season: s, episode: e)
-                PlaybackProgressStore.shared.saveLastVoiceover(kpId: kpId, source: "alloha", voiceover: translation.name)
+            if let t = getTranslationObject(name: selectedTranslationName ?? "") {
+                if mode == .play, let kpId = kpId {
+                    PlaybackProgressStore.shared.saveLastPlayed(kpId: kpId, season: selectedSeason, episode: selectedEpisode)
+                    PlaybackProgressStore.shared.saveLastVoiceover(kpId: kpId, source: "alloha", voiceover: t.name)
+                }
+                onAction(selectedProvider, t, selectedSeason, selectedEpisode, preferredQuality)
+                dismiss()
             }
-            
-            onAction(translation, s, e, quality)
-            dismiss()
-        } else if let movie = result.movie {
-            guard let tName = selectedTranslationName,
-                  let translation = movie.translations.first(where: { $0.name == tName }) else { return }
-            
-            if mode == .play, let kpId = kpId {
-                PlaybackProgressStore.shared.saveLastPlayed(kpId: kpId, season: nil, episode: nil)
-                PlaybackProgressStore.shared.saveLastVoiceover(kpId: kpId, source: "alloha", voiceover: translation.name)
-            }
-            
-            onAction(translation, nil, nil, quality)
-            dismiss()
         }
     }
 
     /// Кнопка «Смотреть» активна только когда пользователь сделал полный выбор.
     var isReadyToPlay: Bool {
         guard selectedTranslationName != nil else { return false }
-        if result.isSerial {
+        if let result = result, result.isSerial {
             return selectedSeason != nil && selectedEpisode != nil
         }
         return true
@@ -243,8 +267,21 @@ struct SourceSelectionView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
+            ScrollView(.vertical, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 24) {
+                    
+                    if allohaResult != nil && cdnResult != nil {
+                        Picker("Источник", selection: $selectedProvider) {
+                            Text("Alloha").tag("Alloha")
+                            Text("CDNMovies").tag("CDNMovies")
+                        }
+                        .pickerStyle(.segmented)
+                        .padding(.horizontal)
+                        .onChange(of: selectedProvider) { _ in
+                            autoSelectInitialValues()
+                        }
+                    }
+                    
                     if !allTranslations.isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
                             Text("Озвучка")
@@ -265,7 +302,7 @@ struct SourceSelectionView: View {
                         }
                     }
                     
-                    if result.isSerial && !allSeasons.isEmpty {
+                    if let result = result, result.isSerial && !allSeasons.isEmpty {
                         VStack(alignment: .leading, spacing: 12) {
                             Text("Сезон")
                                 .font(.system(size: 20, weight: .bold))
@@ -310,7 +347,7 @@ struct SourceSelectionView: View {
             .contentMargins(.horizontal, 20, for: .scrollContent)
             .contentMargins(.top, 16, for: .scrollContent)
             .contentMargins(.bottom, 28, for: .scrollContent)
-            .navigationTitle(result.title)
+            .navigationTitle(result?.title ?? "Выбор")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -348,9 +385,16 @@ struct SourceSelectionView: View {
             setupInitialSelection()
         }
         .sheet(isPresented: $showQualitySelection) {
-            QualitySelectionSheet { selectedQuality in
-                showQualitySelection = false
-                finishAction(quality: selectedQuality)
+            if let t = getTranslationObject(name: selectedTranslationName ?? "") {
+                QualitySelectionSheet(translations: [t]) { selectedT, selectedQuality in
+                    if mode == .play, let kpId = kpId {
+                        PlaybackProgressStore.shared.saveLastPlayed(kpId: kpId, season: selectedSeason, episode: selectedEpisode)
+                        PlaybackProgressStore.shared.saveLastVoiceover(kpId: kpId, source: "alloha", voiceover: selectedT.name)
+                    }
+                    onAction(selectedProvider, selectedT, selectedSeason, selectedEpisode, selectedQuality)
+                    showQualitySelection = false
+                    dismiss()
+                }
             }
         }
     }

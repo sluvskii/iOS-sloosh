@@ -13,6 +13,7 @@ struct PlayerConfig: Identifiable {
     let subtitles: [PlaybackSubtitle]
     let quality: VideoQualityPreference?
     let seriesResult: AllohaApiResult?
+    let provider: String
 }
 
 struct HomeDirectPlayWrapper: View {
@@ -30,7 +31,7 @@ struct HomeDirectPlayWrapper: View {
                     .transition(.opacity)
             } else if let wrapper = viewModel.sourceResultWrapper,
                       let result = wrapper.allohaResult {
-                SourceSelectionView(mode: .play, result: result, kpId: wrapper.kpId, details: viewModel.details) { translation, season, episode, quality in
+                SourceSelectionView(mode: .play, allohaResult: result, cdnResult: nil, kpId: wrapper.kpId, details: viewModel.details) { provider, translation, season, episode, quality in
                     let config = PlayerConfig(
                         iframeUrl: translation.iframeUrl,
                         title: title,
@@ -42,6 +43,7 @@ struct HomeDirectPlayWrapper: View {
                         voices: [],
                         subtitles: [],
                         quality: quality,
+                        provider: provider,
                         seriesResult: result
                     )
                     onPlay(config)
