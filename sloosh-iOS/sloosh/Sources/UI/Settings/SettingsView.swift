@@ -27,6 +27,7 @@ struct SettingsView: View {
                     Spacer()
                 }
                 .padding(.vertical, 12)
+                .listRowSeparator(.hidden)
                 
                 // Стиль карточек
                 VStack(alignment: .leading, spacing: 8) {
@@ -52,6 +53,7 @@ struct SettingsView: View {
                     .pickerStyle(.segmented)
                 }
                 .padding(.vertical, 4)
+                .listRowSeparator(.hidden)
                 
                 // Сетка списков
                 VStack(alignment: .leading, spacing: 8) {
@@ -77,6 +79,7 @@ struct SettingsView: View {
                     .pickerStyle(.segmented)
                 }
                 .padding(.vertical, 4)
+                .listRowSeparator(.hidden)
                 
                 // Показывать подписи вкладок
                 Toggle(isOn: $tabBarShowsLabelsDraft) {
@@ -95,6 +98,7 @@ struct SettingsView: View {
                         }
                     }
                 }
+                .listRowSeparator(.hidden)
                 
                 // Качество постеров
                 HStack(spacing: 12) {
@@ -109,6 +113,7 @@ struct SettingsView: View {
                         }
                     }
                 }
+                .listRowSeparator(.hidden)
             }
             
             Section("Воспроизведение") {
@@ -125,6 +130,7 @@ struct SettingsView: View {
                         }
                     }
                 }
+                .listRowSeparator(.hidden)
                 
                 // Автопереход к следующей серии
                 Toggle(isOn: $autoplayNextEpisode) {
@@ -143,6 +149,7 @@ struct SettingsView: View {
                         }
                     }
                 }
+                .listRowSeparator(.hidden)
             }
             
             Section("О приложении") {
@@ -157,6 +164,7 @@ struct SettingsView: View {
                         Text("О приложении")
                     }
                 }
+                .listRowSeparator(.hidden)
             }
         }
         .navigationTitle("Настройки")
@@ -188,62 +196,47 @@ struct PreviewMoviePosterCard: View {
     let width: CGFloat
     
     var body: some View {
-        switch style {
-        case .classic:
-            classicBody
-        case .overlay:
-            overlayBody
-        }
-    }
-    
-    private var classicBody: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.secondary.opacity(0.15))
-                .frame(width: width, height: width * 1.5)
-            
-            VStack(alignment: .leading, spacing: 4) {
-                RoundedRectangle(cornerRadius: 2)
-                    .fill(Color.secondary.opacity(0.15))
-                    .frame(height: 12)
-                    .frame(width: width * 0.75)
-                
-                RoundedRectangle(cornerRadius: 2)
-                    .fill(Color.secondary.opacity(0.1))
-                    .frame(height: 10)
-                    .frame(width: width * 0.5)
-            }
-            .padding(.horizontal, 4)
-        }
-    }
-    
-    private var overlayBody: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+        VStack(alignment: .leading, spacing: style == .classic ? 8 : 0) {
+            RoundedRectangle(cornerRadius: style == .overlay ? 16 : 12, style: .continuous)
                 .fill(Color.secondary.opacity(0.15))
                 .frame(width: width, height: width * 1.5)
                 .overlay(
-                    VStack(alignment: .leading, spacing: 4) {
-                        Spacer()
-                        RoundedRectangle(cornerRadius: 2)
-                            .fill(Color.secondary.opacity(0.25))
-                            .frame(height: 12)
-                            .frame(width: width * 0.7)
-                        
-                        RoundedRectangle(cornerRadius: 2)
-                            .fill(Color.secondary.opacity(0.2))
-                            .frame(height: 10)
-                            .frame(width: width * 0.45)
+                    Group {
+                        if style == .overlay {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Spacer()
+                                RoundedRectangle(cornerRadius: 2)
+                                    .fill(Color.secondary.opacity(0.25))
+                                    .frame(height: 12)
+                                    .frame(width: width * 0.7)
+                                
+                                RoundedRectangle(cornerRadius: 2)
+                                    .fill(Color.secondary.opacity(0.2))
+                                    .frame(height: 10)
+                                    .frame(width: width * 0.45)
+                            }
+                            .padding(10)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .transition(.opacity)
+                        }
                     }
-                    .padding(10)
-                    .frame(maxWidth: .infinity, alignment: .leading)
                 )
             
-            VStack(alignment: .leading, spacing: 4) {
-                Color.clear.frame(height: 12)
-                Color.clear.frame(height: 10)
+            if style == .classic {
+                VStack(alignment: .leading, spacing: 4) {
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(Color.secondary.opacity(0.15))
+                        .frame(height: 12)
+                        .frame(width: width * 0.75)
+                    
+                    RoundedRectangle(cornerRadius: 2)
+                        .fill(Color.secondary.opacity(0.1))
+                        .frame(height: 10)
+                        .frame(width: width * 0.5)
+                }
+                .padding(.horizontal, 4)
+                .transition(.opacity.combined(with: .move(edge: .top)))
             }
-            .padding(.horizontal, 4)
         }
     }
 }
