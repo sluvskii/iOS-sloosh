@@ -13,35 +13,6 @@ struct SettingsView: View {
     
     var body: some View {
         List {
-            Section("Воспроизведение") {
-                // Качество видео
-                HStack(spacing: 12) {
-                    Image(systemName: "video.fill")
-                        .foregroundStyle(Color.slooshAccent)
-                        .font(.system(size: 18))
-                        .frame(width: 24)
-                    
-                    Picker("Качество видео", selection: $preferredQuality) {
-                        ForEach(VideoQualityPreference.allCases) { quality in
-                            Text(quality.title).tag(quality)
-                        }
-                    }
-                }
-                
-                // Автопереход к следующей серии
-                Toggle(isOn: $autoplayNextEpisode) {
-                    HStack(spacing: 12) {
-                        Image(systemName: "arrow.forward.to.line.circle.fill")
-                            .foregroundStyle(Color.slooshAccent)
-                            .font(.system(size: 18))
-                            .frame(width: 24)
-                        
-                        Text("Автопереход к серии")
-                            .font(.body)
-                    }
-                }
-            }
-            
             Section("Вид каталога") {
                 // Единая горизонтальная визуализация карточек (скелетоны)
                 HStack {
@@ -142,6 +113,35 @@ struct SettingsView: View {
                         ForEach(PosterQuality.allCases) { quality in
                             Text(quality.title).tag(quality)
                         }
+                    }
+                }
+            }
+            
+            Section("Воспроизведение") {
+                // Качество видео
+                HStack(spacing: 12) {
+                    Image(systemName: "video.fill")
+                        .foregroundStyle(Color.slooshAccent)
+                        .font(.system(size: 18))
+                        .frame(width: 24)
+                    
+                    Picker("Качество видео", selection: $preferredQuality) {
+                        ForEach(VideoQualityPreference.allCases) { quality in
+                            Text(quality.title).tag(quality)
+                        }
+                    }
+                }
+                
+                // Автопереход к следующей серии
+                Toggle(isOn: $autoplayNextEpisode) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "arrow.forward.to.line.circle.fill")
+                            .foregroundStyle(Color.slooshAccent)
+                            .font(.system(size: 18))
+                            .frame(width: 24)
+                        
+                        Text("Автопереход к серии")
+                            .font(.body)
                     }
                 }
             }
