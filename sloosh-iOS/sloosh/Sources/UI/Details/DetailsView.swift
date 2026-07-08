@@ -1789,12 +1789,15 @@ class DetailsViewModel: ObservableObject {
                     return
                 }
                 
+                let mediaTitle = details?.title ?? details?.name ?? ""
+                let mediaIsSerial = details?.type == "tv"
+                
                 async let allohaTask = try? AllohaRepository.shared.fetchByKpId(kpId: kpId)
                 
                 async let cdnMoviesTask = try? CdnMoviesRepository.shared.getDetails(
                     kpId: kpId,
-                    title: details?.title ?? details?.name ?? "",
-                    isSerial: details?.type == "tv"
+                    title: mediaTitle,
+                    isSerial: mediaIsSerial
                 )
                 
                 let (allohaResp, cdnResp) = await (allohaTask, cdnMoviesTask)
