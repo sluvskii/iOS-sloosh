@@ -7,8 +7,6 @@ This workspace contains two projects:
 - `sloosh-iOS/`: the active iOS app under the `sloosh` brand.
 - `neomovies-mobile/`: the main reference project for internal logic, parsers, watch/player flows, and iOS-native implementations.
 
-> **Note**: The `neomovies-android-main/` reference project mentioned in the old version of this file is **no longer present in this workspace**. Do not reference it.
-
 The iOS app is a standalone product. Do not treat it as a branded clone of the reference project.
 
 ## Product Identity

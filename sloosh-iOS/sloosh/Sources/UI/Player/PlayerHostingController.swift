@@ -31,15 +31,6 @@ final class PlayerHostingController<Content: View>: UIHostingController<Content>
         
         // Жестко форсируем систему вернуться в портретный режим при закрытии плеера
         AppDelegate.lockToPortrait()
-        
-        // Даем небольшую задержку (пока плеер закрывается), а затем возвращаем приложению 
-        // возможность вращаться (если это разрешено), чтобы юзер не застрял в портрете навсегда
-        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-            AppDelegate.orientationLock = .all
-            if #available(iOS 16.0, *) {
-                UIApplication.shared.windows.first?.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
-            }
-        }
     }
 
     override func viewDidDisappear(_ animated: Bool) {
