@@ -17,7 +17,7 @@ struct SettingsView: View {
                 HStack {
                     Spacer()
                     let spacing: CGFloat = cardDensity == .compact ? 8 : 16
-                    let cardWidth: CGFloat = cardDensity == .compact ? 85 : 95
+                    let cardWidth: CGFloat = cardDensity == .compact ? 95 : 85
                     
                     HStack(spacing: spacing) {
                         ForEach(0..<3, id: \.self) { _ in
@@ -218,25 +218,33 @@ struct PreviewMoviePosterCard: View {
     }
     
     private var overlayBody: some View {
-        RoundedRectangle(cornerRadius: 12, style: .continuous)
-            .fill(Color.secondary.opacity(0.15))
-            .frame(width: width, height: width * 1.5)
-            .overlay(
-                VStack(alignment: .leading, spacing: 4) {
-                    Spacer()
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(Color.secondary.opacity(0.25))
-                        .frame(height: 12)
-                        .frame(width: width * 0.7)
-                    
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(Color.secondary.opacity(0.2))
-                        .frame(height: 10)
-                        .frame(width: width * 0.45)
-                }
-                .padding(10)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            )
+        VStack(alignment: .leading, spacing: 8) {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color.secondary.opacity(0.15))
+                .frame(width: width, height: width * 1.5)
+                .overlay(
+                    VStack(alignment: .leading, spacing: 4) {
+                        Spacer()
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(Color.secondary.opacity(0.25))
+                            .frame(height: 12)
+                            .frame(width: width * 0.7)
+                        
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(Color.secondary.opacity(0.2))
+                            .frame(height: 10)
+                            .frame(width: width * 0.45)
+                    }
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                )
+            
+            VStack(alignment: .leading, spacing: 4) {
+                Color.clear.frame(height: 12)
+                Color.clear.frame(height: 10)
+            }
+            .padding(.horizontal, 4)
+        }
     }
 }
 
