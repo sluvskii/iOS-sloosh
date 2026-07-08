@@ -49,46 +49,19 @@ struct SettingsView: View {
                     }
                     .padding(.top, 4)
                     
-                    HStack(spacing: 24) {
+                    HStack(spacing: 32) {
                         Spacer()
                         // Option 1: Classic
                         VStack(spacing: 8) {
-                            VStack(spacing: 6) {
-                                RoundedRectangle(cornerRadius: 6)
-                                    .fill(LinearGradient(
-                                        colors: [Color.slooshAccent.opacity(cardStyle == .classic ? 0.3 : 0.15),
-                                                 Color.slooshAccent.opacity(cardStyle == .classic ? 0.1 : 0.05)],
-                                        startPoint: .topLeading, endPoint: .bottomTrailing
-                                    ))
-                                    .aspectRatio(2/3, contentMode: .fit)
-                                    .overlay(
-                                        Image(systemName: "film")
-                                            .foregroundStyle(Color.slooshAccent.opacity(cardStyle == .classic ? 0.8 : 0.4))
-                                            .font(.system(size: 16))
-                                    )
-                                
-                                VStack(alignment: .leading, spacing: 2) {
-                                    RoundedRectangle(cornerRadius: 1)
-                                        .fill(cardStyle == .classic ? Color.primary.opacity(0.8) : Color.primary.opacity(0.4))
-                                        .frame(height: 4)
-                                        .frame(width: 36)
-                                    RoundedRectangle(cornerRadius: 1)
-                                        .fill(cardStyle == .classic ? Color.primary.opacity(0.4) : Color.primary.opacity(0.2))
-                                        .frame(height: 3)
-                                        .frame(width: 22)
-                                }
-                                .padding(.horizontal, 2)
-                                .padding(.bottom, 4)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                            .frame(width: 64)
-                            .padding(6)
-                            .background(cardStyle == .classic ? Color.slooshAccent.opacity(0.08) : Color(.tertiarySystemGroupedBackground))
-                            .cornerRadius(12)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .stroke(cardStyle == .classic ? Color.slooshAccent : Color.clear, lineWidth: 1.5)
-                            )
+                            PreviewMoviePosterCard(style: .classic, scale: 0.8)
+                                .frame(width: 80, height: 135)
+                                .padding(8)
+                                .background(cardStyle == .classic ? Color.slooshAccent.opacity(0.08) : Color(.tertiarySystemGroupedBackground))
+                                .cornerRadius(16)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 16)
+                                        .stroke(cardStyle == .classic ? Color.slooshAccent : Color.clear, lineWidth: 1.5)
+                                )
                             
                             Text("Классический")
                                 .font(.caption2)
@@ -104,45 +77,15 @@ struct SettingsView: View {
                         
                         // Option 2: Overlay
                         VStack(spacing: 8) {
-                            ZStack(alignment: .bottomLeading) {
-                                RoundedRectangle(cornerRadius: 6)
-                                    .fill(LinearGradient(
-                                        colors: [Color.slooshAccent.opacity(cardStyle == .overlay ? 0.3 : 0.15),
-                                                 Color.slooshAccent.opacity(cardStyle == .overlay ? 0.1 : 0.05)],
-                                        startPoint: .topLeading, endPoint: .bottomTrailing
-                                    ))
-                                    .aspectRatio(2/3, contentMode: .fit)
-                                    .overlay(
-                                        Image(systemName: "film")
-                                            .foregroundStyle(Color.slooshAccent.opacity(cardStyle == .overlay ? 0.8 : 0.4))
-                                            .font(.system(size: 16))
-                                    )
-                                
-                                VStack(alignment: .leading, spacing: 2) {
-                                    RoundedRectangle(cornerRadius: 1)
-                                        .fill(.white)
-                                        .frame(height: 4)
-                                        .frame(width: 36)
-                                    RoundedRectangle(cornerRadius: 1)
-                                        .fill(.white.opacity(0.6))
-                                        .frame(height: 3)
-                                        .frame(width: 22)
-                                }
-                                .padding(4)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .background(
-                                    LinearGradient(colors: [.black.opacity(0.7), .clear], startPoint: .bottom, endPoint: .top)
+                            PreviewMoviePosterCard(style: .overlay, scale: 0.8)
+                                .frame(width: 80, height: 135)
+                                .padding(8)
+                                .background(cardStyle == .overlay ? Color.slooshAccent.opacity(0.08) : Color(.tertiarySystemGroupedBackground))
+                                .cornerRadius(16)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 16)
+                                        .stroke(cardStyle == .overlay ? Color.slooshAccent : Color.clear, lineWidth: 1.5)
                                 )
-                                .cornerRadius(6)
-                            }
-                            .frame(width: 64)
-                            .padding(6)
-                            .background(cardStyle == .overlay ? Color.slooshAccent.opacity(0.08) : Color(.tertiarySystemGroupedBackground))
-                            .cornerRadius(12)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .stroke(cardStyle == .overlay ? Color.slooshAccent : Color.clear, lineWidth: 1.5)
-                            )
                             
                             Text("Инфо внутри")
                                 .font(.caption2)
@@ -171,43 +114,24 @@ struct SettingsView: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Сетка списков")
                                 .font(.body)
-                            Text("Количество элементов в сетке")
+                            Text("Отступы между карточками и плотность")
                                 .font(.caption2)
                                 .foregroundStyle(.secondary)
                         }
                     }
                     .padding(.top, 4)
                     
-                    HStack(spacing: 24) {
+                    HStack(spacing: 32) {
                         Spacer()
                         // Option 1: Standard
                         VStack(spacing: 8) {
-                            VStack(spacing: 4) {
-                                HStack(spacing: 3) {
-                                    RoundedRectangle(cornerRadius: 3)
-                                        .fill(Color.slooshAccent.opacity(cardDensity == .regular ? 0.3 : 0.15))
-                                        .frame(width: 20, height: 30)
-                                    RoundedRectangle(cornerRadius: 3)
-                                        .fill(Color.slooshAccent.opacity(cardDensity == .regular ? 0.3 : 0.15))
-                                        .frame(width: 20, height: 30)
-                                }
-                                HStack(spacing: 3) {
-                                    RoundedRectangle(cornerRadius: 3)
-                                        .fill(Color.slooshAccent.opacity(cardDensity == .regular ? 0.3 : 0.15))
-                                        .frame(width: 20, height: 30)
-                                    RoundedRectangle(cornerRadius: 3)
-                                        .fill(Color.slooshAccent.opacity(cardDensity == .regular ? 0.3 : 0.15))
-                                        .frame(width: 20, height: 30)
-                                }
-                            }
-                            .frame(width: 64, height: 76)
-                            .padding(6)
-                            .background(cardDensity == .regular ? Color.slooshAccent.opacity(0.08) : Color(.tertiarySystemGroupedBackground))
-                            .cornerRadius(12)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .stroke(cardDensity == .regular ? Color.slooshAccent : Color.clear, lineWidth: 1.5)
-                            )
+                            DensityPreviewGrid(density: .regular, style: cardStyle)
+                                .background(cardDensity == .regular ? Color.slooshAccent.opacity(0.08) : Color(.tertiarySystemGroupedBackground))
+                                .cornerRadius(16)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 16)
+                                        .stroke(cardDensity == .regular ? Color.slooshAccent : Color.clear, lineWidth: 1.5)
+                                )
                             
                             Text("Стандартная")
                                 .font(.caption2)
@@ -223,49 +147,13 @@ struct SettingsView: View {
                         
                         // Option 2: Compact
                         VStack(spacing: 8) {
-                            VStack(spacing: 3) {
-                                HStack(spacing: 3) {
-                                    RoundedRectangle(cornerRadius: 2)
-                                        .fill(Color.slooshAccent.opacity(cardDensity == .compact ? 0.3 : 0.15))
-                                        .frame(width: 14, height: 21)
-                                    RoundedRectangle(cornerRadius: 2)
-                                        .fill(Color.slooshAccent.opacity(cardDensity == .compact ? 0.3 : 0.15))
-                                        .frame(width: 14, height: 21)
-                                    RoundedRectangle(cornerRadius: 2)
-                                        .fill(Color.slooshAccent.opacity(cardDensity == .compact ? 0.3 : 0.15))
-                                        .frame(width: 14, height: 21)
-                                }
-                                HStack(spacing: 3) {
-                                    RoundedRectangle(cornerRadius: 2)
-                                        .fill(Color.slooshAccent.opacity(cardDensity == .compact ? 0.3 : 0.15))
-                                        .frame(width: 14, height: 21)
-                                    RoundedRectangle(cornerRadius: 2)
-                                        .fill(Color.slooshAccent.opacity(cardDensity == .compact ? 0.3 : 0.15))
-                                        .frame(width: 14, height: 21)
-                                    RoundedRectangle(cornerRadius: 2)
-                                        .fill(Color.slooshAccent.opacity(cardDensity == .compact ? 0.3 : 0.15))
-                                        .frame(width: 14, height: 21)
-                                }
-                                HStack(spacing: 3) {
-                                    RoundedRectangle(cornerRadius: 2)
-                                        .fill(Color.slooshAccent.opacity(cardDensity == .compact ? 0.3 : 0.15))
-                                        .frame(width: 14, height: 21)
-                                    RoundedRectangle(cornerRadius: 2)
-                                        .fill(Color.slooshAccent.opacity(cardDensity == .compact ? 0.3 : 0.15))
-                                        .frame(width: 14, height: 21)
-                                    RoundedRectangle(cornerRadius: 2)
-                                        .fill(Color.slooshAccent.opacity(cardDensity == .compact ? 0.3 : 0.15))
-                                        .frame(width: 14, height: 21)
-                                }
-                            }
-                            .frame(width: 64, height: 76)
-                            .padding(6)
-                            .background(cardDensity == .compact ? Color.slooshAccent.opacity(0.08) : Color(.tertiarySystemGroupedBackground))
-                            .cornerRadius(12)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .stroke(cardDensity == .compact ? Color.slooshAccent : Color.clear, lineWidth: 1.5)
-                            )
+                            DensityPreviewGrid(density: .compact, style: cardStyle)
+                                .background(cardDensity == .compact ? Color.slooshAccent.opacity(0.08) : Color(.tertiarySystemGroupedBackground))
+                                .cornerRadius(16)
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 16)
+                                        .stroke(cardDensity == .compact ? Color.slooshAccent : Color.clear, lineWidth: 1.5)
+                                )
                             
                             Text("Компактная")
                                 .font(.caption2)
@@ -367,5 +255,149 @@ struct SettingsView: View {
         .onDisappear {
             applyTabBarLabelsTask?.cancel()
         }
+}
+
+struct PreviewMoviePosterCard: View {
+    let style: CardStyle
+    let scale: CGFloat
+    
+    var body: some View {
+        switch style {
+        case .classic:
+            classicBody
+        case .overlay:
+            overlayBody
+        }
+    }
+    
+    private var classicBody: some View {
+        VStack(alignment: .leading, spacing: 6 * scale) {
+            ZStack(alignment: .topLeading) {
+                RoundedRectangle(cornerRadius: 12 * scale, style: .continuous)
+                    .fill(LinearGradient(
+                        colors: [Color.slooshAccent.opacity(0.25), Color.black.opacity(0.4)],
+                        startPoint: .topLeading, endPoint: .bottomTrailing
+                    ))
+                    .aspectRatio(2/3, contentMode: .fit)
+                    .overlay(
+                        Image(systemName: "film")
+                            .font(.system(size: 24 * scale))
+                            .foregroundStyle(Color.slooshAccent.opacity(0.7))
+                    )
+                
+                Text("8.4")
+                    .font(.system(size: 10 * scale, weight: .heavy))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 5 * scale)
+                    .padding(.vertical, 3 * scale)
+                    .background(Color.rating(8.4))
+                    .clipShape(RoundedRectangle(cornerRadius: 6 * scale, style: .continuous))
+                    .padding(6 * scale)
+            }
+            
+            VStack(alignment: .leading, spacing: 2 * scale) {
+                Text("Дюна 2")
+                    .font(.system(size: 13 * scale, weight: .semibold))
+                    .foregroundColor(.primary)
+                    .lineLimit(1)
+                
+                Text("2024 • Фантастика")
+                    .font(.system(size: 10 * scale))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 2 * scale)
+        }
+    }
+    
+    private var overlayBody: some View {
+        ZStack(alignment: .bottomLeading) {
+            RoundedRectangle(cornerRadius: 12 * scale, style: .continuous)
+                .fill(LinearGradient(
+                    colors: [Color.slooshAccent.opacity(0.25), Color.black.opacity(0.4)],
+                    startPoint: .topLeading, endPoint: .bottomTrailing
+                ))
+                .aspectRatio(2/3, contentMode: .fit)
+                .overlay(
+                    Image(systemName: "film")
+                        .font(.system(size: 24 * scale))
+                        .foregroundStyle(Color.slooshAccent.opacity(0.7))
+                )
+            
+            Rectangle()
+                .fill(.regularMaterial)
+                .mask(
+                    LinearGradient(
+                        stops: [
+                            .init(color: .clear, location: 0.2),
+                            .init(color: .black, location: 0.9)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                .clipShape(RoundedRectangle(cornerRadius: 12 * scale, style: .continuous))
+            
+            VStack(alignment: .leading, spacing: 1 * scale) {
+                Text("Дюна 2")
+                    .font(.system(size: 12 * scale, weight: .bold))
+                    .foregroundColor(.primary)
+                    .lineLimit(1)
+                
+                Text("2024 • Фантастика")
+                    .font(.system(size: 9 * scale, weight: .semibold))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+            }
+            .padding(8 * scale)
+            
+            VStack {
+                HStack {
+                    Text("8.4")
+                        .font(.system(size: 10 * scale, weight: .heavy))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 5 * scale)
+                        .padding(.vertical, 3 * scale)
+                        .background(Color.rating(8.4))
+                        .clipShape(RoundedRectangle(cornerRadius: 6 * scale, style: .continuous))
+                        .padding(6 * scale)
+                    Spacer()
+                }
+                Spacer()
+            }
+        }
+        .environment(\.colorScheme, .dark)
+        .aspectRatio(2/3, contentMode: .fit)
+        .clipShape(RoundedRectangle(cornerRadius: 12 * scale, style: .continuous))
+}
+
+struct DensityPreviewGrid: View {
+    let density: CardDensity
+    let style: CardStyle
+    
+    var body: some View {
+        let cardWidth: CGFloat = density == .regular ? 34 : 41
+        let spacing: CGFloat = density == .regular ? 12 : 6
+        let padding: CGFloat = density == .regular ? 12 : 8
+        let scale: CGFloat = density == .regular ? 0.34 : 0.41
+        
+        VStack(spacing: spacing) {
+            HStack(spacing: spacing) {
+                PreviewMoviePosterCard(style: style, scale: scale)
+                    .frame(width: cardWidth)
+                PreviewMoviePosterCard(style: style, scale: scale)
+                    .frame(width: cardWidth)
+            }
+            HStack(spacing: spacing) {
+                PreviewMoviePosterCard(style: style, scale: scale)
+                    .frame(width: cardWidth)
+                PreviewMoviePosterCard(style: style, scale: scale)
+                    .frame(width: cardWidth)
+            }
+        }
+        .padding(padding)
+        .frame(width: 104, height: 160)
     }
 }
+
+
