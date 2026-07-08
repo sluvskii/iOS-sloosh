@@ -13,7 +13,36 @@ struct SettingsView: View {
     
     var body: some View {
         List {
-            Section("Интерфейс") {
+            Section("Воспроизведение") {
+                // Качество видео
+                HStack(spacing: 12) {
+                    Image(systemName: "video.fill")
+                        .foregroundStyle(Color.slooshAccent)
+                        .font(.system(size: 18))
+                        .frame(width: 24)
+                    
+                    Picker("Качество видео", selection: $preferredQuality) {
+                        ForEach(VideoQualityPreference.allCases) { quality in
+                            Text(quality.title).tag(quality)
+                        }
+                    }
+                }
+                
+                // Автопереход к следующей серии
+                Toggle(isOn: $autoplayNextEpisode) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "arrow.forward.to.line.circle.fill")
+                            .foregroundStyle(Color.slooshAccent)
+                            .font(.system(size: 18))
+                            .frame(width: 24)
+                        
+                        Text("Автопереход к серии")
+                            .font(.body)
+                    }
+                }
+            }
+            
+            Section("Вид каталога") {
                 // Единая горизонтальная визуализация карточек (скелетоны)
                 HStack {
                     Spacer()
@@ -72,6 +101,22 @@ struct SettingsView: View {
                     .pickerStyle(.segmented)
                 }
                 .padding(.vertical, 4)
+            }
+            
+            Section("Интерфейс") {
+                // Тема
+                HStack(spacing: 12) {
+                    Image(systemName: "paintpalette.fill")
+                        .foregroundStyle(Color.slooshAccent)
+                        .font(.system(size: 18))
+                        .frame(width: 24)
+                    
+                    Picker("Тема", selection: $appTheme) {
+                        ForEach(AppTheme.allCases) { theme in
+                            Text(theme.title).tag(theme)
+                        }
+                    }
+                }
                 
                 // Показывать подписи вкладок
                 Toggle(isOn: $tabBarShowsLabelsDraft) {
@@ -86,20 +131,6 @@ struct SettingsView: View {
                     }
                 }
                 
-                // Тема оформления
-                HStack(spacing: 12) {
-                    Image(systemName: "paintpalette.fill")
-                        .foregroundStyle(Color.slooshAccent)
-                        .font(.system(size: 18))
-                        .frame(width: 24)
-                    
-                    Picker("Тема оформления", selection: $appTheme) {
-                        ForEach(AppTheme.allCases) { theme in
-                            Text(theme.title).tag(theme)
-                        }
-                    }
-                }
-                
                 // Качество постеров
                 HStack(spacing: 12) {
                     Image(systemName: "photo.fill")
@@ -111,35 +142,6 @@ struct SettingsView: View {
                         ForEach(PosterQuality.allCases) { quality in
                             Text(quality.title).tag(quality)
                         }
-                    }
-                }
-            }
-            
-            Section("Воспроизведение") {
-                // Качество видео
-                HStack(spacing: 12) {
-                    Image(systemName: "video.fill")
-                        .foregroundStyle(Color.slooshAccent)
-                        .font(.system(size: 18))
-                        .frame(width: 24)
-                    
-                    Picker("Качество видео", selection: $preferredQuality) {
-                        ForEach(VideoQualityPreference.allCases) { quality in
-                            Text(quality.title).tag(quality)
-                        }
-                    }
-                }
-                
-                // Автопереход к следующей серии
-                Toggle(isOn: $autoplayNextEpisode) {
-                    HStack(spacing: 12) {
-                        Image(systemName: "arrow.forward.to.line.circle.fill")
-                            .foregroundStyle(Color.slooshAccent)
-                            .font(.system(size: 18))
-                            .frame(width: 24)
-                        
-                        Text("Автопереход к серии")
-                            .font(.body)
                     }
                 }
             }
