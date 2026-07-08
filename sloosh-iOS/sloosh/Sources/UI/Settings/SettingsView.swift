@@ -49,58 +49,22 @@ struct SettingsView: View {
                     }
                     .padding(.top, 4)
                     
-                    HStack(spacing: 32) {
+                    HStack {
                         Spacer()
-                        // Option 1: Classic
-                        VStack(spacing: 8) {
-                            PreviewMoviePosterCard(style: .classic, scale: 0.8)
-                                .frame(width: 80, height: 135)
-                                .padding(8)
-                                .background(cardStyle == .classic ? Color.slooshAccent.opacity(0.08) : Color(.tertiarySystemGroupedBackground))
-                                .cornerRadius(16)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 16)
-                                        .stroke(cardStyle == .classic ? Color.slooshAccent : Color.clear, lineWidth: 1.5)
-                                )
-                            
-                            Text("Классический")
-                                .font(.caption2)
-                                .foregroundStyle(cardStyle == .classic ? .primary : .secondary)
-                                .fontWeight(cardStyle == .classic ? .semibold : .regular)
-                        }
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                cardStyle = .classic
-                            }
-                        }
-                        
-                        // Option 2: Overlay
-                        VStack(spacing: 8) {
-                            PreviewMoviePosterCard(style: .overlay, scale: 0.8)
-                                .frame(width: 80, height: 135)
-                                .padding(8)
-                                .background(cardStyle == .overlay ? Color.slooshAccent.opacity(0.08) : Color(.tertiarySystemGroupedBackground))
-                                .cornerRadius(16)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 16)
-                                        .stroke(cardStyle == .overlay ? Color.slooshAccent : Color.clear, lineWidth: 1.5)
-                                )
-                            
-                            Text("Инфо внутри")
-                                .font(.caption2)
-                                .foregroundStyle(cardStyle == .overlay ? .primary : .secondary)
-                                .fontWeight(cardStyle == .overlay ? .semibold : .regular)
-                        }
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                cardStyle = .overlay
-                            }
-                        }
+                        PreviewMoviePosterCard(style: cardStyle, scale: 0.8)
+                            .frame(width: 80, height: 135)
+                            .padding(10)
+                            .background(Color(.tertiarySystemGroupedBackground))
+                            .cornerRadius(16)
                         Spacer()
                     }
                     .padding(.vertical, 4)
+                    
+                    Picker("Стиль карточек", selection: $cardStyle.animation(.spring(response: 0.35, dampingFraction: 0.75))) {
+                        Text("Классический").tag(CardStyle.classic)
+                        Text("Инфо внутри").tag(CardStyle.overlay)
+                    }
+                    .pickerStyle(.segmented)
                 }
                 
                 // Сетка карточек (с визуализацией)
@@ -121,54 +85,20 @@ struct SettingsView: View {
                     }
                     .padding(.top, 4)
                     
-                    HStack(spacing: 32) {
+                    HStack {
                         Spacer()
-                        // Option 1: Standard
-                        VStack(spacing: 8) {
-                            DensityPreviewGrid(density: .regular, style: cardStyle)
-                                .background(cardDensity == .regular ? Color.slooshAccent.opacity(0.08) : Color(.tertiarySystemGroupedBackground))
-                                .cornerRadius(16)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 16)
-                                        .stroke(cardDensity == .regular ? Color.slooshAccent : Color.clear, lineWidth: 1.5)
-                                )
-                            
-                            Text("Стандартная")
-                                .font(.caption2)
-                                .foregroundStyle(cardDensity == .regular ? .primary : .secondary)
-                                .fontWeight(cardDensity == .regular ? .semibold : .regular)
-                        }
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                cardDensity = .regular
-                            }
-                        }
-                        
-                        // Option 2: Compact
-                        VStack(spacing: 8) {
-                            DensityPreviewGrid(density: .compact, style: cardStyle)
-                                .background(cardDensity == .compact ? Color.slooshAccent.opacity(0.08) : Color(.tertiarySystemGroupedBackground))
-                                .cornerRadius(16)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 16)
-                                        .stroke(cardDensity == .compact ? Color.slooshAccent : Color.clear, lineWidth: 1.5)
-                                )
-                            
-                            Text("Компактная")
-                                .font(.caption2)
-                                .foregroundStyle(cardDensity == .compact ? .primary : .secondary)
-                                .fontWeight(cardDensity == .compact ? .semibold : .regular)
-                        }
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                cardDensity = .compact
-                            }
-                        }
+                        DensityPreviewGrid(density: cardDensity, style: cardStyle)
+                            .background(Color(.tertiarySystemGroupedBackground))
+                            .cornerRadius(16)
                         Spacer()
                     }
                     .padding(.vertical, 4)
+                    
+                    Picker("Сетка списков", selection: $cardDensity.animation(.spring(response: 0.35, dampingFraction: 0.75))) {
+                        Text("Стандартная").tag(CardDensity.regular)
+                        Text("Компактная").tag(CardDensity.compact)
+                    }
+                    .pickerStyle(.segmented)
                 }
                 
                 // Качество постеров
