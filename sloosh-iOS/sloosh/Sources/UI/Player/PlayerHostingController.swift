@@ -27,8 +27,6 @@ final class PlayerHostingController<Content: View>: UIHostingController<Content>
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
-        guard isBeingDismissed || isMovingFromParent else { return }
-        
         // Жестко форсируем систему вернуться в портретный режим при закрытии плеера
         AppDelegate.lockToPortrait()
     }

@@ -37,12 +37,14 @@ struct PlayerPresenter: UIViewControllerRepresentable {
 
         func dismissPlayer() {
             guard !dismissCalled else { return }
+            AppDelegate.lockToPortrait()
             hostingController?.dismiss(animated: true)
         }
 
         func didDismiss() {
             guard !dismissCalled else { return }
             dismissCalled = true
+            AppDelegate.lockToPortrait()
             onDismiss()
         }
     }
@@ -119,6 +121,9 @@ struct PlayerView: View {
                 viewModel.error = "Нет URL для воспроизведения"
                 viewModel.isLoading = false
             }
+        }
+        .onDisappear {
+            AppDelegate.lockToPortrait()
         }
     }
 }
