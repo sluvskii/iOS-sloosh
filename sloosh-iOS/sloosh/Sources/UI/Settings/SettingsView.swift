@@ -255,6 +255,7 @@ struct SettingsView: View {
         .onDisappear {
             applyTabBarLabelsTask?.cancel()
         }
+    }
 }
 
 struct PreviewMoviePosterCard: View {
@@ -369,6 +370,7 @@ struct PreviewMoviePosterCard: View {
         .environment(\.colorScheme, .dark)
         .aspectRatio(2/3, contentMode: .fit)
         .clipShape(RoundedRectangle(cornerRadius: 12 * scale, style: .continuous))
+    }
 }
 
 struct DensityPreviewGrid: View {
