@@ -273,103 +273,45 @@ struct PreviewMoviePosterCard: View {
     
     private var classicBody: some View {
         VStack(alignment: .leading, spacing: 6 * scale) {
-            ZStack(alignment: .topLeading) {
-                RoundedRectangle(cornerRadius: 12 * scale, style: .continuous)
-                    .fill(LinearGradient(
-                        colors: [Color.slooshAccent.opacity(0.25), Color.black.opacity(0.4)],
-                        startPoint: .topLeading, endPoint: .bottomTrailing
-                    ))
-                    .aspectRatio(2/3, contentMode: .fit)
-                    .overlay(
-                        Image(systemName: "film")
-                            .font(.system(size: 24 * scale))
-                            .foregroundStyle(Color.slooshAccent.opacity(0.7))
-                    )
-                
-                Text("8.4")
-                    .font(.system(size: 10 * scale, weight: .heavy))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 5 * scale)
-                    .padding(.vertical, 3 * scale)
-                    .background(Color.rating(8.4))
-                    .clipShape(RoundedRectangle(cornerRadius: 6 * scale, style: .continuous))
-                    .padding(6 * scale)
-            }
+            RoundedRectangle(cornerRadius: 12 * scale, style: .continuous)
+                .fill(Color.secondary.opacity(0.15))
+                .aspectRatio(2/3, contentMode: .fit)
             
-            VStack(alignment: .leading, spacing: 2 * scale) {
-                Text("Дюна 2")
-                    .font(.system(size: 13 * scale, weight: .semibold))
-                    .foregroundColor(.primary)
-                    .lineLimit(1)
+            VStack(alignment: .leading, spacing: 4 * scale) {
+                RoundedRectangle(cornerRadius: 2 * scale)
+                    .fill(Color.secondary.opacity(0.15))
+                    .frame(height: 10 * scale)
+                    .frame(width: 50 * scale)
                 
-                Text("2024 • Фантастика")
-                    .font(.system(size: 10 * scale))
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
+                RoundedRectangle(cornerRadius: 2 * scale)
+                    .fill(Color.secondary.opacity(0.1))
+                    .frame(height: 8 * scale)
+                    .frame(width: 32 * scale)
             }
             .padding(.horizontal, 2 * scale)
         }
     }
     
     private var overlayBody: some View {
-        ZStack(alignment: .bottomLeading) {
-            RoundedRectangle(cornerRadius: 12 * scale, style: .continuous)
-                .fill(LinearGradient(
-                    colors: [Color.slooshAccent.opacity(0.25), Color.black.opacity(0.4)],
-                    startPoint: .topLeading, endPoint: .bottomTrailing
-                ))
-                .aspectRatio(2/3, contentMode: .fit)
-                .overlay(
-                    Image(systemName: "film")
-                        .font(.system(size: 24 * scale))
-                        .foregroundStyle(Color.slooshAccent.opacity(0.7))
-                )
-            
-            Rectangle()
-                .fill(.regularMaterial)
-                .mask(
-                    LinearGradient(
-                        stops: [
-                            .init(color: .clear, location: 0.2),
-                            .init(color: .black, location: 0.9)
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
-                .clipShape(RoundedRectangle(cornerRadius: 12 * scale, style: .continuous))
-            
-            VStack(alignment: .leading, spacing: 1 * scale) {
-                Text("Дюна 2")
-                    .font(.system(size: 12 * scale, weight: .bold))
-                    .foregroundColor(.primary)
-                    .lineLimit(1)
-                
-                Text("2024 • Фантастика")
-                    .font(.system(size: 9 * scale, weight: .semibold))
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
-            }
-            .padding(8 * scale)
-            
-            VStack {
-                HStack {
-                    Text("8.4")
-                        .font(.system(size: 10 * scale, weight: .heavy))
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 5 * scale)
-                        .padding(.vertical, 3 * scale)
-                        .background(Color.rating(8.4))
-                        .clipShape(RoundedRectangle(cornerRadius: 6 * scale, style: .continuous))
-                        .padding(6 * scale)
+        RoundedRectangle(cornerRadius: 12 * scale, style: .continuous)
+            .fill(Color.secondary.opacity(0.15))
+            .aspectRatio(2/3, contentMode: .fit)
+            .overlay(
+                VStack(alignment: .leading, spacing: 4 * scale) {
                     Spacer()
+                    RoundedRectangle(cornerRadius: 2 * scale)
+                        .fill(Color.secondary.opacity(0.25))
+                        .frame(height: 10 * scale)
+                        .frame(width: 45 * scale)
+                    
+                    RoundedRectangle(cornerRadius: 2 * scale)
+                        .fill(Color.secondary.opacity(0.2))
+                        .frame(height: 8 * scale)
+                        .frame(width: 30 * scale)
                 }
-                Spacer()
-            }
-        }
-        .environment(\.colorScheme, .dark)
-        .aspectRatio(2/3, contentMode: .fit)
-        .clipShape(RoundedRectangle(cornerRadius: 12 * scale, style: .continuous))
+                .padding(8 * scale)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            )
     }
 }
 
