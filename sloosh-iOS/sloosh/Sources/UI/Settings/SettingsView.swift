@@ -27,7 +27,6 @@ struct SettingsView: View {
                     Spacer()
                 }
                 .padding(.vertical, 12)
-                .listRowBackground(Color.clear)
                 
                 // Стиль карточек
                 VStack(alignment: .leading, spacing: 8) {
