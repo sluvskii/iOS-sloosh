@@ -29,7 +29,6 @@ struct SettingsView: View {
                     Spacer()
                 }
                 .padding(.vertical, 12)
-                .listRowSeparator(.hidden)
                 .animation(.spring(response: 0.35, dampingFraction: 0.75), value: cardStyle)
                 .animation(.spring(response: 0.35, dampingFraction: 0.75), value: cardDensity)
                 
@@ -57,7 +56,6 @@ struct SettingsView: View {
                     .pickerStyle(.segmented)
                 }
                 .padding(.vertical, 4)
-                .listRowSeparator(.hidden)
                 
                 // Сетка списков
                 VStack(alignment: .leading, spacing: 8) {
@@ -83,7 +81,6 @@ struct SettingsView: View {
                     .pickerStyle(.segmented)
                 }
                 .padding(.vertical, 4)
-                .listRowSeparator(.hidden)
                 
                 // Показывать подписи вкладок
                 Toggle(isOn: $tabBarShowsLabelsDraft) {
@@ -102,7 +99,6 @@ struct SettingsView: View {
                         }
                     }
                 }
-                .listRowSeparator(.hidden)
                 
                 // Качество постеров
                 HStack(spacing: 12) {
@@ -117,7 +113,6 @@ struct SettingsView: View {
                         }
                     }
                 }
-                .listRowSeparator(.hidden)
             }
             
             Section("Воспроизведение") {
@@ -134,7 +129,6 @@ struct SettingsView: View {
                         }
                     }
                 }
-                .listRowSeparator(.hidden)
                 
                 // Автопереход к следующей серии
                 Toggle(isOn: $autoplayNextEpisode) {
@@ -153,7 +147,6 @@ struct SettingsView: View {
                         }
                     }
                 }
-                .listRowSeparator(.hidden)
             }
             
             Section("О приложении") {
@@ -168,7 +161,6 @@ struct SettingsView: View {
                         Text("О приложении")
                     }
                 }
-                .listRowSeparator(.hidden)
             }
         }
         .navigationTitle("Настройки")
@@ -206,42 +198,40 @@ struct PreviewMoviePosterCard: View {
                 .fill(Color.secondary.opacity(0.15))
                 .frame(width: width, height: width * 1.5)
                 .overlay(
-                    Group {
-                        if style == .overlay {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Spacer()
-                                RoundedRectangle(cornerRadius: 2)
-                                    .fill(Color.secondary.opacity(0.25))
-                                    .frame(height: 12)
-                                    .frame(width: width * 0.7)
-                                
-                                RoundedRectangle(cornerRadius: 2)
-                                    .fill(Color.secondary.opacity(0.2))
-                                    .frame(height: 10)
-                                    .frame(width: width * 0.45)
-                            }
-                            .padding(10)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .transition(.opacity)
-                        }
+                    // Текст оверлея всегда в иерархии, меняется только прозрачность
+                    VStack(alignment: .leading, spacing: 4) {
+                        Spacer()
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(Color.secondary.opacity(0.25))
+                            .frame(height: 12)
+                            .frame(width: width * 0.7)
+                        
+                        RoundedRectangle(cornerRadius: 2)
+                            .fill(Color.secondary.opacity(0.2))
+                            .frame(height: 10)
+                            .frame(width: width * 0.45)
                     }
+                    .padding(10)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .opacity(style == .overlay ? 1.0 : 0.0)
                 )
             
-            if style == .classic {
-                VStack(alignment: .leading, spacing: 4) {
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(Color.secondary.opacity(0.15))
-                        .frame(height: 12)
-                        .frame(width: width * 0.75)
-                    
-                    RoundedRectangle(cornerRadius: 2)
-                        .fill(Color.secondary.opacity(0.1))
-                        .frame(height: 10)
-                        .frame(width: width * 0.5)
-                }
-                .padding(.horizontal, 4)
-                .transition(.opacity.combined(with: .move(edge: .top)))
+            // Классический текст всегда в иерархии, плавно меняются высота и прозрачность
+            VStack(alignment: .leading, spacing: 4) {
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(Color.secondary.opacity(0.15))
+                    .frame(height: 12)
+                    .frame(width: width * 0.75)
+                
+                RoundedRectangle(cornerRadius: 2)
+                    .fill(Color.secondary.opacity(0.1))
+                    .frame(height: 10)
+                    .frame(width: width * 0.5)
             }
+            .padding(.horizontal, 4)
+            .opacity(style == .classic ? 1.0 : 0.0)
+            .frame(height: style == .classic ? 26 : 0, alignment: .top)
+            .clipped()
         }
         .frame(width: width, height: cardHeight, alignment: .top)
     }
