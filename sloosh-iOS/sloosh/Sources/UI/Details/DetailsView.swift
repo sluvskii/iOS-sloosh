@@ -204,7 +204,7 @@ struct DetailsView: View {
                         )
                     } else if let wrapper = viewModel.sourceResultWrapper,
                               let result = wrapper.allohaResult {
-                        SourceSelectionView(mode: sourceSheetMode, allohaResult: viewModel.allohaResult, cdnResult: viewModel.cdnMoviesResult, kpId: wrapper.kpId, details: viewModel.details) { provider, translation, season, episode, quality in
+                        SourceSelectionView(mode: sourceSheetMode, allohaResult: result, cdnResult: viewModel.cdnMoviesResult, kpId: wrapper.kpId, details: viewModel.details) { provider, translation, season, episode, quality in
                             if sourceSheetMode == .play {
                                 playerProvider = provider
                                 playerKpId = wrapper.kpId
@@ -1789,15 +1789,11 @@ class DetailsViewModel: ObservableObject {
                     return
                 }
                 
-                async let allohaTask = try? AllohaRepository.shared.fetchByKpId(
-                    kpId: kpId,
-                    title: details?.nameRu ?? details?.nameEn ?? "",
-                    isSerial: details?.isSerial ?? false
-                )
+                async let allohaTask = try? AllohaRepository.shared.fetchByKpId(kpId: kpId)
                 
-                async let cdnMoviesTask = try? CdnMoviesRepository.shared.getDetails(
+                async let cdnMoviesTask = try? CdnMoviesRepository.shared.fetchByKpId(
                     kpId: kpId,
-                    title: details?.nameRu ?? details?.nameEn ?? "",
+                    title: details?.title ?? details?.name ?? "",
                     isSerial: details?.isSerial ?? false
                 )
                 
@@ -1837,7 +1833,7 @@ class DetailsViewModel: ObservableObject {
         do {
             let result = try await AllohaRepository.shared.fetchByKpId(kpId: kpId)
             if result.isSerial {
-                self.inlineSourceWrapper = SourceResultWrapper(allohaResult: result, kpId: kpId)
+                self.inlineSourceWrapper = SourceResultWrapper(kpId: kpId, allohaResult: result)
             }
         } catch {
             print("Error fetching inline seasons: \(error)")
@@ -1891,7 +1887,7 @@ class DetailsViewModel: ObservableObject {
 
         do {
             let result = try await AllohaRepository.shared.fetchByKpId(kpId: kpId)
-            let wrapper = SourceResultWrapper(allohaResult: result, kpId: kpId)
+            let wrapper = SourceResultWrapper(kpId: kpId, allohaResult: result)
             sourcesCache[kpId] = (wrapper: wrapper, expiresAt: Date().addingTimeInterval(sourcesCacheTtl))
             self.sourceResultWrapper = wrapper
         } catch {

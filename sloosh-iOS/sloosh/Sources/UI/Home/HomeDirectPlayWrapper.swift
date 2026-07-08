@@ -43,8 +43,8 @@ struct HomeDirectPlayWrapper: View {
                         voices: [],
                         subtitles: [],
                         quality: quality,
-                        provider: provider,
-                        seriesResult: result
+                        seriesResult: result,
+                        provider: provider
                     )
                     onPlay(config)
                 }
