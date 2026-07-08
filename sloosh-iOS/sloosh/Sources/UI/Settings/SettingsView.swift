@@ -33,7 +33,7 @@ struct SettingsView: View {
                 .animation(.spring(response: 0.35, dampingFraction: 0.75), value: cardStyle)
                 .animation(.spring(response: 0.35, dampingFraction: 0.75), value: cardDensity)
                 
-                // Стиль карточек
+                // Отображение названий
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 12) {
                         Image(systemName: "rectangle.grid.1x2")
@@ -41,19 +41,19 @@ struct SettingsView: View {
                             .font(.system(size: 18))
                             .frame(width: 24)
                         
-                        Text("Стиль карточек")
+                        Text("Отображение названий")
                             .font(.body)
                     }
                     
-                    Picker("Стиль карточек", selection: $cardStyle.animation(.spring(response: 0.35, dampingFraction: 0.75))) {
-                        Text("Классический").tag(CardStyle.classic)
-                        Text("Инфо внутри").tag(CardStyle.overlay)
+                    Picker("Отображение названий", selection: $cardStyle.animation(.spring(response: 0.35, dampingFraction: 0.75))) {
+                        Text("Под постером").tag(CardStyle.classic)
+                        Text("Поверх постера").tag(CardStyle.overlay)
                     }
                     .pickerStyle(.segmented)
                 }
                 .padding(.vertical, 4)
                 
-                // Сетка списков
+                // Плотность сетки
                 VStack(alignment: .leading, spacing: 8) {
                     HStack(spacing: 12) {
                         Image(systemName: "square.grid.2x2")
@@ -61,11 +61,11 @@ struct SettingsView: View {
                             .font(.system(size: 18))
                             .frame(width: 24)
                         
-                        Text("Сетка списков")
+                        Text("Плотность сетки")
                             .font(.body)
                     }
                     
-                    Picker("Сетка списков", selection: $cardDensity.animation(.spring(response: 0.35, dampingFraction: 0.75))) {
+                    Picker("Плотность сетки", selection: $cardDensity.animation(.spring(response: 0.35, dampingFraction: 0.75))) {
                         Text("Стандартная").tag(CardDensity.regular)
                         Text("Компактная").tag(CardDensity.compact)
                     }
@@ -89,7 +89,7 @@ struct SettingsView: View {
                     }
                 }
                 
-                // Показывать подписи вкладок
+                // Показывать названия вкладок
                 Toggle(isOn: $tabBarShowsLabelsDraft) {
                     HStack(spacing: 12) {
                         Image(systemName: "dock.rectangle")
@@ -97,7 +97,7 @@ struct SettingsView: View {
                             .font(.system(size: 18))
                             .frame(width: 24)
                         
-                        Text("Подписи вкладок")
+                        Text("Названия вкладок")
                             .font(.body)
                     }
                 }
