@@ -203,15 +203,21 @@ struct DetailsView: View {
                             title: sourceSheetTitle
                         )
                     } else if let wrapper = viewModel.sourceResultWrapper,
-                              let result = wrapper.allohaResult {
-                        SourceSelectionView(mode: sourceSheetMode, allohaResult: result, cdnResult: viewModel.cdnMoviesResult, kpId: wrapper.kpId, details: viewModel.details) { provider, translation, season, episode, quality in
+                              (wrapper.allohaResult != nil || viewModel.cdnMoviesResult != nil) {
+                        SourceSelectionView(
+                            mode: sourceSheetMode,
+                            allohaResult: wrapper.allohaResult,
+                            cdnResult: viewModel.cdnMoviesResult,
+                            kpId: wrapper.kpId,
+                            details: viewModel.details
+                        ) { provider, translation, season, episode, quality in
                             if sourceSheetMode == .play {
                                 playerProvider = provider
                                 playerKpId = wrapper.kpId
                                 playerSeason = season
                                 playerEpisode = episode
                                 playerQuality = quality
-                                playerSeriesResult = result
+                                playerSeriesResult = provider == "CDNMovies" ? viewModel.cdnMoviesResult : wrapper.allohaResult
                                 
                                 let kpId = wrapper.kpId
                                 if DownloadManager.shared.isDownloaded(kpId: kpId, season: season, episode: episode),
