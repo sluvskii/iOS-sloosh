@@ -18,17 +18,12 @@ struct AboutView: View {
                         Image("LogoText")
                             .resizable()
                             .scaledToFit()
-                            .frame(height: 44)
+                            .frame(height: 64)
                     } else {
                         Text("sloosh")
                             .font(.system(size: 32, weight: .bold, design: .rounded))
                             .foregroundColor(.primary)
                     }
-                    
-                    Text("Твой проводник в мир кино")
-                        .font(.subheadline)
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
                     
                     Text(appVersion)
                         .font(.footnote)
@@ -59,11 +54,11 @@ struct AboutView: View {
                 
                 Link(destination: URL(string: "https://t.me/slooshbeta")!) {
                     HStack {
-                        Image(systemName: "flask.fill")
-                            .foregroundColor(.purple)
+                        Image(systemName: "paperplane.fill")
+                            .foregroundColor(.blue)
                             .font(.system(size: 18))
                             .frame(width: 24)
-                        Text("Бета-чат")
+                        Text("Telegram-канал (Beta)")
                             .foregroundColor(.primary)
                         Spacer()
                         Image(systemName: "arrow.up.forward.app")
