@@ -90,6 +90,9 @@ struct PlayerView: View {
         self.subtitles = subtitles
         self.initialQuality = initialQuality
         self.seriesResult = seriesResult
+        
+        // Блокируем ориентацию в landscape до начала анимации появления
+        AppDelegate.lockToLandscape()
     }
 
     var body: some View {
