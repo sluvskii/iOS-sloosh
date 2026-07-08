@@ -9,11 +9,10 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     }
 
     static func lockToLandscape() {
-        AppDelegate.orientationLock = .landscape
+        AppDelegate.orientationLock = .all
         if #available(iOS 16.0, *) {
             let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
             if let windowScene = scenes.first(where: { $0.activationState == .foregroundActive }) ?? scenes.first {
-                windowScene.requestGeometryUpdate(.iOS(interfaceOrientations: .landscape)) { _ in }
                 for window in windowScene.windows {
                     window.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
                 }
