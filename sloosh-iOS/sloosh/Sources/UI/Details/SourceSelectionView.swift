@@ -381,5 +381,21 @@ struct SourceSelectionView: View {
             }
         }
         .presentationDragIndicator(.visible)
-
+        .onAppear {
+            setupInitialSelection()
+        }
+        .sheet(isPresented: $showQualitySelection) {
+            if let t = getTranslationObject(name: selectedTranslationName ?? "") {
+                QualitySelectionSheet { selectedQuality in
+                    if mode == .play, let kpId = kpId {
+                        PlaybackProgressStore.shared.saveLastPlayed(kpId: kpId, season: selectedSeason, episode: selectedEpisode)
+                        PlaybackProgressStore.shared.saveLastVoiceover(kpId: kpId, source: "alloha", voiceover: t.name)
+                    }
+                    onAction(selectedProvider, t, selectedSeason, selectedEpisode, selectedQuality)
+                    showQualitySelection = false
+                    dismiss()
+                }
+            }
+        }
+    }
 }
