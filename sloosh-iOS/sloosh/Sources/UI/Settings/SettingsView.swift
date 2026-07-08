@@ -18,16 +18,20 @@ struct SettingsView: View {
                     Spacer()
                     let spacing: CGFloat = cardDensity == .compact ? 8 : 16
                     let cardWidth: CGFloat = cardDensity == .compact ? 95 : 85
+                    let cardHeight = cardStyle == .classic ? cardWidth * 1.5 + 34 : cardWidth * 1.5
                     
                     HStack(spacing: spacing) {
                         ForEach(0..<3, id: \.self) { _ in
                             PreviewMoviePosterCard(style: cardStyle, width: cardWidth)
                         }
                     }
+                    .frame(height: cardHeight)
                     Spacer()
                 }
                 .padding(.vertical, 12)
                 .listRowSeparator(.hidden)
+                .animation(.spring(response: 0.35, dampingFraction: 0.75), value: cardStyle)
+                .animation(.spring(response: 0.35, dampingFraction: 0.75), value: cardDensity)
                 
                 // Стиль карточек
                 VStack(alignment: .leading, spacing: 8) {
@@ -196,6 +200,7 @@ struct PreviewMoviePosterCard: View {
     let width: CGFloat
     
     var body: some View {
+        let cardHeight = style == .classic ? width * 1.5 + 34 : width * 1.5
         VStack(alignment: .leading, spacing: style == .classic ? 8 : 0) {
             RoundedRectangle(cornerRadius: style == .overlay ? 16 : 12, style: .continuous)
                 .fill(Color.secondary.opacity(0.15))
@@ -238,6 +243,7 @@ struct PreviewMoviePosterCard: View {
                 .transition(.opacity.combined(with: .move(edge: .top)))
             }
         }
+        .frame(width: width, height: cardHeight, alignment: .top)
     }
 }
 
