@@ -229,6 +229,18 @@ class PlayerViewModel: ObservableObject {
         guard let host = url.host?.lowercased() else { return false }
         return host == "127.0.0.1" || host == "localhost"
     }
+
+    /// Local HLS proxy URLs are only reachable from the iPhone.
+    /// If AVPlayer is allowed to hand video playback off to an AirPlay TV,
+    /// the TV tries to load `127.0.0.1` from its own network stack and the
+    /// stream stalls forever. Keep proxied streams rendered locally so Screen
+    /// Mirroring captures the custom player reliably, while direct/local files
+    /// can still use AVPlayer's default external playback behavior.
+    private func configureExternalPlayback(forLocalProxy usesLocalProxy: Bool) {
+        guard let player else { return }
+        player.allowsExternalPlayback = !usesLocalProxy
+        player.usesExternalPlaybackWhileExternalScreenIsActive = !usesLocalProxy
+    }
     
     func load(iframeUrl: String?, kpId: Int?, season: Int?, episode: Int?, selectedVoiceover: String?, directStreamUrl: String? = nil, voices: [String] = [], subtitles: [PlaybackSubtitle] = []) {
         if hasStartedLoading { return } // Защита от двойного вызова
@@ -616,6 +628,7 @@ class PlayerViewModel: ObservableObject {
         let wasPlaying = player?.timeControlStatus == .playing || player?.timeControlStatus == .waitingToPlayAtSpecifiedRate
 
         let asset: AVURLAsset
+        var usesLocalProxy = false
         if sourceURL.isFileURL {
             asset = AVURLAsset(url: sourceURL)
         } else if sourceURL.absoluteString.lowercased().contains(".mp4") {
@@ -626,6 +639,7 @@ class PlayerViewModel: ObservableObject {
             asset = AVURLAsset(url: sourceURL, options: options)
         } else {
             guard let proxyUrl = proxiedPlaybackURL(for: sourceURL) else { return }
+            usesLocalProxy = true
             asset = AVURLAsset(url: proxyUrl)
         }
 
@@ -636,6 +650,7 @@ class PlayerViewModel: ObservableObject {
 
         self.isLoading = true
 
+        configureExternalPlayback(forLocalProxy: usesLocalProxy)
         self.player?.replaceCurrentItem(with: playerItem)
         setupPlayerItemObservers(for: playerItem)
 
@@ -787,7 +802,9 @@ class PlayerViewModel: ObservableObject {
         currentHeaders = headers
 
         let asset: AVURLAsset
-        if url.absoluteString.contains("127.0.0.1") || url.absoluteString.contains("localhost") {
+        var usesLocalProxy = false
+        if isLocalProxyUrl(url) {
+            usesLocalProxy = true
             HlsProxyServer.shared.start(headers: [:], voices: [], subtitles: [], mediaId: "local")
             asset = AVURLAsset(url: url)
         } else if url.isFileURL {
@@ -817,12 +834,14 @@ class PlayerViewModel: ObservableObject {
             }
 
             HlsProxyServer.shared.start(headers: headers, voices: voices, subtitles: subtitles, mediaId: mediaId)
+            usesLocalProxy = true
             asset = AVURLAsset(url: proxyUrl)
         }
 
         let playerItem = AVPlayerItem(asset: asset)
         
         if self.player == nil { self.player = AVPlayer() }
+        configureExternalPlayback(forLocalProxy: usesLocalProxy)
         self.player?.replaceCurrentItem(with: playerItem)
         self.player?.automaticallyWaitsToMinimizeStalling = true
         self.player?.rate = playbackRate
