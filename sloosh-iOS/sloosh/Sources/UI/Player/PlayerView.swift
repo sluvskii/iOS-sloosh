@@ -229,6 +229,31 @@ class PlayerViewModel: ObservableObject {
         guard let host = url.host?.lowercased() else { return false }
         return host == "127.0.0.1" || host == "localhost"
     }
+
+    private func shouldUseLocalProxy(for url: URL) -> Bool {
+        guard !url.isFileURL else { return false }
+        guard !isLocalProxyUrl(url) else { return false }
+        return !url.absoluteString.lowercased().contains(".mp4")
+    }
+
+    private func configureExternalPlayback(usesLocalProxy: Bool) {
+        guard let player else { return }
+
+        // AirPlay/external playback cannot reach our in-app localhost HLS proxy.
+        // Keep proxied streams rendered on-device so screen mirroring remains stable.
+        let externalPlaybackAllowed = !usesLocalProxy
+        if player.allowsExternalPlayback != externalPlaybackAllowed {
+            player.allowsExternalPlayback = externalPlaybackAllowed
+        }
+        if player.usesExternalPlaybackWhileExternalScreenIsActive != externalPlaybackAllowed {
+            player.usesExternalPlaybackWhileExternalScreenIsActive = externalPlaybackAllowed
+        }
+
+        if usesLocalProxy, player.isExternalPlaybackActive {
+            player.pause()
+            player.play()
+        }
+    }
     
     func load(iframeUrl: String?, kpId: Int?, season: Int?, episode: Int?, selectedVoiceover: String?, directStreamUrl: String? = nil, voices: [String] = [], subtitles: [PlaybackSubtitle] = []) {
         if hasStartedLoading { return } // Защита от двойного вызова
@@ -614,6 +639,7 @@ class PlayerViewModel: ObservableObject {
     private func reloadPlayback(to sourceURL: URL, preferredPeakBitRate: Double?) {
         let currentTime = player?.currentTime() ?? .zero
         let wasPlaying = player?.timeControlStatus == .playing || player?.timeControlStatus == .waitingToPlayAtSpecifiedRate
+        let usesLocalProxy = shouldUseLocalProxy(for: sourceURL)
 
         let asset: AVURLAsset
         if sourceURL.isFileURL {
@@ -635,6 +661,7 @@ class PlayerViewModel: ObservableObject {
         hasRetriedPlayback = true
 
         self.isLoading = true
+        configureExternalPlayback(usesLocalProxy: usesLocalProxy)
 
         self.player?.replaceCurrentItem(with: playerItem)
         setupPlayerItemObservers(for: playerItem)
@@ -785,6 +812,7 @@ class PlayerViewModel: ObservableObject {
     private func playVideo(url: URL, headers: [String: String], voices: [String] = [], subtitles: [PlaybackSubtitle] = []) {
         currentPlaybackSourceURL = url.absoluteURL
         currentHeaders = headers
+        let usesLocalProxy = shouldUseLocalProxy(for: url)
 
         let asset: AVURLAsset
         if url.absoluteString.contains("127.0.0.1") || url.absoluteString.contains("localhost") {
@@ -823,6 +851,7 @@ class PlayerViewModel: ObservableObject {
         let playerItem = AVPlayerItem(asset: asset)
         
         if self.player == nil { self.player = AVPlayer() }
+        configureExternalPlayback(usesLocalProxy: usesLocalProxy)
         self.player?.replaceCurrentItem(with: playerItem)
         self.player?.automaticallyWaitsToMinimizeStalling = true
         self.player?.rate = playbackRate
