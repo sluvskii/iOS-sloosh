@@ -148,7 +148,10 @@ struct AirPlayButton: UIViewRepresentable {
         let v = AVRoutePickerView()
         v.tintColor = .white
         v.activeTintColor = UIColor.systemBlue
-        v.prioritizesVideoDevices = true
+        // Proxied online streams must stay rendered on-device; video AirPlay
+        // handoff makes the TV request the iPhone-only localhost proxy.
+        // Keep the route picker available, but do not prioritize video routes.
+        v.prioritizesVideoDevices = false
         return v
     }
     func updateUIView(_ uiView: AVRoutePickerView, context: Context) {}
