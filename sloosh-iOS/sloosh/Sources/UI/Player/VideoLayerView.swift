@@ -48,6 +48,7 @@ final class PlayerLayerView: UIView {
 
     @objc private func didEnterBackground() {
         if let pip = pipController, pip.isPictureInPictureActive { return }
+        if playerLayer.player?.isExternalPlaybackActive == true || UIScreen.screens.count > 1 { return }
         stashedPlayer = playerLayer.player
         playerLayer.player = nil
     }
