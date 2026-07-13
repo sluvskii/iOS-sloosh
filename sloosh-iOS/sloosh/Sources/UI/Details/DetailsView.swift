@@ -101,6 +101,9 @@ struct DetailsView: View {
     @State private var dominantBackdropColor: UIColor? = nil
     @State private var dominantPosterColor: UIColor? = nil
 
+    @AppStorage("hasSeenSourceSelectionTooltip") private var hasSeenSourceSelectionTooltip = false
+    @State private var showTooltip = false
+
     private var detailsBaseBackgroundColor: UIColor {
         UIColor.systemBackground.resolvedColor(with: UITraitCollection(userInterfaceStyle: .dark))
     }
@@ -188,6 +191,18 @@ struct DetailsView: View {
 
                 guard let details = viewModel.details else { return }
                 await preloadDominantColor(for: details)
+            }
+            .onAppear {
+                if !hasSeenSourceSelectionTooltip {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                        showTooltip = true
+                    }
+                }
+            }
+            .onChange(of: showTooltip) { newValue in
+                if !newValue {
+                    hasSeenSourceSelectionTooltip = true
+                }
             }
             .sheet(isPresented: $showSourceSheet, onDismiss: {
                 sourceFetchTask?.cancel()
@@ -342,6 +357,7 @@ struct DetailsView: View {
     private func playAndDownloadRow(for details: MediaDetailsDto) -> some View {
         HStack(spacing: 8) {
             playButton(for: details)
+                .tooltip(text: "Нажмите для выбора перевода", isVisible: $showTooltip, isTailTop: true)
             downloadButton(for: details)
         }
     }

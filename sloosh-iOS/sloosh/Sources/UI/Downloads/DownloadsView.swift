@@ -229,31 +229,38 @@ private struct DownloadRowView: View {
 
     @ViewBuilder
     private var statusBadge: some View {
-        if item.status == .downloading || item.status == .pending {
-            Button(action: { DownloadManager.shared.pauseDownload(id: item.id) }) {
-                Image(systemName: "pause.fill")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(.primary)
-                    .frame(width: 32, height: 32)
-                    .background(Color(UIColor.tertiarySystemFill), in: Circle())
-            }
-            .buttonStyle(.plain)
-        } else if item.status == .failed || item.status == .paused {
-            Button(action: {
-                if item.status == .paused {
-                    DownloadManager.shared.resumeDownload(id: item.id)
-                } else {
-                    DownloadManager.shared.deleteDownload(id: item.id)
-                }
-            }) {
-                Image(systemName: item.status == .paused ? "play.fill" : "trash.fill")
-                    .font(.system(size: 14, weight: .bold))
-                    .foregroundStyle(.primary)
-                    .frame(width: 32, height: 32)
-                    .background(Color(UIColor.tertiarySystemFill), in: Circle())
-            }
-            .buttonStyle(.plain)
+        let state: RadialDownloadState
+        switch item.status {
+        case .completed:
+            state = .downloaded
+        case .downloading:
+            state = .downloading(progress: item.progress)
+        case .paused:
+            state = .paused(progress: item.progress)
+        case .pending:
+            state = .downloading(progress: 0.0)
+        default:
+            state = .idle
         }
+        
+        RadialDownloadIndicator(state: state) {
+            let generator = UIImpactFeedbackGenerator(style: .medium)
+            generator.prepare()
+            generator.impactOccurred()
+            
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                if item.status == .downloading || item.status == .pending {
+                    DownloadManager.shared.pauseDownload(id: item.id)
+                } else if item.status == .paused {
+                    DownloadManager.shared.resumeDownload(id: item.id)
+                } else if item.status == .failed || item.status == .completed {
+                    DownloadManager.shared.deleteDownload(id: item.id)
+                } else {
+                    // if idle, usually start download (but here it's already in the list)
+                }
+            }
+        }
+        .frame(width: 32, height: 32)
     }
 }
 
