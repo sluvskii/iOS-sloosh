@@ -66,6 +66,7 @@ struct HomeView: View {
                 .padding(.top, 4)
                 .padding(.bottom, 12)
             }
+            .scrollEdgeEffectStyle(.soft, for: .top)
             .task {
                 await viewModel.applyCurrentSelection()
             }
@@ -220,7 +221,6 @@ struct HomeCategoryContentView: View {
             .refreshable {
                 await viewModel.applyCurrentSelection(force: true)
             }
-            .scrollEdgeEffectStyle(.soft, for: .all)
         }
     }
 }
