@@ -197,12 +197,6 @@ struct HomeCategoryContentView: View {
 
                 HStack(alignment: .top, spacing: 0) {
                     ForEach(categories, id: \.self) { category in
-                        let catIndex = categories.firstIndex(of: category) ?? 0
-                        let isCurrent = catIndex == currentIndex
-                        let isIncomingLeft = dragOffset > 0 && catIndex == currentIndex - 1
-                        let isIncomingRight = dragOffset < 0 && catIndex == currentIndex + 1
-                        let isVisible = isCurrent || isIncomingLeft || isIncomingRight
-
                         CategoryGridWrapper(
                             category: category,
                             viewModel: viewModel,
@@ -213,11 +207,9 @@ struct HomeCategoryContentView: View {
                             isSwiping: isDraggingHorizontally
                         )
                         .frame(width: screenWidth)
-                        // Collapse height if not visible to prevent ScrollView from taking max height of all tabs
-                        .frame(height: isVisible ? nil : 0, alignment: .top)
-                        .clipped()
                     }
                 }
+                .frame(width: screenWidth, alignment: .leading)
                 .offset(x: -CGFloat(currentIndex) * screenWidth + dragOffset)
                 // High priority gesture to catch horizontal swipes and cancel inner taps
                 .simultaneousGesture(
