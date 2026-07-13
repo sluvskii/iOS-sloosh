@@ -6,12 +6,12 @@ import QuartzCore
 /// плавно переходящего от полного блюра к полной прозрачности.
 /// Реализация скопирована из Telegram-iOS с обходом приватного API.
 public struct VariableBlurView: View {
-    public var maxBlurRadius: CGFloat = 8
+    public var maxBlurRadius: CGFloat = 4
     public var direction: VariableBlurRepresentable.BlurDirection = .blurredTopClearBottom
     public var tintColor: Color = Color(UIColor.systemBackground)
     public var tintOpacity: Double = 0.75
     
-    public init(maxBlurRadius: CGFloat = 8, direction: VariableBlurRepresentable.BlurDirection = .blurredTopClearBottom, tintColor: Color = Color(UIColor.systemBackground), tintOpacity: Double = 0.75) {
+    public init(maxBlurRadius: CGFloat = 4, direction: VariableBlurRepresentable.BlurDirection = .blurredTopClearBottom, tintColor: Color = Color(UIColor.systemBackground), tintOpacity: Double = 0.75) {
         self.maxBlurRadius = maxBlurRadius
         self.direction = direction
         self.tintColor = tintColor
@@ -35,7 +35,7 @@ public struct VariableBlurView: View {
 }
 
 public struct VariableBlurRepresentable: UIViewRepresentable {
-    public var maxBlurRadius: CGFloat = 8
+    public var maxBlurRadius: CGFloat = 4
     public var direction: BlurDirection = .blurredTopClearBottom
     
     public enum BlurDirection {
@@ -43,7 +43,7 @@ public struct VariableBlurRepresentable: UIViewRepresentable {
         case blurredBottomClearTop
     }
     
-    public init(maxBlurRadius: CGFloat = 8, direction: BlurDirection = .blurredTopClearBottom) {
+    public init(maxBlurRadius: CGFloat = 4, direction: BlurDirection = .blurredTopClearBottom) {
         self.maxBlurRadius = maxBlurRadius
         self.direction = direction
     }
@@ -73,7 +73,7 @@ public final class VariableBlurUIView: UIVisualEffectView {
         }
     }
     
-    public init(maxBlurRadius: CGFloat = 8, direction: VariableBlurRepresentable.BlurDirection = .blurredTopClearBottom) {
+    public init(maxBlurRadius: CGFloat = 4, direction: VariableBlurRepresentable.BlurDirection = .blurredTopClearBottom) {
         self.maxBlurRadius = maxBlurRadius
         self.direction = direction
         super.init(effect: UIBlurEffect(style: .regular))
