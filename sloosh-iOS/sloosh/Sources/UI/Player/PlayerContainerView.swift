@@ -95,7 +95,11 @@ struct PlayerContainerView: View {
                 .contentShape(Rectangle())
                 .onTapGesture { handleTap(side: .right) }
         }
-        .playerGestures() // Перехват яркости и громкости параллельно с тапами
+        .playerGestures(
+            onInteractionBegan: {
+                withAnimation(hideAnimation) { showControls = false }
+            }
+        )
     }
 
     private func handleTap(side: TapSide) {
