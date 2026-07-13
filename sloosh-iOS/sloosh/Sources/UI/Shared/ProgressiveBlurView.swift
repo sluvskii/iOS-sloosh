@@ -4,7 +4,6 @@ import QuartzCore
 
 public struct ProgressiveBlurView: UIViewRepresentable {
     public var maxBlurRadius: CGFloat
-    public var solidLocation: CGFloat
     public var direction: BlurDirection
     
     public enum BlurDirection {
@@ -12,31 +11,27 @@ public struct ProgressiveBlurView: UIViewRepresentable {
         case blurredBottomClearTop
     }
     
-    public init(maxBlurRadius: CGFloat = 20, solidLocation: CGFloat = 0.5, direction: BlurDirection = .blurredTopClearBottom) {
+    public init(maxBlurRadius: CGFloat = 20, direction: BlurDirection = .blurredTopClearBottom) {
         self.maxBlurRadius = maxBlurRadius
-        self.solidLocation = solidLocation
         self.direction = direction
     }
     
     public func makeUIView(context: Context) -> VariableBlurUIView {
-        return VariableBlurUIView(maxBlurRadius: maxBlurRadius, solidLocation: solidLocation, direction: direction)
+        return VariableBlurUIView(maxBlurRadius: maxBlurRadius, direction: direction)
     }
     
     public func updateUIView(_ uiView: VariableBlurUIView, context: Context) {
         uiView.maxBlurRadius = maxBlurRadius
-        uiView.solidLocation = solidLocation
         uiView.direction = direction
     }
 }
 
 public class VariableBlurUIView: UIVisualEffectView {
     public var maxBlurRadius: CGFloat { didSet { updateFilter() } }
-    public var solidLocation: CGFloat { didSet { updateFilter() } }
     public var direction: ProgressiveBlurView.BlurDirection { didSet { updateFilter() } }
     
-    public init(maxBlurRadius: CGFloat, solidLocation: CGFloat, direction: ProgressiveBlurView.BlurDirection) {
+    public init(maxBlurRadius: CGFloat, direction: ProgressiveBlurView.BlurDirection) {
         self.maxBlurRadius = maxBlurRadius
-        self.solidLocation = solidLocation
         self.direction = direction
         super.init(effect: UIBlurEffect(style: .regular))
         self.backgroundColor = .clear
@@ -89,11 +84,10 @@ public class VariableBlurUIView: UIVisualEffectView {
         
         let colors = [
             UIColor.white.cgColor,
-            UIColor.white.cgColor,
             UIColor.white.withAlphaComponent(0).cgColor
         ] as CFArray
         
-        let locations: [CGFloat] = [0.0, solidLocation, 1.0]
+        let locations: [CGFloat] = [0.0, 1.0]
         let colorSpace = CGColorSpaceCreateDeviceRGB()
         guard let gradient = CGGradient(colorsSpace: colorSpace, colors: colors, locations: locations) else { return nil }
         
