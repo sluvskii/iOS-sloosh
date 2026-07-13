@@ -11,31 +11,15 @@ struct PlayerGesturesOverlay: View {
     @State private var initialVolume: Float = 0.0
     @State private var isDragging: Bool = false
     
-    // Вспомогательный класс для работы с системной громкостью
     private let volumeManager = VolumeManager.shared
     
     var body: some View {
         GeometryReader { geo in
             ZStack {
-                // Невидимый слой для перехвата свайпов
-                Color.white.opacity(0.001)
-                    .gesture(
-                        DragGesture(minimumDistance: 10)
-                            .onChanged { value in
-                                if !isDragging {
-                                    isDragging = true
-                                    initialBrightness = UIScreen.main.brightness
-                                    initialVolume = volumeManager.currentVolume
-                                }
-                                handleDrag(value: value, height: geo.size.height)
-                            }
-                            .onEnded { _ in
-                                isDragging = false
-                                withAnimation {
-                                    showIndicator = false
-                                }
-                            }
-                    )
+                // Невидимый слой для перехвата свайпов через UIKit
+                PanGestureView { value in
+                    handleDrag(value: value, height: geo.size.height)
+                }
                 
                 // Центральный индикатор
                 if showIndicator {
@@ -43,6 +27,7 @@ struct PlayerGesturesOverlay: View {
                         Image(systemName: indicatorIcon)
                             .font(.system(size: 32, weight: .medium))
                             .foregroundColor(.white)
+                            .frame(width: 44, height: 44) // Фиксируем размер иконки
                         
                         GeometryReader { barGeo in
                             Capsule()
@@ -56,7 +41,7 @@ struct PlayerGesturesOverlay: View {
                         .frame(width: 120, height: 4)
                     }
                     .padding(24)
-                    .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .glassEffect(in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                     .environment(\.colorScheme, .dark)
                     .transition(.opacity.combined(with: .scale(scale: 0.9)))
                 }
@@ -64,8 +49,23 @@ struct PlayerGesturesOverlay: View {
         }
     }
     
-    private func handleDrag(value: DragGesture.Value, height: CGFloat) {
-        let delta = -value.translation.height / (height * 0.5) // Полный свайп на половину экрана
+    private func handleDrag(value: PanGestureData, height: CGFloat) {
+        if value.state == .began {
+            isDragging = true
+            initialBrightness = UIScreen.main.brightness
+            initialVolume = volumeManager.currentVolume
+            return
+        }
+        
+        if value.state == .ended || value.state == .cancelled {
+            isDragging = false
+            withAnimation {
+                showIndicator = false
+            }
+            return
+        }
+        
+        let delta = -value.translation.y / (height * 0.5) // Полный свайп на половину экрана
         let isRightSide = value.startLocation.x > UIScreen.main.bounds.width / 2
         
         if isRightSide {
@@ -88,6 +88,60 @@ struct PlayerGesturesOverlay: View {
             withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                 showIndicator = true
             }
+        }
+    }
+}
+
+// Данные о жесте
+struct PanGestureData {
+    let state: UIGestureRecognizer.State
+    let translation: CGPoint
+    let startLocation: CGPoint
+}
+
+// UIKit Gesture View, не блокирующий тапы
+struct PanGestureView: UIViewRepresentable {
+    var onPan: (PanGestureData) -> Void
+
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView()
+        view.backgroundColor = .clear
+        let pan = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handlePan(_:)))
+        pan.cancelsTouchesInView = false // Важно для пропуская тапов в плеер
+        pan.delegate = context.coordinator
+        view.addGestureRecognizer(pan)
+        return view
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {}
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onPan: onPan)
+    }
+
+    class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        var onPan: (PanGestureData) -> Void
+        var startLocation: CGPoint = .zero
+
+        init(onPan: @escaping (PanGestureData) -> Void) {
+            self.onPan = onPan
+        }
+
+        @objc func handlePan(_ recognizer: UIPanGestureRecognizer) {
+            if recognizer.state == .began {
+                startLocation = recognizer.location(in: recognizer.view)
+            }
+            
+            let data = PanGestureData(
+                state: recognizer.state,
+                translation: recognizer.translation(in: recognizer.view),
+                startLocation: startLocation
+            )
+            onPan(data)
+        }
+
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+            return true
         }
     }
 }

@@ -357,7 +357,7 @@ struct DetailsView: View {
     private func playAndDownloadRow(for details: MediaDetailsDto) -> some View {
         HStack(spacing: 8) {
             playButton(for: details)
-                .tooltip(text: "Нажмите для выбора перевода", isVisible: $showTooltip, isTailTop: true)
+                .tooltip(text: "Нажмите для выбора перевода", isVisible: $showTooltip, isTailTop: false)
             downloadButton(for: details)
         }
     }
