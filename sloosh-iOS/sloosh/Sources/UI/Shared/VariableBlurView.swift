@@ -112,7 +112,23 @@ public final class VariableBlurUIView: UIVisualEffectView {
         variableBlur.setValue(true, forKey: "inputNormalizeEdges")
         
         let backdropLayer = self.subviews.first?.layer
-        backdropLayer?.filters = [variableBlur]
+        
+        var newFilters: [Any] = []
+        if let currentFilters = backdropLayer?.filters {
+            for filter in currentFilters {
+                if let f = filter as? NSObject {
+                    let name = f.value(forKey: "name") as? String ?? ""
+                    let type = f.value(forKey: "type") as? String ?? ""
+                    if name == "colorSaturate" || type == "colorSaturate" {
+                        newFilters.append(f)
+                    }
+                }
+            }
+        }
+        
+        newFilters.append(variableBlur)
+        
+        backdropLayer?.filters = newFilters
         backdropLayer?.setValue(UIScreen.main.scale, forKey: "scale")
     }
     
