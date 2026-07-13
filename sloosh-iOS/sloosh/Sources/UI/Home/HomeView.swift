@@ -241,9 +241,15 @@ struct HomeCategoryContentView: View {
             }
         }
         .safeAreaBar(edge: .top, spacing: 0) {
-            Rectangle()
-                .fill(Color.black.opacity(0.001))
-                .frame(height: 51)
+            HomeCategoryTextTabs(
+                selectedCategory: .constant(.all),
+                selectedFilter: .constant(.popular),
+                isFilterCollapsed: .constant(false)
+            )
+            .padding(.top, 4)
+            .padding(.bottom, 12)
+            .opacity(0.001)
+            .allowsHitTesting(false)
         }
         .scrollIndicators(.hidden)
         .refreshable {
