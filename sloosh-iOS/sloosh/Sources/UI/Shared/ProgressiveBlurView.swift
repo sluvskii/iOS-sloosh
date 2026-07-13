@@ -82,12 +82,17 @@ public class VariableBlurUIView: UIVisualEffectView {
         defer { UIGraphicsEndImageContext() }
         guard let context = UIGraphicsGetCurrentContext() else { return nil }
         
+        // Используем несколько точек остановки (stops) для создания нелинейного 
+        // затухания (easing), чтобы блюр не пропадал слишком резко.
         let colors = [
             UIColor.white.cgColor,
+            UIColor.white.withAlphaComponent(0.9).cgColor,
+            UIColor.white.withAlphaComponent(0.6).cgColor,
+            UIColor.white.withAlphaComponent(0.2).cgColor,
             UIColor.white.withAlphaComponent(0).cgColor
         ] as CFArray
         
-        let locations: [CGFloat] = [0.0, 1.0]
+        let locations: [CGFloat] = [0.0, 0.2, 0.5, 0.8, 1.0]
         let colorSpace = CGColorSpaceCreateDeviceRGB()
         guard let gradient = CGGradient(colorsSpace: colorSpace, colors: colors, locations: locations) else { return nil }
         
