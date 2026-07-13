@@ -239,7 +239,7 @@ struct HomeCategoryContentView: View {
                 isFilterCollapsed: $isFilterCollapsed
             )
             .padding(.top, 4)
-            .padding(.bottom, 2)
+            .padding(.bottom, 12)
         }
         .scrollIndicators(.hidden)
         .refreshable {
