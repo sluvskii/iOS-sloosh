@@ -74,7 +74,6 @@ struct HomeView: View {
                 )
                 .padding(.top, 4)
                 .padding(.bottom, 12)
-                .alignmentGuide(.top) { d in d[.bottom] }
             }
             .toolbar(.hidden, for: .navigationBar)
             .task {
@@ -242,7 +241,8 @@ struct HomeCategoryContentView: View {
             }
         }
         .safeAreaBar(edge: .top, spacing: 0) {
-            Color.clear
+            Rectangle()
+                .fill(Color.black.opacity(0.001))
                 .frame(height: 51)
         }
         .scrollIndicators(.hidden)
