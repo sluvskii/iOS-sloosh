@@ -6,7 +6,7 @@ import QuartzCore
 /// плавно переходящего от полного блюра к полной прозрачности.
 /// Реализация скопирована из Telegram-iOS с обходом приватного API.
 public struct VariableBlurView: UIViewRepresentable {
-    public var maxBlurRadius: CGFloat = 15
+    public var maxBlurRadius: CGFloat = 8
     public var direction: BlurDirection = .blurredTopClearBottom
     
     public enum BlurDirection {
@@ -14,7 +14,7 @@ public struct VariableBlurView: UIViewRepresentable {
         case blurredBottomClearTop
     }
     
-    public init(maxBlurRadius: CGFloat = 15, direction: BlurDirection = .blurredTopClearBottom) {
+    public init(maxBlurRadius: CGFloat = 8, direction: BlurDirection = .blurredTopClearBottom) {
         self.maxBlurRadius = maxBlurRadius
         self.direction = direction
     }
@@ -44,7 +44,7 @@ public final class VariableBlurUIView: UIVisualEffectView {
         }
     }
     
-    public init(maxBlurRadius: CGFloat = 15, direction: VariableBlurView.BlurDirection = .blurredTopClearBottom) {
+    public init(maxBlurRadius: CGFloat = 8, direction: VariableBlurView.BlurDirection = .blurredTopClearBottom) {
         self.maxBlurRadius = maxBlurRadius
         self.direction = direction
         super.init(effect: UIBlurEffect(style: .regular))
