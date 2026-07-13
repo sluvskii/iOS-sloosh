@@ -65,15 +65,6 @@ struct HomeView: View {
             }
             .scrollTargetBehavior(.paging)
             .scrollPosition(id: $scrollPosition)
-            .safeAreaBar(edge: .top, spacing: 0) {
-                HomeCategoryTextTabs(
-                    selectedCategory: $viewModel.selectedCategory,
-                    selectedFilter: $viewModel.selectedFilter,
-                    isFilterCollapsed: $isFilterCollapsed
-                )
-                .padding(.top, 4)
-                .padding(.bottom, 2)
-            }
             .navigationTitle("Главная")
             .scrollEdgeEffectStyle(.soft, for: .top)
             .toolbar(.hidden, for: .navigationBar)
@@ -240,6 +231,15 @@ struct HomeCategoryContentView: View {
                     debouncer.lastStateChangeTime = now
                 }
             }
+        }
+        .safeAreaBar(edge: .top, spacing: 0) {
+            HomeCategoryTextTabs(
+                selectedCategory: $viewModel.selectedCategory,
+                selectedFilter: $viewModel.selectedFilter,
+                isFilterCollapsed: $isFilterCollapsed
+            )
+            .padding(.top, 4)
+            .padding(.bottom, 2)
         }
         .scrollIndicators(.hidden)
         .refreshable {
