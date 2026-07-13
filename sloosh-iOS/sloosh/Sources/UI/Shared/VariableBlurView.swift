@@ -131,8 +131,8 @@ public final class VariableBlurUIView: UIVisualEffectView {
             return nil
         }
         
-        let startPoint = direction == .blurredTopClearBottom ? CGPoint(x: 0, y: 0) : CGPoint(x: 0, y: height)
-        let endPoint = direction == .blurredTopClearBottom ? CGPoint(x: 0, y: height) : CGPoint(x: 0, y: 0)
+        let startPoint = direction == .blurredTopClearBottom ? CGPoint(x: 0, y: height) : CGPoint(x: 0, y: 0)
+        let endPoint = direction == .blurredTopClearBottom ? CGPoint(x: 0, y: 0) : CGPoint(x: 0, y: height)
         
         context.drawLinearGradient(gradient, start: startPoint, end: endPoint, options: [])
         return context.makeImage()
