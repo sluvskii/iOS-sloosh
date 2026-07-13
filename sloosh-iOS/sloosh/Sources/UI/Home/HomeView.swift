@@ -43,28 +43,23 @@ struct HomeView: View {
     @StateObject private var viewModel = HomeViewModel()
     @Namespace private var navigationTransition
     @State private var isFilterCollapsed = false
-    @State private var scrollPosition: HomeCategory?
 
     var body: some View {
         NavigationStack {
-            ZStack(alignment: .top) {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    LazyHStack(spacing: 0) {
-                        ForEach(HomeCategory.allCases, id: \.self) { category in
-                            HomeCategoryContentView(
-                                viewModel: viewModel,
-                                category: category,
-                                navigationTransition: navigationTransition,
-                                isFilterCollapsed: $isFilterCollapsed
-                            )
-                            .containerRelativeFrame(.horizontal)
-                        }
-                    }
-                    .scrollTargetLayout()
+            TabView(selection: $viewModel.selectedCategory) {
+                ForEach(HomeCategory.allCases, id: \.self) { category in
+                    HomeCategoryContentView(
+                        viewModel: viewModel,
+                        category: category,
+                        navigationTransition: navigationTransition,
+                        isFilterCollapsed: $isFilterCollapsed
+                    )
+                    .tag(category)
                 }
-                .scrollTargetBehavior(.paging)
-                .scrollPosition(id: $scrollPosition)
-
+            }
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            // Native iOS 26+ glass bar — activates automatically on vertical scroll of child pages
+            .safeAreaBar(edge: .top, spacing: 0) {
                 HomeCategoryTextTabs(
                     selectedCategory: $viewModel.selectedCategory,
                     selectedFilter: $viewModel.selectedFilter,
@@ -72,23 +67,11 @@ struct HomeView: View {
                 )
                 .padding(.top, 4)
                 .padding(.bottom, 12)
-                .frame(maxWidth: .infinity)
             }
             .task {
-                scrollPosition = viewModel.selectedCategory
                 await viewModel.applyCurrentSelection()
             }
-            .onChange(of: scrollPosition) { _, newCategory in
-                if let newCategory, newCategory != viewModel.selectedCategory {
-                    viewModel.selectedCategory = newCategory
-                }
-            }
-            .onChange(of: viewModel.selectedCategory) { _, newCategory in
-                if scrollPosition != newCategory {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                        scrollPosition = newCategory
-                    }
-                }
+            .onChange(of: viewModel.selectedCategory) { _, _ in
                 isFilterCollapsed = false
                 Task { await viewModel.applyCurrentSelection() }
             }
@@ -162,51 +145,51 @@ struct HomeCategoryContentView: View {
                 Color.clear.frame(height: 0).id("home-scroll-top")
 
                 if isLoading || items == nil {
-                    LazyVGrid(columns: columns, spacing: spacing) {
-                        ForEach(0..<12, id: \.self) { _ in
-                            MoviePosterCardPlaceholder()
-                        }
-                    }
-                    .padding(padding)
-                } else if let items = items, items.isEmpty {
-                    HomeEmptyState(
-                        category: category,
-                        filter: viewModel.selectedFilter
-                    )
-                    .frame(maxWidth: .infinity, minHeight: 300)
-                    .padding(.horizontal, 20)
-                } else if let items = items {
-                    LazyVGrid(columns: columns, spacing: spacing) {
-                        ForEach(items) { movie in
-                            MovieDetailsNavigationLink(movie: movie, navigationTransition: navigationTransition)
-                                .contextMenu {
-                                    Group {
-                                        Button {
-                                            viewModel.directPlaybackMovie = movie
-                                        } label: {
-                                            Label("Смотреть", systemImage: "play.fill")
-                                        }
-                                        NavigationLink(destination: DetailsView(movieId: movie.id, navigationTransitionID: nil, navigationTransitionNamespace: nil)) {
-                                            Label("Подробнее", systemImage: "info.circle")
-                                        }
-                                    }
-                                    .tint(nil)
-                                }
-                            .onAppear {
-                                if movie.id == items.last?.id {
-                                    Task { await viewModel.loadData(for: category) }
-                                }
-                            }
-                        }
-
-                        if isLoadingMore {
-                            ForEach(0..<3, id: \.self) { _ in
+                        LazyVGrid(columns: columns, spacing: spacing) {
+                            ForEach(0..<12, id: \.self) { _ in
                                 MoviePosterCardPlaceholder()
                             }
                         }
+                        .padding(padding)
+                    } else if let items = items, items.isEmpty {
+                        HomeEmptyState(
+                            category: category,
+                            filter: viewModel.selectedFilter
+                        )
+                        .frame(maxWidth: .infinity, minHeight: 300)
+                        .padding(.horizontal, 20)
+                    } else if let items = items {
+                        LazyVGrid(columns: columns, spacing: spacing) {
+                            ForEach(items) { movie in
+                                MovieDetailsNavigationLink(movie: movie, navigationTransition: navigationTransition)
+                                    .contextMenu {
+                                        Group {
+                                            Button {
+                                                viewModel.directPlaybackMovie = movie
+                                            } label: {
+                                                Label("Смотреть", systemImage: "play.fill")
+                                            }
+                                            NavigationLink(destination: DetailsView(movieId: movie.id, navigationTransitionID: nil, navigationTransitionNamespace: nil)) {
+                                                Label("Подробнее", systemImage: "info.circle")
+                                            }
+                                        }
+                                        .tint(nil)
+                                    }
+                                .onAppear {
+                                    if movie.id == items.last?.id {
+                                        Task { await viewModel.loadData(for: category) }
+                                    }
+                                }
+                            }
+
+                            if isLoadingMore {
+                                ForEach(0..<3, id: \.self) { _ in
+                                    MoviePosterCardPlaceholder()
+                                }
+                            }
+                        }
+                        .padding(padding)
                     }
-                    .padding(padding)
-                }
             }
             .onScrollGeometryChange(for: CGFloat.self) { geometry in
                 geometry.contentOffset.y + geometry.contentInsets.top
@@ -234,13 +217,6 @@ struct HomeCategoryContentView: View {
             // Scroll back to top whenever the user switches category tab
             .onChange(of: viewModel.selectedCategory) { _, _ in
                 proxy.scrollTo("home-scroll-top", anchor: .top)
-            }
-            // Native iOS 27 glass bar — activates automatically on vertical scroll.
-            // We use a completely transparent 51pt block inside the scrollView's safe area.
-            // The actual HomeCategoryTextTabs overlay perfectly matches this height and position.
-            .safeAreaBar(edge: .top, spacing: 0) {
-                Color.black.opacity(0.001)
-                    .frame(height: 51)
             }
             .scrollIndicators(.hidden)
             .refreshable {
