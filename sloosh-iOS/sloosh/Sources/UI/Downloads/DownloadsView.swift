@@ -103,7 +103,7 @@ struct DownloadsView: View {
                 DownloadsCategoryTextTabs(selectedFilter: $selectedFilter)
                     .padding(.top, 4)
                     .padding(.bottom, 12)
-                    .background(ProgressiveBlurView())
+                    .background(VariableBlurView())
             }
             .navigationTitle("Загрузки")
             .toolbar(.hidden, for: .navigationBar)

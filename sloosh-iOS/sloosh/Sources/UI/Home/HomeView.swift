@@ -65,7 +65,7 @@ struct HomeView: View {
                 )
                 .padding(.top, 4)
                 .padding(.bottom, 12)
-                .background(ProgressiveBlurView())
+                .background(VariableBlurView())
             }
             .task {
                 await viewModel.applyCurrentSelection()
