@@ -65,7 +65,6 @@ struct HomeView: View {
             }
             .scrollTargetBehavior(.paging)
             .scrollPosition(id: $scrollPosition)
-            .navigationTitle("Главная")
             .scrollEdgeEffectStyle(.soft, for: .top)
             .toolbar(.hidden, for: .navigationBar)
             .task {
