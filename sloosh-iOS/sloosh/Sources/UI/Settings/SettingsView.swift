@@ -162,6 +162,7 @@ struct SettingsView: View {
         }
         .navigationTitle("Настройки")
         .navigationBarTitleDisplayMode(.inline)
+        .scrollEdgeEffectStyle(.soft, for: .all)
         .onAppear {
             tabBarShowsLabelsDraft = tabBarShowsLabels
         }
