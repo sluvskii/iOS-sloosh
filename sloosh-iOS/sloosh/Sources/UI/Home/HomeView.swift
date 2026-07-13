@@ -46,16 +46,18 @@ struct HomeView: View {
 
     var body: some View {
         NavigationStack {
-            HomeCategoryContentView(
-                viewModel: viewModel,
-                category: viewModel.selectedCategory,
-                navigationTransition: navigationTransition,
-                isFilterCollapsed: $isFilterCollapsed
-            )
-            // Re-create the inner view when category changes to start at the top
-            .id(viewModel.selectedCategory)
-            .transition(.opacity)
-            .animation(.easeInOut(duration: 0.2), value: viewModel.selectedCategory)
+            TabView(selection: $viewModel.selectedCategory) {
+                ForEach(HomeCategory.allCases, id: \.self) { category in
+                    HomeCategoryContentView(
+                        viewModel: viewModel,
+                        category: category,
+                        navigationTransition: navigationTransition,
+                        isFilterCollapsed: $isFilterCollapsed
+                    )
+                    .tag(category)
+                }
+            }
+            .tabViewStyle(.page(indexDisplayMode: .never))
             .toolbar(.hidden, for: .navigationBar)
             .safeAreaInset(edge: .top, spacing: 0) {
                 HomeCategoryTextTabs(
