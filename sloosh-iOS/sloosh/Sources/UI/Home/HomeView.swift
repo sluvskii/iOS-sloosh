@@ -242,6 +242,7 @@ struct HomeCategoryContentView: View {
             .padding(.bottom, 12)
         }
         .scrollIndicators(.hidden)
+        .contentMargins(.top, 8, for: .scrollContent)
         .refreshable {
             await viewModel.applyCurrentSelection(force: true)
         }
