@@ -44,44 +44,36 @@ struct HomeView: View {
     @Namespace private var navigationTransition
     @State private var isFilterCollapsed = false
 
-    @State private var scrollPosition: HomeCategory?
+
 
     var body: some View {
         NavigationStack {
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(spacing: 0) {
-                    ForEach(HomeCategory.allCases, id: \.self) { category in
-                        HomeCategoryContentView(
-                            viewModel: viewModel,
-                            category: category,
-                            navigationTransition: navigationTransition,
-                            isFilterCollapsed: $isFilterCollapsed
-                        )
-                        .containerRelativeFrame(.horizontal)
-                        .id(category)
-                    }
+            TabView(selection: $viewModel.selectedCategory) {
+                ForEach(HomeCategory.allCases, id: \.self) { category in
+                    HomeCategoryContentView(
+                        viewModel: viewModel,
+                        category: category,
+                        navigationTransition: navigationTransition,
+                        isFilterCollapsed: $isFilterCollapsed
+                    )
+                    .tag(category)
                 }
-                .scrollTargetLayout()
             }
-            .scrollTargetBehavior(.paging)
-            .scrollPosition(id: $scrollPosition)
-            .scrollEdgeEffectStyle(.soft, for: .top)
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            .safeAreaBar(edge: .top, spacing: 0) {
+                HomeCategoryTextTabs(
+                    selectedCategory: $viewModel.selectedCategory,
+                    selectedFilter: $viewModel.selectedFilter,
+                    isFilterCollapsed: $isFilterCollapsed
+                )
+                .padding(.top, 4)
+                .padding(.bottom, 12)
+            }
             .toolbar(.hidden, for: .navigationBar)
             .task {
-                scrollPosition = viewModel.selectedCategory
                 await viewModel.applyCurrentSelection()
             }
-            .onChange(of: scrollPosition) { _, newCategory in
-                if let newCategory, newCategory != viewModel.selectedCategory {
-                    viewModel.selectedCategory = newCategory
-                }
-            }
-            .onChange(of: viewModel.selectedCategory) { _, newCategory in
-                if scrollPosition != newCategory {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                        scrollPosition = newCategory
-                    }
-                }
+            .onChange(of: viewModel.selectedCategory) { _, _ in
                 isFilterCollapsed = false
                 Task {
                     await viewModel.applyCurrentSelection()
@@ -230,15 +222,6 @@ struct HomeCategoryContentView: View {
                     debouncer.lastStateChangeTime = now
                 }
             }
-        }
-        .safeAreaBar(edge: .top, spacing: 0) {
-            HomeCategoryTextTabs(
-                selectedCategory: $viewModel.selectedCategory,
-                selectedFilter: $viewModel.selectedFilter,
-                isFilterCollapsed: $isFilterCollapsed
-            )
-            .padding(.top, 4)
-            .padding(.bottom, 12)
         }
         .scrollIndicators(.hidden)
         .refreshable {
