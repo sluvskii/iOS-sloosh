@@ -97,6 +97,7 @@ struct DownloadsView: View {
                     .listStyle(.plain)
                     .scrollIndicators(.hidden)
                     .contentMargins(.top, 16, for: .scrollContent)
+                    .scrollEdgeEffectStyle(.soft, for: .all)
                 }
             }
             .safeAreaBar(edge: .top, spacing: 0) {
