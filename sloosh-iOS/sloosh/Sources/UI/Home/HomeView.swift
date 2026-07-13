@@ -231,14 +231,14 @@ struct HomeCategoryContentView: View {
                 }
             }
         }
-        .safeAreaBar(edge: .top, spacing: 16) {
+        .safeAreaBar(edge: .top, spacing: 0) {
             HomeCategoryTextTabs(
                 selectedCategory: $viewModel.selectedCategory,
                 selectedFilter: $viewModel.selectedFilter,
                 isFilterCollapsed: $isFilterCollapsed
             )
             .padding(.top, 4)
-            .padding(.bottom, 4)
+            .padding(.bottom, 18)
         }
         .scrollIndicators(.hidden)
         .refreshable {
