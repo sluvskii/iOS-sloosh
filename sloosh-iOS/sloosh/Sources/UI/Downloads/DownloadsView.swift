@@ -227,23 +227,24 @@ private struct DownloadRowView: View {
         return parts.isEmpty ? nil : parts.joined(separator: " • ")
     }
 
-    @ViewBuilder
-    private var statusBadge: some View {
-        let state: RadialDownloadState
+    private var radialState: RadialDownloadState {
         switch item.status {
         case .completed:
-            state = .downloaded
+            return .downloaded
         case .downloading:
-            state = .downloading(progress: item.progress)
+            return .downloading(progress: item.progress)
         case .paused:
-            state = .paused(progress: item.progress)
+            return .paused(progress: item.progress)
         case .pending:
-            state = .downloading(progress: 0.0)
+            return .downloading(progress: 0.0)
         default:
-            state = .idle
+            return .idle
         }
-        
-        RadialDownloadIndicator(state: state) {
+    }
+
+    @ViewBuilder
+    private var statusBadge: some View {
+        RadialDownloadIndicator(state: radialState) {
             let generator = UIImpactFeedbackGenerator(style: .medium)
             generator.prepare()
             generator.impactOccurred()
