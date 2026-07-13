@@ -43,28 +43,22 @@ struct HomeView: View {
     @StateObject private var viewModel = HomeViewModel()
     @Namespace private var navigationTransition
     @State private var isFilterCollapsed = false
-    @State private var scrollPosition: HomeCategory?
+
 
     var body: some View {
         NavigationStack {
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(spacing: 0) {
-                    ForEach(HomeCategory.allCases, id: \.self) { category in
-                        HomeCategoryContentView(
-                            viewModel: viewModel,
-                            category: category,
-                            navigationTransition: navigationTransition,
-                            isFilterCollapsed: $isFilterCollapsed
-                        )
-                        .containerRelativeFrame(.horizontal)
-                        .id(category)
-                    }
+            TabView(selection: $viewModel.selectedCategory) {
+                ForEach(HomeCategory.allCases, id: \.self) { category in
+                    HomeCategoryContentView(
+                        viewModel: viewModel,
+                        category: category,
+                        navigationTransition: navigationTransition,
+                        isFilterCollapsed: $isFilterCollapsed
+                    )
+                    .tag(category)
                 }
-                .scrollTargetLayout()
             }
-            .scrollTargetBehavior(.paging)
-            .scrollPosition(id: $scrollPosition)
-            .scrollEdgeEffectStyle(.soft, for: .top)
+            .tabViewStyle(.page(indexDisplayMode: .never))
             .safeAreaBar(edge: .top, spacing: 0) {
                 HomeCategoryTextTabs(
                     selectedCategory: $viewModel.selectedCategory,
@@ -73,31 +67,14 @@ struct HomeView: View {
                 )
                 .padding(.top, 4)
                 .padding(.bottom, 12)
-                .background {
-                    if viewModel.isHeaderScrolled {
-                        Rectangle()
-                            .glassEffect(in: Rectangle())
-                            .ignoresSafeArea(edges: .top)
-                    }
-                }
-                .animation(.easeInOut(duration: 0.2), value: viewModel.isHeaderScrolled)
             }
+            .navigationTitle("Главная")
             .toolbar(.hidden, for: .navigationBar)
+            .background(Color(UIColor.systemBackground))
             .task {
-                scrollPosition = viewModel.selectedCategory
                 await viewModel.applyCurrentSelection()
             }
-            .onChange(of: scrollPosition) { _, newCategory in
-                if let newCategory, newCategory != viewModel.selectedCategory {
-                    viewModel.selectedCategory = newCategory
-                }
-            }
-            .onChange(of: viewModel.selectedCategory) { _, newCategory in
-                if scrollPosition != newCategory {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                        scrollPosition = newCategory
-                    }
-                }
+            .onChange(of: viewModel.selectedCategory) { _, _ in
                 isFilterCollapsed = false
                 Task {
                     await viewModel.applyCurrentSelection()
@@ -223,8 +200,6 @@ struct HomeCategoryContentView: View {
         .onScrollGeometryChange(for: CGFloat.self) { geometry in
             geometry.contentOffset.y + geometry.contentInsets.top
         } action: { oldOffset, newOffset in
-            viewModel.scrollOffsets[category] = newOffset
-            
             let now = Date()
             guard now.timeIntervalSince(debouncer.lastStateChangeTime) > debouncer.debounceInterval else {
                 return
@@ -248,6 +223,15 @@ struct HomeCategoryContentView: View {
                     debouncer.lastStateChangeTime = now
                 }
             }
+        }
+        .safeAreaBar(edge: .top, spacing: 0) {
+            HomeCategoryTextTabs(
+                selectedCategory: $viewModel.selectedCategory,
+                selectedFilter: $viewModel.selectedFilter,
+                isFilterCollapsed: $isFilterCollapsed
+            )
+            .padding(.top, 4)
+            .padding(.bottom, 12)
         }
         .scrollIndicators(.hidden)
         .refreshable {
@@ -683,13 +667,6 @@ struct HomeCacheKey: Hashable {
 class HomeViewModel: ObservableObject {
     @Published var selectedCategory: HomeCategory = .all
     @Published var selectedFilter: HomeFilter = .popular
-    
-    @Published var scrollOffsets: [HomeCategory: CGFloat] = [:]
-    
-    var isHeaderScrolled: Bool {
-        let offset = scrollOffsets[selectedCategory] ?? 0
-        return offset > 10
-    }
     
     @Published var cachedItems: [HomeCacheKey: [MediaDto]] = [:]
     @Published var isLoading: [HomeCacheKey: Bool] = [:]
