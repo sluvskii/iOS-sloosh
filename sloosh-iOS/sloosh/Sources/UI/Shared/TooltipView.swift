@@ -55,18 +55,21 @@ struct TooltipModifier: ViewModifier {
                         
                         if isVisible {
                             Text(text)
-                                .font(.system(size: 14, weight: .medium, design: .rounded))
+                                .font(.system(size: 14, weight: .bold, design: .rounded))
                                 .foregroundColor(.white)
                                 .padding(.horizontal, 16)
                                 .padding(.vertical, 10)
                                 .background(
                                     TooltipShape(tailPosition: 0.5, isTailTop: isTailTop)
-                                        .fill(.ultraThinMaterial)
-                                        .environment(\.colorScheme, .dark) // Фиксируем темную тему для премиального блюра
+                                        .fill(Color(white: 0.1, opacity: 0.85)) // Более темный и заметный фон
+                                        .shadow(color: .black.opacity(0.3), radius: 12, x: 0, y: 6)
                                 )
-                                .shadow(color: .black.opacity(0.15), radius: 10, x: 0, y: 5)
+                                .overlay(
+                                    TooltipShape(tailPosition: 0.5, isTailTop: isTailTop)
+                                        .stroke(Color.white.opacity(0.2), lineWidth: 1) // Обводка для читаемости
+                                )
                                 .fixedSize()
-                                .offset(y: isTailTop ? geo.size.height + 4 : -(geo.size.height + 4))
+                                .offset(y: isTailTop ? geo.size.height + 8 : -(geo.size.height + 8))
                                 .transition(.asymmetric(
                                     insertion: .scale(scale: 0.8, anchor: isTailTop ? .top : .bottom).combined(with: .opacity),
                                     removal: .scale(scale: 0.9, anchor: isTailTop ? .top : .bottom).combined(with: .opacity)
