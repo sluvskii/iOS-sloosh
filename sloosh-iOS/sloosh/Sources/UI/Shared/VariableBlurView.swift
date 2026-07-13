@@ -5,7 +5,7 @@ import QuartzCore
 /// Создает эффект прогрессивного размытия (Liquid Glass),
 /// плавно переходящего от полного блюра к полной прозрачности.
 /// Реализация скопирована из Telegram-iOS с обходом приватного API.
-public struct VariableBlurView: UIViewRepresentable {
+public struct VariableBlurView: View {
     public var maxBlurRadius: CGFloat = 8
     public var direction: BlurDirection = .blurredTopClearBottom
     
@@ -18,6 +18,27 @@ public struct VariableBlurView: UIViewRepresentable {
         self.maxBlurRadius = maxBlurRadius
         self.direction = direction
     }
+    
+    public var body: some View {
+        VariableBlurUIViewRepresentable(maxBlurRadius: maxBlurRadius, direction: direction)
+            .mask(
+                LinearGradient(
+                    gradient: Gradient(stops: [
+                        .init(color: .black, location: 0.0),
+                        .init(color: .black.opacity(0.8), location: 0.4),
+                        .init(color: .black.opacity(0.4), location: 0.7),
+                        .init(color: .clear, location: 1.0)
+                    ]),
+                    startPoint: direction == .blurredTopClearBottom ? .top : .bottom,
+                    endPoint: direction == .blurredTopClearBottom ? .bottom : .top
+                )
+            )
+    }
+}
+
+public struct VariableBlurUIViewRepresentable: UIViewRepresentable {
+    public var maxBlurRadius: CGFloat
+    public var direction: VariableBlurView.BlurDirection
 
     public func makeUIView(context: Context) -> VariableBlurUIView {
         return VariableBlurUIView(maxBlurRadius: maxBlurRadius, direction: direction)
@@ -47,13 +68,7 @@ public final class VariableBlurUIView: UIVisualEffectView {
     public init(maxBlurRadius: CGFloat = 8, direction: VariableBlurView.BlurDirection = .blurredTopClearBottom) {
         self.maxBlurRadius = maxBlurRadius
         self.direction = direction
-        super.init(effect: UIBlurEffect(style: .regular))
-        
-        if self.subviews.indices.contains(1) {
-            let tintOverlayView = subviews[1]
-            tintOverlayView.alpha = 0
-        }
-        
+        super.init(effect: UIBlurEffect(style: .dark))
         self.resetEffect()
     }
     
