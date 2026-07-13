@@ -43,6 +43,7 @@ struct HomeView: View {
     @StateObject private var viewModel = HomeViewModel()
     @Namespace private var navigationTransition
     @State private var isFilterCollapsed = false
+
     @State private var scrollPosition: HomeCategory?
 
     var body: some View {
@@ -65,7 +66,7 @@ struct HomeView: View {
             .scrollTargetBehavior(.paging)
             .scrollPosition(id: $scrollPosition)
             .scrollEdgeEffectStyle(.soft, for: .top)
-            .safeAreaBar(edge: .top, spacing: 0) {
+            .overlay(alignment: .top) {
                 HomeCategoryTextTabs(
                     selectedCategory: $viewModel.selectedCategory,
                     selectedFilter: $viewModel.selectedFilter,
@@ -73,14 +74,7 @@ struct HomeView: View {
                 )
                 .padding(.top, 4)
                 .padding(.bottom, 12)
-                .background {
-                    if viewModel.isHeaderScrolled {
-                        Rectangle()
-                            .glassEffect(in: Rectangle())
-                            .ignoresSafeArea(edges: .top)
-                    }
-                }
-                .animation(.easeInOut(duration: 0.2), value: viewModel.isHeaderScrolled)
+                .alignmentGuide(.top) { d in d[.bottom] }
             }
             .toolbar(.hidden, for: .navigationBar)
             .task {
@@ -223,8 +217,6 @@ struct HomeCategoryContentView: View {
         .onScrollGeometryChange(for: CGFloat.self) { geometry in
             geometry.contentOffset.y + geometry.contentInsets.top
         } action: { oldOffset, newOffset in
-            viewModel.scrollOffsets[category] = newOffset
-            
             let now = Date()
             guard now.timeIntervalSince(debouncer.lastStateChangeTime) > debouncer.debounceInterval else {
                 return
@@ -248,6 +240,10 @@ struct HomeCategoryContentView: View {
                     debouncer.lastStateChangeTime = now
                 }
             }
+        }
+        .safeAreaBar(edge: .top, spacing: 0) {
+            Color.clear
+                .frame(height: 51)
         }
         .scrollIndicators(.hidden)
         .refreshable {
@@ -683,13 +679,6 @@ struct HomeCacheKey: Hashable {
 class HomeViewModel: ObservableObject {
     @Published var selectedCategory: HomeCategory = .all
     @Published var selectedFilter: HomeFilter = .popular
-    
-    @Published var scrollOffsets: [HomeCategory: CGFloat] = [:]
-    
-    var isHeaderScrolled: Bool {
-        let offset = scrollOffsets[selectedCategory] ?? 0
-        return offset > 10
-    }
     
     @Published var cachedItems: [HomeCacheKey: [MediaDto]] = [:]
     @Published var isLoading: [HomeCacheKey: Bool] = [:]
