@@ -104,7 +104,7 @@ struct DownloadsView: View {
                     .padding(.top, 4)
                     .padding(.bottom, 12)
                     .background(alignment: .top) {
-                        ProgressiveBlurView(maxBlurRadius: 8, solidLocation: 0.3)
+                        ProgressiveBlurView(maxBlurRadius: 8)
                             .ignoresSafeArea(edges: .top)
                             .padding(.bottom, -20)
                     }
