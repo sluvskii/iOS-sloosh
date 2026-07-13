@@ -2,6 +2,9 @@ import SwiftUI
 import MediaPlayer
 
 struct PlayerGesturesModifier: ViewModifier {
+    var onInteractionBegan: (() -> Void)?
+    var onInteractionEnded: (() -> Void)?
+    
     @State private var showIndicator = false
     @State private var indicatorValue: Double = 0
     @State private var indicatorIcon: String = "sun.max.fill"
@@ -24,6 +27,7 @@ struct PlayerGesturesModifier: ViewModifier {
                             .onChanged { value in
                                 if !isDragging {
                                     isDragging = true
+                                    onInteractionBegan?()
                                     initialBrightness = UIScreen.main.brightness
                                     initialVolume = volumeManager.currentVolume
                                 }
@@ -31,6 +35,7 @@ struct PlayerGesturesModifier: ViewModifier {
                             }
                             .onEnded { _ in
                                 isDragging = false
+                                onInteractionEnded?()
                                 withAnimation(.easeOut(duration: 0.3)) {
                                     showIndicator = false
                                 }
@@ -94,8 +99,14 @@ struct PlayerGesturesModifier: ViewModifier {
 }
 
 extension View {
-    func playerGestures() -> some View {
-        self.modifier(PlayerGesturesModifier())
+    func playerGestures(
+        onInteractionBegan: (() -> Void)? = nil,
+        onInteractionEnded: (() -> Void)? = nil
+    ) -> some View {
+        self.modifier(PlayerGesturesModifier(
+            onInteractionBegan: onInteractionBegan,
+            onInteractionEnded: onInteractionEnded
+        ))
     }
 }
 
