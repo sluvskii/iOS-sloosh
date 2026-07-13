@@ -104,7 +104,6 @@ struct DownloadsView: View {
                     .padding(.top, 4)
                     .padding(.bottom, 12)
             }
-            .scrollEdgeEffectStyle(.soft, for: .top)
             .navigationTitle("Загрузки")
             .toolbar(.hidden, for: .navigationBar)
             .background(Color(UIColor.systemBackground))

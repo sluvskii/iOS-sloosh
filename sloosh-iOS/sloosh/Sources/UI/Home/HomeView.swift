@@ -66,7 +66,6 @@ struct HomeView: View {
                 .padding(.top, 4)
                 .padding(.bottom, 12)
             }
-            .scrollEdgeEffectStyle(.soft, for: .top)
             .task {
                 await viewModel.applyCurrentSelection()
             }
