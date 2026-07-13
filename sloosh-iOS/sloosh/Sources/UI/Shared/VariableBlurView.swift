@@ -7,6 +7,35 @@ import QuartzCore
 /// Реализация скопирована из Telegram-iOS с обходом приватного API.
 public struct VariableBlurView: View {
     public var maxBlurRadius: CGFloat = 8
+    public var direction: VariableBlurRepresentable.BlurDirection = .blurredTopClearBottom
+    public var tintColor: Color = Color(UIColor.systemBackground)
+    public var tintOpacity: Double = 0.75
+    
+    public init(maxBlurRadius: CGFloat = 8, direction: VariableBlurRepresentable.BlurDirection = .blurredTopClearBottom, tintColor: Color = Color(UIColor.systemBackground), tintOpacity: Double = 0.75) {
+        self.maxBlurRadius = maxBlurRadius
+        self.direction = direction
+        self.tintColor = tintColor
+        self.tintOpacity = tintOpacity
+    }
+    
+    public var body: some View {
+        VariableBlurRepresentable(maxBlurRadius: maxBlurRadius, direction: direction)
+            .overlay(
+                LinearGradient(
+                    colors: [
+                        tintColor.opacity(direction == .blurredTopClearBottom ? tintOpacity : 0.0),
+                        tintColor.opacity(direction == .blurredTopClearBottom ? 0.0 : tintOpacity)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+            )
+            .allowsHitTesting(false)
+    }
+}
+
+public struct VariableBlurRepresentable: UIViewRepresentable {
+    public var maxBlurRadius: CGFloat = 8
     public var direction: BlurDirection = .blurredTopClearBottom
     
     public enum BlurDirection {
@@ -18,28 +47,6 @@ public struct VariableBlurView: View {
         self.maxBlurRadius = maxBlurRadius
         self.direction = direction
     }
-    
-    public var body: some View {
-        VariableBlurUIViewRepresentable(maxBlurRadius: maxBlurRadius, direction: direction)
-            .overlay(Color.black.opacity(0.45)) // Чёрный тинт
-            .mask(
-                LinearGradient(
-                    gradient: Gradient(stops: [
-                        .init(color: .black, location: 0.0),
-                        .init(color: .black.opacity(0.8), location: 0.4),
-                        .init(color: .black.opacity(0.4), location: 0.7),
-                        .init(color: .clear, location: 1.0)
-                    ]),
-                    startPoint: direction == .blurredTopClearBottom ? .top : .bottom,
-                    endPoint: direction == .blurredTopClearBottom ? .bottom : .top
-                )
-            )
-    }
-}
-
-public struct VariableBlurUIViewRepresentable: UIViewRepresentable {
-    public var maxBlurRadius: CGFloat
-    public var direction: VariableBlurView.BlurDirection
 
     public func makeUIView(context: Context) -> VariableBlurUIView {
         return VariableBlurUIView(maxBlurRadius: maxBlurRadius, direction: direction)
@@ -60,13 +67,13 @@ public final class VariableBlurUIView: UIVisualEffectView {
         }
     }
     
-    public var direction: VariableBlurView.BlurDirection {
+    public var direction: VariableBlurRepresentable.BlurDirection {
         didSet {
             resetEffect()
         }
     }
     
-    public init(maxBlurRadius: CGFloat = 8, direction: VariableBlurView.BlurDirection = .blurredTopClearBottom) {
+    public init(maxBlurRadius: CGFloat = 8, direction: VariableBlurRepresentable.BlurDirection = .blurredTopClearBottom) {
         self.maxBlurRadius = maxBlurRadius
         self.direction = direction
         super.init(effect: UIBlurEffect(style: .regular))
