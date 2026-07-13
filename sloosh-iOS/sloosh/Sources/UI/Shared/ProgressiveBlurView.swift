@@ -1,25 +1,99 @@
 import SwiftUI
+import UIKit
+import QuartzCore
 
-struct ProgressiveBlurView: View {
-    // Высота сплошной части блюра (до начала градиентного затухания)
-    var solidLocation: CGFloat = 0.5
-    // Материал размытия
-    var material: Material = .regularMaterial
+public struct ProgressiveBlurView: UIViewRepresentable {
+    public var maxBlurRadius: CGFloat
+    public var solidLocation: CGFloat
+    public var direction: BlurDirection
     
-    var body: some View {
-        Rectangle()
-            .fill(material)
-            .mask {
-                LinearGradient(
-                    stops: [
-                        .init(color: .black, location: 0),
-                        .init(color: .black, location: solidLocation),
-                        .init(color: .clear, location: 1.0)
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            }
-            .allowsHitTesting(false)
+    public enum BlurDirection {
+        case blurredTopClearBottom
+        case blurredBottomClearTop
+    }
+    
+    public init(maxBlurRadius: CGFloat = 20, solidLocation: CGFloat = 0.5, direction: BlurDirection = .blurredTopClearBottom) {
+        self.maxBlurRadius = maxBlurRadius
+        self.solidLocation = solidLocation
+        self.direction = direction
+    }
+    
+    public func makeUIView(context: Context) -> VariableBlurUIView {
+        return VariableBlurUIView(maxBlurRadius: maxBlurRadius, solidLocation: solidLocation, direction: direction)
+    }
+    
+    public func updateUIView(_ uiView: VariableBlurUIView, context: Context) {
+        uiView.maxBlurRadius = maxBlurRadius
+        uiView.solidLocation = solidLocation
+        uiView.direction = direction
+    }
+}
+
+public class VariableBlurUIView: UIVisualEffectView {
+    public var maxBlurRadius: CGFloat { didSet { updateFilter() } }
+    public var solidLocation: CGFloat { didSet { updateFilter() } }
+    public var direction: ProgressiveBlurView.BlurDirection { didSet { updateFilter() } }
+    
+    public init(maxBlurRadius: CGFloat, solidLocation: CGFloat, direction: ProgressiveBlurView.BlurDirection) {
+        self.maxBlurRadius = maxBlurRadius
+        self.solidLocation = solidLocation
+        self.direction = direction
+        super.init(effect: UIBlurEffect(style: .regular))
+        self.backgroundColor = .clear
+    }
+    
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+    
+    public override func layoutSubviews() {
+        super.layoutSubviews()
+        updateFilter()
+    }
+    
+    private func updateFilter() {
+        guard let backdropLayer = subviews.first?.layer else { return }
+        
+        let filterName = "variableBlur"
+        guard let CAFilterClass = NSClassFromString("CAFilter") as? NSObject.Type else { return }
+        let filterSelector = NSSelectorFromString("filterWithType:")
+        guard CAFilterClass.responds(to: filterSelector) else { return }
+        
+        let filter = CAFilterClass.perform(filterSelector, with: filterName)?.takeUnretainedValue() as? NSObject
+        filter?.setValue(maxBlurRadius, forKey: "inputRadius")
+        filter?.setValue(createGradientImage(), forKey: "inputMaskImage")
+        filter?.setValue(true, forKey: "inputNormalizeEdges")
+        
+        if let filter = filter {
+            backdropLayer.filters = [filter]
+        }
+    }
+    
+    private func createGradientImage() -> CGImage? {
+        let size = self.bounds.size
+        guard size.width > 0 && size.height > 0 else { return nil }
+        
+        UIGraphicsBeginImageContextWithOptions(size, false, UIScreen.main.scale)
+        defer { UIGraphicsEndImageContext() }
+        guard let context = UIGraphicsGetCurrentContext() else { return nil }
+        
+        let colors = [UIColor.black.cgColor, UIColor.black.cgColor, UIColor.clear.cgColor] as CFArray
+        let locations: [CGFloat] = [0.0, solidLocation, 1.0]
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        guard let gradient = CGGradient(colorsSpace: colorSpace, colors: colors, locations: locations) else { return nil }
+        
+        let startPoint: CGPoint
+        let endPoint: CGPoint
+        
+        if direction == .blurredTopClearBottom {
+            startPoint = CGPoint(x: 0, y: 0)
+            endPoint = CGPoint(x: 0, y: size.height)
+        } else {
+            startPoint = CGPoint(x: 0, y: size.height)
+            endPoint = CGPoint(x: 0, y: 0)
+        }
+        
+        context.drawLinearGradient(gradient, start: startPoint, end: endPoint, options: [])
+        return UIGraphicsGetImageFromCurrentImageContext()?.cgImage
     }
 }

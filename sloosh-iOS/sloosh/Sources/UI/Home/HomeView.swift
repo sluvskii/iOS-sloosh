@@ -66,7 +66,7 @@ struct HomeView: View {
                 .padding(.top, 4)
                 .padding(.bottom, 12)
                 .background(alignment: .top) {
-                    ProgressiveBlurView(solidLocation: 0.6, material: .regularMaterial)
+                    ProgressiveBlurView(maxBlurRadius: 20, solidLocation: 0.6)
                         .ignoresSafeArea(edges: .top)
                         // Расширяем блюр немного ниже самих табов для более мягкого затухания
                         .padding(.bottom, -20)
