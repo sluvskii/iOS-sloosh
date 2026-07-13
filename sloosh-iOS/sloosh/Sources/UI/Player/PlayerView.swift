@@ -96,9 +96,6 @@ struct PlayerView: View {
         PlayerPresenter(vm: viewModel) {
             viewModel.cleanup()
         }
-        .overlay {
-            PlayerGesturesOverlay()
-        }
         .ignoresSafeArea()
         .onAppear {
             guard viewModel.player == nil else { return }
