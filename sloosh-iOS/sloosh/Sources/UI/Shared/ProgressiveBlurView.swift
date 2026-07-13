@@ -61,11 +61,21 @@ public class VariableBlurUIView: UIVisualEffectView {
         
         let filter = CAFilterClass.perform(filterSelector, with: filterName)?.takeUnretainedValue() as? NSObject
         filter?.setValue(maxBlurRadius, forKey: "inputRadius")
-        filter?.setValue(createGradientImage(), forKey: "inputMaskImage")
+        
+        let gradientImage = createGradientImage()
+        filter?.setValue(gradientImage, forKey: "inputMaskImage")
         filter?.setValue(true, forKey: "inputNormalizeEdges")
         
         if let filter = filter {
             backdropLayer.filters = [filter]
+        }
+        
+        // Маскируем саму вьюшку (чтобы скрыть жесткий край Tint-слоя)
+        if let gradientImage = gradientImage {
+            let maskLayer = CALayer()
+            maskLayer.contents = gradientImage
+            maskLayer.frame = self.bounds
+            self.layer.mask = maskLayer
         }
     }
     
@@ -77,7 +87,12 @@ public class VariableBlurUIView: UIVisualEffectView {
         defer { UIGraphicsEndImageContext() }
         guard let context = UIGraphicsGetCurrentContext() else { return nil }
         
-        let colors = [UIColor.black.cgColor, UIColor.black.cgColor, UIColor.clear.cgColor] as CFArray
+        let colors = [
+            UIColor.white.cgColor,
+            UIColor.white.cgColor,
+            UIColor.white.withAlphaComponent(0).cgColor
+        ] as CFArray
+        
         let locations: [CGFloat] = [0.0, solidLocation, 1.0]
         let colorSpace = CGColorSpaceCreateDeviceRGB()
         guard let gradient = CGGradient(colorsSpace: colorSpace, colors: colors, locations: locations) else { return nil }
