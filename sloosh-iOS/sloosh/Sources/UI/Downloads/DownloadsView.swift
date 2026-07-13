@@ -99,10 +99,10 @@ struct DownloadsView: View {
                     .contentMargins(.top, 16, for: .scrollContent)
                 }
             }
-            .safeAreaBar(edge: .top, spacing: 0) {
+            .safeAreaBar(edge: .top, spacing: 16) {
                 DownloadsCategoryTextTabs(selectedFilter: $selectedFilter)
                     .padding(.top, 4)
-                    .padding(.bottom, 12)
+                    .padding(.bottom, 4)
             }
             .navigationTitle("Загрузки")
             .toolbar(.hidden, for: .navigationBar)

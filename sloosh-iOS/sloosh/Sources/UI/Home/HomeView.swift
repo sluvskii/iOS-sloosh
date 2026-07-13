@@ -48,38 +48,25 @@ struct HomeView: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    LazyHStack(spacing: 0) {
-                        ForEach(HomeCategory.allCases, id: \.self) { category in
-                            HomeCategoryContentView(
-                                viewModel: viewModel,
-                                category: category,
-                                navigationTransition: navigationTransition,
-                                isFilterCollapsed: $isFilterCollapsed
-                            )
-                            .containerRelativeFrame(.horizontal)
-                            .id(category)
-                        }
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(spacing: 0) {
+                    ForEach(HomeCategory.allCases, id: \.self) { category in
+                        HomeCategoryContentView(
+                            viewModel: viewModel,
+                            category: category,
+                            navigationTransition: navigationTransition,
+                            isFilterCollapsed: $isFilterCollapsed
+                        )
+                        .containerRelativeFrame(.horizontal)
+                        .id(category)
                     }
-                    .scrollTargetLayout()
                 }
-                .scrollTargetBehavior(.paging)
-                .scrollPosition(id: $scrollPosition)
-                .scrollEdgeEffectStyle(.soft, for: .top)
+                .scrollTargetLayout()
             }
-            .safeAreaBar(edge: .top, spacing: 0) {
-                HomeCategoryTextTabs(
-                    selectedCategory: $viewModel.selectedCategory,
-                    selectedFilter: $viewModel.selectedFilter,
-                    isFilterCollapsed: $isFilterCollapsed
-                )
-                .padding(.top, 4)
-                .padding(.bottom, 12)
-            }
-            .navigationTitle("Главная")
+            .scrollTargetBehavior(.paging)
+            .scrollPosition(id: $scrollPosition)
+            .scrollEdgeEffectStyle(.soft, for: .top)
             .toolbar(.hidden, for: .navigationBar)
-            .background(Color(UIColor.systemBackground))
             .task {
                 scrollPosition = viewModel.selectedCategory
                 await viewModel.applyCurrentSelection()
@@ -243,6 +230,15 @@ struct HomeCategoryContentView: View {
                     debouncer.lastStateChangeTime = now
                 }
             }
+        }
+        .safeAreaBar(edge: .top, spacing: 16) {
+            HomeCategoryTextTabs(
+                selectedCategory: $viewModel.selectedCategory,
+                selectedFilter: $viewModel.selectedFilter,
+                isFilterCollapsed: $isFilterCollapsed
+            )
+            .padding(.top, 4)
+            .padding(.bottom, 4)
         }
         .scrollIndicators(.hidden)
         .refreshable {
