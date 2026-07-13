@@ -299,14 +299,6 @@ private struct HomeCategoryTextTabs: View {
 
     private let titleHeight: CGFloat = 31
 
-    private var visibleFilterHeight: CGFloat {
-        0
-    }
-
-    private var tabHeight: CGFloat {
-        titleHeight + visibleFilterHeight
-    }
-
     private var tabSpacing: CGFloat {
         horizontalSizeClass == .regular ? 28 : 22
     }
@@ -393,7 +385,6 @@ private struct HomeCategoryTextTabs: View {
             .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
             .animation(tabScrollAnimation, value: selectedCategory)
             .animation(tabScrollAnimation, value: isFilterCollapsed)
-            .frame(height: tabHeight, alignment: .topLeading)
             .onAppear {
                 scrollProxy.scrollTo(selectedCategory, anchor: .center)
             }
