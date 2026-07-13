@@ -46,18 +46,29 @@ struct HomeView: View {
 
     var body: some View {
         NavigationStack {
-            TabView(selection: $viewModel.selectedCategory) {
-                ForEach(HomeCategory.allCases, id: \.self) { category in
-                    HomeCategoryContentView(
-                        viewModel: viewModel,
-                        category: category,
-                        navigationTransition: navigationTransition,
-                        isFilterCollapsed: $isFilterCollapsed
-                    )
-                    .tag(category)
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(spacing: 0) {
+                    ForEach(HomeCategory.allCases, id: \.self) { category in
+                        HomeCategoryContentView(
+                            viewModel: viewModel,
+                            category: category,
+                            navigationTransition: navigationTransition,
+                            isFilterCollapsed: $isFilterCollapsed
+                        )
+                        .containerRelativeFrame(.horizontal)
+                    }
                 }
+                .scrollTargetLayout()
             }
-            .tabViewStyle(.page(indexDisplayMode: .never))
+            .scrollTargetBehavior(.paging)
+            .scrollPosition(id: Binding(
+                get: { viewModel.selectedCategory },
+                set: { newValue in
+                    if let newValue = newValue {
+                        viewModel.selectedCategory = newValue
+                    }
+                }
+            ))
             .toolbar(.hidden, for: .navigationBar)
             .safeAreaInset(edge: .top, spacing: 0) {
                 HomeCategoryTextTabs(
@@ -214,10 +225,6 @@ struct HomeCategoryContentView: View {
                         debouncer.lastStateChangeTime = now
                     }
                 }
-            }
-            // Scroll back to top whenever the user switches category tab
-            .onChange(of: viewModel.selectedCategory) { _, _ in
-                proxy.scrollTo("home-scroll-top", anchor: .top)
             }
             .scrollIndicators(.hidden)
             .refreshable {
