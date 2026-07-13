@@ -43,30 +43,39 @@ struct HomeView: View {
     @StateObject private var viewModel = HomeViewModel()
     @Namespace private var navigationTransition
     @State private var isFilterCollapsed = false
-
     @State private var scrollPosition: HomeCategory?
+    @State private var currentPageScrollOffset: CGFloat = 0
+
+    // Height of the unified tab bar overlay so pages can inset their content
+    private let tabBarHeight: CGFloat = 51 // titleHeight(31) + padding top(4) + padding bottom(12) + button vertical padding(4)
 
     var body: some View {
         NavigationStack {
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(spacing: 0) {
-                    ForEach(HomeCategory.allCases, id: \.self) { category in
-                        HomeCategoryContentView(
-                            viewModel: viewModel,
-                            category: category,
-                            navigationTransition: navigationTransition,
-                            isFilterCollapsed: $isFilterCollapsed
-                        )
-                        .containerRelativeFrame(.horizontal)
-                        .id(category)
+            ZStack(alignment: .top) {
+                // MARK: - Pages
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(spacing: 0) {
+                        ForEach(HomeCategory.allCases, id: \.self) { category in
+                            HomeCategoryContentView(
+                                viewModel: viewModel,
+                                category: category,
+                                navigationTransition: navigationTransition,
+                                isFilterCollapsed: $isFilterCollapsed,
+                                scrollOffset: $currentPageScrollOffset,
+                                tabBarHeight: tabBarHeight
+                            )
+                            .containerRelativeFrame(.horizontal)
+                            .id(category)
+                        }
                     }
+                    .scrollTargetLayout()
                 }
-                .scrollTargetLayout()
-            }
-            .scrollTargetBehavior(.paging)
-            .scrollPosition(id: $scrollPosition)
-            .scrollEdgeEffectStyle(.soft, for: .top)
-            .overlay(alignment: .top) {
+                .scrollTargetBehavior(.paging)
+                .scrollPosition(id: $scrollPosition)
+                .scrollEdgeEffectStyle(.soft, for: .top)
+                .toolbar(.hidden, for: .navigationBar)
+
+                // MARK: - Unified Tab Bar (single instance above all pages)
                 HomeCategoryTextTabs(
                     selectedCategory: $viewModel.selectedCategory,
                     selectedFilter: $viewModel.selectedFilter,
@@ -74,8 +83,17 @@ struct HomeView: View {
                 )
                 .padding(.top, 4)
                 .padding(.bottom, 12)
+                .frame(maxWidth: .infinity)
+                .background {
+                    Rectangle()
+                        .glassEffect()
+                        .ignoresSafeArea(edges: .top)
+                        .opacity(currentPageScrollOffset > 4 ? 1 : 0)
+                        .animation(.easeInOut(duration: 0.2), value: currentPageScrollOffset > 4)
+                }
+                .ignoresSafeArea(edges: .top)
+                .padding(.top, safeAreaTop)
             }
-            .toolbar(.hidden, for: .navigationBar)
             .task {
                 scrollPosition = viewModel.selectedCategory
                 await viewModel.applyCurrentSelection()
@@ -83,6 +101,8 @@ struct HomeView: View {
             .onChange(of: scrollPosition) { _, newCategory in
                 if let newCategory, newCategory != viewModel.selectedCategory {
                     viewModel.selectedCategory = newCategory
+                    // Reset offset when switching pages
+                    currentPageScrollOffset = 0
                 }
             }
             .onChange(of: viewModel.selectedCategory) { _, newCategory in
@@ -131,6 +151,15 @@ struct HomeView: View {
             }
         }
     }
+
+    // Helper to read the top safe area inset for correct tab bar placement
+    private var safeAreaTop: CGFloat {
+        (UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first?.windows
+            .first { $0.isKeyWindow }?
+            .safeAreaInsets.top) ?? 0
+    }
 }
 
 class ScrollDebouncer {
@@ -143,6 +172,8 @@ struct HomeCategoryContentView: View {
     let category: HomeCategory
     let navigationTransition: Namespace.ID
     @Binding var isFilterCollapsed: Bool
+    @Binding var scrollOffset: CGFloat
+    let tabBarHeight: CGFloat
     
     @State private var debouncer = ScrollDebouncer()
     @AppStorage("cardDensity") private var cardDensity: CardDensity = .regular
@@ -213,43 +244,41 @@ struct HomeCategoryContentView: View {
                 .padding(padding)
             }
         }
+        // Propagate this page's vertical scroll offset to the parent HomeView
+        // so the shared tab bar knows when to show its glass background
         .onScrollGeometryChange(for: CGFloat.self) { geometry in
             geometry.contentOffset.y + geometry.contentInsets.top
         } action: { oldOffset, newOffset in
+            // Update shared offset (only for the active category to avoid conflicts)
+            if viewModel.selectedCategory == category {
+                scrollOffset = newOffset
+            }
+
             let now = Date()
             guard now.timeIntervalSince(debouncer.lastStateChangeTime) > debouncer.debounceInterval else {
                 return
             }
-            
             let delta = newOffset - oldOffset
-
             if newOffset <= 0 {
-                if isFilterCollapsed { 
+                if isFilterCollapsed {
                     isFilterCollapsed = false
                     debouncer.lastStateChangeTime = now
                 }
             } else if delta > 8 {
-                if !isFilterCollapsed { 
+                if !isFilterCollapsed {
                     isFilterCollapsed = true
                     debouncer.lastStateChangeTime = now
                 }
             } else if delta < -8 {
-                if isFilterCollapsed { 
+                if isFilterCollapsed {
                     isFilterCollapsed = false
                     debouncer.lastStateChangeTime = now
                 }
             }
         }
-        .safeAreaBar(edge: .top, spacing: 0) {
-            HomeCategoryTextTabs(
-                selectedCategory: .constant(.all),
-                selectedFilter: .constant(.popular),
-                isFilterCollapsed: .constant(false)
-            )
-            .padding(.top, 4)
-            .padding(.bottom, 12)
-            .opacity(0.001)
-            .allowsHitTesting(false)
+        // Push content below the shared tab bar overlay using safeAreaInset
+        .safeAreaInset(edge: .top, spacing: 0) {
+            Color.clear.frame(height: tabBarHeight)
         }
         .scrollIndicators(.hidden)
         .refreshable {
