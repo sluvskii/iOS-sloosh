@@ -43,60 +43,51 @@ struct HomeView: View {
     @StateObject private var viewModel = HomeViewModel()
     @Namespace private var navigationTransition
     @State private var isFilterCollapsed = false
-    // Direction of the last intentional swipe — drives content slide transition
-    @State private var slideEdge: Edge = .trailing
-    // True while the user is clearly dragging horizontally (disables card taps)
-    @GestureState private var isDraggingHorizontally = false
-
-    private var swipeGesture: some Gesture {
-        DragGesture(minimumDistance: 0, coordinateSpace: .local)
-            // Detect horizontal intent early so cards lose interactivity ASAP
-            .updating($isDraggingHorizontally) { value, state, _ in
-                let h = abs(value.translation.width)
-                let v = abs(value.translation.height)
-                state = h > 8 && h > v * 1.3
-            }
-            // Only switch tab when swipe is clearly intentional
-            .onEnded { value in
-                let h = value.translation.width
-                let v = value.translation.height
-                // Require: clearly horizontal ratio AND (long drag OR fast flick)
-                guard abs(h) > abs(v) * 2.5,
-                      abs(h) > 80 || abs(value.velocity.width) > 400
-                else { return }
-                let all = HomeCategory.allCases
-                guard let idx = all.firstIndex(of: viewModel.selectedCategory) else { return }
-                let edge: Edge = h < 0 ? .trailing : .leading
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                    slideEdge = edge   // set before category so transition captures correct direction
-                    if h < 0, idx < all.count - 1 {
-                        viewModel.selectedCategory = all[idx + 1]
-                    } else if h > 0, idx > 0 {
-                        viewModel.selectedCategory = all[idx - 1]
-                    }
-                }
-            }
-    }
+    @State private var scrollPosition: HomeCategory?
 
     var body: some View {
         NavigationStack {
-            HomeCategoryContentView(
-                viewModel: viewModel,
-                category: viewModel.selectedCategory,
-                navigationTransition: navigationTransition,
-                isFilterCollapsed: $isFilterCollapsed,
-                isSwipingHorizontally: isDraggingHorizontally,
-                slideEdge: slideEdge
-            )
-            .simultaneousGesture(swipeGesture)
+            ZStack(alignment: .top) {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(spacing: 0) {
+                        ForEach(HomeCategory.allCases, id: \.self) { category in
+                            HomeCategoryContentView(
+                                viewModel: viewModel,
+                                category: category,
+                                navigationTransition: navigationTransition,
+                                isFilterCollapsed: $isFilterCollapsed
+                            )
+                            .containerRelativeFrame(.horizontal)
+                        }
+                    }
+                    .scrollTargetLayout()
+                }
+                .scrollTargetBehavior(.paging)
+                .scrollPosition(id: $scrollPosition)
+
+                HomeCategoryTextTabs(
+                    selectedCategory: $viewModel.selectedCategory,
+                    selectedFilter: $viewModel.selectedFilter,
+                    isFilterCollapsed: $isFilterCollapsed
+                )
+                .padding(.top, 4)
+                .padding(.bottom, 12)
+                .frame(maxWidth: .infinity)
+            }
             .task {
+                scrollPosition = viewModel.selectedCategory
                 await viewModel.applyCurrentSelection()
             }
-            .onChange(of: viewModel.selectedCategory) { old, new in
-                // For tab taps: compute slide direction from old→new index
-                let all = HomeCategory.allCases
-                if let oi = all.firstIndex(of: old), let ni = all.firstIndex(of: new) {
-                    slideEdge = ni > oi ? .trailing : .leading
+            .onChange(of: scrollPosition) { _, newCategory in
+                if let newCategory, newCategory != viewModel.selectedCategory {
+                    viewModel.selectedCategory = newCategory
+                }
+            }
+            .onChange(of: viewModel.selectedCategory) { _, newCategory in
+                if scrollPosition != newCategory {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        scrollPosition = newCategory
+                    }
                 }
                 isFilterCollapsed = false
                 Task { await viewModel.applyCurrentSelection() }
@@ -146,10 +137,6 @@ struct HomeCategoryContentView: View {
     let category: HomeCategory
     let navigationTransition: Namespace.ID
     @Binding var isFilterCollapsed: Bool
-    /// True while the user is dragging horizontally — disables card taps to prevent accidental opens
-    let isSwipingHorizontally: Bool
-    /// The edge from which new content slides in during category transition
-    let slideEdge: Edge
 
     @State private var debouncer = ScrollDebouncer()
     @AppStorage("cardDensity") private var cardDensity: CardDensity = .regular
@@ -174,66 +161,52 @@ struct HomeCategoryContentView: View {
                 // Invisible anchor used to scroll-to-top on tab switch
                 Color.clear.frame(height: 0).id("home-scroll-top")
 
-                // All content states share the same identity key so SwiftUI
-                // destroys/inserts them as one unit when category changes,
-                // giving us a clean slide-in/slide-out transition.
-                Group {
-                    if isLoading || items == nil {
-                        LazyVGrid(columns: columns, spacing: spacing) {
-                            ForEach(0..<12, id: \.self) { _ in
+                if isLoading || items == nil {
+                    LazyVGrid(columns: columns, spacing: spacing) {
+                        ForEach(0..<12, id: \.self) { _ in
+                            MoviePosterCardPlaceholder()
+                        }
+                    }
+                    .padding(padding)
+                } else if let items = items, items.isEmpty {
+                    HomeEmptyState(
+                        category: category,
+                        filter: viewModel.selectedFilter
+                    )
+                    .frame(maxWidth: .infinity, minHeight: 300)
+                    .padding(.horizontal, 20)
+                } else if let items = items {
+                    LazyVGrid(columns: columns, spacing: spacing) {
+                        ForEach(items) { movie in
+                            MovieDetailsNavigationLink(movie: movie, navigationTransition: navigationTransition)
+                                .contextMenu {
+                                    Group {
+                                        Button {
+                                            viewModel.directPlaybackMovie = movie
+                                        } label: {
+                                            Label("Смотреть", systemImage: "play.fill")
+                                        }
+                                        NavigationLink(destination: DetailsView(movieId: movie.id, navigationTransitionID: nil, navigationTransitionNamespace: nil)) {
+                                            Label("Подробнее", systemImage: "info.circle")
+                                        }
+                                    }
+                                    .tint(nil)
+                                }
+                            .onAppear {
+                                if movie.id == items.last?.id {
+                                    Task { await viewModel.loadData(for: category) }
+                                }
+                            }
+                        }
+
+                        if isLoadingMore {
+                            ForEach(0..<3, id: \.self) { _ in
                                 MoviePosterCardPlaceholder()
                             }
                         }
-                        .padding(padding)
-                    } else if let items = items, items.isEmpty {
-                        HomeEmptyState(
-                            category: category,
-                            filter: viewModel.selectedFilter
-                        )
-                        .frame(maxWidth: .infinity, minHeight: 300)
-                        .padding(.horizontal, 20)
-                    } else if let items = items {
-                        LazyVGrid(columns: columns, spacing: spacing) {
-                            ForEach(items) { movie in
-                                MovieDetailsNavigationLink(movie: movie, navigationTransition: navigationTransition)
-                                    .contextMenu {
-                                        Group {
-                                            Button {
-                                                viewModel.directPlaybackMovie = movie
-                                            } label: {
-                                                Label("Смотреть", systemImage: "play.fill")
-                                            }
-                                            NavigationLink(destination: DetailsView(movieId: movie.id, navigationTransitionID: nil, navigationTransitionNamespace: nil)) {
-                                                Label("Подробнее", systemImage: "info.circle")
-                                            }
-                                        }
-                                        .tint(nil)
-                                    }
-                                .onAppear {
-                                    if movie.id == items.last?.id {
-                                        Task { await viewModel.loadData(for: category) }
-                                    }
-                                }
-                            }
-
-                            if isLoadingMore {
-                                ForEach(0..<3, id: \.self) { _ in
-                                    MoviePosterCardPlaceholder()
-                                }
-                            }
-                        }
-                        // Disable card taps while user is swiping horizontally
-                        .allowsHitTesting(!isSwipingHorizontally)
-                        .padding(padding)
                     }
+                    .padding(padding)
                 }
-                // Keyed by category — triggers slide transition on switch
-                .id(category)
-                .transition(.asymmetric(
-                    insertion: .move(edge: slideEdge).combined(with: .opacity),
-                    removal: .move(edge: slideEdge == .trailing ? .leading : .trailing).combined(with: .opacity)
-                ))
-                .animation(.spring(response: 0.35, dampingFraction: 0.9), value: category)
             }
             .onScrollGeometryChange(for: CGFloat.self) { geometry in
                 geometry.contentOffset.y + geometry.contentInsets.top
@@ -262,15 +235,12 @@ struct HomeCategoryContentView: View {
             .onChange(of: viewModel.selectedCategory) { _, _ in
                 proxy.scrollTo("home-scroll-top", anchor: .top)
             }
-            // Native iOS 27 glass bar — activates automatically on vertical scroll
+            // Native iOS 27 glass bar — activates automatically on vertical scroll.
+            // We use a completely transparent 51pt block inside the scrollView's safe area.
+            // The actual HomeCategoryTextTabs overlay perfectly matches this height and position.
             .safeAreaBar(edge: .top, spacing: 0) {
-                HomeCategoryTextTabs(
-                    selectedCategory: $viewModel.selectedCategory,
-                    selectedFilter: $viewModel.selectedFilter,
-                    isFilterCollapsed: $isFilterCollapsed
-                )
-                .padding(.top, 4)
-                .padding(.bottom, 12)
+                Color.black.opacity(0.001)
+                    .frame(height: 51)
             }
             .scrollIndicators(.hidden)
             .refreshable {
