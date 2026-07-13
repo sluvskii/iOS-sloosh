@@ -43,84 +43,44 @@ struct HomeView: View {
     @StateObject private var viewModel = HomeViewModel()
     @Namespace private var navigationTransition
     @State private var isFilterCollapsed = false
-    @State private var scrollPosition: HomeCategory?
-    @State private var currentPageScrollOffset: CGFloat = 0
-
-    // Height of the unified tab bar overlay so pages can inset their content
-    private let tabBarHeight: CGFloat = 51 // titleHeight(31) + padding top(4) + padding bottom(12) + button vertical padding(4)
 
     var body: some View {
         NavigationStack {
-            ZStack(alignment: .top) {
-                // MARK: - Pages
-                ScrollView(.horizontal, showsIndicators: false) {
-                    LazyHStack(spacing: 0) {
-                        ForEach(HomeCategory.allCases, id: \.self) { category in
-                            HomeCategoryContentView(
-                                viewModel: viewModel,
-                                category: category,
-                                navigationTransition: navigationTransition,
-                                isFilterCollapsed: $isFilterCollapsed,
-                                scrollOffset: $currentPageScrollOffset,
-                                tabBarHeight: tabBarHeight
-                            )
-                            .containerRelativeFrame(.horizontal)
-                            .id(category)
+            HomeCategoryContentView(
+                viewModel: viewModel,
+                category: viewModel.selectedCategory,
+                navigationTransition: navigationTransition,
+                isFilterCollapsed: $isFilterCollapsed
+            )
+            // Swipe left/right to switch categories — like Apple's native apps
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 50, coordinateSpace: .local)
+                    .onEnded { value in
+                        let h = value.translation.width
+                        let v = value.translation.height
+                        // Only fire on clearly horizontal swipes
+                        guard abs(h) > abs(v) * 2, abs(h) > 50 else { return }
+                        let all = HomeCategory.allCases
+                        guard let idx = all.firstIndex(of: viewModel.selectedCategory) else { return }
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                            if h < 0, idx < all.count - 1 {
+                                viewModel.selectedCategory = all[idx + 1]
+                            } else if h > 0, idx > 0 {
+                                viewModel.selectedCategory = all[idx - 1]
+                            }
                         }
                     }
-                    .scrollTargetLayout()
-                }
-                .scrollTargetBehavior(.paging)
-                .scrollPosition(id: $scrollPosition)
-                .scrollEdgeEffectStyle(.soft, for: .top)
-                .toolbar(.hidden, for: .navigationBar)
-
-                // MARK: - Unified Tab Bar (single instance above all pages)
-                HomeCategoryTextTabs(
-                    selectedCategory: $viewModel.selectedCategory,
-                    selectedFilter: $viewModel.selectedFilter,
-                    isFilterCollapsed: $isFilterCollapsed
-                )
-                .padding(.top, 4)
-                .padding(.bottom, 12)
-                .frame(maxWidth: .infinity)
-                .background {
-                    Rectangle()
-                        .glassEffect()
-                        .ignoresSafeArea(edges: .top)
-                        .opacity(currentPageScrollOffset > 4 ? 1 : 0)
-                        .animation(.easeInOut(duration: 0.2), value: currentPageScrollOffset > 4)
-                }
-                .ignoresSafeArea(edges: .top)
-                .padding(.top, safeAreaTop)
-            }
+            )
             .task {
-                scrollPosition = viewModel.selectedCategory
                 await viewModel.applyCurrentSelection()
             }
-            .onChange(of: scrollPosition) { _, newCategory in
-                if let newCategory, newCategory != viewModel.selectedCategory {
-                    viewModel.selectedCategory = newCategory
-                    // Reset offset when switching pages
-                    currentPageScrollOffset = 0
-                }
-            }
-            .onChange(of: viewModel.selectedCategory) { _, newCategory in
-                if scrollPosition != newCategory {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                        scrollPosition = newCategory
-                    }
-                }
+            .onChange(of: viewModel.selectedCategory) { _, _ in
                 isFilterCollapsed = false
-                Task {
-                    await viewModel.applyCurrentSelection()
-                }
+                Task { await viewModel.applyCurrentSelection() }
             }
             .onChange(of: viewModel.selectedFilter) { _, _ in
                 isFilterCollapsed = false
-                Task {
-                    await viewModel.applyCurrentSelection()
-                }
+                Task { await viewModel.applyCurrentSelection() }
             }
             .sheet(item: $viewModel.directPlaybackMovie) { movie in
                 let kpId = movie.externalIds?.kp ?? Int(movie.id) ?? 0
@@ -151,15 +111,6 @@ struct HomeView: View {
             }
         }
     }
-
-    // Helper to read the top safe area inset for correct tab bar placement
-    private var safeAreaTop: CGFloat {
-        (UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .first?.windows
-            .first { $0.isKeyWindow }?
-            .safeAreaInsets.top) ?? 0
-    }
 }
 
 class ScrollDebouncer {
@@ -172,12 +123,10 @@ struct HomeCategoryContentView: View {
     let category: HomeCategory
     let navigationTransition: Namespace.ID
     @Binding var isFilterCollapsed: Bool
-    @Binding var scrollOffset: CGFloat
-    let tabBarHeight: CGFloat
-    
+
     @State private var debouncer = ScrollDebouncer()
     @AppStorage("cardDensity") private var cardDensity: CardDensity = .regular
-    
+
     private var columns: [GridItem] {
         let spacing: CGFloat = cardDensity == .compact ? 8 : 16
         let minWidth: CGFloat = cardDensity == .compact ? 95 : 105
@@ -190,99 +139,102 @@ struct HomeCategoryContentView: View {
         let isLoading = viewModel.isLoading[key] ?? false
         let isLoadingMore = viewModel.isLoadingMore[key] ?? false
 
-        ScrollView {
-            let spacing: CGFloat = cardDensity == .compact ? 8 : 16
-            let padding: CGFloat = cardDensity == .compact ? 12 : 16
-            
-            if isLoading || items == nil {
-                LazyVGrid(columns: columns, spacing: spacing) {
-                    ForEach(0..<12, id: \.self) { _ in
-                        MoviePosterCardPlaceholder()
-                    }
-                }
-                .padding(padding)
-            } else if let items = items, items.isEmpty {
-                HomeEmptyState(
-                    category: category,
-                    filter: viewModel.selectedFilter
-                )
-                .frame(maxWidth: .infinity, minHeight: 300)
-                .padding(.horizontal, 20)
-            } else if let items = items {
-                LazyVGrid(columns: columns, spacing: spacing) {
-                    ForEach(items) { movie in
-                        MovieDetailsNavigationLink(movie: movie, navigationTransition: navigationTransition)
-                            .contextMenu {
-                                Group {
-                                    Button {
-                                        viewModel.directPlaybackMovie = movie
-                                    } label: {
-                                        Label("Смотреть", systemImage: "play.fill")
-                                    }
-                                    
-                                    NavigationLink(destination: DetailsView(movieId: movie.id, navigationTransitionID: nil, navigationTransitionNamespace: nil)) {
-                                        Label("Подробнее", systemImage: "info.circle")
-                                    }
-                                }
-                                .tint(nil)
-                            }
-                        .onAppear {
-                            if movie.id == items.last?.id {
-                                Task {
-                                    await viewModel.loadData(for: category)
-                                }
-                            }
-                        }
-                    }
+        ScrollViewReader { proxy in
+            ScrollView {
+                let spacing: CGFloat = cardDensity == .compact ? 8 : 16
+                let padding: CGFloat = cardDensity == .compact ? 12 : 16
 
-                    if isLoadingMore {
-                        ForEach(0..<3, id: \.self) { _ in
+                // Invisible anchor used to scroll-to-top on tab switch
+                Color.clear.frame(height: 0).id("home-scroll-top")
+
+                if isLoading || items == nil {
+                    LazyVGrid(columns: columns, spacing: spacing) {
+                        ForEach(0..<12, id: \.self) { _ in
                             MoviePosterCardPlaceholder()
                         }
                     }
-                }
-                .padding(padding)
-            }
-        }
-        // Propagate this page's vertical scroll offset to the parent HomeView
-        // so the shared tab bar knows when to show its glass background
-        .onScrollGeometryChange(for: CGFloat.self) { geometry in
-            geometry.contentOffset.y + geometry.contentInsets.top
-        } action: { oldOffset, newOffset in
-            // Update shared offset (only for the active category to avoid conflicts)
-            if viewModel.selectedCategory == category {
-                scrollOffset = newOffset
-            }
+                    .padding(padding)
+                } else if let items = items, items.isEmpty {
+                    HomeEmptyState(
+                        category: category,
+                        filter: viewModel.selectedFilter
+                    )
+                    .frame(maxWidth: .infinity, minHeight: 300)
+                    .padding(.horizontal, 20)
+                } else if let items = items {
+                    LazyVGrid(columns: columns, spacing: spacing) {
+                        ForEach(items) { movie in
+                            MovieDetailsNavigationLink(movie: movie, navigationTransition: navigationTransition)
+                                .contextMenu {
+                                    Group {
+                                        Button {
+                                            viewModel.directPlaybackMovie = movie
+                                        } label: {
+                                            Label("Смотреть", systemImage: "play.fill")
+                                        }
+                                        NavigationLink(destination: DetailsView(movieId: movie.id, navigationTransitionID: nil, navigationTransitionNamespace: nil)) {
+                                            Label("Подробнее", systemImage: "info.circle")
+                                        }
+                                    }
+                                    .tint(nil)
+                                }
+                            .onAppear {
+                                if movie.id == items.last?.id {
+                                    Task { await viewModel.loadData(for: category) }
+                                }
+                            }
+                        }
 
-            let now = Date()
-            guard now.timeIntervalSince(debouncer.lastStateChangeTime) > debouncer.debounceInterval else {
-                return
-            }
-            let delta = newOffset - oldOffset
-            if newOffset <= 0 {
-                if isFilterCollapsed {
-                    isFilterCollapsed = false
-                    debouncer.lastStateChangeTime = now
-                }
-            } else if delta > 8 {
-                if !isFilterCollapsed {
-                    isFilterCollapsed = true
-                    debouncer.lastStateChangeTime = now
-                }
-            } else if delta < -8 {
-                if isFilterCollapsed {
-                    isFilterCollapsed = false
-                    debouncer.lastStateChangeTime = now
+                        if isLoadingMore {
+                            ForEach(0..<3, id: \.self) { _ in
+                                MoviePosterCardPlaceholder()
+                            }
+                        }
+                    }
+                    .padding(padding)
                 }
             }
-        }
-        // Push content below the shared tab bar overlay using safeAreaInset
-        .safeAreaInset(edge: .top, spacing: 0) {
-            Color.clear.frame(height: tabBarHeight)
-        }
-        .scrollIndicators(.hidden)
-        .refreshable {
-            await viewModel.applyCurrentSelection(force: true)
+            .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                geometry.contentOffset.y + geometry.contentInsets.top
+            } action: { oldOffset, newOffset in
+                let now = Date()
+                guard now.timeIntervalSince(debouncer.lastStateChangeTime) > debouncer.debounceInterval else { return }
+                let delta = newOffset - oldOffset
+                if newOffset <= 0 {
+                    if isFilterCollapsed {
+                        isFilterCollapsed = false
+                        debouncer.lastStateChangeTime = now
+                    }
+                } else if delta > 8 {
+                    if !isFilterCollapsed {
+                        isFilterCollapsed = true
+                        debouncer.lastStateChangeTime = now
+                    }
+                } else if delta < -8 {
+                    if isFilterCollapsed {
+                        isFilterCollapsed = false
+                        debouncer.lastStateChangeTime = now
+                    }
+                }
+            }
+            // Scroll back to top whenever the user switches category tab
+            .onChange(of: viewModel.selectedCategory) { _, _ in
+                proxy.scrollTo("home-scroll-top", anchor: .top)
+            }
+            // Native iOS 27 glass bar — activates automatically on vertical scroll
+            .safeAreaBar(edge: .top, spacing: 0) {
+                HomeCategoryTextTabs(
+                    selectedCategory: $viewModel.selectedCategory,
+                    selectedFilter: $viewModel.selectedFilter,
+                    isFilterCollapsed: $isFilterCollapsed
+                )
+                .padding(.top, 4)
+                .padding(.bottom, 12)
+            }
+            .scrollIndicators(.hidden)
+            .refreshable {
+                await viewModel.applyCurrentSelection(force: true)
+            }
         }
     }
 }
