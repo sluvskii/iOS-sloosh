@@ -74,6 +74,7 @@ struct HomeView: View {
                 .padding(.top, 4)
                 .padding(.bottom, 2)
             }
+            .navigationTitle("Главная")
             .scrollEdgeEffectStyle(.soft, for: .top)
             .toolbar(.hidden, for: .navigationBar)
             .task {
