@@ -43,28 +43,19 @@ struct HomeView: View {
     @StateObject private var viewModel = HomeViewModel()
     @Namespace private var navigationTransition
     @State private var isFilterCollapsed = false
-    @State private var scrollPosition: HomeCategory?
 
     var body: some View {
         NavigationStack {
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(spacing: 0) {
-                    ForEach(HomeCategory.allCases, id: \.self) { category in
-                        HomeCategoryContentView(
-                            viewModel: viewModel,
-                            category: category,
-                            navigationTransition: navigationTransition,
-                            isFilterCollapsed: $isFilterCollapsed
-                        )
-                        .containerRelativeFrame(.horizontal)
-                        .id(category)
-                    }
-                }
-                .scrollTargetLayout()
-            }
-            .scrollTargetBehavior(.paging)
-            .scrollPosition(id: $scrollPosition)
-            .scrollEdgeEffectStyle(.soft, for: .top)
+            HomeCategoryContentView(
+                viewModel: viewModel,
+                category: viewModel.selectedCategory,
+                navigationTransition: navigationTransition,
+                isFilterCollapsed: $isFilterCollapsed
+            )
+            // Re-create the inner view when category changes to start at the top
+            .id(viewModel.selectedCategory)
+            .transition(.opacity)
+            .animation(.easeInOut(duration: 0.2), value: viewModel.selectedCategory)
             .toolbar(.hidden, for: .navigationBar)
             .safeAreaBar(edge: .top, spacing: 0) {
                 HomeCategoryTextTabs(
@@ -76,20 +67,9 @@ struct HomeView: View {
                 .padding(.bottom, 12)
             }
             .task {
-                scrollPosition = viewModel.selectedCategory
                 await viewModel.applyCurrentSelection()
             }
-            .onChange(of: scrollPosition) { _, newCategory in
-                if let newCategory, newCategory != viewModel.selectedCategory {
-                    viewModel.selectedCategory = newCategory
-                }
-            }
-            .onChange(of: viewModel.selectedCategory) { _, newCategory in
-                if scrollPosition != newCategory {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                        scrollPosition = newCategory
-                    }
-                }
+            .onChange(of: viewModel.selectedCategory) { _, _ in
                 isFilterCollapsed = false
                 Task { await viewModel.applyCurrentSelection() }
             }
