@@ -43,18 +43,53 @@ struct HomeView: View {
     @StateObject private var viewModel = HomeViewModel()
     @Namespace private var navigationTransition
     @State private var isFilterCollapsed = false
+    @State private var scrollPosition: HomeCategory?
 
     var body: some View {
         NavigationStack {
-            HomeCategoryContentView(
-                viewModel: viewModel,
-                navigationTransition: navigationTransition,
-                isFilterCollapsed: $isFilterCollapsed
-            )
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(spacing: 0) {
+                    ForEach(HomeCategory.allCases, id: \.self) { category in
+                        HomeCategoryContentView(
+                            viewModel: viewModel,
+                            category: category,
+                            navigationTransition: navigationTransition,
+                            isFilterCollapsed: $isFilterCollapsed
+                        )
+                        .containerRelativeFrame(.horizontal)
+                        .id(category)
+                    }
+                }
+                .scrollTargetLayout()
+            }
+            .scrollTargetBehavior(.paging)
+            .scrollPosition(id: $scrollPosition)
+            .scrollEdgeEffectStyle(.soft, for: .top)
+            .toolbar(.hidden, for: .navigationBar)
+            .safeAreaBar(edge: .top, spacing: 0) {
+                HomeCategoryTextTabs(
+                    selectedCategory: $viewModel.selectedCategory,
+                    selectedFilter: $viewModel.selectedFilter,
+                    isFilterCollapsed: $isFilterCollapsed
+                )
+                .padding(.top, 4)
+                .padding(.bottom, 12)
+            }
             .task {
+                scrollPosition = viewModel.selectedCategory
                 await viewModel.applyCurrentSelection()
             }
-            .onChange(of: viewModel.selectedCategory) { _, _ in
+            .onChange(of: scrollPosition) { _, newCategory in
+                if let newCategory, newCategory != viewModel.selectedCategory {
+                    viewModel.selectedCategory = newCategory
+                }
+            }
+            .onChange(of: viewModel.selectedCategory) { _, newCategory in
+                if scrollPosition != newCategory {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        scrollPosition = newCategory
+                    }
+                }
                 isFilterCollapsed = false
                 Task { await viewModel.applyCurrentSelection() }
             }
@@ -98,83 +133,14 @@ class ScrollDebouncer {
     let debounceInterval: TimeInterval = 0.4 // Matches animation duration
 }
 
-struct CategoryGridWrapper: View {
-    let category: HomeCategory
-    @ObservedObject var viewModel: HomeViewModel
-    let navigationTransition: Namespace.ID
-    let columns: [GridItem]
-    let spacing: CGFloat
-    let padding: CGFloat
-    let isSwiping: Bool
-
-    var body: some View {
-        let key = HomeCacheKey(category: category, filter: viewModel.selectedFilter)
-        let items = viewModel.cachedItems[key]
-        let isLoading = viewModel.isLoading[key] ?? false
-        let isLoadingMore = viewModel.isLoadingMore[key] ?? false
-
-        Group {
-            if isLoading || items == nil {
-                LazyVGrid(columns: columns, spacing: spacing) {
-                    ForEach(0..<12, id: \.self) { _ in
-                        MoviePosterCardPlaceholder()
-                    }
-                }
-                .padding(padding)
-            } else if let items = items, items.isEmpty {
-                HomeEmptyState(
-                    category: category,
-                    filter: viewModel.selectedFilter
-                )
-                .frame(maxWidth: .infinity, minHeight: 300)
-                .padding(.horizontal, 20)
-            } else if let items = items {
-                LazyVGrid(columns: columns, spacing: spacing) {
-                    ForEach(items) { movie in
-                        MovieDetailsNavigationLink(movie: movie, navigationTransition: navigationTransition)
-                            .contextMenu {
-                                Group {
-                                    Button {
-                                        viewModel.directPlaybackMovie = movie
-                                    } label: {
-                                        Label("Смотреть", systemImage: "play.fill")
-                                    }
-                                    NavigationLink(destination: DetailsView(movieId: movie.id, navigationTransitionID: nil, navigationTransitionNamespace: nil)) {
-                                        Label("Подробнее", systemImage: "info.circle")
-                                    }
-                                }
-                                .tint(nil)
-                            }
-                        .onAppear {
-                            if movie.id == items.last?.id {
-                                Task { await viewModel.loadData(for: category) }
-                            }
-                        }
-                    }
-
-                    if isLoadingMore {
-                        ForEach(0..<3, id: \.self) { _ in
-                            MoviePosterCardPlaceholder()
-                        }
-                    }
-                }
-                .padding(padding)
-            }
-        }
-        .allowsHitTesting(!isSwiping)
-    }
-}
-
 struct HomeCategoryContentView: View {
     @ObservedObject var viewModel: HomeViewModel
+    let category: HomeCategory
     let navigationTransition: Namespace.ID
     @Binding var isFilterCollapsed: Bool
 
     @State private var debouncer = ScrollDebouncer()
     @AppStorage("cardDensity") private var cardDensity: CardDensity = .regular
-    
-    @State private var dragOffset: CGFloat = 0
-    @GestureState private var isDraggingHorizontally = false
 
     private var columns: [GridItem] {
         let spacing: CGFloat = cardDensity == .compact ? 8 : 16
@@ -183,9 +149,10 @@ struct HomeCategoryContentView: View {
     }
 
     var body: some View {
-        let screenWidth = UIScreen.main.bounds.width
-        let categories = HomeCategory.allCases
-        let currentIndex = categories.firstIndex(of: viewModel.selectedCategory) ?? 0
+        let key = HomeCacheKey(category: category, filter: viewModel.selectedFilter)
+        let items = viewModel.cachedItems[key]
+        let isLoading = viewModel.isLoading[key] ?? false
+        let isLoadingMore = viewModel.isLoadingMore[key] ?? false
 
         ScrollViewReader { proxy in
             ScrollView {
@@ -195,71 +162,52 @@ struct HomeCategoryContentView: View {
                 // Invisible anchor used to scroll-to-top on tab switch
                 Color.clear.frame(height: 0).id("home-scroll-top")
 
-                HStack(alignment: .top, spacing: 0) {
-                    ForEach(categories, id: \.self) { category in
-                        CategoryGridWrapper(
-                            category: category,
-                            viewModel: viewModel,
-                            navigationTransition: navigationTransition,
-                            columns: columns,
-                            spacing: spacing,
-                            padding: padding,
-                            isSwiping: isDraggingHorizontally
-                        )
-                        .frame(width: screenWidth)
+                if isLoading || items == nil {
+                    LazyVGrid(columns: columns, spacing: spacing) {
+                        ForEach(0..<12, id: \.self) { _ in
+                            MoviePosterCardPlaceholder()
+                        }
                     }
+                    .padding(padding)
+                } else if let items = items, items.isEmpty {
+                    HomeEmptyState(
+                        category: category,
+                        filter: viewModel.selectedFilter
+                    )
+                    .frame(maxWidth: .infinity, minHeight: 300)
+                    .padding(.horizontal, 20)
+                } else if let items = items {
+                    LazyVGrid(columns: columns, spacing: spacing) {
+                        ForEach(items) { movie in
+                            MovieDetailsNavigationLink(movie: movie, navigationTransition: navigationTransition)
+                                .contextMenu {
+                                    Group {
+                                        Button {
+                                            viewModel.directPlaybackMovie = movie
+                                        } label: {
+                                            Label("Смотреть", systemImage: "play.fill")
+                                        }
+                                        NavigationLink(destination: DetailsView(movieId: movie.id, navigationTransitionID: nil, navigationTransitionNamespace: nil)) {
+                                            Label("Подробнее", systemImage: "info.circle")
+                                        }
+                                    }
+                                    .tint(nil)
+                                }
+                            .onAppear {
+                                if movie.id == items.last?.id {
+                                    Task { await viewModel.loadData(for: category) }
+                                }
+                            }
+                        }
+
+                        if isLoadingMore {
+                            ForEach(0..<3, id: \.self) { _ in
+                                MoviePosterCardPlaceholder()
+                            }
+                        }
+                    }
+                    .padding(padding)
                 }
-                .frame(width: screenWidth, alignment: .leading)
-                .offset(x: -CGFloat(currentIndex) * screenWidth + dragOffset)
-                // High priority gesture to catch horizontal swipes and cancel inner taps
-                .simultaneousGesture(
-                    DragGesture(minimumDistance: 15, coordinateSpace: .local)
-                        .updating($isDraggingHorizontally) { value, state, _ in
-                            if abs(value.translation.width) > abs(value.translation.height) {
-                                state = true
-                            }
-                        }
-                        .onChanged { value in
-                            let h = value.translation.width
-                            let v = value.translation.height
-                            if abs(h) > abs(v) {
-                                // Add rubber banding at the edges
-                                if currentIndex == 0 && h > 0 {
-                                    dragOffset = h * 0.3
-                                } else if currentIndex == categories.count - 1 && h < 0 {
-                                    dragOffset = h * 0.3
-                                } else {
-                                    dragOffset = h
-                                }
-                            }
-                        }
-                        .onEnded { value in
-                            let h = value.translation.width
-                            let v = value.translation.height
-                            let velocity = value.velocity.width
-                            
-                            guard abs(h) > abs(v) else {
-                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                    dragOffset = 0
-                                }
-                                return
-                            }
-                            
-                            var newIndex = currentIndex
-                            let threshold = screenWidth * 0.3
-                            
-                            if h < -threshold || velocity < -400 {
-                                newIndex = min(currentIndex + 1, categories.count - 1)
-                            } else if h > threshold || velocity > 400 {
-                                newIndex = max(currentIndex - 1, 0)
-                            }
-                            
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                                viewModel.selectedCategory = categories[newIndex]
-                                dragOffset = 0
-                            }
-                        }
-                )
             }
             .onScrollGeometryChange(for: CGFloat.self) { geometry in
                 geometry.contentOffset.y + geometry.contentInsets.top
