@@ -1,7 +1,7 @@
 import SwiftUI
 import MediaPlayer
 
-struct PlayerGesturesOverlay: View {
+struct PlayerGesturesModifier: ViewModifier {
     @State private var showIndicator = false
     @State private var indicatorValue: Double = 0
     @State private var indicatorIcon: String = "sun.max.fill"
@@ -13,13 +13,29 @@ struct PlayerGesturesOverlay: View {
     
     private let volumeManager = VolumeManager.shared
     
-    var body: some View {
+    func body(content: Content) -> some View {
         GeometryReader { geo in
             ZStack {
-                // Невидимый слой для перехвата свайпов через UIKit
-                PanGestureView { value in
-                    handleDrag(value: value, height: geo.size.height)
-                }
+                // Передаем весь контент (например, gestureLayer с тапами), 
+                // и параллельно перехватываем свайпы без блокировки тапов!
+                content
+                    .simultaneousGesture(
+                        DragGesture(minimumDistance: 15)
+                            .onChanged { value in
+                                if !isDragging {
+                                    isDragging = true
+                                    initialBrightness = UIScreen.main.brightness
+                                    initialVolume = volumeManager.currentVolume
+                                }
+                                handleDrag(value: value, height: geo.size.height)
+                            }
+                            .onEnded { _ in
+                                isDragging = false
+                                withAnimation(.easeOut(duration: 0.3)) {
+                                    showIndicator = false
+                                }
+                            }
+                    )
                 
                 // Центральный индикатор
                 if showIndicator {
@@ -49,23 +65,8 @@ struct PlayerGesturesOverlay: View {
         }
     }
     
-    private func handleDrag(value: PanGestureData, height: CGFloat) {
-        if value.state == .began {
-            isDragging = true
-            initialBrightness = UIScreen.main.brightness
-            initialVolume = volumeManager.currentVolume
-            return
-        }
-        
-        if value.state == .ended || value.state == .cancelled {
-            isDragging = false
-            withAnimation {
-                showIndicator = false
-            }
-            return
-        }
-        
-        let delta = -value.translation.y / (height * 0.5) // Полный свайп на половину экрана
+    private func handleDrag(value: DragGesture.Value, height: CGFloat) {
+        let delta = -value.translation.height / (height * 0.5) // Полный свайп на половину экрана
         let isRightSide = value.startLocation.x > UIScreen.main.bounds.width / 2
         
         if isRightSide {
@@ -92,57 +93,9 @@ struct PlayerGesturesOverlay: View {
     }
 }
 
-// Данные о жесте
-struct PanGestureData {
-    let state: UIGestureRecognizer.State
-    let translation: CGPoint
-    let startLocation: CGPoint
-}
-
-// UIKit Gesture View, не блокирующий тапы
-struct PanGestureView: UIViewRepresentable {
-    var onPan: (PanGestureData) -> Void
-
-    func makeUIView(context: Context) -> UIView {
-        let view = UIView()
-        view.backgroundColor = .clear
-        let pan = UIPanGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handlePan(_:)))
-        pan.cancelsTouchesInView = false // Важно для пропуская тапов в плеер
-        pan.delegate = context.coordinator
-        view.addGestureRecognizer(pan)
-        return view
-    }
-
-    func updateUIView(_ uiView: UIView, context: Context) {}
-
-    func makeCoordinator() -> Coordinator {
-        Coordinator(onPan: onPan)
-    }
-
-    class Coordinator: NSObject, UIGestureRecognizerDelegate {
-        var onPan: (PanGestureData) -> Void
-        var startLocation: CGPoint = .zero
-
-        init(onPan: @escaping (PanGestureData) -> Void) {
-            self.onPan = onPan
-        }
-
-        @objc func handlePan(_ recognizer: UIPanGestureRecognizer) {
-            if recognizer.state == .began {
-                startLocation = recognizer.location(in: recognizer.view)
-            }
-            
-            let data = PanGestureData(
-                state: recognizer.state,
-                translation: recognizer.translation(in: recognizer.view),
-                startLocation: startLocation
-            )
-            onPan(data)
-        }
-
-        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
-            return true
-        }
+extension View {
+    func playerGestures() -> some View {
+        self.modifier(PlayerGesturesModifier())
     }
 }
 
