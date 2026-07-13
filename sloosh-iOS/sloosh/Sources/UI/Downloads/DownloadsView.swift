@@ -99,10 +99,15 @@ struct DownloadsView: View {
                     .contentMargins(.top, 16, for: .scrollContent)
                 }
             }
-            .safeAreaBar(edge: .top, spacing: 0) {
+            .safeAreaInset(edge: .top, spacing: 0) {
                 DownloadsCategoryTextTabs(selectedFilter: $selectedFilter)
                     .padding(.top, 4)
                     .padding(.bottom, 12)
+                    .background(alignment: .top) {
+                        ProgressiveBlurView(solidLocation: 0.6, material: .regularMaterial)
+                            .ignoresSafeArea(edges: .top)
+                            .padding(.bottom, -20)
+                    }
             }
             .navigationTitle("Загрузки")
             .toolbar(.hidden, for: .navigationBar)

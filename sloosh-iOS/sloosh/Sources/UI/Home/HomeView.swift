@@ -57,7 +57,7 @@ struct HomeView: View {
             .transition(.opacity)
             .animation(.easeInOut(duration: 0.2), value: viewModel.selectedCategory)
             .toolbar(.hidden, for: .navigationBar)
-            .safeAreaBar(edge: .top, spacing: 0) {
+            .safeAreaInset(edge: .top, spacing: 0) {
                 HomeCategoryTextTabs(
                     selectedCategory: $viewModel.selectedCategory,
                     selectedFilter: $viewModel.selectedFilter,
@@ -65,6 +65,12 @@ struct HomeView: View {
                 )
                 .padding(.top, 4)
                 .padding(.bottom, 12)
+                .background(alignment: .top) {
+                    ProgressiveBlurView(solidLocation: 0.6, material: .regularMaterial)
+                        .ignoresSafeArea(edges: .top)
+                        // Расширяем блюр немного ниже самих табов для более мягкого затухания
+                        .padding(.bottom, -20)
+                }
             }
             .task {
                 await viewModel.applyCurrentSelection()
