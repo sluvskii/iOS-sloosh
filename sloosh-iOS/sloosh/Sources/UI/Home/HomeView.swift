@@ -236,16 +236,6 @@ struct HomeCategoryContentView: View {
             .onChange(of: viewModel.selectedCategory) { _, _ in
                 proxy.scrollTo("home-scroll-top", anchor: .top)
             }
-            // Native iOS 27 glass bar — activates automatically on vertical scroll
-            .safeAreaBar(edge: .top, spacing: 0) {
-                HomeCategoryTextTabs(
-                    selectedCategory: $viewModel.selectedCategory,
-                    selectedFilter: $viewModel.selectedFilter,
-                    isFilterCollapsed: $isFilterCollapsed
-                )
-                .padding(.top, 4)
-                .padding(.bottom, 12)
-            }
             .scrollIndicators(.hidden)
             .refreshable {
                 await viewModel.applyCurrentSelection(force: true)
