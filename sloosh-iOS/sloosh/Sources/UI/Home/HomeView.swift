@@ -76,7 +76,7 @@ struct HomeView: View {
                 .background {
                     if viewModel.isHeaderScrolled {
                         Rectangle()
-                            .fill(.ultraThinMaterial)
+                            .glassEffect(in: Rectangle())
                             .ignoresSafeArea(edges: .top)
                     }
                 }
