@@ -113,20 +113,24 @@ struct ProfileView: View {
                 .safeAreaInset(edge: .top, spacing: 0) {
                     VStack(spacing: 12) {
                         // Верхний слой: Заголовок и Настройки
-                        HStack(alignment: .center) {
+                        ZStack {
                             Text("Профиль")
-                                .font(.system(size: 32, weight: .bold, design: .rounded))
+                                .font(.system(size: 20, weight: .semibold, design: .rounded))
                                 .foregroundStyle(.primary)
                             
-                            Spacer()
-                            
-                            Button {
-                                showsSettings = true
-                            } label: {
-                                Image(systemName: "gearshape.fill")
-                                    .font(.system(size: 22, weight: .semibold))
-                                    .foregroundStyle(.primary)
-                                    .contentShape(Circle())
+                            HStack {
+                                Spacer()
+                                
+                                Button {
+                                    showsSettings = true
+                                } label: {
+                                    Image(systemName: "gearshape.fill")
+                                        .font(.system(size: 16, weight: .semibold))
+                                        .foregroundStyle(.primary)
+                                        .padding(10)
+                                        .glassEffect(.regular, in: .circle)
+                                }
+                                .buttonStyle(PlainButtonStyle())
                             }
                         }
                         .padding(.horizontal, 20)
@@ -195,72 +199,92 @@ private struct ProfileCategoryTextTabs: View {
     @Binding var selectedCategory: FavoriteCategory
     let categoryCounts: [FavoriteCategory: Int]
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    @ScaledMetric(relativeTo: .headline) private var titleSize: CGFloat = 24
+    @Environment(\.colorScheme) private var colorScheme
+    @ScaledMetric(relativeTo: .headline) private var titleSize: CGFloat = 28
+
+    private let titleHeight: CGFloat = 36
 
     private var tabSpacing: CGFloat {
-        horizontalSizeClass == .regular ? 28 : 22
+        horizontalSizeClass == .regular ? 16 : 12
     }
 
-    private var edgeInset: CGFloat {
+    private var edgeContentInset: CGFloat {
         horizontalSizeClass == .regular ? 18 : 16
     }
 
-    private var animation: Animation {
-        .spring(response: 0.35, dampingFraction: 0.78, blendDuration: 0.1)
+    private var tabScrollAnimation: Animation {
+        .spring(response: 0.35, dampingFraction: 0.75, blendDuration: 0.1)
     }
 
-    @ViewBuilder
-    private func tabLabel(for category: FavoriteCategory, isSelected: Bool) -> some View {
-        let count = categoryCounts[category] ?? 0
-        let primaryColor: Color = isSelected ? .primary : .secondary
-        let secondaryColor: Color = isSelected ? .primary.opacity(0.72) : .secondary.opacity(0.8)
-
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Text(category.title)
-                .font(.system(size: titleSize, weight: isSelected ? .bold : .semibold))
-                .foregroundStyle(primaryColor)
-
+    private func layeredText(
+        _ text: String,
+        count: Int,
+        size: CGFloat,
+        weight: Font.Weight,
+        isSelected: Bool
+    ) -> some View {
+        let isDark = colorScheme == .dark
+        let opacity = isSelected ? (isDark ? 0.9 : 0.8) : (isDark ? 0.45 : 0.4)
+        let color = isDark ? Color.white.opacity(opacity) : Color.black.opacity(opacity)
+        let blendMode: BlendMode = isDark ? .plusLighter : .plusDarker
+        
+        return HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text(text)
+                .font(.system(size: size, weight: weight))
+                .tracking(-0.8)
+                
             Text("\(count)")
-                .font(.system(size: max(titleSize - 7, 13), weight: .semibold, design: .rounded))
+                .font(.system(size: max(size - 10, 14), weight: .semibold, design: .rounded))
                 .monospacedDigit()
-                .foregroundStyle(secondaryColor)
                 .padding(.top, 2)
         }
-        .lineLimit(1)
-        .fixedSize(horizontal: true, vertical: false)
-        .contentShape(Rectangle())
+        .foregroundStyle(color)
+        .blendMode(blendMode)
     }
 
     var body: some View {
         ScrollViewReader { scrollProxy in
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: tabSpacing) {
+                HStack(alignment: .top, spacing: tabSpacing) {
                     ForEach(Array(FavoriteCategory.allCases.enumerated()), id: \.element) { index, category in
                         let isSelected = selectedCategory == category
                         let isFirst = index == 0
                         let isLast = index == FavoriteCategory.allCases.count - 1
+                        let count = categoryCounts[category] ?? 0
 
                         Button {
                             guard !isSelected else { return }
-                            withAnimation(animation) {
+                            withAnimation(tabScrollAnimation) {
                                 selectedCategory = category
                             }
                         } label: {
-                            tabLabel(for: category, isSelected: isSelected)
+                            layeredText(
+                                category.title,
+                                count: count,
+                                size: titleSize,
+                                weight: isSelected ? .bold : .semibold,
+                                isSelected: isSelected
+                            )
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
+                            .frame(height: titleHeight, alignment: .center)
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(ProfileTabScaleButtonStyle())
                         .padding(.horizontal, 4)
                         .padding(.vertical, 2)
-                        .padding(.leading, isFirst ? edgeInset : 0)
-                        .padding(.trailing, isLast ? edgeInset : 0)
                         .id(category)
-                        .accessibilityAddTraits(isSelected ? .isSelected : [])
+                        .padding(.leading, isFirst ? edgeContentInset : 0)
+                        .padding(.trailing, isLast ? edgeContentInset : 0)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .scrollTargetLayout()
             }
+            .frame(height: titleHeight + 4, alignment: .topLeading)
             .scrollClipDisabled()
             .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+            .animation(tabScrollAnimation, value: selectedCategory)
             .onAppear {
                 scrollProxy.scrollTo(selectedCategory, anchor: .center)
             }
