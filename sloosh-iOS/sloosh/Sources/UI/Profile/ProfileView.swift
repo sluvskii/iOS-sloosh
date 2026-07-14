@@ -124,12 +124,11 @@ struct ProfileView: View {
                                 Button {
                                     showsSettings = true
                                 } label: {
-                                    Image(systemName: "gearshape")
-                                        .font(.system(size: 24))
-                                        .foregroundStyle(.primary)
+                                    Image(systemName: "gearshape.fill")
+                                        .font(.system(size: 20))
                                         .frame(width: 44, height: 44)
-                                        .contentShape(Rectangle())
                                 }
+                                .buttonStyle(ProfileSettingsButtonStyle())
                             }
                         }
                         .padding(.horizontal, 16)
@@ -191,6 +190,16 @@ private struct ProfileTabScaleButtonStyle: ButtonStyle {
             .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
             .opacity(configuration.isPressed ? 0.8 : 1.0)
             .animation(.spring(response: 0.25, dampingFraction: 0.75), value: configuration.isPressed)
+    }
+}
+
+private struct ProfileSettingsButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(.primary)
+            .glassEffect(in: Circle())
+            .scaleEffect(configuration.isPressed ? 0.92 : 1.0)
+            .animation(.spring(response: 0.25, dampingFraction: 0.6), value: configuration.isPressed)
     }
 }
 
