@@ -241,7 +241,7 @@ private struct DownloadRowView: View {
         if let voice = item.translationName, !voice.isEmpty {
             parts.append(voice)
         }
-        return parts.isEmpty ? nil : parts.joined(separator: " • ")
+        return parts.isEmpty ? nil : parts.joined(separator: "\n")
     }
 
     private var radialState: RadialDownloadState {
