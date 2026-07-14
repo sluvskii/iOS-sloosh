@@ -7,6 +7,7 @@ import UIKit
 class HlsProxyServer {
     static let shared = HlsProxyServer()
     private var listener: NWListener?
+    private var isListenerAlive = false // надёжный флаг: false если .failed/.cancelled
     private let queue = DispatchQueue(label: "com.sloosh.ios.hlsproxy", attributes: .concurrent)
     private let stateLock = NSLock()
     private var headers: [String: String] = [:]
@@ -33,28 +34,37 @@ class HlsProxyServer {
     
     @objc func appWillEnterForeground() {
         let params: (headers: [String: String], voices: [String], subtitles: [PlaybackSubtitle], mediaId: String)? = stateLock.withLock {
-            if !self.mediaId.isEmpty && self.listener == nil {
+            // Перезапускаем если mediaId есть, но слушатель мёртв (nil или упавший)
+            if !self.mediaId.isEmpty && !self.isListenerAlive {
                 return (self.headers, self.voices, self.subtitles, self.mediaId)
             }
             return nil
         }
         
         if let p = params {
-            print("HlsProxyServer: restarting listener on foreground")
+            print("HlsProxyServer: restarting listener on foreground (was dead)")
+            // Очищаем мёртвый listener перед перезапуском
+            stateLock.withLock {
+                self.listener?.cancel()
+                self.listener = nil
+                self.isListenerAlive = false
+            }
             start(headers: p.headers, voices: p.voices, subtitles: p.subtitles, mediaId: p.mediaId)
         }
     }
     
     func start(headers: [String: String], voices: [String] = [], subtitles: [PlaybackSubtitle] = [], mediaId: String = "") {
-        let isRunning = stateLock.withLock {
+        let isAlreadyRunning = stateLock.withLock {
             self.headers = headers
             self.voices = voices
             self.subtitles = subtitles
             self.mediaId = mediaId
-            return listener != nil
+            // Блокируем повторный запуск если listener уже есть (пусть даже ещё не .ready)
+            // или уже .ready. Это предотвращает двойное создание на одном порту.
+            return self.isListenerAlive || self.listener != nil
         }
         
-        if isRunning { return }
+        if isAlreadyRunning { return }
         
         do {
             let parameters = NWParameters.tcp
@@ -66,18 +76,28 @@ class HlsProxyServer {
             newListener.stateUpdateHandler = { [weak self] state in
                 guard let self = self else { return }
                 switch state {
+                case .ready:
+                    print("HlsProxyServer listener ready")
+                    self.stateLock.withLock { self.isListenerAlive = true }
                 case .failed(let error):
                     print("HlsProxyServer listener failed: \(error)")
-                    self.stateLock.withLock { self.listener = nil }
+                    self.stateLock.withLock {
+                        self.listener = nil
+                        self.isListenerAlive = false
+                    }
                 case .cancelled:
                     print("HlsProxyServer listener cancelled")
-                    self.stateLock.withLock { self.listener = nil }
+                    self.stateLock.withLock {
+                        self.listener = nil
+                        self.isListenerAlive = false
+                    }
                 default: break
                 }
             }
             // Сохраняем listener ДО start(), чтобы stateUpdateHandler не увидел nil при немедленном сбое
             stateLock.withLock {
                 self.listener = newListener
+                self.isListenerAlive = false // станет true только когда state == .ready
             }
             newListener.start(queue: queue)
             
@@ -103,6 +123,7 @@ class HlsProxyServer {
         stateLock.withLock {
             listener?.cancel()
             listener = nil
+            isListenerAlive = false
             currentMasterUrl = nil
             self.voices = []
             self.subtitles = []
