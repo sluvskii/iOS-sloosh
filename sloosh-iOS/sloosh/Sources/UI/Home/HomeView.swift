@@ -368,7 +368,7 @@ private struct HomeCategoryTextTabs: View {
         if hasFilters {
             return Color.slooshAccent
         } else {
-            return (colorScheme == .dark ? .white : .black).opacity(0.8)
+            return (colorScheme == .dark ? Color.white : Color.black).opacity(0.8)
         }
     }
 
