@@ -47,23 +47,25 @@ struct HomeView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(spacing: 0) {
-                    ForEach(HomeCategory.allCases, id: \.self) { category in
-                        HomeCategoryContentView(
-                            viewModel: viewModel,
-                            category: category,
-                            navigationTransition: navigationTransition,
-                            isFilterCollapsed: $isFilterCollapsed
-                        )
-                        .containerRelativeFrame(.horizontal)
-                        .id(category)
+            GeometryReader { geo in
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(spacing: 0) {
+                        ForEach(HomeCategory.allCases, id: \.self) { category in
+                            HomeCategoryContentView(
+                                viewModel: viewModel,
+                                category: category,
+                                navigationTransition: navigationTransition,
+                                isFilterCollapsed: $isFilterCollapsed
+                            )
+                            .frame(width: geo.size.width, height: geo.size.height)
+                            .id(category)
+                        }
                     }
+                    .scrollTargetLayout()
                 }
-                .scrollTargetLayout()
+                .scrollTargetBehavior(.paging)
+                .scrollPosition(id: $scrollPosition)
             }
-            .scrollTargetBehavior(.paging)
-            .scrollPosition(id: $scrollPosition)
             .onChange(of: scrollPosition) { _, newValue in
                 if let newValue = newValue, newValue != viewModel.selectedCategory {
                     viewModel.selectedCategory = newValue
