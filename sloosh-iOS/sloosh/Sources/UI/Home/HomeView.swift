@@ -286,6 +286,7 @@ private struct HomeCategoryTextTabs: View {
     @Binding var selectedFilter: HomeFilter
     @Binding var isFilterCollapsed: Bool
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.colorScheme) private var colorScheme
     @ScaledMetric(relativeTo: .headline) private var titleSize: CGFloat = 28 // Увеличенный размер шрифта
 
     private let titleHeight: CGFloat = 36 // Увеличена высота под новый размер
@@ -306,17 +307,22 @@ private struct HomeCategoryTextTabs: View {
         _ text: String,
         size: CGFloat,
         weight: Font.Weight,
-        baseColor: Color,
         isSelected: Bool
     ) -> some View {
-        Text(text)
+        let isDark = colorScheme == .dark
+        
+        // Для активного таба непрозрачность выше (0.9/0.8), для неактивного ниже (0.45/0.4)
+        let opacity = isSelected ? (isDark ? 0.9 : 0.8) : (isDark ? 0.45 : 0.4)
+        let color = isDark ? Color.white.opacity(opacity) : Color.black.opacity(opacity)
+        
+        // Для темной темы .plusLighter (сложение), для светлой .plusDarker (умножение)
+        let blendMode: BlendMode = isDark ? .plusLighter : .plusDarker
+        
+        return Text(text)
             .font(.system(size: size, weight: weight))
             .tracking(-0.8)
-            .foregroundStyle(isSelected ? baseColor : .white.opacity(0.6))
-            // .plusLighter (Linear Dodge) идеально имитирует Vibrancy:
-            // Он складывает свой полупрозрачный белый цвет с цветом фона,
-            // заставляя текст светиться оттенками постеров под ним.
-            .blendMode(isSelected ? .normal : .plusLighter)
+            .foregroundStyle(color)
+            .blendMode(blendMode)
     }
 
     var body: some View {
@@ -340,7 +346,6 @@ private struct HomeCategoryTextTabs: View {
                                 category.segmentedTitle,
                                 size: titleSize,
                                 weight: isSelected ? .bold : .semibold,
-                                baseColor: isSelected ? .primary : .secondary,
                                 isSelected: isSelected
                             )
                             .lineLimit(1)
