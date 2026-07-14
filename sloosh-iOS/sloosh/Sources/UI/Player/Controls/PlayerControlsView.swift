@@ -108,7 +108,7 @@ struct PlayerTitleInfoView: View {
                     Image(uiImage: image)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
-                        .frame(height: 56, alignment: .leading)
+                        .frame(maxWidth: 320, maxHeight: 56, alignment: .leading)
                         .shadow(color: .black.opacity(0.4), radius: 4, x: 0, y: 2)
                 } fallback: {
                     fallbackTextView
