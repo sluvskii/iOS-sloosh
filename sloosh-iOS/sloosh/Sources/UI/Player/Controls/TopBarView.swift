@@ -2,7 +2,6 @@ import SwiftUI
 import AVKit
 import MediaPlayer
 
-// MARK: - Верхняя панель: [X | PiP | AirPlay]
 
 // MARK: - Верхняя панель: [X | PiP | AirPlay]          [━━● ─] 🔊
 
@@ -70,6 +69,4 @@ struct AirPlayButton: UIViewRepresentable {
         return v
     }
     func updateUIView(_ uiView: AVRoutePickerView, context: Context) {}
-}
-
 }
