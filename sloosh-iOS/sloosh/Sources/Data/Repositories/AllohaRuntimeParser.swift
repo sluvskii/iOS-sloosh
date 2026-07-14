@@ -2,6 +2,7 @@ import Foundation
 
 enum AllohaRuntimeParser {
     static func parsePayload(_ payload: String, baseURL: String, headers: [String: String]) -> [String: Any]? {
+        UserDefaults.standard.set(payload, forKey: "debug_payload")
         guard let url = URL(string: baseURL) else { return nil }
 
         if let stream = parseAllohaBNsiStream(payload, baseURL: url, headers: headers) {
