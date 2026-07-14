@@ -39,6 +39,16 @@ struct SearchFilterSheet: View {
                     .pickerStyle(.menu)
                 }
 
+                Section(header: Text("Страна")) {
+                    Picker("Страна", selection: $filters.countries) {
+                        Text("Любая").tag(String?.none)
+                        ForEach(["Россия", "США", "Великобритания", "Франция", "Южная Корея", "Япония", "СССР", "Германия", "Испания", "Италия", "Турция"], id: \.self) { country in
+                            Text(country).tag(String?.some(country))
+                        }
+                    }
+                    .pickerStyle(.menu)
+                }
+
                 Section(header: Text("Рейтинг"), footer: Text("Минимальный рейтинг фильма на Кинопоиске")) {
                     HStack {
                         Text(filters.ratingFrom == nil ? "Любой" : String(format: "%.1f", filters.ratingFrom!))
