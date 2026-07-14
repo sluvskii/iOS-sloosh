@@ -69,11 +69,6 @@ struct ProfileView: View {
                     VStack(spacing: 20) {
                         // В будущем здесь будет шапка профиля (аватарка, ник пользователя)
                         
-                        ProfileCategoryTextTabs(
-                            selectedCategory: $selectedCategory,
-                            categoryCounts: categoryCounts
-                        )
-                        
                         if favoritesRepo.favorites.isEmpty {
                             ProfileEmptyState(
                                 icon: "heart.slash",
@@ -114,23 +109,44 @@ struct ProfileView: View {
                     .frame(minHeight: geometry.size.height, alignment: .top)
                     .padding(.vertical, 16)
                 }
-                .navigationTitle("Профиль")
-                .navigationBarTitleDisplayMode(.inline)
+                .toolbar(.hidden, for: .navigationBar)
+                .safeAreaInset(edge: .top, spacing: 0) {
+                    VStack(spacing: 12) {
+                        // Верхний слой: Заголовок и Настройки
+                        HStack(alignment: .center) {
+                            Text("Профиль")
+                                .font(.system(size: 32, weight: .bold, design: .rounded))
+                                .foregroundStyle(.primary)
+                            
+                            Spacer()
+                            
+                            Button {
+                                showsSettings = true
+                            } label: {
+                                Image(systemName: "gearshape.fill")
+                                    .font(.system(size: 22, weight: .semibold))
+                                    .foregroundStyle(.primary)
+                                    .contentShape(Circle())
+                            }
+                        }
+                        .padding(.horizontal, 20)
+                        .padding(.top, 4)
+                        
+                        // Нижний слой: Текстовые табы
+                        ProfileCategoryTextTabs(
+                            selectedCategory: $selectedCategory,
+                            categoryCounts: categoryCounts
+                        )
+                        .padding(.bottom, 2)
+                    }
+                    .background(
+                        VariableBlurView(tintOpacity: 0.75)
+                            .padding(.bottom, -60) // Более длинный прогрессивный блюр для двух слоев
+                            .ignoresSafeArea(edges: .top)
+                    )
+                }
                 .navigationDestination(isPresented: $showsSettings) {
                     SettingsView()
-                }
-                .toolbar {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button {
-                            showsSettings = true
-                        } label: {
-                            Image(systemName: "gearshape.fill")
-                                .font(.system(size: 16, weight: .semibold))
-                                .frame(width: 30, height: 30)
-                                .contentShape(Circle())
-                        }
-                        .tint(.primary)
-                    }
                 }
             }
         }
