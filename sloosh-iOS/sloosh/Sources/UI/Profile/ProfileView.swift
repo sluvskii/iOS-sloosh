@@ -126,9 +126,10 @@ struct ProfileView: View {
                                 } label: {
                                     Image(systemName: "gearshape.fill")
                                         .font(.system(size: 20))
+                                        .foregroundStyle(.primary)
                                         .frame(width: 44, height: 44)
+                                        .glassEffect(.regular.interactive(), in: .circle)
                                 }
-                                .buttonStyle(ProfileSettingsButtonStyle())
                             }
                         }
                         .padding(.horizontal, 16)
@@ -193,15 +194,6 @@ private struct ProfileTabScaleButtonStyle: ButtonStyle {
     }
 }
 
-private struct ProfileSettingsButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .foregroundStyle(.primary)
-            .glassEffect(in: Circle())
-            .scaleEffect(configuration.isPressed ? 0.92 : 1.0)
-            .animation(.spring(response: 0.25, dampingFraction: 0.6), value: configuration.isPressed)
-    }
-}
 
 private struct ProfileCategoryTextTabs: View {
     @Binding var selectedCategory: FavoriteCategory
