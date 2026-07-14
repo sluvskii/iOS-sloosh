@@ -44,11 +44,20 @@ struct DownloadItem: Identifiable, Codable, Equatable {
     var sizeString: String {
         guard let downloaded = downloadedBytes, let total = totalBytes, total > 0 else { return "" }
         let totalMB = Double(total) * 1.5
+        
+        func formatMB(_ mb: Double) -> String {
+            if mb >= 1024 {
+                return String(format: "%.2f ГБ", mb / 1024.0)
+            } else {
+                return String(format: "%.0f МБ", mb)
+            }
+        }
+        
         if status == .completed {
-            return String(format: "%.0f МБ", totalMB)
+            return formatMB(totalMB)
         } else {
             let downloadedMB = Double(downloaded) * 1.5
-            return String(format: "%.0f / %.0f МБ", downloadedMB, totalMB)
+            return "\(formatMB(downloadedMB)) / \(formatMB(totalMB))"
         }
     }
 }
