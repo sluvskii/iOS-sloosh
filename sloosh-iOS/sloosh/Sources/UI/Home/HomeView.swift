@@ -124,7 +124,7 @@ struct HomeView: View {
                 Task { await viewModel.applyCurrentSelection(force: true) }
             }
             .sheet(isPresented: $viewModel.showFilters) {
-                SearchFilterSheet(filters: $viewModel.searchFilters)
+                SearchFilterSheet(filters: $viewModel.searchFilters, context: .home)
             }
             .sheet(item: $viewModel.directPlaybackMovie) { movie in
                 let kpId = movie.externalIds?.kp ?? Int(movie.id) ?? 0
