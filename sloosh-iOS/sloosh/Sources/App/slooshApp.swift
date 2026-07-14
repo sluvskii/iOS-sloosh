@@ -10,35 +10,23 @@ class AppDelegate: NSObject, UIApplicationDelegate {
 
     static func lockToLandscape() {
         AppDelegate.orientationLock = .landscape
-        if #available(iOS 16.0, *) {
-            let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
-            if let windowScene = scenes.first(where: { $0.activationState == .foregroundActive }) ?? scenes.first {
-                windowScene.requestGeometryUpdate(.iOS(interfaceOrientations: .landscape)) { _ in }
-                for window in windowScene.windows {
-                    window.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
-                }
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        if let windowScene = scenes.first(where: { $0.activationState == .foregroundActive }) ?? scenes.first {
+            windowScene.requestGeometryUpdate(.iOS(interfaceOrientations: .landscape)) { _ in }
+            for window in windowScene.windows {
+                window.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
             }
-            UIViewController.attemptRotationToDeviceOrientation()
-        } else {
-            UIDevice.current.setValue(UIInterfaceOrientation.landscapeRight.rawValue, forKey: "orientation")
-            UIViewController.attemptRotationToDeviceOrientation()
         }
     }
 
     static func lockToPortrait() {
         AppDelegate.orientationLock = .portrait
-        if #available(iOS 16.0, *) {
-            let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
-            if let windowScene = scenes.first(where: { $0.activationState == .foregroundActive }) ?? scenes.first {
-                windowScene.requestGeometryUpdate(.iOS(interfaceOrientations: .portrait)) { _ in }
-                for window in windowScene.windows {
-                    window.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
-                }
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        if let windowScene = scenes.first(where: { $0.activationState == .foregroundActive }) ?? scenes.first {
+            windowScene.requestGeometryUpdate(.iOS(interfaceOrientations: .portrait)) { _ in }
+            for window in windowScene.windows {
+                window.rootViewController?.setNeedsUpdateOfSupportedInterfaceOrientations()
             }
-            UIViewController.attemptRotationToDeviceOrientation()
-        } else {
-            UIDevice.current.setValue(UIInterfaceOrientation.portrait.rawValue, forKey: "orientation")
-            UIViewController.attemptRotationToDeviceOrientation()
         }
     }
     

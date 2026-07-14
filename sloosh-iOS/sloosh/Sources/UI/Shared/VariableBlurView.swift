@@ -158,7 +158,8 @@ public final class VariableBlurUIView: UIVisualEffectView {
         
         let backdropLayer = self.subviews.first?.layer
         backdropLayer?.filters = [variableBlur]
-        backdropLayer?.setValue(UIScreen.main.scale, forKey: "scale")
+        let scale = (UIApplication.shared.connectedScenes.first as? UIWindowScene)?.screen.scale ?? 3.0
+        backdropLayer?.setValue(scale, forKey: "scale")
     }
     
     private func createGradientImage() -> CGImage? {

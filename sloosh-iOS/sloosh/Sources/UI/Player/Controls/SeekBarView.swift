@@ -67,7 +67,8 @@ struct SeekBarView: View {
                         isInteracting = true
                     }
                     
-                    let trackWidth = UIScreen.main.bounds.width - 32 // Примерная ширина рабочей области
+                    let screen = (UIApplication.shared.connectedScenes.first as? UIWindowScene)?.screen
+                    let trackWidth = (screen?.bounds.width ?? 393) - 32 // Примерная ширина рабочей области
                     let startX = max(1, min(trackWidth - 1, scrubStartLocationX))
                     
                     let thumbX = (screenScrubInitialTime / vm.currentDuration) * Double(trackWidth)
