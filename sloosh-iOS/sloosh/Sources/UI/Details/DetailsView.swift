@@ -276,9 +276,9 @@ struct DetailsView: View {
             }) {
                 if let details = viewModel.details {
                     if let iframeUrl = selectedIframeUrl {
-                        PlayerView(iframeUrl: iframeUrl, fallbackTitle: details.title ?? details.name ?? "", kpId: playerKpId, season: playerSeason, episode: playerEpisode, selectedVoiceover: playerVoiceover, directStreamUrl: playerStreamUrl, voices: playerVoices, subtitles: playerSubtitles, initialQuality: playerQuality, seriesResult: playerSeriesResult)
+                        PlayerView(iframeUrl: iframeUrl, fallbackTitle: details.title ?? details.originalTitle ?? "", kpId: playerKpId, season: playerSeason, episode: playerEpisode, selectedVoiceover: playerVoiceover, directStreamUrl: playerStreamUrl, voices: playerVoices, subtitles: playerSubtitles, initialQuality: playerQuality, seriesResult: playerSeriesResult)
                     } else if let streamUrl = playerStreamUrl {
-                        PlayerView(iframeUrl: "", fallbackTitle: details.title ?? details.name ?? "", kpId: playerKpId, season: playerSeason, episode: playerEpisode, selectedVoiceover: playerVoiceover, directStreamUrl: streamUrl, voices: playerVoices, subtitles: playerSubtitles, initialQuality: playerQuality, seriesResult: playerSeriesResult)
+                        PlayerView(iframeUrl: "", fallbackTitle: details.title ?? details.originalTitle ?? "", kpId: playerKpId, season: playerSeason, episode: playerEpisode, selectedVoiceover: playerVoiceover, directStreamUrl: streamUrl, voices: playerVoices, subtitles: playerSubtitles, initialQuality: playerQuality, seriesResult: playerSeriesResult)
                     } else {
                         ZStack {
                             Color.black.ignoresSafeArea()
@@ -318,33 +318,38 @@ struct DetailsView: View {
         guard let kpId = details.ids?.kp else { return }
 
         sourceSheetSourceID = "playBtn"
-        sourceSheetTitle = details.title ?? details.name ?? ""
-        
-        let initialSeason = details.type == "tv" ? 1 : nil
-        let initialEpisode = details.type == "tv" ? 1 : nil
+        sourceSheetTitle = details.title ?? details.originalTitle ?? ""
+        sourceSheetDetent = .medium
+        sourceSheetMode = .play
+        viewModel.resetSourceSheet()
+        showSourceSheet = true
 
-        self.selectedMediaForSource = MediaItemForSource(
-            kpId: kpId,
-            details: details,
-            season: initialSeason,
-            episode: initialEpisode
-        )
+        sourceFetchTask?.cancel()
+        sourceFetchTask = Task {
+            await viewModel.fetchSources(kpId: kpId, title: sourceSheetTitle)
+        }
     }
 
     private func handleEpisodeSelection(details: MediaDetailsDto, season: Int, episode: Int) {
         guard let kpId = details.ids?.kp else { return }
-        self.selectedMediaForSource = MediaItemForSource(
-            kpId: kpId,
-            details: details,
-            season: season,
-            episode: episode
-        )
-        
+
         PlaybackProgressStore.shared.saveLastPlayed(
             kpId: kpId,
             season: season,
             episode: episode
         )
+
+        sourceSheetSourceID = "playBtn"
+        sourceSheetTitle = details.title ?? details.originalTitle ?? ""
+        sourceSheetDetent = .medium
+        sourceSheetMode = .play
+        viewModel.resetSourceSheet()
+        showSourceSheet = true
+
+        sourceFetchTask?.cancel()
+        sourceFetchTask = Task {
+            await viewModel.fetchSources(kpId: kpId, title: sourceSheetTitle)
+        }
     }
 
     private func playAndDownloadRow(for details: MediaDetailsDto) -> some View {
@@ -443,12 +448,12 @@ struct DetailsView: View {
     private func startDownloadWithPreferredTranslation(details: MediaDetailsDto, season: Int?, episode: Int?) {
         guard let kpId = details.ids?.kp else { return }
         
-        sourceSheetTitle = details.title ?? details.name ?? ""
+        sourceSheetTitle = details.title ?? details.originalTitle ?? ""
         sourceSheetDetent = .medium
         sourceSheetMode = .download
         viewModel.resetSourceSheet()
         showSourceSheet = true
-        
+
         sourceFetchTask?.cancel()
         sourceFetchTask = Task {
             await viewModel.fetchSources(kpId: kpId, title: sourceSheetTitle)
@@ -494,7 +499,7 @@ struct DetailsView: View {
                     VStack(alignment: .center, spacing: 12) {
                         RemoteLogoView(
                             url: URL(string: details.displayLogoUrl ?? ""),
-                            fallbackTitle: details.title ?? details.name ?? "Без названия",
+                            fallbackTitle: details.title ?? details.originalTitle ?? "Без названия",
                             alignment: .center
                         )
                         .padding(.bottom, 8)
@@ -574,7 +579,7 @@ struct DetailsView: View {
                             VStack(alignment: .center, spacing: 12) {
                                 RemoteLogoView(
                                     url: URL(string: details.displayLogoUrl ?? ""),
-                                    fallbackTitle: details.title ?? details.name ?? "Без названия",
+                                    fallbackTitle: details.title ?? details.originalTitle ?? "Без названия",
                                     alignment: .center
                                 )
                                 .padding(.bottom, 8)
@@ -1211,7 +1216,7 @@ struct EpisodeDetailsSheet: View {
     
     private func startDownload(kpId: Int, details: MediaDetailsDto) {
         Task {
-            let title = details.title ?? details.name ?? ""
+            let title = details.title ?? details.originalTitle ?? ""
             await viewModel.fetchSources(kpId: kpId, title: title)
             guard let result = viewModel.sourceResultWrapper?.allohaResult else { return }
             
@@ -1829,15 +1834,14 @@ class DetailsViewModel: ObservableObject {
         if isFavorite {
             FavoritesRepository.shared.removeFromFavorites(mediaId: mediaId, mediaType: mediaType)
         } else {
-            let year = details.releaseDate.map { String($0.prefix(4)) }
             FavoritesRepository.shared.addToFavorites(
                 mediaId: mediaId,
                 mediaType: mediaType,
-                title: details.title ?? details.name,
-                posterUrl: details.posterUrl ?? details.backdropUrl,
-                rating: details.rating,
-                year: year,
-                genres: details.genres
+                title: details.title ?? details.originalTitle,
+                posterUrl: details.poster ?? details.backdrop,
+                rating: details.ratings?.kp,
+                year: details.year?.description,
+                genres: details.genres?.compactMap { GenreDto(id: $0.lowercased(), name: $0) }
             )
         }
         isFavorite.toggle()

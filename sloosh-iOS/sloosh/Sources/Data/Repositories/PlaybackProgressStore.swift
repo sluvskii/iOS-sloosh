@@ -210,7 +210,7 @@ public final class PlaybackProgressStore {
         guard let kpId = details.ids?.kp else { return }
 
         let detailsId = details.id ?? String(kpId)
-        let title = details.title ?? details.name ?? details.originalTitle ?? "Без названия"
+        let title = details.title ?? details.originalTitle ?? "Без названия"
 
         saveMetadata(
             kpId: kpId,
