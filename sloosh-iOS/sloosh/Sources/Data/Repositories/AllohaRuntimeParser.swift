@@ -154,8 +154,8 @@ enum AllohaRuntimeParser {
             if let firstPart = parts.first {
                 let times = firstPart.components(separatedBy: "-")
                 if times.count == 2, let start = Double(times[0]), let end = Double(times[1]) {
-                    // Treat as intro if it starts within the first 5 minutes
-                    if start < 300 {
+                    // Считаем заставкой, если она начинается в первые 10 минут (для сериалов с долгим cold open)
+                    if start < 600 {
                         return ["start": start, "end": end]
                     }
                 }
