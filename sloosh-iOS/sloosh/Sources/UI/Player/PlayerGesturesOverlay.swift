@@ -35,9 +35,10 @@ struct PlayerGesturesModifier: ViewModifier {
                                 if !isDragging {
                                     isDragging = true
                                     onInteractionBegan?()
-                                    initialBrightness = UIScreen.main.brightness
+                                    let screen = (UIApplication.shared.connectedScenes.first as? UIWindowScene)?.screen
+                                    initialBrightness = screen?.brightness ?? 0.5
                                     initialVolume = volumeManager.currentVolume
-                                    draggingSide = value.startLocation.x > UIScreen.main.bounds.width / 2 ? .right : .left
+                                    draggingSide = value.startLocation.x > (screen?.bounds.width ?? 393) / 2 ? .right : .left
                                 }
                                 handleDrag(value: value, height: geo.size.height)
                             }
@@ -107,7 +108,7 @@ struct PlayerGesturesModifier: ViewModifier {
         } else {
             // Яркость
             let newBrightness = max(0.0, min(1.0, initialBrightness + delta))
-            UIScreen.main.brightness = newBrightness
+            (UIApplication.shared.connectedScenes.first as? UIWindowScene)?.screen.brightness = newBrightness
             
             indicatorIcon = newBrightness < 0.3 ? "sun.min.fill" : "sun.max.fill"
             indicatorValue = Double(newBrightness)
