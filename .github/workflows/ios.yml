@@ -122,7 +122,7 @@ jobs:
                 "versionDescription": "Development Build #${{ github.run_number }}\n\nAuto-generated IPA build from the latest commit.",
                 "downloadURL": "https://github.com/${{ github.repository }}/releases/download/build-${{ github.run_number }}/sloosh.ipa",
                 "localizedDescription": "sloosh premium streaming",
-                "iconURL": "https://raw.githubusercontent.com/${{ github.repository }}/main/sloosh-iOS/sloosh/Resources/Assets.xcassets/AppIcon.appiconset/dark.png",
+                "iconURL": "https://raw.githubusercontent.com/${{ github.repository }}/main/sloosh-iOS/sloosh/Resources/Assets.xcassets/AppIcon.appiconset/light.png",
                 "tintColor": "000000",
                 "size": $SIZE,
                 "permissions": {
