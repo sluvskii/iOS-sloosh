@@ -391,7 +391,7 @@ enum AppTheme: String, CaseIterable, Identifiable {
     }
 }
 
-struct SearchFilters: Equatable {
+struct SearchFilters: Equatable, Hashable {
     var type: String?
     var order: String?
     var ratingFrom: Double?

@@ -75,9 +75,12 @@ class MoviesApi {
     
     func searchMovies(query: String, page: Int = 1, filters: SearchFilters? = nil) async throws -> ApiEnvelope<MediaResponse> {
         var queryItems = [
-            URLQueryItem(name: "query", value: query),
             URLQueryItem(name: "page", value: String(page))
         ]
+        
+        if !query.trimmingCharacters(in: .whitespaces).isEmpty {
+            queryItems.append(URLQueryItem(name: "query", value: query))
+        }
         
         if let filters = filters {
             if let type = filters.type { queryItems.append(URLQueryItem(name: "type", value: type)) }
