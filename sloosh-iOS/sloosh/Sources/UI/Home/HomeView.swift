@@ -433,21 +433,11 @@ private struct HomeEmptyState: View {
     let filter: HomeFilter
 
     var body: some View {
-        VStack(spacing: 16) {
-            Image(systemName: "film.stack")
-                .font(.system(size: 44))
-                .foregroundColor(.secondary)
-
-            Text("Ничего не найдено")
-                .font(.system(size: 22, weight: .bold))
-
-            Text("Попробуйте выбрать другую вкладку или сменить фильтрацию с `\(filter.title)` на другой режим.")
-                .font(.system(size: 15, weight: .medium))
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-        }
-        .padding(24)
-        .glassEffect(in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+        ContentUnavailableView(
+            "Ничего не найдено",
+            systemImage: "film.stack",
+            description: Text("Попробуйте выбрать другую вкладку или сменить фильтрацию с `\(filter.title)` на другой режим.")
+        )
     }
 }
 
