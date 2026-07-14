@@ -10,7 +10,13 @@ struct SettingsView: View {
     @AppStorage("appTheme") private var appTheme: AppTheme = .system
     @State private var tabBarShowsLabelsDraft = false
     @State private var applyTabBarLabelsTask: Task<Void, Never>?
+    @State private var scrollOffset: CGFloat = 0
     @Environment(\.dismiss) private var dismiss
+    
+    private var blurOpacity: Double {
+        let progress = max(0, scrollOffset) / 30.0
+        return min(1.0, Double(progress))
+    }
     
     var body: some View {
         List {
@@ -161,7 +167,8 @@ struct SettingsView: View {
                 }
             }
         }
-        .padding(.top, -24)
+        .environment(\.defaultMinListHeaderHeight, .leastNonzeroMagnitude)
+        .padding(.top, -20)
         .toolbar(.hidden, for: .navigationBar)
         .safeAreaInset(edge: .top, spacing: 0) {
             ZStack {
@@ -185,12 +192,18 @@ struct SettingsView: View {
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 8)
             .background(
                 VariableBlurView(tintOpacity: 0.75)
-                    .padding(.bottom, -20)
+                    .padding(.bottom, -60)
                     .ignoresSafeArea(edges: .top)
+                    .opacity(blurOpacity)
+                    .animation(.easeInOut(duration: 0.2), value: blurOpacity)
             )
+        }
+        .onScrollGeometryChange(for: CGFloat.self) { geometry in
+            geometry.contentOffset.y + geometry.contentInsets.top
+        } action: { _, newOffset in
+            scrollOffset = newOffset
         }
         .scrollEdgeEffectStyle(.soft, for: .all)
         .onAppear {
