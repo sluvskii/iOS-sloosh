@@ -1016,7 +1016,7 @@ class PlayerViewModel: ObservableObject {
 
         let savedPosition = PlaybackProgressStore.shared.load(mediaId: mediaId)
         if savedPosition > 0 {
-            player.seek(to: CMTime(seconds: savedPosition, preferredTimescale: 600))
+            player.seek(to: CMTime(seconds: savedPosition, preferredTimescale: 600), toleranceBefore: .positiveInfinity, toleranceAfter: .positiveInfinity)
             currentTime = savedPosition
         }
 
