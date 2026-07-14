@@ -93,7 +93,9 @@ struct HomeView: View {
                 HomeCategoryTextTabs(
                     selectedCategory: $viewModel.selectedCategory,
                     selectedFilter: $viewModel.selectedFilter,
-                    isFilterCollapsed: $isFilterCollapsed
+                    isFilterCollapsed: $isFilterCollapsed,
+                    showFilters: $viewModel.showFilters,
+                    hasFilters: !viewModel.searchFilters.isEmpty
                 )
                 .padding(.top, 4)
                 .padding(.bottom, 2) // Уменьшенный отступ до контента
@@ -118,6 +120,12 @@ struct HomeView: View {
             .onChange(of: viewModel.selectedFilter) { _, _ in
                 isFilterCollapsed = false
                 Task { await viewModel.applyCurrentSelection() }
+            }
+            .onChange(of: viewModel.searchFilters) { _, _ in
+                Task { await viewModel.applyCurrentSelection(force: true) }
+            }
+            .sheet(isPresented: $viewModel.showFilters) {
+                SearchFilterSheet(filters: $viewModel.searchFilters)
             }
             .sheet(item: $viewModel.directPlaybackMovie) { movie in
                 let kpId = movie.externalIds?.kp ?? Int(movie.id) ?? 0
@@ -172,7 +180,7 @@ struct HomeCategoryContentView: View {
     }
 
     var body: some View {
-        let key = HomeCacheKey(category: category, filter: viewModel.selectedFilter)
+        let key = HomeCacheKey(category: category, filter: viewModel.selectedFilter, searchFilters: viewModel.searchFilters)
         let items = viewModel.cachedItems[key]
         let isLoading = viewModel.isLoading[key] ?? false
         let isLoadingMore = viewModel.isLoadingMore[key] ?? false
@@ -314,6 +322,8 @@ private struct HomeCategoryTextTabs: View {
     @Binding var selectedCategory: HomeCategory
     @Binding var selectedFilter: HomeFilter
     @Binding var isFilterCollapsed: Bool
+    @Binding var showFilters: Bool
+    var hasFilters: Bool
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.colorScheme) private var colorScheme
     @ScaledMetric(relativeTo: .headline) private var titleSize: CGFloat = 28 // Увеличенный размер шрифта
@@ -408,6 +418,16 @@ private struct HomeCategoryTextTabs: View {
                             }
                         }
                     }
+                    
+                    Button {
+                        showFilters = true
+                    } label: {
+                        Image(systemName: hasFilters ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
+                            .font(.system(size: 24, weight: .medium))
+                            .foregroundColor(hasFilters ? Color.slooshAccent : (colorScheme == .dark ? .white : .black).opacity(0.8))
+                            .frame(height: titleHeight, alignment: .center)
+                    }
+                    .padding(.trailing, edgeContentInset)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .scrollTargetLayout()
@@ -700,12 +720,15 @@ struct MoviePosterCardPlaceholder: View {
 struct HomeCacheKey: Hashable {
     let category: HomeCategory
     let filter: HomeFilter
+    let searchFilters: SearchFilters
 }
 
 @MainActor
 class HomeViewModel: ObservableObject {
     @Published var selectedCategory: HomeCategory = .all
     @Published var selectedFilter: HomeFilter = .popular
+    @Published var searchFilters = SearchFilters()
+    @Published var showFilters = false
     
     @Published var cachedItems: [HomeCacheKey: [MediaDto]] = [:]
     @Published var isLoading: [HomeCacheKey: Bool] = [:]
@@ -719,7 +742,7 @@ class HomeViewModel: ObservableObject {
     private var hasPerformedInitialLoad = false
 
     func applyCurrentSelection(force: Bool = false) async {
-        let key = HomeCacheKey(category: selectedCategory, filter: selectedFilter)
+        let key = HomeCacheKey(category: selectedCategory, filter: selectedFilter, searchFilters: searchFilters)
 
         if force {
             cachedItems[key] = nil
@@ -736,7 +759,7 @@ class HomeViewModel: ObservableObject {
 
     func loadData(for category: HomeCategory? = nil) async {
         let cat = category ?? selectedCategory
-        let key = HomeCacheKey(category: cat, filter: selectedFilter)
+        let key = HomeCacheKey(category: cat, filter: selectedFilter, searchFilters: searchFilters)
 
         let currentCanLoadMore = cachedCanLoadMore[key] ?? true
         guard currentCanLoadMore else { return }
@@ -790,26 +813,25 @@ class HomeViewModel: ObservableObject {
     }
 
     private func fetchPage(_ page: Int, category: HomeCategory, filter: HomeFilter) async throws -> [MediaDto] {
-        let baseItems: [MediaDto]
-
-        switch filter {
-        case .popular:
-            baseItems = try await MoviesRepository.shared.getPopularMovies(page: page)
-        case .topRated:
+        var mergedFilters = searchFilters
+        
+        if mergedFilters.order == nil {
+            mergedFilters.order = filter == .popular ? "NUM_VOTE" : "RATING"
+        }
+        
+        if mergedFilters.type == nil {
             switch category {
+            case .movies:
+                mergedFilters.type = "FILM"
             case .tvShows:
-                baseItems = try await MoviesRepository.shared.getTopTv(page: page)
-            case .movies, .cartoons:
-                baseItems = try await MoviesRepository.shared.getTopMovies(page: page)
-            case .all:
-                async let topMovies = MoviesRepository.shared.getTopMovies(page: page)
-                async let topTv = MoviesRepository.shared.getTopTv(page: page)
-                baseItems = try await (topMovies + topTv)
-                    .sorted { ($0.rating ?? 0) > ($1.rating ?? 0) }
+                mergedFilters.type = "TV_SERIES"
+            case .cartoons, .all:
+                break
             }
         }
-
-        return baseItems
+        
+        let response = try await MoviesRepository.shared.searchMoviesResponse(query: "", page: page, filters: mergedFilters)
+        return response.results ?? []
     }
 
     private func filterValidItems(_ items: [MediaDto]) -> [MediaDto] {
