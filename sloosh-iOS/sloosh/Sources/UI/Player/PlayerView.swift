@@ -496,8 +496,7 @@ class PlayerViewModel: ObservableObject {
         saveCurrentProgress()
         clearNowPlaying()
 
-        bufferingTask?.cancel()
-        bufferingTask = nil
+
         resolveTask?.cancel()
         resolveTask = nil
         resolver?.cancel()
