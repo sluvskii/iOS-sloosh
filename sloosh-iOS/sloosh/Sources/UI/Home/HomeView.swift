@@ -162,7 +162,8 @@ struct HomeCategoryContentView: View {
                             MoviePosterCardPlaceholder()
                         }
                     }
-                    .padding(padding)
+                    .padding(.horizontal, padding)
+                    .padding(.bottom, padding)
                 } else if let items = items, items.isEmpty {
                     HomeEmptyState(
                         category: category,
@@ -200,7 +201,8 @@ struct HomeCategoryContentView: View {
                             }
                         }
                     }
-                    .padding(padding)
+                    .padding(.horizontal, padding)
+                    .padding(.bottom, padding)
                 }
             }
             .onScrollGeometryChange(for: CGFloat.self) { geometry in
@@ -287,7 +289,7 @@ private struct HomeCategoryTextTabs: View {
     private let titleHeight: CGFloat = 36 // Увеличена высота под новый размер
 
     private var tabSpacing: CGFloat {
-        horizontalSizeClass == .regular ? 28 : 22
+        horizontalSizeClass == .regular ? 20 : 16
     }
 
     private var edgeContentInset: CGFloat {
@@ -306,6 +308,7 @@ private struct HomeCategoryTextTabs: View {
     ) -> some View {
         return Text(text)
             .font(.system(size: size, weight: weight))
+            .tracking(-0.8)
             .foregroundStyle(baseColor)
     }
 
