@@ -78,9 +78,9 @@ struct HomeView: View {
                 )
                 .padding(.top, 4)
                 .padding(.bottom, 2) // Уменьшенный отступ до контента
-                // Уменьшен tintOpacity, чтобы через блюр пробивались цвета постеров.
-                // Это необходимо, чтобы наш Vibrant-текст мог их впитывать!
-                .background(VariableBlurView(tintOpacity: 0.75).ignoresSafeArea(edges: .top))
+                // Снижаем tintOpacity до 0.45, чтобы фон оставался очень цветным.
+                // Только так текст сможет физически "впитывать" цвета постеров!
+                .background(VariableBlurView(tintOpacity: 0.45).ignoresSafeArea(edges: .top))
             }
             .task {
                 await viewModel.applyCurrentSelection()
@@ -311,8 +311,8 @@ private struct HomeCategoryTextTabs: View {
     ) -> some View {
         let isDark = colorScheme == .dark
         
-        // Для активного таба 0.9/0.8, для неактивного 0.45/0.35
-        let opacity = isSelected ? (isDark ? 0.9 : 0.8) : (isDark ? 0.45 : 0.35)
+        // Для активного таба 0.9/0.9, для неактивного 0.45/0.55
+        let opacity = isSelected ? (isDark ? 0.9 : 0.9) : (isDark ? 0.45 : 0.55)
         let color = isDark ? Color.white.opacity(opacity) : Color.black.opacity(opacity)
         
         // Для темной темы .plusLighter (сложение с белым), 
