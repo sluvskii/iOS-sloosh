@@ -238,10 +238,10 @@ private struct MultiSeekFeedbackView: View {
                         ZStack {
                             // Плавный прогрессивный блюр с градиентом
                             VariableBlurView(
-                                maxBlurRadius: 16,
+                                maxBlurRadius: 6,
                                 direction: s == .left ? .blurredLeadingClearTrailing : .blurredTrailingClearLeading,
                                 tintColor: .black,
-                                tintOpacity: 0.5
+                                tintOpacity: 0.35
                             )
                             .transition(.opacity)
                             
