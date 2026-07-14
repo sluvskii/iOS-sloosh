@@ -47,7 +47,7 @@ struct HomeView: View {
     var body: some View {
         NavigationStack {
             ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(spacing: 0) {
+                HStack(spacing: 0) {
                     ForEach(HomeCategory.allCases, id: \.self) { category in
                         HomeCategoryContentView(
                             viewModel: viewModel,
