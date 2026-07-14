@@ -17,13 +17,19 @@ enum AllohaRuntimeParser {
         }
 
         if let fallback = firstPreferredStreamURL(in: payload, baseURL: url) {
+            var introRange: [String: Any]? = nil
+            if let data = payload.data(using: .utf8),
+               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                introRange = extractIntro(from: object)
+            }
             return [
                 "videoURL": fallback.absoluteString,
                 "audioTracks": [],
                 "audioVariants": [],
                 "subtitles": subtitleTracks(in: payload, baseURL: url),
                 "qualityVariants": [],
-                "httpHeaders": headers
+                "httpHeaders": headers,
+                "introRange": introRange ?? NSNull()
             ]
         }
 
