@@ -24,11 +24,17 @@ struct ProfileView: View {
     @SceneStorage("profileShowsSettings") private var showsSettings = false
     @Namespace private var navigationTransition
     @AppStorage("cardDensity") private var cardDensity: CardDensity = .regular
+    @State private var scrollOffset: CGFloat = 0
     
     private var columns: [GridItem] {
         let spacing: CGFloat = cardDensity == .compact ? 8 : 16
         let minWidth: CGFloat = cardDensity == .compact ? 95 : 105
         return [GridItem(.adaptive(minimum: minWidth), spacing: spacing)]
+    }
+
+    private var blurOpacity: Double {
+        let progress = max(0, scrollOffset) / 30.0
+        return min(1.0, Double(progress))
     }
 
     private func favorites(for category: FavoriteCategory) -> [FavoriteDto] {
@@ -109,13 +115,18 @@ struct ProfileView: View {
                     .frame(minHeight: geometry.size.height, alignment: .top)
                     .padding(.vertical, 16)
                 }
+                .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                    geometry.contentOffset.y + geometry.contentInsets.top
+                } action: { _, newOffset in
+                    scrollOffset = newOffset
+                }
                 .toolbar(.hidden, for: .navigationBar)
                 .safeAreaInset(edge: .top, spacing: 0) {
-                    VStack(spacing: 12) {
+                    VStack(spacing: 8) {
                         // Верхний слой: Заголовок и Настройки
                         ZStack {
                             Text("Профиль")
-                                .font(.system(size: 20, weight: .semibold))
+                                .font(.system(size: 18, weight: .semibold))
                                 .foregroundStyle(.primary)
                             
                             HStack {
@@ -133,7 +144,6 @@ struct ProfileView: View {
                             }
                         }
                         .padding(.horizontal, 16)
-                        .padding(.top, 4)
                         
                         // Нижний слой: Текстовые табы
                         ProfileCategoryTextTabs(
@@ -146,6 +156,8 @@ struct ProfileView: View {
                         VariableBlurView(tintOpacity: 0.75)
                             .padding(.bottom, -60) // Более длинный прогрессивный блюр для двух слоев
                             .ignoresSafeArea(edges: .top)
+                            .opacity(blurOpacity)
+                            .animation(.easeInOut(duration: 0.2), value: blurOpacity)
                     )
                 }
                 .navigationDestination(isPresented: $showsSettings) {
