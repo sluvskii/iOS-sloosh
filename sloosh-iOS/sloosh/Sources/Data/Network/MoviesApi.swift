@@ -83,7 +83,13 @@ class MoviesApi {
         }
         
         if let filters = filters {
-            if let type = filters.type { queryItems.append(URLQueryItem(name: "type", value: type)) }
+            if let type = filters.type {
+                if type == "CARTOON" {
+                    queryItems.append(URLQueryItem(name: "genres", value: "мультфильм,аниме"))
+                } else {
+                    queryItems.append(URLQueryItem(name: "type", value: type))
+                }
+            }
             if let order = filters.order { queryItems.append(URLQueryItem(name: "order", value: order)) }
             if let rFrom = filters.ratingFrom { queryItems.append(URLQueryItem(name: "ratingFrom", value: String(rFrom))) }
             if let rTo = filters.ratingTo { queryItems.append(URLQueryItem(name: "ratingTo", value: String(rTo))) }
