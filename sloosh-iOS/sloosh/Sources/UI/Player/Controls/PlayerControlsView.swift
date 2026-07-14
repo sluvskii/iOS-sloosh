@@ -11,6 +11,7 @@ struct PlayerControlsView: View {
     @State private var showSpeedSheet = false
     @State private var showSubtitleSheet = false
     @Binding var isInteracting: Bool
+    @Binding var isPopoverOpen: Bool
     var showControls: Bool
     var isSeeking: Bool
 
@@ -74,10 +75,10 @@ struct PlayerControlsView: View {
                 .ignoresSafeArea()
         }
         // Sheets are now popovers on BottomRowView
-        .onChange(of: showVoiceoverSheet) { _, _ in isInteracting = showVoiceoverSheet || showQualitySheet || showSpeedSheet || showSubtitleSheet }
-        .onChange(of: showQualitySheet)   { _, _ in isInteracting = showVoiceoverSheet || showQualitySheet || showSpeedSheet || showSubtitleSheet }
-        .onChange(of: showSpeedSheet)     { _, _ in isInteracting = showVoiceoverSheet || showQualitySheet || showSpeedSheet || showSubtitleSheet }
-        .onChange(of: showSubtitleSheet)  { _, _ in isInteracting = showVoiceoverSheet || showQualitySheet || showSpeedSheet || showSubtitleSheet }
+        .onChange(of: showVoiceoverSheet) { _, _ in isPopoverOpen = showVoiceoverSheet || showQualitySheet || showSpeedSheet || showSubtitleSheet }
+        .onChange(of: showQualitySheet)   { _, _ in isPopoverOpen = showVoiceoverSheet || showQualitySheet || showSpeedSheet || showSubtitleSheet }
+        .onChange(of: showSpeedSheet)     { _, _ in isPopoverOpen = showVoiceoverSheet || showQualitySheet || showSpeedSheet || showSubtitleSheet }
+        .onChange(of: showSubtitleSheet)  { _, _ in isPopoverOpen = showVoiceoverSheet || showQualitySheet || showSpeedSheet || showSubtitleSheet }
     }
 }
 
