@@ -141,7 +141,10 @@ struct PlayerContainerView: View {
                 self.multiSeekSeconds = totalSeconds
             }
             
-            resetHideTimer()
+            if showControls {
+                scheduleAutoHide()
+            }
+            
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             
             tapTask = Task { @MainActor in
