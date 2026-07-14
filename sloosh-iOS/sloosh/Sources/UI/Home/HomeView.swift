@@ -700,6 +700,17 @@ struct HomeCacheKey: Hashable {
     let searchFilters: SearchFilters
 }
 
+enum FeedPhase: Equatable {
+    case original
+    case searchFallback
+}
+
+struct InfiniteCursor: Equatable {
+    var phase: FeedPhase
+    var page: Int
+    var year: Int
+}
+
 @MainActor
 class HomeViewModel: ObservableObject {
     @Published var selectedCategory: HomeCategory = .all
@@ -714,7 +725,7 @@ class HomeViewModel: ObservableObject {
     @Published var directPlaybackMovie: MediaDto? = nil
     @Published var playerConfig: PlayerConfig? = nil
 
-    private var cachedPages: [HomeCacheKey: Int] = [:]
+    private var cachedCursors: [HomeCacheKey: InfiniteCursor] = [:]
     private var cachedCanLoadMore: [HomeCacheKey: Bool] = [:]
     private var hasPerformedInitialLoad = false
 
@@ -723,7 +734,7 @@ class HomeViewModel: ObservableObject {
 
         if force {
             cachedItems[key] = nil
-            cachedPages[key] = 1
+            cachedCursors[key] = nil
             cachedCanLoadMore[key] = true
         } else if !hasPerformedInitialLoad {
             hasPerformedInitialLoad = true
@@ -732,6 +743,34 @@ class HomeViewModel: ObservableObject {
         }
 
         await loadData(for: selectedCategory)
+    }
+    
+    private func initialCursor(for key: HomeCacheKey) -> InfiniteCursor {
+        let currentYear = Calendar.current.component(.year, from: Date())
+        if key.searchFilters.isEmpty {
+            return InfiniteCursor(phase: .original, page: 1, year: currentYear)
+        } else {
+            let startYear = key.searchFilters.yearTo ?? currentYear
+            return InfiniteCursor(phase: .searchFallback, page: 1, year: startYear)
+        }
+    }
+
+    private func advanceCursor(_ cursor: inout InfiniteCursor, key: HomeCacheKey) -> Bool {
+        if cursor.phase == .original {
+            cursor.phase = .searchFallback
+            cursor.page = 1
+            cursor.year = Calendar.current.component(.year, from: Date())
+            return true
+        } else {
+            let nextYear = cursor.year - 1
+            let minYear = key.searchFilters.yearFrom ?? 1950
+            if nextYear < minYear {
+                return false
+            }
+            cursor.year = nextYear
+            cursor.page = 1
+            return true
+        }
     }
 
     func loadData(for category: HomeCategory? = nil) async {
@@ -759,21 +798,24 @@ class HomeViewModel: ObservableObject {
 
         do {
             var newItems: [MediaDto] = []
-            var pagesFetched = 0
-            var page = cachedPages[key] ?? 1
+            var cursor = cachedCursors[key] ?? initialCursor(for: key)
             var canLoad = currentCanLoadMore
 
             while newItems.isEmpty && canLoad {
-                let fetched = try await fetchPage(page, category: cat, filter: selectedFilter)
+                let fetched = try await fetchPage(cursor, category: cat, filter: selectedFilter)
+                
                 if fetched.isEmpty {
-                    canLoad = false
-                    break
+                    if !advanceCursor(&cursor, key: key) {
+                        canLoad = false
+                        break
+                    }
+                    continue
                 }
 
                 let validFetched = filterValidItems(fetched)
                 newItems.append(contentsOf: filterItemsForSelectedCategory(validFetched, category: cat))
 
-                page += 1
+                cursor.page += 1
             }
 
             let currentItems = cachedItems[key] ?? []
@@ -781,44 +823,47 @@ class HomeViewModel: ObservableObject {
             let uniqueNewItems = newItems.filter { !existingIds.contains($0.id) }
 
             cachedItems[key] = currentItems + uniqueNewItems
-            cachedPages[key] = page
+            cachedCursors[key] = cursor
             cachedCanLoadMore[key] = canLoad
         } catch {
             print("Failed to load category data: \(error)")
         }
     }
 
-    private func fetchPage(_ page: Int, category: HomeCategory, filter: HomeFilter) async throws -> [MediaDto] {
-        if searchFilters.isEmpty {
+    private func fetchPage(_ cursor: InfiniteCursor, category: HomeCategory, filter: HomeFilter) async throws -> [MediaDto] {
+        if cursor.phase == .original {
             switch filter {
             case .popular:
-                return try await MoviesRepository.shared.getPopularMovies(page: page)
+                return try await MoviesRepository.shared.getPopularMovies(page: cursor.page)
             case .topRated:
-                return try await MoviesRepository.shared.getTopMovies(page: page)
+                return try await MoviesRepository.shared.getTopMovies(page: cursor.page)
             }
-        }
-        
-        var mergedFilters = searchFilters
-        
-        if mergedFilters.order == nil {
-            mergedFilters.order = filter == .popular ? "NUM_VOTE" : "RATING"
-        }
-        
-        if mergedFilters.type == nil {
-            switch category {
-            case .movies:
-                mergedFilters.type = "FILM"
-            case .tvShows:
-                mergedFilters.type = "TV_SERIES"
-            case .cartoons:
-                mergedFilters.type = "CARTOON"
-            case .all:
-                break
+        } else {
+            var mergedFilters = searchFilters
+            
+            mergedFilters.yearFrom = cursor.year
+            mergedFilters.yearTo = cursor.year
+            
+            if mergedFilters.order == nil {
+                mergedFilters.order = filter == .popular ? "NUM_VOTE" : "RATING"
             }
+            
+            if mergedFilters.type == nil {
+                switch category {
+                case .movies:
+                    mergedFilters.type = "FILM"
+                case .tvShows:
+                    mergedFilters.type = "TV_SERIES"
+                case .cartoons:
+                    mergedFilters.type = "CARTOON"
+                case .all:
+                    break
+                }
+            }
+            
+            let response = try await MoviesRepository.shared.searchMoviesResponse(query: "", page: cursor.page, filters: mergedFilters)
+            return response.results ?? []
         }
-        
-        let response = try await MoviesRepository.shared.searchMoviesResponse(query: "", page: page, filters: mergedFilters)
-        return response.results ?? []
     }
 
     private func filterValidItems(_ items: [MediaDto]) -> [MediaDto] {
