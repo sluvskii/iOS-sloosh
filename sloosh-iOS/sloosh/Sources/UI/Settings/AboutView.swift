@@ -7,6 +7,14 @@ struct AboutView: View {
         return "Версия \(version) (\(build))"
     }
 
+    @State private var scrollOffset: CGFloat = 0
+    @Environment(\.dismiss) private var dismiss
+    
+    private var blurOpacity: Double {
+        let progress = max(0, scrollOffset) / 30.0
+        return min(1.0, Double(progress))
+    }
+
     var body: some View {
         List {
             // Секция заголовка с логотипом
@@ -70,7 +78,42 @@ struct AboutView: View {
                 }
             }
         }
-        .navigationTitle("О приложении")
-        .navigationBarTitleDisplayMode(.inline)
+        .environment(\.defaultMinListHeaderHeight, .leastNonzeroMagnitude)
+        .toolbar(.hidden, for: .navigationBar)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            ZStack {
+                Text("О приложении")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(.primary)
+                
+                HStack {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 20, weight: .medium))
+                            .foregroundStyle(.primary)
+                            .frame(width: 44, height: 44)
+                            .glassEffect(.regular.interactive(), in: .circle)
+                    }
+                    .tint(.primary)
+                    
+                    Spacer()
+                }
+            }
+            .padding(.horizontal, 16)
+            .background(
+                VariableBlurView(tintOpacity: 0.75)
+                    .padding(.bottom, -60)
+                    .ignoresSafeArea(edges: .top)
+                    .opacity(blurOpacity)
+                    .animation(.easeInOut(duration: 0.2), value: blurOpacity)
+            )
+        }
+        .onScrollGeometryChange(for: CGFloat.self) { geometry in
+            geometry.contentOffset.y + geometry.contentInsets.top
+        } action: { _, newOffset in
+            scrollOffset = newOffset
+        }
     }
 }
