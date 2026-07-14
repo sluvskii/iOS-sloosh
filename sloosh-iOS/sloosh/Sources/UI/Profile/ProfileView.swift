@@ -25,6 +25,8 @@ struct ProfileView: View {
     @Namespace private var navigationTransition
     @AppStorage("cardDensity") private var cardDensity: CardDensity = .regular
     @State private var scrollOffsets: [FavoriteCategory: CGFloat] = [:]
+    @State private var directPlaybackMovie: MediaDto?
+    @State private var playerConfig: PlayerConfig?
     
     private var columns: [GridItem] {
         let spacing: CGFloat = cardDensity == .compact ? 8 : 16
@@ -81,6 +83,7 @@ struct ProfileView: View {
                             navigationTransition: navigationTransition,
                             columns: columns,
                             cardDensity: cardDensity,
+                            directPlaybackMovie: $directPlaybackMovie,
                             scrollOffset: Binding(
                                 get: { scrollOffsets[category] ?? 0 },
                                 set: { scrollOffsets[category] = $0 }
@@ -144,6 +147,33 @@ struct ProfileView: View {
                 .navigationDestination(isPresented: $showsSettings) {
                     SettingsView()
                 }
+                .sheet(item: $directPlaybackMovie) { movie in
+                    let kpId = movie.externalIds?.kp ?? Int(movie.id) ?? 0
+                    HomeDirectPlayWrapper(
+                        kpId: kpId,
+                        title: movie.title ?? movie.name ?? movie.originalTitle ?? ""
+                    ) { config in
+                        directPlaybackMovie = nil
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                            playerConfig = config
+                        }
+                    }
+                }
+                .fullScreenCover(item: $playerConfig) { config in
+                    PlayerView(
+                        iframeUrl: config.iframeUrl,
+                        fallbackTitle: config.title,
+                        kpId: config.kpId,
+                        season: config.season,
+                        episode: config.episode,
+                        selectedVoiceover: config.voiceover,
+                        directStreamUrl: config.streamUrl,
+                        voices: config.voices,
+                        subtitles: config.subtitles,
+                        initialQuality: config.quality,
+                        seriesResult: config.seriesResult
+                    )
+                }
             }
         }
     }
@@ -155,6 +185,7 @@ struct ProfileCategoryContentView: View {
     let navigationTransition: Namespace.ID
     let columns: [GridItem]
     let cardDensity: CardDensity
+    @Binding var directPlaybackMovie: MediaDto?
     @Binding var scrollOffset: CGFloat
 
     var body: some View {
@@ -186,13 +217,26 @@ struct ProfileCategoryContentView: View {
                             let media = favorite.toMediaDto()
                             MovieDetailsNavigationLink(movie: media, navigationTransition: navigationTransition)
                             .contextMenu {
-                                Button(role: .destructive) {
-                                    if let mediaId = favorite.mediaId, let type = favorite.type {
-                                        favoritesRepo.removeFromFavorites(mediaId: mediaId, mediaType: type)
+                                Group {
+                                    Button {
+                                        directPlaybackMovie = media
+                                    } label: {
+                                        Label("Смотреть", systemImage: "play.fill")
                                     }
-                                } label: {
-                                    Label("Удалить", systemImage: "trash")
+                                    
+                                    NavigationLink(destination: DetailsView(movieId: media.id, navigationTransitionID: nil, navigationTransitionNamespace: nil)) {
+                                        Label("Подробнее", systemImage: "info.circle")
+                                    }
+                                    
+                                    Button(role: .destructive) {
+                                        if let mediaId = favorite.mediaId, let type = favorite.type {
+                                            favoritesRepo.removeFromFavorites(mediaId: mediaId, mediaType: type)
+                                        }
+                                    } label: {
+                                        Label("Удалить", systemImage: "trash")
+                                    }
                                 }
+                                .tint(nil)
                             }
                         }
                     }
