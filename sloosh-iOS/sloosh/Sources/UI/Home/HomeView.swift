@@ -78,9 +78,13 @@ struct HomeView: View {
                 )
                 .padding(.top, 4)
                 .padding(.bottom, 2) // Уменьшенный отступ до контента
-                // Снижаем tintOpacity до 0.45, чтобы фон оставался очень цветным.
-                // Только так текст сможет физически "впитывать" цвета постеров!
-                .background(VariableBlurView(tintOpacity: 0.45).ignoresSafeArea(edges: .top))
+                // Уменьшен tintOpacity, чтобы через блюр пробивались цвета постеров.
+                // Это необходимо, чтобы наш Vibrant-текст мог их впитывать!
+                .background(
+                    VariableBlurView(tintOpacity: 0.75)
+                        .padding(.bottom, -60) // Увеличиваем длину размытия вниз
+                        .ignoresSafeArea(edges: .top)
+                )
             }
             .task {
                 await viewModel.applyCurrentSelection()
@@ -311,20 +315,17 @@ private struct HomeCategoryTextTabs: View {
     ) -> some View {
         let isDark = colorScheme == .dark
         
-        // Для активного таба 0.9/0.9, для неактивного 0.45/0.55
-        let opacity = isSelected ? (isDark ? 0.9 : 0.9) : (isDark ? 0.45 : 0.55)
+        // Для активного таба непрозрачность выше (0.9/0.8), для неактивного ниже (0.45/0.4)
+        let opacity = isSelected ? (isDark ? 0.9 : 0.8) : (isDark ? 0.45 : 0.4)
         let color = isDark ? Color.white.opacity(opacity) : Color.black.opacity(opacity)
         
-        // Для темной темы .plusLighter (сложение с белым), 
-        // для светлой .multiply (умножение на черный/серый - дает отличную читаемость и впитывает цвет)
-        let blendMode: BlendMode = isDark ? .plusLighter : .multiply
+        // Для темной темы .plusLighter (сложение), для светлой .plusDarker (умножение)
+        let blendMode: BlendMode = isDark ? .plusLighter : .plusDarker
         
-        let textBase = Text(text)
+        return Text(text)
             .font(.system(size: size, weight: weight))
             .tracking(-0.8)
             .foregroundStyle(color)
-            
-        return textBase
             .blendMode(blendMode)
     }
 
