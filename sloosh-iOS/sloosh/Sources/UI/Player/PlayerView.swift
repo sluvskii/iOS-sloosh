@@ -527,7 +527,7 @@ class PlayerViewModel: ObservableObject {
         guard let player else { return }
         let time = CMTime(seconds: seconds, preferredTimescale: 600)
         isUserSeeking = true
-        player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
+        player.seek(to: time, toleranceBefore: .positiveInfinity, toleranceAfter: .positiveInfinity) { [weak self] _ in
             MainActor.assumeIsolated {
                 self?.isUserSeeking = false
             }
@@ -646,7 +646,7 @@ class PlayerViewModel: ObservableObject {
     }
 
     private func reloadPlayback(to sourceURL: URL, preferredPeakBitRate: Double?) {
-        let currentTime = player?.currentTime() ?? .zero
+        let savedTime = self.currentTime
         let wasPlaying = player?.timeControlStatus == .playing || player?.timeControlStatus == .waitingToPlayAtSpecifiedRate
 
         // Обновляем originalStreamURL если пришёл не прокси-URL
@@ -688,7 +688,7 @@ class PlayerViewModel: ObservableObject {
                     self.itemObservation?.invalidate()
                     self.itemObservation = nil
                     
-                    self.player?.seek(to: CMTime(seconds: currentTime.seconds, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero) { _ in
+                    self.player?.seek(to: CMTime(seconds: savedTime, preferredTimescale: 600), toleranceBefore: .positiveInfinity, toleranceAfter: .positiveInfinity) { _ in
                         if wasPlaying {
                             self.player?.play()
                         }
@@ -907,6 +907,7 @@ class PlayerViewModel: ObservableObject {
                         guard !Task.isCancelled else { return }
                         await MainActor.run {
                             guard self?.player?.timeControlStatus == .waitingToPlayAtSpecifiedRate else { return }
+                            guard self?.isUserSeeking == false else { return }
                             print("Player stuck buffering for 5.5s, reloading via originalStreamURL...")
                             // Используем originalStreamURL (не прокси-URL!) чтобы не проксировать прокси
                             if let url = self?.originalStreamURL {
@@ -1033,8 +1034,8 @@ class PlayerViewModel: ObservableObject {
                 if d.isFinite && !d.isNaN && d > 0 {
                     self.currentDuration = d
                 }
-                // Сохраняем прогресс каждые 5 секунд
-                if Int(t) % 5 == 0 {
+                // Сохраняем прогресс каждые 5 секунд (только если позиция > 1 секунды, чтобы избежать сброса в ноль)
+                if Int(t) % 5 == 0 && t > 1 {
                     let dur = self.currentDuration > 0 ? self.currentDuration : nil
                     PlaybackProgressStore.shared.save(
                         mediaId: mediaId,
