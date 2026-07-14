@@ -199,7 +199,7 @@ struct ProfileCategoryContentView: View {
                     .padding(.horizontal, padding)
                 }
             }
-            .padding(.vertical, 16)
+            .padding(.bottom, 16)
         }
         .onScrollGeometryChange(for: CGFloat.self) { geometry in
             geometry.contentOffset.y + geometry.contentInsets.top
