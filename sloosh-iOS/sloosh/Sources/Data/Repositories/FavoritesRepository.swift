@@ -84,17 +84,17 @@ class FavoritesRepository: ObservableObject {
                     continue
                 }
 
-                let extractedYear = details.releaseDate.map { String($0.prefix(4)) }
+                let extractedYear = details.year?.description
 
                 updatedFavorites[index] = FavoriteDto(
                     id: favorite.id,
                     mediaId: favorite.mediaId,
                     type: favorite.type,
-                    title: favorite.title ?? details.title ?? details.name,
-                    posterUrl: favorite.posterUrl ?? details.posterUrl ?? details.backdropUrl,
-                    rating: details.rating ?? favorite.rating,
+                    title: favorite.title ?? details.title ?? details.originalTitle,
+                    posterUrl: favorite.posterUrl ?? details.poster ?? details.backdrop,
+                    rating: details.ratings?.kp ?? favorite.rating,
                     year: extractedYear ?? favorite.year,
-                    genres: details.genres ?? favorite.genres
+                    genres: details.genres?.compactMap { GenreDto(id: $0.lowercased(), name: $0) } ?? favorite.genres
                 )
                 didChange = true
             } catch {
