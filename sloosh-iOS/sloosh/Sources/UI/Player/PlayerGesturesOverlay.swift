@@ -14,7 +14,9 @@ struct PlayerGesturesModifier: ViewModifier {
     @State private var initialVolume: Float = 0.0
     @State private var isDragging: Bool = false
     
-    private let volumeManager = VolumeManager.shared
+    @State private var hideTask: Task<Void, Never>?
+    
+    @ObservedObject private var volumeManager = VolumeManager.shared
     
     func body(content: Content) -> some View {
         GeometryReader { geo in
@@ -25,6 +27,7 @@ struct PlayerGesturesModifier: ViewModifier {
                     .simultaneousGesture(
                         DragGesture(minimumDistance: 15)
                             .onChanged { value in
+                                hideTask?.cancel()
                                 if !isDragging {
                                     isDragging = true
                                     onInteractionBegan?()
@@ -36,11 +39,33 @@ struct PlayerGesturesModifier: ViewModifier {
                             .onEnded { _ in
                                 isDragging = false
                                 onInteractionEnded?()
+                                hideTask?.cancel()
                                 withAnimation(.easeOut(duration: 0.3)) {
                                     showIndicator = false
                                 }
                             }
                     )
+                    .onReceive(volumeManager.$hardwareVolume) { newVolume in
+                        guard !isDragging else { return }
+                        
+                        indicatorIcon = newVolume == 0 ? "speaker.slash.fill" : (newVolume < 0.5 ? "speaker.wave.1.fill" : "speaker.wave.3.fill")
+                        indicatorValue = Double(newVolume)
+                        
+                        if !showIndicator {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                showIndicator = true
+                            }
+                        }
+                        
+                        hideTask?.cancel()
+                        hideTask = Task {
+                            try? await Task.sleep(nanoseconds: 2_000_000_000)
+                            guard !Task.isCancelled, !isDragging else { return }
+                            withAnimation(.easeOut(duration: 0.3)) {
+                                showIndicator = false
+                            }
+                        }
+                    }
                 
                 // Центральный индикатор
                 if showIndicator {
@@ -110,16 +135,22 @@ extension View {
     }
 }
 
-final class VolumeManager {
+import AVFoundation
+
+final class VolumeManager: NSObject, ObservableObject {
     static let shared = VolumeManager()
     
     private var volumeSlider: UISlider?
+    private var volumeObserver: NSKeyValueObservation?
+    
+    @Published var hardwareVolume: Float = 0.5
     
     var currentVolume: Float {
         return volumeSlider?.value ?? 0.5
     }
     
-    private init() {
+    private override init() {
+        super.init()
         let volumeView = MPVolumeView(frame: .zero)
         volumeView.showsRouteButton = false
         // Ищем системный слайдер внутри MPVolumeView
@@ -127,6 +158,14 @@ final class VolumeManager {
             if let slider = view as? UISlider {
                 self.volumeSlider = slider
                 break
+            }
+        }
+        
+        hardwareVolume = AVAudioSession.sharedInstance().outputVolume
+        volumeObserver = AVAudioSession.sharedInstance().observe(\.outputVolume, options: [.new]) { [weak self] session, change in
+            guard let self = self, let newVolume = change.newValue else { return }
+            DispatchQueue.main.async {
+                self.hardwareVolume = newVolume
             }
         }
     }
