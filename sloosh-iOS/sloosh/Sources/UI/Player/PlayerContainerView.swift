@@ -17,6 +17,7 @@ struct PlayerContainerView: View {
     @State private var consecutiveTaps: Int = 0
     @State private var activeTapSide: TapSide? = nil
     @State private var multiSeekSeconds: Int? = nil
+    @State private var initialSeekTime: Double = 0
 
     enum TapSide { case left, right }
 
@@ -117,6 +118,7 @@ struct PlayerContainerView: View {
             consecutiveTaps = 0
             activeTapSide = side
             multiSeekSeconds = nil
+            initialSeekTime = vm.currentTime
         }
         
         consecutiveTaps += 1
@@ -134,12 +136,14 @@ struct PlayerContainerView: View {
         } else {
             let seconds = 10
             let direction = (side == .right) ? 1.0 : -1.0
-            vm.seek(by: Double(seconds) * direction)
             
             let totalSeconds = (currentTaps - 1) * seconds
             withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
                 self.multiSeekSeconds = totalSeconds
             }
+            
+            let targetTime = initialSeekTime + Double(totalSeconds) * direction
+            vm.screenScrubTime = max(0, min(vm.currentDuration, targetTime))
             
             if showControls {
                 scheduleAutoHide()
@@ -150,6 +154,11 @@ struct PlayerContainerView: View {
             tapTask = Task { @MainActor in
                 try? await Task.sleep(for: .milliseconds(800))
                 guard !Task.isCancelled else { return }
+                
+                if let finalScrubTime = vm.screenScrubTime {
+                    vm.seek(to: finalScrubTime)
+                    vm.screenScrubTime = nil
+                }
                 
                 self.consecutiveTaps = 0
                 withAnimation(.easeOut(duration: 0.4)) {
