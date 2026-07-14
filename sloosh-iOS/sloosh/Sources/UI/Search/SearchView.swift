@@ -186,19 +186,11 @@ struct SearchEmptyState: View {
     let subtitle: String
 
     var body: some View {
-        VStack(spacing: 14) {
-            Image(systemName: icon)
-                .font(.system(size: 42))
-                .foregroundColor(.secondary)
-            Text(title)
-                .font(.system(size: 22, weight: .bold))
-            Text(subtitle)
-                .font(.system(size: 15, weight: .medium))
-                .multilineTextAlignment(.center)
-                .foregroundColor(.secondary)
-        }
-        .padding(24)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        ContentUnavailableView(
+            title,
+            systemImage: icon,
+            description: Text(subtitle)
+        )
     }
 }
 
