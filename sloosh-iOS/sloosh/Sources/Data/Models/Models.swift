@@ -389,7 +389,6 @@ enum AppTheme: String, CaseIterable, Identifiable {
         case .dark: return .dark
         }
     }
-    }
 }
 
 struct SearchFilters: Equatable {
