@@ -262,6 +262,7 @@ private struct MultiSeekFeedbackView: View {
                         
                         if s == .left { Spacer(minLength: 0) }
                     }
+                    .id(s) // Предотвращаем анимацию перемещения с одной стороны на другую
                 }
             }
         }
