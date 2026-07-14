@@ -285,7 +285,8 @@ private struct MultiSeekFeedbackView: View {
                                     .contentTransition(.numericText(value: Double(sec)))
                                     .animation(.spring(response: 0.3, dampingFraction: 0.7), value: sec)
                             }
-                            .foregroundStyle(.white)
+                            .foregroundStyle(.white.opacity(0.65))
+                            .blendMode(.plusLighter)
                             .offset(x: s == .left ? -15 : 15)
                             .transition(.blurFade)
                         }
