@@ -38,7 +38,7 @@ struct BottomRowView: View {
             if vm.availableQualities.count > 1 {
                 divider
                 Button { showQualitySheet = true } label: {
-                    Image(systemName: "rectangle.3.group")
+                    Image(systemName: "gearshape")
                         .font(.system(size: 15, weight: .medium))
                         .foregroundStyle(.white)
                         .frame(width: 44, height: 40)
