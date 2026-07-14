@@ -122,7 +122,7 @@ struct ProfileView: View {
                 }
                 .toolbar(.hidden, for: .navigationBar)
                 .safeAreaInset(edge: .top, spacing: 0) {
-                    VStack(spacing: 8) {
+                    VStack(spacing: 12) {
                         // Верхний слой: Заголовок и Настройки
                         ZStack {
                             Text("Профиль")
@@ -136,9 +136,9 @@ struct ProfileView: View {
                                     showsSettings = true
                                 } label: {
                                     Image(systemName: "gearshape.fill")
-                                        .font(.system(size: 20))
+                                        .font(.system(size: 16))
                                         .foregroundStyle(.primary)
-                                        .frame(width: 44, height: 44)
+                                        .frame(width: 32, height: 32)
                                         .glassEffect(.regular.interactive(), in: .circle)
                                 }
                             }
