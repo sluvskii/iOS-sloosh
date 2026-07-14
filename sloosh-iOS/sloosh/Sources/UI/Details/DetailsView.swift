@@ -1831,8 +1831,12 @@ class DetailsViewModel: ObservableObject {
         guard let details = details else { return }
         guard let (mediaId, mediaType) = favoriteKey(for: details) else { return }
 
+        let generator = UINotificationFeedbackGenerator()
+        generator.prepare()
+
         if isFavorite {
             FavoritesRepository.shared.removeFromFavorites(mediaId: mediaId, mediaType: mediaType)
+            generator.notificationOccurred(.warning)
         } else {
             FavoritesRepository.shared.addToFavorites(
                 mediaId: mediaId,
@@ -1843,6 +1847,7 @@ class DetailsViewModel: ObservableObject {
                 year: details.year?.description,
                 genres: details.genres?.compactMap { GenreDto(id: $0.lowercased(), name: $0) }
             )
+            generator.notificationOccurred(.success)
         }
         isFavorite.toggle()
     }

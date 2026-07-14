@@ -18,24 +18,18 @@ extension Color {
 
 /// Определяет, является ли медиа мультфильмом/анимацией по жанрам и названию.
 func isCartoon(_ item: MediaDto) -> Bool {
-    let genreNames = item.genres?
-        .compactMap { $0.name?.lowercased() }
-        .joined(separator: " ") ?? ""
-
-    let haystack = [
-        genreNames,
-        item.displayTitle.lowercased(),
-        item.originalTitle?.lowercased() ?? ""
-    ].joined(separator: " ")
-
-    return haystack.contains("мульт")
-        || haystack.contains("анимац")
-        || haystack.contains("animation")
-        || haystack.contains("anime")
+    let genreIds = item.genres?.compactMap { $0.id?.lowercased() } ?? []
+    let genreNames = item.genres?.compactMap { $0.name?.lowercased() } ?? []
+    
+    // Strict checking against API genres to prevent false positives (like "Мультиверс" movie)
+    return genreIds.contains("мультфильм") || genreIds.contains("аниме") ||
+           genreNames.contains("мультфильм") || genreNames.contains("аниме")
 }
 
 /// Облегчённая версия для случаев, когда жанры недоступны (например, FavoriteDto).
 func isCartoonByTitle(_ title: String?) -> Bool {
     guard let t = title?.lowercased() else { return false }
-    return t.contains("мульт") || t.contains("анимац") || t.contains("animation") || t.contains("anime")
+    // More strict checking by splitting words to avoid "мультиверс" triggering
+    let words = t.components(separatedBy: .punctuationCharacters.union(.whitespaces))
+    return words.contains("мультфильм") || words.contains("мультфильмы") || words.contains("аниме")
 }

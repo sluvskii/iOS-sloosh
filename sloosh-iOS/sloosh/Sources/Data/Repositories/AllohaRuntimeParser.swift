@@ -132,10 +132,37 @@ enum AllohaRuntimeParser {
                 "audioVariants": deduplicatedAudioVariants,
                 "subtitles": subtitleTracks(in: payload, baseURL: baseURL),
                 "qualityVariants": qualityVariants,
-                "httpHeaders": headers
+                "httpHeaders": headers,
+                "introRange": extractIntro(from: object) ?? NSNull()
             ]
         }
 
+        return nil
+    }
+
+    private static func extractIntro(from object: [String: Any]) -> [String: Any]? {
+        // Option 1: "skips": {"intro": [start, end]}
+        if let skips = object["skips"] as? [String: Any],
+           let intro = skips["intro"] as? [Double], intro.count >= 2 {
+            return ["start": intro[0], "end": intro[1]]
+        }
+        
+        // Option 2: "intro": {"start": start, "end": end}
+        if let introObj = object["intro"] as? [String: Any],
+           let start = introObj["start"] as? Double,
+           let end = introObj["end"] as? Double {
+            return ["start": start, "end": end]
+        }
+        
+        // Option 3: "timecodes": [{"type": "intro", "start": start, "end": end}]
+        if let timecodes = object["timecodes"] as? [[String: Any]] {
+            if let intro = timecodes.first(where: { ($0["type"] as? String)?.lowercased() == "intro" }),
+               let start = intro["start"] as? Double,
+               let end = intro["end"] as? Double {
+                return ["start": start, "end": end]
+            }
+        }
+        
         return nil
     }
 

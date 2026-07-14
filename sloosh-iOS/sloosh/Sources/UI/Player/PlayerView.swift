@@ -163,6 +163,8 @@ class PlayerViewModel: ObservableObject {
     @Published var currentDuration: Double = 0
     @Published var bufferedProgress: Double = 0
     @Published var screenScrubTime: Double?
+    @Published var introRange: ClosedRange<Double>?
+    @Published var showSkipIntro = false
 
     // MARK: - Quality & Rate
     @Published var availableQualities: [PlaybackQualityOption] = []
@@ -1034,6 +1036,21 @@ class PlayerViewModel: ObservableObject {
                 if d.isFinite && !d.isNaN && d > 0 {
                     self.currentDuration = d
                 }
+                
+                if let intro = self.introRange, intro.contains(self.currentTime) {
+                    if !self.showSkipIntro {
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                            self.showSkipIntro = true
+                        }
+                    }
+                } else {
+                    if self.showSkipIntro {
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                            self.showSkipIntro = false
+                        }
+                    }
+                }
+                
                 // Сохраняем прогресс каждые 5 секунд (только если позиция > 1 секунды, чтобы избежать сброса в ноль)
                 if Int(t) % 5 == 0 && t > 1 {
                     let dur = self.currentDuration > 0 ? self.currentDuration : nil
@@ -1340,6 +1357,13 @@ class PlayerViewModel: ObservableObject {
         currentHeaders = headers
         let resolvedSubtitles = resolvedSubtitles(from: resolved)
         self.availableSubtitles = resolvedSubtitles
+
+        if let intro = resolved["introRange"] as? [String: Double],
+           let start = intro["start"], let end = intro["end"] {
+            self.introRange = start...end
+        } else {
+            self.introRange = nil
+        }
 
         // Заполняем список доступных озвучек из audioVariants
         let voices = resolvedVoiceovers(from: resolved)

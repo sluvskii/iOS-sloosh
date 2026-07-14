@@ -46,6 +46,37 @@ struct PlayerContainerView: View {
                 MultiSeekFeedbackView(side: activeTapSide, seconds: multiSeekSeconds)
                     .allowsHitTesting(false)
 
+                // Skip Intro
+                if vm.showSkipIntro {
+                    VStack {
+                        Spacer()
+                        HStack {
+                            Spacer()
+                            Button {
+                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                if let range = vm.introRange {
+                                    vm.seek(to: range.upperBound)
+                                    vm.showSkipIntro = false
+                                }
+                            } label: {
+                                HStack(spacing: 6) {
+                                    Image(systemName: "forward.end.fill")
+                                    Text("Пропустить заставку")
+                                }
+                                .font(.system(size: 15, weight: .semibold, design: .rounded))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 20)
+                                .padding(.vertical, 12)
+                                .glassEffect(.regular.interactive(), in: .capsule)
+                            }
+                            .padding(.bottom, 140)
+                            .padding(.trailing, 60)
+                            .transition(.move(edge: .trailing).combined(with: .opacity))
+                        }
+                    }
+                    .zIndex(5)
+                }
+
                 // 7. Контролы
                 let isSeeking = multiSeekSeconds != nil || isInteracting
                 PlayerControlsView(vm: vm, onDismiss: onDismiss, isInteracting: $isInteracting, isPopoverOpen: $isPopoverOpen, showControls: showControls, isSeeking: isSeeking)
