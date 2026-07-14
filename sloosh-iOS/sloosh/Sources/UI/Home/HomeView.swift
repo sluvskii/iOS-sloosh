@@ -70,7 +70,6 @@ struct HomeView: View {
                 }
             ))
             .toolbar(.hidden, for: .navigationBar)
-            .toolbarVisibility(isFilterCollapsed ? .hidden : .visible, for: .tabBar)
             .safeAreaInset(edge: .top, spacing: 0) {
                 HomeCategoryTextTabs(
                     selectedCategory: $viewModel.selectedCategory,
@@ -228,6 +227,7 @@ struct HomeCategoryContentView: View {
                 }
             }
             .scrollIndicators(.hidden)
+            .tabBarMinimizeBehavior(.onScrollDown)
             .refreshable {
                 await viewModel.applyCurrentSelection(force: true)
             }
