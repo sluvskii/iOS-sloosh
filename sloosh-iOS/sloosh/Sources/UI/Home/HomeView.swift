@@ -307,21 +307,30 @@ private struct HomeCategoryTextTabs: View {
         baseColor: Color,
         isSelected: Bool
     ) -> some View {
-        let textBase = Text(text)
+        let textView = Text(text)
             .font(.system(size: size, weight: weight))
             .tracking(-0.8)
-            .foregroundStyle(baseColor)
-            
-        return textBase
-            // На черном фоне overlay становится невидимым, поэтому мы
-            // кладем под низ обычный полупрозрачный текст для гарантии читаемости.
-            .background(
-                textBase
-                    .opacity(isSelected ? 0 : 0.4)
-            )
-            // Имитация Vibrancy эффекта чисто средствами SwiftUI
-            .blendMode(isSelected ? .normal : .overlay)
-            .opacity(isSelected ? 1.0 : 0.9)
+
+        return Group {
+            if isSelected {
+                textView
+                    .foregroundStyle(baseColor)
+            } else {
+                textView
+                    .hidden() // Задаем размер невидимым текстом
+                    .overlay {
+                        // Эффект Apple шторки: размываем фон ИМЕННО внутри букв!
+                        Rectangle()
+                            .fill(.regularMaterial)
+                            .environment(\.colorScheme, .dark)
+                            .mask(textView)
+                    }
+                    .overlay {
+                        // Добавляем легкую подсветку, чтобы текст не сливался полностью
+                        textView.foregroundStyle(.white.opacity(0.35))
+                    }
+            }
+        }
     }
 
     var body: some View {
