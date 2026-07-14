@@ -100,3 +100,44 @@ jobs:
           prerelease: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate AltStore JSON
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        run: |
+          mkdir altstore
+          SIZE=$(stat -f%z sloosh-iOS/sloosh.ipa || echo 0)
+          DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          cat << EOF > altstore/apps.json
+          {
+            "name": "sloosh repo",
+            "identifier": "com.sluvskii.sloosh.repo",
+            "sourceURL": "https://sluvskii.github.io/iOS-sloosh/apps.json",
+            "apps": [
+              {
+                "name": "sloosh",
+                "bundleIdentifier": "com.sluvskii.sloosh",
+                "developerName": "sluvskii",
+                "version": "1.0.${{ github.run_number }}",
+                "versionDate": "$DATE",
+                "versionDescription": "Development Build #${{ github.run_number }}\n\nAuto-generated IPA build from the latest commit.",
+                "downloadURL": "https://github.com/${{ github.repository }}/releases/download/build-${{ github.run_number }}/sloosh.ipa",
+                "localizedDescription": "sloosh premium streaming",
+                "iconURL": "https://raw.githubusercontent.com/${{ github.repository }}/main/sloosh-iOS/sloosh/Resources/Assets.xcassets/AppIcon.appiconset/dark.png",
+                "tintColor": "000000",
+                "size": $SIZE,
+                "permissions": {
+                  "background-audio": { "reason": "Background playback" }
+                }
+              }
+            ]
+          }
+          EOF
+
+      - name: Publish AltStore Source to gh-pages
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./altstore
+          publish_branch: gh-pages
+          force_orphan: true
