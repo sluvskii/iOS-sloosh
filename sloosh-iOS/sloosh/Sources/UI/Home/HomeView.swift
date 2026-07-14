@@ -78,7 +78,9 @@ struct HomeView: View {
                 )
                 .padding(.top, 4)
                 .padding(.bottom, 2) // Уменьшенный отступ до контента
-                .background(VariableBlurView().ignoresSafeArea(edges: .top))
+                // Уменьшен tintOpacity, чтобы через блюр пробивались цвета постеров.
+                // Это необходимо, чтобы наш Vibrant-текст мог их впитывать!
+                .background(VariableBlurView(tintOpacity: 0.75).ignoresSafeArea(edges: .top))
             }
             .task {
                 await viewModel.applyCurrentSelection()
@@ -307,30 +309,14 @@ private struct HomeCategoryTextTabs: View {
         baseColor: Color,
         isSelected: Bool
     ) -> some View {
-        let textView = Text(text)
+        Text(text)
             .font(.system(size: size, weight: weight))
             .tracking(-0.8)
-
-        return Group {
-            if isSelected {
-                textView
-                    .foregroundStyle(baseColor)
-            } else {
-                textView
-                    .hidden() // Задаем размер невидимым текстом
-                    .overlay {
-                        // Эффект Apple шторки: размываем фон ИМЕННО внутри букв!
-                        Rectangle()
-                            .fill(.regularMaterial)
-                            .environment(\.colorScheme, .dark)
-                            .mask(textView)
-                    }
-                    .overlay {
-                        // Добавляем легкую подсветку, чтобы текст не сливался полностью
-                        textView.foregroundStyle(.white.opacity(0.35))
-                    }
-            }
-        }
+            .foregroundStyle(isSelected ? baseColor : .white.opacity(0.6))
+            // .plusLighter (Linear Dodge) идеально имитирует Vibrancy:
+            // Он складывает свой полупрозрачный белый цвет с цветом фона,
+            // заставляя текст светиться оттенками постеров под ним.
+            .blendMode(isSelected ? .normal : .plusLighter)
     }
 
     var body: some View {
