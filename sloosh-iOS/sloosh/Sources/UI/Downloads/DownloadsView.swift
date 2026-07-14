@@ -60,6 +60,13 @@ struct DownloadsView: View {
     @State private var selectedFilter = 0 // 0 = Все, 1 = Фильмы, 2 = Сериалы
     @State private var playerItem: DownloadItem? = nil
     
+    @State private var scrollOffset: CGFloat = 0
+    
+    private var blurOpacity: Double {
+        let progress = max(0, scrollOffset) / 30.0
+        return min(1.0, Double(progress))
+    }
+    
     private var listItems: [DownloadItem] {
         downloadManager.downloads.filter { item in
             let isCartoon = isCartoonByTitle(item.title)
@@ -97,13 +104,24 @@ struct DownloadsView: View {
                     .listStyle(.plain)
                     .scrollIndicators(.hidden)
                     .contentMargins(.top, 16, for: .scrollContent)
+                    .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                        geometry.contentOffset.y + geometry.contentInsets.top
+                    } action: { oldOffset, newOffset in
+                        scrollOffset = newOffset
+                    }
                 }
             }
             .safeAreaInset(edge: .top, spacing: 0) {
                 DownloadsCategoryTextTabs(selectedFilter: $selectedFilter)
                     .padding(.top, 4)
-                    .padding(.bottom, 12)
-                    .background(VariableBlurView().ignoresSafeArea(edges: .top))
+                    .padding(.bottom, 2)
+                    .background(
+                        VariableBlurView(tintOpacity: 0.75)
+                            .padding(.bottom, -30)
+                            .ignoresSafeArea(edges: .top)
+                            .opacity(blurOpacity)
+                            .animation(.easeInOut(duration: 0.2), value: blurOpacity)
+                    )
             }
             .navigationTitle("Загрузки")
             .toolbar(.hidden, for: .navigationBar)
@@ -293,13 +311,14 @@ private struct DownloadsTabScaleButtonStyle: ButtonStyle {
 private struct DownloadsCategoryTextTabs: View {
     @Binding var selectedFilter: Int
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    @ScaledMetric(relativeTo: .headline) private var titleSize: CGFloat = 25
+    @Environment(\.colorScheme) private var colorScheme
+    @ScaledMetric(relativeTo: .headline) private var titleSize: CGFloat = 28
 
-    private let titleHeight: CGFloat = 31
+    private let titleHeight: CGFloat = 36
     private let titles = ["Все", "Фильмы", "Сериалы", "Мульты"]
 
     private var tabSpacing: CGFloat {
-        horizontalSizeClass == .regular ? 28 : 22
+        horizontalSizeClass == .regular ? 16 : 12
     }
 
     private var edgeContentInset: CGFloat {
@@ -308,6 +327,24 @@ private struct DownloadsCategoryTextTabs: View {
 
     private var tabScrollAnimation: Animation {
         .spring(response: 0.35, dampingFraction: 0.75, blendDuration: 0.1)
+    }
+
+    private func layeredText(
+        _ text: String,
+        size: CGFloat,
+        weight: Font.Weight,
+        isSelected: Bool
+    ) -> some View {
+        let isDark = colorScheme == .dark
+        let opacity = isSelected ? (isDark ? 0.9 : 0.8) : (isDark ? 0.45 : 0.4)
+        let color = isDark ? Color.white.opacity(opacity) : Color.black.opacity(opacity)
+        let blendMode: BlendMode = isDark ? .plusLighter : .plusDarker
+        
+        return Text(text)
+            .font(.system(size: size, weight: weight))
+            .tracking(-0.8)
+            .foregroundStyle(color)
+            .blendMode(blendMode)
     }
 
     var body: some View {
@@ -327,13 +364,16 @@ private struct DownloadsCategoryTextTabs: View {
                                 selectedFilter = index
                             }
                         } label: {
-                            Text(title)
-                                .font(.system(size: titleSize, weight: isSelected ? .bold : .semibold))
-                                .foregroundStyle(isSelected ? Color.primary : Color.secondary)
-                                .lineLimit(1)
-                                .fixedSize(horizontal: true, vertical: false)
-                                .frame(height: titleHeight, alignment: .center)
-                                .contentShape(Rectangle())
+                            layeredText(
+                                title,
+                                size: titleSize,
+                                weight: isSelected ? .bold : .semibold,
+                                isSelected: isSelected
+                            )
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
+                            .frame(height: titleHeight, alignment: .center)
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(DownloadsTabScaleButtonStyle())
                         .padding(.horizontal, 4)
