@@ -42,7 +42,7 @@ struct PlayerControlsView: View {
                 VStack(alignment: .trailing, spacing: 8) {
                     HStack(alignment: .bottom) {
                         PlayerTitleInfoView(vm: vm)
-                            .padding(.leading, 8)
+                            .padding(.leading, 16)
                             .padding(.bottom, 4)
                         
                         Spacer()
@@ -54,7 +54,7 @@ struct PlayerControlsView: View {
                             showSpeedSheet: $showSpeedSheet,
                             showSubtitleSheet: $showSubtitleSheet
                         )
-                        .padding(.trailing, 8)
+                        .padding(.trailing, 16)
                     }
                     .opacity(isSeeking ? 0 : 1)
                     .animation(.easeInOut(duration: 0.2), value: isSeeking)
