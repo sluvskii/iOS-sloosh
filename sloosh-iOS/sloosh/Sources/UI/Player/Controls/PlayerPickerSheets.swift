@@ -105,12 +105,14 @@ private struct PopoverContainer<Content: View>: View {
                 .foregroundStyle(.white)
                 .padding(.bottom, 4)
 
-            VStack(spacing: 8) {
-                content
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 8) {
+                    content
+                }
             }
         }
         .padding(16)
-        .frame(minWidth: 260, maxWidth: 320)
+        .frame(minWidth: 260, maxWidth: 450)
         // Принудительно открываем как Popover даже на iPhone
         .presentationCompactAdaptation(.popover)
         .preferredColorScheme(.dark)
