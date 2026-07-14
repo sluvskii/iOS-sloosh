@@ -46,29 +46,18 @@ struct HomeView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 0) {
-                    ForEach(HomeCategory.allCases, id: \.self) { category in
-                        HomeCategoryContentView(
-                            viewModel: viewModel,
-                            category: category,
-                            navigationTransition: navigationTransition,
-                            isFilterCollapsed: $isFilterCollapsed
-                        )
-                        .containerRelativeFrame(.horizontal)
-                    }
+            TabView(selection: $viewModel.selectedCategory) {
+                ForEach(HomeCategory.allCases, id: \.self) { category in
+                    HomeCategoryContentView(
+                        viewModel: viewModel,
+                        category: category,
+                        navigationTransition: navigationTransition,
+                        isFilterCollapsed: $isFilterCollapsed
+                    )
+                    .tag(category)
                 }
-                .scrollTargetLayout()
             }
-            .scrollTargetBehavior(.paging)
-            .scrollPosition(id: Binding(
-                get: { viewModel.selectedCategory },
-                set: { newValue in
-                    if let newValue = newValue {
-                        viewModel.selectedCategory = newValue
-                    }
-                }
-            ))
+            .tabViewStyle(.page(indexDisplayMode: .never))
             .toolbar(.hidden, for: .navigationBar)
             .safeAreaInset(edge: .top, spacing: 0) {
                 HomeCategoryTextTabs(
