@@ -199,7 +199,7 @@ struct DetailsView: View {
                     }
                 }
             }
-            .onChange(of: showTooltip) { newValue in
+            .onChange(of: showTooltip) { _, newValue in
                 if !newValue {
                     hasSeenSourceSelectionTooltip = true
                 }

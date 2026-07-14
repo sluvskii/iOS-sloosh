@@ -144,7 +144,6 @@ final class VolumeManager {
     
     private init() {
         let volumeView = MPVolumeView(frame: .zero)
-        volumeView.showsRouteButton = false
         // Ищем системный слайдер внутри MPVolumeView
         for view in volumeView.subviews {
             if let slider = view as? UISlider {

@@ -364,6 +364,14 @@ private struct HomeCategoryTextTabs: View {
             .blendMode(blendMode)
     }
 
+    private var filterIconColor: Color {
+        if hasFilters {
+            return Color.slooshAccent
+        } else {
+            return (colorScheme == .dark ? .white : .black).opacity(0.8)
+        }
+    }
+
     var body: some View {
         ScrollViewReader { scrollProxy in
             ScrollView(.horizontal, showsIndicators: false) {
@@ -424,7 +432,7 @@ private struct HomeCategoryTextTabs: View {
                     } label: {
                         Image(systemName: hasFilters ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
                             .font(.system(size: 24, weight: .medium))
-                            .foregroundColor(hasFilters ? Color.slooshAccent : (colorScheme == .dark ? .white : .black).opacity(0.8))
+                            .foregroundColor(filterIconColor)
                             .frame(height: titleHeight, alignment: .center)
                     }
                     .padding(.trailing, edgeContentInset)
