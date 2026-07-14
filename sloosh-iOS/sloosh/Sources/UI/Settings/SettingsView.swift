@@ -168,7 +168,6 @@ struct SettingsView: View {
             }
         }
         .environment(\.defaultMinListHeaderHeight, .leastNonzeroMagnitude)
-        .padding(.top, -20)
         .toolbar(.hidden, for: .navigationBar)
         .safeAreaInset(edge: .top, spacing: 0) {
             ZStack {
