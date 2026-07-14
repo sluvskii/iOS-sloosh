@@ -69,29 +69,28 @@ struct ProfileView: View {
     }
 
     var body: some View {
-        GeometryReader { geometry in
-            NavigationStack {
-                ScrollView {
+        NavigationStack {
+            ScrollView {
+                // Invisible anchor to fix layout alignment
+                Color.clear.frame(height: 0).id("profile-scroll-top")
                     VStack(spacing: 20) {
                         // В будущем здесь будет шапка профиля (аватарка, ник пользователя)
                         
-                        if favoritesRepo.favorites.isEmpty {
-                            ProfileEmptyState(
-                                icon: "heart.slash",
-                                title: "Пока ничего не добавлено",
-                                message: "Сохраняйте фильмы и сериалы в избранное, чтобы быстро возвращаться к ним позже."
-                            )
-                            .frame(maxWidth: .infinity)
-                            .frame(minHeight: max(geometry.size.height - 180, 320))
-                        } else if filteredFavorites.isEmpty {
-                            ProfileEmptyState(
-                                icon: "film.stack",
-                                title: "В этой подборке пока пусто",
-                                message: "Попробуйте открыть другую вкладку или добавьте что-нибудь в избранное."
-                            )
-                            .frame(maxWidth: .infinity)
-                            .frame(minHeight: max(geometry.size.height - 180, 320))
-                        } else {
+                    if favoritesRepo.favorites.isEmpty {
+                        ProfileEmptyState(
+                            icon: "heart.slash",
+                            title: "Пока ничего не добавлено",
+                            message: "Сохраняйте фильмы и сериалы в избранное, чтобы быстро возвращаться к ним позже."
+                        )
+                        .frame(maxWidth: .infinity, minHeight: 300)
+                    } else if filteredFavorites.isEmpty {
+                        ProfileEmptyState(
+                            icon: "film.stack",
+                            title: "В этой подборке пока пусто",
+                            message: "Попробуйте открыть другую вкладку или добавьте что-нибудь в избранное."
+                        )
+                        .frame(maxWidth: .infinity, minHeight: 300)
+                    } else {
                             let spacing: CGFloat = cardDensity == .compact ? 8 : 16
                             let padding: CGFloat = cardDensity == .compact ? 12 : 16
                             LazyVGrid(columns: columns, spacing: spacing) {
@@ -111,10 +110,9 @@ struct ProfileView: View {
                             }
                             .padding(.horizontal, padding)
                         }
-                    }
-                    .frame(minHeight: geometry.size.height, alignment: .top)
-                    .padding(.vertical, 16)
                 }
+                .padding(.vertical, 16)
+            }
                 .onScrollGeometryChange(for: CGFloat.self) { geometry in
                     geometry.contentOffset.y + geometry.contentInsets.top
                 } action: { _, newOffset in
@@ -123,11 +121,11 @@ struct ProfileView: View {
                 .toolbar(.hidden, for: .navigationBar)
                 .safeAreaInset(edge: .top, spacing: 0) {
                     VStack(spacing: 8) {
-                        // Верхний слой: Заголовок и Настройки
-                        ZStack {
-                            Text("Профиль")
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundStyle(.primary)
+                    // Верхний слой: Заголовок и Настройки
+                    ZStack {
+                        Text("Профиль")
+                            .font(.system(size: 20, weight: .semibold))
+                            .foregroundStyle(.primary)
                             
                             HStack {
                                 Spacer()
