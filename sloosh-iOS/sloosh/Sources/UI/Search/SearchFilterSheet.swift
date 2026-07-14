@@ -1,7 +1,13 @@
 import SwiftUI
 
+enum FilterContext {
+    case home
+    case search
+}
+
 struct SearchFilterSheet: View {
     @Binding var filters: SearchFilters
+    var context: FilterContext = .search
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -18,10 +24,14 @@ struct SearchFilterSheet: View {
 
                 Section(header: Text("Сортировка")) {
                     Picker("Сортировка", selection: $filters.order) {
-                        Text("Релевантность").tag(String?.none)
+                        if context == .search {
+                            Text("Релевантность").tag(String?.none)
+                            Text("По популярности").tag(String?.some("NUM_VOTE"))
+                        } else {
+                            Text("Смотрят сейчас").tag(String?.none)
+                        }
                         Text("По рейтингу").tag(String?.some("RATING"))
                         Text("По году выпуска").tag(String?.some("YEAR"))
-                        Text("По популярности").tag(String?.some("NUM_VOTE"))
                     }
                     .pickerStyle(.menu)
                 }
