@@ -124,7 +124,7 @@ struct ProfileView: View {
                     // Верхний слой: Заголовок и Настройки
                     ZStack {
                         Text("Профиль")
-                            .font(.system(size: 20, weight: .semibold))
+                            .font(.system(size: 18, weight: .semibold))
                             .foregroundStyle(.primary)
                             
                             HStack {
