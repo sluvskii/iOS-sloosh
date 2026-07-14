@@ -47,7 +47,7 @@ struct PlayerControlsView: View {
                         
                         Spacer()
                         
-                        VStack(alignment: .trailing, spacing: 12) {
+                        VStack(alignment: .trailing, spacing: 8) {
                             if vm.showSkipIntro {
                                 Button {
                                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
@@ -67,6 +67,7 @@ struct PlayerControlsView: View {
                                     .padding(.vertical, 12)
                                     .glassEffect(.regular.interactive(), in: .capsule)
                                 }
+                                .buttonStyle(PlainButtonStyle())
                                 .transition(.move(edge: .trailing).combined(with: .opacity))
                             }
                             
@@ -103,6 +104,15 @@ struct PlayerControlsView: View {
         .onChange(of: showQualitySheet)   { _, _ in isPopoverOpen = showVoiceoverSheet || showQualitySheet || showSpeedSheet || showSubtitleSheet }
         .onChange(of: showSpeedSheet)     { _, _ in isPopoverOpen = showVoiceoverSheet || showQualitySheet || showSpeedSheet || showSubtitleSheet }
         .onChange(of: showSubtitleSheet)  { _, _ in isPopoverOpen = showVoiceoverSheet || showQualitySheet || showSpeedSheet || showSubtitleSheet }
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 0)
+                .onChanged { _ in
+                    if !isInteracting { isInteracting = true }
+                }
+                .onEnded { _ in
+                    if isInteracting { isInteracting = false }
+                }
+        )
     }
 }
 
