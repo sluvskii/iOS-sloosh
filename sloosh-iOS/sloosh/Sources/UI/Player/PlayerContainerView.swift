@@ -18,6 +18,7 @@ struct PlayerContainerView: View {
     @State private var activeTapSide: TapSide? = nil
     @State private var multiSeekSeconds: Int? = nil
     @State private var initialSeekTime: Double = 0
+    @State private var showDebugPayload = false
 
     enum TapSide { case left, right }
 
@@ -41,6 +42,32 @@ struct PlayerContainerView: View {
             } else {
                 // 5. Жесты (двойной тап = перемотка, одинарный = контролы)
                 gestureLayer
+                
+                // Debug overlay
+                VStack {
+                    HStack {
+                        Button("DEBUG INFO") {
+                            showDebugPayload.toggle()
+                        }
+                        .padding()
+                        .background(Color.red)
+                        .foregroundStyle(.white)
+                        Spacer()
+                    }
+                    Spacer()
+                }
+                .zIndex(20)
+                
+                if showDebugPayload {
+                    ScrollView {
+                        Text(UserDefaults.standard.string(forKey: "debug_payload") ?? "No payload")
+                            .font(.system(size: 10, design: .monospaced))
+                            .foregroundStyle(.white)
+                            .padding()
+                    }
+                    .background(Color.black.opacity(0.8))
+                    .zIndex(21)
+                }
 
                 // 6. Multi-tap Seek feedback
                 MultiSeekFeedbackView(side: activeTapSide, seconds: multiSeekSeconds)

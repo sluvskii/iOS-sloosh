@@ -134,6 +134,7 @@ class AllohaParser: NSObject, WKScriptMessageHandler, WKNavigationDelegate {
             timeoutWorkItem?.cancel()
             if let jsonResponse = dict["jsonResponse"] as? String,
                let headersJson = dict["headersJson"] as? String {
+                UIPasteboard.general.string = jsonResponse
                 delegate?.onHlsLinksReceived(json: jsonResponse, extraHeaders: parseHeaders(headersJson))
             }
         case "onConfigUpdate":
