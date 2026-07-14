@@ -24,7 +24,7 @@ struct ProfileView: View {
     @SceneStorage("profileShowsSettings") private var showsSettings = false
     @Namespace private var navigationTransition
     @AppStorage("cardDensity") private var cardDensity: CardDensity = .regular
-    @State private var scrollOffset: CGFloat = 0
+    @State private var scrollOffsets: [FavoriteCategory: CGFloat] = [:]
     
     private var columns: [GridItem] {
         let spacing: CGFloat = cardDensity == .compact ? 8 : 16
@@ -33,7 +33,8 @@ struct ProfileView: View {
     }
 
     private var blurOpacity: Double {
-        let progress = max(0, scrollOffset) / 30.0
+        let offset = scrollOffsets[selectedCategory] ?? 0
+        let progress = max(0, offset) / 30.0
         return min(1.0, Double(progress))
     }
 
@@ -70,55 +71,36 @@ struct ProfileView: View {
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                // Invisible anchor to fix layout alignment
-                Color.clear.frame(height: 0).id("profile-scroll-top")
-                    VStack(spacing: 20) {
-                        // В будущем здесь будет шапка профиля (аватарка, ник пользователя)
-                        
-                    if favoritesRepo.favorites.isEmpty {
-                        ProfileEmptyState(
-                            icon: "heart.slash",
-                            title: "Пока ничего не добавлено",
-                            message: "Сохраняйте фильмы и сериалы в избранное, чтобы быстро возвращаться к ним позже."
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(spacing: 0) {
+                    ForEach(FavoriteCategory.allCases, id: \.self) { category in
+                        ProfileCategoryContentView(
+                            category: category,
+                            favoritesRepo: favoritesRepo,
+                            favorites: favorites(for: category),
+                            navigationTransition: navigationTransition,
+                            columns: columns,
+                            cardDensity: cardDensity,
+                            scrollOffset: Binding(
+                                get: { scrollOffsets[category] ?? 0 },
+                                set: { scrollOffsets[category] = $0 }
+                            )
                         )
-                        .frame(maxWidth: .infinity, minHeight: 300)
-                    } else if filteredFavorites.isEmpty {
-                        ProfileEmptyState(
-                            icon: "film.stack",
-                            title: "В этой подборке пока пусто",
-                            message: "Попробуйте открыть другую вкладку или добавьте что-нибудь в избранное."
-                        )
-                        .frame(maxWidth: .infinity, minHeight: 300)
-                    } else {
-                            let spacing: CGFloat = cardDensity == .compact ? 8 : 16
-                            let padding: CGFloat = cardDensity == .compact ? 12 : 16
-                            LazyVGrid(columns: columns, spacing: spacing) {
-                                ForEach(filteredFavorites) { favorite in
-                                    let media = favorite.toMediaDto()
-                                    MovieDetailsNavigationLink(movie: media, navigationTransition: navigationTransition)
-                                    .contextMenu {
-                                        Button(role: .destructive) {
-                                            if let mediaId = favorite.mediaId, let type = favorite.type {
-                                                favoritesRepo.removeFromFavorites(mediaId: mediaId, mediaType: type)
-                                            }
-                                        } label: {
-                                            Label("Удалить", systemImage: "trash")
-                                        }
-                                    }
-                                }
-                            }
-                            .padding(.horizontal, padding)
-                        }
+                        .containerRelativeFrame(.horizontal)
+                    }
                 }
-                .padding(.vertical, 16)
+                .scrollTargetLayout()
             }
-                .onScrollGeometryChange(for: CGFloat.self) { geometry in
-                    geometry.contentOffset.y + geometry.contentInsets.top
-                } action: { _, newOffset in
-                    scrollOffset = newOffset
+            .scrollTargetBehavior(.paging)
+            .scrollPosition(id: Binding(
+                get: { selectedCategory },
+                set: { newValue in
+                    if let newValue = newValue {
+                        selectedCategory = newValue
+                    }
                 }
-                .toolbar(.hidden, for: .navigationBar)
+            ))
+            .toolbar(.hidden, for: .navigationBar)
                 .safeAreaInset(edge: .top, spacing: 0) {
                     VStack(spacing: 8) {
                     // Верхний слой: Заголовок и Настройки
@@ -165,6 +147,67 @@ struct ProfileView: View {
             }
         }
     }
+
+struct ProfileCategoryContentView: View {
+    let category: FavoriteCategory
+    @ObservedObject var favoritesRepo: FavoritesRepository
+    let favorites: [FavoriteDto]
+    let navigationTransition: Namespace.ID
+    let columns: [GridItem]
+    let cardDensity: CardDensity
+    @Binding var scrollOffset: CGFloat
+
+    var body: some View {
+        ScrollView {
+            // Invisible anchor to fix layout alignment
+            Color.clear.frame(height: 0).id("profile-scroll-top-\(category.rawValue)")
+            VStack(spacing: 20) {
+                // В будущем здесь будет шапка профиля (аватарка, ник пользователя)
+                
+                if favoritesRepo.favorites.isEmpty {
+                    ProfileEmptyState(
+                        icon: "heart.slash",
+                        title: "Пока ничего не добавлено",
+                        message: "Сохраняйте фильмы и сериалы в избранное, чтобы быстро возвращаться к ним позже."
+                    )
+                    .frame(maxWidth: .infinity, minHeight: 300)
+                } else if favorites.isEmpty {
+                    ProfileEmptyState(
+                        icon: "film.stack",
+                        title: "В этой подборке пока пусто",
+                        message: "Попробуйте открыть другую вкладку или добавьте что-нибудь в избранное."
+                    )
+                    .frame(maxWidth: .infinity, minHeight: 300)
+                } else {
+                    let spacing: CGFloat = cardDensity == .compact ? 8 : 16
+                    let padding: CGFloat = cardDensity == .compact ? 12 : 16
+                    LazyVGrid(columns: columns, spacing: spacing) {
+                        ForEach(favorites) { favorite in
+                            let media = favorite.toMediaDto()
+                            MovieDetailsNavigationLink(movie: media, navigationTransition: navigationTransition)
+                            .contextMenu {
+                                Button(role: .destructive) {
+                                    if let mediaId = favorite.mediaId, let type = favorite.type {
+                                        favoritesRepo.removeFromFavorites(mediaId: mediaId, mediaType: type)
+                                    }
+                                } label: {
+                                    Label("Удалить", systemImage: "trash")
+                                }
+                            }
+                        }
+                    }
+                    .padding(.horizontal, padding)
+                }
+            }
+            .padding(.vertical, 16)
+        }
+        .onScrollGeometryChange(for: CGFloat.self) { geometry in
+            geometry.contentOffset.y + geometry.contentInsets.top
+        } action: { _, newOffset in
+            scrollOffset = newOffset
+        }
+    }
+}
 
 private struct ProfileEmptyState: View {
     let icon: String
