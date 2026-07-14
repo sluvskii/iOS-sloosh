@@ -13,13 +13,15 @@ struct SearchFilterSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section(header: Text("Тип")) {
-                    Picker("Тип", selection: $filters.type) {
-                        Text("Всё").tag(String?.none)
-                        Text("Фильмы").tag(String?.some("FILM"))
-                        Text("Сериалы").tag(String?.some("TV_SERIES"))
+                if context == .search {
+                    Section(header: Text("Тип")) {
+                        Picker("Тип", selection: $filters.type) {
+                            Text("Всё").tag(String?.none)
+                            Text("Фильмы").tag(String?.some("FILM"))
+                            Text("Сериалы").tag(String?.some("TV_SERIES"))
+                        }
+                        .pickerStyle(.segmented)
                     }
-                    .pickerStyle(.segmented)
                 }
 
                 Section(header: Text("Сортировка")) {
