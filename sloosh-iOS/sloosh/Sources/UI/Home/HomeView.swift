@@ -42,22 +42,43 @@ enum HomeFilter: String, CaseIterable, Identifiable {
 struct HomeView: View {
     @StateObject private var viewModel = HomeViewModel()
     @Namespace private var navigationTransition
+    @State private var scrollPosition: HomeCategory?
     @State private var isFilterCollapsed = false
 
     var body: some View {
         NavigationStack {
-            TabView(selection: $viewModel.selectedCategory) {
-                ForEach(HomeCategory.allCases, id: \.self) { category in
-                    HomeCategoryContentView(
-                        viewModel: viewModel,
-                        category: category,
-                        navigationTransition: navigationTransition,
-                        isFilterCollapsed: $isFilterCollapsed
-                    )
-                    .tag(category)
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(spacing: 0) {
+                    ForEach(HomeCategory.allCases, id: \.self) { category in
+                        HomeCategoryContentView(
+                            viewModel: viewModel,
+                            category: category,
+                            navigationTransition: navigationTransition,
+                            isFilterCollapsed: $isFilterCollapsed
+                        )
+                        .containerRelativeFrame(.horizontal)
+                        .id(category)
+                    }
+                }
+                .scrollTargetLayout()
+            }
+            .scrollTargetBehavior(.paging)
+            .scrollPosition(id: $scrollPosition)
+            .onChange(of: scrollPosition) { _, newValue in
+                if let newValue = newValue, newValue != viewModel.selectedCategory {
+                    viewModel.selectedCategory = newValue
                 }
             }
-            .tabViewStyle(.page(indexDisplayMode: .never))
+            .onChange(of: viewModel.selectedCategory) { _, newValue in
+                if scrollPosition != newValue {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        scrollPosition = newValue
+                    }
+                }
+            }
+            .onAppear {
+                scrollPosition = viewModel.selectedCategory
+            }
             .toolbar(.hidden, for: .navigationBar)
             .safeAreaInset(edge: .top, spacing: 0) {
                 HomeCategoryTextTabs(
@@ -66,7 +87,7 @@ struct HomeView: View {
                     isFilterCollapsed: $isFilterCollapsed
                 )
                 .padding(.top, 4)
-                .padding(.bottom, 2)
+                .padding(.bottom, 12)
                 .background(VariableBlurView().ignoresSafeArea(edges: .top))
             }
             .task {
@@ -200,23 +221,22 @@ struct HomeCategoryContentView: View {
                 let delta = newOffset - oldOffset
                 if newOffset <= 0 {
                     if isFilterCollapsed {
-                        withAnimation(.easeOut(duration: 0.2)) { isFilterCollapsed = false }
+                        isFilterCollapsed = false
                         debouncer.lastStateChangeTime = now
                     }
                 } else if delta > 8 {
                     if !isFilterCollapsed {
-                        withAnimation(.easeOut(duration: 0.2)) { isFilterCollapsed = true }
+                        isFilterCollapsed = true
                         debouncer.lastStateChangeTime = now
                     }
                 } else if delta < -8 {
                     if isFilterCollapsed {
-                        withAnimation(.easeOut(duration: 0.2)) { isFilterCollapsed = false }
+                        isFilterCollapsed = false
                         debouncer.lastStateChangeTime = now
                     }
                 }
             }
             .scrollIndicators(.hidden)
-            .tabBarMinimizeBehavior(.onScrollDown)
             .refreshable {
                 await viewModel.applyCurrentSelection(force: true)
             }
