@@ -111,7 +111,7 @@ struct PlayerTitleInfoView: View {
                 Text("\(season) сезон, \(episode) серия")
                     .font(.footnote)
                     .fontWeight(.medium)
-                    .foregroundColor(.white.opacity(0.55))
+                    .foregroundColor(.white.opacity(0.65))
                     .blendMode(.plusLighter)
                     .shadow(color: .black.opacity(0.4), radius: 2, x: 0, y: 1)
             }

@@ -21,7 +21,7 @@ struct CenterControlsView: View {
                     } label: {
                         Image(systemName: "backward.end.fill")
                             .font(.system(size: 28, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.55))
+                            .foregroundStyle(.white.opacity(0.65))
                             .blendMode(.plusLighter)
                             .frame(width: 56, height: 56)
                             .scaleEffect(seekBackwardFlash ? 0.82 : 1.0)
@@ -41,13 +41,13 @@ struct CenterControlsView: View {
                         if vm.isLoading || vm.isBuffering {
                             ProgressView()
                                 .progressViewStyle(.circular)
-                                .tint(.white.opacity(0.55))
+                                .tint(.white.opacity(0.65))
                                 .blendMode(.plusLighter)
                                 .scaleEffect(1.6)
                         } else {
                             Image(systemName: vm.isPlaying ? "pause.fill" : "play.fill")
                                 .font(.system(size: 34, weight: .bold))
-                                .foregroundStyle(.white.opacity(0.55))
+                                .foregroundStyle(.white.opacity(0.65))
                                 .blendMode(.plusLighter)
                                 .contentTransition(.symbolEffect(.replace))
                         }
@@ -66,7 +66,7 @@ struct CenterControlsView: View {
                     } label: {
                         Image(systemName: "forward.end.fill")
                             .font(.system(size: 28, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.55))
+                            .foregroundStyle(.white.opacity(0.65))
                             .blendMode(.plusLighter)
                             .frame(width: 56, height: 56)
                             .scaleEffect(seekForwardFlash ? 0.82 : 1.0)
