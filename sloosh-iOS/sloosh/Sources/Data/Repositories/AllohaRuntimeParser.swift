@@ -142,7 +142,21 @@ enum AllohaRuntimeParser {
     }
 
     private static func extractIntro(from object: [String: Any]) -> [String: Any]? {
-        // Option 1: "skips": {"intro": [start, end]}
+        // Option 1: "skipTime" string format (e.g., "0-90,3453-3607")
+        if let skipTime = object["skipTime"] as? String {
+            let parts = skipTime.components(separatedBy: ",")
+            if let firstPart = parts.first {
+                let times = firstPart.components(separatedBy: "-")
+                if times.count == 2, let start = Double(times[0]), let end = Double(times[1]) {
+                    // Treat as intro if it starts within the first 5 minutes
+                    if start < 300 {
+                        return ["start": start, "end": end]
+                    }
+                }
+            }
+        }
+        
+        // Option 2: "skips": {"intro": [start, end]}
         if let skips = object["skips"] as? [String: Any],
            let intro = skips["intro"] as? [Double], intro.count >= 2 {
             return ["start": intro[0], "end": intro[1]]
