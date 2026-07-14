@@ -3,6 +3,7 @@ import Combine
 
 struct SearchView: View {
     @StateObject private var viewModel = SearchViewModel()
+    @State private var showFilters = false
     @Namespace private var navigationTransition
     @AppStorage("cardDensity") private var cardDensity: CardDensity = .regular
 
@@ -158,13 +159,22 @@ struct SearchView: View {
                 )
             }
             .toolbar {
-                if viewModel.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !viewModel.history.isEmpty {
-                    ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItemGroup(placement: .topBarTrailing) {
+                    if viewModel.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !viewModel.history.isEmpty {
                         Button("Очистить") {
                             viewModel.clearHistory()
                         }
                     }
+                    Button {
+                        showFilters = true
+                    } label: {
+                        Image(systemName: viewModel.filters.isEmpty ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
+                            .foregroundColor(viewModel.filters.isEmpty ? .primary : Color.slooshAccent)
+                    }
                 }
+            }
+            .sheet(isPresented: $showFilters) {
+                SearchFilterSheet(filters: $viewModel.filters)
             }
         }
     }
@@ -195,6 +205,7 @@ struct SearchEmptyState: View {
 @MainActor
 class SearchViewModel: ObservableObject {
     @Published var searchQuery = ""
+    @Published var filters = SearchFilters()
     @Published var results: [MediaDto] = []
     @Published var history: [String] = []
     @Published var isLoading = false
@@ -214,6 +225,19 @@ class SearchViewModel: ObservableObject {
         loadHistory()
         
         $searchQuery
+            .dropFirst()
+            .debounce(for: .milliseconds(300), scheduler: RunLoop.main)
+            .removeDuplicates()
+            .sink { [weak self] _ in
+                guard let self = self else { return }
+                Task {
+                    self.page = 1
+                    await self.performSearch(reset: true)
+                }
+            }
+            .store(in: &cancellables)
+
+        $filters
             .dropFirst()
             .debounce(for: .milliseconds(300), scheduler: RunLoop.main)
             .removeDuplicates()
@@ -286,7 +310,7 @@ class SearchViewModel: ObservableObject {
                 }
                 error = nil
 
-                let response = try await MoviesRepository.shared.searchMoviesResponse(query: trimmedQuery, page: page)
+                let response = try await MoviesRepository.shared.searchMoviesResponse(query: trimmedQuery, page: page, filters: filters)
                 if !Task.isCancelled {
                     let rawResults = response.results ?? []
                     // Filter invalid items like Android does

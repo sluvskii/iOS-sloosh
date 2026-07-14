@@ -389,4 +389,20 @@ enum AppTheme: String, CaseIterable, Identifiable {
         case .dark: return .dark
         }
     }
+    }
+}
+
+struct SearchFilters: Equatable {
+    var type: String?
+    var order: String?
+    var ratingFrom: Double?
+    var ratingTo: Double?
+    var yearFrom: Int?
+    var yearTo: Int?
+    var genres: String?
+    var countries: String?
+    
+    var isEmpty: Bool {
+        return type == nil && order == nil && ratingFrom == nil && ratingTo == nil && yearFrom == nil && yearTo == nil && genres == nil && countries == nil
+    }
 }

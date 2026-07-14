@@ -75,13 +75,13 @@ class MoviesRepository: ObservableObject {
 
     // MARK: - Search
 
-    func searchMovies(query: String, page: Int = 1) async throws -> [MediaDto] {
-        let response = try await MoviesApi.shared.searchMovies(query: query, page: page)
+    func searchMovies(query: String, page: Int = 1, filters: SearchFilters? = nil) async throws -> [MediaDto] {
+        let response = try await MoviesApi.shared.searchMovies(query: query, page: page, filters: filters)
         return response.data?.results ?? []
     }
 
-    func searchMoviesResponse(query: String, page: Int = 1) async throws -> MediaResponse {
-        let response = try await MoviesApi.shared.searchMovies(query: query, page: page)
+    func searchMoviesResponse(query: String, page: Int = 1, filters: SearchFilters? = nil) async throws -> MediaResponse {
+        let response = try await MoviesApi.shared.searchMovies(query: query, page: page, filters: filters)
         return response.data ?? MediaResponse(page: page, results: [], pages: 1, total: 0, total_pages: 1, total_results: 0)
     }
 }

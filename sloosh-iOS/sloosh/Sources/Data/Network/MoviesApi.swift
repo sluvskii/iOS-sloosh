@@ -73,10 +73,23 @@ class MoviesApi {
         return try await performRequest(endpoint: "api/v1/tv/\(id)/season/\(season)/episode/\(episode)")
     }
     
-    func searchMovies(query: String, page: Int = 1) async throws -> ApiEnvelope<MediaResponse> {
-        return try await performRequest(endpoint: "api/v2/search", queryItems: [
+    func searchMovies(query: String, page: Int = 1, filters: SearchFilters? = nil) async throws -> ApiEnvelope<MediaResponse> {
+        var queryItems = [
             URLQueryItem(name: "query", value: query),
             URLQueryItem(name: "page", value: String(page))
-        ])
+        ]
+        
+        if let filters = filters {
+            if let type = filters.type { queryItems.append(URLQueryItem(name: "type", value: type)) }
+            if let order = filters.order { queryItems.append(URLQueryItem(name: "order", value: order)) }
+            if let rFrom = filters.ratingFrom { queryItems.append(URLQueryItem(name: "ratingFrom", value: String(rFrom))) }
+            if let rTo = filters.ratingTo { queryItems.append(URLQueryItem(name: "ratingTo", value: String(rTo))) }
+            if let yFrom = filters.yearFrom { queryItems.append(URLQueryItem(name: "yearFrom", value: String(yFrom))) }
+            if let yTo = filters.yearTo { queryItems.append(URLQueryItem(name: "yearTo", value: String(yTo))) }
+            if let genres = filters.genres { queryItems.append(URLQueryItem(name: "genres", value: genres)) }
+            if let countries = filters.countries { queryItems.append(URLQueryItem(name: "countries", value: countries)) }
+        }
+        
+        return try await performRequest(endpoint: "api/v2/search", queryItems: queryItems)
     }
 }
