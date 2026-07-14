@@ -207,9 +207,9 @@ public final class PlaybackProgressStore {
     }
 
     func saveMetadata(details: MediaDetailsDto) {
-        guard let kpId = details.externalIds?.kp else { return }
+        guard let kpId = details.ids?.kp else { return }
 
-        let detailsId = details.id ?? details.sourceId ?? String(kpId)
+        let detailsId = details.id ?? String(kpId)
         let title = details.title ?? details.name ?? details.originalTitle ?? "Без названия"
 
         saveMetadata(

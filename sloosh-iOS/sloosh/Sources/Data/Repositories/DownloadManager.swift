@@ -150,7 +150,7 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         translation: AllohaTranslation,
         preferredQuality: VideoQualityPreference
     ) {
-        let kpId = details.externalIds?.kp ?? 0
+        let kpId = details.ids?.kp ?? 0
         guard kpId > 0 else { return }
         
         let itemId = makeItemId(kpId: kpId, season: season, episode: episode)

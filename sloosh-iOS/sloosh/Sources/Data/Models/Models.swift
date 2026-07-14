@@ -184,24 +184,22 @@ func normalizeImageUrl(path: String?, id: String? = nil) -> String? {
 
 struct MediaDetailsDto: Codable {
     let id: String?
-    let sourceId: String?
     let title: String?
-    let name: String?
     let originalTitle: String?
     let description: String?
-    let releaseDate: String?
     let type: String?
-    let genres: [GenreDto]?
-    let rating: Double?
-    let posterUrl: String?
-    let backdropUrl: String?
+    let year: Int?
+    let releaseDate: String?
+    let genres: [String]?
+    let countries: [String]?
     let duration: Int?
-    let country: String?
-    let language: String?
-    let externalIds: ExternalIdsDto?
+    let poster: String?
+    let backdrop: String?
+    let ratings: RatingsV2Dto?
+    let ids: IdsDto?
     
     var displayPosterUrl: String? {
-        normalizeImageUrl(path: posterUrl, id: id)
+        normalizeImageUrl(path: poster, id: id)
     }
     
     var displayBackdropUrl: String? {
@@ -231,6 +229,18 @@ struct ExternalIdsDto: Codable {
     let kp: Int?
     let tmdb: Int?
     let imdb: String?
+}
+
+struct RatingsV2Dto: Codable {
+    let kp: Double?
+    let imdb: Double?
+    let tmdb: Double?
+}
+
+struct IdsDto: Codable {
+    let kp: Int?
+    let imdb: String?
+    let tmdb: Int?
 }
 
 struct SupportItemDto: Codable {
