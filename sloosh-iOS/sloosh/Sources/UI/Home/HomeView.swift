@@ -311,17 +311,20 @@ private struct HomeCategoryTextTabs: View {
     ) -> some View {
         let isDark = colorScheme == .dark
         
-        // В светлой теме снижаем непрозрачность, так как темные режимы наложения работают агрессивнее
-        let opacity = isSelected ? (isDark ? 0.9 : 0.85) : (isDark ? 0.45 : 0.25)
+        // Для активного таба 0.9/0.8, для неактивного 0.45/0.35
+        let opacity = isSelected ? (isDark ? 0.9 : 0.8) : (isDark ? 0.45 : 0.35)
         let color = isDark ? Color.white.opacity(opacity) : Color.black.opacity(opacity)
         
-        // Для темной темы .plusLighter (сложение), для светлой .overlay (мягкое перекрытие)
-        let blendMode: BlendMode = isDark ? .plusLighter : .overlay
+        // Для темной темы .plusLighter (сложение с белым), 
+        // для светлой .multiply (умножение на черный/серый - дает отличную читаемость и впитывает цвет)
+        let blendMode: BlendMode = isDark ? .plusLighter : .multiply
         
-        return Text(text)
+        let textBase = Text(text)
             .font(.system(size: size, weight: weight))
             .tracking(-0.8)
             .foregroundStyle(color)
+            
+        return textBase
             .blendMode(blendMode)
     }
 
