@@ -32,8 +32,8 @@ enum AllohaRuntimeParser {
                 "subtitles": subtitleTracks(in: payload, baseURL: url),
                 "qualityVariants": [],
                 "httpHeaders": headers,
-                "introRange": introRange ?? NSNull(),
-                "outroRange": outroRange ?? NSNull()
+                "introRange": (introRange ?? NSNull()) as Any,
+                "outroRange": (outroRange ?? NSNull()) as Any
             ]
         }
 
@@ -145,8 +145,8 @@ enum AllohaRuntimeParser {
                 "subtitles": subtitleTracks(in: payload, baseURL: baseURL),
                 "qualityVariants": qualityVariants,
                 "httpHeaders": headers,
-                "introRange": skips["intro"] ?? NSNull(),
-                "outroRange": skips["outro"] ?? NSNull()
+                "introRange": (skips["intro"] ?? NSNull()) as Any,
+                "outroRange": (skips["outro"] ?? NSNull()) as Any
             ]
         }
 

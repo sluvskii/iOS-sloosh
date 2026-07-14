@@ -289,7 +289,7 @@ private struct ProfileCategoryTextTabs: View {
                 scrollProxy.scrollTo(selectedCategory, anchor: .center)
             }
             .onChange(of: selectedCategory) { _, newCategory in
-                withAnimation(animation) {
+                withAnimation(tabScrollAnimation) {
                     scrollProxy.scrollTo(newCategory, anchor: .center)
                 }
             }

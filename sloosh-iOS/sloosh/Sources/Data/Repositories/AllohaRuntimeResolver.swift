@@ -213,8 +213,8 @@ final class AllohaRuntimeResolver: NSObject, WKNavigationDelegate, WKScriptMessa
                         "audioVariants": mappedVariants,
                         "qualityVariants": parsed["qualityVariants"] ?? [],
                         "headers": headers,
-                        "introRange": parsed["introRange"] ?? NSNull(),
-                        "outroRange": parsed["outroRange"] ?? NSNull()
+                        "introRange": (parsed["introRange"] ?? NSNull()) as Any,
+                        "outroRange": (parsed["outroRange"] ?? NSNull()) as Any
                     ])
                     return
                 }
@@ -226,8 +226,8 @@ final class AllohaRuntimeResolver: NSObject, WKNavigationDelegate, WKScriptMessa
                     "audioVariants": [],
                     "qualityVariants": parsed["qualityVariants"] ?? [],
                     "headers": headers,
-                    "introRange": parsed["introRange"] ?? NSNull(),
-                    "outroRange": parsed["outroRange"] ?? NSNull()
+                    "introRange": (parsed["introRange"] ?? NSNull()) as Any,
+                    "outroRange": (parsed["outroRange"] ?? NSNull()) as Any
                 ])
                 return
             }
