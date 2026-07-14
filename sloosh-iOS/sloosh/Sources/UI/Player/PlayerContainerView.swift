@@ -11,6 +11,7 @@ struct PlayerContainerView: View {
     @State private var pipController: AVPictureInPictureController?
     @State private var hideTask: Task<Void, Never>?
     @State private var isInteracting = false
+    @State private var isPopoverOpen = false
     @State private var isZoomedToFill = false
     @State private var tapTask: Task<Void, Never>?
     @State private var consecutiveTaps: Int = 0
@@ -47,7 +48,7 @@ struct PlayerContainerView: View {
 
             // 7. Контролы
             let isSeeking = multiSeekSeconds != nil || isInteracting
-            PlayerControlsView(vm: vm, onDismiss: onDismiss, isInteracting: $isInteracting, showControls: showControls, isSeeking: isSeeking)
+            PlayerControlsView(vm: vm, onDismiss: onDismiss, isInteracting: $isInteracting, isPopoverOpen: $isPopoverOpen, showControls: showControls, isSeeking: isSeeking)
                 .blur(radius: showControls ? 0 : 20)
                 .opacity(showControls ? 1 : 0)
                 .allowsHitTesting(showControls)
@@ -60,7 +61,14 @@ struct PlayerContainerView: View {
         .onChange(of: isInteracting) { _, interacting in
             if interacting {
                 hideTask?.cancel()
-            } else if showControls {
+            } else if showControls && !isPopoverOpen {
+                scheduleAutoHide()
+            }
+        }
+        .onChange(of: isPopoverOpen) { _, open in
+            if open {
+                hideTask?.cancel()
+            } else if showControls && !isInteracting {
                 scheduleAutoHide()
             }
         }
