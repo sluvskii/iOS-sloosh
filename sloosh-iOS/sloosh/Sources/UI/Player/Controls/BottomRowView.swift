@@ -18,6 +18,9 @@ struct BottomRowView: View {
                     .foregroundStyle(.white)
                     .frame(width: 44, height: 40)
             }
+            .popover(isPresented: $showSpeedSheet) {
+                SpeedPickerSheet(vm: vm)
+            }
 
             if vm.availableVoiceovers.count > 1 {
                 divider
@@ -26,6 +29,9 @@ struct BottomRowView: View {
                         .font(.system(size: 15, weight: .medium))
                         .foregroundStyle(.white)
                         .frame(width: 44, height: 40)
+                }
+                .popover(isPresented: $showVoiceoverSheet) {
+                    VoiceoverPickerSheet(vm: vm)
                 }
             }
 
@@ -37,6 +43,9 @@ struct BottomRowView: View {
                         .foregroundStyle(.white)
                         .frame(width: 44, height: 40)
                 }
+                .popover(isPresented: $showQualitySheet) {
+                    QualityPickerSheet(vm: vm)
+                }
             }
 
             if !vm.availableSubtitles.isEmpty {
@@ -46,6 +55,9 @@ struct BottomRowView: View {
                         .font(.system(size: 15, weight: .medium))
                         .foregroundStyle(.white)
                         .frame(width: 44, height: 40)
+                }
+                .popover(isPresented: $showSubtitleSheet) {
+                    SubtitlePickerSheet(vm: vm)
                 }
             }
         }

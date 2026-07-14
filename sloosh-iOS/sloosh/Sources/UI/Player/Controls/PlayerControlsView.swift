@@ -73,19 +73,7 @@ struct PlayerControlsView: View {
                 .animation(.easeInOut(duration: 0.2), value: isSeeking)
                 .ignoresSafeArea()
         }
-        // Sheets
-        .sheet(isPresented: $showVoiceoverSheet) {
-            VoiceoverPickerSheet(vm: vm)
-        }
-        .sheet(isPresented: $showQualitySheet) {
-            QualityPickerSheet(vm: vm)
-        }
-        .sheet(isPresented: $showSpeedSheet) {
-            SpeedPickerSheet(vm: vm)
-        }
-        .sheet(isPresented: $showSubtitleSheet) {
-            SubtitlePickerSheet(vm: vm)
-        }
+        // Sheets are now popovers on BottomRowView
         .onChange(of: showVoiceoverSheet) { _, _ in isInteracting = showVoiceoverSheet || showQualitySheet || showSpeedSheet || showSubtitleSheet }
         .onChange(of: showQualitySheet)   { _, _ in isInteracting = showVoiceoverSheet || showQualitySheet || showSpeedSheet || showSubtitleSheet }
         .onChange(of: showSpeedSheet)     { _, _ in isInteracting = showVoiceoverSheet || showQualitySheet || showSpeedSheet || showSubtitleSheet }
