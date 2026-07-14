@@ -70,6 +70,7 @@ struct HomeView: View {
                 }
             ))
             .toolbar(.hidden, for: .navigationBar)
+            .toolbarVisibility(isFilterCollapsed ? .hidden : .visible, for: .tabBar)
             .safeAreaInset(edge: .top, spacing: 0) {
                 HomeCategoryTextTabs(
                     selectedCategory: $viewModel.selectedCategory,
@@ -211,17 +212,17 @@ struct HomeCategoryContentView: View {
                 let delta = newOffset - oldOffset
                 if newOffset <= 0 {
                     if isFilterCollapsed {
-                        isFilterCollapsed = false
+                        withAnimation(.easeOut(duration: 0.2)) { isFilterCollapsed = false }
                         debouncer.lastStateChangeTime = now
                     }
                 } else if delta > 8 {
                     if !isFilterCollapsed {
-                        isFilterCollapsed = true
+                        withAnimation(.easeOut(duration: 0.2)) { isFilterCollapsed = true }
                         debouncer.lastStateChangeTime = now
                     }
                 } else if delta < -8 {
                     if isFilterCollapsed {
-                        isFilterCollapsed = false
+                        withAnimation(.easeOut(duration: 0.2)) { isFilterCollapsed = false }
                         debouncer.lastStateChangeTime = now
                     }
                 }
