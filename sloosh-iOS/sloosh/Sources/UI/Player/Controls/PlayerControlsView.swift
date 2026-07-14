@@ -12,6 +12,7 @@ struct PlayerControlsView: View {
     @State private var showSubtitleSheet = false
     @Binding var isInteracting: Bool
     var showControls: Bool
+    var showVolumeOnly: Bool = false
     var isSeeking: Bool
 
     var body: some View {
@@ -22,16 +23,16 @@ struct PlayerControlsView: View {
                 startPoint: .top,
                 endPoint: .bottom
             )
-            .opacity(isSeeking ? 0 : 1)
+            .opacity(showVolumeOnly ? 0 : (isSeeking ? 0 : 1))
             .animation(.easeInOut(duration: 0.2), value: isSeeking)
             .ignoresSafeArea()
             .allowsHitTesting(false)
 
             // ── Верхний и нижний блоки ───────────────────────
             VStack {
-                TopBarView(vm: vm, onDismiss: onDismiss, isInteracting: $isInteracting)
-                    .scaleEffect(showControls ? 1.0 : 0.95)
-                    .opacity(isSeeking ? 0 : 1)
+                TopBarView(vm: vm, onDismiss: onDismiss, isInteracting: $isInteracting, showVolumeOnly: showVolumeOnly)
+                    .scaleEffect(showControls || showVolumeOnly ? 1.0 : 0.95)
+                    .opacity(showVolumeOnly ? 1 : (isSeeking ? 0 : 1))
                     .animation(.easeInOut(duration: 0.2), value: isSeeking)
                     .padding(.top, 32) // Абсолютный отступ от края экрана
 
@@ -63,13 +64,14 @@ struct PlayerControlsView: View {
                         .padding(.bottom, 32) // Абсолютный отступ от края экрана
                 }
                 .scaleEffect(showControls ? 1.0 : 0.95)
+                .opacity(showVolumeOnly ? 0 : 1)
             }
             .ignoresSafeArea(edges: .vertical) // Игнорируем safe area для идеальной симметрии
 
             // ── Центральные кнопки (ровно по центру экрана) ───
             CenterControlsView(vm: vm)
                 .scaleEffect(showControls ? 1.0 : 0.95)
-                .opacity(isSeeking ? 0 : 1)
+                .opacity(showVolumeOnly ? 0 : (isSeeking ? 0 : 1))
                 .animation(.easeInOut(duration: 0.2), value: isSeeking)
                 .ignoresSafeArea()
         }

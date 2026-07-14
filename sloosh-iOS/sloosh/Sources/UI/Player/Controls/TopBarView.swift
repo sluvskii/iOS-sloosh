@@ -25,6 +25,7 @@ struct TopBarView: View {
     @ObservedObject var vm: PlayerViewModel
     let onDismiss: () -> Void
     @Binding var isInteracting: Bool
+    var showVolumeOnly: Bool = false
     
     @StateObject private var volumeObserver = VolumeObserver()
     
@@ -36,6 +37,7 @@ struct TopBarView: View {
     var body: some View {
         HStack(alignment: .center) {
             leftGroup
+                .opacity(showVolumeOnly ? 0 : 1)
             Spacer()
             volumeGroup
         }

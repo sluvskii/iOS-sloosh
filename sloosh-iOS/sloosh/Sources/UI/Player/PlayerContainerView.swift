@@ -17,6 +17,9 @@ struct PlayerContainerView: View {
     @State private var activeTapSide: TapSide? = nil
     @State private var multiSeekSeconds: Int? = nil
     
+    @State private var showVolumeOnly = false
+    @State private var volumeHideTask: Task<Void, Never>?
+    
     @ObservedObject private var volumeManager = VolumeManager.shared
 
     enum TapSide { case left, right }
@@ -49,13 +52,16 @@ struct PlayerContainerView: View {
 
             // 7. Контролы
             let isSeeking = multiSeekSeconds != nil || isInteracting
-            PlayerControlsView(vm: vm, onDismiss: onDismiss, isInteracting: $isInteracting, showControls: showControls, isSeeking: isSeeking)
-                .blur(radius: showControls ? 0 : 20)
-                .opacity(showControls ? 1 : 0)
-                .allowsHitTesting(showControls)
+            PlayerControlsView(vm: vm, onDismiss: onDismiss, isInteracting: $isInteracting, showControls: showControls, showVolumeOnly: showVolumeOnly, isSeeking: isSeeking)
+                .blur(radius: showControls || showVolumeOnly ? 0 : 20)
+                .opacity(showControls || showVolumeOnly ? 1 : 0)
+                .allowsHitTesting(showControls || showVolumeOnly)
         }
         .onAppear { scheduleAutoHide() }
-        .onDisappear { hideTask?.cancel() }
+        .onDisappear { 
+            hideTask?.cancel()
+            volumeHideTask?.cancel()
+        }
         .onChange(of: vm.isPlaying) { _, _ in
             if vm.isPlaying { scheduleAutoHide() }
         }
@@ -67,7 +73,17 @@ struct PlayerContainerView: View {
             }
         }
         .onReceive(volumeManager.$hardwareVolume) { _ in
-            resetHideTimer()
+            if !showControls {
+                withAnimation(showAnimation) { showVolumeOnly = true }
+                volumeHideTask?.cancel()
+                volumeHideTask = Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(2.5))
+                    guard !Task.isCancelled else { return }
+                    withAnimation(hideAnimation) { showVolumeOnly = false }
+                }
+            } else {
+                resetHideTimer()
+            }
         }
         .gesture(
             MagnificationGesture()
