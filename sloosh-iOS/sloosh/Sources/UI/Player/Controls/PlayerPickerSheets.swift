@@ -47,7 +47,7 @@ struct SpeedPickerSheet: View {
     @ObservedObject var vm: PlayerViewModel
     @Environment(\.dismiss) private var dismiss
 
-    private let speeds: [Float] = [0.5, 1.0, 1.25, 1.5, 2.0]
+    private let speeds: [Float] = [0.5, 1.0, 1.5, 2.0]
 
     var body: some View {
         PopoverContainer(title: "Скорость") {
