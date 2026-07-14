@@ -15,7 +15,7 @@ struct TopBarView: View {
             leftGroup
             Spacer()
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 8)
     }
 
     // MARK: Левая группа: закрыть | PiP | AirPlay
