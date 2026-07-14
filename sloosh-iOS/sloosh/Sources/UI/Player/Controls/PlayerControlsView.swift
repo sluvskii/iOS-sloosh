@@ -71,6 +71,29 @@ struct PlayerControlsView: View {
                                 .transition(.move(edge: .trailing).combined(with: .opacity))
                             }
                             
+                            if vm.showSkipOutro {
+                                Button {
+                                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                    if let range = vm.outroRange {
+                                        vm.seek(to: range.upperBound + 0.5)
+                                        vm.showSkipOutro = false
+                                        vm.outroRange = nil
+                                    }
+                                } label: {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "forward.end.fill")
+                                        Text("Пропустить титры")
+                                    }
+                                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 20)
+                                    .padding(.vertical, 12)
+                                    .glassEffect(.regular.interactive(), in: .capsule)
+                                }
+                                .buttonStyle(PlainButtonStyle())
+                                .transition(.move(edge: .trailing).combined(with: .opacity))
+                            }
+                            
                             BottomRowView(
                                 vm: vm,
                                 showVoiceoverSheet: $showVoiceoverSheet,
