@@ -165,7 +165,6 @@ struct ProfileView: View {
             }
         }
     }
-}
 
 private struct ProfileEmptyState: View {
     let icon: String
