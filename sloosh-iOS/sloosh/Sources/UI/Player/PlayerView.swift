@@ -205,7 +205,6 @@ class PlayerViewModel: ObservableObject {
     private var originalStreamURL: URL?
     /// Проксированный URL который дали в AVPlayer (может быть 127.0.0.1).
     private var currentPlaybackSourceURL: URL?
-    private var bufferingTask: Task<Void, Never>?
 
     private(set) var currentKpId: Int?
     private(set) var currentSeason: Int?
@@ -897,40 +896,7 @@ class PlayerViewModel: ObservableObject {
                 guard let self else { return }
                 let status = player.timeControlStatus
                 self.isPlaying = (status == .playing)
-                
-                self.bufferingTask?.cancel()
-                if status == .waitingToPlayAtSpecifiedRate {
-                    self.bufferingTask = Task { [weak self] in
-                        // Ждем 0.5с прежде чем показать лоадер
-                        try? await Task.sleep(for: .seconds(0.5))
-                        guard !Task.isCancelled else { return }
-                        await MainActor.run { self?.isBuffering = true }
-                        
-                        // Если буферизация зависла дольше 5 секунд (часто бывает после фона), перезапускаем стрим
-                        try? await Task.sleep(for: .seconds(5.0))
-                        guard !Task.isCancelled else { return }
-                        await MainActor.run {
-                            guard self?.player?.timeControlStatus == .waitingToPlayAtSpecifiedRate else { return }
-                            guard self?.isUserSeeking == false else { return }
-                            print("Player stuck buffering for 5.5s, reloading via originalStreamURL...")
-                            // Используем originalStreamURL (не прокси-URL!) чтобы не проксировать прокси
-                            if let url = self?.originalStreamURL {
-                                // Принудительно перезапускаем прокси-сервер перед перезагрузкой
-                                if let self {
-                                    HlsProxyServer.shared.start(
-                                        headers: self.currentHeaders,
-                                        voices: [],
-                                        subtitles: self.availableSubtitles,
-                                        mediaId: self.currentKpId.map { "kp_\($0)" } ?? "unknown"
-                                    )
-                                }
-                                self?.reloadPlayback(to: url, preferredPeakBitRate: self?.player?.currentItem?.preferredPeakBitRate)
-                            }
-                        }
-                    }
-                } else {
-                    self.isBuffering = false
-                }
+                self.isBuffering = (status == .waitingToPlayAtSpecifiedRate)
                 
                 self.updateNowPlaying()
             }
@@ -977,7 +943,6 @@ class PlayerViewModel: ObservableObject {
                         self.isLoading = false
                     }
                 } else if item.status == .readyToPlay {
-                    self.hasRetriedPlayback = false // Успешно загрузилось, сбрасываем флаг
                     self.isLoading = false
                 }
             }
