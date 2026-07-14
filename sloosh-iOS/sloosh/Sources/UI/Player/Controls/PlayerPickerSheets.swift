@@ -8,23 +8,14 @@ struct VoiceoverPickerSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        NavigationStack {
-            List {
-                ForEach(vm.availableVoiceovers, id: \.self) { name in
-                    pickerRow(
-                        label: name,
-                        isSelected: vm.currentTranslationName == name
-                    ) {
-                        vm.switchVoiceover(to: name)
-                        dismiss()
-                    }
-                }
-            }
-            .navigationTitle("Озвучка")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Готово") { dismiss() }
+        PopoverContainer(title: "Озвучка") {
+            ForEach(vm.availableVoiceovers, id: \.self) { name in
+                popoverRow(
+                    label: name,
+                    isSelected: vm.currentTranslationName == name
+                ) {
+                    vm.switchVoiceover(to: name)
+                    dismiss()
                 }
             }
         }
@@ -37,23 +28,14 @@ struct QualityPickerSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        NavigationStack {
-            List {
-                ForEach(vm.availableQualities, id: \.key) { q in
-                    pickerRow(
-                        label: q.key,
-                        isSelected: vm.currentQualityKey == q.key
-                    ) {
-                        vm.changeQuality(to: q.key)
-                        dismiss()
-                    }
-                }
-            }
-            .navigationTitle("Качество")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Готово") { dismiss() }
+        PopoverContainer(title: "Качество") {
+            ForEach(vm.availableQualities, id: \.key) { q in
+                popoverRow(
+                    label: q.key,
+                    isSelected: vm.currentQualityKey == q.key
+                ) {
+                    vm.changeQuality(to: q.key)
+                    dismiss()
                 }
             }
         }
@@ -68,23 +50,14 @@ struct SpeedPickerSheet: View {
     private let speeds: [Float] = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0]
 
     var body: some View {
-        NavigationStack {
-            List {
-                ForEach(speeds, id: \.self) { rate in
-                    pickerRow(
-                        label: rateLabel(rate),
-                        isSelected: vm.playbackRate == rate
-                    ) {
-                        vm.setPlaybackRate(rate)
-                        dismiss()
-                    }
-                }
-            }
-            .navigationTitle("Скорость")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Готово") { dismiss() }
+        PopoverContainer(title: "Скорость") {
+            ForEach(speeds, id: \.self) { rate in
+                popoverRow(
+                    label: rateLabel(rate),
+                    isSelected: vm.playbackRate == rate
+                ) {
+                    vm.setPlaybackRate(rate)
+                    dismiss()
                 }
             }
         }
@@ -101,47 +74,64 @@ struct SubtitlePickerSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
-        NavigationStack {
-            List {
-                pickerRow(label: "Без субтитров", isSelected: vm.currentSubtitle == nil) {
-                    vm.setSubtitle(nil)
-                    dismiss()
-                }
-                ForEach(vm.availableSubtitles, id: \.url) { sub in
-                    pickerRow(
-                        label: sub.label,
-                        isSelected: vm.currentSubtitle?.url == sub.url
-                    ) {
-                        vm.setSubtitle(sub)
-                        dismiss()
-                    }
-                }
+        PopoverContainer(title: "Субтитры") {
+            popoverRow(label: "Без субтитров", isSelected: vm.currentSubtitle == nil) {
+                vm.setSubtitle(nil)
+                dismiss()
             }
-            .navigationTitle("Субтитры")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Готово") { dismiss() }
+            ForEach(vm.availableSubtitles, id: \.url) { sub in
+                popoverRow(
+                    label: sub.label,
+                    isSelected: vm.currentSubtitle?.url == sub.url
+                ) {
+                    vm.setSubtitle(sub)
+                    dismiss()
                 }
             }
         }
     }
 }
 
-// MARK: - Вспомогательная строка пикера
+// MARK: - Вспомогательные View
 
-@ViewBuilder
-private func pickerRow(label: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
-    Button(action: action) {
-        HStack {
-            Text(label)
-                .foregroundStyle(.primary)
-            Spacer()
-            if isSelected {
-                Image(systemName: "checkmark")
-                    .foregroundStyle(.tint)
-                    .fontWeight(.semibold)
+private struct PopoverContainer<Content: View>: View {
+    let title: String
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        VStack(spacing: 12) {
+            Text(title)
+                .font(.system(size: 16, weight: .medium))
+                .foregroundStyle(.white)
+                .padding(.bottom, 4)
+
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 8) {
+                    content
+                }
             }
         }
+        .padding(20)
+        .frame(minWidth: 260, maxWidth: 320)
+        // Принудительно открываем как Popover даже на iPhone
+        .presentationCompactAdaptation(.popover)
+        .preferredColorScheme(.dark)
     }
+}
+
+@ViewBuilder
+private func popoverRow(label: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
+    Button(action: action) {
+        Text(label)
+            .font(.system(size: 15, weight: isSelected ? .semibold : .medium))
+            .foregroundStyle(isSelected ? .black : .white)
+            .padding(.vertical, 12)
+            .padding(.horizontal, 16)
+            .frame(maxWidth: .infinity)
+            .background(
+                Capsule()
+                    .fill(isSelected ? Color.white : Color.white.opacity(0.15))
+            )
+    }
+    .buttonStyle(.plain)
 }
