@@ -77,7 +77,7 @@ struct HomeView: View {
                     isFilterCollapsed: $isFilterCollapsed
                 )
                 .padding(.top, 4)
-                .padding(.bottom, 12)
+                .padding(.bottom, 2)
                 .background(VariableBlurView().ignoresSafeArea(edges: .top))
             }
             .task {
