@@ -296,7 +296,7 @@ private struct HomeCategoryTextTabs: View {
     private let titleHeight: CGFloat = 36 // Увеличена высота под новый размер
 
     private var tabSpacing: CGFloat {
-        horizontalSizeClass == .regular ? 20 : 16
+        horizontalSizeClass == .regular ? 16 : 12
     }
 
     private var edgeContentInset: CGFloat {
