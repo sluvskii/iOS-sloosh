@@ -115,7 +115,7 @@ struct ProfileView: View {
                         // Верхний слой: Заголовок и Настройки
                         ZStack {
                             Text("Профиль")
-                                .font(.system(size: 20, weight: .semibold, design: .rounded))
+                                .font(.system(size: 20, weight: .semibold))
                                 .foregroundStyle(.primary)
                             
                             HStack {
@@ -124,16 +124,15 @@ struct ProfileView: View {
                                 Button {
                                     showsSettings = true
                                 } label: {
-                                    Image(systemName: "gearshape.fill")
-                                        .font(.system(size: 16, weight: .semibold))
+                                    Image(systemName: "gearshape")
+                                        .font(.system(size: 24))
                                         .foregroundStyle(.primary)
-                                        .padding(10)
-                                        .glassEffect(.regular, in: .circle)
+                                        .frame(width: 44, height: 44)
+                                        .contentShape(Rectangle())
                                 }
-                                .buttonStyle(PlainButtonStyle())
                             }
                         }
-                        .padding(.horizontal, 20)
+                        .padding(.horizontal, 16)
                         .padding(.top, 4)
                         
                         // Нижний слой: Текстовые табы
@@ -218,7 +217,6 @@ private struct ProfileCategoryTextTabs: View {
 
     private func layeredText(
         _ text: String,
-        count: Int,
         size: CGFloat,
         weight: Font.Weight,
         isSelected: Bool
@@ -228,18 +226,11 @@ private struct ProfileCategoryTextTabs: View {
         let color = isDark ? Color.white.opacity(opacity) : Color.black.opacity(opacity)
         let blendMode: BlendMode = isDark ? .plusLighter : .plusDarker
         
-        return HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Text(text)
-                .font(.system(size: size, weight: weight))
-                .tracking(-0.8)
-                
-            Text("\(count)")
-                .font(.system(size: max(size - 10, 14), weight: .semibold, design: .rounded))
-                .monospacedDigit()
-                .padding(.top, 2)
-        }
-        .foregroundStyle(color)
-        .blendMode(blendMode)
+        return Text(text)
+            .font(.system(size: size, weight: weight))
+            .tracking(-0.8)
+            .foregroundStyle(color)
+            .blendMode(blendMode)
     }
 
     var body: some View {
@@ -250,7 +241,6 @@ private struct ProfileCategoryTextTabs: View {
                         let isSelected = selectedCategory == category
                         let isFirst = index == 0
                         let isLast = index == FavoriteCategory.allCases.count - 1
-                        let count = categoryCounts[category] ?? 0
 
                         Button {
                             guard !isSelected else { return }
@@ -260,7 +250,6 @@ private struct ProfileCategoryTextTabs: View {
                         } label: {
                             layeredText(
                                 category.title,
-                                count: count,
                                 size: titleSize,
                                 weight: isSelected ? .bold : .semibold,
                                 isSelected: isSelected
