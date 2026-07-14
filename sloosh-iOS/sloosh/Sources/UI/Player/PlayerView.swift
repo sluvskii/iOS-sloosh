@@ -164,7 +164,9 @@ class PlayerViewModel: ObservableObject {
     @Published var bufferedProgress: Double = 0
     @Published var screenScrubTime: Double?
     @Published var introRange: ClosedRange<Double>?
+    @Published var outroRange: ClosedRange<Double>?
     @Published var showSkipIntro = false
+    @Published var showSkipOutro = false
 
     // MARK: - Quality & Rate
     @Published var availableQualities: [PlaybackQualityOption] = []
@@ -1051,6 +1053,20 @@ class PlayerViewModel: ObservableObject {
                     }
                 }
                 
+                if let outro = self.outroRange, outro.contains(self.currentTime) {
+                    if !self.showSkipOutro {
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                            self.showSkipOutro = true
+                        }
+                    }
+                } else {
+                    if self.showSkipOutro {
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                            self.showSkipOutro = false
+                        }
+                    }
+                }
+                
                 // Сохраняем прогресс каждые 5 секунд (только если позиция > 1 секунды, чтобы избежать сброса в ноль)
                 if Int(t) % 5 == 0 && t > 1 {
                     let dur = self.currentDuration > 0 ? self.currentDuration : nil
@@ -1363,6 +1379,13 @@ class PlayerViewModel: ObservableObject {
             self.introRange = start...end
         } else {
             self.introRange = nil
+        }
+        
+        if let outro = resolved["outroRange"] as? [String: Double],
+           let start = outro["start"], let end = outro["end"] {
+            self.outroRange = start...end
+        } else {
+            self.outroRange = nil
         }
 
         // Заполняем список доступных озвучек из audioVariants

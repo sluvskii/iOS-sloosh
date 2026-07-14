@@ -18,9 +18,12 @@ enum AllohaRuntimeParser {
 
         if let fallback = firstPreferredStreamURL(in: payload, baseURL: url) {
             var introRange: [String: Any]? = nil
+            var outroRange: [String: Any]? = nil
             if let data = payload.data(using: .utf8),
                let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
-                introRange = extractIntro(from: object)
+                let skips = extractSkips(from: object)
+                introRange = skips["intro"] as? [String: Any]
+                outroRange = skips["outro"] as? [String: Any]
             }
             return [
                 "videoURL": fallback.absoluteString,
@@ -29,7 +32,8 @@ enum AllohaRuntimeParser {
                 "subtitles": subtitleTracks(in: payload, baseURL: url),
                 "qualityVariants": [],
                 "httpHeaders": headers,
-                "introRange": introRange ?? NSNull()
+                "introRange": introRange ?? NSNull(),
+                "outroRange": outroRange ?? NSNull()
             ]
         }
 
@@ -133,6 +137,7 @@ enum AllohaRuntimeParser {
                 ?? (qualityVariants.last?["url"] as? String)
             guard let pickedURL else { continue }
 
+            let skips = extractSkips(from: object)
             return [
                 "videoURL": pickedURL,
                 "audioTracks": [],
@@ -140,48 +145,72 @@ enum AllohaRuntimeParser {
                 "subtitles": subtitleTracks(in: payload, baseURL: baseURL),
                 "qualityVariants": qualityVariants,
                 "httpHeaders": headers,
-                "introRange": extractIntro(from: object) ?? NSNull()
+                "introRange": skips["intro"] ?? NSNull(),
+                "outroRange": skips["outro"] ?? NSNull()
             ]
         }
 
         return nil
     }
 
-    private static func extractIntro(from object: [String: Any]) -> [String: Any]? {
+    private static func extractSkips(from object: [String: Any]) -> [String: Any?] {
+        var result: [String: Any?] = ["intro": nil, "outro": nil]
+        
         // Option 1: "skipTime" string format (e.g., "0-90,3453-3607")
         if let skipTime = object["skipTime"] as? String {
             let parts = skipTime.components(separatedBy: ",")
-            if let firstPart = parts.first {
-                let times = firstPart.components(separatedBy: "-")
+            if parts.count >= 1 {
+                let times = parts[0].components(separatedBy: "-")
                 if times.count == 2, let start = Double(times[0]), let end = Double(times[1]) {
-                    return ["start": start, "end": end]
+                    result["intro"] = ["start": start, "end": end]
                 }
+            }
+            if parts.count >= 2 {
+                let times = parts[1].components(separatedBy: "-")
+                if times.count == 2, let start = Double(times[0]), let end = Double(times[1]) {
+                    result["outro"] = ["start": start, "end": end]
+                }
+            }
+            if result["intro"] != nil || result["outro"] != nil {
+                return result
             }
         }
         
-        // Option 2: "skips": {"intro": [start, end]}
-        if let skips = object["skips"] as? [String: Any],
-           let intro = skips["intro"] as? [Double], intro.count >= 2 {
-            return ["start": intro[0], "end": intro[1]]
+        // Option 2: "skips": {"intro": [start, end], "outro": [start, end]}
+        if let skips = object["skips"] as? [String: Any] {
+            if let intro = skips["intro"] as? [Double], intro.count >= 2 {
+                result["intro"] = ["start": intro[0], "end": intro[1]]
+            }
+            if let outro = skips["outro"] as? [Double], outro.count >= 2 {
+                result["outro"] = ["start": outro[0], "end": outro[1]]
+            }
+            if result["intro"] != nil || result["outro"] != nil {
+                return result
+            }
         }
         
-        // Option 2: "intro": {"start": start, "end": end}
+        // Option 3: "intro": {"start": start, "end": end}
         if let introObj = object["intro"] as? [String: Any],
            let start = introObj["start"] as? Double,
            let end = introObj["end"] as? Double {
-            return ["start": start, "end": end]
+            result["intro"] = ["start": start, "end": end]
         }
         
-        // Option 3: "timecodes": [{"type": "intro", "start": start, "end": end}]
+        // Option 4: "timecodes": [{"type": "intro", "start": start, "end": end}, {"type": "outro" ...}]
         if let timecodes = object["timecodes"] as? [[String: Any]] {
             if let intro = timecodes.first(where: { ($0["type"] as? String)?.lowercased() == "intro" }),
                let start = intro["start"] as? Double,
                let end = intro["end"] as? Double {
-                return ["start": start, "end": end]
+                result["intro"] = ["start": start, "end": end]
+            }
+            if let outro = timecodes.first(where: { ($0["type"] as? String)?.lowercased() == "outro" }),
+               let start = outro["start"] as? Double,
+               let end = outro["end"] as? Double {
+                result["outro"] = ["start": start, "end": end]
             }
         }
         
-        return nil
+        return result
     }
 
     private static func deduplicatedAudioVariants(_ variants: [[String: Any]]) -> [[String: Any]] {
