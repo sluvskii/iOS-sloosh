@@ -212,7 +212,8 @@ final class AllohaRuntimeResolver: NSObject, WKNavigationDelegate, WKScriptMessa
                         "subtitles": parsed["subtitles"] ?? [],
                         "audioVariants": mappedVariants,
                         "qualityVariants": parsed["qualityVariants"] ?? [],
-                        "headers": headers
+                        "headers": headers,
+                        "introRange": parsed["introRange"] ?? NSNull()
                     ])
                     return
                 }
@@ -223,7 +224,8 @@ final class AllohaRuntimeResolver: NSObject, WKNavigationDelegate, WKScriptMessa
                     "subtitles": parsed["subtitles"] ?? [],
                     "audioVariants": [],
                     "qualityVariants": parsed["qualityVariants"] ?? [],
-                    "headers": headers
+                    "headers": headers,
+                    "introRange": parsed["introRange"] ?? NSNull()
                 ])
                 return
             }
