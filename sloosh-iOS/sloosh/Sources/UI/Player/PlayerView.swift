@@ -529,7 +529,7 @@ class PlayerViewModel: ObservableObject {
         guard let player else { return }
         let time = CMTime(seconds: seconds, preferredTimescale: 600)
         isUserSeeking = true
-        player.seek(to: time, toleranceBefore: .positiveInfinity, toleranceAfter: .positiveInfinity) { [weak self] _ in
+        player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
             MainActor.assumeIsolated {
                 self?.isUserSeeking = false
             }
@@ -690,7 +690,7 @@ class PlayerViewModel: ObservableObject {
                     self.itemObservation?.invalidate()
                     self.itemObservation = nil
                     
-                    self.player?.seek(to: CMTime(seconds: savedTime, preferredTimescale: 600), toleranceBefore: .positiveInfinity, toleranceAfter: .positiveInfinity) { _ in
+                    self.player?.seek(to: CMTime(seconds: savedTime, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero) { _ in
                         if wasPlaying {
                             self.player?.play()
                         }
@@ -984,7 +984,7 @@ class PlayerViewModel: ObservableObject {
 
         let savedPosition = PlaybackProgressStore.shared.load(mediaId: mediaId)
         if savedPosition > 0 {
-            player.seek(to: CMTime(seconds: savedPosition, preferredTimescale: 600), toleranceBefore: .positiveInfinity, toleranceAfter: .positiveInfinity)
+            player.seek(to: CMTime(seconds: savedPosition, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
             currentTime = savedPosition
         }
 
