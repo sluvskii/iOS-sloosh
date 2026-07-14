@@ -26,7 +26,8 @@ struct SeekBarView: View {
         HStack(spacing: 12) {
             Text(formatTime(displayTime))
                 .font(.system(size: 13, weight: .medium).monospacedDigit())
-                .foregroundStyle(.white)
+                .foregroundStyle(.white.opacity(0.65))
+                .blendMode(.plusLighter)
 
             // Нативный слайдер — обеспечивает эффект стекла, как у MPVolumeView
             SystemUISliderView(
@@ -40,10 +41,13 @@ struct SeekBarView: View {
                 }
             )
             .frame(height: 24)
+            .colorMultiply(.white.opacity(0.65))
+            .blendMode(.plusLighter)
 
             Text("-" + formatTime(max(0, vm.currentDuration - displayTime)))
                 .font(.system(size: 13, weight: .medium).monospacedDigit())
-                .foregroundStyle(.white)
+                .foregroundStyle(.white.opacity(0.65))
+                .blendMode(.plusLighter)
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
