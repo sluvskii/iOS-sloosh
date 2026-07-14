@@ -763,7 +763,7 @@ class HomeViewModel: ObservableObject {
             var page = cachedPages[key] ?? 1
             var canLoad = currentCanLoadMore
 
-            while newItems.isEmpty && pagesFetched < 3 && canLoad {
+            while newItems.isEmpty && canLoad {
                 let fetched = try await fetchPage(page, category: cat, filter: selectedFilter)
                 if fetched.isEmpty {
                     canLoad = false
@@ -774,7 +774,6 @@ class HomeViewModel: ObservableObject {
                 newItems.append(contentsOf: filterItemsForSelectedCategory(validFetched, category: cat))
 
                 page += 1
-                pagesFetched += 1
             }
 
             let currentItems = cachedItems[key] ?? []
