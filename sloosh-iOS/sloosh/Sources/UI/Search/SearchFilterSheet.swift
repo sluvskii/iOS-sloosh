@@ -19,6 +19,7 @@ struct SearchFilterSheet: View {
                             Text("Всё").tag(String?.none)
                             Text("Фильмы").tag(String?.some("FILM"))
                             Text("Сериалы").tag(String?.some("TV_SERIES"))
+                            Text("Мульты").tag(String?.some("CARTOON"))
                         }
                         .pickerStyle(.segmented)
                     }

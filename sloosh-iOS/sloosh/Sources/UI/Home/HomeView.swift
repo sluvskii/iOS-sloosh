@@ -811,7 +811,9 @@ class HomeViewModel: ObservableObject {
                 mergedFilters.type = "FILM"
             case .tvShows:
                 mergedFilters.type = "TV_SERIES"
-            case .cartoons, .all:
+            case .cartoons:
+                mergedFilters.type = "CARTOON"
+            case .all:
                 break
             }
         }
