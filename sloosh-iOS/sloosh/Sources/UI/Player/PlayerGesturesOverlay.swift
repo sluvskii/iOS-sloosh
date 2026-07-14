@@ -14,6 +14,7 @@ struct PlayerGesturesModifier: ViewModifier {
     @State private var initialVolume: Float = 0.0
     @State private var isDragging: Bool = false
     @State private var draggingSide: TapSide? = nil
+    @State private var hideTask: Task<Void, Never>?
     
     enum TapSide { case left, right }
     
@@ -28,6 +29,9 @@ struct PlayerGesturesModifier: ViewModifier {
                     .simultaneousGesture(
                         DragGesture(minimumDistance: 15)
                             .onChanged { value in
+                                hideTask?.cancel()
+                                hideTask = nil
+                                
                                 if !isDragging {
                                     isDragging = true
                                     onInteractionBegan?()
@@ -39,10 +43,17 @@ struct PlayerGesturesModifier: ViewModifier {
                             }
                             .onEnded { _ in
                                 isDragging = false
-                                draggingSide = nil
                                 onInteractionEnded?()
-                                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                                    showIndicator = false
+                                
+                                hideTask?.cancel()
+                                hideTask = Task {
+                                    try? await Task.sleep(for: .seconds(1.0))
+                                    guard !Task.isCancelled else { return }
+                                    await MainActor.run {
+                                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                                            showIndicator = false
+                                        }
+                                    }
                                 }
                             }
                     )
