@@ -34,7 +34,7 @@ struct PlayerControlsView: View {
                     .scaleEffect(showControls ? 1.0 : 0.95)
                     .opacity(isSeeking ? 0 : 1)
                     .animation(.easeInOut(duration: 0.2), value: isSeeking)
-                    .padding(.top, 16) // Уменьшенный отступ
+                    .padding(.top, 24) // Увеличенный отступ
 
                 Spacer()
 
@@ -42,7 +42,7 @@ struct PlayerControlsView: View {
                 VStack(alignment: .trailing, spacing: 8) {
                     HStack(alignment: .bottom) {
                         PlayerTitleInfoView(vm: vm)
-                            .padding(.leading, 16)
+                            .padding(.leading, 8)
                             .padding(.bottom, 4)
                         
                         Spacer()
@@ -54,14 +54,14 @@ struct PlayerControlsView: View {
                             showSpeedSheet: $showSpeedSheet,
                             showSubtitleSheet: $showSubtitleSheet
                         )
-                        .padding(.trailing, 16)
+                        .padding(.trailing, 8)
                     }
                     .opacity(isSeeking ? 0 : 1)
                     .animation(.easeInOut(duration: 0.2), value: isSeeking)
 
                     SeekBarView(vm: vm, isInteracting: $isInteracting)
-                        .padding(.horizontal, 16)
-                        .padding(.bottom, 16) // Уменьшенный отступ
+                        .padding(.horizontal, 8)
+                        .padding(.bottom, 24) // Увеличенный отступ
                 }
                 .scaleEffect(showControls ? 1.0 : 0.95)
             }
