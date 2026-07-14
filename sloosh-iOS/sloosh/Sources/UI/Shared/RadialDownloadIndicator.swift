@@ -88,7 +88,7 @@ public struct RadialDownloadIndicator: View {
         case .paused:
             return .primary
         case .downloaded:
-            return .white
+            return .black
         }
     }
 }
