@@ -45,27 +45,6 @@ struct PlayerGesturesModifier: ViewModifier {
                                 }
                             }
                     )
-                    .onReceive(volumeManager.$hardwareVolume) { newVolume in
-                        guard !isDragging else { return }
-                        
-                        indicatorIcon = newVolume == 0 ? "speaker.slash.fill" : (newVolume < 0.5 ? "speaker.wave.1.fill" : "speaker.wave.3.fill")
-                        indicatorValue = Double(newVolume)
-                        
-                        if !showIndicator {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                showIndicator = true
-                            }
-                        }
-                        
-                        hideTask?.cancel()
-                        hideTask = Task {
-                            try? await Task.sleep(nanoseconds: 2_000_000_000)
-                            guard !Task.isCancelled, !isDragging else { return }
-                            withAnimation(.easeOut(duration: 0.3)) {
-                                showIndicator = false
-                            }
-                        }
-                    }
                 
                 // Центральный индикатор
                 if showIndicator {

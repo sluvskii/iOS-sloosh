@@ -16,6 +16,8 @@ struct PlayerContainerView: View {
     @State private var consecutiveTaps: Int = 0
     @State private var activeTapSide: TapSide? = nil
     @State private var multiSeekSeconds: Int? = nil
+    
+    @ObservedObject private var volumeManager = VolumeManager.shared
 
     enum TapSide { case left, right }
 
@@ -63,6 +65,9 @@ struct PlayerContainerView: View {
             } else if showControls {
                 scheduleAutoHide()
             }
+        }
+        .onReceive(volumeManager.$hardwareVolume) { _ in
+            resetHideTimer()
         }
         .gesture(
             MagnificationGesture()
