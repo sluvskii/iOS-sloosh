@@ -47,13 +47,37 @@ struct PlayerControlsView: View {
                         
                         Spacer()
                         
-                        BottomRowView(
-                            vm: vm,
-                            showVoiceoverSheet: $showVoiceoverSheet,
-                            showQualitySheet: $showQualitySheet,
-                            showSpeedSheet: $showSpeedSheet,
-                            showSubtitleSheet: $showSubtitleSheet
-                        )
+                        VStack(alignment: .trailing, spacing: 12) {
+                            if vm.showSkipIntro {
+                                Button {
+                                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                    if let range = vm.introRange {
+                                        vm.seek(to: range.upperBound + 0.5)
+                                        vm.showSkipIntro = false
+                                        vm.introRange = nil
+                                    }
+                                } label: {
+                                    HStack(spacing: 6) {
+                                        Image(systemName: "forward.end.fill")
+                                        Text("Пропустить заставку")
+                                    }
+                                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 20)
+                                    .padding(.vertical, 12)
+                                    .glassEffect(.regular.interactive(), in: .capsule)
+                                }
+                                .transition(.move(edge: .trailing).combined(with: .opacity))
+                            }
+                            
+                            BottomRowView(
+                                vm: vm,
+                                showVoiceoverSheet: $showVoiceoverSheet,
+                                showQualitySheet: $showQualitySheet,
+                                showSpeedSheet: $showSpeedSheet,
+                                showSubtitleSheet: $showSubtitleSheet
+                            )
+                        }
                         .padding(.trailing, 16)
                     }
                     .opacity(isSeeking ? 0 : 1)
