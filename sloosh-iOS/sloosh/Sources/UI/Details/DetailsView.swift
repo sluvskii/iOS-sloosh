@@ -315,43 +315,36 @@ struct DetailsView: View {
         generator.prepare()
         generator.impactOccurred()
 
-        guard let kpId = details.externalIds?.kp else { return }
+        guard let kpId = details.ids?.kp else { return }
 
         sourceSheetSourceID = "playBtn"
         sourceSheetTitle = details.title ?? details.name ?? ""
-        sourceSheetDetent = .medium
-        sourceSheetMode = .play
-        viewModel.resetSourceSheet()
-        showSourceSheet = true
+        
+        let initialSeason = details.type == "tv" ? 1 : nil
+        let initialEpisode = details.type == "tv" ? 1 : nil
 
-        sourceFetchTask?.cancel()
-        sourceFetchTask = Task {
-            await viewModel.fetchSources(kpId: kpId, title: sourceSheetTitle)
-        }
+        self.selectedMediaForSource = MediaItemForSource(
+            kpId: kpId,
+            details: details,
+            season: initialSeason,
+            episode: initialEpisode
+        )
     }
 
     private func handleEpisodeSelection(details: MediaDetailsDto, season: Int, episode: Int) {
-        guard let kpId = details.externalIds?.kp else { return }
-
-        // Episodes always show the source sheet now.
-
+        guard let kpId = details.ids?.kp else { return }
+        self.selectedMediaForSource = MediaItemForSource(
+            kpId: kpId,
+            details: details,
+            season: season,
+            episode: episode
+        )
+        
         PlaybackProgressStore.shared.saveLastPlayed(
             kpId: kpId,
             season: season,
             episode: episode
         )
-
-        sourceSheetSourceID = "playBtn"
-        sourceSheetTitle = details.title ?? details.name ?? ""
-        sourceSheetDetent = .medium
-        sourceSheetMode = .play
-        viewModel.resetSourceSheet()
-        showSourceSheet = true
-
-        sourceFetchTask?.cancel()
-        sourceFetchTask = Task {
-            await viewModel.fetchSources(kpId: kpId, title: sourceSheetTitle)
-        }
     }
 
     private func playAndDownloadRow(for details: MediaDetailsDto) -> some View {
@@ -386,7 +379,7 @@ struct DetailsView: View {
 
     @ViewBuilder
     private func downloadButton(for details: MediaDetailsDto) -> some View {
-        let kpId = details.externalIds?.kp ?? 0
+        let kpId = details.ids?.kp ?? 0
         let item = DownloadManager.shared.getDownloadItem(kpId: kpId, season: nil, episode: nil)
         
         Button(action: {
@@ -448,7 +441,7 @@ struct DetailsView: View {
     }
 
     private func startDownloadWithPreferredTranslation(details: MediaDetailsDto, season: Int?, episode: Int?) {
-        guard let kpId = details.externalIds?.kp else { return }
+        guard let kpId = details.ids?.kp else { return }
         
         sourceSheetTitle = details.title ?? details.name ?? ""
         sourceSheetDetent = .medium
@@ -875,16 +868,16 @@ private struct DetailsPrimaryMetadataRow: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            if let rating = details.rating, rating > 0 {
+            if let rating = details.ratings?.kp, rating > 0 {
                 Label(String(format: "%.1f", rating), systemImage: "star.fill")
                     .foregroundColor(.rating(rating))
             }
 
-            if let year = details.releaseDate?.prefix(4), !year.isEmpty {
+            if let year = details.year, year > 0 {
                 Text(String(year))
             }
 
-            if let country = details.country, !country.isEmpty {
+            if let country = details.countries?.first, !country.isEmpty {
                 Text(country)
             }
 
@@ -910,7 +903,7 @@ private struct DetailsInfoSection: View {
 
     private var genres: [String] {
         details.genres?
-            .compactMap { $0.name?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty } ?? []
     }
 
@@ -1271,7 +1264,7 @@ struct EpisodeCellView: View {
     }
     
     private var isLastPlayed: Bool {
-        guard let kpId = viewModel.details?.externalIds?.kp else { return false }
+        guard let kpId = viewModel.details?.ids?.kp else { return false }
         let lastSeason = PlaybackProgressStore.shared.loadLastSeason(kpId: kpId)
         let lastEpisode = PlaybackProgressStore.shared.loadLastEpisode(kpId: kpId)
         return lastSeason == season && lastEpisode == episode
@@ -1505,7 +1498,7 @@ struct EpisodeCellView: View {
             meta = nil
             do {
                 var fetchedMeta: TvEpisodeDetailsDto? = nil
-                let candidateIds = [movieId, viewModel.details?.sourceId].compactMap { $0 }.filter { !$0.isEmpty }
+                let candidateIds = [movieId].compactMap { $0 }.filter { !$0.isEmpty }
                 
                 for candidateId in candidateIds {
                     do {
@@ -1548,7 +1541,7 @@ struct InlineEpisodesSection: View {
     }
     
     var rawId: String {
-        details.externalIds?.kp?.description ?? details.id?.replacingOccurrences(of: "kp_", with: "") ?? ""
+        details.ids?.kp?.description ?? details.id?.replacingOccurrences(of: "kp_", with: "") ?? ""
     }
 
     var episodesForSelectedSeason: [Int] {
@@ -1698,7 +1691,7 @@ struct InlineEpisodesSection: View {
         }
         .onAppear {
             updateWatchedSeasons()
-            guard let kpId = details.externalIds?.kp else { return }
+            guard let kpId = details.ids?.kp else { return }
             let lastSeason = PlaybackProgressStore.shared.loadLastSeason(kpId: kpId)
             if let lastSeason, allSeasons.contains(lastSeason) {
                 selectedSeason = lastSeason
@@ -1736,7 +1729,7 @@ struct InlineEpisodesSection: View {
     }
 
     private func scrollToLastPlayed(proxy: ScrollViewProxy) {
-        guard let kpId = details.externalIds?.kp else { return }
+        guard let kpId = details.ids?.kp else { return }
         let lastSeason = PlaybackProgressStore.shared.loadLastSeason(kpId: kpId) ?? 1
         let lastEpisode = PlaybackProgressStore.shared.loadLastEpisode(kpId: kpId) ?? 1
         
@@ -1787,7 +1780,7 @@ class DetailsViewModel: ObservableObject {
     }
 
     func loadDetails(id: String, force: Bool = false) async {
-        if !force && details != nil && (details?.id == id || details?.sourceId == id || details?.externalIds?.kp?.description == id.replacingOccurrences(of: "kp_", with: "")) {
+        if !force && details != nil && (details?.id == id || details?.ids?.kp?.description == id.replacingOccurrences(of: "kp_", with: "")) {
             return
         }
 
@@ -1801,7 +1794,7 @@ class DetailsViewModel: ObservableObject {
             }
             checkFavoriteStatus()
 
-            if details?.type == "tv", let kpId = details?.externalIds?.kp {
+            if details?.type == "tv", let kpId = details?.ids?.kp {
                 await fetchInlineSeasons(kpId: kpId)
             }
         } catch {
@@ -1851,7 +1844,7 @@ class DetailsViewModel: ObservableObject {
     }
 
     private func favoriteKey(for details: MediaDetailsDto) -> (String, String)? {
-        let mediaId = details.externalIds?.kp?.description ?? details.id ?? details.sourceId
+        let mediaId = details.ids?.kp?.description ?? details.id
         guard let validId = mediaId, !validId.isEmpty else { return nil }
         let type = (details.type?.lowercased() == "tv" || details.type?.lowercased() == "series") ? "tv" : "movie"
         return (validId.replacingOccurrences(of: "kp_", with: ""), type)
