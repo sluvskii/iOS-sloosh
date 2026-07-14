@@ -504,7 +504,7 @@ struct DetailsView: View {
                         )
                         .padding(.bottom, 8)
 
-                        if let originalTitle = details.originalTitle, !originalTitle.isEmpty, originalTitle != (details.title ?? details.name) {
+                        if let originalTitle = details.originalTitle, !originalTitle.isEmpty, originalTitle != details.title {
                             Text(originalTitle)
                                 .font(.system(size: 16, weight: .medium))
                                 .foregroundColor(.secondary)
@@ -584,7 +584,7 @@ struct DetailsView: View {
                                 )
                                 .padding(.bottom, 8)
 
-                                if let originalTitle = details.originalTitle, !originalTitle.isEmpty, originalTitle != (details.title ?? details.name) {
+                                if let originalTitle = details.originalTitle, !originalTitle.isEmpty, originalTitle != details.title {
                                     Text(originalTitle)
                                         .font(.system(size: 16, weight: .medium))
                                         .foregroundColor(.secondary)
