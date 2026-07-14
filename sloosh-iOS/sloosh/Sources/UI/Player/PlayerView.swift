@@ -1059,7 +1059,12 @@ class PlayerViewModel: ObservableObject {
             queue: .main
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
-                self?.saveCurrentProgress()
+                guard let self else { return }
+                self.hasRetriedPlayback = false // Сбрасываем флаг ретрая, чтобы при возврате из фона авто-ретрай мог сработать
+                let status = self.player?.timeControlStatus
+                let wasPlaying = status == .playing || status == .waitingToPlayAtSpecifiedRate
+                UserDefaults.standard.set(wasPlaying, forKey: "sloosh_was_playing_before_bg")
+                self.saveCurrentProgress()
             }
         }
         
@@ -1080,36 +1085,11 @@ class PlayerViewModel: ObservableObject {
                 // 2. Пинаем прокси (он сам проверит isListenerAlive)
                 HlsProxyServer.shared.appWillEnterForeground()
                 
-                // 3. Если плеер использует прокси и не воспроизводит — ждём 1.5с и перезапускаем
-                //    Это покрывает случай блокировки экрана: AVURLAsset теряет соединение с 127.0.0.1
-                guard let currentItem = self.player?.currentItem,
-                      let currentUrl = (currentItem.asset as? AVURLAsset)?.url,
-                      self.isLocalProxyUrl(currentUrl) else {
-                    // Если не прокси — проверяем isPlaying флаг (он мог быть true до ухода в фон)
-                    if self.isPlaying && self.player?.timeControlStatus != .playing {
-                        self.player?.play()
-                    }
-                    return
-                }
-                
-                // Небольшая пауза — даём системе поднять прокси
-                try? await Task.sleep(for: .milliseconds(1500))
-                guard !Task.isCancelled else { return }
-                
-                // Если всё ещё не играет — принудительно перезапускаем через originalStreamURL
-                if self.player?.timeControlStatus != .playing,
-                   let url = self.originalStreamURL {
-                    print("Foreground: player stalled on proxy, force-reloading via original URL")
-                    // Сбрасываем и перезапускаем прокси с текущими заголовками
-                    HlsProxyServer.shared.start(
-                        headers: self.currentHeaders,
-                        voices: [],
-                        subtitles: self.availableSubtitles,
-                        mediaId: self.currentKpId.map { "kp_\($0)" } ?? "unknown"
-                    )
-                    self.reloadPlayback(to: url, preferredPeakBitRate: self.player?.currentItem?.preferredPeakBitRate)
-                } else if self.player?.timeControlStatus == .paused {
-                    // Был поставлен на паузу системой — возобновляем
+                // 3. Возобновляем воспроизведение, если оно шло до ухода в фон.
+                // Если стрим завис (прокси отпал), сработает 5.5с таймаут в rateObserver
+                // и стрим принудительно перезагрузится через originalStreamURL.
+                let wasPlaying = UserDefaults.standard.bool(forKey: "sloosh_was_playing_before_bg")
+                if wasPlaying && self.player?.timeControlStatus != .playing {
                     self.player?.play()
                 }
             }
