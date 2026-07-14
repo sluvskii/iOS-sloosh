@@ -82,7 +82,7 @@ struct HomeView: View {
                 // Это необходимо, чтобы наш Vibrant-текст мог их впитывать!
                 .background(
                     VariableBlurView(tintOpacity: 0.75)
-                        .padding(.bottom, -60) // Увеличиваем длину размытия вниз
+                        .padding(.bottom, -30) // Увеличиваем длину размытия вниз, но не так сильно
                         .ignoresSafeArea(edges: .top)
                 )
             }
