@@ -107,6 +107,7 @@ jobs:
           mkdir altstore
           SIZE=$(stat -f%z sloosh-iOS/sloosh.ipa || echo 0)
           DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          APP_VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" sloosh-iOS/sloosh/Info.plist)
           cat << EOF > altstore/apps.json
           {
             "name": "sloosh repo",
@@ -117,7 +118,8 @@ jobs:
                 "name": "sloosh",
                 "bundleIdentifier": "com.sluvskii.sloosh",
                 "developerName": "sluvskii",
-                "version": "1.0.${{ github.run_number }}",
+                "version": "$APP_VERSION",
+                "buildVersion": "${{ github.run_number }}",
                 "versionDate": "$DATE",
                 "versionDescription": "Development Build #${{ github.run_number }}\n\nAuto-generated IPA build from the latest commit.",
                 "downloadURL": "https://github.com/${{ github.repository }}/releases/download/build-${{ github.run_number }}/sloosh.ipa",
