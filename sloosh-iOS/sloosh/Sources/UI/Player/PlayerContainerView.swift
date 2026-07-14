@@ -33,25 +33,25 @@ struct PlayerContainerView: View {
 
             // 3. (Буферизация перенесена в саму кнопку Play)
 
-            // 4. Ошибка
+            // 4. Ошибка (показываем поверх видео, скрываем всё остальное)
             if let error = vm.error {
                 errorView(error)
                     .zIndex(10)
+            } else {
+                // 5. Жесты (двойной тап = перемотка, одинарный = контролы)
+                gestureLayer
+
+                // 6. Multi-tap Seek feedback
+                MultiSeekFeedbackView(side: activeTapSide, seconds: multiSeekSeconds)
+                    .allowsHitTesting(false)
+
+                // 7. Контролы
+                let isSeeking = multiSeekSeconds != nil || isInteracting
+                PlayerControlsView(vm: vm, onDismiss: onDismiss, isInteracting: $isInteracting, isPopoverOpen: $isPopoverOpen, showControls: showControls, isSeeking: isSeeking)
+                    .blur(radius: showControls ? 0 : 20)
+                    .opacity(showControls ? 1 : 0)
+                    .allowsHitTesting(showControls)
             }
-
-            // 5. Жесты (двойной тап = перемотка, одинарный = контролы)
-            gestureLayer
-
-            // 6. Multi-tap Seek feedback
-            MultiSeekFeedbackView(side: activeTapSide, seconds: multiSeekSeconds)
-                .allowsHitTesting(false)
-
-            // 7. Контролы
-            let isSeeking = multiSeekSeconds != nil || isInteracting
-            PlayerControlsView(vm: vm, onDismiss: onDismiss, isInteracting: $isInteracting, isPopoverOpen: $isPopoverOpen, showControls: showControls, isSeeking: isSeeking)
-                .blur(radius: showControls ? 0 : 20)
-                .opacity(showControls ? 1 : 0)
-                .allowsHitTesting(showControls)
         }
         .onAppear { scheduleAutoHide() }
         .onDisappear { hideTask?.cancel() }
@@ -160,24 +160,44 @@ struct PlayerContainerView: View {
     // MARK: - Error view
 
     private func errorView(_ error: String) -> some View {
-        VStack(spacing: 16) {
-            Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 44))
-                .foregroundStyle(.red)
-            Text(error)
-                .font(.system(size: 15, weight: .medium, design: .rounded))
-                .foregroundStyle(.white)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 32)
-            Button("Закрыть") {
-                vm.cleanup()
-                onDismiss()
+        ZStack {
+            Color.black.opacity(0.85).ignoresSafeArea()
+            VStack(spacing: 20) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 48))
+                    .foregroundStyle(.orange)
+                
+                Text("Ошибка воспроизведения")
+                    .font(.system(size: 18, weight: .bold, design: .rounded))
+                    .foregroundStyle(.white)
+                
+                Text(error)
+                    .font(.system(size: 14, weight: .regular, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.75))
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 32)
+                
+                HStack(spacing: 12) {
+                    Button("Закрыть") {
+                        vm.cleanup()
+                        onDismiss()
+                    }
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.75))
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 10)
+                    .glassEffect(.regular.interactive(), in: .capsule)
+                    
+                    Button("Попробовать снова") {
+                        vm.retryPlayback()
+                    }
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 10)
+                    .glassEffect(.regular.interactive(), in: .capsule)
+                }
             }
-            .font(.system(size: 15, weight: .semibold))
-            .foregroundStyle(.white)
-            .padding(.horizontal, 24)
-            .padding(.vertical, 10)
-            .glassEffect(.regular.interactive(), in: .capsule)
         }
     }
 

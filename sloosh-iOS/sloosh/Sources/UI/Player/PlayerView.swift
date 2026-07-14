@@ -195,7 +195,11 @@ class PlayerViewModel: ObservableObject {
     private var playbackEndObserver: NSObjectProtocol?
     private var resignActiveObserver: NSObjectProtocol?
     private var foregroundObserver: NSObjectProtocol?
+    private var audioInterruptionObserver: NSObjectProtocol?
     private var rateObserver: NSKeyValueObservation?
+    /// Оригинальный upstream URL стрима (без 127.0.0.1 прокси). Используется для перезапуска после фона.
+    private var originalStreamURL: URL?
+    /// Проксированный URL который дали в AVPlayer (может быть 127.0.0.1).
     private var currentPlaybackSourceURL: URL?
     private var bufferingTask: Task<Void, Never>?
 
@@ -234,6 +238,31 @@ class PlayerViewModel: ObservableObject {
         if hasStartedLoading { return } // Защита от двойного вызова
         hasStartedLoading = true
         beginLoad(iframeUrl: iframeUrl, kpId: kpId, season: season, episode: episode, selectedVoiceover: selectedVoiceover, directStreamUrl: directStreamUrl, voices: voices, subtitles: subtitles)
+    }
+
+    /// Повторная попытка воспроизведения после ошибки. Пробует сначала через originalStreamURL (мгновенно),
+    /// и только если его нет — перезапускает полный resolve через iframe.
+    func retryPlayback() {
+        error = nil
+        isLoading = true
+        hasRetriedPlayback = false
+
+        if let url = originalStreamURL {
+            // Оригинальный URL известен — переподключаемся без re-resolve
+            print("retryPlayback: reloading from originalStreamURL")
+            HlsProxyServer.shared.start(
+                headers: currentHeaders,
+                voices: [],
+                subtitles: availableSubtitles,
+                mediaId: currentKpId.map { "kp_\($0)" } ?? "unknown"
+            )
+            reloadPlayback(to: url, preferredPeakBitRate: player?.currentItem?.preferredPeakBitRate)
+        } else {
+            // URL неизвестен — нужен полный перезапуск (например первичная ошибка resolve)
+            hasStartedLoading = false
+            isLoading = false
+            error = "Не удалось восстановить воспроизведение. Закройте плеер и откройте заново."
+        }
     }
 
     private func beginLoad(iframeUrl: String?, kpId: Int?, season: Int?, episode: Int?, selectedVoiceover: String?, directStreamUrl: String? = nil, voices: [String] = [], subtitles: [PlaybackSubtitle] = []) {
@@ -430,6 +459,7 @@ class PlayerViewModel: ObservableObject {
     func cleanup() {
         hasStartedLoading = false
         currentPlaybackSourceURL = nil
+        originalStreamURL = nil
         if let observer = timeObserver {
             player?.removeTimeObserver(observer)
             timeObserver = nil
@@ -445,6 +475,10 @@ class PlayerViewModel: ObservableObject {
         if let foregroundObserver {
             NotificationCenter.default.removeObserver(foregroundObserver)
             self.foregroundObserver = nil
+        }
+        if let audioInterruptionObserver {
+            NotificationCenter.default.removeObserver(audioInterruptionObserver)
+            self.audioInterruptionObserver = nil
         }
         itemObservation?.invalidate()
         itemObservation = nil
@@ -615,10 +649,17 @@ class PlayerViewModel: ObservableObject {
         let currentTime = player?.currentTime() ?? .zero
         let wasPlaying = player?.timeControlStatus == .playing || player?.timeControlStatus == .waitingToPlayAtSpecifiedRate
 
+        // Обновляем originalStreamURL если пришёл не прокси-URL
+        if !isLocalProxyUrl(sourceURL) {
+            originalStreamURL = sourceURL.absoluteURL
+        }
+
         let asset: AVURLAsset
         if sourceURL.isFileURL {
+            currentPlaybackSourceURL = sourceURL.absoluteURL
             asset = AVURLAsset(url: sourceURL)
         } else if sourceURL.absoluteString.lowercased().contains(".mp4") {
+            currentPlaybackSourceURL = sourceURL.absoluteURL
             var options: [String: Any] = [:]
             if !currentHeaders.isEmpty {
                 options["AVURLAssetHTTPHeaderFieldsKey"] = currentHeaders
@@ -626,12 +667,12 @@ class PlayerViewModel: ObservableObject {
             asset = AVURLAsset(url: sourceURL, options: options)
         } else {
             guard let proxyUrl = proxiedPlaybackURL(for: sourceURL) else { return }
+            currentPlaybackSourceURL = proxyUrl
             asset = AVURLAsset(url: proxyUrl)
         }
 
         let playerItem = AVPlayerItem(asset: asset)
         playerItem.preferredPeakBitRate = max(0, preferredPeakBitRate ?? 0)
-        currentPlaybackSourceURL = sourceURL.absoluteURL
         hasRetriedPlayback = true
 
         self.isLoading = true
@@ -783,16 +824,21 @@ class PlayerViewModel: ObservableObject {
     
     
     private func playVideo(url: URL, headers: [String: String], voices: [String] = [], subtitles: [PlaybackSubtitle] = []) {
-        currentPlaybackSourceURL = url.absoluteURL
+        // Сохраняем оригинальный URL ДО проксирования — нужен для перезапуска после фона
+        originalStreamURL = url.absoluteURL
         currentHeaders = headers
 
         let asset: AVURLAsset
         if url.absoluteString.contains("127.0.0.1") || url.absoluteString.contains("localhost") {
+            // Уже локальный URL — не проксируем
+            currentPlaybackSourceURL = url.absoluteURL
             HlsProxyServer.shared.start(headers: [:], voices: [], subtitles: [], mediaId: "local")
             asset = AVURLAsset(url: url)
         } else if url.isFileURL {
+            currentPlaybackSourceURL = url.absoluteURL
             asset = AVURLAsset(url: url)
         } else if url.absoluteString.lowercased().contains(".mp4") {
+            currentPlaybackSourceURL = url.absoluteURL
             var options: [String: Any] = [:]
             if !headers.isEmpty {
                 options["AVURLAssetHTTPHeaderFieldsKey"] = headers
@@ -817,6 +863,8 @@ class PlayerViewModel: ObservableObject {
             }
 
             HlsProxyServer.shared.start(headers: headers, voices: voices, subtitles: subtitles, mediaId: mediaId)
+            // currentPlaybackSourceURL — прокси URL (127.0.0.1); для перезапуска используем originalStreamURL
+            currentPlaybackSourceURL = proxyUrl
             asset = AVURLAsset(url: proxyUrl)
         }
 
@@ -858,11 +906,20 @@ class PlayerViewModel: ObservableObject {
                         try? await Task.sleep(for: .seconds(5.0))
                         guard !Task.isCancelled else { return }
                         await MainActor.run {
-                            if self?.player?.timeControlStatus == .waitingToPlayAtSpecifiedRate {
-                                print("Player stuck buffering for 5.5s, reloading playback...")
-                                if let url = self?.currentPlaybackSourceURL {
-                                    self?.reloadPlayback(to: url, preferredPeakBitRate: self?.player?.currentItem?.preferredPeakBitRate)
+                            guard self?.player?.timeControlStatus == .waitingToPlayAtSpecifiedRate else { return }
+                            print("Player stuck buffering for 5.5s, reloading via originalStreamURL...")
+                            // Используем originalStreamURL (не прокси-URL!) чтобы не проксировать прокси
+                            if let url = self?.originalStreamURL {
+                                // Принудительно перезапускаем прокси-сервер перед перезагрузкой
+                                if let self {
+                                    HlsProxyServer.shared.start(
+                                        headers: self.currentHeaders,
+                                        voices: [],
+                                        subtitles: self.availableSubtitles,
+                                        mediaId: self.currentKpId.map { "kp_\($0)" } ?? "unknown"
+                                    )
                                 }
+                                self?.reloadPlayback(to: url, preferredPeakBitRate: self?.player?.currentItem?.preferredPeakBitRate)
                             }
                         }
                     }
@@ -896,9 +953,20 @@ class PlayerViewModel: ObservableObject {
                     let nsError = item.error as NSError?
                     print("PlayerItem failed: \(nsError?.localizedDescription ?? "Unknown error")")
                     
-                    if !self.hasRetriedPlayback, let url = self.currentPlaybackSourceURL {
-                        print("Auto-retrying playback after failure...")
-                        self.reloadPlayback(to: url, preferredPeakBitRate: self.player?.currentItem?.preferredPeakBitRate)
+                    if !self.hasRetriedPlayback, let url = self.originalStreamURL ?? self.currentPlaybackSourceURL {
+                        print("Auto-retrying playback after failure with originalStreamURL...")
+                        // Перезапускаем прокси перед retry, так как именно он мог упасть
+                        if let origUrl = self.originalStreamURL {
+                            HlsProxyServer.shared.start(
+                                headers: self.currentHeaders,
+                                voices: [],
+                                subtitles: self.availableSubtitles,
+                                mediaId: self.currentKpId.map { "kp_\($0)" } ?? "unknown"
+                            )
+                            self.reloadPlayback(to: origUrl, preferredPeakBitRate: self.player?.currentItem?.preferredPeakBitRate)
+                        } else {
+                            self.reloadPlayback(to: url, preferredPeakBitRate: self.player?.currentItem?.preferredPeakBitRate)
+                        }
                     } else {
                         self.error = item.error?.localizedDescription ?? "Ошибка воспроизведения"
                         self.isLoading = false
@@ -999,17 +1067,78 @@ class PlayerViewModel: ObservableObject {
             NotificationCenter.default.removeObserver(existingFg)
         }
         foregroundObserver = NotificationCenter.default.addObserver(
-            forName: UIApplication.willEnterForegroundNotification,
+            forName: UIApplication.didBecomeActiveNotification,
             object: nil,
             queue: .main
-        ) { _ in
-            Task { @MainActor in
-                // Мы больше не перезагружаем плеер немедленно при возврате из фона,
-                // так как это может прервать нормальное возобновление кэшированного HLS-стрима.
-                // Вместо этого сработает timeout в rateObserver, если плеер реально зависнет.
+        ) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
                 
-                // Просто пнем HlsProxyServer на случай если он упал
+                // 1. Восстанавливаем аудиосессию — могла быть сброшена звонком/другим приложением
+                try? AVAudioSession.sharedInstance().setActive(true)
+                
+                // 2. Пинаем прокси (он сам проверит isListenerAlive)
                 HlsProxyServer.shared.appWillEnterForeground()
+                
+                // 3. Если плеер использует прокси и не воспроизводит — ждём 1.5с и перезапускаем
+                //    Это покрывает случай блокировки экрана: AVURLAsset теряет соединение с 127.0.0.1
+                guard let currentItem = self.player?.currentItem,
+                      let currentUrl = (currentItem.asset as? AVURLAsset)?.url,
+                      self.isLocalProxyUrl(currentUrl) else {
+                    // Если не прокси — проверяем isPlaying флаг (он мог быть true до ухода в фон)
+                    if self.isPlaying && self.player?.timeControlStatus != .playing {
+                        self.player?.play()
+                    }
+                    return
+                }
+                
+                // Небольшая пауза — даём системе поднять прокси
+                try? await Task.sleep(for: .milliseconds(1500))
+                guard !Task.isCancelled else { return }
+                
+                // Если всё ещё не играет — принудительно перезапускаем через originalStreamURL
+                if self.player?.timeControlStatus != .playing,
+                   let url = self.originalStreamURL {
+                    print("Foreground: player stalled on proxy, force-reloading via original URL")
+                    // Сбрасываем и перезапускаем прокси с текущими заголовками
+                    HlsProxyServer.shared.start(
+                        headers: self.currentHeaders,
+                        voices: [],
+                        subtitles: self.availableSubtitles,
+                        mediaId: self.currentKpId.map { "kp_\($0)" } ?? "unknown"
+                    )
+                    self.reloadPlayback(to: url, preferredPeakBitRate: self.player?.currentItem?.preferredPeakBitRate)
+                } else if self.player?.timeControlStatus == .paused {
+                    // Был поставлен на паузу системой — возобновляем
+                    self.player?.play()
+                }
+            }
+        }
+        
+        // Обрабатываем прерывания аудиосессии (звонок, Siri, другие приложения)
+        if let existingIntr = audioInterruptionObserver {
+            NotificationCenter.default.removeObserver(existingIntr)
+        }
+        audioInterruptionObserver = NotificationCenter.default.addObserver(
+            forName: AVAudioSession.interruptionNotification,
+            object: AVAudioSession.sharedInstance(),
+            queue: .main
+        ) { [weak self] notification in
+            guard let userInfo = notification.userInfo,
+                  let typeValue = userInfo[AVAudioSessionInterruptionTypeKey] as? UInt,
+                  let type = AVAudioSession.InterruptionType(rawValue: typeValue) else { return }
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                if type == .ended {
+                    // Прерывание завершено — восстанавливаем сессию и возобновляем
+                    try? AVAudioSession.sharedInstance().setActive(true)
+                    // Проверяем опциональный флаг shouldResume
+                    let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt ?? 0
+                    let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
+                    if options.contains(.shouldResume) {
+                        self.player?.play()
+                    }
+                }
             }
         }
     }
