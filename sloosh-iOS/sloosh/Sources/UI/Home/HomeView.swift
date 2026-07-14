@@ -790,6 +790,15 @@ class HomeViewModel: ObservableObject {
     }
 
     private func fetchPage(_ page: Int, category: HomeCategory, filter: HomeFilter) async throws -> [MediaDto] {
+        if searchFilters.isEmpty {
+            switch filter {
+            case .popular:
+                return try await MoviesRepository.shared.getPopularMovies(page: page)
+            case .topRated:
+                return try await MoviesRepository.shared.getTopMovies(page: page)
+            }
+        }
+        
         var mergedFilters = searchFilters
         
         if mergedFilters.order == nil {
