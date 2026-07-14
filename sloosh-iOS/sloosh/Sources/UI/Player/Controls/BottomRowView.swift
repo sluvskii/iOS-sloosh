@@ -15,7 +15,8 @@ struct BottomRowView: View {
             Button { showSpeedSheet = true } label: {
                 Text(speedLabel)
                     .font(.system(size: 13, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.white.opacity(0.85))
+                    .blendMode(.plusLighter)
                     .frame(width: 44, height: 40)
             }
             .popover(isPresented: $showSpeedSheet) {
@@ -27,7 +28,8 @@ struct BottomRowView: View {
                 Button { showVoiceoverSheet = true } label: {
                     Image(systemName: "waveform")
                         .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.white.opacity(0.85))
+                        .blendMode(.plusLighter)
                         .frame(width: 44, height: 40)
                 }
                 .popover(isPresented: $showVoiceoverSheet) {
@@ -40,7 +42,8 @@ struct BottomRowView: View {
                 Button { showQualitySheet = true } label: {
                     Image(systemName: "gearshape")
                         .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.white.opacity(0.85))
+                        .blendMode(.plusLighter)
                         .frame(width: 44, height: 40)
                 }
                 .popover(isPresented: $showQualitySheet) {
@@ -53,7 +56,8 @@ struct BottomRowView: View {
                 Button { showSubtitleSheet = true } label: {
                     Image(systemName: vm.currentSubtitle != nil ? "text.bubble.fill" : "text.bubble")
                         .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(.white.opacity(0.85))
+                        .blendMode(.plusLighter)
                         .frame(width: 44, height: 40)
                 }
                 .popover(isPresented: $showSubtitleSheet) {
