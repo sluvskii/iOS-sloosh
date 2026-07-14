@@ -236,15 +236,12 @@ private struct MultiSeekFeedbackView: View {
                         if s == .right { Spacer(minLength: 0) }
                         
                         ZStack {
-                            // Плавный черный градиент (как на YouTube, но без резких краев)
-                            LinearGradient(
-                                stops: [
-                                    .init(color: .black.opacity(0.6), location: 0),
-                                    .init(color: .black.opacity(0.3), location: 0.5),
-                                    .init(color: .clear, location: 1)
-                                ],
-                                startPoint: s == .left ? .leading : .trailing,
-                                endPoint: s == .left ? .trailing : .leading
+                            // Плавный прогрессивный блюр с градиентом
+                            VariableBlurView(
+                                maxBlurRadius: 16,
+                                direction: s == .left ? .blurredLeadingClearTrailing : .blurredTrailingClearLeading,
+                                tintColor: .black,
+                                tintOpacity: 0.5
                             )
                             .transition(.opacity)
                             

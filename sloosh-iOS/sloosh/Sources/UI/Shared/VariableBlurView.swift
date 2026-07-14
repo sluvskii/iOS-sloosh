@@ -22,12 +22,26 @@ public struct VariableBlurView: View {
         VariableBlurRepresentable(maxBlurRadius: maxBlurRadius, direction: direction)
             .overlay(
                 LinearGradient(
-                    colors: [
-                        tintColor.opacity(direction == .blurredTopClearBottom ? tintOpacity : 0.0),
-                        tintColor.opacity(direction == .blurredTopClearBottom ? 0.0 : tintOpacity)
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
+                    colors: {
+                        switch direction {
+                        case .blurredTopClearBottom, .blurredLeadingClearTrailing:
+                            return [tintColor.opacity(tintOpacity), tintColor.opacity(0.0)]
+                        case .blurredBottomClearTop, .blurredTrailingClearLeading:
+                            return [tintColor.opacity(0.0), tintColor.opacity(tintOpacity)]
+                        }
+                    }(),
+                    startPoint: {
+                        switch direction {
+                        case .blurredTopClearBottom, .blurredBottomClearTop: return .top
+                        case .blurredLeadingClearTrailing, .blurredTrailingClearLeading: return .leading
+                        }
+                    }(),
+                    endPoint: {
+                        switch direction {
+                        case .blurredTopClearBottom, .blurredBottomClearTop: return .bottom
+                        case .blurredLeadingClearTrailing, .blurredTrailingClearLeading: return .trailing
+                        }
+                    }()
                 )
             )
             .allowsHitTesting(false)
@@ -41,6 +55,8 @@ public struct VariableBlurRepresentable: UIViewRepresentable {
     public enum BlurDirection {
         case blurredTopClearBottom
         case blurredBottomClearTop
+        case blurredLeadingClearTrailing
+        case blurredTrailingClearLeading
     }
     
     public init(maxBlurRadius: CGFloat = 2, direction: BlurDirection = .blurredTopClearBottom) {
@@ -146,12 +162,13 @@ public final class VariableBlurUIView: UIVisualEffectView {
     }
     
     private func createGradientImage() -> CGImage? {
-        let height: CGFloat = 100
-        let width: CGFloat = 1
+        let isHorizontal = (direction == .blurredLeadingClearTrailing || direction == .blurredTrailingClearLeading)
+        let width: CGFloat = isHorizontal ? 100 : 1
+        let height: CGFloat = isHorizontal ? 1 : 100
         let colorSpace = CGColorSpaceCreateDeviceRGB()
         let bitmapInfo = CGImageAlphaInfo.premultipliedLast.rawValue
         
-        guard let context = CGContext(data: nil, width: Int(width), height: Int(height), bitsPerComponent: 8, bytesPerRow: 4, space: colorSpace, bitmapInfo: bitmapInfo) else {
+        guard let context = CGContext(data: nil, width: Int(width), height: Int(height), bitsPerComponent: 8, bytesPerRow: Int(width) * 4, space: colorSpace, bitmapInfo: bitmapInfo) else {
             return nil
         }
         
@@ -160,8 +177,23 @@ public final class VariableBlurUIView: UIVisualEffectView {
             return nil
         }
         
-        let startPoint = direction == .blurredTopClearBottom ? CGPoint(x: 0, y: height) : CGPoint(x: 0, y: 0)
-        let endPoint = direction == .blurredTopClearBottom ? CGPoint(x: 0, y: 0) : CGPoint(x: 0, y: height)
+        let startPoint: CGPoint
+        let endPoint: CGPoint
+        
+        switch direction {
+        case .blurredTopClearBottom:
+            startPoint = CGPoint(x: 0, y: height)
+            endPoint = CGPoint(x: 0, y: 0)
+        case .blurredBottomClearTop:
+            startPoint = CGPoint(x: 0, y: 0)
+            endPoint = CGPoint(x: 0, y: height)
+        case .blurredLeadingClearTrailing:
+            startPoint = CGPoint(x: 0, y: 0)
+            endPoint = CGPoint(x: width, y: 0)
+        case .blurredTrailingClearLeading:
+            startPoint = CGPoint(x: width, y: 0)
+            endPoint = CGPoint(x: 0, y: 0)
+        }
         
         context.drawLinearGradient(gradient, start: startPoint, end: endPoint, options: [])
         return context.makeImage()
