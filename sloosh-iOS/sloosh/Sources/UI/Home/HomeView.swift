@@ -94,8 +94,7 @@ struct HomeView: View {
                     selectedCategory: $viewModel.selectedCategory,
                     selectedFilter: $viewModel.selectedFilter,
                     isFilterCollapsed: $isFilterCollapsed,
-                    showFilters: $viewModel.showFilters,
-                    hasFilters: !viewModel.searchFilters.isEmpty
+                    showFilters: $viewModel.showFilters
                 )
                 .padding(.top, 4)
                 .padding(.bottom, 2) // Уменьшенный отступ до контента
@@ -323,7 +322,6 @@ private struct HomeCategoryTextTabs: View {
     @Binding var selectedFilter: HomeFilter
     @Binding var isFilterCollapsed: Bool
     @Binding var showFilters: Bool
-    var hasFilters: Bool
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.colorScheme) private var colorScheme
     @ScaledMetric(relativeTo: .headline) private var titleSize: CGFloat = 28 // Увеличенный размер шрифта
@@ -364,14 +362,6 @@ private struct HomeCategoryTextTabs: View {
             .blendMode(blendMode)
     }
 
-    private var filterIconColor: Color {
-        if hasFilters {
-            return Color.slooshAccent
-        } else {
-            return (colorScheme == .dark ? Color.white : Color.black).opacity(0.8)
-        }
-    }
-
     var body: some View {
         ScrollViewReader { scrollProxy in
             ScrollView(.horizontal, showsIndicators: false) {
@@ -408,34 +398,13 @@ private struct HomeCategoryTextTabs: View {
                         .accessibilityHint("Нажмите для перехода. Удерживайте для выбора фильтра.")
                         .padding(.leading, isFirst ? edgeContentInset : 0)
                         .padding(.trailing, isLast ? edgeContentInset : 0)
-                        .contextMenu {
-                            ForEach(HomeFilter.allCases) { filter in
-                                Button {
-                                    withAnimation(tabScrollAnimation) {
-                                        isFilterCollapsed = false
-                                        selectedCategory = category
-                                        selectedFilter = filter
-                                    }
-                                } label: {
-                                    if selectedCategory == category && selectedFilter == filter {
-                                        Label(filter.title, systemImage: "checkmark")
-                                    } else {
-                                        Label(filter.title, systemImage: filter.icon)
-                                    }
-                                }
+                        .simultaneousGesture(
+                            LongPressGesture(minimumDuration: 0.5).onEnded { _ in
+                                selectedCategory = category
+                                showFilters = true
                             }
-                        }
+                        )
                     }
-                    
-                    Button {
-                        showFilters = true
-                    } label: {
-                        Image(systemName: hasFilters ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
-                            .font(.system(size: 24, weight: .medium))
-                            .foregroundColor(filterIconColor)
-                            .frame(height: titleHeight, alignment: .center)
-                    }
-                    .padding(.trailing, edgeContentInset)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .scrollTargetLayout()
