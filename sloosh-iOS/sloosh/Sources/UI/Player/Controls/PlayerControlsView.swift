@@ -34,7 +34,7 @@ struct PlayerControlsView: View {
                     .scaleEffect(showControls ? 1.0 : 0.95)
                     .opacity(isSeeking ? 0 : 1)
                     .animation(.easeInOut(duration: 0.2), value: isSeeking)
-                    .padding(.top, 32) // Абсолютный отступ от края экрана
+                    .padding(.top, 16) // Уменьшенный отступ
 
                 Spacer()
 
@@ -42,7 +42,7 @@ struct PlayerControlsView: View {
                 VStack(alignment: .trailing, spacing: 8) {
                     HStack(alignment: .bottom) {
                         PlayerTitleInfoView(vm: vm)
-                            .padding(.leading, 32)
+                            .padding(.leading, 16)
                             .padding(.bottom, 4)
                         
                         Spacer()
@@ -61,7 +61,7 @@ struct PlayerControlsView: View {
 
                     SeekBarView(vm: vm, isInteracting: $isInteracting)
                         .padding(.horizontal, 16)
-                        .padding(.bottom, 32) // Абсолютный отступ от края экрана
+                        .padding(.bottom, 16) // Уменьшенный отступ
                 }
                 .scaleEffect(showControls ? 1.0 : 0.95)
             }
