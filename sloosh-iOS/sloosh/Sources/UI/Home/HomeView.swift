@@ -304,12 +304,18 @@ private struct HomeCategoryTextTabs: View {
         _ text: String,
         size: CGFloat,
         weight: Font.Weight,
-        baseColor: Color
+        baseColor: Color,
+        isSelected: Bool
     ) -> some View {
         return Text(text)
             .font(.system(size: size, weight: weight))
             .tracking(-0.8)
             .foregroundStyle(baseColor)
+            // Имитация Vibrancy эффекта чисто средствами SwiftUI:
+            // Для невыбранных табов мы включаем смешивание с фоном (Overlay),
+            // что заставляет текст "впитывать" цвета из блюра под ним.
+            .blendMode(isSelected ? .normal : .overlay)
+            .opacity(isSelected ? 1.0 : 0.8)
     }
 
     var body: some View {
@@ -333,7 +339,8 @@ private struct HomeCategoryTextTabs: View {
                                 category.segmentedTitle,
                                 size: titleSize,
                                 weight: isSelected ? .bold : .semibold,
-                                baseColor: isSelected ? .primary : .secondary
+                                baseColor: isSelected ? .primary : .secondary,
+                                isSelected: isSelected
                             )
                             .lineLimit(1)
                             .fixedSize(horizontal: true, vertical: false)
