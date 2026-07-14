@@ -28,7 +28,6 @@ struct TopBarView: View {
     
     @StateObject private var volumeObserver = VolumeObserver()
     
-    @State private var overrideVolume: Float? = nil
     @State private var dragInitialVolume: Float = 0
     @State private var scrubStartLocationX: CGFloat = 0
     @State private var isVolumeScrubbing = false
@@ -80,8 +79,8 @@ struct TopBarView: View {
     @ViewBuilder
     private var volumeGroup: some View {
         HStack(spacing: 6) {
-            SystemVolumeSlider(overrideVolume: $overrideVolume)
-                .frame(width: 100, height: 20)
+            CustomVolumeSlider(observer: volumeObserver)
+                .frame(width: 100, height: 4)
 
             Image(systemName: volumeIcon)
                 .font(.system(size: 14, weight: .medium))
@@ -115,8 +114,8 @@ struct TopBarView: View {
                     
                     let deltaVol = Double(value.translation.width) * baseMultiplier * speedFactor
                     let newVol = Float(max(0, min(1.0, Double(dragInitialVolume) + deltaVol)))
-                    
-                    overrideVolume = newVol
+                    VolumeManager.shared.setVolume(newVol)
+                    volumeObserver.volume = newVol
                 }
                 .onEnded { value in
                     guard isVolumeScrubbing else { return }
@@ -156,30 +155,26 @@ struct AirPlayButton: UIViewRepresentable {
 
 // MARK: - Системный слайдер громкости
 
-struct SystemVolumeSlider: UIViewRepresentable {
-    @Binding var overrideVolume: Float?
-
-    func makeUIView(context: Context) -> MPVolumeView {
-        let v = MPVolumeView()
-        // Скрываем кнопку AirPlay — она уже есть отдельно
-        v.subviews
-            .compactMap { $0 as? UIButton }
-            .forEach { $0.isHidden = true }
-        
-        // Убираем кружок-ползунок
-        v.setVolumeThumbImage(UIImage(), for: .normal)
-        
-        v.tintColor = .white
-        return v
-    }
-    func updateUIView(_ uiView: MPVolumeView, context: Context) {
-        if let vol = overrideVolume {
-            if let slider = uiView.subviews.first(where: { $0 is UISlider }) as? UISlider {
-                slider.value = vol
+struct CustomVolumeSlider: View {
+    @ObservedObject var observer: VolumeObserver
+    
+    var body: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(Color.white.opacity(0.3))
+                Capsule()
+                    .fill(Color.white)
+                    .frame(width: max(0, geo.size.width * CGFloat(observer.volume)))
             }
-            DispatchQueue.main.async {
-                self.overrideVolume = nil
-            }
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        let percent = max(0, min(1, value.location.x / geo.size.width))
+                        VolumeManager.shared.setVolume(Float(percent))
+                        observer.volume = Float(percent)
+                    }
+            )
         }
     }
 }
