@@ -39,10 +39,25 @@ enum HomeFilter: String, CaseIterable, Identifiable {
     }
 }
 
+struct ScrollOffsetPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
 struct HomeView: View {
     @StateObject private var viewModel = HomeViewModel()
     @Namespace private var navigationTransition
     @State private var isFilterCollapsed = false
+    @State private var scrollOffsets: [HomeCategory: CGFloat] = [:]
+
+    private var blurOpacity: Double {
+        let offset = scrollOffsets[viewModel.selectedCategory] ?? 0
+        // Если offset отрицательный (скролл вниз), плавно проявляем блюр на протяжении первых 30 поинтов
+        let progress = max(0, -offset) / 30.0
+        return min(1.0, Double(progress))
+    }
 
     var body: some View {
         NavigationStack {
@@ -56,6 +71,10 @@ struct HomeView: View {
                             isFilterCollapsed: $isFilterCollapsed
                         )
                         .containerRelativeFrame(.horizontal)
+                        .onPreferenceChange(ScrollOffsetPreferenceKey.self) { value in
+                            // Когда вкладка скроллится, сохраняем ее оффсет
+                            scrollOffsets[category] = value
+                        }
                     }
                 }
                 .scrollTargetLayout()
@@ -84,6 +103,9 @@ struct HomeView: View {
                     VariableBlurView(tintOpacity: 0.75)
                         .padding(.bottom, -30) // Увеличиваем длину размытия вниз, но не так сильно
                         .ignoresSafeArea(edges: .top)
+                        .opacity(blurOpacity) // Плавно появляемся при скролле
+                        // Анимация делает смену блюра при переключении табов плавной
+                        .animation(.easeInOut(duration: 0.2), value: blurOpacity)
                 )
             }
             .task {
@@ -156,6 +178,16 @@ struct HomeCategoryContentView: View {
 
         ScrollViewReader { proxy in
             ScrollView {
+                // Отслеживание позиции скролла
+                GeometryReader { geo in
+                    Color.clear
+                        .preference(
+                            key: ScrollOffsetPreferenceKey.self,
+                            value: geo.frame(in: .named("scroll_\(category.rawValue)")).minY
+                        )
+                }
+                .frame(height: 0)
+
                 let spacing: CGFloat = cardDensity == .compact ? 8 : 16
                 let padding: CGFloat = cardDensity == .compact ? 12 : 16
 
@@ -208,9 +240,9 @@ struct HomeCategoryContentView: View {
                         }
                     }
                     .padding(.horizontal, padding)
-                    .padding(.bottom, padding)
                 }
             }
+            .coordinateSpace(name: "scroll_\(category.rawValue)")
             .onScrollGeometryChange(for: CGFloat.self) { geometry in
                 geometry.contentOffset.y + geometry.contentInsets.top
             } action: { oldOffset, newOffset in
