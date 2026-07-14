@@ -9,9 +9,9 @@ public struct VariableBlurView: View {
     public var maxBlurRadius: CGFloat = 2
     public var direction: VariableBlurRepresentable.BlurDirection = .blurredTopClearBottom
     public var tintColor: Color = Color(UIColor.systemBackground)
-    public var tintOpacity: Double = 0.90
+    public var tintOpacity: Double = 1.0
     
-    public init(maxBlurRadius: CGFloat = 2, direction: VariableBlurRepresentable.BlurDirection = .blurredTopClearBottom, tintColor: Color = Color(UIColor.systemBackground), tintOpacity: Double = 0.90) {
+    public init(maxBlurRadius: CGFloat = 2, direction: VariableBlurRepresentable.BlurDirection = .blurredTopClearBottom, tintColor: Color = Color(UIColor.systemBackground), tintOpacity: Double = 1.0) {
         self.maxBlurRadius = maxBlurRadius
         self.direction = direction
         self.tintColor = tintColor
