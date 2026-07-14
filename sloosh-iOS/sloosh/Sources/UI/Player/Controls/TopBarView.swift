@@ -26,7 +26,7 @@ struct TopBarView: View {
             Button(action: onDismiss) {
                 Image(systemName: "xmark")
                     .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.85))
+                    .foregroundStyle(.white.opacity(0.55))
                     .blendMode(.plusLighter)
                     .frame(width: 44, height: 40)
             }
@@ -38,7 +38,7 @@ struct TopBarView: View {
                 Button { vm.togglePiP() } label: {
                     Image(systemName: vm.isPiPActive ? "pip.exit" : "pip.enter")
                         .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.85))
+                        .foregroundStyle(.white.opacity(0.55))
                         .blendMode(.plusLighter)
                         .frame(width: 44, height: 40)
                 }
@@ -49,7 +49,7 @@ struct TopBarView: View {
             // AirPlay (системная кнопка Apple)
             AirPlayButton()
                 .frame(width: 44, height: 40)
-                .colorMultiply(.white.opacity(0.85))
+                .colorMultiply(.white.opacity(0.55))
                 .blendMode(.plusLighter)
         }
         .glassEffect(.regular, in: .capsule)
