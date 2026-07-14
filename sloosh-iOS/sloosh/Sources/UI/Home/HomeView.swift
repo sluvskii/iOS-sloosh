@@ -54,8 +54,8 @@ struct HomeView: View {
 
     private var blurOpacity: Double {
         let offset = scrollOffsets[viewModel.selectedCategory] ?? 0
-        // Если offset отрицательный (скролл вниз), плавно проявляем блюр на протяжении первых 30 поинтов
-        let progress = max(0, -offset) / 30.0
+        // При использовании onScrollGeometryChange offset положителен при скролле вниз
+        let progress = max(0, offset) / 30.0
         return min(1.0, Double(progress))
     }
 
@@ -68,13 +68,13 @@ struct HomeView: View {
                             viewModel: viewModel,
                             category: category,
                             navigationTransition: navigationTransition,
-                            isFilterCollapsed: $isFilterCollapsed
+                            isFilterCollapsed: $isFilterCollapsed,
+                            scrollOffset: Binding(
+                                get: { scrollOffsets[category] ?? 0 },
+                                set: { scrollOffsets[category] = $0 }
+                            )
                         )
                         .containerRelativeFrame(.horizontal)
-                        .onPreferenceChange(ScrollOffsetPreferenceKey.self) { value in
-                            // Когда вкладка скроллится, сохраняем ее оффсет
-                            scrollOffsets[category] = value
-                        }
                     }
                 }
                 .scrollTargetLayout()
@@ -160,6 +160,7 @@ struct HomeCategoryContentView: View {
     let category: HomeCategory
     let navigationTransition: Namespace.ID
     @Binding var isFilterCollapsed: Bool
+    @Binding var scrollOffset: CGFloat
 
     @State private var debouncer = ScrollDebouncer()
     @AppStorage("cardDensity") private var cardDensity: CardDensity = .regular
@@ -178,16 +179,6 @@ struct HomeCategoryContentView: View {
 
         ScrollViewReader { proxy in
             ScrollView {
-                // Отслеживание позиции скролла
-                GeometryReader { geo in
-                    Color.clear
-                        .preference(
-                            key: ScrollOffsetPreferenceKey.self,
-                            value: geo.frame(in: .named("scroll_\(category.rawValue)")).minY
-                        )
-                }
-                .frame(height: 0)
-
                 let spacing: CGFloat = cardDensity == .compact ? 8 : 16
                 let padding: CGFloat = cardDensity == .compact ? 12 : 16
 
@@ -246,6 +237,8 @@ struct HomeCategoryContentView: View {
             .onScrollGeometryChange(for: CGFloat.self) { geometry in
                 geometry.contentOffset.y + geometry.contentInsets.top
             } action: { oldOffset, newOffset in
+                scrollOffset = newOffset
+                
                 let now = Date()
                 guard now.timeIntervalSince(debouncer.lastStateChangeTime) > debouncer.debounceInterval else { return }
                 let delta = newOffset - oldOffset
