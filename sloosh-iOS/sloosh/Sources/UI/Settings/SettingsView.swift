@@ -10,6 +10,7 @@ struct SettingsView: View {
     @AppStorage("appTheme") private var appTheme: AppTheme = .system
     @State private var tabBarShowsLabelsDraft = false
     @State private var applyTabBarLabelsTask: Task<Void, Never>?
+    @Environment(\.dismiss) private var dismiss
     
     var body: some View {
         List {
@@ -160,8 +161,36 @@ struct SettingsView: View {
                 }
             }
         }
-        .navigationTitle("Настройки")
-        .navigationBarTitleDisplayMode(.inline)
+        .toolbar(.hidden, for: .navigationBar)
+        .safeAreaInset(edge: .top, spacing: 0) {
+            ZStack {
+                Text("Настройки")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(.primary)
+                
+                HStack {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 20, weight: .medium))
+                            .foregroundStyle(.primary)
+                            .frame(width: 44, height: 44)
+                            .glassEffect(.regular.interactive(), in: .circle)
+                    }
+                    .tint(.primary)
+                    
+                    Spacer()
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .background(
+                VariableBlurView(tintOpacity: 0.75)
+                    .padding(.bottom, -20)
+                    .ignoresSafeArea(edges: .top)
+            )
+        }
         .scrollEdgeEffectStyle(.soft, for: .all)
         .onAppear {
             tabBarShowsLabelsDraft = tabBarShowsLabels
