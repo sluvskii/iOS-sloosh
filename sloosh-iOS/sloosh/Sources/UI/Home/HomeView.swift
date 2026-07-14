@@ -42,45 +42,33 @@ enum HomeFilter: String, CaseIterable, Identifiable {
 struct HomeView: View {
     @StateObject private var viewModel = HomeViewModel()
     @Namespace private var navigationTransition
-    @State private var scrollPosition: HomeCategory?
     @State private var isFilterCollapsed = false
 
     var body: some View {
         NavigationStack {
-            GeometryReader { geo in
-                ScrollView(.horizontal, showsIndicators: false) {
-                    LazyHStack(spacing: 0) {
-                        ForEach(HomeCategory.allCases, id: \.self) { category in
-                            HomeCategoryContentView(
-                                viewModel: viewModel,
-                                category: category,
-                                navigationTransition: navigationTransition,
-                                isFilterCollapsed: $isFilterCollapsed
-                            )
-                            .frame(width: geo.size.width, height: geo.size.height)
-                            .id(category)
-                        }
-                    }
-                    .scrollTargetLayout()
-                }
-                .scrollTargetBehavior(.paging)
-                .scrollPosition(id: $scrollPosition)
-            }
-            .onChange(of: scrollPosition) { _, newValue in
-                if let newValue = newValue, newValue != viewModel.selectedCategory {
-                    viewModel.selectedCategory = newValue
-                }
-            }
-            .onChange(of: viewModel.selectedCategory) { _, newValue in
-                if scrollPosition != newValue {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                        scrollPosition = newValue
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(spacing: 0) {
+                    ForEach(HomeCategory.allCases, id: \.self) { category in
+                        HomeCategoryContentView(
+                            viewModel: viewModel,
+                            category: category,
+                            navigationTransition: navigationTransition,
+                            isFilterCollapsed: $isFilterCollapsed
+                        )
+                        .containerRelativeFrame(.horizontal)
                     }
                 }
+                .scrollTargetLayout()
             }
-            .onAppear {
-                scrollPosition = viewModel.selectedCategory
-            }
+            .scrollTargetBehavior(.paging)
+            .scrollPosition(id: Binding(
+                get: { viewModel.selectedCategory },
+                set: { newValue in
+                    if let newValue = newValue {
+                        viewModel.selectedCategory = newValue
+                    }
+                }
+            ))
             .toolbar(.hidden, for: .navigationBar)
             .safeAreaInset(edge: .top, spacing: 0) {
                 HomeCategoryTextTabs(
@@ -89,7 +77,7 @@ struct HomeView: View {
                     isFilterCollapsed: $isFilterCollapsed
                 )
                 .padding(.top, 4)
-                .padding(.bottom, 12)
+                .padding(.bottom, 2) // Уменьшенный отступ до контента
                 .background(VariableBlurView().ignoresSafeArea(edges: .top))
             }
             .task {
@@ -294,9 +282,9 @@ private struct HomeCategoryTextTabs: View {
     @Binding var selectedFilter: HomeFilter
     @Binding var isFilterCollapsed: Bool
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    @ScaledMetric(relativeTo: .headline) private var titleSize: CGFloat = 25
+    @ScaledMetric(relativeTo: .headline) private var titleSize: CGFloat = 28 // Увеличенный размер шрифта
 
-    private let titleHeight: CGFloat = 31
+    private let titleHeight: CGFloat = 36 // Увеличена высота под новый размер
 
     private var tabSpacing: CGFloat {
         horizontalSizeClass == .regular ? 28 : 22
