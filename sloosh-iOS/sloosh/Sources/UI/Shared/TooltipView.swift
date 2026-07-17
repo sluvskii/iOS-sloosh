@@ -54,20 +54,17 @@ struct TooltipModifier: ViewModifier {
                         if !isTailTop { Spacer() }
                         
                         if isVisible {
-                            Text(text)
-                                .font(.system(size: 14, weight: .bold, design: .rounded))
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 10)
-                                .background(
-                                    TooltipShape(tailPosition: 0.5, isTailTop: isTailTop)
-                                        .fill(Color(white: 0.1, opacity: 0.85)) // Более темный и заметный фон
-                                        .shadow(color: .black.opacity(0.3), radius: 12, x: 0, y: 6)
-                                )
-                                .overlay(
-                                    TooltipShape(tailPosition: 0.5, isTailTop: isTailTop)
-                                        .stroke(Color.white.opacity(0.2), lineWidth: 1) // Обводка для читаемости
-                                )
+                                Text(text)
+                                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+                                    .foregroundStyle(.primary)
+                                    .padding(.horizontal, 18)
+                                    .padding(.vertical, 12)
+                                    .glassEffect(in: TooltipShape(tailPosition: 0.5, cornerRadius: 14, isTailTop: isTailTop))
+                                    .overlay(
+                                        TooltipShape(tailPosition: 0.5, cornerRadius: 14, isTailTop: isTailTop)
+                                            .stroke(Color.white.opacity(0.15), lineWidth: 0.5)
+                                    )
+                                    .shadow(color: .black.opacity(0.2), radius: 16, x: 0, y: 8)
                                 .fixedSize()
                                 .offset(y: isTailTop ? geo.size.height + 8 : -(geo.size.height + 8))
                                 .transition(.asymmetric(
