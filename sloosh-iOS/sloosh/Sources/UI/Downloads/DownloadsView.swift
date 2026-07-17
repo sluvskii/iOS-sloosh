@@ -140,20 +140,11 @@ struct DownloadsView: View {
     
     @ViewBuilder
     private var emptyView: some View {
-        VStack {
-            Image(systemName: "arrow.down.circle")
-                .font(.system(size: 56, weight: .thin))
-                .foregroundColor(.secondary)
-                .padding(.bottom, 8)
-            Text("Нет загрузок")
-                .font(.system(size: 19, weight: .bold, design: .rounded))
-            Text("Скачивайте фильмы и сериалы для\nпросмотра без интернета")
-                .font(.system(size: 15, weight: .regular))
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.top, 4)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        AppEmptyStateView(
+            icon: "arrow.down.circle",
+            title: "Нет загрузок",
+            description: "Скачивайте фильмы и сериалы для просмотра без интернета."
+        )
     }
 }
 
