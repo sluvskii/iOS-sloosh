@@ -696,10 +696,10 @@ private struct ContinueProgressBar: View {
 
 private struct ContinueEmptyState: View {
     var body: some View {
-        ContentUnavailableView(
-            "Пока нечего продолжать",
-            systemImage: "clock.arrow.circlepath",
-            description: Text("Фильмы и серии, которые ты уже начал смотреть, появятся здесь с прогрессом и временем.")
+        AppEmptyStateView(
+            icon: "clock.arrow.circlepath",
+            title: "Пока нечего продолжать",
+            description: "Фильмы и серии, которые ты уже начал смотреть, появятся здесь с прогрессом и временем."
         )
     }
 }

@@ -259,26 +259,11 @@ private struct ProfileEmptyState: View {
     let message: String
 
     var body: some View {
-        VStack(spacing: 18) {
-            Image(systemName: icon)
-                .font(.system(size: 42, weight: .medium))
-                .foregroundStyle(.secondary)
-
-            VStack(spacing: 8) {
-                Text(title)
-                    .font(.system(size: 24, weight: .bold))
-                    .multilineTextAlignment(.center)
-
-                Text(message)
-                    .font(.system(size: 16, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-                    .lineSpacing(2)
-            }
-            .frame(maxWidth: 320)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(.horizontal, 24)
+        AppEmptyStateView(
+            icon: icon,
+            title: title,
+            description: message
+        )
     }
 }
 
