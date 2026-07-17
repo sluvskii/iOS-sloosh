@@ -55,6 +55,9 @@ jobs:
           cd sloosh-iOS
           sed -i '' "s/890/${{ github.run_number }}/g" project.yml
           sed -i '' "s/890/${{ github.run_number }}/g" sloosh/Info.plist
+          SHORT_VER=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" sloosh/Info.plist)
+          FULL_VER="${SHORT_VER}.${{ github.run_number }}"
+          /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $FULL_VER" sloosh/Info.plist
 
       - name: Generate Xcode Project
         run: |
@@ -107,7 +110,8 @@ jobs:
           mkdir altstore
           SIZE=$(stat -f%z sloosh-iOS/sloosh.ipa || echo 0)
           DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-          APP_VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" sloosh-iOS/sloosh/Info.plist)
+          SHORT_VER=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" sloosh-iOS/sloosh/Info.plist)
+          FULL_VER="${SHORT_VER}.${{ github.run_number }}"
           cat << EOF > altstore/apps.json
           {
             "name": "sloosh repo",
@@ -118,18 +122,14 @@ jobs:
                 "name": "sloosh",
                 "bundleIdentifier": "com.sluvskii.sloosh",
                 "developerName": "sluvskii",
-                "version": "$APP_VERSION",
-                "buildVersion": "${{ github.run_number }}",
+                "version": "$FULL_VER",
                 "versionDate": "$DATE",
-                "versionDescription": "Development Build #${{ github.run_number }}\n\nAuto-generated IPA build from the latest commit.",
+                "versionDescription": "Build #${{ github.run_number }}",
                 "downloadURL": "https://github.com/${{ github.repository }}/releases/download/build-${{ github.run_number }}/sloosh.ipa",
                 "localizedDescription": "sloosh premium streaming",
                 "iconURL": "https://raw.githubusercontent.com/${{ github.repository }}/main/sloosh-iOS/sloosh/Resources/Assets.xcassets/AppIcon.appiconset/light.png",
                 "tintColor": "000000",
-                "size": $SIZE,
-                "permissions": {
-                  "background-audio": { "reason": "Background playback" }
-                }
+                "size": $SIZE
               }
             ]
           }
