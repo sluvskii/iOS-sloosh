@@ -82,23 +82,10 @@ class MoviesApi {
             queryItems.append(URLQueryItem(name: "query", value: query))
         }
         
-        if let filters = filters {
-            if let type = filters.type {
-                if type == "CARTOON" {
-                    queryItems.append(URLQueryItem(name: "genres", value: "мультфильм,аниме"))
-                } else {
-                    queryItems.append(URLQueryItem(name: "type", value: type))
-                }
-            }
-            if let order = filters.order { queryItems.append(URLQueryItem(name: "order", value: order)) }
-            if let rFrom = filters.ratingFrom { queryItems.append(URLQueryItem(name: "ratingFrom", value: String(rFrom))) }
-            if let rTo = filters.ratingTo { queryItems.append(URLQueryItem(name: "ratingTo", value: String(rTo))) }
-            if let yFrom = filters.yearFrom { queryItems.append(URLQueryItem(name: "yearFrom", value: String(yFrom))) }
-            if let yTo = filters.yearTo { queryItems.append(URLQueryItem(name: "yearTo", value: String(yTo))) }
-            if let genres = filters.genres { queryItems.append(URLQueryItem(name: "genres", value: genres)) }
-            if let countries = filters.countries { queryItems.append(URLQueryItem(name: "countries", value: countries)) }
-        }
-        
-        return try await performRequest(endpoint: "api/v2/search", queryItems: queryItems)
+        // v1/search использует Kinopoisk Full-Text Search:
+        // - правильно обрабатывает е/ё
+        // - даёт корректный порядок результатов по релевантности
+        // v2/search оптимизирован для каталога с фильтрами, не для поиска по ключевому слову
+        return try await performRequest(endpoint: "api/v1/search", queryItems: queryItems)
     }
 }
