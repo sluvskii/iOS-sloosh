@@ -57,12 +57,27 @@ jobs:
           sed -i '' "s/890/${{ github.run_number }}/g" sloosh/Info.plist
           SHORT_VER=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" sloosh/Info.plist)
           FULL_VER="${SHORT_VER}.${{ github.run_number }}"
+          # Patch MARKETING_VERSION in project.yml so xcodegen uses the full version
+          sed -i '' "s/MARKETING_VERSION: .*/MARKETING_VERSION: $FULL_VER/" project.yml
+          # Also patch Info.plist directly for safety
           /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $FULL_VER" sloosh/Info.plist
 
       - name: Generate Xcode Project
         run: |
           cd sloosh-iOS
           xcodegen generate
+
+      - name: Patch Version After XcodeGen
+        run: |
+          cd sloosh-iOS
+          SHORT_VER=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" sloosh/Info.plist)
+          # If xcodegen reset the version, patch it again
+          if [ "$SHORT_VER" != "$(echo $SHORT_VER | grep '\.${{ github.run_number }}')" ]; then
+            BASE_VER=$(echo "$SHORT_VER" | sed 's/\.[0-9]*$//')
+            FULL_VER="${BASE_VER}.${{ github.run_number }}"
+            /usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $FULL_VER" sloosh/Info.plist
+          fi
+          echo "Final CFBundleShortVersionString: $(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' sloosh/Info.plist)"
 
 
       - name: Build iOS App
