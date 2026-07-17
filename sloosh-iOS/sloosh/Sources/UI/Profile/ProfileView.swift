@@ -201,14 +201,14 @@ struct ProfileCategoryContentView: View {
                         title: "Пока ничего не добавлено",
                         message: "Сохраняйте фильмы и сериалы в избранное, чтобы быстро возвращаться к ним позже."
                     )
-                    .frame(maxWidth: .infinity, minHeight: 300)
+                    .containerRelativeFrame(.vertical)
                 } else if favorites.isEmpty {
                     ProfileEmptyState(
                         icon: "film.stack",
                         title: "В этой подборке пока пусто",
                         message: "Попробуйте открыть другую вкладку или добавьте что-нибудь в избранное."
                     )
-                    .frame(maxWidth: .infinity, minHeight: 300)
+                    .containerRelativeFrame(.vertical)
                 } else {
                     let spacing: CGFloat = cardDensity == .compact ? 8 : 16
                     let padding: CGFloat = cardDensity == .compact ? 12 : 16

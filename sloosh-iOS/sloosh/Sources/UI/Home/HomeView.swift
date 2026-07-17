@@ -205,7 +205,7 @@ struct HomeCategoryContentView: View {
                         category: category,
                         filter: viewModel.selectedFilter
                     )
-                    .frame(maxWidth: .infinity, minHeight: 300)
+                    .containerRelativeFrame(.vertical)
                     .padding(.horizontal, 20)
                 } else if let items = items {
                     LazyVGrid(columns: columns, spacing: spacing) {
