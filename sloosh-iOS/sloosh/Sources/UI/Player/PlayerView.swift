@@ -99,7 +99,10 @@ struct PlayerView: View {
         .ignoresSafeArea()
         .onAppear {
             guard viewModel.player == nil else { return }
-            viewModel.player = AVPlayer()
+            let newPlayer = AVPlayer()
+            newPlayer.allowsExternalPlayback = false
+            newPlayer.usesExternalPlaybackWhileExternalScreenIsActive = false
+            viewModel.player = newPlayer
             viewModel.fallbackTitle = fallbackTitle
             viewModel.targetQualityPreference = initialQuality
             viewModel.seriesResult = seriesResult
@@ -872,7 +875,12 @@ class PlayerViewModel: ObservableObject {
 
         let playerItem = AVPlayerItem(asset: asset)
         
-        if self.player == nil { self.player = AVPlayer() }
+        if self.player == nil {
+            let newPlayer = AVPlayer()
+            newPlayer.allowsExternalPlayback = false
+            newPlayer.usesExternalPlaybackWhileExternalScreenIsActive = false
+            self.player = newPlayer
+        }
         self.player?.replaceCurrentItem(with: playerItem)
         self.player?.automaticallyWaitsToMinimizeStalling = true
         self.player?.rate = playbackRate
