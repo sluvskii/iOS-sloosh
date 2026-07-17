@@ -14,9 +14,9 @@ struct TooltipModifier: ViewModifier {
                 arrowEdge: isTailTop ? .top : .bottom
             ) {
                 Text(text)
-                    .font(.subheadline.weight(.medium))
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 12)
+                    .font(.footnote.weight(.medium))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
                     // Указываем системе принудительно отображать как popover (пузырек со стрелочкой) даже на iPhone
                     .presentationCompactAdaptation(.popover)
             }
