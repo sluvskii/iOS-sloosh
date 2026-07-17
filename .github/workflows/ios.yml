@@ -55,6 +55,10 @@ jobs:
           cd sloosh-iOS
           sed -i '' "s/890/${{ github.run_number }}/g" project.yml
           sed -i '' "s/890/${{ github.run_number }}/g" sloosh/Info.plist
+          
+          # Append run number to CFBundleShortVersionString so SideStore detects every build as a new version
+          VERSION=$(/usr/libexec/PlistBuddy -c "Print CFBundleShortVersionString" sloosh/Info.plist)
+          /usr/libexec/PlistBuddy -c "Set CFBundleShortVersionString $VERSION.${{ github.run_number }}" sloosh/Info.plist
 
       - name: Generate Xcode Project
         run: |
