@@ -95,7 +95,7 @@ func allohaTranslationNamesMatch(_ lhs: String?, _ rhs: String?, exactOnly: Bool
     
     let isOriginalOrEnglish: (String) -> Bool = { name in
         let n = name.lowercased()
-        return n.contains("original") || n.contains("оригинал") || n.contains("english") || n.contains("английский") || n.contains("eng") || n == "en"
+        return n.contains("original") || n.contains("оригинал") || n.contains("english") || n.contains("англ") || n.contains("eng") || n == "en"
     }
     
     if isOriginalOrEnglish(left) && isOriginalOrEnglish(right) {
