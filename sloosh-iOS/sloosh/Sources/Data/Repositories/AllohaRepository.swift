@@ -339,14 +339,14 @@ final class AllohaRepository: @unchecked Sendable {
                         guard let vTitle = variant["title"] as? String, !vTitle.isEmpty,
                               let streamUrl = variant["url"] as? String, !streamUrl.isEmpty else { return nil }
                         let cleanTitle = normalizedAllohaTranslationName(vTitle)
-                        // ВАЖНО: сохраняем реальный HLS URL стрима в streamUrl.
-                        // Это позволяет DetailsView передать его как directStreamUrl в PlayerView,
-                        // полностью пропуская повторный resolve iframe и устраняя проблему name-matching.
+                        // streamUrl НЕ сохраняем — HLS URL Alloha требует свежих CDN-заголовков
+                        // (authorizations, accepts-controls) с TTL ~120s, которые получаются
+                        // только при iframe-resolve. streamUrl предназначен для локальных файлов.
                         return AllohaTranslation(
                             id: "dub_\(index)",
                             name: cleanTitle.isEmpty ? vTitle : cleanTitle,
                             iframeUrl: m.iframeUrl,
-                            streamUrl: streamUrl
+                            streamUrl: nil
                         )
                     }
                     if !newTranslations.isEmpty {
