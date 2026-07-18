@@ -319,6 +319,7 @@ enum VideoQualityPreference: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
+        case .ask:
             return "Спрашивать"
         default:
             return rawValue
