@@ -745,7 +745,8 @@ class PlayerViewModel: ObservableObject {
         let ext = sourceURL.pathExtension
         let pathSuffix = ext.isEmpty ? "stream.m3u8" : "stream.\(ext)"
 
-        return URL(string: "http://127.0.0.1:\(HlsProxyServer.shared.port.rawValue)/proxy/\(pathSuffix)?url=\(encoded)")
+        let timestamp = Int(Date().timeIntervalSince1970)
+        return URL(string: "http://127.0.0.1:\(HlsProxyServer.shared.port.rawValue)/proxy/\(pathSuffix)?url=\(encoded)&_t=\(timestamp)")
     }
 
     private func shouldReloadForAutoSelection(autoURL: URL) -> Bool {
@@ -875,13 +876,6 @@ class PlayerViewModel: ObservableObject {
         } else if url.isFileURL {
             currentPlaybackSourceURL = url.absoluteURL
             asset = AVURLAsset(url: url)
-        } else if url.absoluteString.lowercased().contains(".mp4") {
-            currentPlaybackSourceURL = url.absoluteURL
-            var options: [String: Any] = [:]
-            if !headers.isEmpty {
-                options["AVURLAssetHTTPHeaderFieldsKey"] = headers
-            }
-            asset = AVURLAsset(url: url, options: options)
         } else {
             guard let proxyUrl = proxiedPlaybackURL(for: url) else {
                 self.error = "Ошибка формирования URL"
