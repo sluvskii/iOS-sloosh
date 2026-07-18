@@ -225,6 +225,7 @@ struct DetailsView: View {
                                 playerEpisode = episode
                                 playerQuality = quality
                                 playerSeriesResult = result
+                                playerVoices = result.allTranslationNames
                                 
                                 if let kpId = wrapper.kpId,
                                    DownloadManager.shared.isDownloaded(kpId: kpId, season: season, episode: episode),

@@ -33,6 +33,25 @@ struct AllohaApiResult: Codable, Hashable, Equatable {
     let seasons: [AllohaSeason]
 }
 
+extension AllohaApiResult {
+    var allTranslationNames: [String] {
+        if isSerial {
+            var names = Set<String>()
+            for season in seasons {
+                for episode in season.episodes {
+                    for t in episode.translations {
+                        names.insert(t.name)
+                    }
+                }
+            }
+            return Array(names).sorted()
+        } else if let movie = movie {
+            return movie.translations.map { $0.name }.sorted()
+        }
+        return []
+    }
+}
+
 func normalizedAllohaTranslationName(_ raw: String?) -> String {
     guard var value = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else {
         return ""

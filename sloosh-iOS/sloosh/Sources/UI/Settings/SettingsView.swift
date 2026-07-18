@@ -12,6 +12,7 @@ struct SettingsView: View {
     @State private var applyTabBarLabelsTask: Task<Void, Never>?
     @State private var scrollOffset: CGFloat = 0
     @Environment(\.dismiss) private var dismiss
+    @State private var showLogsShareSheet = false
     
     private var blurOpacity: Double {
         let progress = max(0, scrollOffset) / 30.0
@@ -166,6 +167,21 @@ struct SettingsView: View {
                     }
                 }
             }
+            
+            Section("Диагностика") {
+                Button {
+                    showLogsShareSheet = true
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "doc.text.fill")
+                            .foregroundStyle(Color.slooshAccent)
+                            .font(.system(size: 18))
+                            .frame(width: 24)
+                        Text("Поделиться логами")
+                            .foregroundStyle(.primary)
+                    }
+                }
+            }
         }
         .environment(\.defaultMinListHeaderHeight, .leastNonzeroMagnitude)
         .toolbar(.hidden, for: .navigationBar)
@@ -223,6 +239,9 @@ struct SettingsView: View {
         }
         .onDisappear {
             applyTabBarLabelsTask?.cancel()
+        }
+        .sheet(isPresented: $showLogsShareSheet) {
+            ShareSheet(items: [AppDiagnostics.shared.getLogsURL()])
         }
     }
 }

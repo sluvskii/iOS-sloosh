@@ -1594,18 +1594,7 @@ class PlayerViewModel: ObservableObject {
     }
 
     private func logDebug(_ message: String) {
-        print(message)
-        let logPath = "W:/iOS-sloosh/sloosh-iOS/player_debug.txt"
-        let line = "[\(Date())] \(message)\n"
-        if let data = line.data(using: .utf8) {
-            if let fileHandle = FileHandle(forWritingAtPath: logPath) {
-                fileHandle.seekToEndOfFile()
-                fileHandle.write(data)
-                fileHandle.closeFile()
-            } else {
-                try? data.write(to: URL(fileURLWithPath: logPath), options: .atomic)
-            }
-        }
+        AppDiagnostics.shared.log("[PlayerDebug] \(message)")
     }
 
     private func persistVoiceoverSelection(_ name: String?) {
