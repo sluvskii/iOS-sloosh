@@ -637,7 +637,8 @@ class PlayerViewModel: ObservableObject {
         }
 
         // Для сериала — ищем нужный iframe
-        guard let season = currentSeason,
+        guard let seriesResult,
+              let season = currentSeason,
               let episode = currentEpisode,
               let seasonObj = seriesResult.seasons.first(where: { $0.season == season }),
               let epObj = seasonObj.episodes.first(where: { $0.episode == episode }),
