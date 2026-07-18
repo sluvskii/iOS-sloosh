@@ -1482,7 +1482,7 @@ class PlayerViewModel: ObservableObject {
     }
 
 
-    private func findTranslationId(for name: String) -> Int? {
+    private func findTranslationId(for name: String) -> String? {
         guard let result = seriesResult else { return nil }
         if result.isSerial {
             for season in result.seasons {
@@ -1512,7 +1512,8 @@ class PlayerViewModel: ObservableObject {
 
     private func matchAudioVariant(_ variant: [String: Any], selectedName: String) -> Bool {
         let title = (variant["title"] as? String) ?? ""
-        if let targetId = findTranslationId(for: selectedName) {
+        if let targetIdStr = findTranslationId(for: selectedName),
+           let targetId = Int(targetIdStr) {
             if let variantId = extractNumber(from: title), variantId == targetId {
                 logDebug("matchAudioVariant: matched by ID \(targetId) for title '\(title)'")
                 return true
