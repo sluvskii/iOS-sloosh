@@ -594,7 +594,7 @@ class PlayerViewModel: ObservableObject {
             if !resolvedAudioVariants.isEmpty {
                 logDebug("switchVoiceover: looking in resolvedAudioVariants (\(resolvedAudioVariants.count) items)")
                 let match = resolvedAudioVariants.first(where: { variant in
-                    allohaTranslationNamesMatch(variant["title"] as? String, name)
+                    matchAudioVariant(variant, selectedName: name)
                 })
                 if let match, let urlString = match["url"] as? String, let url = URL(string: urlString) {
                     logDebug("switchVoiceover: found match in resolvedAudioVariants, url=\(urlString)")
@@ -1392,13 +1392,8 @@ class PlayerViewModel: ObservableObject {
             let voiceToMatch = targetVoiceover ?? _currentTranslationName
             logDebug("applyResolvedAllohaStream: matching voiceToMatch=\(voiceToMatch ?? "nil")")
             if let voiceToMatch, !voiceToMatch.isEmpty {
-                let exactMatch = audioVariants.first(where: { variant in
-                    let title = variant["title"] as? String
-                    return allohaTranslationNamesMatch(title, voiceToMatch, exactOnly: true)
-                })
-                let match = exactMatch ?? audioVariants.first(where: { variant in
-                    let title = variant["title"] as? String
-                    return allohaTranslationNamesMatch(title, voiceToMatch, exactOnly: false)
+                let match = audioVariants.first(where: { variant in
+                    matchAudioVariant(variant, selectedName: voiceToMatch)
                 })
                 if let validMatch = match, let matchedUrl = validMatch["url"] as? String, !matchedUrl.isEmpty {
                     resolvedUrlString = matchedUrl.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -1486,6 +1481,55 @@ class PlayerViewModel: ObservableObject {
         }
     }
 
+
+    private func findTranslationId(for name: String) -> Int? {
+        guard let result = seriesResult else { return nil }
+        if result.isSerial {
+            for season in result.seasons {
+                for episode in season.episodes {
+                    if let t = episode.translations.first(where: { allohaTranslationNamesMatch($0.name, name) }) {
+                        return t.id
+                    }
+                }
+            }
+        } else if let movie = result.movie {
+            if let t = movie.translations.first(where: { allohaTranslationNamesMatch($0.name, name) }) {
+                return t.id
+            }
+        }
+        return nil
+    }
+
+    private func extractNumber(from text: String) -> Int? {
+        guard let regex = try? NSRegularExpression(pattern: #"(\d+)"#, options: []) else { return nil }
+        let range = NSRange(text.startIndex..<text.endIndex, in: text)
+        guard let match = regex.firstMatch(in: text, range: range),
+              let numRange = Range(match.range(at: 1), in: text) else {
+            return nil
+        }
+        return Int(text[numRange])
+    }
+
+    private func matchAudioVariant(_ variant: [String: Any], selectedName: String) -> Bool {
+        let title = (variant["title"] as? String) ?? ""
+        if let targetId = findTranslationId(for: selectedName) {
+            if let variantId = extractNumber(from: title), variantId == targetId {
+                logDebug("matchAudioVariant: matched by ID \(targetId) for title '\(title)'")
+                return true
+            }
+        }
+        // Exact match fallback
+        if allohaTranslationNamesMatch(title, selectedName, exactOnly: true) {
+            logDebug("matchAudioVariant: matched exact by name for title '\(title)'")
+            return true
+        }
+        // Fuzzy match fallback
+        let matchedFuzzy = allohaTranslationNamesMatch(title, selectedName, exactOnly: false)
+        if matchedFuzzy {
+            logDebug("matchAudioVariant: matched fuzzy by name for title '\(title)'")
+        }
+        return matchedFuzzy
+    }
 
     private func selectAudioTrackInPlayer(named name: String) {
         guard let player = player,
