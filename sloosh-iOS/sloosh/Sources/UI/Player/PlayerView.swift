@@ -570,6 +570,21 @@ class PlayerViewModel: ObservableObject {
 
     /// Переключает озвучку без закрытия плеера
     func switchVoiceover(to name: String) {
+        // 1. Пробуем переключить нативно в текущем AVPlayer (если дорожка встроена в HLS)
+        if let player = player,
+           let item = player.currentItem,
+           let group = item.asset.mediaSelectionGroup(forMediaCharacteristic: .audible) {
+            let options = group.options
+            if let option = options.first(where: { allohaTranslationNamesMatch($0.displayName, name) }) {
+                _currentTranslationName = name
+                targetVoiceover = name
+                persistVoiceoverSelection(name)
+                item.select(option, in: group)
+                print("Switched audio natively to: \(option.displayName)")
+                return
+            }
+        }
+
         guard let seriesResult else {
             // Для фильма: сначала пробуем мгновенное переключение через уже-разрезолвленные audioVariants
             if !resolvedAudioVariants.isEmpty {
@@ -745,8 +760,7 @@ class PlayerViewModel: ObservableObject {
         let ext = sourceURL.pathExtension
         let pathSuffix = ext.isEmpty ? "stream.m3u8" : "stream.\(ext)"
 
-        let timestamp = Int(Date().timeIntervalSince1970)
-        return URL(string: "http://127.0.0.1:\(HlsProxyServer.shared.port.rawValue)/proxy/\(pathSuffix)?url=\(encoded)&_t=\(timestamp)")
+        return URL(string: "http://127.0.0.1:\(HlsProxyServer.shared.port.rawValue)/proxy/\(pathSuffix)?url=\(encoded)")
     }
 
     private func shouldReloadForAutoSelection(autoURL: URL) -> Bool {
@@ -876,6 +890,13 @@ class PlayerViewModel: ObservableObject {
         } else if url.isFileURL {
             currentPlaybackSourceURL = url.absoluteURL
             asset = AVURLAsset(url: url)
+        } else if url.absoluteString.lowercased().contains(".mp4") {
+            currentPlaybackSourceURL = url.absoluteURL
+            var options: [String: Any] = [:]
+            if !headers.isEmpty {
+                options["AVURLAssetHTTPHeaderFieldsKey"] = headers
+            }
+            asset = AVURLAsset(url: url, options: options)
         } else {
             guard let proxyUrl = proxiedPlaybackURL(for: url) else {
                 self.error = "Ошибка формирования URL"
@@ -973,6 +994,10 @@ class PlayerViewModel: ObservableObject {
                     }
                 } else if item.status == .readyToPlay {
                     self.isLoading = false
+                    self.syncNativeAudioTracks()
+                    if let targetVoice = self.targetVoiceover ?? self._currentTranslationName {
+                        self.selectAudioTrackInPlayer(named: targetVoice)
+                    }
                 }
             }
         }
@@ -1435,6 +1460,106 @@ class PlayerViewModel: ObservableObject {
     }
 
 
+    private func selectAudioTrackInPlayer(named name: String) {
+        guard let player = player,
+              let item = player.currentItem,
+              let group = item.asset.mediaSelectionGroup(forMediaCharacteristic: .audible) else {
+            return
+        }
+        
+        let options = group.options
+        print("selectAudioTrackInPlayer: target=\(name), options=\(options.map { $0.displayName })")
+        
+        // Exact match
+        if let option = options.first(where: { allohaTranslationNamesMatch($0.displayName, name, exactOnly: true) }) {
+            item.select(option, in: group)
+            persistVoiceoverSelection(name)
+            return
+        }
+        
+        // Fuzzy match
+        if let option = options.first(where: { allohaTranslationNamesMatch($0.displayName, name, exactOnly: false) }) {
+            item.select(option, in: group)
+            persistVoiceoverSelection(name)
+            return
+        }
+        
+        // Match by index or language tag if name represents a standard language
+        let lowerName = name.lowercased()
+        let targetLang: String? = {
+            if lowerName.contains("eng") || lowerName.contains("original") || lowerName.contains("англ") || lowerName.contains("ori") {
+                return "en"
+            }
+            if lowerName.contains("rus") || lowerName.contains("рус") || lowerName.contains("дуб") {
+                return "ru"
+            }
+            if lowerName.contains("ukr") || lowerName.contains("укр") {
+                return "uk"
+            }
+            return nil
+        }()
+        
+        if let targetLang {
+            if let option = options.first(where: { 
+                $0.extendedLanguageTag?.lowercased().hasPrefix(targetLang) == true ||
+                $0.locale?.identifier.lowercased().hasPrefix(targetLang) == true 
+            }) {
+                item.select(option, in: group)
+                persistVoiceoverSelection(name)
+                return
+            }
+        }
+        
+        if let targetIndex = extractAudioIndex(from: name), targetIndex < options.count {
+            item.select(options[targetIndex], in: group)
+            persistVoiceoverSelection(name)
+            return
+        }
+    }
+    
+    private func syncNativeAudioTracks() {
+        guard let player = player,
+              let item = player.currentItem,
+              let group = item.asset.mediaSelectionGroup(forMediaCharacteristic: .audible) else {
+            return
+        }
+        
+        let nativeNames = group.options.map { $0.displayName }
+        guard nativeNames.count > 1 else { return }
+        
+        var updatedVoiceovers = self.availableVoiceovers
+        
+        for name in nativeNames {
+            let cleanName = normalizedAllohaTranslationName(name)
+            let finalName = cleanName.isEmpty ? name : cleanName
+            if !updatedVoiceovers.contains(where: { allohaTranslationNamesMatch($0, finalName) }) {
+                updatedVoiceovers.append(finalName)
+            }
+        }
+        
+        if updatedVoiceovers != self.availableVoiceovers {
+            self.availableVoiceovers = updatedVoiceovers
+        }
+    }
+    
+    private func extractAudioIndex(from name: String) -> Int? {
+        let patterns = [
+            #"(?:^|[^a-z0-9])(?:rus|ru|eng|en)(\d+)(?:$|[^a-z0-9])"#,
+            #"(?:^|[^a-z0-9])audio[_-]?(\d+)(?:$|[^a-z0-9])"#
+        ]
+        for pattern in patterns {
+            guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { continue }
+            let range = NSRange(name.startIndex..<name.endIndex, in: name)
+            guard let match = regex.firstMatch(in: name, options: [], range: range),
+                  let idxRange = Range(match.range(at: 1), in: name),
+                  let idx = Int(name[idxRange]) else {
+                continue
+            }
+            return idx
+        }
+        return nil
+    }
+
     private func persistVoiceoverSelection(_ name: String?) {
         guard let kpId = currentKpId else { return }
         let normalized = normalizedAllohaTranslationName(name)
@@ -1456,6 +1581,18 @@ class PlayerViewModel: ObservableObject {
                 continue
             }
             let label = normalizedQualityLabel(from: variant["label"] as? String)
+            
+            // Фильтруем AV1 кодек и разрешения выше 1080p, так как iOS/AVPlayer их не поддерживает
+            let lowerLabel = label.lowercased()
+            let lowerUrl = urlString.lowercased()
+            if lowerLabel.contains("av1") || lowerLabel.contains("av01") || lowerUrl.contains("av1") || lowerUrl.contains("av01") {
+                continue
+            }
+            let height = Int(lowerLabel.replacingOccurrences(of: "p", with: "")) ?? 0
+            if height > 1080 {
+                continue
+            }
+            
             guard seenKeys.insert(label).inserted else { continue }
             qualities.append(
                 makeResolvedQualityOption(
