@@ -39,7 +39,7 @@ struct HomeDirectPlayWrapper: View {
                         episode: episode,
                         voiceover: translation.name,
                         streamUrl: translation.streamUrl,
-                        voices: [],
+                        voices: result.allTranslationNames,
                         subtitles: [],
                         quality: quality,
                         seriesResult: result
