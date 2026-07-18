@@ -4,8 +4,15 @@ import WebKit
 
 final class AllohaRuntimeResolver: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
     private static var iframeCache: [String: (result: [String: Any], expiresAt: Date)] = [:]
-    private static let cacheTtl: TimeInterval = 45 // 45 seconds
+    private static let cacheTtl: TimeInterval = 20 // 20 секунд — достаточно для повторных переходов, не мешает смене озвучки
     private static let cacheQueue = DispatchQueue(label: "ru.neomovies.alloharesolver.cache", attributes: .concurrent)
+
+    /// Инвалидирует кэш для конкретного iframeUrl (используется при смене озвучки)
+    static func invalidateCache(for iframeUrl: String) {
+        cacheQueue.async(flags: .barrier) {
+            iframeCache.removeValue(forKey: iframeUrl)
+        }
+    }
 
     private static var uaIndex = 0
     private static let userAgents = [

@@ -213,6 +213,10 @@ class PlayerViewModel: ObservableObject {
     /// Pre-resolved direct stream URL; bypasses audioVariant matching when set.
     private var targetDirectStreamUrl: String?
     private var isAdvancingToNextEpisode = false
+    /// Оригинальный iframeUrl Alloha. Нужен для корректного переключения озвучки в плеере.
+    private var currentIframeUrl: String?
+    /// Все audioVariants из последнего resolve. Нужны для мгновенного переключения озвучки без re-resolve.
+    private var resolvedAudioVariants: [[String: Any]] = []
 
     var targetQualityPreference: VideoQualityPreference?
     var seriesResult: AllohaApiResult?
@@ -277,6 +281,12 @@ class PlayerViewModel: ObservableObject {
         self.targetDirectStreamUrl = directStreamUrl
         self.isAdvancingToNextEpisode = false
         self.hasRetriedPlayback = false
+        // Сохраняем iframeUrl — нужен для переключения озвучки внутри плеера
+        if let iframeUrl, !iframeUrl.isEmpty {
+            self.currentIframeUrl = iframeUrl
+        }
+        // Сбрасываем кэш audioVariants — будет обновлён после resolve нового стрима
+        self.resolvedAudioVariants = []
 
         if kpId != nil, let selectedVoiceover, !selectedVoiceover.isEmpty {
             persistVoiceoverSelection(selectedVoiceover)
@@ -561,21 +571,43 @@ class PlayerViewModel: ObservableObject {
     /// Переключает озвучку без закрытия плеера
     func switchVoiceover(to name: String) {
         guard let seriesResult else {
-            // Для фильма — перезапускаем текущий iframe с новой озвучкой
-            if let iframeUrl = availableQualities.first?.url.absoluteString {
-                _currentTranslationName = name
-                targetVoiceover = name
-                resolveTask?.cancel()
-                resolver?.cancel()
-                hasStartedLoading = false
-                beginLoad(
-                    iframeUrl: iframeUrl,
-                    kpId: currentKpId,
-                    season: nil,
-                    episode: nil,
-                    selectedVoiceover: name
-                )
+            // Для фильма: сначала пробуем мгновенное переключение через уже-разрезолвленные audioVariants
+            if !resolvedAudioVariants.isEmpty {
+                let match = resolvedAudioVariants.first(where: { variant in
+                    allohaTranslationNamesMatch(variant["title"] as? String, name)
+                })
+                if let match, let urlString = match["url"] as? String, let url = URL(string: urlString) {
+                    _currentTranslationName = name
+                    targetVoiceover = name
+                    persistVoiceoverSelection(name)
+                    // Переключаем стрим напрямую без re-resolve
+                    let qualityVariants = (match["qualityVariants"] as? [[String: Any]]) ?? []
+                    availableQualities = makeResolvedQualityOptions(
+                        resolvedUrl: url,
+                        qualityVariants: qualityVariants,
+                        audioVariants: resolvedAudioVariants
+                    )
+                    currentQualityKey = "Авто"
+                    playVideo(url: url, headers: currentHeaders, voices: [], subtitles: availableSubtitles)
+                    return
+                }
             }
+            // Фолбэк: перезапускаем с оригинального iframeUrl
+            guard let iframeUrl = currentIframeUrl, !iframeUrl.isEmpty else { return }
+            _currentTranslationName = name
+            targetVoiceover = name
+            // Инвалидируем кэш — нужно свежее содержимое для выбора озвучки по имени
+            AllohaRuntimeResolver.invalidateCache(for: iframeUrl)
+            resolveTask?.cancel()
+            resolver?.cancel()
+            hasStartedLoading = false
+            beginLoad(
+                iframeUrl: iframeUrl,
+                kpId: currentKpId,
+                season: nil,
+                episode: nil,
+                selectedVoiceover: name
+            )
             return
         }
 
@@ -584,10 +616,12 @@ class PlayerViewModel: ObservableObject {
               let episode = currentEpisode,
               let seasonObj = seriesResult.seasons.first(where: { $0.season == season }),
               let epObj = seasonObj.episodes.first(where: { $0.episode == episode }),
-              let translation = epObj.translations.first(where: { $0.name == name }) else { return }
+              let translation = epObj.translations.first(where: { allohaTranslationNamesMatch($0.name, name) }) else { return }
 
         _currentTranslationName = name
         targetVoiceover = name
+        // Инвалидируем кэш перед re-resolve серии
+        AllohaRuntimeResolver.invalidateCache(for: translation.iframeUrl)
         resolveTask?.cancel()
         resolver?.cancel()
         hasStartedLoading = false
@@ -726,8 +760,10 @@ class PlayerViewModel: ObservableObject {
 
         let height = Int(quality.key.replacingOccurrences(of: "p", with: "")) ?? 0
         switch height {
-        case 1080...: return 8_000_000
-        case 720..<1080: return 4_000_000
+        case 2160...: return 20_000_000 // 4K UHD
+        case 1440..<2160: return 12_000_000 // 2K/1440p
+        case 1080..<1440: return 8_000_000 // Full HD
+        case 720..<1080: return 4_000_000 // HD
         case 480..<720: return 2_000_000
         case 360..<480: return 1_000_000
         case 1..<360: return 700_000
@@ -1356,6 +1392,10 @@ class PlayerViewModel: ObservableObject {
         let voices = resolvedVoiceovers(from: resolved)
         if !voices.isEmpty {
             self.availableVoiceovers = voices
+        }
+        // Сохраняем audioVariants для мгновенного переключения озвучки без re-resolve
+        if !audioVariants.isEmpty {
+            self.resolvedAudioVariants = audioVariants
         }
 
         let qualityVariants = (resolved["qualityVariants"] as? [[String: Any]]) ?? []
