@@ -75,14 +75,44 @@ class MoviesRepository: ObservableObject {
 
     // MARK: - Search
 
+    /// Нормализует строку для сравнения: нижний регистр + замена ё→е,
+    /// чтобы поиск "енола" находил "Ёнола" и наоборот.
+    private func normalizeForSearch(_ s: String) -> String {
+        return s.lowercased()
+            .replacingOccurrences(of: "ё", with: "е")
+    }
+
+    /// Возвращает true если хотя бы один из заголовков содержит нормализованный запрос
+    private func titleMatchesQuery(_ item: MediaDto, normalizedQuery: String) -> Bool {
+        let titles = [item.title, item.name, item.originalTitle].compactMap { $0 }
+        return titles.contains { normalizeForSearch($0).contains(normalizedQuery) }
+    }
+
     func searchMovies(query: String, page: Int = 1, filters: SearchFilters? = nil) async throws -> [MediaDto] {
         let response = try await MoviesApi.shared.searchMovies(query: query, page: page, filters: filters)
-        return response.data?.results ?? []
+        let results = response.data?.results ?? []
+        let trimmed = query.trimmingCharacters(in: .whitespaces)
+        guard trimmed.count >= 2 else { return results }
+        // Фильтруем: оставляем только результаты, где заголовок содержит запрос.
+        // Это убирает шум от полнотекстового поиска (совпадения в описаниях/ключевых словах).
+        // Нормализация ё→е даёт толерантность к вводу е вместо ё.
+        let normalizedQuery = normalizeForSearch(trimmed)
+        let filtered = results.filter { titleMatchesQuery($0, normalizedQuery: normalizedQuery) }
+        // Если фильтр убрал всё (редкий кейс), возвращаем оригинал — лучше шум, чем пусто
+        return filtered.isEmpty ? results : filtered
     }
 
     func searchMoviesResponse(query: String, page: Int = 1, filters: SearchFilters? = nil) async throws -> MediaResponse {
         let response = try await MoviesApi.shared.searchMovies(query: query, page: page, filters: filters)
-        return response.data ?? MediaResponse(page: page, results: [], pages: 1, total: 0, total_pages: 1, total_results: 0)
+        var results = response.data?.results ?? []
+        let trimmed = query.trimmingCharacters(in: .whitespaces)
+        if trimmed.count >= 2 {
+            let normalizedQuery = normalizeForSearch(trimmed)
+            let filtered = results.filter { titleMatchesQuery($0, normalizedQuery: normalizedQuery) }
+            if !filtered.isEmpty { results = filtered }
+        }
+        let base = response.data ?? MediaResponse(page: page, results: [], pages: 1, total: 0, total_pages: 1, total_results: 0)
+        return MediaResponse(page: base.page, results: results, pages: base.pages, total: results.count, total_pages: base.total_pages, total_results: results.count)
     }
 }
 
