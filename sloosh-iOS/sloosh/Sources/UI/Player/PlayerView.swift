@@ -588,7 +588,8 @@ class PlayerViewModel: ObservableObject {
             }
         }
 
-        guard let seriesResult else {
+        let isSerial = seriesResult?.isSerial == true
+        if !isSerial {
             // Для фильма: сначала пробуем мгновенное переключение через уже-разрезолвленные audioVariants
             if !resolvedAudioVariants.isEmpty {
                 logDebug("switchVoiceover: looking in resolvedAudioVariants (\(resolvedAudioVariants.count) items)")
