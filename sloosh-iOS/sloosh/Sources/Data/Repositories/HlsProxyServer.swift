@@ -24,8 +24,6 @@ class HlsProxyServer {
         let config = URLSessionConfiguration.ephemeral
         config.httpMaximumConnectionsPerHost = 20
         config.timeoutIntervalForRequest = 15
-        config.requestCachePolicy = .reloadIgnoringLocalCacheData
-        config.urlCache = nil
         let delegate = TrustAllSessionDelegate()
         return URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
     }()
@@ -287,88 +285,34 @@ class HlsProxyServer {
         }
         
         do {
-            if isPlaylist {
-                let (data, response) = try await session.data(for: request)
-                guard let httpResponse = response as? HTTPURLResponse else {
-                    self.send404(on: connection)
-                    return
-                }
-                
-                let statusCode = httpResponse.statusCode
-                let contentRange = httpResponse.value(forHTTPHeaderField: "Content-Range")
-                
-                if let content = String(data: data, encoding: .utf8) {
-                    let rewritten: String
-                    if content.contains("#EXT-X-STREAM-INF") && (!currentVoices.isEmpty || !currentSubtitles.isEmpty) {
-                        let playlistRewritten = PlaybackHlsRewriter.rewrite(
-                            master: content,
-                            voices: currentVoices,
-                            subtitles: currentSubtitles,
-                            mediaId: currentMediaId
-                        )
-                        rewritten = self.rewriteM3u8(content: playlistRewritten, baseUrl: realUrl)
-                    } else {
-                        rewritten = self.rewriteM3u8(content: content, baseUrl: realUrl)
-                    }
-                    
-                    let rewrittenData = rewritten.data(using: .utf8) ?? Data()
-                    self.sendResponse(data: rewrittenData, statusCode: 200, contentType: "application/vnd.apple.mpegurl", contentRange: nil, connection: connection)
+            let (data, response) = try await session.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse else {
+                self.send404(on: connection)
+                return
+            }
+            
+            let statusCode = httpResponse.statusCode
+            let contentRange = httpResponse.value(forHTTPHeaderField: "Content-Range")
+            
+            if isPlaylist, let content = String(data: data, encoding: .utf8) {
+                let rewritten: String
+                if content.contains("#EXT-X-STREAM-INF") && (!currentVoices.isEmpty || !currentSubtitles.isEmpty) {
+                    let playlistRewritten = PlaybackHlsRewriter.rewrite(
+                        master: content,
+                        voices: currentVoices,
+                        subtitles: currentSubtitles,
+                        mediaId: currentMediaId
+                    )
+                    rewritten = self.rewriteM3u8(content: playlistRewritten, baseUrl: realUrl)
                 } else {
-                    let contentType = httpResponse.mimeType ?? "application/vnd.apple.mpegurl"
-                    self.sendResponse(data: data, statusCode: statusCode, contentType: contentType, contentRange: contentRange, connection: connection)
+                    rewritten = self.rewriteM3u8(content: content, baseUrl: realUrl)
                 }
+                
+                let rewrittenData = rewritten.data(using: .utf8) ?? Data()
+                self.sendResponse(data: rewrittenData, statusCode: 200, contentType: "application/vnd.apple.mpegurl", contentRange: nil, connection: connection)
             } else {
-                let (asyncBytes, response) = try await session.bytes(for: request)
-                guard let httpResponse = response as? HTTPURLResponse else {
-                    self.send404(on: connection)
-                    return
-                }
-                
-                let statusCode = httpResponse.statusCode
-                let contentType = httpResponse.value(forHTTPHeaderField: "Content-Type") ?? "video/MP2T"
-                let contentRange = httpResponse.value(forHTTPHeaderField: "Content-Range")
-                let contentLength = httpResponse.value(forHTTPHeaderField: "Content-Length")
-                
-                var headers: [String: String] = [:]
-                headers["Content-Type"] = contentType
-                headers["Connection"] = "close"
-                if let contentRange { headers["Content-Range"] = contentRange }
-                if let contentLength { headers["Content-Length"] = contentLength }
-                
-                let reason = statusCode == 206 ? "Partial Content" : (statusCode == 200 ? "OK" : "Error")
-                var headerLines = ["HTTP/1.1 \(statusCode) \(reason)"]
-                for (k, v) in headers {
-                    headerLines.append("\(k): \(v)")
-                }
-                let headerString = headerLines.joined(separator: "\r\n") + "\r\n\r\n"
-                if let headerData = headerString.data(using: .utf8) {
-                    try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-                        connection.send(content: headerData, completion: .contentProcessed({ error in
-                            if let error = error { continuation.resume(throwing: error) } else { continuation.resume() }
-                        }))
-                    }
-                }
-                
-                var buffer = Data()
-                buffer.reserveCapacity(65536)
-                
-                for try await byte in asyncBytes {
-                    buffer.append(byte)
-                    if buffer.count >= 65536 {
-                        let chunk = buffer
-                        buffer = Data()
-                        try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
-                            connection.send(content: chunk, completion: .contentProcessed({ error in
-                                if let error = error { continuation.resume(throwing: error) } else { continuation.resume() }
-                            }))
-                        }
-                    }
-                }
-                if !buffer.isEmpty {
-                    connection.send(content: buffer, completion: .contentProcessed({ _ in connection.cancel() }))
-                } else {
-                    connection.cancel()
-                }
+                let contentType = httpResponse.mimeType ?? "video/MP2T"
+                self.sendResponse(data: data, statusCode: statusCode, contentType: contentType, contentRange: contentRange, connection: connection)
             }
         } catch {
             print("HlsProxyServer fetch failed: \(error)")
