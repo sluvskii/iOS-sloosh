@@ -244,6 +244,7 @@ class PlayerViewModel: ObservableObject {
     func load(iframeUrl: String?, kpId: Int?, season: Int?, episode: Int?, selectedVoiceover: String?, directStreamUrl: String? = nil, voices: [String] = [], subtitles: [PlaybackSubtitle] = []) {
         if hasStartedLoading { return } // Защита от двойного вызова
         hasStartedLoading = true
+        logDebug("load called with iframeUrl=\(iframeUrl ?? "nil"), selectedVoiceover=\(selectedVoiceover ?? "nil"), directStreamUrl=\(directStreamUrl ?? "nil")")
         beginLoad(iframeUrl: iframeUrl, kpId: kpId, season: season, episode: episode, selectedVoiceover: selectedVoiceover, directStreamUrl: directStreamUrl, voices: voices, subtitles: subtitles)
     }
 
@@ -570,17 +571,19 @@ class PlayerViewModel: ObservableObject {
 
     /// Переключает озвучку без закрытия плеера
     func switchVoiceover(to name: String) {
+        logDebug("switchVoiceover: switching to '\(name)'")
         // 1. Пробуем переключить нативно в текущем AVPlayer (если дорожка встроена в HLS)
         if let player = player,
            let item = player.currentItem,
            let group = item.asset.mediaSelectionGroup(forMediaCharacteristic: .audible) {
             let options = group.options
+            logDebug("switchVoiceover: native tracks available: \(options.map { $0.displayName })")
             if let option = options.first(where: { allohaTranslationNamesMatch($0.displayName, name) }) {
                 _currentTranslationName = name
                 targetVoiceover = name
                 persistVoiceoverSelection(name)
                 item.select(option, in: group)
-                print("Switched audio natively to: \(option.displayName)")
+                logDebug("switchVoiceover: switched audio natively to '\(option.displayName)'")
                 return
             }
         }
@@ -588,10 +591,12 @@ class PlayerViewModel: ObservableObject {
         guard let seriesResult else {
             // Для фильма: сначала пробуем мгновенное переключение через уже-разрезолвленные audioVariants
             if !resolvedAudioVariants.isEmpty {
+                logDebug("switchVoiceover: looking in resolvedAudioVariants (\(resolvedAudioVariants.count) items)")
                 let match = resolvedAudioVariants.first(where: { variant in
                     allohaTranslationNamesMatch(variant["title"] as? String, name)
                 })
                 if let match, let urlString = match["url"] as? String, let url = URL(string: urlString) {
+                    logDebug("switchVoiceover: found match in resolvedAudioVariants, url=\(urlString)")
                     _currentTranslationName = name
                     targetVoiceover = name
                     persistVoiceoverSelection(name)
@@ -603,12 +608,16 @@ class PlayerViewModel: ObservableObject {
                         audioVariants: resolvedAudioVariants
                     )
                     currentQualityKey = "Авто"
-                    playVideo(url: url, headers: currentHeaders, voices: [], subtitles: availableSubtitles)
+                    playVideo(url: url, headers: currentHeaders, voices: availableVoiceovers, subtitles: availableSubtitles)
                     return
                 }
             }
             // Фолбэк: перезапускаем с оригинального iframeUrl
-            guard let iframeUrl = currentIframeUrl, !iframeUrl.isEmpty else { return }
+            guard let iframeUrl = currentIframeUrl, !iframeUrl.isEmpty else {
+                logDebug("switchVoiceover error: no currentIframeUrl")
+                return
+            }
+            logDebug("switchVoiceover: reloading movie from currentIframeUrl=\(iframeUrl)")
             _currentTranslationName = name
             targetVoiceover = name
             // Инвалидируем кэш — нужно свежее содержимое для выбора озвучки по имени
@@ -631,8 +640,12 @@ class PlayerViewModel: ObservableObject {
               let episode = currentEpisode,
               let seasonObj = seriesResult.seasons.first(where: { $0.season == season }),
               let epObj = seasonObj.episodes.first(where: { $0.episode == episode }),
-              let translation = epObj.translations.first(where: { allohaTranslationNamesMatch($0.name, name) }) else { return }
+              let translation = epObj.translations.first(where: { allohaTranslationNamesMatch($0.name, name) }) else {
+            logDebug("switchVoiceover error: failed to find translation for series")
+            return
+        }
 
+        logDebug("switchVoiceover: reloading series episode from translation iframeUrl=\(translation.iframeUrl)")
         _currentTranslationName = name
         targetVoiceover = name
         // Инвалидируем кэш перед re-resolve серии
@@ -877,6 +890,7 @@ class PlayerViewModel: ObservableObject {
     
     
     private func playVideo(url: URL, headers: [String: String], voices: [String] = [], subtitles: [PlaybackSubtitle] = []) {
+        logDebug("playVideo: starting playback, url=\(url.absoluteString)")
         // Сохраняем оригинальный URL ДО проксирования — нужен для перезапуска после фона
         originalStreamURL = url.absoluteURL
         currentHeaders = headers
@@ -884,13 +898,16 @@ class PlayerViewModel: ObservableObject {
         let asset: AVURLAsset
         if url.absoluteString.contains("127.0.0.1") || url.absoluteString.contains("localhost") {
             // Уже локальный URL — не проксируем
+            logDebug("playVideo: local proxy URL directly played")
             currentPlaybackSourceURL = url.absoluteURL
             HlsProxyServer.shared.start(headers: [:], voices: [], subtitles: [], mediaId: "local")
             asset = AVURLAsset(url: url)
         } else if url.isFileURL {
+            logDebug("playVideo: file URL directly played")
             currentPlaybackSourceURL = url.absoluteURL
             asset = AVURLAsset(url: url)
         } else if url.absoluteString.lowercased().contains(".mp4") {
+            logDebug("playVideo: mp4 file played")
             currentPlaybackSourceURL = url.absoluteURL
             var options: [String: Any] = [:]
             if !headers.isEmpty {
@@ -899,6 +916,7 @@ class PlayerViewModel: ObservableObject {
             asset = AVURLAsset(url: url, options: options)
         } else {
             guard let proxyUrl = proxiedPlaybackURL(for: url) else {
+                logDebug("playVideo error: failed to form proxy URL")
                 self.error = "Ошибка формирования URL"
                 self.isLoading = false
                 return
@@ -994,6 +1012,7 @@ class PlayerViewModel: ObservableObject {
                     }
                 } else if item.status == .readyToPlay {
                     self.isLoading = false
+                    self.logDebug("setupPlayerItemObservers: playerItem is readyToPlay")
                     self.syncNativeAudioTracks()
                     if let targetVoice = self.targetVoiceover ?? self._currentTranslationName {
                         self.selectAudioTrackInPlayer(named: targetVoice)
@@ -1359,14 +1378,17 @@ class PlayerViewModel: ObservableObject {
     private func applyResolvedAllohaStream(_ resolved: [String: Any]) {
         var resolvedUrlString = (resolved["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let audioVariants = (resolved["audioVariants"] as? [[String: Any]]) ?? []
+        logDebug("applyResolvedAllohaStream: resolvedUrlString=\(resolvedUrlString), audioVariants count=\(audioVariants.count)")
 
         if let directUrl = targetDirectStreamUrl, !directUrl.isEmpty {
             // Pre-resolved URL stored at fetch time: use directly, no name matching needed.
+            logDebug("applyResolvedAllohaStream: using targetDirectStreamUrl=\(directUrl)")
             resolvedUrlString = directUrl
         } else {
             // Pick the URL for the selected voiceover from audioVariants by name.
             // Exact match first, then fuzzy.
             let voiceToMatch = targetVoiceover ?? _currentTranslationName
+            logDebug("applyResolvedAllohaStream: matching voiceToMatch=\(voiceToMatch ?? "nil")")
             if let voiceToMatch, !voiceToMatch.isEmpty {
                 let exactMatch = audioVariants.first(where: { variant in
                     let title = variant["title"] as? String
@@ -1378,6 +1400,9 @@ class PlayerViewModel: ObservableObject {
                 })
                 if let validMatch = match, let matchedUrl = validMatch["url"] as? String, !matchedUrl.isEmpty {
                     resolvedUrlString = matchedUrl.trimmingCharacters(in: .whitespacesAndNewlines)
+                    logDebug("applyResolvedAllohaStream: matched voice='\((validMatch["title"] as? String) ?? "Unknown")', url=\(resolvedUrlString)")
+                } else {
+                    logDebug("applyResolvedAllohaStream: failed to match voice, using default resolvedUrlString")
                 }
             }
         }
@@ -1425,7 +1450,7 @@ class PlayerViewModel: ObservableObject {
             audioVariants: audioVariants
         )
         currentQualityKey = "Авто"
-        playVideo(url: resolvedUrl, headers: headers, voices: [], subtitles: resolvedSubtitles)
+        playVideo(url: resolvedUrl, headers: headers, voices: voices, subtitles: resolvedSubtitles)
         NotificationCenter.default.post(name: NSNotification.Name("QualitiesUpdated"), object: nil)
 
         applyInitialQuality()
@@ -1464,16 +1489,18 @@ class PlayerViewModel: ObservableObject {
         guard let player = player,
               let item = player.currentItem,
               let group = item.asset.mediaSelectionGroup(forMediaCharacteristic: .audible) else {
+            logDebug("selectAudioTrackInPlayer: no player, currentItem or audible mediaSelectionGroup")
             return
         }
         
         let options = group.options
-        print("selectAudioTrackInPlayer: target=\(name), options=\(options.map { $0.displayName })")
+        logDebug("selectAudioTrackInPlayer: target='\(name)', options=\(options.map { $0.displayName })")
         
         // Exact match
         if let option = options.first(where: { allohaTranslationNamesMatch($0.displayName, name, exactOnly: true) }) {
             item.select(option, in: group)
             persistVoiceoverSelection(name)
+            logDebug("selectAudioTrackInPlayer: selected exact match option='\(option.displayName)'")
             return
         }
         
@@ -1481,6 +1508,7 @@ class PlayerViewModel: ObservableObject {
         if let option = options.first(where: { allohaTranslationNamesMatch($0.displayName, name, exactOnly: false) }) {
             item.select(option, in: group)
             persistVoiceoverSelection(name)
+            logDebug("selectAudioTrackInPlayer: selected fuzzy match option='\(option.displayName)'")
             return
         }
         
@@ -1506,6 +1534,7 @@ class PlayerViewModel: ObservableObject {
             }) {
                 item.select(option, in: group)
                 persistVoiceoverSelection(name)
+                logDebug("selectAudioTrackInPlayer: selected by language tag '\(targetLang)', option='\(option.displayName)'")
                 return
             }
         }
@@ -1513,8 +1542,10 @@ class PlayerViewModel: ObservableObject {
         if let targetIndex = extractAudioIndex(from: name), targetIndex < options.count {
             item.select(options[targetIndex], in: group)
             persistVoiceoverSelection(name)
+            logDebug("selectAudioTrackInPlayer: selected by index \(targetIndex), option='\(options[targetIndex].displayName)'")
             return
         }
+        logDebug("selectAudioTrackInPlayer: failed to match any track for '\(name)'")
     }
     
     private func syncNativeAudioTracks() {
@@ -1525,6 +1556,7 @@ class PlayerViewModel: ObservableObject {
         }
         
         let nativeNames = group.options.map { $0.displayName }
+        logDebug("syncNativeAudioTracks: nativeNames=\(nativeNames)")
         guard nativeNames.count > 1 else { return }
         
         var updatedVoiceovers = self.availableVoiceovers
@@ -1539,6 +1571,7 @@ class PlayerViewModel: ObservableObject {
         
         if updatedVoiceovers != self.availableVoiceovers {
             self.availableVoiceovers = updatedVoiceovers
+            logDebug("syncNativeAudioTracks: updated availableVoiceovers=\(self.availableVoiceovers)")
         }
     }
     
@@ -1558,6 +1591,21 @@ class PlayerViewModel: ObservableObject {
             return idx
         }
         return nil
+    }
+
+    private func logDebug(_ message: String) {
+        print(message)
+        let logPath = "W:/iOS-sloosh/sloosh-iOS/player_debug.txt"
+        let line = "[\(Date())] \(message)\n"
+        if let data = line.data(using: .utf8) {
+            if let fileHandle = FileHandle(forWritingAtPath: logPath) {
+                fileHandle.seekToEndOfFile()
+                fileHandle.write(data)
+                fileHandle.closeFile()
+            } else {
+                try? data.write(to: URL(fileURLWithPath: logPath), options: .atomic)
+            }
+        }
     }
 
     private func persistVoiceoverSelection(_ name: String?) {
