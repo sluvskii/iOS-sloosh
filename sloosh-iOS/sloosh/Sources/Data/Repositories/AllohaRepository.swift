@@ -266,6 +266,10 @@ final class AllohaRepository: @unchecked Sendable {
                             if iframe.hasPrefix("//") {
                                 iframe = "https:" + iframe
                             }
+                            if !iframe.contains("translation=") {
+                                let sep = iframe.contains("?") ? "&" : "?"
+                                iframe = "\(iframe)\(sep)translation=\(tKey)"
+                            }
                             let transName = tDict["translation"] as? String ?? "Unknown"
                             
                             let cleanTitle = normalizedAllohaTranslationName(transName)
@@ -276,6 +280,10 @@ final class AllohaRepository: @unchecked Sendable {
                             guard var iframe = tDict["iframe"] as? String, !iframe.isEmpty else { continue }
                             if iframe.hasPrefix("//") {
                                 iframe = "https:" + iframe
+                            }
+                            if !iframe.contains("translation=") {
+                                let sep = iframe.contains("?") ? "&" : "?"
+                                iframe = "\(iframe)\(sep)translation=\(index)"
                             }
                             let transName = tDict["translation"] as? String ?? "Unknown"
                             

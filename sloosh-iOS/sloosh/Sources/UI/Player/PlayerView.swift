@@ -623,42 +623,44 @@ class PlayerViewModel: ObservableObject {
         }
 
         let isSerial = seriesResult?.isSerial == true
-        if !isSerial {
-            // Для фильма: сначала пробуем мгновенное переключение через уже-разрезолвленные audioVariants
-            if !resolvedAudioVariants.isEmpty {
-                logDebug("switchVoiceover: looking in resolvedAudioVariants (\(resolvedAudioVariants.count) items)")
-                var match: [String: Any]? = nil
-                // 1. Точный поиск по translation.id (= ориг. title аудиоварианта, напр. "Russian 1")
-                if let rawTitle = findTranslationId(for: name), !rawTitle.isEmpty {
-                    let exactMatch = resolvedAudioVariants.first(where: { ($0["title"] as? String) == rawTitle })
-                    if exactMatch != nil { match = exactMatch }
-                    if match != nil { logDebug("switchVoiceover: exact title match id='\(rawTitle)' for '\(name)'") }
-                }
-                // 2. Если не нашли — name matching (сериалы, фильмы без pre-resolve)
-                if match == nil {
-                    match = resolvedAudioVariants.first(where: { variant in
-                        matchAudioVariant(variant, selectedName: name)
-                    })
-                }
-                if let match, let urlString = match["url"] as? String, let url = URL(string: urlString) {
-                    logDebug("switchVoiceover: found match in resolvedAudioVariants, url=\(urlString)")
-                    _currentTranslationName = name
-                    targetVoiceover = name
-                    persistVoiceoverSelection(name)
-                    // Переключаем стрим напрямую без re-resolve
-                    let qualityVariants = (match["qualityVariants"] as? [[String: Any]]) ?? []
-                    availableQualities = makeResolvedQualityOptions(
-                        resolvedUrl: url,
-                        qualityVariants: qualityVariants,
-                        audioVariants: resolvedAudioVariants
-                    )
-                    currentQualityKey = "Авто"
-                    playVideo(url: url, headers: currentHeaders, voices: availableVoiceovers, subtitles: availableSubtitles)
-                    applyInitialQuality()
-                    return
-                }
+
+        // Сначала пробуем мгновенное переключение через уже-разрезолвленные audioVariants (и для фильмов, и для сериалов)
+        if !resolvedAudioVariants.isEmpty {
+            logDebug("switchVoiceover: looking in resolvedAudioVariants (\(resolvedAudioVariants.count) items)")
+            var match: [String: Any]? = nil
+            // 1. Точный поиск по translation.id (= ориг. title аудиоварианта, напр. "Russian 1")
+            if let rawTitle = findTranslationId(for: name), !rawTitle.isEmpty {
+                let exactMatch = resolvedAudioVariants.first(where: { ($0["title"] as? String) == rawTitle })
+                if exactMatch != nil { match = exactMatch }
+                if match != nil { logDebug("switchVoiceover: exact title match id='\(rawTitle)' for '\(name)'") }
             }
-            // Фолбэк: перезапускаем с оригинального iframeUrl
+            // 2. Если не нашли — name matching
+            if match == nil {
+                match = resolvedAudioVariants.first(where: { variant in
+                    matchAudioVariant(variant, selectedName: name)
+                })
+            }
+            if let match, let urlString = match["url"] as? String, let url = URL(string: urlString) {
+                logDebug("switchVoiceover: found match in resolvedAudioVariants, url=\(urlString)")
+                _currentTranslationName = name
+                targetVoiceover = name
+                persistVoiceoverSelection(name)
+                // Переключаем стрим напрямую без re-resolve
+                let qualityVariants = (match["qualityVariants"] as? [[String: Any]]) ?? []
+                availableQualities = makeResolvedQualityOptions(
+                    resolvedUrl: url,
+                    qualityVariants: qualityVariants,
+                    audioVariants: resolvedAudioVariants
+                )
+                currentQualityKey = "Авто"
+                playVideo(url: url, headers: currentHeaders, voices: availableVoiceovers, subtitles: availableSubtitles)
+                applyInitialQuality()
+                return
+            }
+        }
+
+        if !isSerial {
+            // Фолбэк для фильма: перезапускаем с оригинального iframeUrl
             guard let iframeUrl = currentIframeUrl, !iframeUrl.isEmpty else {
                 logDebug("switchVoiceover error: no currentIframeUrl")
                 return
