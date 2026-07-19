@@ -1,4 +1,5 @@
 import SwiftUI
+import AVFoundation
 
 struct SettingsView: View {
     @AppStorage("preferredVideoQuality") private var preferredQuality: VideoQualityPreference = .ask
