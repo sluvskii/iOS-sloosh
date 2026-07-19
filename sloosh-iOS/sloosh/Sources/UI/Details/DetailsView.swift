@@ -1182,7 +1182,7 @@ struct EpisodeDetailsSheet: View {
         .sheet(isPresented: $showQualitySheet) {
             QualitySelectionSheet(isForDownload: true) { selectedQuality in
                 showQualitySheet = false
-                if let details = viewModel.details, let translation = pendingTranslation, let kpId = Int(item.movieId) {
+                if let details = viewModel.details, let translation = pendingTranslation {
                     DownloadManager.shared.startDownload(
                         details: details,
                         season: item.season,
