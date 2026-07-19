@@ -308,6 +308,8 @@ struct FavoriteCheckDto: Codable {
 enum VideoQualityPreference: String, CaseIterable, Identifiable {
     case ask = "Спрашивать каждый раз"
     case auto = "Авто"
+    case q2160 = "2160p"
+    case q1440 = "1440p"
     case q1080 = "1080p"
     case q720 = "720p"
     case q480 = "480p"

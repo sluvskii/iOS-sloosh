@@ -358,11 +358,11 @@ final class AllohaRepository: @unchecked Sendable {
                         guard let vTitle = variant["title"] as? String, !vTitle.isEmpty,
                               let streamUrl = variant["url"] as? String, !streamUrl.isEmpty else { return nil }
                         let cleanTitle = normalizedAllohaTranslationName(vTitle)
-                        // streamUrl НЕ сохраняем — HLS URL Alloha требует свежих CDN-заголовков
-                        // (authorizations, accepts-controls) с TTL ~120s, которые получаются
-                        // только при iframe-resolve. streamUrl предназначен для локальных файлов.
+                        // id хранит оригинальный title из audioVariant (напр. "Russian 1", "English 7").
+                        // Используется в PlayerView для точного сопоставления с audioVariant.title
+                        // при переключении озвучки — независимо от порядка вариантов между двумя resolve-вызовами.
                         return AllohaTranslation(
-                            id: "dub_\(index)",
+                            id: vTitle,
                             name: cleanTitle.isEmpty ? vTitle : cleanTitle,
                             iframeUrl: m.iframeUrl,
                             streamUrl: nil
