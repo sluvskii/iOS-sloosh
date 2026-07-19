@@ -52,12 +52,12 @@ extension AllohaApiResult {
     }
 }
 
-func stripTranslationQuery(from urlString: String) -> String {
+func injectTranslationId(_ id: String, into urlString: String) -> String {
     guard var comps = URLComponents(string: urlString) else { return urlString }
-    if let items = comps.queryItems {
-        let filtered = items.filter { $0.name != "translation" }
-        comps.queryItems = filtered.isEmpty ? nil : filtered
-    }
+    var items = comps.queryItems ?? []
+    items.removeAll { $0.name == "translation" }
+    items.append(URLQueryItem(name: "translation", value: id))
+    comps.queryItems = items
     return comps.string ?? urlString
 }
 
@@ -275,7 +275,7 @@ final class AllohaRepository: @unchecked Sendable {
                             if iframe.hasPrefix("//") {
                                 iframe = "https:" + iframe
                             }
-                            iframe = stripTranslationQuery(from: iframe)
+                            iframe = injectTranslationId(tKey, into: iframe)
                             let transName = tDict["translation"] as? String ?? "Unknown"
                             
                             let cleanTitle = normalizedAllohaTranslationName(transName)
@@ -290,7 +290,7 @@ final class AllohaRepository: @unchecked Sendable {
                             if iframe.hasPrefix("//") {
                                 iframe = "https:" + iframe
                             }
-                            iframe = stripTranslationQuery(from: iframe)
+                            iframe = injectTranslationId(String(index), into: iframe)
                             let transName = tDict["translation"] as? String ?? "Unknown"
                             
                             let cleanTitle = normalizedAllohaTranslationName(transName)

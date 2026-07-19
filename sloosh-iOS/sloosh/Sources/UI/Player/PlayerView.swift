@@ -1480,22 +1480,20 @@ class PlayerViewModel: ObservableObject {
             // Pre-resolved URL stored at fetch time: use directly, no name matching needed.
             logDebug("applyResolvedAllohaStream: using targetDirectStreamUrl=\(directUrl)")
             resolvedUrlString = directUrl
-        } else {
-            // Pick the URL for the selected voiceover from audioVariants.
-            // For movies: translation.id = raw audioVariant title (e.g. "Russian 1").
-            // We match by exact title against resolved audioVariants — order-independent.
-            // Fallback to normalized name matching for serials/edge cases.
+        } else if isMovie {
+            // For movies: audioVariants have named tracks (e.g. "Russian 1", "English 3").
+            // Match by translation.id which equals the audioVariant title set during fetchByKpId.
             let voiceToMatch = targetVoiceover ?? _currentTranslationName
-            logDebug("applyResolvedAllohaStream: matching voiceToMatch=\(voiceToMatch ?? "nil")")
+            logDebug("applyResolvedAllohaStream: movie mode, matching voiceToMatch=\(voiceToMatch ?? "nil")")
             if let voiceToMatch, !voiceToMatch.isEmpty, !audioVariants.isEmpty {
                 var chosenUrl: String? = nil
-                // 1. Exact title match via translation.id (works for movies from fetchByKpId)
+                // Exact title match via translation.id
                 if let rawTitle = findTranslationId(for: voiceToMatch), !rawTitle.isEmpty {
                     let exactMatch = audioVariants.first(where: { ($0["title"] as? String) == rawTitle })
                     chosenUrl = exactMatch?["url"] as? String
                     if chosenUrl != nil { logDebug("applyResolvedAllohaStream: exact title match id='\(rawTitle)'") }
                 }
-                // 2. Fallback: normalized name matching (serials + movies without pre-resolve)
+                // Fallback: normalized name matching
                 if chosenUrl == nil || chosenUrl?.isEmpty == true {
                     if let match = audioVariants.first(where: { matchAudioVariant($0, selectedName: voiceToMatch) }),
                        let url = match["url"] as? String, !url.isEmpty {
@@ -1509,6 +1507,10 @@ class PlayerViewModel: ObservableObject {
                     logDebug("applyResolvedAllohaStream: no match, using default url")
                 }
             }
+        } else {
+            // For series: the iframeUrl already has translation=ID injected, so CDN delivers
+            // the correct voiceover stream as the default. No audioVariant name matching needed.
+            logDebug("applyResolvedAllohaStream: series mode, using default resolved url (translation embedded in iframe)")
         }
 
         guard let resolvedUrl = URL(string: resolvedUrlString) else {
