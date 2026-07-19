@@ -697,6 +697,12 @@ class PlayerViewModel: ObservableObject {
         guard let quality = availableQualities.first(where: { $0.key == key }) else { return }
         self.currentQualityKey = key
         
+        // Сохраняем выбор пользователя для текущего сеанса просмотра,
+        // чтобы при переключении озвучки качество не сбрасывалось на авто.
+        if let newPreference = VideoQualityPreference(rawValue: key) {
+            self.targetQualityPreference = newPreference
+        }
+        
         let isHls = quality.url.pathExtension.lowercased() == "m3u8" || quality.url.absoluteString.contains(".m3u8")
         
         if quality.isAuto {
