@@ -12,7 +12,7 @@ struct QualitySelectionSheet: View {
         NavigationStack {
             Form {
                 Section {
-                    ForEach([VideoQualityPreference.auto, .q1080, .q720, .q480, .q360]) { quality in
+                    ForEach(VideoQualityPreference.allCases.filter { $0 != .ask }) { quality in
                         Button {
                             selectedQuality = quality
                         } label: {

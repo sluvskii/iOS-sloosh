@@ -578,7 +578,7 @@ class PlayerViewModel: ObservableObject {
            let group = item.asset.mediaSelectionGroup(forMediaCharacteristic: .audible) {
             let options = group.options
             logDebug("switchVoiceover: native tracks available: \(options.map { $0.displayName })")
-            if let option = options.first(where: { allohaTranslationNamesMatch($0.displayName, name) }) {
+            if let option = options.first(where: { allohaTranslationNamesMatch($0.displayName, name, exactOnly: true) }) {
                 _currentTranslationName = name
                 targetVoiceover = name
                 persistVoiceoverSelection(name)
@@ -593,9 +593,19 @@ class PlayerViewModel: ObservableObject {
             // Для фильма: сначала пробуем мгновенное переключение через уже-разрезолвленные audioVariants
             if !resolvedAudioVariants.isEmpty {
                 logDebug("switchVoiceover: looking in resolvedAudioVariants (\(resolvedAudioVariants.count) items)")
-                let match = resolvedAudioVariants.first(where: { variant in
-                    matchAudioVariant(variant, selectedName: name)
-                })
+                var match: [String: Any]? = nil
+                // 1. Точный поиск по translation.id (= ориг. title аудиоварианта, напр. "Russian 1")
+                if let rawTitle = findTranslationId(for: name), !rawTitle.isEmpty {
+                    let exactMatch = resolvedAudioVariants.first(where: { ($0["title"] as? String) == rawTitle })
+                    if exactMatch != nil { match = exactMatch }
+                    if match != nil { logDebug("switchVoiceover: exact title match id='\(rawTitle)' for '\(name)'") }
+                }
+                // 2. Если не нашли — name matching (сериалы, фильмы без pre-resolve)
+                if match == nil {
+                    match = resolvedAudioVariants.first(where: { variant in
+                        matchAudioVariant(variant, selectedName: name)
+                    })
+                }
                 if let match, let urlString = match["url"] as? String, let url = URL(string: urlString) {
                     logDebug("switchVoiceover: found match in resolvedAudioVariants, url=\(urlString)")
                     _currentTranslationName = name
@@ -642,7 +652,7 @@ class PlayerViewModel: ObservableObject {
               let episode = currentEpisode,
               let seasonObj = seriesResult.seasons.first(where: { $0.season == season }),
               let epObj = seasonObj.episodes.first(where: { $0.episode == episode }),
-              let translation = epObj.translations.first(where: { allohaTranslationNamesMatch($0.name, name) }) else {
+              let translation = epObj.translations.first(where: { allohaTranslationNamesMatch($0.name, name, exactOnly: true) }) else {
             logDebug("switchVoiceover error: failed to find translation for series")
             return
         }
@@ -724,13 +734,6 @@ class PlayerViewModel: ObservableObject {
         if sourceURL.isFileURL {
             currentPlaybackSourceURL = sourceURL.absoluteURL
             asset = AVURLAsset(url: sourceURL)
-        } else if sourceURL.absoluteString.lowercased().contains(".mp4") {
-            currentPlaybackSourceURL = sourceURL.absoluteURL
-            var options: [String: Any] = [:]
-            if !currentHeaders.isEmpty {
-                options["AVURLAssetHTTPHeaderFieldsKey"] = currentHeaders
-            }
-            asset = AVURLAsset(url: sourceURL, options: options)
         } else {
             guard let proxyUrl = proxiedPlaybackURL(for: sourceURL) else { return }
             currentPlaybackSourceURL = proxyUrl
@@ -908,14 +911,6 @@ class PlayerViewModel: ObservableObject {
             logDebug("playVideo: file URL directly played")
             currentPlaybackSourceURL = url.absoluteURL
             asset = AVURLAsset(url: url)
-        } else if url.absoluteString.lowercased().contains(".mp4") {
-            logDebug("playVideo: mp4 file played")
-            currentPlaybackSourceURL = url.absoluteURL
-            var options: [String: Any] = [:]
-            if !headers.isEmpty {
-                options["AVURLAssetHTTPHeaderFieldsKey"] = headers
-            }
-            asset = AVURLAsset(url: url, options: options)
         } else {
             guard let proxyUrl = proxiedPlaybackURL(for: url) else {
                 logDebug("playVideo error: failed to form proxy URL")
@@ -1387,19 +1382,32 @@ class PlayerViewModel: ObservableObject {
             logDebug("applyResolvedAllohaStream: using targetDirectStreamUrl=\(directUrl)")
             resolvedUrlString = directUrl
         } else {
-            // Pick the URL for the selected voiceover from audioVariants by name.
-            // Exact match first, then fuzzy.
+            // Pick the URL for the selected voiceover from audioVariants.
+            // For movies: translation.id = raw audioVariant title (e.g. "Russian 1").
+            // We match by exact title against resolved audioVariants — order-independent.
+            // Fallback to normalized name matching for serials/edge cases.
             let voiceToMatch = targetVoiceover ?? _currentTranslationName
             logDebug("applyResolvedAllohaStream: matching voiceToMatch=\(voiceToMatch ?? "nil")")
-            if let voiceToMatch, !voiceToMatch.isEmpty {
-                let match = audioVariants.first(where: { variant in
-                    matchAudioVariant(variant, selectedName: voiceToMatch)
-                })
-                if let validMatch = match, let matchedUrl = validMatch["url"] as? String, !matchedUrl.isEmpty {
-                    resolvedUrlString = matchedUrl.trimmingCharacters(in: .whitespacesAndNewlines)
-                    logDebug("applyResolvedAllohaStream: matched voice='\((validMatch["title"] as? String) ?? "Unknown")', url=\(resolvedUrlString)")
+            if let voiceToMatch, !voiceToMatch.isEmpty, !audioVariants.isEmpty {
+                var chosenUrl: String? = nil
+                // 1. Exact title match via translation.id (works for movies from fetchByKpId)
+                if let rawTitle = findTranslationId(for: voiceToMatch), !rawTitle.isEmpty {
+                    let exactMatch = audioVariants.first(where: { ($0["title"] as? String) == rawTitle })
+                    chosenUrl = exactMatch?["url"] as? String
+                    if chosenUrl != nil { logDebug("applyResolvedAllohaStream: exact title match id='\(rawTitle)'") }
+                }
+                // 2. Fallback: normalized name matching (serials + movies without pre-resolve)
+                if chosenUrl == nil || chosenUrl?.isEmpty == true {
+                    if let match = audioVariants.first(where: { matchAudioVariant($0, selectedName: voiceToMatch) }),
+                       let url = match["url"] as? String, !url.isEmpty {
+                        chosenUrl = url
+                        logDebug("applyResolvedAllohaStream: name-match '\(voiceToMatch)' -> '\((match["title"] as? String) ?? "?")'")
+                    }
+                }
+                if let url = chosenUrl, !url.isEmpty {
+                    resolvedUrlString = url.trimmingCharacters(in: .whitespacesAndNewlines)
                 } else {
-                    logDebug("applyResolvedAllohaStream: failed to match voice, using default resolvedUrlString")
+                    logDebug("applyResolvedAllohaStream: no match, using default url")
                 }
             }
         }
@@ -1485,6 +1493,7 @@ class PlayerViewModel: ObservableObject {
     private func findTranslationId(for name: String) -> String? {
         guard let result = seriesResult else { return nil }
         if result.isSerial {
+            // Для сериалов: нечёткое совпадение (имена могут немного отличаться между сезонами)
             for season in result.seasons {
                 for episode in season.episodes {
                     if let t = episode.translations.first(where: { allohaTranslationNamesMatch($0.name, name) }) {
@@ -1493,6 +1502,12 @@ class PlayerViewModel: ObservableObject {
                 }
             }
         } else if let movie = result.movie {
+            // Для фильмов: сначала точное совпадение имени (имена берутся из audioVariants и отображаются пользователю)
+            // Нечёткое совпадение опасно: "Russian 1" и "Russian 2" становятся одинаковыми через isRussianOrDub
+            if let t = movie.translations.first(where: { $0.name == name }) {
+                return t.id
+            }
+            // Запасной вариант — нечёткое совпадение (для фильмов без early-resolve)
             if let t = movie.translations.first(where: { allohaTranslationNamesMatch($0.name, name) }) {
                 return t.id
             }
