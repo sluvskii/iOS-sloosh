@@ -311,7 +311,7 @@ class HlsProxyServer {
                     
                     rewritten = self.rewriteM3u8(content: playlistRewritten, baseUrl: finalUrl)
                 } else {
-                    AppDiagnostics.shared.log(HlsProxyServer: master fallback, original content:\n\(content))
+                    AppDiagnostics.shared.log("HlsProxyServer: master fallback, original content:\n\(content)")
                     rewritten = self.rewriteM3u8(content: content, baseUrl: finalUrl)
                 }
                 
