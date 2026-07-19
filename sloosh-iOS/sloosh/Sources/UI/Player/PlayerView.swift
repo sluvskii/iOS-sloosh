@@ -1051,16 +1051,6 @@ class PlayerViewModel: ObservableObject {
             self.playbackEndObserver = nil
         }
 
-        itemObservation = playerItem.observe(\.tracks, options: [.new, .initial]) { [weak self] item, _ in
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                self.syncNativeAudioTracks()
-                if let targetVoice = self.targetVoiceover ?? self._currentTranslationName {
-                    self.selectAudioTrackInPlayer(named: targetVoice)
-                }
-            }
-        }
-
         statusObserver = playerItem.observe(\.status, options: [.new]) { [weak self] item, _ in
             Task { @MainActor [weak self] in
                 guard let self else { return }
@@ -1110,9 +1100,18 @@ class PlayerViewModel: ObservableObject {
                 } else if item.status == .readyToPlay {
                     self.isLoading = false
                     self.logDebug("setupPlayerItemObservers: playerItem is readyToPlay")
-                    self.syncNativeAudioTracks()
-                    if let targetVoice = self.targetVoiceover ?? self._currentTranslationName {
-                        self.selectAudioTrackInPlayer(named: targetVoice)
+                    Task {
+                        do {
+                            _ = try await item.asset.loadMediaSelectionGroup(for: .audible)
+                        } catch {
+                            self.logDebug("setupPlayerItemObservers: failed to load audible group \(error)")
+                        }
+                        await MainActor.run {
+                            self.syncNativeAudioTracks()
+                            if let targetVoice = self.targetVoiceover ?? self._currentTranslationName {
+                                self.selectAudioTrackInPlayer(named: targetVoice)
+                            }
+                        }
                     }
                 }
             }
