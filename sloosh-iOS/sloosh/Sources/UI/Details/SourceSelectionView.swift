@@ -348,7 +348,7 @@ struct SourceSelectionView: View {
             setupInitialSelection()
         }
         .sheet(isPresented: $showQualitySelection) {
-            QualitySelectionSheet { selectedQuality in
+            QualitySelectionSheet(isForDownload: mode == .download) { selectedQuality in
                 showQualitySelection = false
                 finishAction(quality: selectedQuality)
             }

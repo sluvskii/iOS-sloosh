@@ -134,7 +134,8 @@ struct SettingsView: View {
                         .frame(width: 24)
                     
                     Picker("Качество видео", selection: $preferredQuality) {
-                        ForEach(VideoQualityPreference.allCases) { quality in
+                        let availableQualities = AVURLAsset.isAV1Supported ? VideoQualityPreference.allCases : VideoQualityPreference.allCases.filter { $0 != .q2160 && $0 != .q1440 }
+                        ForEach(availableQualities) { quality in
                             Text(quality.title).tag(quality)
                         }
                     }
