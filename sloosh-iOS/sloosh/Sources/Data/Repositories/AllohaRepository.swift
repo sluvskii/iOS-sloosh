@@ -330,6 +330,7 @@ final class AllohaRepository: @unchecked Sendable {
                     if iframe.hasPrefix("//") {
                         iframe = "https:" + iframe
                     }
+                    iframe = injectTranslationId(tKey, into: iframe)
                     let transName = tDict["translation"] as? String ?? "Unknown"
                     
                     let cleanTitle = normalizedAllohaTranslationName(transName)
@@ -345,6 +346,7 @@ final class AllohaRepository: @unchecked Sendable {
                     if iframe.hasPrefix("//") {
                         iframe = "https:" + iframe
                     }
+                    iframe = injectTranslationId(String(index), into: iframe)
                     let transName = tDict["translation"] as? String ?? "Unknown"
                     
                     let cleanTitle = normalizedAllohaTranslationName(transName)
