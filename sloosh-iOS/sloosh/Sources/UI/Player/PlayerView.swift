@@ -620,6 +620,7 @@ class PlayerViewModel: ObservableObject {
                     )
                     currentQualityKey = "Авто"
                     playVideo(url: url, headers: currentHeaders, voices: availableVoiceovers, subtitles: availableSubtitles)
+                    applyInitialQuality()
                     return
                 }
             }
