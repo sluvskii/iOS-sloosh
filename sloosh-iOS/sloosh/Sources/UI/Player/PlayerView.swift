@@ -1061,6 +1061,26 @@ class PlayerViewModel: ObservableObject {
                     self.logDebug("setupPlayerItemObservers: item failed! Domain=\(nsError?.domain ?? ""), Code=\(nsError?.code ?? 0), Desc=\(nsError?.localizedDescription ?? "")")
                     print("PlayerItem failed: \(nsError?.localizedDescription ?? "Unknown error")")
                     
+                    if nsError?.domain == AVFoundationErrorDomain, nsError?.code == -11848 {
+                        self.logDebug("setupPlayerItemObservers: Cannot Open (-11848) detected. Likely AV1 codec issue.")
+                        
+                        if let currentKey = self.currentQualityKey,
+                           let currentIndex = self.availableQualities.firstIndex(where: { $0.key == currentKey }) {
+                            var fallbackCandidate: PlaybackQualityOption?
+                            for i in (currentIndex + 1)..<self.availableQualities.count {
+                                if self.availableQualities[i].key != "Авто" {
+                                    fallbackCandidate = self.availableQualities[i]
+                                    break
+                                }
+                            }
+                            if let fallback = fallbackCandidate {
+                                self.logDebug("setupPlayerItemObservers: Auto-falling back from \(currentKey) to \(fallback.key)")
+                                self.changeQuality(to: fallback.key)
+                                return
+                            }
+                        }
+                    }
+                    
                     if !self.hasRetriedPlayback, let url = self.originalStreamURL ?? self.currentPlaybackSourceURL {
                         print("Auto-retrying playback after failure with originalStreamURL...")
                         // Перезапускаем прокси перед retry, так как именно он мог упасть
