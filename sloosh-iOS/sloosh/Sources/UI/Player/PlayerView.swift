@@ -1521,50 +1521,6 @@ class PlayerViewModel: ObservableObject {
         }
     }
 
-            // Для фильмов: сначала точное совпадение имени (имена берутся из audioVariants и отображаются пользователю)
-            // Нечёткое совпадение опасно: "Russian 1" и "Russian 2" становятся одинаковыми через isRussianOrDub
-            if let t = movie.translations.first(where: { $0.name == name }) {
-                return t.id
-            }
-            // Запасной вариант — нечёткое совпадение (для фильмов без early-resolve)
-            if let t = movie.translations.first(where: { allohaTranslationNamesMatch($0.name, name) }) {
-                return t.id
-            }
-        }
-        return nil
-    }
-
-    private func extractNumber(from text: String) -> Int? {
-        guard let regex = try? NSRegularExpression(pattern: #"(\d+)"#, options: []) else { return nil }
-        let range = NSRange(text.startIndex..<text.endIndex, in: text)
-        guard let match = regex.firstMatch(in: text, range: range),
-              let numRange = Range(match.range(at: 1), in: text) else {
-            return nil
-        }
-        return Int(text[numRange])
-    }
-
-    private func matchAudioVariant(_ variant: [String: Any], selectedName: String) -> Bool {
-        let title = (variant["title"] as? String) ?? ""
-        if let targetIdStr = findTranslationId(for: selectedName),
-           let targetId = Int(targetIdStr) {
-            if let variantId = extractNumber(from: title), variantId == targetId {
-                logDebug("matchAudioVariant: matched by ID \(targetId) for title '\(title)'")
-                return true
-            }
-        }
-        // Exact match fallback
-        if allohaTranslationNamesMatch(title, selectedName, exactOnly: true) {
-            logDebug("matchAudioVariant: matched exact by name for title '\(title)'")
-            return true
-        }
-        // Fuzzy match fallback
-        let matchedFuzzy = allohaTranslationNamesMatch(title, selectedName, exactOnly: false)
-        if matchedFuzzy {
-            logDebug("matchAudioVariant: matched fuzzy by name for title '\(title)'")
-        }
-        return matchedFuzzy
-    }
 
     private func selectAudioTrackInPlayer(named name: String) {
         guard let player = player,
