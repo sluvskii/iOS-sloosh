@@ -1019,7 +1019,10 @@ class PlayerViewModel: ObservableObject {
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 if item.status == .failed {
-                    self.handlePlaybackFailure()
+                    let nsError = item.error as NSError?
+                    self.logDebug("playVideo: item failed! Domain=\(nsError?.domain ?? ""), Code=\(nsError?.code ?? 0), Desc=\(nsError?.localizedDescription ?? "")")
+                    self.error = item.error?.localizedDescription ?? "Ошибка воспроизведения"
+                    self.isLoading = false
                 }
             }
         }
@@ -1055,6 +1058,7 @@ class PlayerViewModel: ObservableObject {
                 guard let self else { return }
                 if item.status == .failed {
                     let nsError = item.error as NSError?
+                    self.logDebug("setupPlayerItemObservers: item failed! Domain=\(nsError?.domain ?? ""), Code=\(nsError?.code ?? 0), Desc=\(nsError?.localizedDescription ?? "")")
                     print("PlayerItem failed: \(nsError?.localizedDescription ?? "Unknown error")")
                     
                     if !self.hasRetriedPlayback, let url = self.originalStreamURL ?? self.currentPlaybackSourceURL {
