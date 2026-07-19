@@ -52,6 +52,15 @@ extension AllohaApiResult {
     }
 }
 
+func stripTranslationQuery(from urlString: String) -> String {
+    guard var comps = URLComponents(string: urlString) else { return urlString }
+    if let items = comps.queryItems {
+        let filtered = items.filter { $0.name != "translation" }
+        comps.queryItems = filtered.isEmpty ? nil : filtered
+    }
+    return comps.string ?? urlString
+}
+
 func normalizedAllohaTranslationName(_ raw: String?) -> String {
     guard var value = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else {
         return ""
@@ -266,12 +275,7 @@ final class AllohaRepository: @unchecked Sendable {
                             if iframe.hasPrefix("//") {
                                 iframe = "https:" + iframe
                             }
-                            if let range = iframe.range(of: "translation=[0-9]+", options: .regularExpression) {
-                                iframe = iframe.replacingCharacters(in: range, with: "translation=\(tKey)")
-                            } else {
-                                let sep = iframe.contains("?") ? "&" : "?"
-                                iframe = "\(iframe)\(sep)translation=\(tKey)"
-                            }
+                            iframe = stripTranslationQuery(from: iframe)
                             let transName = tDict["translation"] as? String ?? "Unknown"
                             
                             let cleanTitle = normalizedAllohaTranslationName(transName)
@@ -286,12 +290,7 @@ final class AllohaRepository: @unchecked Sendable {
                             if iframe.hasPrefix("//") {
                                 iframe = "https:" + iframe
                             }
-                            if let range = iframe.range(of: "translation=[0-9]+", options: .regularExpression) {
-                                iframe = iframe.replacingCharacters(in: range, with: "translation=\(index)")
-                            } else {
-                                let sep = iframe.contains("?") ? "&" : "?"
-                                iframe = "\(iframe)\(sep)translation=\(index)"
-                            }
+                            iframe = stripTranslationQuery(from: iframe)
                             let transName = tDict["translation"] as? String ?? "Unknown"
                             
                             let cleanTitle = normalizedAllohaTranslationName(transName)
