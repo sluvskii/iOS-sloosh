@@ -1688,14 +1688,10 @@ class PlayerViewModel: ObservableObject {
             }
             let label = normalizedQualityLabel(from: variant["label"] as? String)
             
-            // Фильтруем AV1 кодек и разрешения выше 1080p, так как iOS/AVPlayer их не поддерживает
+            // Фильтруем AV1 кодек, так как iOS/AVPlayer его не поддерживает
             let lowerLabel = label.lowercased()
             let lowerUrl = urlString.lowercased()
             if lowerLabel.contains("av1") || lowerLabel.contains("av01") || lowerUrl.contains("av1") || lowerUrl.contains("av01") {
-                continue
-            }
-            let height = Int(lowerLabel.replacingOccurrences(of: "p", with: "")) ?? 0
-            if height > 1080 {
                 continue
             }
             
