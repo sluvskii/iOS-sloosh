@@ -295,6 +295,7 @@ class HlsProxyServer {
             let contentRange = httpResponse.value(forHTTPHeaderField: "Content-Range")
             
             if isPlaylist, let content = String(data: data, encoding: .utf8) {
+                let finalUrl = httpResponse.url ?? realUrl
                 let rewritten: String
                 if content.contains("#EXT-X-STREAM-INF") && (!currentVoices.isEmpty || !currentSubtitles.isEmpty) {
                     let playlistRewritten = PlaybackHlsRewriter.rewrite(
@@ -303,9 +304,9 @@ class HlsProxyServer {
                         subtitles: currentSubtitles,
                         mediaId: currentMediaId
                     )
-                    rewritten = self.rewriteM3u8(content: playlistRewritten, baseUrl: realUrl)
+                    rewritten = self.rewriteM3u8(content: playlistRewritten, baseUrl: finalUrl)
                 } else {
-                    rewritten = self.rewriteM3u8(content: content, baseUrl: realUrl)
+                    rewritten = self.rewriteM3u8(content: content, baseUrl: finalUrl)
                 }
                 
                 let rewrittenData = rewritten.data(using: .utf8) ?? Data()
