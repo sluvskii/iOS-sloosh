@@ -287,13 +287,13 @@ class HlsProxyServer {
         do {
             let (data, response) = try await session.data(for: request)
             guard let httpResponse = response as? HTTPURLResponse else {
-                print("HlsProxyServer fetchAndServe: invalid response for \(realUrl)")
+                AppDiagnostics.shared.log("HlsProxyServer fetchAndServe: invalid response for \(realUrl)")
                 self.send404(on: connection)
                 return
             }
             
             let statusCode = httpResponse.statusCode
-            print("HlsProxyServer fetchAndServe: \(realUrl) returned \(statusCode)")
+            AppDiagnostics.shared.log("HlsProxyServer fetchAndServe: \(realUrl) returned \(statusCode)")
             let contentRange = httpResponse.value(forHTTPHeaderField: "Content-Range")
             
             if isPlaylist, let content = String(data: data, encoding: .utf8) {
@@ -318,7 +318,7 @@ class HlsProxyServer {
                 self.sendResponse(data: data, statusCode: statusCode, contentType: contentType, contentRange: contentRange, connection: connection)
             }
         } catch {
-            print("HlsProxyServer fetch failed: \(error)")
+            AppDiagnostics.shared.log("HlsProxyServer fetch failed: \(error)")
             self.send404(on: connection)
         }
     }
