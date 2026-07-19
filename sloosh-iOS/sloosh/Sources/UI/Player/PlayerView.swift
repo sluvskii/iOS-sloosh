@@ -896,6 +896,10 @@ class PlayerViewModel: ObservableObject {
             }
             qualities.insert(autoQuality, at: 0)
         }
+        
+        let originalLabels = qualityVariants.compactMap { $0["label"] as? String }.joined(separator: ", ")
+        logDebug("makeResolvedQualityOptions: server returned qualities = [\(originalLabels)]")
+        logDebug("makeResolvedQualityOptions: final qualities for player = [\(qualities.map { $0.key }.joined(separator: ", "))]")
 
         return qualities
     }
