@@ -1044,8 +1044,6 @@ struct EpisodeDetailsSheet: View {
     let onWatchedToggle: (Bool) -> Void
     
     @State private var isWatched: Bool = false
-    @State private var showQualitySheet = false
-    @State private var pendingTranslation: AllohaTranslation?
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var downloadManager = DownloadManager.shared
     @EnvironmentObject private var viewModel: DetailsViewModel
@@ -1179,20 +1177,6 @@ struct EpisodeDetailsSheet: View {
                 }
             }
         }
-        .sheet(isPresented: $showQualitySheet) {
-            QualitySelectionSheet(isForDownload: true) { selectedQuality in
-                showQualitySheet = false
-                if let details = viewModel.details, let translation = pendingTranslation {
-                    DownloadManager.shared.startDownload(
-                        details: details,
-                        season: item.season,
-                        episode: item.episode,
-                        translation: translation,
-                        preferredQuality: selectedQuality
-                    )
-                }
-            }
-        }
         .onAppear {
             let progressKey = "kp_\(item.movieId)_s\(item.season)_e\(item.episode)"
             let progressFraction = PlaybackProgressStore.shared.normalizedProgress(mediaId: progressKey)
@@ -1247,10 +1231,14 @@ struct EpisodeDetailsSheet: View {
             let globalMatching = epObj.translations.first(where: { allohaTranslationNamesMatch($0.name, globalVoiceover, exactOnly: false) })
             let translation = matching ?? globalMatching ?? epObj.translations.first!
             
-            await MainActor.run {
-                self.pendingTranslation = translation
-                self.showQualitySheet = true
-            }
+            let preferredQuality = VideoQualityPreference(rawValue: UserDefaults.standard.string(forKey: "preferredVideoQuality") ?? "Спрашивать каждый раз") ?? .ask
+            DownloadManager.shared.startDownload(
+                details: details,
+                season: item.season,
+                episode: item.episode,
+                translation: translation,
+                preferredQuality: preferredQuality
+            )
         }
     }
 }
