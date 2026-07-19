@@ -289,6 +289,15 @@ class PlayerViewModel: ObservableObject {
         // Сбрасываем кэш audioVariants — будет обновлён после resolve нового стрима
         self.resolvedAudioVariants = []
 
+        if let seriesResult = self.seriesResult, let s = season, let e = episode {
+            if let seasonObj = seriesResult.seasons.first(where: { $0.season == s }),
+               let epObj = seasonObj.episodes.first(where: { $0.episode == e }) {
+                self.availableVoiceovers = epObj.translations.map { $0.name }
+            }
+        } else if !voices.isEmpty {
+            self.availableVoiceovers = voices
+        }
+
         if kpId != nil, let selectedVoiceover, !selectedVoiceover.isEmpty {
             persistVoiceoverSelection(selectedVoiceover)
         }
@@ -1532,7 +1541,9 @@ class PlayerViewModel: ObservableObject {
         // Заполняем список доступных озвучек из audioVariants
         let voices = resolvedVoiceovers(from: resolved)
         if !voices.isEmpty {
-            self.availableVoiceovers = voices
+            if self.isMovie || self.availableVoiceovers.isEmpty {
+                self.availableVoiceovers = voices
+            }
         }
         // Сохраняем audioVariants для мгновенного переключения озвучки без re-resolve
         if !audioVariants.isEmpty {
