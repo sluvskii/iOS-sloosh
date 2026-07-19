@@ -166,8 +166,7 @@ class AllohaTrustedSessionDelegate: NSObject, @preconcurrency URLSessionDelegate
         }
     }
     
-    @MainActor
-    func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest, completionHandler: @escaping @MainActor @Sendable (URLRequest?) -> Void) {
+    func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest, completionHandler: @escaping @Sendable (URLRequest?) -> Void) {
         var redirectedRequest = request
         if let originalRequest = task.originalRequest {
             let headersToPreserve = ["Range", "Referer", "Origin", "Accept", "User-Agent"]
