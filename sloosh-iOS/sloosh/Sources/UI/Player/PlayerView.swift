@@ -758,9 +758,20 @@ class PlayerViewModel: ObservableObject {
         }
 
         let asset: AVURLAsset
-        if sourceURL.isFileURL {
+        let urlStringLower = sourceURL.absoluteString.lowercased()
+        let isMp4 = sourceURL.pathExtension.lowercased() == "mp4" || (!urlStringLower.contains(".m3u8") && urlStringLower.contains(".mp4"))
+
+        if sourceURL.absoluteString.contains("127.0.0.1") || sourceURL.absoluteString.contains("localhost") {
             currentPlaybackSourceURL = sourceURL.absoluteURL
             asset = AVURLAsset(url: sourceURL)
+        } else if sourceURL.isFileURL {
+            currentPlaybackSourceURL = sourceURL.absoluteURL
+            asset = AVURLAsset(url: sourceURL)
+        } else if isMp4 {
+            logDebug("reloadPlayback: MP4 URL directly played with headers")
+            currentPlaybackSourceURL = sourceURL.absoluteURL
+            let options = ["AVURLAssetHTTPHeaderFieldsKey": currentHeaders]
+            asset = AVURLAsset(url: sourceURL, options: options)
         } else {
             guard let proxyUrl = proxiedPlaybackURL(for: sourceURL) else { return }
             currentPlaybackSourceURL = proxyUrl
