@@ -306,6 +306,9 @@ class HlsProxyServer {
                         subtitles: currentSubtitles,
                         mediaId: currentMediaId
                     )
+                    
+                    AppDiagnostics.shared.log("HlsProxyServer: rewritten master playlist:\n\(playlistRewritten)")
+                    
                     rewritten = self.rewriteM3u8(content: playlistRewritten, baseUrl: finalUrl)
                 } else {
                     rewritten = self.rewriteM3u8(content: content, baseUrl: finalUrl)
