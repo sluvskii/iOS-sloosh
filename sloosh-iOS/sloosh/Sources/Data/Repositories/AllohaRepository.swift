@@ -266,14 +266,19 @@ final class AllohaRepository: @unchecked Sendable {
                             if iframe.hasPrefix("//") {
                                 iframe = "https:" + iframe
                             }
-                            if !iframe.contains("translation=") {
+                            if let range = iframe.range(of: "translation=[0-9]+", options: .regularExpression) {
+                                iframe = iframe.replacingCharacters(in: range, with: "translation=\(tKey)")
+                            } else {
                                 let sep = iframe.contains("?") ? "&" : "?"
                                 iframe = "\(iframe)\(sep)translation=\(tKey)"
                             }
                             let transName = tDict["translation"] as? String ?? "Unknown"
                             
                             let cleanTitle = normalizedAllohaTranslationName(transName)
-                            parsedTrans.append(AllohaTranslation(id: tKey, name: cleanTitle, iframeUrl: iframe, streamUrl: nil))
+                            let lower = cleanTitle.lowercased()
+                            if !lower.contains("субтитр") && !lower.contains("subtitle") {
+                                parsedTrans.append(AllohaTranslation(id: tKey, name: cleanTitle, iframeUrl: iframe, streamUrl: nil))
+                            }
                         }
                     } else if let transArray = eDict["translation"] as? [[String: Any]] {
                         for (index, tDict) in transArray.enumerated() {
@@ -281,14 +286,19 @@ final class AllohaRepository: @unchecked Sendable {
                             if iframe.hasPrefix("//") {
                                 iframe = "https:" + iframe
                             }
-                            if !iframe.contains("translation=") {
+                            if let range = iframe.range(of: "translation=[0-9]+", options: .regularExpression) {
+                                iframe = iframe.replacingCharacters(in: range, with: "translation=\(index)")
+                            } else {
                                 let sep = iframe.contains("?") ? "&" : "?"
                                 iframe = "\(iframe)\(sep)translation=\(index)"
                             }
                             let transName = tDict["translation"] as? String ?? "Unknown"
                             
                             let cleanTitle = normalizedAllohaTranslationName(transName)
-                            parsedTrans.append(AllohaTranslation(id: String(index), name: cleanTitle, iframeUrl: iframe, streamUrl: nil))
+                            let lower = cleanTitle.lowercased()
+                            if !lower.contains("субтитр") && !lower.contains("subtitle") {
+                                parsedTrans.append(AllohaTranslation(id: String(index), name: cleanTitle, iframeUrl: iframe, streamUrl: nil))
+                            }
                         }
                     }
                     
@@ -324,7 +334,10 @@ final class AllohaRepository: @unchecked Sendable {
                     let transName = tDict["translation"] as? String ?? "Unknown"
                     
                     let cleanTitle = normalizedAllohaTranslationName(transName)
-                    parsedTrans.append(AllohaTranslation(id: tKey, name: cleanTitle, iframeUrl: iframe, streamUrl: nil))
+                    let lower = cleanTitle.lowercased()
+                    if !lower.contains("субтитр") && !lower.contains("subtitle") {
+                        parsedTrans.append(AllohaTranslation(id: tKey, name: cleanTitle, iframeUrl: iframe, streamUrl: nil))
+                    }
                 }
                 parsedTrans.sort { $0.name < $1.name }
             } else if let transArray = dataObj["translation"] as? [[String: Any]] {
@@ -336,7 +349,10 @@ final class AllohaRepository: @unchecked Sendable {
                     let transName = tDict["translation"] as? String ?? "Unknown"
                     
                     let cleanTitle = normalizedAllohaTranslationName(transName)
-                    parsedTrans.append(AllohaTranslation(id: String(index), name: cleanTitle, iframeUrl: iframe, streamUrl: nil))
+                    let lower = cleanTitle.lowercased()
+                    if !lower.contains("субтитр") && !lower.contains("subtitle") {
+                        parsedTrans.append(AllohaTranslation(id: String(index), name: cleanTitle, iframeUrl: iframe, streamUrl: nil))
+                    }
                 }
                 parsedTrans.sort { $0.name < $1.name }
             } else if let transStr = dataObj["translation"] as? String {
@@ -347,8 +363,11 @@ final class AllohaRepository: @unchecked Sendable {
                 }
                 if !iframe.isEmpty {
                     let cleanTitle = normalizedAllohaTranslationName(transStr)
-                    let finalName = cleanTitle.isEmpty ? transStr : cleanTitle
-                    parsedTrans.append(AllohaTranslation(id: "default", name: finalName, iframeUrl: iframe, streamUrl: nil))
+                    let lower = cleanTitle.lowercased()
+                    if !lower.contains("субтитр") && !lower.contains("subtitle") {
+                        let finalName = cleanTitle.isEmpty ? transStr : cleanTitle
+                        parsedTrans.append(AllohaTranslation(id: "default", name: finalName, iframeUrl: iframe, streamUrl: nil))
+                    }
                 }
             }
             
@@ -379,6 +398,10 @@ final class AllohaRepository: @unchecked Sendable {
                         guard let vTitle = variant["title"] as? String, !vTitle.isEmpty,
                               let streamUrl = variant["url"] as? String, !streamUrl.isEmpty else { return nil }
                         let cleanTitle = normalizedAllohaTranslationName(vTitle)
+                        let lower = cleanTitle.lowercased()
+                        if lower.contains("субтитр") || lower.contains("subtitle") {
+                            return nil
+                        }
                         // id хранит оригинальный title из audioVariant (напр. "Russian 1", "English 7").
                         // Используется в PlayerView для точного сопоставления с audioVariant.title
                         // при переключении озвучки — независимо от порядка вариантов между двумя resolve-вызовами.

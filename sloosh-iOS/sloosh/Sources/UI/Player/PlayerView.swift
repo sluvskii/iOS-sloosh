@@ -1025,19 +1025,6 @@ class PlayerViewModel: ObservableObject {
 
         setupPlayerItemObservers(for: playerItem)
 
-        // Наблюдаем состояние плеера
-        statusObserver = playerItem.observe(\.status, options: [.new]) { [weak self] item, _ in
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                if item.status == .failed {
-                    let nsError = item.error as NSError?
-                    self.logDebug("playVideo: item failed! Domain=\(nsError?.domain ?? ""), Code=\(nsError?.code ?? 0), Desc=\(nsError?.localizedDescription ?? "")")
-                    self.error = item.error?.localizedDescription ?? "Ошибка воспроизведения"
-                    self.isLoading = false
-                }
-            }
-        }
-
         rateObserver = self.player?.observe(\.timeControlStatus, options: [.new]) { [weak self] player, _ in
             Task { @MainActor [weak self] in
                 guard let self else { return }
@@ -1062,6 +1049,16 @@ class PlayerViewModel: ObservableObject {
         if let playbackEndObserver {
             NotificationCenter.default.removeObserver(playbackEndObserver)
             self.playbackEndObserver = nil
+        }
+
+        itemObservation = playerItem.observe(\.tracks, options: [.new, .initial]) { [weak self] item, _ in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                self.syncNativeAudioTracks()
+                if let targetVoice = self.targetVoiceover ?? self._currentTranslationName {
+                    self.selectAudioTrackInPlayer(named: targetVoice)
+                }
+            }
         }
 
         statusObserver = playerItem.observe(\.status, options: [.new]) { [weak self] item, _ in
@@ -1573,6 +1570,10 @@ class PlayerViewModel: ObservableObject {
             let title = (variant["title"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             guard !title.isEmpty else { return nil }
             let cleanTitle = normalizedAllohaTranslationName(title).isEmpty ? title : normalizedAllohaTranslationName(title)
+            let lower = cleanTitle.lowercased()
+            if lower.contains("субтитр") || lower.contains("subtitle") {
+                return nil
+            }
             return seen.insert(cleanTitle).inserted ? cleanTitle : nil
         }
     }
