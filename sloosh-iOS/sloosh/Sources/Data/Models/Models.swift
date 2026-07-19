@@ -1,15 +1,5 @@
 import Foundation
 import SwiftUI
-import AVFoundation
-
-extension AVURLAsset {
-    static var isAV1Supported: Bool {
-        if #available(iOS 17.0, *) {
-            return AVURLAsset.isPlayableExtendedMIMEType("video/mp4; codecs=\"av01.0.12M.08\"")
-        }
-        return false
-    }
-}
 
 struct ApiEnvelope<T: Codable>: Codable {
     let success: Bool?

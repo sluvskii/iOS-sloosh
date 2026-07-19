@@ -100,9 +100,14 @@ enum AllohaRuntimeParser {
                         guard let target = urls.first(where: { !$0.lastPathComponent.lowercased().contains("master.m3u8") }) ?? urls.first else {
                             continue
                         }
+                        
+                        let normLabel = normalizedQualityLabel(label)
+                        if normLabel.contains("2160") || normLabel.lowercased().contains("4k") || normLabel.lowercased().contains("4к") {
+                            continue
+                        }
 
                         let variant: [String: Any] = [
-                            "label": normalizedQualityLabel(label),
+                            "label": normLabel,
                             "bandwidth": NSNull(),
                             "resolution": NSNull(),
                             "url": target.absoluteString
