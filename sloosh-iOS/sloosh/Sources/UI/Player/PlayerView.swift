@@ -403,7 +403,27 @@ class PlayerViewModel: ObservableObject {
             
             DispatchQueue.main.async { [weak self] in
                 guard let self = self else { return }
-                self.availableQualities = qualities
+                
+                // Keep the direct MP4 qualities (like 1440p, 2160p) from JSON that were not in the m3u8
+                var mergedQualities = qualities
+                let existingKeys = Set(qualities.map { $0.key })
+                for originalQuality in self.availableQualities {
+                    if !existingKeys.contains(originalQuality.key) {
+                        mergedQualities.append(originalQuality)
+                    }
+                }
+                
+                if mergedQualities.count > 1 {
+                    let autoQ = mergedQualities.removeFirst()
+                    mergedQualities.sort { (a, b) -> Bool in
+                        let valA = Int(a.key.replacingOccurrences(of: "p", with: "")) ?? 0
+                        let valB = Int(b.key.replacingOccurrences(of: "p", with: "")) ?? 0
+                        return valA > valB
+                    }
+                    mergedQualities.insert(autoQ, at: 0)
+                }
+                
+                self.availableQualities = mergedQualities
                 NotificationCenter.default.post(name: NSNotification.Name("QualitiesUpdated"), object: nil)
                 self.applyInitialQuality()
             }
@@ -912,6 +932,9 @@ class PlayerViewModel: ObservableObject {
         currentHeaders = headers
 
         let asset: AVURLAsset
+        let urlStringLower = url.absoluteString.lowercased()
+        let isMp4 = url.pathExtension.lowercased() == "mp4" || (!urlStringLower.contains(".m3u8") && urlStringLower.contains(".mp4"))
+
         if url.absoluteString.contains("127.0.0.1") || url.absoluteString.contains("localhost") {
             // Уже локальный URL — не проксируем
             logDebug("playVideo: local proxy URL directly played")
@@ -922,6 +945,13 @@ class PlayerViewModel: ObservableObject {
             logDebug("playVideo: file URL directly played")
             currentPlaybackSourceURL = url.absoluteURL
             asset = AVURLAsset(url: url)
+        } else if isMp4 {
+            // Прямые ссылки на .mp4 файлы (обычно 1440p и 2160p от Alloha) не проксируем,
+            // так как прокси HLS попытается загрузить весь файл в оперативную память, вызывая OOM/таймаут.
+            logDebug("playVideo: MP4 URL directly played with headers")
+            currentPlaybackSourceURL = url.absoluteURL
+            let options = ["AVURLAssetHTTPHeaderFieldsKey": headers]
+            asset = AVURLAsset(url: url, options: options)
         } else {
             guard let proxyUrl = proxiedPlaybackURL(for: url) else {
                 logDebug("playVideo error: failed to form proxy URL")
