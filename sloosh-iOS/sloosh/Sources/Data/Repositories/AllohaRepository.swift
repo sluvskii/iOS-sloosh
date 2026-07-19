@@ -140,7 +140,7 @@ func allohaTranslationNamesMatch(_ lhs: String?, _ rhs: String?, exactOnly: Bool
 // MARK: - Selective SSL Delegate
 // Bypasses certificate validation only for Alloha CDN hosts that use self-signed certs.
 // This is intentionally narrow — all other hosts still go through default cert validation.
-class AllohaTrustedSessionDelegate: NSObject, @preconcurrency URLSessionDelegate, @unchecked Sendable {
+class AllohaTrustedSessionDelegate: NSObject, @preconcurrency URLSessionDelegate, @preconcurrency URLSessionTaskDelegate, @unchecked Sendable {
     
     private static let trustedHosts: Set<String> = [
         "alloha.tv", "alloh.tv",
@@ -164,6 +164,20 @@ class AllohaTrustedSessionDelegate: NSObject, @preconcurrency URLSessionDelegate
         } else {
             completionHandler(.performDefaultHandling, nil)
         }
+    }
+    
+    @MainActor
+    func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest, completionHandler: @escaping @MainActor @Sendable (URLRequest?) -> Void) {
+        var redirectedRequest = request
+        if let originalRequest = task.originalRequest {
+            let headersToPreserve = ["Range", "Referer", "Origin", "Accept", "User-Agent"]
+            for header in headersToPreserve {
+                if let value = originalRequest.value(forHTTPHeaderField: header) {
+                    redirectedRequest.setValue(value, forHTTPHeaderField: header)
+                }
+            }
+        }
+        completionHandler(redirectedRequest)
     }
 }
 
