@@ -431,17 +431,22 @@ class PlayerViewModel: ObservableObject {
     }
     
     private func applyInitialQuality() {
-        // Read global preference or the one passed from the sheet
         let prefRaw = UserDefaults.standard.string(forKey: "preferredVideoQuality") ?? VideoQualityPreference.ask.rawValue
         let globalPref = VideoQualityPreference(rawValue: prefRaw) ?? .ask
         let targetQuality = self.targetQualityPreference ?? globalPref
         
-        guard targetQuality != .ask && targetQuality != .auto else { return }
+        logDebug("applyInitialQuality: prefRaw=\(prefRaw), globalPref=\(globalPref.rawValue), targetQualityPreference=\(self.targetQualityPreference?.rawValue ?? "nil"), targetQuality=\(targetQuality.rawValue)")
+        
+        guard targetQuality != .ask && targetQuality != .auto else {
+            logDebug("applyInitialQuality: targetQuality is .ask or .auto, returning without changing quality.")
+            return
+        }
         
         let targetKey = targetQuality.rawValue
         
         // Exact match (1080p -> 1080p)
         if let exact = availableQualities.first(where: { $0.key.hasPrefix(targetKey) }) {
+            logDebug("applyInitialQuality: exact match found for targetKey '\(targetKey)' -> '\(exact.key)'")
             changeQuality(to: exact.key)
             return
         }
@@ -715,7 +720,11 @@ class PlayerViewModel: ObservableObject {
     }
     
     func changeQuality(to key: String) {
-        guard let quality = availableQualities.first(where: { $0.key == key }) else { return }
+        logDebug("changeQuality: called with key='\(key)'")
+        guard let quality = availableQualities.first(where: { $0.key == key }) else {
+            logDebug("changeQuality: quality key '\(key)' not found in availableQualities!")
+            return
+        }
         self.currentQualityKey = key
         
         // Сохраняем выбор пользователя для текущего сеанса просмотра,
@@ -725,30 +734,37 @@ class PlayerViewModel: ObservableObject {
         }
         
         let isHls = quality.url.pathExtension.lowercased() == "m3u8" || quality.url.absoluteString.contains(".m3u8")
+        logDebug("changeQuality: quality='\(key)', url=\(quality.url.absoluteString), isHls=\(isHls), isAuto=\(quality.isAuto), shouldReload=\(quality.shouldReloadOnSelect)")
         
         if quality.isAuto {
             if shouldReloadForAutoSelection(autoURL: quality.url) {
+                logDebug("changeQuality: reloading for auto selection")
                 reloadPlayback(to: quality.url, preferredPeakBitRate: 0)
             } else {
+                logDebug("changeQuality: updating preferredPeakBitRate to 0 (auto)")
                 player?.currentItem?.preferredPeakBitRate = 0
             }
             return
         }
 
         if quality.shouldReloadOnSelect {
+            logDebug("changeQuality: shouldReloadOnSelect is true, calling reloadPlayback")
             reloadPlayback(to: quality.url, preferredPeakBitRate: quality.preferredPeakBitRate)
             return
         }
 
         if isHls, let currentItem = self.player?.currentItem {
+            logDebug("changeQuality: updating preferredPeakBitRate for HLS to \(resolvedBitrate(for: quality))")
             currentItem.preferredPeakBitRate = resolvedBitrate(for: quality)
             return
         }
 
+        logDebug("changeQuality: fallback, calling reloadPlayback")
         reloadPlayback(to: quality.url, preferredPeakBitRate: quality.preferredPeakBitRate)
     }
 
     private func reloadPlayback(to sourceURL: URL, preferredPeakBitRate: Double?) {
+        logDebug("reloadPlayback: called with sourceURL=\(sourceURL.absoluteString), preferredPeakBitRate=\(preferredPeakBitRate ?? -1)")
         let savedTime = self.currentTime
         let wasPlaying = player?.timeControlStatus == .playing || player?.timeControlStatus == .waitingToPlayAtSpecifiedRate
 
@@ -774,6 +790,7 @@ class PlayerViewModel: ObservableObject {
             asset = AVURLAsset(url: sourceURL, options: options)
         } else {
             guard let proxyUrl = proxiedPlaybackURL(for: sourceURL) else { return }
+            logDebug("reloadPlayback: Proxied HLS stream URL: \(proxyUrl.absoluteString)")
             currentPlaybackSourceURL = proxyUrl
             asset = AVURLAsset(url: proxyUrl)
         }
@@ -1002,8 +1019,7 @@ class PlayerViewModel: ObservableObject {
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 if item.status == .failed {
-                    self.error = item.error?.localizedDescription ?? "Ошибка воспроизведения"
-                    self.isLoading = false
+                    self.handlePlaybackFailure()
                 }
             }
         }
