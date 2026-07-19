@@ -624,91 +624,46 @@ class PlayerViewModel: ObservableObject {
 
         let isSerial = seriesResult?.isSerial == true
 
-        // Сначала пробуем мгновенное переключение через уже-разрезолвленные audioVariants (и для фильмов, и для сериалов)
-        if !resolvedAudioVariants.isEmpty {
-            logDebug("switchVoiceover: looking in resolvedAudioVariants (\(resolvedAudioVariants.count) items)")
-            var match: [String: Any]? = nil
-            // 1. Точный поиск по translation.id (= ориг. title аудиоварианта, напр. "Russian 1")
-            if let rawTitle = findTranslationId(for: name), !rawTitle.isEmpty {
-                let exactMatch = resolvedAudioVariants.first(where: { ($0["title"] as? String) == rawTitle })
-                if exactMatch != nil { match = exactMatch }
-                if match != nil { logDebug("switchVoiceover: exact title match id='\(rawTitle)' for '\(name)'") }
+        // Ищем новый iframeUrl для нужной озвучки
+        var targetIframeUrl: String?
+        
+        if isMovie {
+            if let movie = seriesResult?.movie,
+               let translation = movie.translations.first(where: { allohaTranslationNamesMatch($0.name, name, exactOnly: true) }) {
+                targetIframeUrl = translation.iframeUrl
             }
-            // 2. Если не нашли — name matching
-            if match == nil {
-                match = resolvedAudioVariants.first(where: { variant in
-                    matchAudioVariant(variant, selectedName: name)
-                })
-            }
-            if let match, let urlString = match["url"] as? String, let url = URL(string: urlString) {
-                logDebug("switchVoiceover: found match in resolvedAudioVariants, url=\(urlString)")
-                _currentTranslationName = name
-                targetVoiceover = name
-                persistVoiceoverSelection(name)
-                // Переключаем стрим напрямую без re-resolve
-                let qualityVariants = (match["qualityVariants"] as? [[String: Any]]) ?? []
-                availableQualities = makeResolvedQualityOptions(
-                    resolvedUrl: url,
-                    qualityVariants: qualityVariants,
-                    audioVariants: resolvedAudioVariants
-                )
-                currentQualityKey = "Авто"
-                playVideo(url: url, headers: currentHeaders, voices: availableVoiceovers, subtitles: availableSubtitles)
-                applyInitialQuality()
-                return
+        } else {
+            if let seriesResult, let season = currentSeason, let episode = currentEpisode,
+               let seasonObj = seriesResult.seasons.first(where: { $0.season == season }),
+               let epObj = seasonObj.episodes.first(where: { $0.episode == episode }),
+               let translation = epObj.translations.first(where: { allohaTranslationNamesMatch($0.name, name, exactOnly: true) }) {
+                targetIframeUrl = translation.iframeUrl
             }
         }
-
-        if !isSerial {
-            // Фолбэк для фильма: перезапускаем с оригинального iframeUrl
-            guard let iframeUrl = currentIframeUrl, !iframeUrl.isEmpty else {
-                logDebug("switchVoiceover error: no currentIframeUrl")
-                return
-            }
-            logDebug("switchVoiceover: reloading movie from currentIframeUrl=\(iframeUrl)")
-            _currentTranslationName = name
-            targetVoiceover = name
-            // Инвалидируем кэш — нужно свежее содержимое для выбора озвучки по имени
-            AllohaRuntimeResolver.invalidateCache(for: iframeUrl)
-            resolveTask?.cancel()
-            resolver?.cancel()
-            hasStartedLoading = false
-            beginLoad(
-                iframeUrl: iframeUrl,
-                kpId: currentKpId,
-                season: nil,
-                episode: nil,
-                selectedVoiceover: name
-            )
+        
+        guard let iframeUrl = targetIframeUrl, !iframeUrl.isEmpty else {
+            logDebug("switchVoiceover error: failed to find translation iframeUrl for '\(name)'")
             return
         }
 
-        // Для сериала — ищем нужный iframe
-        guard let seriesResult,
-              let season = currentSeason,
-              let episode = currentEpisode,
-              let seasonObj = seriesResult.seasons.first(where: { $0.season == season }),
-              let epObj = seasonObj.episodes.first(where: { $0.episode == episode }),
-              let translation = epObj.translations.first(where: { allohaTranslationNamesMatch($0.name, name, exactOnly: true) }) else {
-            logDebug("switchVoiceover error: failed to find translation for series")
-            return
-        }
-
-        logDebug("switchVoiceover: reloading series episode from translation iframeUrl=\(translation.iframeUrl)")
+        logDebug("switchVoiceover: reloading from translation iframeUrl=\(iframeUrl)")
         _currentTranslationName = name
         targetVoiceover = name
-        // Инвалидируем кэш перед re-resolve серии
-        AllohaRuntimeResolver.invalidateCache(for: translation.iframeUrl)
+        persistVoiceoverSelection(name)
+        
+        // Инвалидируем кэш перед re-resolve
+        AllohaRuntimeResolver.invalidateCache(for: iframeUrl)
         resolveTask?.cancel()
         resolver?.cancel()
         hasStartedLoading = false
         beginLoad(
-            iframeUrl: translation.iframeUrl,
+            iframeUrl: iframeUrl,
             kpId: currentKpId,
-            season: season,
-            episode: episode,
+            season: currentSeason,
+            episode: currentEpisode,
             selectedVoiceover: name
         )
+        return
     }
 
     /// Сохраняет текущую позицию воспроизведения. Вызывается и по таймеру, и при сворачивании приложения.
@@ -1480,37 +1435,11 @@ class PlayerViewModel: ObservableObject {
             // Pre-resolved URL stored at fetch time: use directly, no name matching needed.
             logDebug("applyResolvedAllohaStream: using targetDirectStreamUrl=\(directUrl)")
             resolvedUrlString = directUrl
-        } else if isMovie {
-            // For movies: audioVariants have named tracks (e.g. "Russian 1", "English 3").
-            // Match by translation.id which equals the audioVariant title set during fetchByKpId.
-            let voiceToMatch = targetVoiceover ?? _currentTranslationName
-            logDebug("applyResolvedAllohaStream: movie mode, matching voiceToMatch=\(voiceToMatch ?? "nil")")
-            if let voiceToMatch, !voiceToMatch.isEmpty, !audioVariants.isEmpty {
-                var chosenUrl: String? = nil
-                // Exact title match via translation.id
-                if let rawTitle = findTranslationId(for: voiceToMatch), !rawTitle.isEmpty {
-                    let exactMatch = audioVariants.first(where: { ($0["title"] as? String) == rawTitle })
-                    chosenUrl = exactMatch?["url"] as? String
-                    if chosenUrl != nil { logDebug("applyResolvedAllohaStream: exact title match id='\(rawTitle)'") }
-                }
-                // Fallback: normalized name matching
-                if chosenUrl == nil || chosenUrl?.isEmpty == true {
-                    if let match = audioVariants.first(where: { matchAudioVariant($0, selectedName: voiceToMatch) }),
-                       let url = match["url"] as? String, !url.isEmpty {
-                        chosenUrl = url
-                        logDebug("applyResolvedAllohaStream: name-match '\(voiceToMatch)' -> '\((match["title"] as? String) ?? "?")'")
-                    }
-                }
-                if let url = chosenUrl, !url.isEmpty {
-                    resolvedUrlString = url.trimmingCharacters(in: .whitespacesAndNewlines)
-                } else {
-                    logDebug("applyResolvedAllohaStream: no match, using default url")
-                }
-            }
         } else {
-            // For series: the iframeUrl already has translation=ID injected, so CDN delivers
-            // the correct voiceover stream as the default. No audioVariant name matching needed.
-            logDebug("applyResolvedAllohaStream: series mode, using default resolved url (translation embedded in iframe)")
+            // The iframeUrl already has translation=ID injected for both movies and series, 
+            // so CDN delivers the correct voiceover stream as the default. 
+            // No audioVariant name matching needed.
+            logDebug("applyResolvedAllohaStream: using default resolved url (translation embedded in iframe)")
         }
 
         guard let resolvedUrl = URL(string: resolvedUrlString) else {
@@ -1544,10 +1473,6 @@ class PlayerViewModel: ObservableObject {
             if self.isMovie || self.availableVoiceovers.isEmpty {
                 self.availableVoiceovers = voices
             }
-        }
-        // Сохраняем audioVariants для мгновенного переключения озвучки без re-resolve
-        if !audioVariants.isEmpty {
-            self.resolvedAudioVariants = audioVariants
         }
 
         let qualityVariants = (resolved["qualityVariants"] as? [[String: Any]]) ?? []
@@ -1596,19 +1521,6 @@ class PlayerViewModel: ObservableObject {
         }
     }
 
-
-    private func findTranslationId(for name: String) -> String? {
-        guard let result = seriesResult else { return nil }
-        if result.isSerial {
-            // Для сериалов: нечёткое совпадение (имена могут немного отличаться между сезонами)
-            for season in result.seasons {
-                for episode in season.episodes {
-                    if let t = episode.translations.first(where: { allohaTranslationNamesMatch($0.name, name) }) {
-                        return t.id
-                    }
-                }
-            }
-        } else if let movie = result.movie {
             // Для фильмов: сначала точное совпадение имени (имена берутся из audioVariants и отображаются пользователю)
             // Нечёткое совпадение опасно: "Russian 1" и "Russian 2" становятся одинаковыми через isRussianOrDub
             if let t = movie.translations.first(where: { $0.name == name }) {
