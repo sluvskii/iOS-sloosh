@@ -495,7 +495,22 @@ final class SharedWebViewProvider {
     static let shared = SharedWebViewProvider()
     var webView: WKWebView?
     
-    private init() {}
+    private init() {
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.didEnterBackgroundNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.destroyWebView()
+            }
+        }
+    }
+    
+    private func destroyWebView() {
+        reset()
+        webView = nil
+    }
     
     func prepare(for delegate: WKNavigationDelegate & WKScriptMessageHandler) {
         if webView == nil {
