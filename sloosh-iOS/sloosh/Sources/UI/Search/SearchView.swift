@@ -176,10 +176,8 @@ struct SearchView: View {
             .sheet(isPresented: $showFilters) {
                 SearchFilterSheet(filters: $viewModel.filters)
             }
-            .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("SlooshIntentPlayMovie"))) { notification in
-                if let query = notification.userInfo?["query"] as? String, !query.isEmpty {
-                    viewModel.searchQuery = query
-                }
+            .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("SlooshIntentPlayMovie"))) { _ in
+                // Intent just focuses the search tab, user can type the query
             }
         }
     }
