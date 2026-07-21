@@ -214,7 +214,7 @@ struct DetailsView: View {
                 .padding(.horizontal, 16)
                 .padding(.bottom, 8)
                 .background(
-                    VariableBlurView(tintOpacity: 0.0, style: .systemMaterialDark)
+                    VariableBlurView(tintColor: effectiveBackgroundColor, tintOpacity: 0.6, style: .systemMaterialDark)
                         .padding(.bottom, -60)
                         .ignoresSafeArea(edges: .top)
                         .opacity(isLogoAtTop ? 1.0 : 0.0)
