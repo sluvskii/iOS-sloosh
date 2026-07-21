@@ -92,17 +92,7 @@ struct DetailsView: View {
     @State private var playerSubtitles: [PlaybackSubtitle] = []
     @State private var playerQuality: VideoQualityPreference? = nil
     @State private var playerSeriesResult: AllohaApiResult?
-    @State private var scrollOffset: CGFloat = 0
     @State private var favoriteBounce = false
-    
-    // Large logo starts fading out at -350, fully hidden at -400
-    private var largeLogoOpacity: Double {
-        let minOffset: CGFloat = -350
-        let maxOffset: CGFloat = -400
-        if scrollOffset > minOffset { return 1 }
-        if scrollOffset < maxOffset { return 0 }
-        return 1 - Double((scrollOffset - minOffset) / (maxOffset - minOffset))
-    }
     @State private var movieToDelete: DownloadItem? = nil
     @State private var showDeleteMovieAlert = false
 
@@ -159,6 +149,46 @@ struct DetailsView: View {
         }
     }
     
+    @State private var scrollOffset: CGFloat = 0
+    @Namespace private var topBarNamespace
+    @Environment(\.dismiss) private var dismiss
+
+    private var showLogoInTopBar: Bool {
+        scrollOffset > 300
+    }
+
+    private var detailsContent: some View {
+        ZStack(alignment: .top) {
+            Group {
+                if verticalSizeClass == .compact {
+                    landscapeDetailsContent
+                } else {
+                    portraitDetailsContent
+                }
+            }
+            .coordinateSpace(name: "detailsScroll")
+
+            CustomDetailsTopBar(
+                scrollOffset: scrollOffset,
+                title: viewModel.details?.title ?? viewModel.details?.originalTitle ?? "",
+                logoUrl: viewModel.details?.displayLogoUrl,
+                showLogo: showLogoInTopBar,
+                isFavorite: viewModel.isFavorite,
+                namespace: topBarNamespace,
+                onBack: { dismiss() },
+                onFavorite: {
+                    let generator = UIImpactFeedbackGenerator(style: .light)
+                    generator.prepare()
+                    generator.impactOccurred()
+                    favoriteBounce.toggle()
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.5, blendDuration: 0.5)) {
+                        viewModel.toggleFavorite()
+                    }
+                }
+            )
+        }
+    }
+    
     var body: some View {
         ZStack {
             detailsContent
@@ -168,25 +198,8 @@ struct DetailsView: View {
                 in: navigationTransitionNamespace
             )
             .environment(\.colorScheme, .dark)
-            .toolbar(.hidden, for: .navigationBar)
             .ignoresSafeArea(edges: .top)
-            .overlay(alignment: .top) {
-                DetailsStickyHeaderView(
-                    details: viewModel.details,
-                    scrollOffset: scrollOffset,
-                    isFavorite: viewModel.isFavorite,
-                    favoriteBounce: $favoriteBounce,
-                    onToggleFavorite: {
-                        let generator = UIImpactFeedbackGenerator(style: .light)
-                        generator.prepare()
-                        generator.impactOccurred()
-                        favoriteBounce.toggle()
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.5, blendDuration: 0.5)) {
-                            viewModel.toggleFavorite()
-                        }
-                    }
-                )
-            }
+            .navigationBarBackButtonHidden(true)
             .task {
                 await viewModel.loadDetails(id: movieId)
             }
@@ -468,15 +481,7 @@ struct DetailsView: View {
         }
     }
 
-    private var detailsContent: some View {
-        Group {
-            if verticalSizeClass == .compact {
-                landscapeDetailsContent
-            } else {
-                portraitDetailsContent
-            }
-        }
-    }
+
 
     private var portraitDetailsContent: some View {
         ScrollView {
@@ -490,12 +495,10 @@ struct DetailsView: View {
                     
                     GeometryReader { geometry in
                         let minY = geometry.frame(in: .global).minY
+                        let scrollMinY = geometry.frame(in: .named("detailsScroll")).minY
                         let isScrollingDown = minY > 0
                         let height = isScrollingDown ? baseHeight + minY : baseHeight
                         let offset = isScrollingDown ? -minY : 0
-
-                        Color.clear
-                            .preference(key: ScrollOffsetPreferenceKey.self, value: minY)
 
                         RemoteBackdropView(
                             url: URL(string: details.displayBackdropUrl ?? ""),
@@ -504,17 +507,31 @@ struct DetailsView: View {
                             height: height
                         )
                         .offset(y: offset)
+                        .preference(key: ScrollOffsetPreferenceKey.self, value: -scrollMinY)
                     }
                     .frame(height: baseHeight)
+                    .onPreferenceChange(ScrollOffsetPreferenceKey.self) { value in
+                        scrollOffset = value
+                    }
 
                     VStack(alignment: .center, spacing: 12) {
-                        RemoteLogoView(
-                            url: URL(string: details.displayLogoUrl ?? ""),
-                            fallbackTitle: details.title ?? details.originalTitle ?? "Без названия",
-                            alignment: .center
-                        )
-                        .opacity(largeLogoOpacity)
-                        .padding(.bottom, 8)
+                        if !showLogoInTopBar {
+                            RemoteLogoView(
+                                url: URL(string: details.displayLogoUrl ?? ""),
+                                fallbackTitle: details.title ?? details.originalTitle ?? "Без названия",
+                                alignment: .center
+                            )
+                            .matchedGeometryEffect(id: "detailsLogo", in: topBarNamespace)
+                            .padding(.bottom, 8)
+                        } else {
+                            RemoteLogoView(
+                                url: URL(string: details.displayLogoUrl ?? ""),
+                                fallbackTitle: details.title ?? details.originalTitle ?? "Без названия",
+                                alignment: .center
+                            )
+                            .opacity(0)
+                            .padding(.bottom, 8)
+                        }
 
                         if let originalTitle = details.originalTitle, !originalTitle.isEmpty, originalTitle != details.title {
                             Text(originalTitle)
@@ -562,9 +579,6 @@ struct DetailsView: View {
                 effectiveBackgroundColor
             }
         }
-        .onPreferenceChange(ScrollOffsetPreferenceKey.self) { value in
-            scrollOffset = value
-        }
         .refreshable {
             await viewModel.loadDetails(id: movieId, force: true)
         }
@@ -582,12 +596,10 @@ struct DetailsView: View {
                         
                         GeometryReader { geometry in
                             let minY = geometry.frame(in: .global).minY
+                            let scrollMinY = geometry.frame(in: .named("detailsScroll")).minY
                             let isScrollingDown = minY > 0
                             let height = isScrollingDown ? baseHeight + minY : baseHeight
                             let offset = isScrollingDown ? -minY : 0
-
-                            Color.clear
-                                .preference(key: ScrollOffsetPreferenceKey.self, value: minY)
 
                             RemoteBackdropView(
                                 url: URL(string: details.displayBackdropUrl ?? ""),
@@ -596,18 +608,32 @@ struct DetailsView: View {
                                 height: height
                             )
                             .offset(y: offset)
+                            .preference(key: ScrollOffsetPreferenceKey.self, value: -scrollMinY)
                         }
                         .frame(height: baseHeight)
+                        .onPreferenceChange(ScrollOffsetPreferenceKey.self) { value in
+                            scrollOffset = value
+                        }
 
                         VStack(spacing: 0) {
                             VStack(alignment: .center, spacing: 12) {
-                                RemoteLogoView(
-                                    url: URL(string: details.displayLogoUrl ?? ""),
-                                    fallbackTitle: details.title ?? details.originalTitle ?? "Без названия",
-                                    alignment: .center
-                                )
-                                .opacity(largeLogoOpacity)
-                                .padding(.bottom, 8)
+                                if !showLogoInTopBar {
+                                    RemoteLogoView(
+                                        url: URL(string: details.displayLogoUrl ?? ""),
+                                        fallbackTitle: details.title ?? details.originalTitle ?? "Без названия",
+                                        alignment: .center
+                                    )
+                                    .matchedGeometryEffect(id: "detailsLogo", in: topBarNamespace)
+                                    .padding(.bottom, 8)
+                                } else {
+                                    RemoteLogoView(
+                                        url: URL(string: details.displayLogoUrl ?? ""),
+                                        fallbackTitle: details.title ?? details.originalTitle ?? "Без названия",
+                                        alignment: .center
+                                    )
+                                    .opacity(0)
+                                    .padding(.bottom, 8)
+                                }
 
                                 if let originalTitle = details.originalTitle, !originalTitle.isEmpty, originalTitle != details.title {
                                     Text(originalTitle)
@@ -656,9 +682,6 @@ struct DetailsView: View {
                 } else {
                     effectiveBackgroundColor
                 }
-            }
-            .onPreferenceChange(ScrollOffsetPreferenceKey.self) { value in
-                scrollOffset = value
             }
             .refreshable {
                 await viewModel.loadDetails(id: movieId, force: true)
