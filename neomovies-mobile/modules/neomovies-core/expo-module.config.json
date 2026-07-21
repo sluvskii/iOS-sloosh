@@ -1,9 +1,0 @@
-{
-  "platforms": ["ios", "android"],
-  "ios": {
-    "modules": ["NeomoviesCoreModule"]
-  },
-  "android": {
-    "modules": ["com.neo.neomovies.core.NeomoviesCoreModule"]
-  }
-}
