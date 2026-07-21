@@ -1067,24 +1067,31 @@ private struct DetailsInfoSection: View {
                                         }
                                 }
                             )
-                            .mask(
-                                Group {
-                                    if canExpand && !isDescriptionExpanded {
-                                        LinearGradient(
-                                            gradient: Gradient(stops: [
-                                                .init(color: .black, location: 0.0),
-                                                .init(color: .black, location: 0.4),
-                                                .init(color: .clear, location: 1.0)
-                                            ]),
-                                            startPoint: .top,
-                                            endPoint: .bottom
-                                        )
-                                    } else {
-                                        Color.black
-                                    }
-                                }
-                            )
+                            // Removed the mask from here, we will overlay the blur instead
                     }
+                    .overlay(
+                        Group {
+                            if canExpand && !isDescriptionExpanded {
+                                VariableBlurView(
+                                    maxBlurRadius: 12,
+                                    direction: .blurredBottomClearTop,
+                                    tintColor: backgroundColor,
+                                    tintOpacity: 1.0
+                                )
+                                .mask(
+                                    LinearGradient(
+                                        gradient: Gradient(stops: [
+                                            .init(color: .clear, location: 0.0),
+                                            .init(color: .clear, location: 0.1),
+                                            .init(color: .black, location: 1.0)
+                                        ]),
+                                        startPoint: .top,
+                                        endPoint: .bottom
+                                    )
+                                )
+                            }
+                        }
+                    )
                     .background(
                         Text(description)
                             .font(.system(size: 15, weight: .regular))
@@ -1133,7 +1140,7 @@ private struct DetailsInfoSection: View {
                             .shadow(color: .black.opacity(0.15), radius: 8, x: 0, y: 4)
                         }
                         .frame(maxWidth: .infinity, alignment: .center)
-                        .padding(.top, isDescriptionExpanded ? 12 : -12)
+                        .padding(.top, isDescriptionExpanded ? 12 : -28)
                         .zIndex(1)
                     }
                 }
