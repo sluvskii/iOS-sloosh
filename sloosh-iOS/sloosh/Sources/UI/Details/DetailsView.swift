@@ -153,42 +153,46 @@ struct DetailsView: View {
     var body: some View {
         ZStack(alignment: .top) {
             detailsContent
-            // Custom floating glass navigation buttons
-            HStack {
-                Button {
-                    dismiss()
-                } label: {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .frame(width: 44, height: 44)
-                }
-                .glassEffect(in: Circle())
-                .accessibilityLabel("Назад")
-
-                Spacer()
-
-                Button {
-                    let generator = UIImpactFeedbackGenerator(style: .light)
-                    generator.prepare()
-                    generator.impactOccurred()
-                    favoriteBounce.toggle()
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.5, blendDuration: 0.5)) {
-                        viewModel.toggleFavorite()
+            // Custom floating glass navigation buttons — aligned to native nav bar position
+            GeometryReader { geo in
+                HStack {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 44, height: 44)
                     }
-                } label: {
-                    Image(systemName: viewModel.isFavorite ? "heart.fill" : "heart")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(viewModel.isFavorite ? Color.slooshAccent : .white)
-                        .symbolEffect(.bounce, value: favoriteBounce)
-                        .frame(width: 44, height: 44)
+                    .glassEffect(in: Circle())
+                    .accessibilityLabel("Назад")
+
+                    Spacer()
+
+                    Button {
+                        let generator = UIImpactFeedbackGenerator(style: .light)
+                        generator.prepare()
+                        generator.impactOccurred()
+                        favoriteBounce.toggle()
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.5, blendDuration: 0.5)) {
+                            viewModel.toggleFavorite()
+                        }
+                    } label: {
+                        Image(systemName: viewModel.isFavorite ? "heart.fill" : "heart")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(viewModel.isFavorite ? Color.slooshAccent : .white)
+                            .symbolEffect(.bounce, value: favoriteBounce)
+                            .frame(width: 44, height: 44)
+                    }
+                    .glassEffect(in: Circle())
+                    .disabled(viewModel.details == nil)
+                    .accessibilityLabel(viewModel.isFavorite ? "Убрать из избранного" : "Добавить в избранное")
                 }
-                .glassEffect(in: Circle())
-                .disabled(viewModel.details == nil)
-                .accessibilityLabel(viewModel.isFavorite ? "Убрать из избранного" : "Добавить в избранное")
+                // Use safe area top inset so buttons always land exactly where the native nav bar buttons would
+                .padding(.horizontal, 8)
+                .padding(.top, geo.safeAreaInsets.top + 8)
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 60) // below status bar / Dynamic Island
+            .ignoresSafeArea()
         }
             .optionalMovieNavigationTransition(
                 sourceID: navigationTransitionID,
