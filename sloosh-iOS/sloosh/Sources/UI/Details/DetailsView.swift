@@ -186,6 +186,7 @@ struct DetailsView: View {
                                 .frame(width: 44, height: 44)
                                 .glassEffect(.regular.interactive(), in: .circle)
                         }
+                        .buttonStyle(NativeGlassButtonStyle())
                         .tint(.white)
                         
                         Spacer()
@@ -206,6 +207,7 @@ struct DetailsView: View {
                                 .frame(width: 44, height: 44)
                                 .glassEffect(.regular.interactive(), in: .circle)
                         }
+                        .buttonStyle(NativeGlassButtonStyle())
                         .disabled(viewModel.details == nil)
                         .accessibilityLabel(viewModel.isFavorite ? "Убрать из избранного" : "Добавить в избранное")
                     }
@@ -1132,7 +1134,7 @@ private struct DetailsInfoSection: View {
                             .glassEffect(.regular.interactive(), in: .capsule)
                             .shadow(color: .black.opacity(0.15), radius: 8, x: 0, y: 4)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(NativeGlassButtonStyle())
                         .frame(maxWidth: .infinity, alignment: .center)
                         .padding(.top, isDescriptionExpanded ? 12 : -28)
                         .zIndex(1)
@@ -2041,6 +2043,14 @@ struct GlassDownloadButtonStyle: ButtonStyle {
             .animation(.spring(response: 0.25, dampingFraction: 0.6), value: configuration.isPressed)
     }
 }
+
+struct NativeGlassButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        // Prevents default opacity fade which breaks UIVisualEffectView blur
+        configuration.label
+    }
+}
+
 struct BlurFadeScaleModifier: ViewModifier {
     let isBlurry: Bool
     func body(content: Content) -> some View {
