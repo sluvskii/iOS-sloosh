@@ -970,16 +970,23 @@ private struct DetailsInfoSection: View {
                                         }
                                 }
                             )
-
-                        if canExpand && !isDescriptionExpanded {
-                            LinearGradient(
-                                gradient: Gradient(colors: [backgroundColor.opacity(0), backgroundColor]),
-                                startPoint: .top,
-                                endPoint: .bottom
+                            .mask(
+                                Group {
+                                    if canExpand && !isDescriptionExpanded {
+                                        LinearGradient(
+                                            gradient: Gradient(stops: [
+                                                .init(color: .black, location: 0.0),
+                                                .init(color: .black, location: 0.7),
+                                                .init(color: .clear, location: 1.0)
+                                            ]),
+                                            startPoint: .top,
+                                            endPoint: .bottom
+                                        )
+                                    } else {
+                                        Color.black
+                                    }
+                                }
                             )
-                            .frame(height: 40)
-                            .allowsHitTesting(false)
-                        }
                     }
                     .background(
                         Text(description)
