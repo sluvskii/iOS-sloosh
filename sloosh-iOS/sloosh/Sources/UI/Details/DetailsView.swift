@@ -540,28 +540,38 @@ struct DetailsView: View {
                     .frame(height: baseHeight)
 
                     VStack(alignment: .center, spacing: 12) {
-                        RemoteLogoView(
-                            url: URL(string: details.displayLogoUrl ?? ""),
-                            fallbackTitle: details.title ?? details.originalTitle ?? "Без названия",
-                            alignment: .center
-                        )
-                        .matchedGeometryEffect(id: "logo", in: logoNamespace, isSource: !isLogoAtTop)
+                        ZStack {
+                            RemoteLogoView(
+                                url: URL(string: details.displayLogoUrl ?? ""),
+                                fallbackTitle: details.title ?? details.originalTitle ?? "Без названия",
+                                alignment: .center
+                            )
+                            .opacity(0)
+                            .allowsHitTesting(false)
+                            
+                            RemoteLogoView(
+                                url: URL(string: details.displayLogoUrl ?? ""),
+                                fallbackTitle: details.title ?? details.originalTitle ?? "Без названия",
+                                alignment: .center
+                            )
+                            .matchedGeometryEffect(id: "logo", in: logoNamespace, isSource: !isLogoAtTop)
+                            .opacity(isLogoAtTop ? 0.0 : 1.0)
+                            .animation(nil, value: isLogoAtTop)
+                        }
                         .padding(.bottom, 8)
-                        .opacity(isLogoAtTop ? 0.0 : 1.0)
-                        .animation(nil, value: isLogoAtTop)
                         .background(
                             GeometryReader { geo in
                                 Color.clear
                                     .onChange(of: geo.frame(in: .global).minY) { _, minY in
-                                        let isAtTop = minY < 60
+                                        let isAtTop = minY < 10
                                         if isLogoAtTop != isAtTop {
-                                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                            withAnimation(.spring(response: 0.4, dampingFraction: 0.95)) {
                                                 isLogoAtTop = isAtTop
                                             }
                                         }
                                     }
                                     .onAppear {
-                                        isLogoAtTop = geo.frame(in: .global).minY < 60
+                                        isLogoAtTop = geo.frame(in: .global).minY < 10
                                     }
                             }
                         )
@@ -645,28 +655,38 @@ struct DetailsView: View {
 
                         VStack(spacing: 0) {
                             VStack(alignment: .center, spacing: 12) {
-                                RemoteLogoView(
-                                    url: URL(string: details.displayLogoUrl ?? ""),
-                                    fallbackTitle: details.title ?? details.originalTitle ?? "Без названия",
-                                    alignment: .center
-                                )
-                                .matchedGeometryEffect(id: "logo", in: logoNamespace, isSource: !isLogoAtTop)
+                                ZStack {
+                                    RemoteLogoView(
+                                        url: URL(string: details.displayLogoUrl ?? ""),
+                                        fallbackTitle: details.title ?? details.originalTitle ?? "Без названия",
+                                        alignment: .center
+                                    )
+                                    .opacity(0)
+                                    .allowsHitTesting(false)
+                                    
+                                    RemoteLogoView(
+                                        url: URL(string: details.displayLogoUrl ?? ""),
+                                        fallbackTitle: details.title ?? details.originalTitle ?? "Без названия",
+                                        alignment: .center
+                                    )
+                                    .matchedGeometryEffect(id: "logo", in: logoNamespace, isSource: !isLogoAtTop)
+                                    .opacity(isLogoAtTop ? 0.0 : 1.0)
+                                    .animation(nil, value: isLogoAtTop)
+                                }
                                 .padding(.bottom, 8)
-                                .opacity(isLogoAtTop ? 0.0 : 1.0)
-                                .animation(nil, value: isLogoAtTop)
                                 .background(
                                     GeometryReader { geo in
                                         Color.clear
                                             .onChange(of: geo.frame(in: .global).minY) { _, minY in
-                                                let isAtTop = minY < 60
+                                                let isAtTop = minY < 10
                                                 if isLogoAtTop != isAtTop {
-                                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                                    withAnimation(.spring(response: 0.4, dampingFraction: 0.95)) {
                                                         isLogoAtTop = isAtTop
                                                     }
                                                 }
                                             }
                                             .onAppear {
-                                                isLogoAtTop = geo.frame(in: .global).minY < 60
+                                                isLogoAtTop = geo.frame(in: .global).minY < 10
                                             }
                                     }
                                 )
