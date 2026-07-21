@@ -174,6 +174,7 @@ struct DetailsView: View {
                         )
                         .frame(height: 32)
                         .matchedGeometryEffect(id: "logo", in: logoNamespace)
+                        .transition(.identity)
                     }
                     
                     HStack {
@@ -547,6 +548,7 @@ struct DetailsView: View {
                         .matchedGeometryEffect(id: "logo", in: logoNamespace, isSource: !isLogoAtTop)
                         .padding(.bottom, 8)
                         .opacity(isLogoAtTop ? 0.0 : 1.0)
+                        .animation(nil, value: isLogoAtTop)
                         .background(
                             GeometryReader { geo in
                                 Color.clear
@@ -651,6 +653,7 @@ struct DetailsView: View {
                                 .matchedGeometryEffect(id: "logo", in: logoNamespace, isSource: !isLogoAtTop)
                                 .padding(.bottom, 8)
                                 .opacity(isLogoAtTop ? 0.0 : 1.0)
+                                .animation(nil, value: isLogoAtTop)
                                 .background(
                                     GeometryReader { geo in
                                         Color.clear
