@@ -94,7 +94,7 @@ struct AboutView: View {
                             .font(.system(size: 22, weight: .medium))
                             .foregroundStyle(.primary)
                             .frame(width: 44, height: 44)
-                            .glassEffect(.regular.interactive(), in: .circle)
+                            .glassEffect(.regular, in: .circle)
                     }
                     .buttonStyle(NativeGlassButtonStyle())
                     .tint(.primary)

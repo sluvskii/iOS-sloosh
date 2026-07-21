@@ -11,7 +11,7 @@ struct GlassCircleEffect: ViewModifier {
     func body(content: Content) -> some View {
         content
             .frame(width: diameter, height: diameter)
-            .glassEffect(.regular.interactive(), in: .circle)
+            .glassEffect(.regular, in: .circle)
     }
 }
 
@@ -35,5 +35,7 @@ public struct NativeGlassButtonStyle: ButtonStyle {
     public func makeBody(configuration: Configuration) -> some View {
         // Prevents default opacity fade which breaks UIVisualEffectView blur
         configuration.label
+            .scaleEffect(configuration.isPressed ? 0.94 : 1.0)
+            .animation(.spring(response: 0.25, dampingFraction: 0.6), value: configuration.isPressed)
     }
 }
