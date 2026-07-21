@@ -9,7 +9,7 @@ struct PremiumMeshBackground: View {
         if let d = dominantColor {
             return Color(d)
         }
-        return Color(UIColor.systemBackground)
+        return Color.black
     }
     
     private var darkBaseColor: Color {
@@ -21,9 +21,9 @@ struct PremiumMeshBackground: View {
 
     private var lightBaseColor: Color {
         if let d = dominantColor {
-            return Color(d.blended(with: UIColor.systemBackground, fraction: 0.5))
+            return Color(d.blended(with: .black, fraction: 0.3)) // Instead of systemBackground fraction 0.5, let's just make it slightly darker than pure color but lighter than darkBaseColor.
         }
-        return Color(UIColor.systemBackground)
+        return Color.black
     }
 
     var body: some View {
