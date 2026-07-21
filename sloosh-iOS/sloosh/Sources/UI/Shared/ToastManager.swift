@@ -46,16 +46,17 @@ struct ToastModifier: ViewModifier {
     @ObservedObject private var manager = ToastManager.shared
     
     func body(content: Content) -> some View {
-        ZStack(alignment: .bottom) {
+        ZStack(alignment: .top) {
             content
             
             if let toast = manager.currentToast {
                 ToastView(toast: toast)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-                    .padding(.bottom, 60) // Above tab bar
+                    .transition(.move(edge: .top).combined(with: .opacity).combined(with: .scale(scale: 0.9)))
+                    .padding(.top, 60) // Below dynamic island
                     .zIndex(999)
             }
         }
+        .sensoryFeedback(.success, trigger: manager.currentToast?.title)
     }
 }
 
@@ -68,6 +69,7 @@ struct ToastView: View {
             Image(systemName: toast.icon)
                 .font(.system(size: 24, weight: .semibold))
                 .foregroundColor(.slooshAccent)
+                .contentTransition(.symbolEffect(.replace))
             
             VStack(alignment: .leading, spacing: 2) {
                 Text(toast.title)
@@ -91,15 +93,15 @@ struct ToastView: View {
         .gesture(
             DragGesture()
                 .onChanged { value in
-                    if value.translation.height > 0 {
+                    if value.translation.height < 0 {
                         dragOffset = value.translation.height
                     } else {
-                        // slight resistance when dragging up
+                        // slight resistance when dragging down
                         dragOffset = value.translation.height * 0.2
                     }
                 }
                 .onEnded { value in
-                    if value.translation.height > 30 || value.predictedEndTranslation.height > 50 {
+                    if value.translation.height < -30 || value.predictedEndTranslation.height < -50 {
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                             ToastManager.shared.currentToast = nil
                         }

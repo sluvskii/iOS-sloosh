@@ -544,7 +544,13 @@ struct DetailsView: View {
             .animation(.easeInOut(duration: 0.35), value: viewModel.isLoading)
         }
         .scrollIndicators(.hidden)
-        .background(effectiveBackgroundColor)
+        .background {
+            if #available(iOS 18.0, *) {
+                PremiumMeshBackground(dominantColor: dominantBackdropColor ?? dominantPosterColor)
+            } else {
+                effectiveBackgroundColor
+            }
+        }
         .refreshable {
             await viewModel.loadDetails(id: movieId, force: true)
         }
@@ -617,6 +623,7 @@ struct DetailsView: View {
                                     handleEpisodeSelection(details: details, season: season, episode: episode)
                                 }
                                 .padding(.top, 24)
+                                .padding(.bottom, 40)
                             }
                         }
                         .offset(y: -60)
@@ -625,7 +632,13 @@ struct DetailsView: View {
                 }
             }
             .scrollIndicators(.hidden)
-            .background(effectiveBackgroundColor)
+            .background {
+                if #available(iOS 18.0, *) {
+                    PremiumMeshBackground(dominantColor: dominantBackdropColor ?? dominantPosterColor)
+                } else {
+                    effectiveBackgroundColor
+                }
+            }
             .refreshable {
                 await viewModel.loadDetails(id: movieId, force: true)
             }
@@ -1838,6 +1851,7 @@ class DetailsViewModel: ObservableObject {
         if isFavorite {
             FavoritesRepository.shared.removeFromFavorites(mediaId: mediaId, mediaType: mediaType)
             generator.notificationOccurred(.warning)
+            ToastManager.shared.show(title: "Удалено из избранного", icon: "heart.slash.fill", duration: 2.0)
         } else {
             FavoritesRepository.shared.addToFavorites(
                 mediaId: mediaId,
@@ -1849,6 +1863,7 @@ class DetailsViewModel: ObservableObject {
                 genres: details.genres?.compactMap { GenreDto(id: $0.lowercased(), name: $0) }
             )
             generator.notificationOccurred(.success)
+            ToastManager.shared.show(title: "Добавлено в избранное", icon: "heart.fill", duration: 2.0)
         }
         isFavorite.toggle()
     }
