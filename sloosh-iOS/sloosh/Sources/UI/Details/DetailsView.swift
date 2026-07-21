@@ -152,8 +152,11 @@ struct DetailsView: View {
     
     var body: some View {
         ZStack(alignment: .top) {
+            // detailsContent extends under the status bar on its own
             detailsContent
+                .ignoresSafeArea(edges: .top)
 
+            // Buttons are inside the ZStack that RESPECTS safe area — they move with zoom transition
             HStack {
                 Button {
                     dismiss()
@@ -161,9 +164,11 @@ struct DetailsView: View {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundStyle(.white)
-                        .frame(width: 44, height: 44)
+                        .shadow(color: .black.opacity(0.3), radius: 4, x: 0, y: 1)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 12)
+                        .contentShape(Rectangle())
                 }
-                .glassEffect(in: Circle())
                 .accessibilityLabel("Назад")
 
                 Spacer()
@@ -180,10 +185,12 @@ struct DetailsView: View {
                     Image(systemName: viewModel.isFavorite ? "heart.fill" : "heart")
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundStyle(viewModel.isFavorite ? Color.slooshAccent : .white)
+                        .shadow(color: .black.opacity(0.3), radius: 4, x: 0, y: 1)
                         .symbolEffect(.bounce, value: favoriteBounce)
-                        .frame(width: 44, height: 44)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 12)
+                        .contentShape(Rectangle())
                 }
-                .glassEffect(in: Circle())
                 .disabled(viewModel.details == nil)
                 .accessibilityLabel(viewModel.isFavorite ? "Убрать из избранного" : "Добавить в избранное")
             }
@@ -195,7 +202,6 @@ struct DetailsView: View {
             )
             .environment(\.colorScheme, .dark)
             .navigationBarHidden(true)
-            .ignoresSafeArea(edges: .top)
             .task {
                 await viewModel.loadDetails(id: movieId)
             }
