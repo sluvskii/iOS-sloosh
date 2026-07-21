@@ -1030,7 +1030,7 @@ private struct DetailsInfoSection: View {
                     Text("Жанры")
                         .font(.system(size: 18, weight: .bold))
 
-                    FlowLayout(horizontalSpacing: 8, verticalSpacing: 4) {
+                    FlowLayout(spacing: 8) {
                         ForEach(genres, id: \.self) { genre in
                             Text(genre)
                                 .font(.system(size: 14, weight: .semibold))
