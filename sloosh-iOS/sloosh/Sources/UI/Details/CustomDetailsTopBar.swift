@@ -22,8 +22,8 @@ struct CustomDetailsTopBar: View {
     var body: some View {
         ZStack(alignment: .bottom) {
             // Glass Background that fades in
-            Color.clear
-                .safeAreaBar(edge: .top)
+            VariableBlurView(tintOpacity: 0.75)
+                .ignoresSafeArea(edges: .top)
                 .opacity(glassOpacity)
                 .allowsHitTesting(false)
             
