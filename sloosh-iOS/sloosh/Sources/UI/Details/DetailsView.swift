@@ -597,7 +597,7 @@ struct DetailsView: View {
                             InlineEpisodesSection(viewModel: viewModel, details: details) { season, episode in
                                 handleEpisodeSelection(details: details, season: season, episode: episode)
                             }
-                            .padding(.top, 24)
+                            .padding(.top, 8)
                             .padding(.bottom, 20)
                         }
                     }
@@ -719,7 +719,7 @@ struct DetailsView: View {
                                 ) { season, episode in
                                     handleEpisodeSelection(details: details, season: season, episode: episode)
                                 }
-                                .padding(.top, 24)
+                                .padding(.top, 8)
                                 .padding(.bottom, 40)
                             }
                         }
@@ -1699,7 +1699,7 @@ struct InlineEpisodesSection: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 18) {
             Text("Сезоны и серии")
                 .font(.system(size: 18, weight: .bold))
                 .padding(.horizontal, horizontalPadding)
@@ -1736,18 +1736,23 @@ struct InlineEpisodesSection: View {
                             }) {
                                 HStack(spacing: 6) {
                                     Text("\(season) сезон")
-                                        .font(.system(size: 15, weight: .semibold))
+                                        .font(.system(size: 14, weight: .semibold))
                                     if fullyWatchedSeasons.contains(season) {
                                         Image(systemName: "checkmark.circle.fill")
                                             .foregroundColor(selectedSeason == season ? .black : Color.slooshAccent)
                                             .font(.system(size: 12, weight: .bold))
                                     }
                                 }
-                                .padding(.horizontal, 16)
-                                .padding(.vertical, 10)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 8)
                                 .background(
-                                    Capsule()
-                                        .fill(selectedSeason == season ? Color.white : Color.white.opacity(0.06))
+                                    ZStack {
+                                        if selectedSeason == season {
+                                            Capsule().fill(Color.white)
+                                        } else {
+                                            Color.clear.glassEffect(in: Capsule())
+                                        }
+                                    }
                                 )
                                 .foregroundColor(selectedSeason == season ? .black : .primary)
                             }
