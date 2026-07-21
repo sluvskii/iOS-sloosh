@@ -1030,12 +1030,12 @@ private struct DetailsInfoSection: View {
                     Text("Жанры")
                         .font(.system(size: 18, weight: .bold))
 
-                    FlowLayout(spacing: 8) {
+                    FlowLayout(horizontalSpacing: 8, verticalSpacing: 4) {
                         ForEach(genres, id: \.self) { genre in
                             Text(genre)
                                 .font(.system(size: 14, weight: .semibold))
                                 .padding(.horizontal, 14)
-                                .padding(.vertical, 6)
+                                .padding(.vertical, 8)
                                 .glassEffect(in: Capsule())
                         }
                     }
@@ -1744,7 +1744,7 @@ struct InlineEpisodesSection: View {
                                     }
                                 }
                                 .padding(.horizontal, 14)
-                                .padding(.vertical, 6)
+                                .padding(.vertical, 8)
                                 .background(
                                     ZStack {
                                         if selectedSeason == season {
