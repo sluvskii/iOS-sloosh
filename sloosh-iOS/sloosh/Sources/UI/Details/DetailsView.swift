@@ -1129,9 +1129,8 @@ private struct DetailsInfoSection: View {
                             .foregroundColor(.white)
                             .padding(.horizontal, 20)
                             .padding(.vertical, 10)
-                            .glassEffect(in: Capsule())
-                            .shadow(color: .black.opacity(0.15), radius: 8, x: 0, y: 4)
                         }
+                        .buttonStyle(GlassPillButtonStyle())
                         .frame(maxWidth: .infinity, alignment: .center)
                         .padding(.top, isDescriptionExpanded ? 12 : -28)
                         .zIndex(1)
@@ -2038,6 +2037,18 @@ struct GlassDownloadButtonStyle: ButtonStyle {
             .glassEffect(in: Circle())
             .scaleEffect(configuration.isPressed ? 0.94 : 1.0)
             .animation(.spring(response: 0.25, dampingFraction: 0.6), value: configuration.isPressed)
+    }
+}
+
+struct GlassPillButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .glassEffect(in: Capsule())
+            .shadow(color: .black.opacity(0.15), radius: 8, x: 0, y: 4)
+            .scaleEffect(configuration.isPressed ? 0.92 : 1.0)
+            .animation(.spring(response: 0.25, dampingFraction: 0.6), value: configuration.isPressed)
+            // Removes default semi-transparent fading
+            .opacity(1.0) 
     }
 }
 
