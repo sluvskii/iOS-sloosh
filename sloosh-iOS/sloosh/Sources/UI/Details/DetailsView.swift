@@ -67,6 +67,13 @@ struct RemoteLogoView: View {
     }
 }
 
+struct ScrollOffsetPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
 struct DetailsView: View {
     let movieId: String
     let navigationTransitionID: String?
@@ -92,7 +99,17 @@ struct DetailsView: View {
     @State private var playerSubtitles: [PlaybackSubtitle] = []
     @State private var playerQuality: VideoQualityPreference? = nil
     @State private var playerSeriesResult: AllohaApiResult?
+    @State private var scrollOffset: CGFloat = 0
     @State private var favoriteBounce = false
+    
+    // Large logo starts fading out at -350, fully hidden at -400
+    private var largeLogoOpacity: Double {
+        let minOffset: CGFloat = -350
+        let maxOffset: CGFloat = -400
+        if scrollOffset > minOffset { return 1 }
+        if scrollOffset < maxOffset { return 0 }
+        return 1 - Double((scrollOffset - minOffset) / (maxOffset - minOffset))
+    }
     @State private var movieToDelete: DownloadItem? = nil
     @State private var showDeleteMovieAlert = false
 
@@ -158,12 +175,15 @@ struct DetailsView: View {
                 in: navigationTransitionNamespace
             )
             .environment(\.colorScheme, .dark)
-            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbar(.hidden, for: .navigationBar)
             .ignoresSafeArea(edges: .top)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar(id: "details") {
-                ToolbarItem(id: "favorite", placement: .topBarTrailing) {
-                    Button {
+            .overlay(alignment: .top) {
+                DetailsStickyHeaderView(
+                    details: viewModel.details,
+                    scrollOffset: scrollOffset,
+                    isFavorite: viewModel.isFavorite,
+                    favoriteBounce: $favoriteBounce,
+                    onToggleFavorite: {
                         let generator = UIImpactFeedbackGenerator(style: .light)
                         generator.prepare()
                         generator.impactOccurred()
@@ -171,14 +191,8 @@ struct DetailsView: View {
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.5, blendDuration: 0.5)) {
                             viewModel.toggleFavorite()
                         }
-                    } label: {
-                        Image(systemName: viewModel.isFavorite ? "heart.fill" : "heart")
-                            .foregroundStyle(.white)
-                            .symbolEffect(.bounce, value: favoriteBounce)
                     }
-                    .disabled(viewModel.details == nil)
-                    .accessibilityLabel(viewModel.isFavorite ? "Убрать из избранного" : "Добавить в избранное")
-                }
+                )
             }
             .task {
                 await viewModel.loadDetails(id: movieId)
@@ -487,6 +501,9 @@ struct DetailsView: View {
                         let height = isScrollingDown ? baseHeight + minY : baseHeight
                         let offset = isScrollingDown ? -minY : 0
 
+                        Color.clear
+                            .preference(key: ScrollOffsetPreferenceKey.self, value: minY)
+
                         RemoteBackdropView(
                             url: URL(string: details.displayBackdropUrl ?? ""),
                             fallbackUrl: URL(string: details.displayPosterUrl ?? ""),
@@ -503,6 +520,7 @@ struct DetailsView: View {
                             fallbackTitle: details.title ?? details.originalTitle ?? "Без названия",
                             alignment: .center
                         )
+                        .opacity(largeLogoOpacity)
                         .padding(.bottom, 8)
 
                         if let originalTitle = details.originalTitle, !originalTitle.isEmpty, originalTitle != details.title {
@@ -551,6 +569,9 @@ struct DetailsView: View {
                 effectiveBackgroundColor
             }
         }
+        .onPreferenceChange(ScrollOffsetPreferenceKey.self) { value in
+            scrollOffset = value
+        }
         .refreshable {
             await viewModel.loadDetails(id: movieId, force: true)
         }
@@ -572,6 +593,9 @@ struct DetailsView: View {
                             let height = isScrollingDown ? baseHeight + minY : baseHeight
                             let offset = isScrollingDown ? -minY : 0
 
+                            Color.clear
+                                .preference(key: ScrollOffsetPreferenceKey.self, value: minY)
+
                             RemoteBackdropView(
                                 url: URL(string: details.displayBackdropUrl ?? ""),
                                 fallbackUrl: URL(string: details.displayPosterUrl ?? ""),
@@ -589,6 +613,7 @@ struct DetailsView: View {
                                     fallbackTitle: details.title ?? details.originalTitle ?? "Без названия",
                                     alignment: .center
                                 )
+                                .opacity(largeLogoOpacity)
                                 .padding(.bottom, 8)
 
                                 if let originalTitle = details.originalTitle, !originalTitle.isEmpty, originalTitle != details.title {
@@ -638,6 +663,9 @@ struct DetailsView: View {
                 } else {
                     effectiveBackgroundColor
                 }
+            }
+            .onPreferenceChange(ScrollOffsetPreferenceKey.self) { value in
+                scrollOffset = value
             }
             .refreshable {
                 await viewModel.loadDetails(id: movieId, force: true)
