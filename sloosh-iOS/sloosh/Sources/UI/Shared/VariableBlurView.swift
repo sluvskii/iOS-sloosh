@@ -8,18 +8,20 @@ import QuartzCore
 public struct VariableBlurView: View {
     public var maxBlurRadius: CGFloat = 2
     public var direction: VariableBlurRepresentable.BlurDirection = .blurredTopClearBottom
-    public var tintColor: Color = Color(UIColor.systemBackground)
-    public var tintOpacity: Double = 1.0
+    public var tintColor: Color = Color.clear
+    public var tintOpacity: Double = 0.0
+    public var style: UIBlurEffect.Style = .systemMaterial
     
-    public init(maxBlurRadius: CGFloat = 2, direction: VariableBlurRepresentable.BlurDirection = .blurredTopClearBottom, tintColor: Color = Color(UIColor.systemBackground), tintOpacity: Double = 1.0) {
+    public init(maxBlurRadius: CGFloat = 2, direction: VariableBlurRepresentable.BlurDirection = .blurredTopClearBottom, tintColor: Color = Color.clear, tintOpacity: Double = 0.0, style: UIBlurEffect.Style = .systemMaterial) {
         self.maxBlurRadius = maxBlurRadius
         self.direction = direction
         self.tintColor = tintColor
         self.tintOpacity = tintOpacity
+        self.style = style
     }
     
     public var body: some View {
-        VariableBlurRepresentable(maxBlurRadius: maxBlurRadius, direction: direction)
+        VariableBlurRepresentable(maxBlurRadius: maxBlurRadius, direction: direction, style: style)
             .overlay(
                 LinearGradient(
                     colors: {
@@ -51,6 +53,7 @@ public struct VariableBlurView: View {
 public struct VariableBlurRepresentable: UIViewRepresentable {
     public var maxBlurRadius: CGFloat = 2
     public var direction: BlurDirection = .blurredTopClearBottom
+    public var style: UIBlurEffect.Style = .systemMaterial
     
     public enum BlurDirection {
         case blurredTopClearBottom
@@ -59,24 +62,33 @@ public struct VariableBlurRepresentable: UIViewRepresentable {
         case blurredTrailingClearLeading
     }
     
-    public init(maxBlurRadius: CGFloat = 2, direction: BlurDirection = .blurredTopClearBottom) {
+    public init(maxBlurRadius: CGFloat = 2, direction: BlurDirection = .blurredTopClearBottom, style: UIBlurEffect.Style = .systemMaterial) {
         self.maxBlurRadius = maxBlurRadius
         self.direction = direction
+        self.style = style
     }
 
     public func makeUIView(context: Context) -> VariableBlurUIView {
-        return VariableBlurUIView(maxBlurRadius: maxBlurRadius, direction: direction)
+        return VariableBlurUIView(maxBlurRadius: maxBlurRadius, direction: direction, style: style)
     }
 
     public func updateUIView(_ uiView: VariableBlurUIView, context: Context) {
-        if uiView.maxBlurRadius != maxBlurRadius || uiView.direction != direction {
+        if uiView.maxBlurRadius != maxBlurRadius || uiView.direction != direction || uiView.style != style {
             uiView.maxBlurRadius = maxBlurRadius
             uiView.direction = direction
+            uiView.style = style
         }
     }
 }
 
 public final class VariableBlurUIView: UIVisualEffectView {
+    public var style: UIBlurEffect.Style {
+        didSet {
+            self.effect = UIBlurEffect(style: style)
+            resetEffect()
+        }
+    }
+    
     public var maxBlurRadius: CGFloat {
         didSet {
             resetEffect()
@@ -89,10 +101,11 @@ public final class VariableBlurUIView: UIVisualEffectView {
         }
     }
     
-    public init(maxBlurRadius: CGFloat = 2, direction: VariableBlurRepresentable.BlurDirection = .blurredTopClearBottom) {
+    public init(maxBlurRadius: CGFloat = 2, direction: VariableBlurRepresentable.BlurDirection = .blurredTopClearBottom, style: UIBlurEffect.Style = .systemMaterial) {
         self.maxBlurRadius = maxBlurRadius
         self.direction = direction
-        super.init(effect: UIBlurEffect(style: .regular))
+        self.style = style
+        super.init(effect: UIBlurEffect(style: style))
         
         if self.subviews.indices.contains(1) {
             let tintOverlayView = subviews[1]

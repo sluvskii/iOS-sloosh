@@ -181,7 +181,7 @@ struct DetailsView: View {
                             dismiss()
                         } label: {
                             Image(systemName: "chevron.left")
-                                .font(.system(size: 22, weight: .semibold))
+                                .font(.system(size: 22, weight: .medium))
                                 .foregroundStyle(.white)
                                 .frame(width: 44, height: 44)
                                 .glassEffect(.regular.interactive(), in: .circle)
@@ -200,7 +200,7 @@ struct DetailsView: View {
                             }
                         } label: {
                             Image(systemName: viewModel.isFavorite ? "heart.fill" : "heart")
-                                .font(.system(size: 22, weight: .semibold))
+                                .font(.system(size: 22, weight: .medium))
                                 .foregroundStyle(.white)
                                 .symbolEffect(.bounce, value: favoriteBounce)
                                 .frame(width: 44, height: 44)
@@ -213,7 +213,7 @@ struct DetailsView: View {
                 .padding(.horizontal, 16)
                 .padding(.bottom, 8)
                 .background(
-                    VariableBlurView(tintOpacity: 0.75)
+                    VariableBlurView(tintOpacity: 0.0, style: .systemMaterialDark)
                         .padding(.bottom, -60)
                         .ignoresSafeArea(edges: .top)
                         .opacity(isLogoAtTop ? 1.0 : 0.0)
@@ -561,7 +561,7 @@ struct DetailsView: View {
                             GeometryReader { geo in
                                 Color.clear
                                     .onChange(of: geo.frame(in: .global).minY) { _, minY in
-                                        let isAtTop = minY < 60
+                                        let isAtTop = minY < 20
                                         if isLogoAtTop != isAtTop {
                                             withAnimation(.easeInOut(duration: 0.3)) {
                                                 isLogoAtTop = isAtTop
@@ -569,7 +569,7 @@ struct DetailsView: View {
                                         }
                                     }
                                     .onAppear {
-                                        isLogoAtTop = geo.frame(in: .global).minY < 60
+                                        isLogoAtTop = geo.frame(in: .global).minY < 20
                                     }
                             }
                         )
@@ -675,7 +675,7 @@ struct DetailsView: View {
                                     GeometryReader { geo in
                                         Color.clear
                                             .onChange(of: geo.frame(in: .global).minY) { _, minY in
-                                                let isAtTop = minY < 60
+                                                let isAtTop = minY < 20
                                                 if isLogoAtTop != isAtTop {
                                                     withAnimation(.easeInOut(duration: 0.3)) {
                                                         isLogoAtTop = isAtTop
@@ -683,7 +683,7 @@ struct DetailsView: View {
                                                 }
                                             }
                                             .onAppear {
-                                                isLogoAtTop = geo.frame(in: .global).minY < 60
+                                                isLogoAtTop = geo.frame(in: .global).minY < 20
                                             }
                                     }
                                 )
