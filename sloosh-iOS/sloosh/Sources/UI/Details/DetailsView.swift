@@ -151,24 +151,19 @@ struct DetailsView: View {
     }
     
     var body: some View {
-        ZStack(alignment: .top) {
+        ZStack {
             detailsContent
-            // Custom floating glass navigation buttons — aligned to native nav bar position
-            GeometryReader { geo in
-                HStack {
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 17, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .frame(width: 44, height: 44)
-                    }
-                    .glassEffect(in: Circle())
-                    .accessibilityLabel("Назад")
-
-                    Spacer()
-
+        }
+            .optionalMovieNavigationTransition(
+                sourceID: navigationTransitionID,
+                in: navigationTransitionNamespace
+            )
+            .environment(\.colorScheme, .dark)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .navigationBarTitleDisplayMode(.inline)
+            .tint(.white)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         let generator = UIImpactFeedbackGenerator(style: .light)
                         generator.prepare()
@@ -179,27 +174,13 @@ struct DetailsView: View {
                         }
                     } label: {
                         Image(systemName: viewModel.isFavorite ? "heart.fill" : "heart")
-                            .font(.system(size: 17, weight: .semibold))
                             .foregroundStyle(viewModel.isFavorite ? Color.slooshAccent : .white)
                             .symbolEffect(.bounce, value: favoriteBounce)
-                            .frame(width: 44, height: 44)
                     }
-                    .glassEffect(in: Circle())
                     .disabled(viewModel.details == nil)
                     .accessibilityLabel(viewModel.isFavorite ? "Убрать из избранного" : "Добавить в избранное")
                 }
-                // Use safe area top inset so buttons always land exactly where the native nav bar buttons would
-                .padding(.horizontal, 8)
-                .padding(.top, geo.safeAreaInsets.top + 8)
             }
-            .ignoresSafeArea()
-        }
-            .optionalMovieNavigationTransition(
-                sourceID: navigationTransitionID,
-                in: navigationTransitionNamespace
-            )
-            .environment(\.colorScheme, .dark)
-            .navigationBarHidden(true)
             .ignoresSafeArea(edges: .top)
             .task {
                 await viewModel.loadDetails(id: movieId)
