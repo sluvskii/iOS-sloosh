@@ -13,30 +13,46 @@ class MoviesRepository: ObservableObject {
     // MARK: - Details cache (memory + disk, 24h TTL)
     private var detailsMemory: [String: MediaDetailsDto] = [:]
     private let detailsDiskCache = MediaDetailsDiskCache()
+    private let listDiskCache = MediaListDiskCache()
 
     // MARK: - Lists
 
     func getPopularMovies(page: Int = 1) async throws -> [MediaDto] {
         if let cached = popularCache[page] { return cached }
+        if let diskCached = await listDiskCache.load(key: "popular_\(page)") {
+            popularCache[page] = diskCached
+            return diskCached
+        }
         let response = try await MoviesApi.shared.getPopularMovies(page: page)
         let results = response.data?.results ?? []
         popularCache[page] = results
+        listDiskCache.save(results, key: "popular_\(page)")
         return results
     }
 
     func getTopMovies(page: Int = 1) async throws -> [MediaDto] {
         if let cached = topMoviesCache[page] { return cached }
+        if let diskCached = await listDiskCache.load(key: "topMovies_\(page)") {
+            topMoviesCache[page] = diskCached
+            return diskCached
+        }
         let response = try await MoviesApi.shared.getTopMovies(page: page)
         let results = response.data?.results ?? []
         topMoviesCache[page] = results
+        listDiskCache.save(results, key: "topMovies_\(page)")
         return results
     }
 
     func getTopTv(page: Int = 1) async throws -> [MediaDto] {
         if let cached = topTvCache[page] { return cached }
+        if let diskCached = await listDiskCache.load(key: "topTv_\(page)") {
+            topTvCache[page] = diskCached
+            return diskCached
+        }
         let response = try await MoviesApi.shared.getTopTv(page: page)
         let results = response.data?.results ?? []
         topTvCache[page] = results
+        listDiskCache.save(results, key: "topTv_\(page)")
         return results
     }
 
@@ -161,6 +177,53 @@ final class MediaDetailsDiskCache {
     func save(_ details: MediaDetailsDto, id: String) {
         guard let url = fileURL(for: id) else { return }
         let entry = Entry(savedAt: Date(), details: details)
+        queue.async {
+            guard let data = try? JSONEncoder().encode(entry) else { return }
+            try? data.write(to: url, options: .atomic)
+        }
+    }
+}
+
+// MARK: - MediaListDiskCache
+
+/// Кэширует списки (popular, top) на диске с TTL 4 часа.
+final class MediaListDiskCache {
+    private let ttl: TimeInterval = 4 * 60 * 60
+    private let queue = DispatchQueue(label: "ru.sloosh.medialist.diskcache", qos: .utility)
+
+    private struct Entry: Codable {
+        let savedAt: Date
+        let items: [MediaDto]
+    }
+
+    private var cacheDir: URL? {
+        guard let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else { return nil }
+        let dir = base.appendingPathComponent("sloosh.medialist", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
+
+    private func fileURL(for key: String) -> URL? {
+        return cacheDir?.appendingPathComponent("\(key).json")
+    }
+
+    func load(key: String) async -> [MediaDto]? {
+        return await Task.detached(priority: .userInitiated) { [weak self] () -> [MediaDto]? in
+            guard let self = self else { return nil }
+            guard let url = self.fileURL(for: key) else { return nil }
+            guard let data = try? Data(contentsOf: url) else { return nil }
+            guard let entry = try? JSONDecoder().decode(Entry.self, from: data) else { return nil }
+            guard Date().timeIntervalSince(entry.savedAt) < self.ttl else {
+                self.queue.async { try? FileManager.default.removeItem(at: url) }
+                return nil
+            }
+            return entry.items
+        }.value
+    }
+
+    func save(_ items: [MediaDto], key: String) {
+        guard let url = fileURL(for: key) else { return }
+        let entry = Entry(savedAt: Date(), items: items)
         queue.async {
             guard let data = try? JSONEncoder().encode(entry) else { return }
             try? data.write(to: url, options: .atomic)

@@ -1,21 +1,19 @@
 import SwiftUI
 
 struct ShimmerModifier: ViewModifier {
-    @State private var isInitialState = true
+    let startDate = Date()
 
     func body(content: Content) -> some View {
-        content
-            .mask(
-                LinearGradient(
-                    gradient: Gradient(colors: [.black.opacity(0.3), .black, .black.opacity(0.3)]),
-                    startPoint: (isInitialState ? .init(x: -0.3, y: -0.3) : .init(x: 1, y: 1)),
-                    endPoint: (isInitialState ? .init(x: 0, y: 0) : .init(x: 1.3, y: 1.3))
+        TimelineView(.animation) { timeline in
+            content.visualEffect { content, proxy in
+                content.colorEffect(
+                    ShaderLibrary.shimmerEffect(
+                        .float(timeline.date.timeIntervalSince(startDate)),
+                        .float2(proxy.size)
+                    )
                 )
-            )
-            .animation(.linear(duration: 1.5).delay(0.25).repeatForever(autoreverses: false), value: isInitialState)
-            .onAppear {
-                isInitialState = false
             }
+        }
     }
 }
 

@@ -30,7 +30,6 @@ final class AllohaRuntimeResolver: NSObject, WKNavigationDelegate, WKScriptMessa
     }
 
     private var webView: WKWebView?
-    private var hostView: UIView?
     private var timeoutTask: DispatchWorkItem?
     private var fallbackTask: DispatchWorkItem?
     private var didFinish = false
@@ -73,44 +72,14 @@ final class AllohaRuntimeResolver: NSObject, WKNavigationDelegate, WKScriptMessa
 
     @MainActor
     private func start(with url: URL) {
-        let userContentController = WKUserContentController()
-        userContentController.add(self, name: "allohaResolver")
-        userContentController.addUserScript(
-            WKUserScript(
-                source: Self.bootstrapScript,
-                injectionTime: .atDocumentEnd,
-                forMainFrameOnly: false
-            )
-        )
-
-        let configuration = WKWebViewConfiguration()
-        configuration.allowsInlineMediaPlayback = true
-        configuration.mediaTypesRequiringUserActionForPlayback = []
-        configuration.defaultWebpagePreferences.allowsContentJavaScript = true
-        configuration.userContentController = userContentController
-
-        let webView = WKWebView(frame: .init(x: -1000, y: -1000, width: 1, height: 1), configuration: configuration)
-        webView.navigationDelegate = self
-        webView.customUserAgent = Self.nextUserAgent()
-        webView.isHidden = true
-        webView.isOpaque = false
-        webView.backgroundColor = .clear
-        self.webView = webView
-
-        if let rootView = UIApplication.shared.connectedScenes
-            .compactMap({ ($0 as? UIWindowScene)?.windows.first(where: \.isKeyWindow) })
-            .first?
-            .rootViewController?
-            .view {
-            let host = UIView(frame: .zero)
-            host.isHidden = true
-            host.addSubview(webView)
-            rootView.addSubview(host)
-            self.hostView = host
-        }
+        let provider = SharedWebViewProvider.shared
+        provider.prepare(for: self)
+        
+        self.webView = provider.webView
+        self.webView?.customUserAgent = Self.nextUserAgent()
 
         startTimeout()
-        webView.loadHTMLString(Self.wrapperHTML(for: url), baseURL: url.deletingLastPathComponent())
+        self.webView?.loadHTMLString(Self.wrapperHTML(for: url), baseURL: url.deletingLastPathComponent())
     }
 
     private func startTimeout() {
@@ -336,13 +305,8 @@ final class AllohaRuntimeResolver: NSObject, WKNavigationDelegate, WKScriptMessa
         timeoutTask = nil
         fallbackTask = nil
         Task { @MainActor in
-            self.webView?.stopLoading()
-            self.webView?.navigationDelegate = nil
-            self.webView?.configuration.userContentController.removeScriptMessageHandler(forName: "allohaResolver")
-            self.webView?.removeFromSuperview()
-            self.hostView?.removeFromSuperview()
+            SharedWebViewProvider.shared.reset()
             self.webView = nil
-            self.hostView = nil
         }
     }
 

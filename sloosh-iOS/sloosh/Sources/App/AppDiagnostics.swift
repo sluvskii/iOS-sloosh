@@ -9,6 +9,7 @@ class AppDiagnostics: ObservableObject {
     
     private let logsFileURL: URL
     private let crashFileURL: URL
+    private let ioQueue = DispatchQueue(label: "ru.sloosh.appdiagnostics.io", qos: .utility)
     
     private init() {
         let paths = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)
@@ -30,15 +31,17 @@ class AppDiagnostics: ObservableObject {
         print(logMessage, terminator: "")
         #endif
         
-        if let data = logMessage.data(using: .utf8) {
-            if FileManager.default.fileExists(atPath: logsFileURL.path) {
-                if let fileHandle = try? FileHandle(forWritingTo: logsFileURL) {
+        ioQueue.async { [weak self] in
+            guard let self = self else { return }
+            guard let data = logMessage.data(using: .utf8) else { return }
+            if FileManager.default.fileExists(atPath: self.logsFileURL.path) {
+                if let fileHandle = try? FileHandle(forWritingTo: self.logsFileURL) {
                     fileHandle.seekToEndOfFile()
                     fileHandle.write(data)
                     fileHandle.closeFile()
                 }
             } else {
-                try? data.write(to: logsFileURL, options: .atomic)
+                try? data.write(to: self.logsFileURL, options: .atomic)
             }
         }
     }
@@ -108,14 +111,20 @@ class AppDiagnostics: ObservableObject {
     
     /// Очистить файл краша после отправки или отмены
     func clearCrashLog() {
-        try? FileManager.default.removeItem(at: crashFileURL)
-        DispatchQueue.main.async {
-            self.hasCrashLog = false
+        ioQueue.async { [weak self] in
+            guard let self = self else { return }
+            try? FileManager.default.removeItem(at: self.crashFileURL)
+            DispatchQueue.main.async {
+                self.hasCrashLog = false
+            }
         }
     }
     
     /// Очистить обычные логи (если разрослись)
     func clearNormalLogs() {
-        try? FileManager.default.removeItem(at: logsFileURL)
+        ioQueue.async { [weak self] in
+            guard let self = self else { return }
+            try? FileManager.default.removeItem(at: self.logsFileURL)
+        }
     }
 }

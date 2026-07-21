@@ -70,6 +70,7 @@ struct slooshApp: App {
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .modelContainer(AppDatabase.shared.container)
                 .preferredColorScheme(appTheme.colorScheme)
                 .alert("Приложение было закрыто из-за ошибки", isPresented: $diagnostics.hasCrashLog) {
                     Button("Отправить логи") {
