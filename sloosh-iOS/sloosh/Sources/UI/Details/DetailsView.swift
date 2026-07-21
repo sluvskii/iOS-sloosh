@@ -173,7 +173,6 @@ struct DetailsView: View {
                         )
                         .frame(height: 32)
                         .padding(.horizontal, 72)
-                        .offset(y: 4)
                         .transition(.blurFadeScale)
                     }
                     
