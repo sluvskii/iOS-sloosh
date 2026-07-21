@@ -2039,8 +2039,8 @@ struct GlassDownloadButtonStyle: ButtonStyle {
             .glassEffect(in: Circle())
             .scaleEffect(configuration.isPressed ? 0.94 : 1.0)
             .animation(.spring(response: 0.25, dampingFraction: 0.6), value: configuration.isPressed)
-
-
+    }
+}
 struct BlurFadeScaleModifier: ViewModifier {
     let isBlurry: Bool
     func body(content: Content) -> some View {
