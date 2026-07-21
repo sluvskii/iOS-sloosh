@@ -173,7 +173,7 @@ struct DetailsView: View {
             .ignoresSafeArea(edges: .top)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(id: "details") {
-                ToolbarItem(placement: .principal) {
+                ToolbarItem(id: "logo", placement: .principal) {
                     if let details = viewModel.details, isLogoAtTop {
                         RemoteLogoView(
                             url: URL(string: details.displayLogoUrl ?? ""),
