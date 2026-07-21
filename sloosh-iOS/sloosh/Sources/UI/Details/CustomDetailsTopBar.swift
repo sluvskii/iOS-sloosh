@@ -46,7 +46,7 @@ struct CustomDetailsTopBar: View {
                 
                 // Logo / Title Transition
                 if showLogo {
-                    Group {
+                    ZStack {
                         if let logoUrl = logoUrl, !logoUrl.isEmpty {
                             AsyncCachedImage(url: URL(string: logoUrl)) { phase in
                                 switch phase {
