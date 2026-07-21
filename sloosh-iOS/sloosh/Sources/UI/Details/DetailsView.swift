@@ -65,15 +65,6 @@ struct RemoteLogoView: View {
                 .frame(maxWidth: .infinity, alignment: alignment)
         }
     }
-}
-
-struct ScrollOffsetPreferenceKey: PreferenceKey {
-    static var defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
-    }
-}
-
 struct DetailsView: View {
     let movieId: String
     let navigationTransitionID: String?
