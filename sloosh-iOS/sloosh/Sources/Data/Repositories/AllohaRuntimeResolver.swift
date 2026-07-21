@@ -334,7 +334,7 @@ final class AllohaRuntimeResolver: NSObject, WKNavigationDelegate, WKScriptMessa
         """
     }
 
-    private static let bootstrapScript = """
+    fileprivate static let bootstrapScript = """
     (function() {
       if (window.__neoAllohaResolverInstalled) return;
       window.__neoAllohaResolverInstalled = true;
@@ -494,6 +494,7 @@ final class AllohaRuntimeResolver: NSObject, WKNavigationDelegate, WKScriptMessa
 final class SharedWebViewProvider {
     static let shared = SharedWebViewProvider()
     var webView: WKWebView?
+    private var hostView: UIView?
     
     private init() {
         NotificationCenter.default.addObserver(
@@ -509,7 +510,10 @@ final class SharedWebViewProvider {
     
     private func destroyWebView() {
         reset()
+        webView?.removeFromSuperview()
+        hostView?.removeFromSuperview()
         webView = nil
+        hostView = nil
     }
     
     func prepare(for delegate: WKNavigationDelegate & WKScriptMessageHandler) {
@@ -518,7 +522,6 @@ final class SharedWebViewProvider {
             let uc = WKUserContentController()
             config.userContentController = uc
             
-            // Basic config for headless playback checks
             config.allowsInlineMediaPlayback = true
             config.mediaTypesRequiringUserActionForPlayback = []
             
@@ -526,23 +529,44 @@ final class SharedWebViewProvider {
             prefs.allowsContentJavaScript = true
             config.defaultWebpagePreferences = prefs
             
-            webView = WKWebView(frame: .zero, configuration: config)
+            let newWebView = WKWebView(frame: .init(x: -1000, y: -1000, width: 1, height: 1), configuration: config)
+            newWebView.isHidden = true
+            newWebView.isOpaque = false
+            newWebView.backgroundColor = .clear
+            self.webView = newWebView
+            
+            if let rootView = UIApplication.shared.connectedScenes
+                .compactMap({ ($0 as? UIWindowScene)?.windows.first(where: \.isKeyWindow) })
+                .first?
+                .rootViewController?
+                .view {
+                let host = UIView(frame: .zero)
+                host.isHidden = true
+                host.addSubview(newWebView)
+                rootView.addSubview(host)
+                self.hostView = host
+            }
         }
         
         if let uc = webView?.configuration.userContentController {
             uc.removeAllUserScripts()
-            uc.removeScriptMessageHandler(forName: "allohaInterop")
-            uc.removeScriptMessageHandler(forName: "allohaHeaders")
-            uc.add(delegate, name: "allohaInterop")
-            uc.add(delegate, name: "allohaHeaders")
+            uc.removeScriptMessageHandler(forName: "allohaResolver")
+            
+            uc.addUserScript(
+                WKUserScript(
+                    source: AllohaRuntimeResolver.bootstrapScript,
+                    injectionTime: .atDocumentEnd,
+                    forMainFrameOnly: false
+                )
+            )
+            uc.add(delegate, name: "allohaResolver")
         }
         webView?.navigationDelegate = delegate
     }
     
     func reset() {
         if let uc = webView?.configuration.userContentController {
-            uc.removeScriptMessageHandler(forName: "allohaInterop")
-            uc.removeScriptMessageHandler(forName: "allohaHeaders")
+            uc.removeScriptMessageHandler(forName: "allohaResolver")
         }
         webView?.navigationDelegate = nil
         webView?.loadHTMLString("", baseURL: nil)
