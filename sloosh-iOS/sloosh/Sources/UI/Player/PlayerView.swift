@@ -627,8 +627,6 @@ class PlayerViewModel: ObservableObject {
             }
         }
 
-        let isSerial = seriesResult?.isSerial == true
-
         // Ищем новый iframeUrl для нужной озвучки
         var targetIframeUrl: String?
         
