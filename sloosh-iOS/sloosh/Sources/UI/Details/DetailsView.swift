@@ -147,6 +147,7 @@ struct DetailsView: View {
                 self.dominantBackdropColor = backdrop
                 self.dominantPosterColor = poster
             }
+        }
     }
     
     @State private var isLogoAtTop: Bool = false
