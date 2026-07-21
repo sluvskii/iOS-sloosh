@@ -152,6 +152,7 @@ struct DetailsView: View {
     
     @Namespace private var logoNamespace
     @State private var isLogoAtTop: Bool = false
+    @State private var showTopLogo: Bool = false
     
     var body: some View {
         ZStack {
@@ -166,15 +167,15 @@ struct DetailsView: View {
             .toolbar(.hidden, for: .navigationBar)
             .safeAreaInset(edge: .top, spacing: 0) {
                 ZStack {
-                    if let details = viewModel.details, isLogoAtTop {
+                    if let details = viewModel.details {
                         RemoteLogoView(
                             url: URL(string: details.displayLogoUrl ?? ""),
                             fallbackTitle: details.title ?? details.originalTitle ?? "Без названия",
                             alignment: .center
                         )
                         .frame(height: 32)
-                        .matchedGeometryEffect(id: "logo", in: logoNamespace)
-                        .transition(.identity)
+                        .matchedGeometryEffect(id: "logo", in: logoNamespace, isSource: isLogoAtTop)
+                        .opacity(showTopLogo ? 1.0 : 0.0)
                     }
                     
                     HStack {
@@ -548,15 +549,13 @@ struct DetailsView: View {
                             )
                             .opacity(0)
                             .allowsHitTesting(false)
-                            if !isLogoAtTop {
-                                RemoteLogoView(
-                                    url: URL(string: details.displayLogoUrl ?? ""),
-                                    fallbackTitle: details.title ?? details.originalTitle ?? "Без названия",
-                                    alignment: .center
-                                )
-                                .matchedGeometryEffect(id: "logo", in: logoNamespace)
-                                .transition(.identity)
-                            }
+                            RemoteLogoView(
+                                url: URL(string: details.displayLogoUrl ?? ""),
+                                fallbackTitle: details.title ?? details.originalTitle ?? "Без названия",
+                                alignment: .center
+                            )
+                            .matchedGeometryEffect(id: "logo", in: logoNamespace, isSource: !isLogoAtTop)
+                            .opacity(showTopLogo ? 0.0 : 1.0)
                         }
                         .padding(.bottom, 8)
                         .background(
@@ -565,13 +564,16 @@ struct DetailsView: View {
                                     .onChange(of: geo.frame(in: .global).minY) { _, minY in
                                         let isAtTop = minY < 10
                                         if isLogoAtTop != isAtTop {
+                                            showTopLogo = isAtTop
                                             withAnimation(.spring(response: 0.4, dampingFraction: 0.95)) {
                                                 isLogoAtTop = isAtTop
                                             }
                                         }
                                     }
                                     .onAppear {
-                                        isLogoAtTop = geo.frame(in: .global).minY < 10
+                                        let isAtTop = geo.frame(in: .global).minY < 10
+                                        showTopLogo = isAtTop
+                                        isLogoAtTop = isAtTop
                                     }
                             }
                         )
@@ -663,15 +665,13 @@ struct DetailsView: View {
                                     )
                                     .opacity(0)
                                     .allowsHitTesting(false)
-                                    if !isLogoAtTop {
-                                        RemoteLogoView(
-                                            url: URL(string: details.displayLogoUrl ?? ""),
-                                            fallbackTitle: details.title ?? details.originalTitle ?? "Без названия",
-                                            alignment: .center
-                                        )
-                                        .matchedGeometryEffect(id: "logo", in: logoNamespace)
-                                        .transition(.identity)
-                                    }
+                                    RemoteLogoView(
+                                        url: URL(string: details.displayLogoUrl ?? ""),
+                                        fallbackTitle: details.title ?? details.originalTitle ?? "Без названия",
+                                        alignment: .center
+                                    )
+                                    .matchedGeometryEffect(id: "logo", in: logoNamespace, isSource: !isLogoAtTop)
+                                    .opacity(showTopLogo ? 0.0 : 1.0)
                                 }
                                 .padding(.bottom, 8)
                                 .background(
@@ -680,13 +680,16 @@ struct DetailsView: View {
                                             .onChange(of: geo.frame(in: .global).minY) { _, minY in
                                                 let isAtTop = minY < 10
                                                 if isLogoAtTop != isAtTop {
+                                                    showTopLogo = isAtTop
                                                     withAnimation(.spring(response: 0.4, dampingFraction: 0.95)) {
                                                         isLogoAtTop = isAtTop
                                                     }
                                                 }
                                             }
                                             .onAppear {
-                                                isLogoAtTop = geo.frame(in: .global).minY < 10
+                                                let isAtTop = geo.frame(in: .global).minY < 10
+                                                showTopLogo = isAtTop
+                                                isLogoAtTop = isAtTop
                                             }
                                     }
                                 )
