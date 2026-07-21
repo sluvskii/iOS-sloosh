@@ -150,9 +150,9 @@ struct DetailsView: View {
         }
     }
     
-    @Namespace private var logoNamespace
     @State private var isLogoAtTop: Bool = false
-    @State private var showTopLogo: Bool = false
+    @State private var logoGlobalY: CGFloat = 1000
+    @State private var logoHeight: CGFloat = 100
     
     var body: some View {
         ZStack {
@@ -167,17 +167,6 @@ struct DetailsView: View {
             .toolbar(.hidden, for: .navigationBar)
             .safeAreaInset(edge: .top, spacing: 0) {
                 ZStack {
-                    if let details = viewModel.details {
-                        RemoteLogoView(
-                            url: URL(string: details.displayLogoUrl ?? ""),
-                            fallbackTitle: details.title ?? details.originalTitle ?? "Без названия",
-                            alignment: .center
-                        )
-                        .frame(height: 32)
-                        .matchedGeometryEffect(id: "logo", in: logoNamespace, isSource: isLogoAtTop)
-                        .opacity(showTopLogo ? 1.0 : 0.0)
-                    }
-                    
                     HStack {
                         Button {
                             dismiss()
@@ -222,6 +211,32 @@ struct DetailsView: View {
                         .animation(.easeInOut(duration: 0.25), value: isLogoAtTop)
                         .allowsHitTesting(false)
                 )
+            }
+            .overlay(alignment: .top) {
+                GeometryReader { overlayGeo in
+                    if let details = viewModel.details {
+                        let midY = logoGlobalY + (logoHeight / 2)
+                        // targetY is center of top bar: top safe area (approx 47) + 22 (half of 44pt button)
+                        let targetY: CGFloat = (UIApplication.shared.connectedScenes.first as? UIWindowScene)?.windows.first?.safeAreaInsets.top ?? 47.0 + 22.0
+                        let distanceToTarget = max(0, midY - targetY)
+                        
+                        let shrinkRange: CGFloat = 80
+                        let progress = min(1.0, max(0.0, 1.0 - (distanceToTarget / shrinkRange)))
+                        
+                        let validHeight = max(1, logoHeight)
+                        let targetScale: CGFloat = 32.0 / validHeight
+                        let currentScale = 1.0 - ((1.0 - targetScale) * progress)
+                        
+                        RemoteLogoView(
+                            url: URL(string: details.displayLogoUrl ?? ""),
+                            fallbackTitle: details.title ?? details.originalTitle ?? "Без названия",
+                            alignment: .center
+                        )
+                        .scaleEffect(currentScale, anchor: .center)
+                        .position(x: overlayGeo.size.width / 2, y: max(targetY, midY))
+                        .allowsHitTesting(false)
+                    }
+                }
             }
             .task {
                 await viewModel.loadDetails(id: movieId)
@@ -541,39 +556,30 @@ struct DetailsView: View {
                     .frame(height: baseHeight)
 
                     VStack(alignment: .center, spacing: 12) {
-                        ZStack {
-                            RemoteLogoView(
-                                url: URL(string: details.displayLogoUrl ?? ""),
-                                fallbackTitle: details.title ?? details.originalTitle ?? "Без названия",
-                                alignment: .center
-                            )
-                            .opacity(0)
-                            .allowsHitTesting(false)
-                            RemoteLogoView(
-                                url: URL(string: details.displayLogoUrl ?? ""),
-                                fallbackTitle: details.title ?? details.originalTitle ?? "Без названия",
-                                alignment: .center
-                            )
-                            .matchedGeometryEffect(id: "logo", in: logoNamespace, isSource: !isLogoAtTop)
-                            .opacity(showTopLogo ? 0.0 : 1.0)
-                        }
+                        RemoteLogoView(
+                            url: URL(string: details.displayLogoUrl ?? ""),
+                            fallbackTitle: details.title ?? details.originalTitle ?? "Без названия",
+                            alignment: .center
+                        )
+                        .opacity(0)
                         .padding(.bottom, 8)
                         .background(
                             GeometryReader { geo in
                                 Color.clear
                                     .onChange(of: geo.frame(in: .global).minY) { _, minY in
-                                        let isAtTop = minY < 10
+                                        logoGlobalY = minY
+                                        logoHeight = geo.size.height
+                                        let isAtTop = minY < 40
                                         if isLogoAtTop != isAtTop {
-                                            showTopLogo = isAtTop
-                                            withAnimation(.spring(response: 0.4, dampingFraction: 0.95)) {
+                                            withAnimation(.easeInOut(duration: 0.25)) {
                                                 isLogoAtTop = isAtTop
                                             }
                                         }
                                     }
                                     .onAppear {
-                                        let isAtTop = geo.frame(in: .global).minY < 10
-                                        showTopLogo = isAtTop
-                                        isLogoAtTop = isAtTop
+                                        logoGlobalY = geo.frame(in: .global).minY
+                                        logoHeight = geo.size.height
+                                        isLogoAtTop = logoGlobalY < 40
                                     }
                             }
                         )
@@ -657,39 +663,30 @@ struct DetailsView: View {
 
                         VStack(spacing: 0) {
                             VStack(alignment: .center, spacing: 12) {
-                                ZStack {
-                                    RemoteLogoView(
-                                        url: URL(string: details.displayLogoUrl ?? ""),
-                                        fallbackTitle: details.title ?? details.originalTitle ?? "Без названия",
-                                        alignment: .center
-                                    )
-                                    .opacity(0)
-                                    .allowsHitTesting(false)
-                                    RemoteLogoView(
-                                        url: URL(string: details.displayLogoUrl ?? ""),
-                                        fallbackTitle: details.title ?? details.originalTitle ?? "Без названия",
-                                        alignment: .center
-                                    )
-                                    .matchedGeometryEffect(id: "logo", in: logoNamespace, isSource: !isLogoAtTop)
-                                    .opacity(showTopLogo ? 0.0 : 1.0)
-                                }
+                                RemoteLogoView(
+                                    url: URL(string: details.displayLogoUrl ?? ""),
+                                    fallbackTitle: details.title ?? details.originalTitle ?? "Без названия",
+                                    alignment: .center
+                                )
+                                .opacity(0)
                                 .padding(.bottom, 8)
                                 .background(
                                     GeometryReader { geo in
                                         Color.clear
                                             .onChange(of: geo.frame(in: .global).minY) { _, minY in
-                                                let isAtTop = minY < 10
+                                                logoGlobalY = minY
+                                                logoHeight = geo.size.height
+                                                let isAtTop = minY < 40
                                                 if isLogoAtTop != isAtTop {
-                                                    showTopLogo = isAtTop
-                                                    withAnimation(.spring(response: 0.4, dampingFraction: 0.95)) {
+                                                    withAnimation(.easeInOut(duration: 0.25)) {
                                                         isLogoAtTop = isAtTop
                                                     }
                                                 }
                                             }
                                             .onAppear {
-                                                let isAtTop = geo.frame(in: .global).minY < 10
-                                                showTopLogo = isAtTop
-                                                isLogoAtTop = isAtTop
+                                                logoGlobalY = geo.frame(in: .global).minY
+                                                logoHeight = geo.size.height
+                                                isLogoAtTop = logoGlobalY < 40
                                             }
                                     }
                                 )
