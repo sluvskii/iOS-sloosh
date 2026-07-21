@@ -44,17 +44,16 @@ struct ChipButtonStyle: ButtonStyle {
 
 @available(iOS 16.0, *)
 struct FlowLayout: Layout {
-    var horizontalSpacing: CGFloat = 8
-    var verticalSpacing: CGFloat = 8
+    var spacing: CGFloat = 8
     
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let width = proposal.width ?? 300
-        let result = FlowResult(in: width, subviews: subviews, hSpacing: horizontalSpacing, vSpacing: verticalSpacing)
+        let result = FlowResult(in: width, subviews: subviews, spacing: spacing)
         return result.size
     }
     
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        let result = FlowResult(in: bounds.width, subviews: subviews, hSpacing: horizontalSpacing, vSpacing: verticalSpacing)
+        let result = FlowResult(in: bounds.width, subviews: subviews, spacing: spacing)
         for (index, subview) in subviews.enumerated() {
             let point = result.points[index]
             subview.place(at: CGPoint(x: point.x + bounds.minX, y: point.y + bounds.minY), proposal: .unspecified)
@@ -65,7 +64,7 @@ struct FlowLayout: Layout {
         var size: CGSize = .zero
         var points: [CGPoint] = []
         
-        init(in maxWidth: CGFloat, subviews: Layout.Subviews, hSpacing: CGFloat, vSpacing: CGFloat) {
+        init(in maxWidth: CGFloat, subviews: Layout.Subviews, spacing: CGFloat) {
             var currentPoint = CGPoint.zero
             var rowHeight: CGFloat = 0
             var points: [CGPoint] = []
@@ -75,12 +74,12 @@ struct FlowLayout: Layout {
                 
                 if currentPoint.x + size.width > maxWidth, currentPoint.x > 0 {
                     currentPoint.x = 0
-                    currentPoint.y += rowHeight + vSpacing
+                    currentPoint.y += rowHeight + spacing
                     rowHeight = 0
                 }
                 
                 points.append(currentPoint)
-                currentPoint.x += size.width + hSpacing
+                currentPoint.x += size.width + spacing
                 rowHeight = max(rowHeight, size.height)
             }
             
