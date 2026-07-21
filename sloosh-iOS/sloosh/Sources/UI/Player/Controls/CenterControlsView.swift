@@ -29,6 +29,7 @@ struct CenterControlsView: View {
                             .opacity(vm.hasPreviousEpisode ? 1.0 : 0.4)
                     }
                     .disabled(!vm.hasPreviousEpisode)
+                    .buttonStyle(NativeGlassButtonStyle())
                     .glassEffect(.regular.interactive(), in: .circle)
                     .glassEffectID("backward", in: glassNS)
                 }
@@ -54,6 +55,7 @@ struct CenterControlsView: View {
                     }
                     .frame(width: 72, height: 72)
                 }
+                .buttonStyle(NativeGlassButtonStyle())
                 .glassEffect(.regular.interactive(), in: .circle)
                 .glassEffectID("playPause", in: glassNS)
                 .animation(.spring(response: 0.3, dampingFraction: 0.7), value: vm.isPlaying)
@@ -74,6 +76,7 @@ struct CenterControlsView: View {
                             .opacity(vm.hasNextEpisode ? 1.0 : 0.4)
                     }
                     .disabled(!vm.hasNextEpisode)
+                    .buttonStyle(NativeGlassButtonStyle())
                     .glassEffect(.regular.interactive(), in: .circle)
                     .glassEffectID("forward", in: glassNS)
                 }
