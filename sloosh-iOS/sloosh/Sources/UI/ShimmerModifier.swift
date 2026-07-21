@@ -5,10 +5,11 @@ struct ShimmerModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         TimelineView(.animation) { timeline in
+            let date = timeline.date
             content.visualEffect { content, proxy in
                 content.colorEffect(
                     ShaderLibrary.shimmerEffect(
-                        .float(timeline.date.timeIntervalSince(startDate)),
+                        .float(date.timeIntervalSince(startDate)),
                         .float2(proxy.size)
                     )
                 )

@@ -44,7 +44,7 @@ class FavoritesRepository: ObservableObject {
     }
     
     private func reloadFromDb() {
-        let descriptor = FetchDescriptor<FavoriteModel>(sortBy: [SortDescriptor(\.addedAt, order: .reverse)])
+        let descriptor = FetchDescriptor<FavoriteModel>(sortBy: [SortDescriptor(\FavoriteModel.addedAt, order: .reverse)])
         let models = (try? context.fetch(descriptor)) ?? []
         
         self.favorites = models.map { model in

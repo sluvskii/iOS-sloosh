@@ -112,6 +112,7 @@ struct ContinueView: View {
     }
 }
 
+@MainActor
 private struct ContinueWatchingItem: Identifiable {
     let record: PlaybackProgressRecord
     let metadata: PlaybackMediaMetadata?
