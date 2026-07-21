@@ -147,10 +147,8 @@ struct DetailsView: View {
                 self.dominantBackdropColor = backdrop
                 self.dominantPosterColor = poster
             }
-        }
     }
     
-    @Namespace private var logoNamespace
     @State private var isLogoAtTop: Bool = false
     
     var body: some View {
@@ -173,8 +171,8 @@ struct DetailsView: View {
                             alignment: .center
                         )
                         .frame(height: 32)
-                        .matchedGeometryEffect(id: "logo", in: logoNamespace)
-                        .transition(.identity)
+                        .offset(y: 4)
+                        .transition(.blurFadeScale)
                     }
                     
                     HStack {
@@ -554,8 +552,7 @@ struct DetailsView: View {
                                     fallbackTitle: details.title ?? details.originalTitle ?? "Без названия",
                                     alignment: .center
                                 )
-                                .matchedGeometryEffect(id: "logo", in: logoNamespace)
-                                .transition(.identity)
+                                .transition(.blurFadeScale)
                             }
                         }
                         .padding(.bottom, 8)
@@ -563,15 +560,15 @@ struct DetailsView: View {
                             GeometryReader { geo in
                                 Color.clear
                                     .onChange(of: geo.frame(in: .global).minY) { _, minY in
-                                        let isAtTop = minY < 10
+                                        let isAtTop = minY < 60
                                         if isLogoAtTop != isAtTop {
-                                            withAnimation(.spring(response: 0.4, dampingFraction: 0.95)) {
+                                            withAnimation(.easeInOut(duration: 0.3)) {
                                                 isLogoAtTop = isAtTop
                                             }
                                         }
                                     }
                                     .onAppear {
-                                        isLogoAtTop = geo.frame(in: .global).minY < 10
+                                        isLogoAtTop = geo.frame(in: .global).minY < 60
                                     }
                             }
                         )
@@ -669,8 +666,7 @@ struct DetailsView: View {
                                             fallbackTitle: details.title ?? details.originalTitle ?? "Без названия",
                                             alignment: .center
                                         )
-                                        .matchedGeometryEffect(id: "logo", in: logoNamespace)
-                                        .transition(.identity)
+                                        .transition(.blurFadeScale)
                                     }
                                 }
                                 .padding(.bottom, 8)
@@ -678,15 +674,15 @@ struct DetailsView: View {
                                     GeometryReader { geo in
                                         Color.clear
                                             .onChange(of: geo.frame(in: .global).minY) { _, minY in
-                                                let isAtTop = minY < 10
+                                                let isAtTop = minY < 60
                                                 if isLogoAtTop != isAtTop {
-                                                    withAnimation(.spring(response: 0.4, dampingFraction: 0.95)) {
+                                                    withAnimation(.easeInOut(duration: 0.3)) {
                                                         isLogoAtTop = isAtTop
                                                     }
                                                 }
                                             }
                                             .onAppear {
-                                                isLogoAtTop = geo.frame(in: .global).minY < 10
+                                                isLogoAtTop = geo.frame(in: .global).minY < 60
                                             }
                                     }
                                 )
@@ -2030,5 +2026,24 @@ struct GlassDownloadButtonStyle: ButtonStyle {
             .glassEffect(in: Circle())
             .scaleEffect(configuration.isPressed ? 0.94 : 1.0)
             .animation(.spring(response: 0.25, dampingFraction: 0.6), value: configuration.isPressed)
+    }
+}
+
+struct BlurFadeScaleModifier: ViewModifier {
+    let isBlurry: Bool
+    func body(content: Content) -> some View {
+        content
+            .opacity(isBlurry ? 0 : 1)
+            .blur(radius: isBlurry ? 8 : 0)
+            .scaleEffect(isBlurry ? 0.9 : 1)
+    }
+}
+
+extension AnyTransition {
+    static var blurFadeScale: AnyTransition {
+        .modifier(
+            active: BlurFadeScaleModifier(isBlurry: true),
+            identity: BlurFadeScaleModifier(isBlurry: false)
+        )
     }
 }
