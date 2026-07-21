@@ -480,8 +480,7 @@ private final class ContinueViewModel: ObservableObject {
     }
 
     func removeFromHistory(_ item: ContinueWatchingItem) {
-        // Since we don't have a direct delete method in store, we can set updatedAtMs to 0
-        UserDefaults.standard.set(0, forKey: "neomovies.collaps.updatedAt.\(item.record.mediaId)")
+        store.removeRecord(mediaId: item.record.mediaId)
         Task { await reload() }
     }
 
