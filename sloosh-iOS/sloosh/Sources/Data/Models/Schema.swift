@@ -81,8 +81,9 @@ final class FavoriteModel {
     var rating: Double?
     var year: String?
     var genresRaw: String? // JSON encoded
+    var addedAt: Date
     
-    init(mediaId: String, type: String, title: String? = nil, posterUrl: String? = nil, rating: Double? = nil, year: String? = nil, genresRaw: String? = nil) {
+    init(mediaId: String, type: String, title: String? = nil, posterUrl: String? = nil, rating: Double? = nil, year: String? = nil, genresRaw: String? = nil, addedAt: Date = Date()) {
         self.mediaIdTypeKey = "\(mediaId)_\(type)"
         self.mediaId = mediaId
         self.type = type
@@ -91,5 +92,6 @@ final class FavoriteModel {
         self.rating = rating
         self.year = year
         self.genresRaw = genresRaw
+        self.addedAt = addedAt
     }
 }
