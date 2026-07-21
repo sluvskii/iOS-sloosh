@@ -112,7 +112,6 @@ struct ContinueView: View {
     }
 }
 
-@MainActor
 private struct ContinueWatchingItem: Identifiable {
     let record: PlaybackProgressRecord
     let metadata: PlaybackMediaMetadata?
@@ -192,6 +191,7 @@ private struct ContinueWatchingItem: Identifiable {
         return nil
     }
 
+    @MainActor
     var voiceover: String? {
         PlaybackProgressStore.shared.loadLastVoiceover(kpId: record.kpId, source: "alloha") ??
         UserDefaults.standard.string(forKey: "alloha_last_translation_name")
