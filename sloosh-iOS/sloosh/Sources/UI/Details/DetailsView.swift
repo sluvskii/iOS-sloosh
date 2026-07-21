@@ -97,7 +97,6 @@ struct DetailsView: View {
     @State private var showDeleteMovieAlert = false
 
     @Environment(\.verticalSizeClass) private var verticalSizeClass
-    @Environment(\.dismiss) private var dismiss
 
     @State private var dominantBackdropColor: UIColor? = nil
     @State private var dominantPosterColor: UIColor? = nil
@@ -150,58 +149,60 @@ struct DetailsView: View {
         }
     }
     
+    @State private var isLogoAtTop: Bool = false
+    
     var body: some View {
         ZStack(alignment: .top) {
-            // detailsContent extends under the status bar on its own
             detailsContent
+            
+            // Native glass background for the top bar that fades in when logo hits the top
+            VariableBlurView(tintOpacity: 0.75)
+                .frame(height: 100) // Approx height of Safe Area + Nav Bar
                 .ignoresSafeArea(edges: .top)
-
-            // Buttons are inside the ZStack that RESPECTS safe area — they move with zoom transition
-            HStack {
-                Button {
-                    dismiss()
-                } label: {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .shadow(color: .black.opacity(0.3), radius: 4, x: 0, y: 1)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 12)
-                        .contentShape(Rectangle())
-                }
-                .accessibilityLabel("Назад")
-
-                Spacer()
-
-                Button {
-                    let generator = UIImpactFeedbackGenerator(style: .light)
-                    generator.prepare()
-                    generator.impactOccurred()
-                    favoriteBounce.toggle()
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.5, blendDuration: 0.5)) {
-                        viewModel.toggleFavorite()
-                    }
-                } label: {
-                    Image(systemName: viewModel.isFavorite ? "heart.fill" : "heart")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(viewModel.isFavorite ? Color.slooshAccent : .white)
-                        .shadow(color: .black.opacity(0.3), radius: 4, x: 0, y: 1)
-                        .symbolEffect(.bounce, value: favoriteBounce)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 12)
-                        .contentShape(Rectangle())
-                }
-                .disabled(viewModel.details == nil)
-                .accessibilityLabel(viewModel.isFavorite ? "Убрать из избранного" : "Добавить в избранное")
-            }
-            .padding(.horizontal, 8)
+                .opacity(isLogoAtTop ? 1.0 : 0.0)
+                .animation(.easeInOut(duration: 0.25), value: isLogoAtTop)
+                .allowsHitTesting(false)
         }
             .optionalMovieNavigationTransition(
                 sourceID: navigationTransitionID,
                 in: navigationTransitionNamespace
             )
             .environment(\.colorScheme, .dark)
-            .navigationBarHidden(true)
+            .toolbarColorScheme(.dark, for: .navigationBar)
+            .toolbarBackground(.hidden, for: .navigationBar) // Hide native material to use our VariableBlurView natively
+            .ignoresSafeArea(edges: .top)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar(id: "details") {
+                ToolbarItem(placement: .principal) {
+                    if let details = viewModel.details, isLogoAtTop {
+                        RemoteLogoView(
+                            url: URL(string: details.displayLogoUrl ?? ""),
+                            fallbackTitle: details.title ?? details.originalTitle ?? "Без названия",
+                            alignment: .center
+                        )
+                        .frame(height: 32)
+                        .transition(.opacity.animation(.easeInOut(duration: 0.25)))
+                    }
+                }
+                
+                ToolbarItem(id: "favorite", placement: .topBarTrailing) {
+                    Button {
+                        let generator = UIImpactFeedbackGenerator(style: .light)
+                        generator.prepare()
+                        generator.impactOccurred()
+                        favoriteBounce.toggle()
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.5, blendDuration: 0.5)) {
+                            viewModel.toggleFavorite()
+                        }
+                    } label: {
+                        Image(systemName: viewModel.isFavorite ? "heart.fill" : "heart")
+                            .foregroundStyle(.white)
+                            .symbolEffect(.bounce, value: favoriteBounce)
+                    }
+                    .disabled(viewModel.details == nil)
+                    .accessibilityLabel(viewModel.isFavorite ? "Убрать из избранного" : "Добавить в избранное")
+                }
+            }
             .task {
                 await viewModel.loadDetails(id: movieId)
             }
@@ -526,6 +527,23 @@ struct DetailsView: View {
                             alignment: .center
                         )
                         .padding(.bottom, 8)
+                        .opacity(isLogoAtTop ? 0.0 : 1.0)
+                        .background(
+                            GeometryReader { geo in
+                                Color.clear
+                                    .onChange(of: geo.frame(in: .global).minY) { _, minY in
+                                        let isAtTop = minY < 100
+                                        if isLogoAtTop != isAtTop {
+                                            withAnimation(.easeInOut(duration: 0.2)) {
+                                                isLogoAtTop = isAtTop
+                                            }
+                                        }
+                                    }
+                                    .onAppear {
+                                        isLogoAtTop = geo.frame(in: .global).minY < 100
+                                    }
+                            }
+                        )
 
                         if let originalTitle = details.originalTitle, !originalTitle.isEmpty, originalTitle != details.title {
                             Text(originalTitle)
@@ -612,6 +630,23 @@ struct DetailsView: View {
                                     alignment: .center
                                 )
                                 .padding(.bottom, 8)
+                                .opacity(isLogoAtTop ? 0.0 : 1.0)
+                                .background(
+                                    GeometryReader { geo in
+                                        Color.clear
+                                            .onChange(of: geo.frame(in: .global).minY) { _, minY in
+                                                let isAtTop = minY < 100
+                                                if isLogoAtTop != isAtTop {
+                                                    withAnimation(.easeInOut(duration: 0.2)) {
+                                                        isLogoAtTop = isAtTop
+                                                    }
+                                                }
+                                            }
+                                            .onAppear {
+                                                isLogoAtTop = geo.frame(in: .global).minY < 100
+                                            }
+                                    }
+                                )
 
                                 if let originalTitle = details.originalTitle, !originalTitle.isEmpty, originalTitle != details.title {
                                     Text(originalTitle)
