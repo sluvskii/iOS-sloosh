@@ -28,71 +28,76 @@ struct CustomDetailsTopBar: View {
                 .allowsHitTesting(false)
             
             HStack(spacing: 16) {
-                // Back Button
-                Button(action: onBack) {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundColor(.white)
-                        .frame(width: 40, height: 40)
-                        .background(
-                            Circle()
-                                .fill(Color.black.opacity(glassOpacity < 0.5 ? 0.3 : 0))
-                        )
-                        .contentShape(Rectangle())
-                }
-                .accessibilityLabel("Назад")
-                
+                backButton
                 Spacer()
-                
-                // Logo / Title Transition
                 if showLogo {
-                    ZStack {
-                        if let logoUrl = logoUrl, !logoUrl.isEmpty {
-                            AsyncCachedImage(url: URL(string: logoUrl)) { phase in
-                                switch phase {
-                                case .success(let image):
-                                    image
-                                        .resizable()
-                                        .scaledToFit()
-                                default:
-                                    Text(title)
-                                        .font(.system(size: 17, weight: .semibold))
-                                        .foregroundColor(.white)
-                                        .lineLimit(1)
-                                }
-                            }
-                        } else {
-                            Text(title)
-                                .font(.system(size: 17, weight: .semibold))
-                                .foregroundColor(.white)
-                                .lineLimit(1)
-                        }
-                    }
-                    .frame(maxHeight: 34)
-                    .matchedGeometryEffect(id: "detailsLogo", in: namespace)
+                    logoTransitionView
                 }
-                
                 Spacer()
-                
-                // Favorite Button
-                Button(action: onFavorite) {
-                    Image(systemName: isFavorite ? "heart.fill" : "heart")
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundColor(.white)
-                        .frame(width: 40, height: 40)
-                        .background(
-                            Circle()
-                                .fill(Color.black.opacity(glassOpacity < 0.5 ? 0.3 : 0))
-                        )
-                        .contentShape(Rectangle())
-                        .symbolEffect(.bounce, value: isFavorite)
-                }
-                .accessibilityLabel(isFavorite ? "Убрать из избранного" : "Добавить в избранное")
+                favoriteButton
             }
             .padding(.horizontal, 16)
             .padding(.bottom, 12)
             .frame(height: 54, alignment: .bottom)
             .frame(maxWidth: .infinity)
         }
+    }
+    
+    private var backButton: some View {
+        Button(action: onBack) {
+            Image(systemName: "chevron.left")
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundColor(.white)
+                .frame(width: 40, height: 40)
+                .background(
+                    Circle()
+                        .fill(Color.black.opacity(glassOpacity < 0.5 ? 0.3 : 0))
+                )
+                .contentShape(Rectangle())
+        }
+        .accessibilityLabel("Назад")
+    }
+    
+    private var logoTransitionView: some View {
+        ZStack {
+            if let urlStr = logoUrl, !urlStr.isEmpty {
+                AsyncCachedImage(url: URL(string: urlStr)) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFit()
+                    default:
+                        Text(title)
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundColor(.white)
+                            .lineLimit(1)
+                    }
+                }
+            } else {
+                Text(title)
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundColor(.white)
+                    .lineLimit(1)
+            }
+        }
+        .frame(maxHeight: 34)
+        .matchedGeometryEffect(id: "detailsLogo", in: namespace)
+    }
+    
+    private var favoriteButton: some View {
+        Button(action: onFavorite) {
+            Image(systemName: isFavorite ? "heart.fill" : "heart")
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundColor(.white)
+                .frame(width: 40, height: 40)
+                .background(
+                    Circle()
+                        .fill(Color.black.opacity(glassOpacity < 0.5 ? 0.3 : 0))
+                )
+                .contentShape(Rectangle())
+                .symbolEffect(.bounce, value: isFavorite)
+        }
+        .accessibilityLabel(isFavorite ? "Убрать из избранного" : "Добавить в избранное")
     }
 }
