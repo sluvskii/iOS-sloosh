@@ -97,6 +97,7 @@ struct DetailsView: View {
     @State private var showDeleteMovieAlert = false
 
     @Environment(\.verticalSizeClass) private var verticalSizeClass
+    @Environment(\.dismiss) private var dismiss
 
     @State private var dominantBackdropColor: UIColor? = nil
     @State private var dominantPosterColor: UIColor? = nil
@@ -152,28 +153,18 @@ struct DetailsView: View {
     @State private var isLogoAtTop: Bool = false
     
     var body: some View {
-        ZStack(alignment: .top) {
+        ZStack {
             detailsContent
-            
-            // Native glass background for the top bar that fades in when logo hits the top
-            VariableBlurView(tintOpacity: 0.75)
-                .frame(height: 100) // Approx height of Safe Area + Nav Bar
-                .ignoresSafeArea(edges: .top)
-                .opacity(isLogoAtTop ? 1.0 : 0.0)
-                .animation(.easeInOut(duration: 0.25), value: isLogoAtTop)
-                .allowsHitTesting(false)
         }
             .optionalMovieNavigationTransition(
                 sourceID: navigationTransitionID,
                 in: navigationTransitionNamespace
             )
             .environment(\.colorScheme, .dark)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .toolbarBackground(.hidden, for: .navigationBar) // Hide native material to use our VariableBlurView natively
             .ignoresSafeArea(edges: .top)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar(id: "details") {
-                ToolbarItem(id: "logo", placement: .principal) {
+            .toolbar(.hidden, for: .navigationBar)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                ZStack {
                     if let details = viewModel.details, isLogoAtTop {
                         RemoteLogoView(
                             url: URL(string: details.displayLogoUrl ?? ""),
@@ -183,25 +174,51 @@ struct DetailsView: View {
                         .frame(height: 32)
                         .transition(.opacity.animation(.easeInOut(duration: 0.25)))
                     }
-                }
-                
-                ToolbarItem(id: "favorite", placement: .topBarTrailing) {
-                    Button {
-                        let generator = UIImpactFeedbackGenerator(style: .light)
-                        generator.prepare()
-                        generator.impactOccurred()
-                        favoriteBounce.toggle()
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.5, blendDuration: 0.5)) {
-                            viewModel.toggleFavorite()
+                    
+                    HStack {
+                        Button {
+                            dismiss()
+                        } label: {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 20, weight: .medium))
+                                .foregroundStyle(.white)
+                                .frame(width: 44, height: 44)
+                                .glassEffect(.regular.interactive(), in: .circle)
                         }
-                    } label: {
-                        Image(systemName: viewModel.isFavorite ? "heart.fill" : "heart")
-                            .foregroundStyle(.white)
-                            .symbolEffect(.bounce, value: favoriteBounce)
+                        .tint(.white)
+                        
+                        Spacer()
+                        
+                        Button {
+                            let generator = UIImpactFeedbackGenerator(style: .light)
+                            generator.prepare()
+                            generator.impactOccurred()
+                            favoriteBounce.toggle()
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.5, blendDuration: 0.5)) {
+                                viewModel.toggleFavorite()
+                            }
+                        } label: {
+                            Image(systemName: viewModel.isFavorite ? "heart.fill" : "heart")
+                                .font(.system(size: 20, weight: .medium))
+                                .foregroundStyle(.white)
+                                .symbolEffect(.bounce, value: favoriteBounce)
+                                .frame(width: 44, height: 44)
+                                .glassEffect(.regular.interactive(), in: .circle)
+                        }
+                        .disabled(viewModel.details == nil)
+                        .accessibilityLabel(viewModel.isFavorite ? "Убрать из избранного" : "Добавить в избранное")
                     }
-                    .disabled(viewModel.details == nil)
-                    .accessibilityLabel(viewModel.isFavorite ? "Убрать из избранного" : "Добавить в избранное")
                 }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 8)
+                .background(
+                    VariableBlurView(tintOpacity: 0.75)
+                        .padding(.bottom, -60)
+                        .ignoresSafeArea(edges: .top)
+                        .opacity(isLogoAtTop ? 1.0 : 0.0)
+                        .animation(.easeInOut(duration: 0.25), value: isLogoAtTop)
+                        .allowsHitTesting(false)
+                )
             }
             .task {
                 await viewModel.loadDetails(id: movieId)
