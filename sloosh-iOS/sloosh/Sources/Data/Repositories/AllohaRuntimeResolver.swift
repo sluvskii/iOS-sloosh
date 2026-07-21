@@ -497,15 +497,7 @@ final class SharedWebViewProvider {
     private var hostView: UIView?
     
     private init() {
-        NotificationCenter.default.addObserver(
-            forName: UIApplication.didEnterBackgroundNotification,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            Task { @MainActor in
-                self?.destroyWebView()
-            }
-        }
+        // No background killing; keep webview alive so background playback and proxy work
     }
     
     private func destroyWebView() {
