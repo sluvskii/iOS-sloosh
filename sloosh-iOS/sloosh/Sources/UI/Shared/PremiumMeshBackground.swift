@@ -4,37 +4,24 @@ import SwiftUI
 struct PremiumMeshBackground: View {
     let dominantColor: UIColor?
     
-    @Environment(\.colorScheme) private var colorScheme
-    
     // Fallback if no dominant color
     private var baseColor: Color {
         if let d = dominantColor {
-            // In light mode, soften the pure color a bit so text remains readable
-            return colorScheme == .light ? Color(d.blended(with: .white, fraction: 0.2)) : Color(d)
+            return Color(d)
         }
         return Color(UIColor.systemBackground)
     }
     
     private var darkBaseColor: Color {
         if let d = dominantColor {
-            if colorScheme == .light {
-                // In light mode, "dark" is just the pure color or slightly darkened
-                return Color(d.blended(with: .black, fraction: 0.1))
-            } else {
-                return Color(d.blended(with: .black, fraction: 0.6))
-            }
+            return Color(d.blended(with: .black, fraction: 0.6))
         }
         return Color.black
     }
 
     private var lightBaseColor: Color {
         if let d = dominantColor {
-            if colorScheme == .light {
-                // In light mode, "light" is blended heavily with white
-                return Color(d.blended(with: .white, fraction: 0.75))
-            } else {
-                return Color(d.blended(with: UIColor.systemBackground, fraction: 0.5))
-            }
+            return Color(d.blended(with: UIColor.systemBackground, fraction: 0.5))
         }
         return Color(UIColor.systemBackground)
     }
