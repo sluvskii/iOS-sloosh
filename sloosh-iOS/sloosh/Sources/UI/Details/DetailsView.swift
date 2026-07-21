@@ -1073,7 +1073,7 @@ private struct DetailsInfoSection: View {
                                         LinearGradient(
                                             gradient: Gradient(stops: [
                                                 .init(color: .black, location: 0.0),
-                                                .init(color: .black, location: 0.7),
+                                                .init(color: .black, location: 0.4),
                                                 .init(color: .clear, location: 1.0)
                                             ]),
                                             startPoint: .top,
@@ -1115,20 +1115,26 @@ private struct DetailsInfoSection: View {
                             let generator = UIImpactFeedbackGenerator(style: .light)
                             generator.prepare()
                             generator.impactOccurred()
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
                                 isDescriptionExpanded.toggle()
                             }
                         }) {
                             HStack(spacing: 6) {
-                                Text(isDescriptionExpanded ? "Свернуть" : "Развернуть")
+                                Text(isDescriptionExpanded ? "Свернуть" : "Читать далее")
                                 Image(systemName: "chevron.down")
-                                    .font(.system(size: 13, weight: .bold))
+                                    .font(.system(size: 11, weight: .heavy))
                                     .rotationEffect(.degrees(isDescriptionExpanded ? 180 : 0))
                             }
-                            .font(.system(size: 15, weight: .bold))
-                            .foregroundColor(Color.slooshAccent)
-                            .padding(.vertical, 4)
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 10)
+                            .glassEffect(in: Capsule())
+                            .shadow(color: .black.opacity(0.15), radius: 8, x: 0, y: 4)
                         }
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.top, isDescriptionExpanded ? 12 : -12)
+                        .zIndex(1)
                     }
                 }
                 .onChange(of: details.description) { _, _ in
