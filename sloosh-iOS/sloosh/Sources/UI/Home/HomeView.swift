@@ -211,6 +211,15 @@ struct HomeCategoryContentView: View {
                     LazyVGrid(columns: columns, spacing: spacing) {
                         ForEach(items) { movie in
                             MovieDetailsNavigationLink(movie: movie, navigationTransition: navigationTransition)
+                                .scrollTransition(.animated, axis: .vertical) { content, phase in
+                                    content
+                                        .opacity(phase.isIdentity ? 1 : 0.85)
+                                        .scaleEffect(phase.isIdentity ? 1 : 0.95)
+                                        .rotation3DEffect(
+                                            .degrees(phase.value * -10),
+                                            axis: (x: 1, y: 0, z: 0)
+                                        )
+                                }
                                 .contextMenu {
                                     Group {
                                         Button {

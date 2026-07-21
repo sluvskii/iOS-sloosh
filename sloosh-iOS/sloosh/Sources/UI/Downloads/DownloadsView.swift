@@ -215,6 +215,9 @@ private struct DownloadRowView: View {
         .padding(.vertical, 4)
         .swipeActions(edge: .trailing) {
             Button(role: .destructive) {
+                let generator = UIImpactFeedbackGenerator(style: .medium)
+                generator.prepare()
+                generator.impactOccurred()
                 withAnimation {
                     DownloadManager.shared.deleteDownload(id: item.id)
                 }

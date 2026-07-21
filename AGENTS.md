@@ -61,7 +61,11 @@ Root: `sloosh-iOS/sloosh/Sources/`
 | `Data/Network/MoviesApi.swift` | API client for `api.neomovies.ru` |
 | `Data/Repositories/MoviesRepository.swift` | Page cache (memory + disk), search logic, details caching |
 | `Data/Repositories/AllohaRuntimeResolver.swift` | Resolves Alloha iframe URL → real HLS stream URL via a pooled `WKWebView` |
-| `Data/Repositories/PlaybackProgressStore.swift` | Progress/position/duration/watched state in `UserDefaults` |
+| `Data/Repositories/PlaybackProgressStore.swift` | Progress/position/duration/watched state in `SwiftData` (`ProgressRecordModel`) |
+| `Data/Repositories/FavoritesRepository.swift` | Manages user favorites via `SwiftData` (`FavoriteModel`) |
+| `Data/Models/Schema.swift` | `SwiftData` models for persistence |
+| `UI/ShimmerModifier.swift` | Metal-based shader for skeleton loading placeholders |
+| `Data/GroupActivities/WatchTogetherActivity.swift` | SharePlay integration for synchronized playback |
 
 ## iOS Screens Status
 
@@ -96,7 +100,7 @@ Use `neomovies-mobile/` as the source of truth for internal logic, but **do not 
 
 ## Quick Summary
 
-`sloosh` is a premium iOS 26+ SwiftUI streaming app. It mandates strict usage of `.glassEffect()` and forbids `.ultraThinMaterial`. It uses Alloha as the primary playback source, resolved natively via `AllohaRuntimeResolver` (using a pooled `WKWebView` to optimize speed) → `AllohaRuntimeParser` → `HlsProxyServer` → `AVPlayerViewController`. Progress and favorites are stored locally in `UserDefaults`. Downloads are fully functional and use `DownloadManager`. The main technical reference for internal logic is `neomovies-mobile`.
+`sloosh` is a premium iOS 26+ SwiftUI streaming app. It mandates strict usage of `.glassEffect()` and forbids `.ultraThinMaterial`. It uses Alloha as the primary playback source, resolved natively via `AllohaRuntimeResolver` (using a pooled `WKWebView` to optimize speed) → `AllohaRuntimeParser` → `HlsProxyServer` → `AVPlayerViewController`. Progress and favorites are stored locally via `SwiftData` (`AppDatabase`). SharePlay is fully integrated using `GroupActivities`. Shimmer skeletons are implemented using `Metal` shaders. Downloads are fully functional and use `DownloadManager`. The main technical reference for internal logic is `neomovies-mobile`.
 
 ## Development & Deployment Workflow
 

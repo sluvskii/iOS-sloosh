@@ -86,6 +86,9 @@ struct ContentView: View {
                 }
             }
             .withToasts()
+            .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("SlooshIntentPlayMovie"))) { notification in
+                selectedTab = .search
+            }
         }
     }
 }

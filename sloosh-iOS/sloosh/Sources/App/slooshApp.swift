@@ -1,5 +1,6 @@
 import SwiftUI
 import AVFoundation
+import TipKit
 
 class AppDelegate: NSObject, UIApplicationDelegate {
     static var orientationLock = UIInterfaceOrientationMask.portrait
@@ -60,6 +61,14 @@ struct slooshApp: App {
             try AVAudioSession.sharedInstance().setActive(true)
         } catch {
             print("Failed to set audio session category: \(error)")
+        }
+        
+        // Configure TipKit
+        if #available(iOS 17.0, *) {
+            try? Tips.configure([
+                .displayFrequency(.immediate),
+                .datastoreLocation(.applicationDefault)
+            ])
         }
     }
     

@@ -1,7 +1,7 @@
 import SwiftUI
 import AVKit
 import MediaPlayer
-
+import TipKit
 
 // MARK: - Верхняя панель: [X | PiP | AirPlay]          [━━● ─] 🔊
 
@@ -9,6 +9,9 @@ struct TopBarView: View {
     @ObservedObject var vm: PlayerViewModel
     let onDismiss: () -> Void
     @Binding var isInteracting: Bool
+    
+    // Tips
+    @State private var sharePlayTip = SharePlayTip()
     
     var body: some View {
         HStack(alignment: .center) {
@@ -54,6 +57,8 @@ struct TopBarView: View {
                     .blendMode(vm.groupSession != nil ? .normal : .plusLighter)
                     .frame(width: 44, height: 40)
             }
+            .popoverTip(sharePlayTip)
+            
             divider
 
             // AirPlay (системная кнопка Apple)

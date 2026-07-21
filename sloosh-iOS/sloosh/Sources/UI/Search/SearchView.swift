@@ -176,6 +176,11 @@ struct SearchView: View {
             .sheet(isPresented: $showFilters) {
                 SearchFilterSheet(filters: $viewModel.filters)
             }
+            .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("SlooshIntentPlayMovie"))) { notification in
+                if let query = notification.userInfo?["query"] as? String, !query.isEmpty {
+                    viewModel.searchQuery = query
+                }
+            }
         }
     }
 }
