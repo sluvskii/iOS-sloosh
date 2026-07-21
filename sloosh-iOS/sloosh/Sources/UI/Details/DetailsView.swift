@@ -151,36 +151,50 @@ struct DetailsView: View {
     }
     
     var body: some View {
-        ZStack {
+        ZStack(alignment: .top) {
             detailsContent
+
+            HStack {
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .frame(width: 44, height: 44)
+                }
+                .glassEffect(in: Circle())
+                .accessibilityLabel("Назад")
+
+                Spacer()
+
+                Button {
+                    let generator = UIImpactFeedbackGenerator(style: .light)
+                    generator.prepare()
+                    generator.impactOccurred()
+                    favoriteBounce.toggle()
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.5, blendDuration: 0.5)) {
+                        viewModel.toggleFavorite()
+                    }
+                } label: {
+                    Image(systemName: viewModel.isFavorite ? "heart.fill" : "heart")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(viewModel.isFavorite ? Color.slooshAccent : .white)
+                        .symbolEffect(.bounce, value: favoriteBounce)
+                        .frame(width: 44, height: 44)
+                }
+                .glassEffect(in: Circle())
+                .disabled(viewModel.details == nil)
+                .accessibilityLabel(viewModel.isFavorite ? "Убрать из избранного" : "Добавить в избранное")
+            }
+            .padding(.horizontal, 8)
         }
             .optionalMovieNavigationTransition(
                 sourceID: navigationTransitionID,
                 in: navigationTransitionNamespace
             )
             .environment(\.colorScheme, .dark)
-            .toolbarColorScheme(.dark, for: .navigationBar)
-            .navigationBarTitleDisplayMode(.inline)
-            .tint(.white)
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        let generator = UIImpactFeedbackGenerator(style: .light)
-                        generator.prepare()
-                        generator.impactOccurred()
-                        favoriteBounce.toggle()
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.5, blendDuration: 0.5)) {
-                            viewModel.toggleFavorite()
-                        }
-                    } label: {
-                        Image(systemName: viewModel.isFavorite ? "heart.fill" : "heart")
-                            .foregroundStyle(viewModel.isFavorite ? Color.slooshAccent : .white)
-                            .symbolEffect(.bounce, value: favoriteBounce)
-                    }
-                    .disabled(viewModel.details == nil)
-                    .accessibilityLabel(viewModel.isFavorite ? "Убрать из избранного" : "Добавить в избранное")
-                }
-            }
+            .navigationBarHidden(true)
             .ignoresSafeArea(edges: .top)
             .task {
                 await viewModel.loadDetails(id: movieId)
