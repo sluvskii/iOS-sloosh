@@ -26,19 +26,11 @@ struct WatchSelectorChip: View {
                                 ? (colorScheme == .dark ? Color.white : Color.black)
                                 : (isAvailable ? Color(UIColor.secondarySystemFill) : Color(UIColor.tertiarySystemFill))
                         )
+                        .glassEffect(.regular.interactive(), in: Capsule())
                 )
         }
         .opacity(isAvailable ? 1.0 : 0.6)
-        .buttonStyle(ChipButtonStyle())
-    }
-}
-
-struct ChipButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
-            .opacity(configuration.isPressed ? 0.85 : 1.0)
-            .animation(.easeOut(duration: 0.15), value: configuration.isPressed)
+        .buttonStyle(NativeGlassButtonStyle())
     }
 }
 
