@@ -147,6 +147,7 @@ struct DetailsView: View {
                 self.dominantBackdropColor = backdrop
                 self.dominantPosterColor = poster
             }
+        }
     }
     
     @Namespace private var logoNamespace
