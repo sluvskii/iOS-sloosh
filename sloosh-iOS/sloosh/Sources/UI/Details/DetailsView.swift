@@ -184,7 +184,7 @@ struct DetailsView: View {
                                 .font(.system(size: 22, weight: .medium))
                                 .foregroundStyle(.white)
                                 .frame(width: 44, height: 44)
-                                .glassEffect(.regular.interactive(), in: .circle)
+                                .glassEffect(.regular, in: .circle)
                         }
                         .buttonStyle(NativeGlassButtonStyle())
                         .tint(.white)
@@ -205,7 +205,7 @@ struct DetailsView: View {
                                 .foregroundStyle(.white)
                                 .symbolEffect(.bounce, value: favoriteBounce)
                                 .frame(width: 44, height: 44)
-                                .glassEffect(.regular.interactive(), in: .circle)
+                                .glassEffect(.regular, in: .circle)
                         }
                         .buttonStyle(NativeGlassButtonStyle())
                         .disabled(viewModel.details == nil)
@@ -1131,7 +1131,7 @@ private struct DetailsInfoSection: View {
                             .foregroundColor(.white)
                             .padding(.horizontal, 20)
                             .padding(.vertical, 10)
-                            .glassEffect(.regular.interactive(), in: .capsule)
+                            .glassEffect(.regular, in: .capsule)
                             .shadow(color: .black.opacity(0.15), radius: 8, x: 0, y: 4)
                         }
                         .buttonStyle(NativeGlassButtonStyle())
@@ -1762,7 +1762,7 @@ struct InlineEpisodesSection: View {
                                             Color.clear
                                         }
                                     }
-                                    .glassEffect(.regular.interactive(), in: Capsule())
+                                    .glassEffect(.regular, in: Capsule())
                                 )
                                 .foregroundColor(selectedSeason == season ? .black : .primary)
                             }
@@ -2029,7 +2029,7 @@ struct GlassPlayButtonStyle: ButtonStyle {
                 Capsule()
                     .fill(.white.opacity(0.85))
             )
-            .glassEffect(.regular.interactive(), in: Capsule())
+            .glassEffect(.regular, in: Capsule())
     }
 }
 
@@ -2037,7 +2037,7 @@ struct GlassDownloadButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .foregroundStyle(.white)
-            .glassEffect(.regular.interactive(), in: Circle())
+            .glassEffect(.regular, in: Circle())
     }
 }
 

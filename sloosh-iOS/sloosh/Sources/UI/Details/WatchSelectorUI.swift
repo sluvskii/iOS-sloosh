@@ -26,7 +26,7 @@ struct WatchSelectorChip: View {
                                 ? (colorScheme == .dark ? Color.white : Color.black)
                                 : (isAvailable ? Color(UIColor.secondarySystemFill) : Color(UIColor.tertiarySystemFill))
                         )
-                        .glassEffect(.regular.interactive(), in: Capsule())
+                        .glassEffect(.regular, in: Capsule())
                 )
         }
         .opacity(isAvailable ? 1.0 : 0.6)
