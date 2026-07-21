@@ -98,6 +98,7 @@ struct DetailsView: View {
 
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Environment(\.dismiss) private var dismiss
+
     @State private var dominantBackdropColor: UIColor? = nil
     @State private var dominantPosterColor: UIColor? = nil
 
@@ -152,22 +153,21 @@ struct DetailsView: View {
     var body: some View {
         ZStack(alignment: .top) {
             detailsContent
-                .ignoresSafeArea(edges: .top)
-            
-            // Custom Pinned Top Bar
+            // Custom floating glass navigation buttons
             HStack {
-                Button(action: {
+                Button {
                     dismiss()
-                }) {
+                } label: {
                     Image(systemName: "chevron.left")
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundColor(.white)
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(.white)
                         .frame(width: 44, height: 44)
-                        .glassEffect(in: Circle())
                 }
-                
+                .glassEffect(in: Circle())
+                .accessibilityLabel("Назад")
+
                 Spacer()
-                
+
                 Button {
                     let generator = UIImpactFeedbackGenerator(style: .light)
                     generator.prepare()
@@ -178,24 +178,25 @@ struct DetailsView: View {
                     }
                 } label: {
                     Image(systemName: viewModel.isFavorite ? "heart.fill" : "heart")
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundStyle(viewModel.isFavorite ? Color.red : .white)
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(viewModel.isFavorite ? Color.slooshAccent : .white)
                         .symbolEffect(.bounce, value: favoriteBounce)
                         .frame(width: 44, height: 44)
-                        .glassEffect(in: Circle())
                 }
+                .glassEffect(in: Circle())
                 .disabled(viewModel.details == nil)
                 .accessibilityLabel(viewModel.isFavorite ? "Убрать из избранного" : "Добавить в избранное")
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 8)
+            .padding(.horizontal, 16)
+            .padding(.top, 60) // below status bar / Dynamic Island
         }
             .optionalMovieNavigationTransition(
                 sourceID: navigationTransitionID,
                 in: navigationTransitionNamespace
             )
             .environment(\.colorScheme, .dark)
-            .toolbar(.hidden, for: .navigationBar)
+            .navigationBarHidden(true)
+            .ignoresSafeArea(edges: .top)
             .task {
                 await viewModel.loadDetails(id: movieId)
             }
