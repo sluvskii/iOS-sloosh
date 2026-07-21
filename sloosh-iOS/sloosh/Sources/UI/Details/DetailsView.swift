@@ -97,7 +97,7 @@ struct DetailsView: View {
     @State private var showDeleteMovieAlert = false
 
     @Environment(\.verticalSizeClass) private var verticalSizeClass
-
+    @Environment(\.dismiss) private var dismiss
     @State private var dominantBackdropColor: UIColor? = nil
     @State private var dominantPosterColor: UIColor? = nil
 
@@ -149,34 +149,26 @@ struct DetailsView: View {
         }
     }
     
-    @State private var scrollOffset: CGFloat = 0
-    @Namespace private var topBarNamespace
-    @Environment(\.dismiss) private var dismiss
-
-    private var showLogoInTopBar: Bool {
-        scrollOffset > 300
-    }
-
-    private var detailsContent: some View {
+    var body: some View {
         ZStack(alignment: .top) {
-            Group {
-                if verticalSizeClass == .compact {
-                    landscapeDetailsContent
-                } else {
-                    portraitDetailsContent
+            detailsContent
+                .ignoresSafeArea(edges: .top)
+            
+            // Custom Pinned Top Bar
+            HStack {
+                Button(action: {
+                    dismiss()
+                }) {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundColor(.white)
+                        .frame(width: 44, height: 44)
+                        .glassEffect(in: Circle())
                 }
-            }
-            .coordinateSpace(name: "detailsScroll")
-
-            CustomDetailsTopBar(
-                scrollOffset: scrollOffset,
-                title: viewModel.details?.title ?? viewModel.details?.originalTitle ?? "",
-                logoUrl: viewModel.details?.displayLogoUrl,
-                showLogo: showLogoInTopBar,
-                isFavorite: viewModel.isFavorite,
-                namespace: topBarNamespace,
-                onBack: { dismiss() },
-                onFavorite: {
+                
+                Spacer()
+                
+                Button {
                     let generator = UIImpactFeedbackGenerator(style: .light)
                     generator.prepare()
                     generator.impactOccurred()
@@ -184,22 +176,26 @@ struct DetailsView: View {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.5, blendDuration: 0.5)) {
                         viewModel.toggleFavorite()
                     }
+                } label: {
+                    Image(systemName: viewModel.isFavorite ? "heart.fill" : "heart")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(viewModel.isFavorite ? Color.red : .white)
+                        .symbolEffect(.bounce, value: favoriteBounce)
+                        .frame(width: 44, height: 44)
+                        .glassEffect(in: Circle())
                 }
-            )
-        }
-    }
-    
-    var body: some View {
-        ZStack {
-            detailsContent
+                .disabled(viewModel.details == nil)
+                .accessibilityLabel(viewModel.isFavorite ? "Убрать из избранного" : "Добавить в избранное")
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 8)
         }
             .optionalMovieNavigationTransition(
                 sourceID: navigationTransitionID,
                 in: navigationTransitionNamespace
             )
             .environment(\.colorScheme, .dark)
-            .ignoresSafeArea(edges: .top)
-            .navigationBarBackButtonHidden(true)
+            .toolbar(.hidden, for: .navigationBar)
             .task {
                 await viewModel.loadDetails(id: movieId)
             }
@@ -481,7 +477,15 @@ struct DetailsView: View {
         }
     }
 
-
+    private var detailsContent: some View {
+        Group {
+            if verticalSizeClass == .compact {
+                landscapeDetailsContent
+            } else {
+                portraitDetailsContent
+            }
+        }
+    }
 
     private var portraitDetailsContent: some View {
         ScrollView {
@@ -495,7 +499,6 @@ struct DetailsView: View {
                     
                     GeometryReader { geometry in
                         let minY = geometry.frame(in: .global).minY
-                        let scrollMinY = geometry.frame(in: .named("detailsScroll")).minY
                         let isScrollingDown = minY > 0
                         let height = isScrollingDown ? baseHeight + minY : baseHeight
                         let offset = isScrollingDown ? -minY : 0
@@ -507,31 +510,16 @@ struct DetailsView: View {
                             height: height
                         )
                         .offset(y: offset)
-                        .preference(key: ScrollOffsetPreferenceKey.self, value: -scrollMinY)
                     }
                     .frame(height: baseHeight)
-                    .onPreferenceChange(ScrollOffsetPreferenceKey.self) { value in
-                        scrollOffset = value
-                    }
 
                     VStack(alignment: .center, spacing: 12) {
-                        if !showLogoInTopBar {
-                            RemoteLogoView(
-                                url: URL(string: details.displayLogoUrl ?? ""),
-                                fallbackTitle: details.title ?? details.originalTitle ?? "Без названия",
-                                alignment: .center
-                            )
-                            .matchedGeometryEffect(id: "detailsLogo", in: topBarNamespace)
-                            .padding(.bottom, 8)
-                        } else {
-                            RemoteLogoView(
-                                url: URL(string: details.displayLogoUrl ?? ""),
-                                fallbackTitle: details.title ?? details.originalTitle ?? "Без названия",
-                                alignment: .center
-                            )
-                            .opacity(0)
-                            .padding(.bottom, 8)
-                        }
+                        RemoteLogoView(
+                            url: URL(string: details.displayLogoUrl ?? ""),
+                            fallbackTitle: details.title ?? details.originalTitle ?? "Без названия",
+                            alignment: .center
+                        )
+                        .padding(.bottom, 8)
 
                         if let originalTitle = details.originalTitle, !originalTitle.isEmpty, originalTitle != details.title {
                             Text(originalTitle)
@@ -596,7 +584,6 @@ struct DetailsView: View {
                         
                         GeometryReader { geometry in
                             let minY = geometry.frame(in: .global).minY
-                            let scrollMinY = geometry.frame(in: .named("detailsScroll")).minY
                             let isScrollingDown = minY > 0
                             let height = isScrollingDown ? baseHeight + minY : baseHeight
                             let offset = isScrollingDown ? -minY : 0
@@ -608,32 +595,17 @@ struct DetailsView: View {
                                 height: height
                             )
                             .offset(y: offset)
-                            .preference(key: ScrollOffsetPreferenceKey.self, value: -scrollMinY)
                         }
                         .frame(height: baseHeight)
-                        .onPreferenceChange(ScrollOffsetPreferenceKey.self) { value in
-                            scrollOffset = value
-                        }
 
                         VStack(spacing: 0) {
                             VStack(alignment: .center, spacing: 12) {
-                                if !showLogoInTopBar {
-                                    RemoteLogoView(
-                                        url: URL(string: details.displayLogoUrl ?? ""),
-                                        fallbackTitle: details.title ?? details.originalTitle ?? "Без названия",
-                                        alignment: .center
-                                    )
-                                    .matchedGeometryEffect(id: "detailsLogo", in: topBarNamespace)
-                                    .padding(.bottom, 8)
-                                } else {
-                                    RemoteLogoView(
-                                        url: URL(string: details.displayLogoUrl ?? ""),
-                                        fallbackTitle: details.title ?? details.originalTitle ?? "Без названия",
-                                        alignment: .center
-                                    )
-                                    .opacity(0)
-                                    .padding(.bottom, 8)
-                                }
+                                RemoteLogoView(
+                                    url: URL(string: details.displayLogoUrl ?? ""),
+                                    fallbackTitle: details.title ?? details.originalTitle ?? "Без названия",
+                                    alignment: .center
+                                )
+                                .padding(.bottom, 8)
 
                                 if let originalTitle = details.originalTitle, !originalTitle.isEmpty, originalTitle != details.title {
                                     Text(originalTitle)
