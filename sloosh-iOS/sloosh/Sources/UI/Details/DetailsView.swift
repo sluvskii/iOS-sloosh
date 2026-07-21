@@ -65,6 +65,8 @@ struct RemoteLogoView: View {
                 .frame(maxWidth: .infinity, alignment: alignment)
         }
     }
+}
+
 struct DetailsView: View {
     let movieId: String
     let navigationTransitionID: String?
