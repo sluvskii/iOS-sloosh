@@ -7,15 +7,12 @@ struct PlayMovieIntent: AppIntent {
     static var title: LocalizedStringResource = "Включить в Sloosh"
     static var description = IntentDescription("Продолжить просмотр или включить фильм в Sloosh.")
 
-    @Parameter(title: "Название фильма", description: "Например, Дюна")
-    var movieQuery: String?
-
     static var openAppWhenRun: Bool = true
 
     @MainActor
     func perform() async throws -> some IntentResult {
         // Post notification so ContentView can intercept and navigate
-        NotificationCenter.default.post(name: NSNotification.Name("SlooshIntentPlayMovie"), object: nil, userInfo: ["query": movieQuery ?? ""])
+        NotificationCenter.default.post(name: NSNotification.Name("SlooshIntentPlayMovie"), object: nil)
         
         return .result()
     }
@@ -28,7 +25,6 @@ struct SlooshShortcuts: AppShortcutsProvider {
             intent: PlayMovieIntent(),
             phrases: [
                 "Включить \(.applicationName)",
-                "Найди \(\.$movieQuery) в \(.applicationName)",
                 "Продолжить просмотр в \(.applicationName)"
             ],
             shortTitle: "Включить фильм",
