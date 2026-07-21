@@ -180,7 +180,7 @@ struct DetailsView: View {
                             dismiss()
                         } label: {
                             Image(systemName: "chevron.left")
-                                .font(.system(size: 20, weight: .medium))
+                                .font(.system(size: 22, weight: .semibold))
                                 .foregroundStyle(.white)
                                 .frame(width: 44, height: 44)
                                 .glassEffect(.regular.interactive(), in: .circle)
@@ -199,7 +199,7 @@ struct DetailsView: View {
                             }
                         } label: {
                             Image(systemName: viewModel.isFavorite ? "heart.fill" : "heart")
-                                .font(.system(size: 20, weight: .medium))
+                                .font(.system(size: 22, weight: .semibold))
                                 .foregroundStyle(.white)
                                 .symbolEffect(.bounce, value: favoriteBounce)
                                 .frame(width: 44, height: 44)

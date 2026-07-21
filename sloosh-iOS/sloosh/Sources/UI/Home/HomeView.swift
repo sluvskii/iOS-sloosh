@@ -39,7 +39,12 @@ enum HomeFilter: String, CaseIterable, Identifiable {
     }
 }
 
-// Moved to Shared/ScrollOffsetPreferenceKey.swift
+struct ScrollOffsetPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 0
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
 
 struct HomeView: View {
     @StateObject private var viewModel = HomeViewModel()
