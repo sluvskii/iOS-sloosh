@@ -548,15 +548,15 @@ struct DetailsView: View {
                             )
                             .opacity(0)
                             .allowsHitTesting(false)
-                            
-                            RemoteLogoView(
-                                url: URL(string: details.displayLogoUrl ?? ""),
-                                fallbackTitle: details.title ?? details.originalTitle ?? "Без названия",
-                                alignment: .center
-                            )
-                            .matchedGeometryEffect(id: "logo", in: logoNamespace, isSource: !isLogoAtTop)
-                            .opacity(isLogoAtTop ? 0.0 : 1.0)
-                            .animation(nil, value: isLogoAtTop)
+                            if !isLogoAtTop {
+                                RemoteLogoView(
+                                    url: URL(string: details.displayLogoUrl ?? ""),
+                                    fallbackTitle: details.title ?? details.originalTitle ?? "Без названия",
+                                    alignment: .center
+                                )
+                                .matchedGeometryEffect(id: "logo", in: logoNamespace)
+                                .transition(.identity)
+                            }
                         }
                         .padding(.bottom, 8)
                         .background(
@@ -663,15 +663,15 @@ struct DetailsView: View {
                                     )
                                     .opacity(0)
                                     .allowsHitTesting(false)
-                                    
-                                    RemoteLogoView(
-                                        url: URL(string: details.displayLogoUrl ?? ""),
-                                        fallbackTitle: details.title ?? details.originalTitle ?? "Без названия",
-                                        alignment: .center
-                                    )
-                                    .matchedGeometryEffect(id: "logo", in: logoNamespace, isSource: !isLogoAtTop)
-                                    .opacity(isLogoAtTop ? 0.0 : 1.0)
-                                    .animation(nil, value: isLogoAtTop)
+                                    if !isLogoAtTop {
+                                        RemoteLogoView(
+                                            url: URL(string: details.displayLogoUrl ?? ""),
+                                            fallbackTitle: details.title ?? details.originalTitle ?? "Без названия",
+                                            alignment: .center
+                                        )
+                                        .matchedGeometryEffect(id: "logo", in: logoNamespace)
+                                        .transition(.identity)
+                                    }
                                 }
                                 .padding(.bottom, 8)
                                 .background(
