@@ -489,3 +489,47 @@ final class AllohaRuntimeResolver: NSObject, WKNavigationDelegate, WKScriptMessa
     })();
     """
 }
+
+@MainActor
+final class SharedWebViewProvider {
+    static let shared = SharedWebViewProvider()
+    var webView: WKWebView?
+    
+    private init() {}
+    
+    func prepare(for delegate: WKNavigationDelegate & WKScriptMessageHandler) {
+        if webView == nil {
+            let config = WKWebViewConfiguration()
+            let uc = WKUserContentController()
+            config.userContentController = uc
+            
+            // Basic config for headless playback checks
+            config.allowsInlineMediaPlayback = true
+            config.mediaTypesRequiringUserActionForPlayback = []
+            
+            let prefs = WKWebpagePreferences()
+            prefs.allowsContentJavaScript = true
+            config.defaultWebpagePreferences = prefs
+            
+            webView = WKWebView(frame: .zero, configuration: config)
+        }
+        
+        if let uc = webView?.configuration.userContentController {
+            uc.removeAllUserScripts()
+            uc.removeScriptMessageHandler(forName: "allohaInterop")
+            uc.removeScriptMessageHandler(forName: "allohaHeaders")
+            uc.add(delegate, name: "allohaInterop")
+            uc.add(delegate, name: "allohaHeaders")
+        }
+        webView?.navigationDelegate = delegate
+    }
+    
+    func reset() {
+        if let uc = webView?.configuration.userContentController {
+            uc.removeScriptMessageHandler(forName: "allohaInterop")
+            uc.removeScriptMessageHandler(forName: "allohaHeaders")
+        }
+        webView?.navigationDelegate = nil
+        webView?.loadHTMLString("", baseURL: nil)
+    }
+}
