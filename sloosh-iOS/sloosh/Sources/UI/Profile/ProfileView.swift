@@ -124,6 +124,7 @@ struct ProfileView: View {
                                         .frame(width: 44, height: 44)
                                         .glassEffect(.regular.interactive(), in: .circle)
                                 }
+                                .buttonStyle(NativeGlassButtonStyle())
                                 .tint(.primary)
                             }
                         }

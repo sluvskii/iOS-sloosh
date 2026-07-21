@@ -198,6 +198,7 @@ struct PlayerContainerView: View {
                     .foregroundStyle(.white.opacity(0.75))
                     .padding(.horizontal, 20)
                     .padding(.vertical, 10)
+                    .buttonStyle(NativeGlassButtonStyle())
                     .glassEffect(.regular.interactive(), in: .capsule)
                     
                     Button("Попробовать снова") {
@@ -207,6 +208,7 @@ struct PlayerContainerView: View {
                     .foregroundStyle(.white)
                     .padding(.horizontal, 20)
                     .padding(.vertical, 10)
+                    .buttonStyle(NativeGlassButtonStyle())
                     .glassEffect(.regular.interactive(), in: .capsule)
                 }
             }

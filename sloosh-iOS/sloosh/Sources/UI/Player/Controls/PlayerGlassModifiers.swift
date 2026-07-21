@@ -30,3 +30,10 @@ struct GlassGroupModifier: ViewModifier {
             .glassEffect(.regular, in: .capsule)
     }
 }
+
+public struct NativeGlassButtonStyle: ButtonStyle {
+    public func makeBody(configuration: Configuration) -> some View {
+        // Prevents default opacity fade which breaks UIVisualEffectView blur
+        configuration.label
+    }
+}
