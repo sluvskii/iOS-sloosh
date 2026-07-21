@@ -19,15 +19,38 @@ struct PlayMovieIntent: AppIntent {
 }
 
 @available(iOS 16.0, *)
+struct ContinueWatchingIntent: AppIntent {
+    static var title: LocalizedStringResource = "Продолжить просмотр в Sloosh"
+    static var description = IntentDescription("Открыть вкладку Продолжить просмотр в Sloosh.")
+
+    static var openAppWhenRun: Bool = true
+
+    @MainActor
+    func perform() async throws -> some IntentResult {
+        NotificationCenter.default.post(name: NSNotification.Name("SlooshIntentContinueWatching"), object: nil)
+        return .result()
+    }
+}
+
+@available(iOS 16.0, *)
 struct SlooshShortcuts: AppShortcutsProvider {
     static var appShortcuts: [AppShortcut] {
         AppShortcut(
             intent: PlayMovieIntent(),
             phrases: [
                 "Включить \(.applicationName)",
-                "Продолжить просмотр в \(.applicationName)"
+                "Поиск в \(.applicationName)"
             ],
             shortTitle: "Включить фильм",
+            systemImageName: "magnifyingglass"
+        )
+        
+        AppShortcut(
+            intent: ContinueWatchingIntent(),
+            phrases: [
+                "Продолжить просмотр в \(.applicationName)"
+            ],
+            shortTitle: "Продолжить просмотр",
             systemImageName: "play.tv.fill"
         )
     }

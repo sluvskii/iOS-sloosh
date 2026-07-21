@@ -13,6 +13,10 @@ struct SharePlayTip: Tip {
     var image: Image? {
         Image(systemName: "person.2.fill")
     }
+    
+    var options: [TipOption] {
+        [Tip.MaxDisplayCount(1)]
+    }
 }
 
 struct DoubleTapTip: Tip {
@@ -26,5 +30,9 @@ struct DoubleTapTip: Tip {
     
     var image: Image? {
         Image(systemName: "goforward.10")
+    }
+    
+    var options: [TipOption] {
+        [Tip.MaxDisplayCount(1)]
     }
 }
