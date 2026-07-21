@@ -1035,7 +1035,7 @@ private struct DetailsInfoSection: View {
                             Text(genre)
                                 .font(.system(size: 14, weight: .semibold))
                                 .padding(.horizontal, 14)
-                                .padding(.vertical, 8)
+                                .padding(.vertical, 6)
                                 .glassEffect(in: Capsule())
                         }
                     }
@@ -1724,7 +1724,7 @@ struct InlineEpisodesSection: View {
             } else {
                 // Season Picker
                 ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 12) {
+                    HStack(spacing: 8) {
                         ForEach(allSeasons, id: \.self) { season in
                             Button(action: {
                                 let generator = UIImpactFeedbackGenerator(style: .light)
@@ -1744,7 +1744,7 @@ struct InlineEpisodesSection: View {
                                     }
                                 }
                                 .padding(.horizontal, 14)
-                                .padding(.vertical, 8)
+                                .padding(.vertical, 6)
                                 .background(
                                     ZStack {
                                         if selectedSeason == season {
