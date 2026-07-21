@@ -39,10 +39,10 @@ struct SlooshShortcuts: AppShortcutsProvider {
             intent: PlayMovieIntent(),
             phrases: [
                 "Включить \(.applicationName)",
-                "Поиск в \(.applicationName)"
+                "Открыть \(.applicationName)"
             ],
-            shortTitle: "Включить фильм",
-            systemImageName: "magnifyingglass"
+            shortTitle: "Открыть Sloosh",
+            systemImageName: "play.tv.fill"
         )
         
         AppShortcut(

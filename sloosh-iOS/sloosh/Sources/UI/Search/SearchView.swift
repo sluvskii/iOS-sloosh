@@ -176,9 +176,6 @@ struct SearchView: View {
             .sheet(isPresented: $showFilters) {
                 SearchFilterSheet(filters: $viewModel.filters)
             }
-            .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("SlooshIntentPlayMovie"))) { _ in
-                // Intent just focuses the search tab, user can type the query
-            }
         }
     }
 }
