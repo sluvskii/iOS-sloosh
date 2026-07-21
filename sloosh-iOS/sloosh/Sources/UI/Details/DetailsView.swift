@@ -184,7 +184,7 @@ struct DetailsView: View {
                                 .font(.system(size: 22, weight: .medium))
                                 .foregroundStyle(.white)
                                 .frame(width: 44, height: 44)
-                                .glassEffect(.regular, in: .circle)
+                                .glassEffect(.regular.interactive(), in: .circle)
                         }
                         .buttonStyle(NativeGlassButtonStyle())
                         .tint(.white)
@@ -205,7 +205,7 @@ struct DetailsView: View {
                                 .foregroundStyle(.white)
                                 .symbolEffect(.bounce, value: favoriteBounce)
                                 .frame(width: 44, height: 44)
-                                .glassEffect(.regular, in: .circle)
+                                .glassEffect(.regular.interactive(), in: .circle)
                         }
                         .buttonStyle(NativeGlassButtonStyle())
                         .disabled(viewModel.details == nil)
@@ -1754,19 +1754,8 @@ struct InlineEpisodesSection: View {
                                 }
                                 .padding(.horizontal, 14)
                                 .padding(.vertical, 8)
-                                .background(
-                                    ZStack {
-                                        if selectedSeason == season {
-                                            Capsule().fill(Color.white)
-                                        } else {
-                                            Color.clear
-                                        }
-                                    }
-                                    .glassEffect(.regular, in: Capsule())
-                                )
-                                .foregroundColor(selectedSeason == season ? .black : .primary)
                             }
-                            .buttonStyle(NativeGlassButtonStyle())
+                            .buttonStyle(SeasonButtonStyle(isSelected: selectedSeason == season))
                         }
                     }
                     .padding(.horizontal, horizontalPadding)
@@ -2021,6 +2010,26 @@ class DetailsViewModel: ObservableObject {
     }
 }
 
+struct SeasonButtonStyle: ButtonStyle {
+    let isSelected: Bool
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background(
+                ZStack {
+                    if isSelected {
+                        Capsule().fill(Color.white)
+                    } else {
+                        Color.clear
+                    }
+                }
+            )
+            .foregroundColor(isSelected ? .black : .primary)
+            .glassEffect(.regular.interactive(), in: Capsule())
+            .scaleEffect(configuration.isPressed ? 0.94 : 1.0)
+            .animation(.spring(response: 0.25, dampingFraction: 0.6), value: configuration.isPressed)
+    }
+}
+
 struct GlassPlayButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
@@ -2029,7 +2038,9 @@ struct GlassPlayButtonStyle: ButtonStyle {
                 Capsule()
                     .fill(.white.opacity(0.85))
             )
-            .glassEffect(.regular, in: Capsule())
+            .glassEffect(.regular.interactive(), in: Capsule())
+            .scaleEffect(configuration.isPressed ? 0.94 : 1.0)
+            .animation(.spring(response: 0.25, dampingFraction: 0.6), value: configuration.isPressed)
     }
 }
 
@@ -2037,7 +2048,9 @@ struct GlassDownloadButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .foregroundStyle(.white)
-            .glassEffect(.regular, in: Circle())
+            .glassEffect(.regular.interactive(), in: Circle())
+            .scaleEffect(configuration.isPressed ? 0.94 : 1.0)
+            .animation(.spring(response: 0.25, dampingFraction: 0.6), value: configuration.isPressed)
     }
 }
 
