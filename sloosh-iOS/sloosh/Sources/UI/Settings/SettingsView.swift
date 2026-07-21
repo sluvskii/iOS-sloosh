@@ -196,7 +196,7 @@ struct SettingsView: View {
                         dismiss()
                     } label: {
                         Image(systemName: "chevron.left")
-                            .font(.system(size: 22, weight: .semibold))
+                            .font(.system(size: 22, weight: .medium))
                             .foregroundStyle(.primary)
                             .frame(width: 44, height: 44)
                             .glassEffect(.regular.interactive(), in: .circle)

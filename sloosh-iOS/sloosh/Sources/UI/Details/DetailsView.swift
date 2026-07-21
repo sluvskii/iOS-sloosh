@@ -147,9 +147,9 @@ struct DetailsView: View {
                 self.dominantBackdropColor = backdrop
                 self.dominantPosterColor = poster
             }
-        }
     }
     
+    @Namespace private var logoNamespace
     @State private var isLogoAtTop: Bool = false
     
     var body: some View {
@@ -172,7 +172,7 @@ struct DetailsView: View {
                             alignment: .center
                         )
                         .frame(height: 32)
-                        .transition(.opacity.animation(.easeInOut(duration: 0.25)))
+                        .matchedGeometryEffect(id: "logo", in: logoNamespace)
                     }
                     
                     HStack {
@@ -543,21 +543,22 @@ struct DetailsView: View {
                             fallbackTitle: details.title ?? details.originalTitle ?? "Без названия",
                             alignment: .center
                         )
+                        .matchedGeometryEffect(id: "logo", in: logoNamespace, isSource: !isLogoAtTop)
                         .padding(.bottom, 8)
                         .opacity(isLogoAtTop ? 0.0 : 1.0)
                         .background(
                             GeometryReader { geo in
                                 Color.clear
                                     .onChange(of: geo.frame(in: .global).minY) { _, minY in
-                                        let isAtTop = minY < 100
+                                        let isAtTop = minY < 60
                                         if isLogoAtTop != isAtTop {
-                                            withAnimation(.easeInOut(duration: 0.2)) {
+                                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                                                 isLogoAtTop = isAtTop
                                             }
                                         }
                                     }
                                     .onAppear {
-                                        isLogoAtTop = geo.frame(in: .global).minY < 100
+                                        isLogoAtTop = geo.frame(in: .global).minY < 60
                                     }
                             }
                         )
@@ -646,21 +647,22 @@ struct DetailsView: View {
                                     fallbackTitle: details.title ?? details.originalTitle ?? "Без названия",
                                     alignment: .center
                                 )
+                                .matchedGeometryEffect(id: "logo", in: logoNamespace, isSource: !isLogoAtTop)
                                 .padding(.bottom, 8)
                                 .opacity(isLogoAtTop ? 0.0 : 1.0)
                                 .background(
                                     GeometryReader { geo in
                                         Color.clear
                                             .onChange(of: geo.frame(in: .global).minY) { _, minY in
-                                                let isAtTop = minY < 100
+                                                let isAtTop = minY < 60
                                                 if isLogoAtTop != isAtTop {
-                                                    withAnimation(.easeInOut(duration: 0.2)) {
+                                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                                                         isLogoAtTop = isAtTop
                                                     }
                                                 }
                                             }
                                             .onAppear {
-                                                isLogoAtTop = geo.frame(in: .global).minY < 100
+                                                isLogoAtTop = geo.frame(in: .global).minY < 60
                                             }
                                     }
                                 )
