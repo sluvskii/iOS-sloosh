@@ -11,7 +11,7 @@ struct GlassCircleEffect: ViewModifier {
     func body(content: Content) -> some View {
         content
             .frame(width: diameter, height: diameter)
-            .glassEffect(.regular, in: .circle)
+            .glassEffect(.regular.interactive(), in: .circle)
     }
 }
 

@@ -65,7 +65,7 @@ struct PlayerControlsView: View {
                                     .foregroundStyle(.white)
                                     .padding(.horizontal, 20)
                                     .padding(.vertical, 12)
-                                    .glassEffect(.regular, in: .capsule)
+                                    .glassEffect(.regular.interactive(), in: .capsule)
                                 }
                                 .buttonStyle(NativeGlassButtonStyle())
                                 .transition(.move(edge: .trailing).combined(with: .opacity))
@@ -88,7 +88,7 @@ struct PlayerControlsView: View {
                                     .foregroundStyle(.white)
                                     .padding(.horizontal, 20)
                                     .padding(.vertical, 12)
-                                    .glassEffect(.regular, in: .capsule)
+                                    .glassEffect(.regular.interactive(), in: .capsule)
                                 }
                                 .buttonStyle(NativeGlassButtonStyle())
                                 .transition(.move(edge: .trailing).combined(with: .opacity))
