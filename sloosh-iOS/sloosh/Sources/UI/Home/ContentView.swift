@@ -87,7 +87,7 @@ struct ContentView: View {
             }
             .withToasts()
             .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("SlooshIntentPlayMovie"))) { notification in
-                selectedTab = .search
+                selectedTab = .home
             }
             .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("SlooshIntentContinueWatching"))) { notification in
                 selectedTab = .continueWatching
