@@ -1215,18 +1215,32 @@ class PlayerViewModel: ObservableObject {
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 
-                // 1. Восстанавливаем аудиосессию — могла быть сброшена звонком/другим приложением
+                // 1. Восстанавливаем аудиосессию
                 try? AVAudioSession.sharedInstance().setActive(true)
                 
-                // 2. Пинаем прокси (он сам проверит isListenerAlive)
+                // 2. Пинаем прокси
                 HlsProxyServer.shared.appWillEnterForeground()
                 
-                // 3. Возобновляем воспроизведение, если оно шло до ухода в фон.
-                // Если стрим завис (прокси отпал), сработает 5.5с таймаут в rateObserver
-                // и стрим принудительно перезагрузится через originalStreamURL.
+                // 3. Возобновляем воспроизведение
                 let wasPlaying = UserDefaults.standard.bool(forKey: "sloosh_was_playing_before_bg")
                 if wasPlaying && self.player?.timeControlStatus != .playing {
                     self.player?.play()
+                }
+                
+                // 4. Умный Watchdog: если через 4 секунды после возврата из фона плеер все еще висит
+                // в состоянии буферизации (скорее всего сокет прокси сервера умер), мы мягко
+                // пересоздаем AVPlayerItem. Это не затронет обычные паузы или поиск, 
+                // так как срабатывает только при возврате из фона.
+                let currentItem = self.player?.currentItem
+                try? await Task.sleep(nanoseconds: 4_000_000_000)
+                
+                guard let player = self.player, player.currentItem == currentItem else { return }
+                
+                if player.timeControlStatus == .waitingToPlayAtSpecifiedRate {
+                    self.logDebug("Foreground watchdog: player stuck buffering. Reloading stream.")
+                    if let url = self.originalStreamURL ?? self.currentPlaybackSourceURL {
+                        self.reloadPlayback(to: url, preferredPeakBitRate: player.currentItem?.preferredPeakBitRate)
+                    }
                 }
             }
         }
