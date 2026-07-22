@@ -102,7 +102,7 @@ enum AllohaRuntimeParser {
                         }
                         
                         let normLabel = normalizedQualityLabel(label)
-                        if normLabel.contains("2160") || normLabel.lowercased().contains("4k") || normLabel.lowercased().contains("4к") {
+                        if normLabel.contains("2160") || normLabel.contains("1440") || normLabel.lowercased().contains("4k") || normLabel.lowercased().contains("4к") || normLabel.lowercased().contains("2k") || normLabel.lowercased().contains("2к") {
                             continue
                         }
 
