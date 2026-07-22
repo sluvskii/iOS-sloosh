@@ -1,0 +1,20 @@
+{
+  "name": "sloosh repo",
+  "identifier": "com.sluvskii.sloosh.repo",
+  "sourceURL": "https://sluvskii.github.io/iOS-sloosh/apps.json",
+  "apps": [
+    {
+      "name": "sloosh",
+      "bundleIdentifier": "com.sluvskii.sloosh",
+      "developerName": "sluvskii",
+      "version": "1.5.1236",
+      "versionDate": "2026-07-22T20:31:47Z",
+      "versionDescription": "Build #1236",
+      "downloadURL": "https://github.com/sluvskii/iOS-sloosh/releases/download/build-1236/sloosh.ipa",
+      "localizedDescription": "sloosh premium streaming",
+      "iconURL": "https://raw.githubusercontent.com/sluvskii/iOS-sloosh/main/sloosh-iOS/sloosh/Resources/Assets.xcassets/AppIcon.appiconset/light.png",
+      "tintColor": "000000",
+      "size": 1707581
+    }
+  ]
+}
