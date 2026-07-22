@@ -55,7 +55,12 @@ struct QualitySelectionSheet: View {
                 .buttonStyle(GlassPlayButtonStyle())
                 .padding(.bottom, 8)
             }
+            .scrollContentBackground(.hidden)
+            .background(Color.clear)
         }
         .presentationDetents([.medium, .large])
+        .presentationBackground(Material.thin)
+        .presentationCornerRadius(32)
+        .presentationDragIndicator(.visible)
     }
 }
