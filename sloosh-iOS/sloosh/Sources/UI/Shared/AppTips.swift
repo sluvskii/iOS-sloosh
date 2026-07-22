@@ -1,24 +1,6 @@
 import SwiftUI
 import TipKit
 
-struct SharePlayTip: Tip {
-    var title: Text {
-        Text("Смотрите вместе!")
-    }
-    
-    var message: Text? {
-        Text("Нажмите здесь, чтобы начать сессию SharePlay и смотреть этот фильм с друзьями через FaceTime.")
-    }
-    
-    var image: Image? {
-        Image(systemName: "person.2.fill")
-    }
-    
-    var options: [TipOption] {
-        [Tip.MaxDisplayCount(1)]
-    }
-}
-
 struct DoubleTapTip: Tip {
     var title: Text {
         Text("Перемотка")
