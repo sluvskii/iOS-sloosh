@@ -221,6 +221,8 @@ struct DetailsView: View {
                         .allowsHitTesting(false)
                 )
             }
+            .navigationBarBackButtonHidden(true)
+            .toolbar(.hidden, for: .navigationBar)
             .task {
                 await viewModel.loadDetails(id: movieId)
             }
