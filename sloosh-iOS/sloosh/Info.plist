@@ -35,6 +35,8 @@
         <string>UIInterfaceOrientationLandscapeLeft</string>
         <string>UIInterfaceOrientationLandscapeRight</string>
     </array>
+    <key>NSPhotoLibraryAddUsageDescription</key>
+    <string>Sloosh сохранит постер или логотип фильма в вашу Медиатеку.</string>
 </dict>
 </plist>
 

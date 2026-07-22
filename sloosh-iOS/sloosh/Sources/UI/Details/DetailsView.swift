@@ -1,4 +1,5 @@
 import SwiftUI
+import Photos
 
 struct RemoteBackdropView: View {
     let url: URL?
@@ -151,6 +152,7 @@ struct DetailsView: View {
     }
     
     @State private var isLogoAtTop: Bool = false
+    @State private var isSavingImage: Bool = false
     
     var body: some View {
         ZStack {
@@ -504,6 +506,62 @@ struct DetailsView: View {
         }
     }
 
+    // MARK: - Image Saving
+
+    @MainActor
+    private func saveImage(from urlString: String?, label: String) async {
+        guard let urlString, let url = URL(string: urlString) else { return }
+        isSavingImage = true
+        defer { isSavingImage = false }
+
+        do {
+            let (data, _) = try await URLSession.shared.data(from: url)
+            guard let image = UIImage(data: data) else {
+                ToastManager.shared.show(title: "Не удалось загрузить \(label)", icon: "xmark.circle")
+                return
+            }
+            let status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
+            guard status == .authorized || status == .limited else {
+                ToastManager.shared.show(title: "Нет доступа к Фото", icon: "lock")
+                return
+            }
+            try await PHPhotoLibrary.shared().performChanges {
+                PHAssetChangeRequest.creationRequestForAsset(from: image)
+            }
+            ToastManager.shared.show(title: "Сохранено в Фото", icon: "checkmark.circle.fill")
+        } catch {
+            ToastManager.shared.show(title: "Ошибка: \(label) не сохранён", icon: "xmark.circle")
+        }
+    }
+
+    private func shareImages(posterUrl: String?, backdropUrl: String?) {
+        var items: [Any] = []
+        // Collect cached images for sharing
+        if let str = backdropUrl, let url = URL(string: str),
+           let data = URLCache.shared.cachedResponse(for: URLRequest(url: url))?.data,
+           let img = UIImage(data: data) {
+            items.append(img)
+        } else if let str = posterUrl, let url = URL(string: str),
+           let data = URLCache.shared.cachedResponse(for: URLRequest(url: url))?.data,
+           let img = UIImage(data: data) {
+            items.append(img)
+        }
+        if items.isEmpty {
+            if let str = backdropUrl ?? posterUrl { items.append(str) }
+        }
+        guard !items.isEmpty else { return }
+
+        let av = UIActivityViewController(activityItems: items, applicationActivities: nil)
+        if let windowScene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene }).first,
+           let rootVC = windowScene.windows.first(where: { $0.isKeyWindow })?.rootViewController {
+            var topVC = rootVC
+            while let presented = topVC.presentedViewController { topVC = presented }
+            av.popoverPresentationController?.sourceView = topVC.view
+            topVC.present(av, animated: true)
+        }
+    }
+
     private var detailsContent: some View {
         Group {
             if verticalSizeClass == .compact {
@@ -539,6 +597,41 @@ struct DetailsView: View {
                         .offset(y: offset)
                     }
                     .frame(height: baseHeight)
+                    .contextMenu {
+                        Button {
+                            Task { await saveImage(from: details.displayBackdropUrl, label: "обложка") }
+                        } label: {
+                            Label("Сохранить обложку", systemImage: "photo.badge.arrow.down")
+                        }
+                        Button {
+                            Task { await saveImage(from: details.displayPosterUrl, label: "постер") }
+                        } label: {
+                            Label("Сохранить постер", systemImage: "photo")
+                        }
+                        if details.displayLogoUrl != nil {
+                            Button {
+                                Task { await saveImage(from: details.displayLogoUrl, label: "логотип") }
+                            } label: {
+                                Label("Сохранить логотип", systemImage: "text.below.photo")
+                            }
+                        }
+                        Divider()
+                        Button {
+                            shareImages(posterUrl: details.displayPosterUrl, backdropUrl: details.displayBackdropUrl)
+                        } label: {
+                            Label("Поделиться", systemImage: "square.and.arrow.up")
+                        }
+                    } preview: {
+                        AsyncCachedImage(url: URL(string: details.displayBackdropUrl ?? ""),
+                                         fallbackUrl: URL(string: details.displayPosterUrl ?? "")) {
+                            Rectangle().fill(Color.gray.opacity(0.3)).frame(width: 300, height: 200)
+                        } content: { image in
+                            Image(uiImage: image).resizable().aspectRatio(contentMode: .fill)
+                                .frame(width: 300, height: 200).clipped()
+                        } fallback: {
+                            Rectangle().fill(Color.gray.opacity(0.3)).frame(width: 300, height: 200)
+                        }
+                    }
 
                     VStack(alignment: .center, spacing: 12) {
                         ZStack {
