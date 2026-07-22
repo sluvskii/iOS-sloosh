@@ -274,6 +274,8 @@ struct SourceSelectionView: View {
             .safeAreaInset(edge: .bottom) {
                 bottomActionButton
             }
+            .scrollContentBackground(.hidden)
+            .background(Color.clear)
         }
         .presentationBackground(Material.thin)
         .presentationCornerRadius(32)

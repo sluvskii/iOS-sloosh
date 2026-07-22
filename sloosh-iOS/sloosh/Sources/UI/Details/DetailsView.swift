@@ -989,7 +989,11 @@ struct SourceSelectionLoadingView: View {
                     .accessibilityLabel("Закрыть")
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(Color.clear)
         }
+        .presentationBackground(Material.thin)
+        .presentationCornerRadius(32)
         .presentationDragIndicator(.visible)
     }
 }
