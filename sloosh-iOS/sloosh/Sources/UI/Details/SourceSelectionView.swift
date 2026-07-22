@@ -277,8 +277,7 @@ struct SourceSelectionView: View {
             .scrollContentBackground(.hidden)
             .background(Color.clear)
         }
-        .presentationBackground(Material.thin)
-        .presentationCornerRadius(32)
+        .presentationBackground { Color.clear.glassEffect() }
         .presentationDragIndicator(.visible)
         .onAppear {
             setupInitialSelection()
