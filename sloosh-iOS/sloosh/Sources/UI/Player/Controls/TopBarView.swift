@@ -11,8 +11,7 @@ struct TopBarView: View {
     @Binding var isInteracting: Bool
     
     // Tips
-    @State private var sharePlayTip = SharePlayTip()
-    
+
     var body: some View {
         HStack(alignment: .center) {
             leftGroup
@@ -48,18 +47,6 @@ struct TopBarView: View {
 
                 divider
             }
-            
-            // SharePlay
-            Button { vm.startSharePlay() } label: {
-                Image(systemName: "shareplay")
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(vm.groupSession != nil ? Color.green : Color.white.opacity(0.65))
-                    .blendMode(vm.groupSession != nil ? .normal : .plusLighter)
-                    .frame(width: 44, height: 40)
-            }
-            .popoverTip(sharePlayTip)
-            
-            divider
 
             // AirPlay (системная кнопка Apple)
             AirPlayButton()
