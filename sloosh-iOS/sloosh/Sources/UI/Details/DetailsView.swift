@@ -992,8 +992,7 @@ struct SourceSelectionLoadingView: View {
             .scrollContentBackground(.hidden)
             .background(Color.clear)
         }
-        .presentationBackground(Material.thin)
-        .presentationCornerRadius(32)
+        .presentationBackground { Color.clear.glassEffect(in: .rect) }
         .presentationDragIndicator(.visible)
     }
 }

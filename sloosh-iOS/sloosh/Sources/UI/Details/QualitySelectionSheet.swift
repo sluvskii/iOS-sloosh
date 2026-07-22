@@ -59,7 +59,7 @@ struct QualitySelectionSheet: View {
             .background(Color.clear)
         }
         .presentationDetents([.medium, .large])
-        .presentationBackground { Color.clear.glassEffect() }
+        .presentationBackground { Color.clear.glassEffect(in: .rect) }
         .presentationDragIndicator(.visible)
     }
 }
