@@ -514,51 +514,29 @@ struct DetailsView: View {
         isSavingImage = true
         defer { isSavingImage = false }
 
+        // Request authorization first
+        let currentStatus = PHPhotoLibrary.authorizationStatus(for: .addOnly)
+        if currentStatus == .notDetermined {
+            let granted = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
+            guard granted == .authorized || granted == .limited else {
+                ToastManager.shared.show(title: "Нет доступа к Фото", icon: "lock")
+                return
+            }
+        } else if currentStatus != .authorized && currentStatus != .limited {
+            ToastManager.shared.show(title: "Нет доступа к Фото", icon: "lock")
+            return
+        }
+
         do {
             let (data, _) = try await URLSession.shared.data(from: url)
             guard let image = UIImage(data: data) else {
                 ToastManager.shared.show(title: "Не удалось загрузить \(label)", icon: "xmark.circle")
                 return
             }
-            let status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
-            guard status == .authorized || status == .limited else {
-                ToastManager.shared.show(title: "Нет доступа к Фото", icon: "lock")
-                return
-            }
-            try await PHPhotoLibrary.shared().performChanges {
-                PHAssetChangeRequest.creationRequestForAsset(from: image)
-            }
+            UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil)
             ToastManager.shared.show(title: "Сохранено в Фото", icon: "checkmark.circle.fill")
         } catch {
-            ToastManager.shared.show(title: "Ошибка: \(label) не сохранён", icon: "xmark.circle")
-        }
-    }
-
-    private func shareImages(posterUrl: String?, backdropUrl: String?) {
-        var items: [Any] = []
-        // Collect cached images for sharing
-        if let str = backdropUrl, let url = URL(string: str),
-           let data = URLCache.shared.cachedResponse(for: URLRequest(url: url))?.data,
-           let img = UIImage(data: data) {
-            items.append(img)
-        } else if let str = posterUrl, let url = URL(string: str),
-           let data = URLCache.shared.cachedResponse(for: URLRequest(url: url))?.data,
-           let img = UIImage(data: data) {
-            items.append(img)
-        }
-        if items.isEmpty {
-            if let str = backdropUrl ?? posterUrl { items.append(str) }
-        }
-        guard !items.isEmpty else { return }
-
-        let av = UIActivityViewController(activityItems: items, applicationActivities: nil)
-        if let windowScene = UIApplication.shared.connectedScenes
-            .compactMap({ $0 as? UIWindowScene }).first,
-           let rootVC = windowScene.windows.first(where: { $0.isKeyWindow })?.rootViewController {
-            var topVC = rootVC
-            while let presented = topVC.presentedViewController { topVC = presented }
-            av.popoverPresentationController?.sourceView = topVC.view
-            topVC.present(av, animated: true)
+            ToastManager.shared.show(title: "Ошибка при загрузке", icon: "xmark.circle")
         }
     }
 
@@ -614,12 +592,6 @@ struct DetailsView: View {
                             } label: {
                                 Label("Сохранить логотип", systemImage: "text.below.photo")
                             }
-                        }
-                        Divider()
-                        Button {
-                            shareImages(posterUrl: details.displayPosterUrl, backdropUrl: details.displayBackdropUrl)
-                        } label: {
-                            Label("Поделиться", systemImage: "square.and.arrow.up")
                         }
                     } preview: {
                         AsyncCachedImage(url: URL(string: details.displayBackdropUrl ?? ""),
