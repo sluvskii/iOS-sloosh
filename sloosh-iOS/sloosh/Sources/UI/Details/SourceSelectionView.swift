@@ -231,7 +231,6 @@ struct SourceSelectionView: View {
             dismiss()
         }
     }
-
     /// Кнопка «Смотреть» активна только когда пользователь сделал полный выбор.
     var isReadyToPlay: Bool {
         guard selectedTranslationName != nil else { return false }
@@ -245,63 +244,12 @@ struct SourceSelectionView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
-                    if !allTranslations.isEmpty {
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("Озвучка")
-                                .font(.system(size: 20, weight: .bold))
-                                .foregroundColor(.primary)
-                            
-                            FlowLayout(spacing: 10) {
-                                ForEach(allTranslations, id: \.self) { tName in
-                                    WatchSelectorChip(
-                                        title: tName,
-                                        isSelected: selectedTranslationName == tName,
-                                        isAvailable: isTranslationAvailable(tName)
-                                    ) {
-                                        selectTranslation(tName)
-                                    }
-                                }
-                            }
-                        }
-                    }
+                    translationsSection
                     
                     if result.isSerial && !allSeasons.isEmpty {
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("Сезон")
-                                .font(.system(size: 20, weight: .bold))
-                                .foregroundColor(.primary)
-                            
-                            FlowLayout(spacing: 10) {
-                                ForEach(allSeasons, id: \.self) { s in
-                                    WatchSelectorChip(
-                                        title: "\(s) сезон",
-                                        isSelected: selectedSeason == s,
-                                        isAvailable: isSeasonAvailable(s)
-                                    ) {
-                                        selectSeason(s)
-                                    }
-                                }
-                            }
-                        }
-                        
+                        seasonsSection
                         if !allEpisodes.isEmpty {
-                            VStack(alignment: .leading, spacing: 12) {
-                                Text("Серия")
-                                    .font(.system(size: 20, weight: .bold))
-                                    .foregroundColor(.primary)
-                                
-                                FlowLayout(spacing: 10) {
-                                    ForEach(allEpisodes, id: \.self) { e in
-                                        WatchSelectorChip(
-                                            title: "\(e) серия",
-                                            isSelected: selectedEpisode == e,
-                                            isAvailable: isEpisodeAvailable(e)
-                                        ) {
-                                            selectEpisode(e)
-                                        }
-                                    }
-                                }
-                            }
+                            episodesSection
                         }
                     }
                 }
@@ -314,9 +262,7 @@ struct SourceSelectionView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button {
-                        dismiss()
-                    } label: {
+                    Button(action: { dismiss() }) {
                         Image(systemName: "xmark")
                             .symbolRenderingMode(.monochrome)
                             .foregroundStyle(.primary)
@@ -326,23 +272,11 @@ struct SourceSelectionView: View {
                 }
             }
             .safeAreaInset(edge: .bottom) {
-                Button(action: {
-                    actionSelected()
-                }) {
-                    HStack(spacing: 8) {
-                        Image(systemName: mode == .play ? "play.fill" : "arrow.down.circle.fill")
-                            .font(.system(size: 18, weight: .black))
-                        Text(mode == .play ? "Смотреть" : "Скачать")
-                            .font(.system(size: 19, weight: .heavy))
-                    }
-                    .frame(height: 50)
-                    .padding(.horizontal, 24)
-                }
-                .buttonStyle(GlassPlayButtonStyle())
-                .disabled(!isReadyToPlay)
-                .padding(.bottom, 8)
+                bottomActionButton
             }
         }
+        .presentationBackground(Material.thin)
+        .presentationCornerRadius(32)
         .presentationDragIndicator(.visible)
         .onAppear {
             setupInitialSelection()
@@ -353,5 +287,89 @@ struct SourceSelectionView: View {
                 finishAction(quality: selectedQuality)
             }
         }
+    }
+    
+    @ViewBuilder
+    private var translationsSection: some View {
+        if !allTranslations.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("Озвучка")
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundColor(.primary)
+                
+                FlowLayout(spacing: 10) {
+                    ForEach(allTranslations, id: \.self) { tName in
+                        WatchSelectorChip(
+                            title: tName,
+                            isSelected: selectedTranslationName == tName,
+                            isAvailable: isTranslationAvailable(tName)
+                        ) {
+                            selectTranslation(tName)
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    @ViewBuilder
+    private var seasonsSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Сезон")
+                .font(.system(size: 20, weight: .bold))
+                .foregroundColor(.primary)
+            
+            FlowLayout(spacing: 10) {
+                ForEach(allSeasons, id: \.self) { s in
+                    WatchSelectorChip(
+                        title: "\(s) сезон",
+                        isSelected: selectedSeason == s,
+                        isAvailable: isSeasonAvailable(s)
+                    ) {
+                        selectSeason(s)
+                    }
+                }
+            }
+        }
+    }
+    
+    @ViewBuilder
+    private var episodesSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Серия")
+                .font(.system(size: 20, weight: .bold))
+                .foregroundColor(.primary)
+            
+            FlowLayout(spacing: 10) {
+                ForEach(allEpisodes, id: \.self) { e in
+                    WatchSelectorChip(
+                        title: "\(e) серия",
+                        isSelected: selectedEpisode == e,
+                        isAvailable: isEpisodeAvailable(e)
+                    ) {
+                        selectEpisode(e)
+                    }
+                }
+            }
+        }
+    }
+    
+    @ViewBuilder
+    private var bottomActionButton: some View {
+        Button(action: {
+            actionSelected()
+        }) {
+            HStack(spacing: 8) {
+                Image(systemName: mode == .play ? "play.fill" : "arrow.down.circle.fill")
+                    .font(.system(size: 18, weight: .black))
+                Text(mode == .play ? "Смотреть" : "Скачать")
+                    .font(.system(size: 19, weight: .heavy))
+            }
+            .frame(height: 50)
+            .padding(.horizontal, 24)
+        }
+        .buttonStyle(GlassPlayButtonStyle())
+        .disabled(!isReadyToPlay)
+        .padding(.bottom, 8)
     }
 }
