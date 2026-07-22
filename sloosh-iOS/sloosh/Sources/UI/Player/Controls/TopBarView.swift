@@ -57,7 +57,6 @@ struct TopBarView: View {
                     .blendMode(vm.groupSession != nil ? .normal : .plusLighter)
                     .frame(width: 44, height: 40)
             }
-            .buttonStyle(NativeGlassButtonStyle())
             .popoverTip(sharePlayTip)
 
             divider
