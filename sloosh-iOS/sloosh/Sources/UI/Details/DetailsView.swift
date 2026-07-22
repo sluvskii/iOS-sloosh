@@ -529,16 +529,15 @@ struct DetailsView: View {
 
         do {
             let (data, _) = try await URLSession.shared.data(from: url)
-            guard let image = UIImage(data: data),
-                  let jpegData = image.jpegData(compressionQuality: 1.0) else {
-                ToastManager.shared.show(title: "Не удалось загрузить \(label)", icon: "xmark.circle")
+            guard UIImage(data: data) != nil else {
+                ToastManager.shared.show(title: "Не удалось скачать \(label)", icon: "xmark.circle")
                 return
             }
             // Use completion-based API to avoid ObjC exception crashes
             let saved = await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
                 PHPhotoLibrary.shared().performChanges({
                     let req = PHAssetCreationRequest.forAsset()
-                    req.addResource(with: .photo, data: jpegData, options: nil)
+                    req.addResource(with: .photo, data: data, options: nil)
                 }, completionHandler: { success, _ in
                     cont.resume(returning: success)
                 })
