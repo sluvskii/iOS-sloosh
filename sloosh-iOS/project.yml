@@ -29,3 +29,4 @@ targets:
           UISceneConfigurations: {}
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
+        NSPhotoLibraryAddUsageDescription: "Sloosh сохранит постер или логотип фильма в вашу Медиатеку."
