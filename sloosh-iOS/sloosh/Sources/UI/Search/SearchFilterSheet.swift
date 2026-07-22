@@ -110,6 +110,8 @@ struct SearchFilterSheet: View {
             .background(Color.clear)
         }
         .presentationDetents([.medium, .large])
-        .glassEffect(in: .rect(cornerRadius: 32, style: .continuous))
+        .presentationBackground(Material.thin)
+        .presentationCornerRadius(32)
+        .presentationDragIndicator(.visible)
     }
 }
