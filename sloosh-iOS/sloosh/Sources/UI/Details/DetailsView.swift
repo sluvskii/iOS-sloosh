@@ -514,7 +514,7 @@ struct DetailsView: View {
         isSavingImage = true
         defer { isSavingImage = false }
 
-        // Request authorization first
+        // Check/request authorization
         let currentStatus = PHPhotoLibrary.authorizationStatus(for: .addOnly)
         if currentStatus == .notDetermined {
             let granted = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
@@ -529,12 +529,25 @@ struct DetailsView: View {
 
         do {
             let (data, _) = try await URLSession.shared.data(from: url)
-            guard let image = UIImage(data: data) else {
+            guard let image = UIImage(data: data),
+                  let jpegData = image.jpegData(compressionQuality: 1.0) else {
                 ToastManager.shared.show(title: "Не удалось загрузить \(label)", icon: "xmark.circle")
                 return
             }
-            UIImageWriteToSavedPhotosAlbum(image, nil, nil, nil)
-            ToastManager.shared.show(title: "Сохранено в Фото", icon: "checkmark.circle.fill")
+            // Use completion-based API to avoid ObjC exception crashes
+            let saved = await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
+                PHPhotoLibrary.shared().performChanges({
+                    let req = PHAssetCreationRequest.forAsset()
+                    req.addResource(with: .photo, data: jpegData, options: nil)
+                }, completionHandler: { success, _ in
+                    cont.resume(returning: success)
+                })
+            }
+            if saved {
+                ToastManager.shared.show(title: "Сохранено в Фото", icon: "checkmark.circle.fill")
+            } else {
+                ToastManager.shared.show(title: "Не удалось сохранить", icon: "xmark.circle")
+            }
         } catch {
             ToastManager.shared.show(title: "Ошибка при загрузке", icon: "xmark.circle")
         }
