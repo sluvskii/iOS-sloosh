@@ -2,6 +2,7 @@ import SwiftUI
 import AVKit
 import AVFoundation
 import MediaPlayer
+import GroupActivities
 
 // MARK: - UIViewControllerRepresentable: запускает PlayerHostingController
 // Это точка входа из SwiftUI fullScreenCover → UIKit-контроллер, который управляет landscape-ориентацией
@@ -143,7 +144,11 @@ class PlayerViewModel: ObservableObject {
     @Published var isBuffering = false
     @Published var isPlaying = false
     @Published var error: String?
-    
+
+    // SharePlay
+    @Published var groupSession: GroupSession<WatchTogetherActivity>?
+    private var sharePlayTasks = Set<Task<Void, Never>>()
+
     var isUserSeeking = false
 
     var isMovie: Bool {
@@ -1648,6 +1653,33 @@ class PlayerViewModel: ObservableObject {
 
     func extractSubtitleFile(for url: URL) -> URL? {
         return nil
+    }
+
+    // MARK: - SharePlay Logic
+    func setupSharePlay() {
+        let task = Task { @MainActor in
+            for await session in WatchTogetherActivity.sessions() {
+                self.groupSession = session
+                if let player = self.player {
+                    player.playbackCoordinator.coordinateWithSession(session)
+                }
+                session.join()
+            }
+        }
+        sharePlayTasks.insert(task)
+    }
+
+    func startSharePlay() {
+        let title = fallbackTitle
+        let mediaId = currentKpId != nil ? String(currentKpId!) : "unknown"
+        let activity = WatchTogetherActivity(mediaId: mediaId, title: title)
+        Task {
+            do {
+                _ = try await activity.activate()
+            } catch {
+                print("SharePlay activation failed: \(error)")
+            }
+        }
     }
 
     private func logDebug(_ message: String) {
