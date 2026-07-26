@@ -73,6 +73,7 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     
     private var session: URLSession!
     private var activeManifests: [String: DownloadManifest] = [:]
+    private var downloadedSegmentsCache: [String: Set<Int>] = [:]
     
     // Concurrent segment limit
     private let concurrencyLimit = 4
@@ -453,21 +454,27 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         let taskDir = docs.appendingPathComponent(manifest.localDirectory)
         let totalSegments = manifest.segmentUrls.count
         
-        let (downloadedCount, missingIndices) = await Task.detached(priority: .background) { () -> (Int, [Int]) in
-            var downloaded = 0
-            var missing: [Int] = []
-            let fm = FileManager.default
-            for i in 0..<totalSegments {
-                let fileUrl = taskDir.appendingPathComponent("segment_\(i).ts")
-                let size = (try? fm.attributesOfItem(atPath: fileUrl.path)[.size] as? Int64) ?? 0
-                if size > 0 {
-                    downloaded += 1
-                } else {
-                    missing.append(i)
+        let downloadedSet: Set<Int>
+        if let cached = downloadedSegmentsCache[itemId] {
+            downloadedSet = cached
+        } else {
+            let initialSet = await Task.detached(priority: .background) { () -> Set<Int> in
+                var set = Set<Int>()
+                let fm = FileManager.default
+                for i in 0..<totalSegments {
+                    let fileUrl = taskDir.appendingPathComponent("segment_\(i).ts")
+                    if let size = (try? fm.attributesOfItem(atPath: fileUrl.path)[.size] as? Int64), size > 0 {
+                        set.insert(i)
+                    }
                 }
-            }
-            return (downloaded, missing)
-        }.value
+                return set
+            }.value
+            downloadedSegmentsCache[itemId] = initialSet
+            downloadedSet = initialSet
+        }
+        
+        let downloadedCount = downloadedSet.count
+        let missingIndices = (0..<totalSegments).filter { !downloadedSet.contains($0) }
         
         let progress = Double(downloadedCount) / Double(totalSegments)
         updateItem(id: itemId) {

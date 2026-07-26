@@ -69,24 +69,8 @@ class AppDiagnostics: ObservableObject {
     }
     
     private func checkPreviousCrash() {
-        let wasRunning = UserDefaults.standard.bool(forKey: "sloosh_is_running")
-        if wasRunning {
-            // App was killed abruptly (OOM, Hang watchdog, or hard crash)
-            hasCrashLog = true
-            
-            // Write a synthetic crash log if it doesn't exist
-            if !FileManager.default.fileExists(atPath: crashFileURL.path) {
-                let timestamp = ISO8601DateFormatter().string(from: Date())
-                let hangMessage = """
-                --- ABNORMAL TERMINATION ---
-                Time: \(timestamp)
-                Reason: The app was terminated abruptly (Hang, OOM, or force-kill).
-                ----------------------------
-                """
-                try? hangMessage.write(to: crashFileURL, atomically: true, encoding: .utf8)
-            }
-        } else if FileManager.default.fileExists(atPath: crashFileURL.path) {
-            // Caught by NSSetUncaughtExceptionHandler
+        if FileManager.default.fileExists(atPath: crashFileURL.path) {
+            // Caught by NSSetUncaughtExceptionHandler or signal handler
             hasCrashLog = true
         }
     }

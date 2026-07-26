@@ -2,6 +2,7 @@ import Foundation
 import UIKit
 import WebKit
 
+@MainActor
 final class AllohaRuntimeResolver: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
     private static var iframeCache: [String: (result: [String: Any], expiresAt: Date)] = [:]
     private static let cacheTtl: TimeInterval = 20 // 20 секунд — достаточно для повторных переходов, не мешает смене озвучки
