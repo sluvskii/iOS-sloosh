@@ -188,6 +188,7 @@ struct DetailsView: View {
                                 .frame(width: 44, height: 44)
                                 .glassEffect(.regular.interactive(), in: .circle)
                         }
+                        .buttonStyle(.glassPress)
                         .tint(.white)
                         
                         Spacer()
@@ -208,6 +209,7 @@ struct DetailsView: View {
                                 .frame(width: 44, height: 44)
                                 .glassEffect(.regular.interactive(), in: .circle)
                         }
+                        .buttonStyle(.glassPress)
                         .disabled(viewModel.details == nil)
                         .accessibilityLabel(viewModel.isFavorite ? "Убрать из избранного" : "Добавить в избранное")
                     }
@@ -1838,7 +1840,7 @@ struct InlineEpisodesSection: View {
                                 )
                                 .foregroundColor(selectedSeason == season ? .black : .primary)
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(.glassPress)
                         }
                     }
                     .padding(.horizontal, horizontalPadding)
