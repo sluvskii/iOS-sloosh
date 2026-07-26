@@ -2103,9 +2103,7 @@ struct GlassPlayButtonStyle: ButtonStyle {
                 Capsule()
                     .fill(.white.opacity(0.85))
             )
-            .glassEffect(in: Capsule())
-            .scaleEffect(configuration.isPressed ? 0.94 : 1.0)
-            .animation(.spring(response: 0.25, dampingFraction: 0.6), value: configuration.isPressed)
+            .glassEffect(.regular.interactive(), in: Capsule())
     }
 }
 
@@ -2113,9 +2111,7 @@ struct GlassDownloadButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .foregroundStyle(.white)
-            .glassEffect(in: Circle())
-            .scaleEffect(configuration.isPressed ? 0.94 : 1.0)
-            .animation(.spring(response: 0.25, dampingFraction: 0.6), value: configuration.isPressed)
+            .glassEffect(.regular.interactive(), in: Circle())
     }
 }
 

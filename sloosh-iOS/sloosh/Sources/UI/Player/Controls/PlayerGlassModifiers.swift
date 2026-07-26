@@ -31,13 +31,10 @@ struct GlassGroupModifier: ViewModifier {
     }
 }
 
-/// ButtonStyle для любых glass-кнопок без изменения прозрачности при нажатии
+/// ButtonStyle для любых glass-кнопок: отключает дефолтное затемнение SwiftUI, отдавая интерактивность нативной системе .glassEffect
 struct GlassPressButtonStyle: ButtonStyle {
-    var scale: CGFloat = 0.94
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed ? scale : 1.0)
-            .animation(.spring(response: 0.25, dampingFraction: 0.7), value: configuration.isPressed)
     }
 }
 
