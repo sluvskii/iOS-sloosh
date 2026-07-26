@@ -64,13 +64,6 @@ public struct AsyncCachedImage<Placeholder: View, Content: View, Fallback: View>
             _image = State(initialValue: cached)
             _isLoading = State(initialValue: false)
             _hasError = State(initialValue: false)
-        } else if let url = url,
-                  let cachedResponse = URLCache.shared.cachedResponse(for: URLRequest(url: url, cachePolicy: cachePolicy)),
-                  let uiImg = UIImage(data: cachedResponse.data) {
-            ImageCache.shared.insertImage(uiImg, forKey: url.absoluteString)
-            _image = State(initialValue: uiImg)
-            _isLoading = State(initialValue: false)
-            _hasError = State(initialValue: false)
         } else if url == nil {
             _image = State(initialValue: nil)
             _isLoading = State(initialValue: false)

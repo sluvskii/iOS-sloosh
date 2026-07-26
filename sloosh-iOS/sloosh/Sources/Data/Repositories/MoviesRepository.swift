@@ -26,7 +26,7 @@ class MoviesRepository: ObservableObject {
         let response = try await MoviesApi.shared.getPopularMovies(page: page)
         let results = response.data?.results ?? []
         popularCache[page] = results
-        listDiskCache.save(results, key: "popular_\(page)")
+        await listDiskCache.save(results, key: "popular_\(page)")
         return results
     }
 
@@ -39,7 +39,7 @@ class MoviesRepository: ObservableObject {
         let response = try await MoviesApi.shared.getTopMovies(page: page)
         let results = response.data?.results ?? []
         topMoviesCache[page] = results
-        listDiskCache.save(results, key: "topMovies_\(page)")
+        await listDiskCache.save(results, key: "topMovies_\(page)")
         return results
     }
 
@@ -52,7 +52,7 @@ class MoviesRepository: ObservableObject {
         let response = try await MoviesApi.shared.getTopTv(page: page)
         let results = response.data?.results ?? []
         topTvCache[page] = results
-        listDiskCache.save(results, key: "topTv_\(page)")
+        await listDiskCache.save(results, key: "topTv_\(page)")
         return results
     }
 
@@ -72,7 +72,7 @@ class MoviesRepository: ObservableObject {
         let response = try await MoviesApi.shared.getDetails(id: id)
         if let details = response.data {
             detailsMemory[id] = details
-            detailsDiskCache.save(details, id: id)
+            await detailsDiskCache.save(details, id: id)
         }
         return response.data
     }
@@ -98,47 +98,52 @@ class MoviesRepository: ObservableObject {
             .replacingOccurrences(of: "ё", with: "е")
     }
 
-    /// Возвращает true если хотя бы один из заголовков содержит нормализованный запрос
-    private func titleMatchesQuery(_ item: MediaDto, normalizedQuery: String) -> Bool {
-        let titles = [item.title, item.name, item.originalTitle].compactMap { $0 }
-        return titles.contains { normalizeForSearch($0).contains(normalizedQuery) }
-    }
+    func searchMovies(query: String, page: Int = 1) async throws -> [MediaDto] {
+        let response = try await MoviesApi.shared.searchMovies(query: query, page: page)
+        let rawResults = response.data?.results ?? []
 
-    func searchMovies(query: String, page: Int = 1, filters: SearchFilters? = nil) async throws -> [MediaDto] {
-        let response = try await MoviesApi.shared.searchMovies(query: query, page: page, filters: filters)
-        let results = response.data?.results ?? []
-        let trimmed = query.trimmingCharacters(in: .whitespaces)
-        guard trimmed.count >= 2 else { return results }
-        // Фильтруем: оставляем только результаты, где заголовок содержит запрос.
-        // Это убирает шум от полнотекстового поиска (совпадения в описаниях/ключевых словах).
-        // Нормализация ё→е даёт толерантность к вводу е вместо ё.
-        let normalizedQuery = normalizeForSearch(trimmed)
-        let filtered = results.filter { titleMatchesQuery($0, normalizedQuery: normalizedQuery) }
-        // Если фильтр убрал всё (редкий кейс), возвращаем оригинал — лучше шум, чем пусто
-        return filtered.isEmpty ? results : filtered
-    }
-
-    func searchMoviesResponse(query: String, page: Int = 1, filters: SearchFilters? = nil) async throws -> MediaResponse {
-        let response = try await MoviesApi.shared.searchMovies(query: query, page: page, filters: filters)
-        var results = response.data?.results ?? []
-        let trimmed = query.trimmingCharacters(in: .whitespaces)
-        if trimmed.count >= 2 {
-            let normalizedQuery = normalizeForSearch(trimmed)
-            let filtered = results.filter { titleMatchesQuery($0, normalizedQuery: normalizedQuery) }
-            if !filtered.isEmpty { results = filtered }
+        // Фильтруем результаты без плакатов или без названия, или с дефолтным "no-poster"
+        let filtered = rawResults.filter { item in
+            let poster = item.posterUrl ?? item.poster_path ?? ""
+            let hasPoster = !poster.isEmpty && !poster.lowercased().contains("no-poster")
+            let hasTitle = !(item.title ?? item.name ?? "").isEmpty
+            return hasPoster && hasTitle
         }
-        let base = response.data ?? MediaResponse(page: page, results: [], pages: 1, total: 0, total_pages: 1, total_results: 0)
-        return MediaResponse(page: base.page, results: results, pages: base.pages, total: results.count, total_pages: base.total_pages, total_results: results.count)
+
+        // Выполняем точный/подстрочный поиск по названию (для умного фолбэка)
+        let normalizedQuery = normalizeForSearch(query)
+        let sorted = filtered.sorted { a, b in
+            let titleA = normalizeForSearch(a.title ?? a.name ?? "")
+            let titleB = normalizeForSearch(b.title ?? b.name ?? "")
+
+            let exactA = titleA == normalizedQuery
+            let exactB = titleB == normalizedQuery
+            if exactA != exactB { return exactA }
+
+            let prefixA = titleA.hasPrefix(normalizedQuery)
+            let prefixB = titleB.hasPrefix(normalizedQuery)
+            if prefixA != prefixB { return prefixA }
+
+            return false
+        }
+
+        return sorted
+    }
+
+    func searchMoviesResponse(query: String, page: Int = 1, filters: SearchFilters = SearchFilters()) async throws -> MediaResponse {
+        let response = try await MoviesApi.shared.searchMovies(query: query, page: page, filters: filters)
+        guard let data = response.data else {
+            return MediaResponse(page: page, results: [], pages: 1, total: 0, total_pages: 1, total_results: 0)
+        }
+        return data
     }
 }
 
 // MARK: - MediaDetailsDiskCache
 
 /// Кэширует MediaDetailsDto на диске (Library/Caches) с TTL 24 часа.
-/// Не блокирует main thread — все операции через фоновую очередь.
-final class MediaDetailsDiskCache {
+actor MediaDetailsDiskCache {
     private let ttl: TimeInterval = 24 * 60 * 60
-    private let queue = DispatchQueue(label: "ru.sloosh.mediadetails.diskcache", qos: .utility)
 
     private struct Entry: Codable {
         let savedAt: Date
@@ -153,43 +158,34 @@ final class MediaDetailsDiskCache {
     }
 
     private func fileURL(for id: String) -> URL? {
-        // Sanitize id to be filename-safe
         let safe = id.replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: ":", with: "_")
         return cacheDir?.appendingPathComponent("\(safe).json")
     }
 
-    /// Загрузка через фоновый Task, чтобы не блокировать UI
-    func load(id: String) async -> MediaDetailsDto? {
-        return await Task.detached(priority: .userInitiated) { [weak self] () -> MediaDetailsDto? in
-            guard let self = self else { return nil }
-            guard let url = self.fileURL(for: id) else { return nil }
-            guard let data = try? Data(contentsOf: url) else { return nil }
-            guard let entry = try? JSONDecoder().decode(Entry.self, from: data) else { return nil }
-            guard Date().timeIntervalSince(entry.savedAt) < self.ttl else {
-                // Устаревший — удаляем
-                self.queue.async { try? FileManager.default.removeItem(at: url) }
-                return nil
-            }
-            return entry.details
-        }.value
+    func load(id: String) -> MediaDetailsDto? {
+        guard let url = fileURL(for: id) else { return nil }
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        guard let entry = try? JSONDecoder().decode(Entry.self, from: data) else { return nil }
+        guard Date().timeIntervalSince(entry.savedAt) < ttl else {
+            try? FileManager.default.removeItem(at: url)
+            return nil
+        }
+        return entry.details
     }
 
     func save(_ details: MediaDetailsDto, id: String) {
         guard let url = fileURL(for: id) else { return }
         let entry = Entry(savedAt: Date(), details: details)
-        queue.async {
-            guard let data = try? JSONEncoder().encode(entry) else { return }
-            try? data.write(to: url, options: .atomic)
-        }
+        guard let data = try? JSONEncoder().encode(entry) else { return }
+        try? data.write(to: url, options: .atomic)
     }
 }
 
 // MARK: - MediaListDiskCache
 
 /// Кэширует списки (popular, top) на диске с TTL 4 часа.
-final class MediaListDiskCache {
+actor MediaListDiskCache {
     private let ttl: TimeInterval = 4 * 60 * 60
-    private let queue = DispatchQueue(label: "ru.sloosh.medialist.diskcache", qos: .utility)
 
     private struct Entry: Codable {
         let savedAt: Date
@@ -207,18 +203,15 @@ final class MediaListDiskCache {
         return cacheDir?.appendingPathComponent("\(key).json")
     }
 
-    func load(key: String) async -> [MediaDto]? {
-        return await Task.detached(priority: .userInitiated) { [weak self] () -> [MediaDto]? in
-            guard let self = self else { return nil }
-            guard let url = self.fileURL(for: key) else { return nil }
-            guard let data = try? Data(contentsOf: url) else { return nil }
-            guard let entry = try? JSONDecoder().decode(Entry.self, from: data) else { return nil }
-            guard Date().timeIntervalSince(entry.savedAt) < self.ttl else {
-                self.queue.async { try? FileManager.default.removeItem(at: url) }
-                return nil
-            }
-            return entry.items
-        }.value
+    func load(key: String) -> [MediaDto]? {
+        guard let url = fileURL(for: key) else { return nil }
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        guard let entry = try? JSONDecoder().decode(Entry.self, from: data) else { return nil }
+        guard Date().timeIntervalSince(entry.savedAt) < ttl else {
+            try? FileManager.default.removeItem(at: url)
+            return nil
+        }
+        return entry.items
     }
 
     func save(_ items: [MediaDto], key: String) {
