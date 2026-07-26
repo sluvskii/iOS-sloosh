@@ -41,15 +41,11 @@ final class JSONDataStore<T: Codable> {
         queue.async(flags: .barrier) { [weak self] in
             guard let self = self else { return }
             self.cachedData = data
-            let url = self.fileURL
-            
-            DispatchQueue.global(qos: .utility).async {
-                do {
-                    let encoded = try JSONEncoder().encode(data)
-                    try encoded.write(to: url, options: .atomic)
-                } catch {
-                    print("Error saving \(self.fileName): \(error)")
-                }
+            do {
+                let encoded = try JSONEncoder().encode(data)
+                try encoded.write(to: self.fileURL, options: .atomic)
+            } catch {
+                print("Error saving \(self.fileName): \(error)")
             }
         }
     }
