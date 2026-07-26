@@ -124,6 +124,7 @@ struct ProfileView: View {
                                         .frame(width: 44, height: 44)
                                         .glassEffect(.regular.interactive(), in: .circle)
                                 }
+                                .buttonStyle(.glassPress)
                                 .tint(.primary)
                             }
                         }
@@ -271,7 +272,6 @@ private struct ProfileTabScaleButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
-            .opacity(configuration.isPressed ? 0.8 : 1.0)
             .animation(.spring(response: 0.25, dampingFraction: 0.75), value: configuration.isPressed)
     }
 }

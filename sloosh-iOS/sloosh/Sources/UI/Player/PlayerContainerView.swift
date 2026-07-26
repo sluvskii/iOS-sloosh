@@ -199,6 +199,7 @@ struct PlayerContainerView: View {
                     .padding(.horizontal, 20)
                     .padding(.vertical, 10)
                     .glassEffect(.regular.interactive(), in: .capsule)
+                    .buttonStyle(.glassPress)
                     
                     Button("Попробовать снова") {
                         vm.retryPlayback()
@@ -208,6 +209,7 @@ struct PlayerContainerView: View {
                     .padding(.horizontal, 20)
                     .padding(.vertical, 10)
                     .glassEffect(.regular.interactive(), in: .capsule)
+                    .buttonStyle(.glassPress)
                 }
             }
         }
