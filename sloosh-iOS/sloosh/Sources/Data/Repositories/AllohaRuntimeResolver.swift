@@ -6,13 +6,10 @@ import WebKit
 final class AllohaRuntimeResolver: NSObject, WKNavigationDelegate, WKScriptMessageHandler {
     private static var iframeCache: [String: (result: [String: Any], expiresAt: Date)] = [:]
     private static let cacheTtl: TimeInterval = 20 // 20 секунд — достаточно для повторных переходов, не мешает смене озвучки
-    private static let cacheQueue = DispatchQueue(label: "ru.neomovies.alloharesolver.cache", attributes: .concurrent)
 
     /// Инвалидирует кэш для конкретного iframeUrl (используется при смене озвучки)
     static func invalidateCache(for iframeUrl: String) {
-        cacheQueue.async(flags: .barrier) {
-            iframeCache.removeValue(forKey: iframeUrl)
-        }
+        iframeCache.removeValue(forKey: iframeUrl)
     }
 
     private static var uaIndex = 0
@@ -43,8 +40,7 @@ final class AllohaRuntimeResolver: NSObject, WKNavigationDelegate, WKScriptMessa
     private var baseURL: URL?
 
     func resolve(iframeUrl: String) async throws -> [String: Any] {
-        let cached = Self.cacheQueue.sync { Self.iframeCache[iframeUrl] }
-        if let cached = cached, cached.expiresAt > Date() {
+        if let cached = Self.iframeCache[iframeUrl], cached.expiresAt > Date() {
             return cached.result
         }
 
@@ -282,9 +278,7 @@ final class AllohaRuntimeResolver: NSObject, WKNavigationDelegate, WKScriptMessa
         didFinish = true
 
         if let originalUrl = baseURL?.absoluteString {
-            Self.cacheQueue.async(flags: .barrier) {
-                Self.iframeCache[originalUrl] = (result: result, expiresAt: Date().addingTimeInterval(Self.cacheTtl))
-            }
+            Self.iframeCache[originalUrl] = (result: result, expiresAt: Date().addingTimeInterval(Self.cacheTtl))
         }
 
         cleanup()
