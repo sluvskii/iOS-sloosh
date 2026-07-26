@@ -217,9 +217,7 @@ actor MediaListDiskCache {
     func save(_ items: [MediaDto], key: String) {
         guard let url = fileURL(for: key) else { return }
         let entry = Entry(savedAt: Date(), items: items)
-        queue.async {
-            guard let data = try? JSONEncoder().encode(entry) else { return }
-            try? data.write(to: url, options: .atomic)
-        }
+        guard let data = try? JSONEncoder().encode(entry) else { return }
+        try? data.write(to: url, options: .atomic)
     }
 }
