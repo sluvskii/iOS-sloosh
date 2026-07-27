@@ -328,7 +328,7 @@ class HlsProxyServer {
                 }
                 
                 let statusCode = httpResponse.statusCode
-                let contentType = httpResponse.mimeType ?? "video/MP2T"
+                let contentType = resolveContentType(for: realUrl, httpResponse: httpResponse)
                 let contentRange = httpResponse.value(forHTTPHeaderField: "Content-Range")
                 let contentLength = httpResponse.expectedContentLength
                 
@@ -340,7 +340,7 @@ class HlsProxyServer {
                 if let cr = contentRange {
                     header += "Content-Range: \(cr)\r\n"
                 }
-                header += "Accept-Ranges: bytes\r\nConnection: close\r\n\r\n"
+                header += "Accept-Ranges: bytes\r\nConnection: keep-alive\r\n\r\n"
                 
                 guard let headerData = header.data(using: .utf8) else { connection.cancel(); return }
                 
@@ -455,5 +455,30 @@ class HlsProxyServer {
         connection.send(content: data, completion: .contentProcessed({ _ in
             connection.cancel()
         }))
+    }
+
+    private func resolveContentType(for url: URL, httpResponse: HTTPURLResponse?) -> String {
+        let ext = url.pathExtension.lowercased()
+        switch ext {
+        case "mp4", "m4s", "m4v":
+            return "video/mp4"
+        case "m4a":
+            return "audio/mp4"
+        case "ts":
+            return "video/MP2T"
+        case "m3u8":
+            return "application/vnd.apple.mpegurl"
+        case "aac":
+            return "audio/aac"
+        case "vtt":
+            return "text/vtt"
+        case "srt":
+            return "application/x-subrip"
+        default:
+            if let mime = httpResponse?.mimeType, !mime.isEmpty, mime != "application/octet-stream", mime != "binary/octet-stream" {
+                return mime
+            }
+            return "video/mp4"
+        }
     }
 }
