@@ -1033,8 +1033,9 @@ class PlayerViewModel: ObservableObject {
                     print("PlayerItem failed: \(nsError?.localizedDescription ?? "Unknown error")")
                     
                     if nsError?.domain == AVFoundationErrorDomain, nsError?.code == -11848 {
-                        self.logDebug("setupPlayerItemObservers: Cannot Open (-11848) detected. Likely AV1 codec issue.")
+                        self.logDebug("setupPlayerItemObservers: Cannot Open (-11848) detected.")
                         
+                        // First try immediate fallback to next quality
                         if let currentKey = self.currentQualityKey,
                            let currentIndex = self.availableQualities.firstIndex(where: { $0.key == currentKey }) {
                             var fallbackCandidate: PlaybackQualityOption?
@@ -1050,8 +1051,34 @@ class PlayerViewModel: ObservableObject {
                                 return
                             }
                         }
-                    }
-                    
+                        
+                        // No fallback quality available yet — qualities may still be loading from
+                        // master playlist. Wait briefly then retry from the beginning of the list.
+                        Task { [weak self] in
+                            guard let self else { return }
+                            try? await Task.sleep(nanoseconds: 2_500_000_000)
+                            guard let url = self.originalStreamURL ?? self.currentPlaybackSourceURL else { return }
+                            // After wait, if we now have quality options below the Auto level, use them
+                            let nonAutoQualities = self.availableQualities.filter { !$0.isAuto }
+                            if let best = nonAutoQualities.first {
+                                self.logDebug("setupPlayerItemObservers: Retrying with quality '\(best.key)' after async quality population")
+                                self.changeQuality(to: best.key)
+                            } else {
+                                // Still no alternatives — perform a clean reload
+                                self.logDebug("setupPlayerItemObservers: No alternative quality found, retrying stream URL")
+                                HlsProxyServer.shared.start(
+                                    headers: self.currentHeaders,
+                                    voices: [],
+                                    subtitles: self.availableSubtitles,
+                                    mediaId: self.currentKpId.map { "kp_\($0)" } ?? "unknown"
+                                )
+                                self.reloadPlayback(to: url, preferredPeakBitRate: nil)
+                            }
+                        }
+                        return
+                    } // end -11848
+
+                    // General retry for non-11848 errors
                     if !self.hasRetriedPlayback, let url = self.originalStreamURL ?? self.currentPlaybackSourceURL {
                         print("Auto-retrying playback after failure with originalStreamURL...")
                         // Перезапускаем прокси перед retry, так как именно он мог упасть
@@ -1519,6 +1546,45 @@ class PlayerViewModel: ObservableObject {
         NotificationCenter.default.post(name: NSNotification.Name("QualitiesUpdated"), object: nil)
 
         applyInitialQuality()
+
+        // If the parser returned no quality variants (e.g. only a master URL with no explicit
+        // quality JSON), fetch the HLS master playlist in the background to populate quality
+        // options from the actual #EXT-X-STREAM-INF entries.
+        if availableQualities.count <= 1 {
+            let capturedUrl = resolvedUrl
+            let capturedHeaders = headers
+            Task { [weak self] in
+                await self?.fetchAndUpdateQualitiesFromMaster(url: capturedUrl, headers: capturedHeaders)
+            }
+        }
+    }
+
+    /// Fetches the HLS master playlist from the original CDN URL and populates quality options
+    /// by calling parseMasterPlaylist. Used when AllohaRuntimeParser returns no qualityVariants
+    /// (e.g. the stream is delivered via a signed CDN URL with no JSON quality metadata).
+    private func fetchAndUpdateQualitiesFromMaster(url: URL, headers: [String: String]) async {
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 12
+        for (k, v) in headers {
+            request.setValue(v, forHTTPHeaderField: k)
+        }
+        if request.value(forHTTPHeaderField: "User-Agent") == nil {
+            request.setValue("Mozilla/5.0 (Windows NT 10.0; Win64; x64)", forHTTPHeaderField: "User-Agent")
+        }
+        if request.value(forHTTPHeaderField: "Accept") == nil {
+            request.setValue("*/*", forHTTPHeaderField: "Accept")
+        }
+
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              let content = String(data: data, encoding: .utf8),
+              content.contains("#EXT-X-STREAM-INF") else {
+            logDebug("fetchAndUpdateQualitiesFromMaster: no HLS master content at \(url.absoluteString)")
+            return
+        }
+
+        let finalUrl = response.url ?? url
+        logDebug("fetchAndUpdateQualitiesFromMaster: found master playlist, parsing qualities from \(finalUrl.absoluteString)")
+        parseMasterPlaylist(content: content, baseUrl: finalUrl)
     }
 
     private func resolvedVoiceovers(from resolved: [String: Any]) -> [String] {

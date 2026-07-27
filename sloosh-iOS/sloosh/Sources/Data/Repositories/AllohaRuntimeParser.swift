@@ -102,9 +102,9 @@ enum AllohaRuntimeParser {
                         }
                         
                         let normLabel = normalizedQualityLabel(label)
-                        if normLabel.contains("2160") || normLabel.contains("1440") || normLabel.lowercased().contains("4k") || normLabel.lowercased().contains("4к") || normLabel.lowercased().contains("2k") || normLabel.lowercased().contains("2к") {
-                            continue
-                        }
+                        // Note: AV1 filtering is done in PlayerView.appendQualityVariants via label/URL check.
+                        // We intentionally do NOT filter by resolution here (2160p, 1440p, 4K etc.)
+                        // so that HEVC high-res quality options remain available for devices that support them.
 
                         let variant: [String: Any] = [
                             "label": normLabel,
