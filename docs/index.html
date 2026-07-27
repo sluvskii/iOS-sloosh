@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>sloosh — Смотреть онлайн</title>
+    <style>
+        :root {
+            --bg-color: #0b0b0e;
+            --accent-color: #b6ff0c;
+            --text-color: #ffffff;
+            --glass-bg: rgba(255, 255, 255, 0.08);
+            --glass-border: rgba(255, 255, 255, 0.15);
+        }
+        
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        /* Ambient Glow Spheres */
+        .glow-1 {
+            position: absolute;
+            width: 350px;
+            height: 350px;
+            background: radial-gradient(circle, rgba(182, 255, 12, 0.25) 0%, rgba(0, 0, 0, 0) 70%);
+            top: -50px;
+            left: -50px;
+            border-radius: 50%;
+            pointer-events: none;
+        }
+
+        .glow-2 {
+            position: absolute;
+            width: 400px;
+            height: 400px;
+            background: radial-gradient(circle, rgba(80, 120, 255, 0.2) 0%, rgba(0, 0, 0, 0) 70%);
+            bottom: -100px;
+            right: -100px;
+            border-radius: 50%;
+            pointer-events: none;
+        }
+
+        /* Liquid Glass Card */
+        .card {
+            background: var(--glass-bg);
+            backdrop-filter: blur(25px);
+            -webkit-backdrop-filter: blur(25px);
+            border: 1px solid var(--glass-border);
+            border-radius: 28px;
+            padding: 40px 28px;
+            width: 100%;
+            max-width: 400px;
+            text-align: center;
+            box-shadow: 0 30px 60px rgba(0, 0, 0, 0.5);
+            z-index: 10;
+        }
+
+        .logo {
+            font-size: 38px;
+            font-weight: 900;
+            letter-spacing: -1.5px;
+            margin-bottom: 8px;
+            background: linear-gradient(135deg, #ffffff 30%, var(--accent-color) 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .subtitle {
+            font-size: 15px;
+            color: rgba(255, 255, 255, 0.6);
+            margin-bottom: 32px;
+            font-weight: 400;
+        }
+
+        .film-info {
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 16px;
+            padding: 16px;
+            margin-bottom: 28px;
+            border: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .film-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: #fff;
+            margin-bottom: 4px;
+        }
+
+        .film-id {
+            font-size: 13px;
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        .btn-open {
+            display: inline-block;
+            width: 100%;
+            padding: 16px 24px;
+            background: var(--accent-color);
+            color: #000000;
+            font-size: 17px;
+            font-weight: 800;
+            border-radius: 20px;
+            text-decoration: none;
+            box-shadow: 0 10px 25px rgba(182, 255, 12, 0.3);
+            transition: all 0.2s ease;
+        }
+
+        .btn-open:active {
+            transform: scale(0.97);
+            opacity: 0.9;
+        }
+
+        .footer {
+            margin-top: 24px;
+            font-size: 13px;
+            color: rgba(255, 255, 255, 0.4);
+        }
+    </style>
+</head>
+<body>
+    <div class="glow-1"></div>
+    <div class="glow-2"></div>
+
+    <div class="card">
+        <div class="logo">sloosh</div>
+        <div class="subtitle">Онлайн-кинотеатр нового поколения</div>
+
+        <div class="film-info">
+            <div class="film-title" id="filmTitle">Загрузка фильма...</div>
+            <div class="film-id" id="filmIdText">ID: --</div>
+        </div>
+
+        <a href="#" id="openBtn" class="btn-open">Открыть в sloosh 🍿</a>
+
+        <div class="footer">
+            Если приложение не открылось автоматически, нажмите кнопку выше.
+        </div>
+    </div>
+
+    <script>
+        function getMovieId() {
+            const urlParams = new URLSearchParams(window.location.search);
+            let id = urlParams.get('id');
+            if (!id) {
+                const parts = window.location.pathname.split('/').filter(Boolean);
+                if (parts.length > 0) {
+                    id = parts[parts.length - 1];
+                }
+            }
+            if (id) {
+                return id.replace('kp_', '').trim();
+            }
+            return null;
+        }
+
+        const movieId = getMovieId();
+        const openBtn = document.getElementById('openBtn');
+        const filmTitle = document.getElementById('filmTitle');
+        const filmIdText = document.getElementById('filmIdText');
+
+        if (movieId) {
+            filmTitle.textContent = "Ваш фильм готов к просмотру";
+            filmIdText.textContent = "ID фильма: " + movieId;
+            const targetScheme = "sloosh://details/" + movieId;
+            openBtn.href = targetScheme;
+
+            // Auto-trigger app launch on mobile
+            setTimeout(function() {
+                window.location.href = targetScheme;
+            }, 300);
+        } else {
+            filmTitle.textContent = "Добро пожаловать в sloosh";
+            filmIdText.textContent = "Премиальный онлайн-кинотеатр";
+            openBtn.href = "sloosh://home";
+        }
+    </script>
+</body>
+</html>
