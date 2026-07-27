@@ -96,6 +96,7 @@ struct DetailsView: View {
     @State private var favoriteBounce = false
     @State private var movieToDelete: DownloadItem? = nil
     @State private var showDeleteMovieAlert = false
+    @State private var showShareFilmSheet = false
 
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Environment(\.dismiss) private var dismiss
@@ -193,25 +194,43 @@ struct DetailsView: View {
                         
                         Spacer()
                         
-                        Button {
-                            let generator = UIImpactFeedbackGenerator(style: .light)
-                            generator.prepare()
-                            generator.impactOccurred()
-                            favoriteBounce.toggle()
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.5, blendDuration: 0.5)) {
-                                viewModel.toggleFavorite()
+                        HStack(spacing: 10) {
+                            Button {
+                                let generator = UIImpactFeedbackGenerator(style: .light)
+                                generator.prepare()
+                                generator.impactOccurred()
+                                showShareFilmSheet = true
+                            } label: {
+                                Image(systemName: "square.and.arrow.up")
+                                    .font(.system(size: 20, weight: .medium))
+                                    .foregroundStyle(.white)
+                                    .frame(width: 44, height: 44)
+                                    .glassEffect(.regular.interactive(), in: .circle)
                             }
-                        } label: {
-                            Image(systemName: viewModel.isFavorite ? "heart.fill" : "heart")
-                                .font(.system(size: 22, weight: .medium))
-                                .foregroundStyle(.white)
-                                .symbolEffect(.bounce, value: favoriteBounce)
-                                .frame(width: 44, height: 44)
-                                .glassEffect(.regular.interactive(), in: .circle)
+                            .buttonStyle(.glassPress)
+                            .disabled(viewModel.details == nil)
+                            .accessibilityLabel("Поделиться")
+
+                            Button {
+                                let generator = UIImpactFeedbackGenerator(style: .light)
+                                generator.prepare()
+                                generator.impactOccurred()
+                                favoriteBounce.toggle()
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.5, blendDuration: 0.5)) {
+                                    viewModel.toggleFavorite()
+                                }
+                            } label: {
+                                Image(systemName: viewModel.isFavorite ? "heart.fill" : "heart")
+                                    .font(.system(size: 22, weight: .medium))
+                                    .foregroundStyle(.white)
+                                    .symbolEffect(.bounce, value: favoriteBounce)
+                                    .frame(width: 44, height: 44)
+                                    .glassEffect(.regular.interactive(), in: .circle)
+                            }
+                            .buttonStyle(.glassPress)
+                            .disabled(viewModel.details == nil)
+                            .accessibilityLabel(viewModel.isFavorite ? "Убрать из избранного" : "Добавить в избранное")
                         }
-                        .buttonStyle(.glassPress)
-                        .disabled(viewModel.details == nil)
-                        .accessibilityLabel(viewModel.isFavorite ? "Убрать из избранного" : "Добавить в избранное")
                     }
                 }
                 .padding(.horizontal, 16)
@@ -355,6 +374,16 @@ struct DetailsView: View {
             }
         } message: {
             Text("Вы действительно хотите удалить этот фильм из памяти устройства?")
+        }
+        .sheet(isPresented: $showShareFilmSheet) {
+            if let details = viewModel.details {
+                ShareSheet(items: [
+                    DeepLinkManager.shared.createShareMessage(
+                        title: details.title ?? details.originalTitle ?? "",
+                        movieId: movieId
+                    )
+                ])
+            }
         }
     }
 
