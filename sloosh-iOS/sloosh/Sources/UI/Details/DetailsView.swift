@@ -195,9 +195,6 @@ struct DetailsView: View {
                         
                         HStack(spacing: 0) {
                             Button {
-                                let generator = UIImpactFeedbackGenerator(style: .light)
-                                generator.prepare()
-                                generator.impactOccurred()
                                 favoriteBounce.toggle()
                                 withAnimation(.spring(response: 0.3, dampingFraction: 0.5, blendDuration: 0.5)) {
                                     viewModel.toggleFavorite()
@@ -205,7 +202,7 @@ struct DetailsView: View {
                             } label: {
                                 Image(systemName: viewModel.isFavorite ? "heart.fill" : "heart")
                                     .font(.system(size: 20, weight: .medium))
-                                    .foregroundStyle(viewModel.isFavorite ? Color.red : .white)
+                                    .foregroundStyle(.white)
                                     .symbolEffect(.bounce, value: favoriteBounce)
                                     .frame(width: 44, height: 44)
                             }
@@ -213,17 +210,15 @@ struct DetailsView: View {
                             .disabled(viewModel.details == nil)
                             .accessibilityLabel(viewModel.isFavorite ? "Убрать из избранного" : "Добавить в избранное")
 
-                            Rectangle()
-                                .fill(Color.white.opacity(0.18))
-                                .frame(width: 1, height: 20)
-
-                            ShareLink(
-                                item: DeepLinkManager.shared.createShareURL(for: movieId),
-                                message: Text(DeepLinkManager.shared.createShareMessage(
-                                    title: viewModel.details?.title ?? viewModel.details?.originalTitle ?? "",
+                            Button {
+                                guard let details = viewModel.details else { return }
+                                let shareUrl = DeepLinkManager.shared.createShareURL(for: movieId)
+                                let shareText = DeepLinkManager.shared.createShareMessage(
+                                    title: details.title ?? details.originalTitle ?? "",
                                     movieId: movieId
-                                ))
-                            ) {
+                                )
+                                SharePresenter.presentShare(url: shareUrl, text: shareText)
+                            } label: {
                                 Image(systemName: "square.and.arrow.up")
                                     .font(.system(size: 19, weight: .medium))
                                     .foregroundStyle(.white)
