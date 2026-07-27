@@ -114,10 +114,16 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Generate AltStore JSON
+      - name: Generate AltStore JSON & Web Links
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         run: |
-          mkdir altstore
+          mkdir -p altstore/.well-known
+          if [ -d "docs" ]; then
+            cp -r docs/* altstore/ 2>/dev/null || true
+            if [ -d "docs/.well-known" ]; then
+              cp -r docs/.well-known/* altstore/.well-known/ 2>/dev/null || true
+            fi
+          fi
           SIZE=$(stat -f%z sloosh-iOS/sloosh.ipa || echo 0)
           DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
           # FULL_VER is set in GITHUB_ENV by "Inject Build Number" step (e.g. "1.5.1097")
