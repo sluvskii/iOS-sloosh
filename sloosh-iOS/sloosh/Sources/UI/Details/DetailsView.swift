@@ -180,6 +180,7 @@ struct DetailsView: View {
                     
                     HStack {
                         Button {
+                            DeepLinkManager.shared.clear()
                             dismiss()
                         } label: {
                             Image(systemName: "chevron.left")
