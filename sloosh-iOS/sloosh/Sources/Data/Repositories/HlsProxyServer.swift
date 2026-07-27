@@ -229,8 +229,12 @@ class HlsProxyServer {
             if let decodedData = Data(base64Encoded: base64String),
                let decodedString = String(data: decodedData, encoding: .utf8),
                let realUrl = URL(string: decodedString) {
-                
-                await fetchAndServe(realUrl: realUrl, isPlaylist: decodedString.contains(".m3u8"), incomingHeaders: incomingHeaders, connection: connection)
+                // isPlaylist: true if decoded URL contains .m3u8 OR if the proxy path suffix
+                // implies a playlist (e.g. proxied URL had no extension → assigned stream.m3u8).
+                // This fixes signed CDN URLs (VKVideo, etc.) that return m3u8 without extension.
+                let pathImpliesPlaylist = urlComponents.path.lowercased().hasSuffix(".m3u8")
+                let isPlaylist = decodedString.contains(".m3u8") || pathImpliesPlaylist
+                await fetchAndServe(realUrl: realUrl, isPlaylist: isPlaylist, incomingHeaders: incomingHeaders, connection: connection)
             } else {
                 self.send404(on: connection)
             }
@@ -377,13 +381,23 @@ class HlsProxyServer {
     private func rewriteM3u8(content: String, baseUrl: URL) -> String {
         let lines = content.components(separatedBy: .newlines)
         var result = [String]()
+        var skipNextUri = false
         
         for line in lines {
             if line.isEmpty {
-                result.append(line)
+                if !skipNextUri { result.append(line) }
                 continue
             }
             if line.hasPrefix("#") {
+                // Filter AV1 streams from master playlist — not supported on iOS AVPlayer.
+                // Skip the #EXT-X-STREAM-INF header and its following URI line.
+                if line.hasPrefix("#EXT-X-STREAM-INF") {
+                    if hlsLineHasAV1Codecs(line) {
+                        skipNextUri = true
+                        continue
+                    }
+                    skipNextUri = false
+                }
                 if line.contains("URI=") {
                     var modifiedLine = line
                     if let range = modifiedLine.range(of: "URI=\"([^\"]+)\"", options: .regularExpression) {
@@ -399,10 +413,39 @@ class HlsProxyServer {
                     result.append(line)
                 }
             } else {
+                // URI line following #EXT-X-STREAM-INF — skip if AV1 was detected
+                if skipNextUri {
+                    skipNextUri = false
+                    continue
+                }
                 result.append(proxyUrl(line, baseUrl: baseUrl))
             }
         }
         return result.joined(separator: "\n")
+    }
+    
+    /// Returns true if a #EXT-X-STREAM-INF line declares an AV1 codec (av01.*)
+    private func hlsLineHasAV1Codecs(_ line: String) -> Bool {
+        let lower = line.lowercased()
+        guard lower.contains("codecs=") else {
+            // No CODECS attr — also check raw "av01" in the line as a safety net
+            return lower.contains("av01")
+        }
+        // Extract value from CODECS="..."
+        guard let afterPrefix = lower.range(of: "codecs=\"") else {
+            return lower.contains("av01")
+        }
+        let rest = lower[afterPrefix.upperBound...]
+        let codecValue: String
+        if let endQuote = rest.firstIndex(of: "\"") {
+            codecValue = String(rest[rest.startIndex..<endQuote])
+        } else {
+            codecValue = String(rest)
+        }
+        // Each codec is comma-separated, e.g. "hvc1.2.4.L120.B0,mp4a.40.2"
+        return codecValue.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.contains { codec in
+            codec.hasPrefix("av01") || codec == "av1"
+        }
     }
     
     private func proxyUrl(_ urlString: String, baseUrl: URL) -> String {
