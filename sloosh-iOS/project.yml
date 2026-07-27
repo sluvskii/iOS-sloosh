@@ -15,6 +15,7 @@ targets:
         CURRENT_PROJECT_VERSION: "890"
         INFOPLIST_KEY_CFBundleShortVersionString: "1.5"
         INFOPLIST_KEY_CFBundleVersion: "890"
+        CODESIGN_ENTITLEMENTS: sloosh/sloosh.entitlements
     sources:
       - path: sloosh/Sources
       - path: sloosh/Resources

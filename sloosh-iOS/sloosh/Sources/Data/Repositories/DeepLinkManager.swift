@@ -9,7 +9,7 @@ final class DeepLinkManager: ObservableObject {
     
     private init() {}
     
-    /// Handles incoming deep links such as `sloosh://details/301`, `sloosh://movie/301`, or `sloosh://301`.
+    /// Handles incoming deep links such as `https://sluvskii.github.io/iOS-sloosh/details?id=301` or `sloosh://details/301`.
     func handleURL(_ url: URL) {
         AppDiagnostics.shared.log("DeepLinkManager: handleURL called with \(url.absoluteString)")
         
@@ -19,25 +19,18 @@ final class DeepLinkManager: ObservableObject {
         
         var rawId: String? = nil
         
-        let scheme = components.scheme?.lowercased()
-        if scheme == "sloosh" {
-            // e.g. sloosh://details/301 or sloosh://301 or sloosh://movie/301 or sloosh://details/kp_301
-            let host = components.host?.lowercased() ?? ""
+        // 1. Check query parameter `id`
+        if let queryItems = components.queryItems, let id = queryItems.first(where: { $0.name == "id" })?.value {
+            rawId = id
+        }
+        
+        // 2. If no query item, check path components
+        if rawId == nil || rawId?.isEmpty == true {
             let pathComponents = components.path.components(separatedBy: "/").filter { !$0.isEmpty }
-            
-            if !pathComponents.isEmpty {
-                rawId = pathComponents.last
-            } else if !host.isEmpty && host != "details" && host != "movie" && host != "tv" && host != "item" {
-                rawId = host
-            } else if let queryItems = components.queryItems, let id = queryItems.first(where: { $0.name == "id" })?.value {
-                rawId = id
-            }
-        } else if scheme == "http" || scheme == "https" {
-            let pathComponents = components.path.components(separatedBy: "/").filter { !$0.isEmpty }
-            if let last = pathComponents.last, !last.isEmpty {
+            if let last = pathComponents.last, last != "sloosh" && last != "iOS-sloosh" && last != "details" && last != "index.html" {
                 rawId = last
-            } else if let queryItems = components.queryItems, let id = queryItems.first(where: { $0.name == "id" })?.value {
-                rawId = id
+            } else if let host = components.host, host != "details" && host != "movie" && host != "tv" && host != "sluvskii.github.io" && host != "sloosh.vercel.app" {
+                rawId = host
             }
         }
         
@@ -50,17 +43,17 @@ final class DeepLinkManager: ObservableObject {
         }
     }
     
-    /// Creates a native custom scheme URL (`sloosh://details/{id}`) for direct app opening
+    /// Creates a 100% clickable HTTPS share URL (`https://sluvskii.github.io/iOS-sloosh/details?id={id}`)
     func createShareURL(for movieId: String) -> URL {
         let cleanId = movieId.replacingOccurrences(of: "kp_", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
-        return URL(string: "sloosh://details/\(cleanId)")!
+        return URL(string: "https://sluvskii.github.io/iOS-sloosh/details?id=\(cleanId)")!
     }
     
     /// Formats a share text for a given title and movie ID
     func createShareMessage(title: String, movieId: String) -> String {
         let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let cleanId = movieId.replacingOccurrences(of: "kp_", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
-        let link = "sloosh://details/\(cleanId)"
+        let link = "https://sluvskii.github.io/iOS-sloosh/details?id=\(cleanId)"
         
         if cleanTitle.isEmpty {
             return "Смотри в sloosh! 🍿\n\(link)"
