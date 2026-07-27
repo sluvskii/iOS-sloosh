@@ -438,13 +438,12 @@ class HlsProxyServer {
         let isHdrCapable = lower.contains("hvc1") || lower.contains("hev1") ||
                            lower.contains("dvh1") || lower.contains("dvhe")
         guard !isHdrCapable else { return line }
-        // Strip ,VIDEO-RANGE=PQ and ,VIDEO-RANGE=HLG (and the reverse order)
+        
         var normalized = line
-        normalized = normalized.replacingOccurrences(
-            of: #",?\s*VIDEO-RANGE=(?:PQ|HLG)(?=,|$)"#,
-            with: "",
-            options: [.regularExpression, .caseInsensitive]
-        )
+        if let regex = try? NSRegularExpression(pattern: ",?\\s*VIDEO-RANGE=[^,\\s]+", options: .caseInsensitive) {
+            let range = NSRange(normalized.startIndex..<normalized.endIndex, in: normalized)
+            normalized = regex.stringByReplacingMatches(in: normalized, options: [], range: range, withTemplate: "")
+        }
         return normalized
     }
     
