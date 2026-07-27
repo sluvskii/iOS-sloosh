@@ -48,7 +48,7 @@ struct ScrollOffsetPreferenceKey: PreferenceKey {
 
 struct HomeView: View {
     @StateObject private var viewModel = HomeViewModel()
-    @StateObject private var deepLinkManager = DeepLinkManager.shared
+    @ObservedObject private var deepLinkManager = DeepLinkManager.shared
     @Namespace private var navigationTransition
     @State private var isFilterCollapsed = false
     @State private var scrollOffsets: [HomeCategory: CGFloat] = [:]

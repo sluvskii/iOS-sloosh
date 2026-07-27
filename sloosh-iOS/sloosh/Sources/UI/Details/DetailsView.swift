@@ -99,6 +99,7 @@ struct DetailsView: View {
 
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.presentationMode) private var presentationMode
 
     @State private var dominantBackdropColor: UIColor? = nil
     @State private var dominantPosterColor: UIColor? = nil
@@ -183,6 +184,7 @@ struct DetailsView: View {
                         Button {
                             DeepLinkManager.shared.clear()
                             dismiss()
+                            presentationMode.wrappedValue.dismiss()
                         } label: {
                             Image(systemName: "chevron.left")
                                 .font(.system(size: 22, weight: .medium))
