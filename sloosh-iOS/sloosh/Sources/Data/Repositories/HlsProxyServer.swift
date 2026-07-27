@@ -303,7 +303,7 @@ class HlsProxyServer {
                 if let content = String(data: data, encoding: .utf8) {
                     let finalUrl = httpResponse.url ?? realUrl
                     let rewritten: String
-                    if content.contains("#EXT-X-STREAM-INF") && (!currentVoices.isEmpty || !currentSubtitles.isEmpty) {
+                    if content.contains("#EXT-X-STREAM-INF") {
                         let playlistRewritten = PlaybackHlsRewriter.rewrite(
                             master: content,
                             voices: currentVoices,
@@ -315,7 +315,7 @@ class HlsProxyServer {
                         
                         rewritten = self.rewriteM3u8(content: playlistRewritten, baseUrl: finalUrl)
                     } else {
-                        AppDiagnostics.shared.log("HlsProxyServer: master fallback, original content:\n\(content)")
+                        AppDiagnostics.shared.log("HlsProxyServer: playlist fallback:\n\(content)")
                         rewritten = self.rewriteM3u8(content: content, baseUrl: finalUrl)
                     }
                     
@@ -397,6 +397,11 @@ class HlsProxyServer {
                         continue
                     }
                     skipNextUri = false
+                    // Normalize VIDEO-RANGE: iOS doesn't support H.264 + PQ/HLG → causes -11848.
+                    // Strip HDR VIDEO-RANGE attribute from non-HEVC/DV streams.
+                    let normalizedLine = normalizeStreamInfVideoRange(line)
+                    result.append(normalizedLine)
+                    continue
                 }
                 if line.contains("URI=") {
                     var modifiedLine = line
@@ -422,6 +427,25 @@ class HlsProxyServer {
             }
         }
         return result.joined(separator: "\n")
+    }
+    
+    /// Strips VIDEO-RANGE=PQ and VIDEO-RANGE=HLG from non-HEVC/Dolby-Vision STREAM-INF lines.
+    /// iOS AVPlayer does not support H.264 with HDR transfer functions — this causes -11848.
+    /// HEVC (hvc1/hev1) and Dolby Vision (dvh1/dvhe) streams are left unchanged.
+    private func normalizeStreamInfVideoRange(_ line: String) -> String {
+        let lower = line.lowercased()
+        // HEVC and Dolby Vision support HDR on iOS — leave those untouched
+        let isHdrCapable = lower.contains("hvc1") || lower.contains("hev1") ||
+                           lower.contains("dvh1") || lower.contains("dvhe")
+        guard !isHdrCapable else { return line }
+        // Strip ,VIDEO-RANGE=PQ and ,VIDEO-RANGE=HLG (and the reverse order)
+        var normalized = line
+        normalized = normalized.replacingOccurrences(
+            of: #",?\s*VIDEO-RANGE=(?:PQ|HLG)(?=,|$)"#,
+            with: "",
+            options: [.regularExpression, .caseInsensitive]
+        )
+        return normalized
     }
     
     /// Returns true if a #EXT-X-STREAM-INF line declares an AV1 codec (av01.*)
