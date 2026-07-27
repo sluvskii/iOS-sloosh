@@ -88,6 +88,11 @@ class PlaybackHlsRewriter {
             }
             
             if line.hasPrefix("#EXT-X-STREAM-INF") {
+                if isUnsupportedCodec(line) {
+                    i += 2
+                    continue
+                }
+
                 if let audioGroup = extractQuotedAttr(line, key: "AUDIO"),
                    audioGroup.lowercased().hasPrefix("failover-") {
                     i += 2
@@ -118,6 +123,15 @@ class PlaybackHlsRewriter {
         }
         
         return filtered
+    }
+    
+    private static func isUnsupportedCodec(_ line: String) -> Bool {
+        let lower = line.lowercased()
+        if lower.contains("av01.") || lower.contains("av1") { return true }
+        if lower.contains("avc1.4d403") || lower.contains("avc1.64003") || lower.contains("avc1.4d4032") || lower.contains("avc1.640032") {
+            return true
+        }
+        return false
     }
     
     private static func rewriteMediaLine(_ line: String, voices: [String]) -> String {

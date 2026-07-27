@@ -41,22 +41,8 @@ func cleanTranslationName(_ rawName: String) -> String {
     var name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !name.isEmpty else { return "По умолчанию" }
     
-    // Выделяем полезные метки релиза до очистки (например, WEB-DL, BDRip, 5.1, Atmos)
-    var extraTags: [String] = []
-    let lowerRaw = rawName.lowercased()
-    if lowerRaw.contains("web-dl") || lowerRaw.contains("webdl") { extraTags.append("WEB-DL") }
-    else if lowerRaw.contains("bdrip") || lowerRaw.contains("bluray") { extraTags.append("BDRip") }
-    else if lowerRaw.contains("hdtv") { extraTags.append("HDTV") }
-    
-    if lowerRaw.contains("5.1") { extraTags.append("5.1") }
-    else if lowerRaw.contains("7.1") { extraTags.append("7.1") }
-    else if lowerRaw.contains("atmos") { extraTags.append("Atmos") }
-    
-    if lowerRaw.contains("repack") { extraTags.append("Repack") }
-    else if lowerRaw.contains("proper") { extraTags.append("Proper") }
-    
-    // 1. Убираем тяжелые сцен-теги типа X-MenTheLastStand2006INTERNAL2160pWEB-DLHDR10DV...
-    if let regex = try? NSRegularExpression(pattern: "(?i)[a-z0-9._-]{3,}(?:2160p|1080p|720p|480p|internal|web-dl|web-dlrip|bdrip|bluray|hdr10|hdr|dv|hevc|x264|x265).*", options: []) {
+    // 1. Убираем только громоздкие сцен-теги релиза (например X-MenTheLastStand2006INTERNAL2160pWEB-DLHDR10DV...)
+    if let regex = try? NSRegularExpression(pattern: "(?i)[a-z0-9._-]{3,}(?:2160p|1080p|720p|480p|internal|web-dl|web-dlrip|bdrip|bluray|hdr10|hdr|dv|hevc|x264|x265|spacehd\\d*)[a-z0-9._-]*", options: []) {
         let range = NSRange(location: 0, length: name.utf16.count)
         name = regex.stringByReplacingMatches(in: name, options: [], range: range, withTemplate: "").trimmingCharacters(in: .whitespacesAndNewlines)
     }
@@ -89,16 +75,9 @@ func cleanTranslationName(_ rawName: String) -> String {
             if remainder.isEmpty {
                 baseTitle = ru
             } else {
-                baseTitle = "\(ru) \(remainder)"
+                baseTitle = "\(ru) (\(remainder))"
             }
             break
-        }
-    }
-    
-    if !extraTags.isEmpty {
-        let tagStr = extraTags.joined(separator: ", ")
-        if !baseTitle.contains(tagStr) {
-            return "\(baseTitle) (\(tagStr))"
         }
     }
     

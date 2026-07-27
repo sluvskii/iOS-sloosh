@@ -879,13 +879,18 @@ class PlayerViewModel: ObservableObject {
     }
 
     private func makeResolvedQualityOption(label: String, url: URL, preferredPeakBitRate: Double?) -> PlaybackQualityOption {
-        let isMp4 = url.pathExtension.lowercased() == "mp4" || (url.absoluteString.contains(".mp4") && !url.absoluteString.contains(".m3u8"))
+        let urlLower = url.absoluteString.lowercased()
+        let isMp4 = url.pathExtension.lowercased() == "mp4" || (urlLower.contains(".mp4") && !urlLower.contains(".m3u8"))
+        // Per-quality HLS masters (filename = "master.m3u8") require a full player reload since
+        // each is a separate signed stream — preferredPeakBitRate won't switch between them.
+        // Adaptive variant playlists (e.g. "720p.m3u8", "index.m3u8") do NOT require reload.
+        let isPerQualityMaster = url.lastPathComponent.lowercased() == "master.m3u8"
         return makeQualityOption(
             key: label,
             url: url,
             preferredPeakBitRate: preferredPeakBitRate,
             isAuto: false,
-            shouldReloadOnSelect: isMp4
+            shouldReloadOnSelect: isMp4 || isPerQualityMaster
         )
     }
 
@@ -1027,6 +1032,12 @@ class PlayerViewModel: ObservableObject {
         statusObserver = playerItem.observe(\.status, options: [.new]) { [weak self] item, _ in
             Task { @MainActor [weak self] in
                 guard let self else { return }
+                // Guard: only process failure for the *currently active* player item.
+                // When a player item is replaced (e.g. on quality change or retry), the old
+                // item may asynchronously report .failed after the KVO observer is invalidated
+                // but before the already-enqueued Task runs. Without this guard, each quality
+                // switch would trigger a cascade of unnecessary fallbacks.
+                guard item === self.player?.currentItem else { return }
                 if item.status == .failed {
                     let nsError = item.error as NSError?
                     self.logDebug("setupPlayerItemObservers: item failed! Domain=\(nsError?.domain ?? ""), Code=\(nsError?.code ?? 0), Desc=\(nsError?.localizedDescription ?? "")")
