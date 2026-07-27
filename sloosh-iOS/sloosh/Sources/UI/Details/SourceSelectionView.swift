@@ -301,7 +301,7 @@ struct SourceSelectionView: View {
                 FlowLayout(spacing: 10) {
                     ForEach(allTranslations, id: \.self) { tName in
                         WatchSelectorChip(
-                            title: tName,
+                            title: displayTranslationName(tName, in: allTranslations),
                             isSelected: selectedTranslationName == tName,
                             isAvailable: isTranslationAvailable(tName)
                         ) {

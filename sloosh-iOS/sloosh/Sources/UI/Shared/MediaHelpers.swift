@@ -41,6 +41,20 @@ func cleanTranslationName(_ rawName: String) -> String {
     var name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !name.isEmpty else { return "По умолчанию" }
     
+    // Выделяем полезные метки релиза до очистки (например, WEB-DL, BDRip, 5.1, Atmos)
+    var extraTags: [String] = []
+    let lowerRaw = rawName.lowercased()
+    if lowerRaw.contains("web-dl") || lowerRaw.contains("webdl") { extraTags.append("WEB-DL") }
+    else if lowerRaw.contains("bdrip") || lowerRaw.contains("bluray") { extraTags.append("BDRip") }
+    else if lowerRaw.contains("hdtv") { extraTags.append("HDTV") }
+    
+    if lowerRaw.contains("5.1") { extraTags.append("5.1") }
+    else if lowerRaw.contains("7.1") { extraTags.append("7.1") }
+    else if lowerRaw.contains("atmos") { extraTags.append("Atmos") }
+    
+    if lowerRaw.contains("repack") { extraTags.append("Repack") }
+    else if lowerRaw.contains("proper") { extraTags.append("Proper") }
+    
     // 1. Убираем тяжелые сцен-теги типа X-MenTheLastStand2006INTERNAL2160pWEB-DLHDR10DV...
     if let regex = try? NSRegularExpression(pattern: "(?i)[a-z0-9._-]{3,}(?:2160p|1080p|720p|480p|internal|web-dl|web-dlrip|bdrip|bluray|hdr10|hdr|dv|hevc|x264|x265).*", options: []) {
         let range = NSRange(location: 0, length: name.utf16.count)
@@ -68,16 +82,39 @@ func cleanTranslationName(_ rawName: String) -> String {
         ("Chinese", "Китайский")
     ]
     
+    var baseTitle = name
     for (lang, ru) in languageMappings {
         if name.hasPrefix(lang) {
             let remainder = name.dropFirst(lang.count).trimmingCharacters(in: .whitespacesAndNewlines)
             if remainder.isEmpty {
-                return ru
+                baseTitle = ru
             } else {
-                return "\(ru) \(remainder)"
+                baseTitle = "\(ru) \(remainder)"
             }
+            break
         }
     }
     
-    return name
+    if !extraTags.isEmpty {
+        let tagStr = extraTags.joined(separator: ", ")
+        if !baseTitle.contains(tagStr) {
+            return "\(baseTitle) (\(tagStr))"
+        }
+    }
+    
+    return baseTitle
+}
+
+/// Возвращает уникальное понятное название для озвучки с учётом дубликатов в списке
+func displayTranslationName(_ rawName: String, in allRawNames: [String]) -> String {
+    let cleaned = cleanTranslationName(rawName)
+    let duplicates = allRawNames.filter { cleanTranslationName($0) == cleaned }
+    
+    if duplicates.count > 1 {
+        // Находим порядковый индекс среди идентичных названий
+        if let index = duplicates.firstIndex(of: rawName) {
+            return "\(cleaned) #\(index + 1)"
+        }
+    }
+    return cleaned
 }
