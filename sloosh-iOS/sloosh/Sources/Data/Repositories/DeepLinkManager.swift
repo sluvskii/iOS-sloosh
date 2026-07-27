@@ -43,17 +43,17 @@ final class DeepLinkManager: ObservableObject {
         }
     }
     
-    /// Creates a 100% clickable HTTPS share URL (`https://sluvskii.github.io/iOS-sloosh/details?id={id}`)
+    /// Creates a 100% clickable HTTPS share URL (`https://sluvskii.github.io/iOS-sloosh/?id={id}`)
     func createShareURL(for movieId: String) -> URL {
         let cleanId = movieId.replacingOccurrences(of: "kp_", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
-        return URL(string: "https://sluvskii.github.io/iOS-sloosh/details?id=\(cleanId)")!
+        return URL(string: "https://sluvskii.github.io/iOS-sloosh/?id=\(cleanId)")!
     }
     
     /// Formats a share text for a given title and movie ID
     func createShareMessage(title: String, movieId: String) -> String {
         let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let cleanId = movieId.replacingOccurrences(of: "kp_", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
-        let link = "https://sluvskii.github.io/iOS-sloosh/details?id=\(cleanId)"
+        let link = "https://sluvskii.github.io/iOS-sloosh/?id=\(cleanId)"
         
         if cleanTitle.isEmpty {
             return "Смотри в sloosh! 🍿\n\(link)"
