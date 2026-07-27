@@ -176,6 +176,7 @@ struct DetailsView: View {
                         .frame(height: 32)
                         .padding(.horizontal, 72)
                         .transition(.blurFadeScale)
+                        .allowsHitTesting(false)
                     }
                     
                     HStack {
