@@ -9,9 +9,9 @@ struct VoiceoverPickerSheet: View {
 
     var body: some View {
         PopoverContainer(title: "Озвучка") {
-            ForEach(vm.availableVoiceovers, id: \.self) { name in
+            ForEach(Array(vm.availableVoiceovers.enumerated()), id: \.offset) { idx, name in
                 popoverRow(
-                    label: displayTranslationName(name, in: vm.availableVoiceovers),
+                    label: displayTranslationName(name, at: idx, in: vm.availableVoiceovers),
                     isSelected: vm.currentTranslationName == name
                 ) {
                     vm.switchVoiceover(to: name)

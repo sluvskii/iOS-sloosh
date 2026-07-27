@@ -299,9 +299,9 @@ struct SourceSelectionView: View {
                     .foregroundColor(.primary)
                 
                 FlowLayout(spacing: 10) {
-                    ForEach(allTranslations, id: \.self) { tName in
+                    ForEach(Array(allTranslations.enumerated()), id: \.offset) { idx, tName in
                         WatchSelectorChip(
-                            title: displayTranslationName(tName, in: allTranslations),
+                            title: displayTranslationName(tName, at: idx, in: allTranslations),
                             isSelected: selectedTranslationName == tName,
                             isAvailable: isTranslationAvailable(tName)
                         ) {
