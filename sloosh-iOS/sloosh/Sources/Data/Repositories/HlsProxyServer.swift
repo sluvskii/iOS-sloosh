@@ -407,13 +407,25 @@ class HlsProxyServer {
     
     private func proxyUrl(_ urlString: String, baseUrl: URL) -> String {
         let absoluteUrlString: String
-        if urlString.hasPrefix("http") {
+        if urlString.hasPrefix("http://") || urlString.hasPrefix("https://") {
             absoluteUrlString = urlString
         } else {
-            guard let resolvedUrl = URL(string: urlString, relativeTo: baseUrl) else {
-                return urlString
+            var components = URLComponents(url: baseUrl, resolvingAgainstBaseURL: true)
+            components?.query = nil
+            let cleanBaseUrl = components?.url ?? baseUrl
+            
+            let baseDir: URL
+            if !cleanBaseUrl.pathExtension.isEmpty {
+                baseDir = cleanBaseUrl.deletingLastPathComponent()
+            } else {
+                baseDir = cleanBaseUrl
             }
-            absoluteUrlString = resolvedUrl.absoluteString
+            
+            if let resolvedUrl = URL(string: urlString, relativeTo: baseDir) {
+                absoluteUrlString = resolvedUrl.absoluteString
+            } else {
+                absoluteUrlString = urlString
+            }
         }
         
         guard let encodedData = absoluteUrlString.data(using: .utf8) else {
