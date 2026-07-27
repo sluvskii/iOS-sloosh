@@ -9,7 +9,7 @@ final class DeepLinkManager: ObservableObject {
     
     private init() {}
     
-    /// Handles incoming deep links such as `sloosh://details/301`, `sloosh://movie/301`, or `https://sloosh.app/details/301`.
+    /// Handles incoming deep links such as `sloosh://details/301`, `sloosh://movie/301`, or `sloosh://301`.
     func handleURL(_ url: URL) {
         AppDiagnostics.shared.log("DeepLinkManager: handleURL called with \(url.absoluteString)")
         
@@ -17,50 +17,54 @@ final class DeepLinkManager: ObservableObject {
             return
         }
         
-        var movieId: String? = nil
+        var rawId: String? = nil
         
         let scheme = components.scheme?.lowercased()
         if scheme == "sloosh" {
-            // e.g. sloosh://details/301 or sloosh://301 or sloosh://movie/301
+            // e.g. sloosh://details/301 or sloosh://301 or sloosh://movie/301 or sloosh://details/kp_301
             let host = components.host?.lowercased() ?? ""
             let pathComponents = components.path.components(separatedBy: "/").filter { !$0.isEmpty }
             
             if !pathComponents.isEmpty {
-                movieId = pathComponents.last
+                rawId = pathComponents.last
             } else if !host.isEmpty && host != "details" && host != "movie" && host != "tv" && host != "item" {
-                movieId = host
+                rawId = host
             } else if let queryItems = components.queryItems, let id = queryItems.first(where: { $0.name == "id" })?.value {
-                movieId = id
+                rawId = id
             }
         } else if scheme == "http" || scheme == "https" {
-            // e.g. https://sloosh.app/details/301 or https://sloosh.app/movie/301
             let pathComponents = components.path.components(separatedBy: "/").filter { !$0.isEmpty }
             if let last = pathComponents.last, !last.isEmpty {
-                movieId = last
+                rawId = last
             } else if let queryItems = components.queryItems, let id = queryItems.first(where: { $0.name == "id" })?.value {
-                movieId = id
+                rawId = id
             }
         }
         
-        if let movieId, !movieId.isEmpty {
-            AppDiagnostics.shared.log("DeepLinkManager: extracted movieId=\(movieId)")
+        if let rawId, !rawId.isEmpty {
+            let cleanId = rawId.replacingOccurrences(of: "kp_", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
+            AppDiagnostics.shared.log("DeepLinkManager: extracted cleanId=\(cleanId)")
             withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                self.targetMovieId = movieId
+                self.targetMovieId = cleanId
             }
         }
     }
     
-    /// Creates a human-friendly web share URL for a given movie/series ID
+    /// Creates a native custom scheme URL (`sloosh://details/{id}`) for direct app opening
     func createShareURL(for movieId: String) -> URL {
-        return URL(string: "https://sloosh.app/details/\(movieId)") ?? URL(string: "sloosh://details/\(movieId)")!
+        let cleanId = movieId.replacingOccurrences(of: "kp_", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
+        return URL(string: "sloosh://details/\(cleanId)")!
     }
     
     /// Formats a share text for a given title and movie ID
     func createShareMessage(title: String, movieId: String) -> String {
         let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanId = movieId.replacingOccurrences(of: "kp_", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let link = "sloosh://details/\(cleanId)"
+        
         if cleanTitle.isEmpty {
-            return "Смотри в sloosh! 🍿\nhttps://sloosh.app/details/\(movieId)"
+            return "Смотри в sloosh! 🍿\n\(link)"
         }
-        return "Смотри «\(cleanTitle)» в sloosh! 🍿\nhttps://sloosh.app/details/\(movieId)"
+        return "Смотри «\(cleanTitle)» в sloosh! 🍿\n\(link)"
     }
 }

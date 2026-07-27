@@ -217,10 +217,13 @@ struct DetailsView: View {
                                 .fill(Color.white.opacity(0.18))
                                 .frame(width: 1, height: 20)
 
-                            ShareLink(item: DeepLinkManager.shared.createShareMessage(
-                                title: viewModel.details?.title ?? viewModel.details?.originalTitle ?? "",
-                                movieId: movieId
-                            )) {
+                            ShareLink(
+                                item: DeepLinkManager.shared.createShareURL(for: movieId),
+                                message: Text(DeepLinkManager.shared.createShareMessage(
+                                    title: viewModel.details?.title ?? viewModel.details?.originalTitle ?? "",
+                                    movieId: movieId
+                                ))
+                            ) {
                                 Image(systemName: "square.and.arrow.up")
                                     .font(.system(size: 19, weight: .medium))
                                     .foregroundStyle(.white)
