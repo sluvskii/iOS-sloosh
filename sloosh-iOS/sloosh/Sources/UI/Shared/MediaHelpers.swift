@@ -105,16 +105,26 @@ func cleanTranslationName(_ rawName: String) -> String {
     return baseTitle
 }
 
-/// Возвращает уникальное понятное название для озвучки с учётом дубликатов в списке
-func displayTranslationName(_ rawName: String, in allRawNames: [String]) -> String {
+/// Возвращает уникальное понятное название для озвучки с учётом её индекса в общем списке
+func displayTranslationName(_ rawName: String, at indexInAll: Int, in allRawNames: [String]) -> String {
     let cleaned = cleanTranslationName(rawName)
-    let duplicates = allRawNames.filter { cleanTranslationName($0) == cleaned }
     
-    if duplicates.count > 1 {
-        // Находим порядковый индекс среди идентичных названий
-        if let index = duplicates.firstIndex(of: rawName) {
-            return "\(cleaned) #\(index + 1)"
+    // Посчитаем, сколько раз данное очищенное название встречается во ВСЁМ списке
+    let totalDuplicates = allRawNames.filter { cleanTranslationName($0) == cleaned }.count
+    
+    if totalDuplicates > 1 {
+        // Посчитаем, каким по счёту является текущий элемент среди равных до индекса indexInAll включительно
+        var occurrence = 0
+        let maxIdx = max(0, min(indexInAll, allRawNames.count - 1))
+        if maxIdx < allRawNames.count {
+            for i in 0...maxIdx {
+                if cleanTranslationName(allRawNames[i]) == cleaned {
+                    occurrence += 1
+                }
+            }
         }
+        return "\(cleaned) #\(occurrence)"
     }
+    
     return cleaned
 }
