@@ -96,7 +96,6 @@ struct DetailsView: View {
     @State private var favoriteBounce = false
     @State private var movieToDelete: DownloadItem? = nil
     @State private var showDeleteMovieAlert = false
-    @State private var showShareFilmSheet = false
 
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Environment(\.dismiss) private var dismiss
@@ -194,23 +193,7 @@ struct DetailsView: View {
                         
                         Spacer()
                         
-                        HStack(spacing: 10) {
-                            Button {
-                                let generator = UIImpactFeedbackGenerator(style: .light)
-                                generator.prepare()
-                                generator.impactOccurred()
-                                showShareFilmSheet = true
-                            } label: {
-                                Image(systemName: "square.and.arrow.up")
-                                    .font(.system(size: 20, weight: .medium))
-                                    .foregroundStyle(.white)
-                                    .frame(width: 44, height: 44)
-                                    .glassEffect(.regular.interactive(), in: .circle)
-                            }
-                            .buttonStyle(.glassPress)
-                            .disabled(viewModel.details == nil)
-                            .accessibilityLabel("Поделиться")
-
+                        HStack(spacing: 0) {
                             Button {
                                 let generator = UIImpactFeedbackGenerator(style: .light)
                                 generator.prepare()
@@ -221,16 +204,33 @@ struct DetailsView: View {
                                 }
                             } label: {
                                 Image(systemName: viewModel.isFavorite ? "heart.fill" : "heart")
-                                    .font(.system(size: 22, weight: .medium))
-                                    .foregroundStyle(.white)
+                                    .font(.system(size: 20, weight: .medium))
+                                    .foregroundStyle(viewModel.isFavorite ? Color.red : .white)
                                     .symbolEffect(.bounce, value: favoriteBounce)
                                     .frame(width: 44, height: 44)
-                                    .glassEffect(.regular.interactive(), in: .circle)
                             }
                             .buttonStyle(.glassPress)
                             .disabled(viewModel.details == nil)
                             .accessibilityLabel(viewModel.isFavorite ? "Убрать из избранного" : "Добавить в избранное")
+
+                            Rectangle()
+                                .fill(Color.white.opacity(0.18))
+                                .frame(width: 1, height: 20)
+
+                            ShareLink(item: DeepLinkManager.shared.createShareMessage(
+                                title: viewModel.details?.title ?? viewModel.details?.originalTitle ?? "",
+                                movieId: movieId
+                            )) {
+                                Image(systemName: "square.and.arrow.up")
+                                    .font(.system(size: 19, weight: .medium))
+                                    .foregroundStyle(.white)
+                                    .frame(width: 44, height: 44)
+                            }
+                            .buttonStyle(.glassPress)
+                            .disabled(viewModel.details == nil)
+                            .accessibilityLabel("Поделиться")
                         }
+                        .glassEffect(.regular.interactive(), in: Capsule())
                     }
                 }
                 .padding(.horizontal, 16)
@@ -374,16 +374,6 @@ struct DetailsView: View {
             }
         } message: {
             Text("Вы действительно хотите удалить этот фильм из памяти устройства?")
-        }
-        .sheet(isPresented: $showShareFilmSheet) {
-            if let details = viewModel.details {
-                ShareSheet(items: [
-                    DeepLinkManager.shared.createShareMessage(
-                        title: details.title ?? details.originalTitle ?? "",
-                        movieId: movieId
-                    )
-                ])
-            }
         }
     }
 
