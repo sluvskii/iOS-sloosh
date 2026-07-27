@@ -96,6 +96,9 @@ struct slooshApp: App {
                 }) {
                     ShareSheet(items: [diagnostics.getCrashURL()])
                 }
+                .onOpenURL { url in
+                    DeepLinkManager.shared.handleURL(url)
+                }
                 .onChange(of: scenePhase) { _, newPhase in
                     if newPhase == .background {
                         AppDiagnostics.shared.markGracefulExit()

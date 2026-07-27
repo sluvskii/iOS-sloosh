@@ -13,6 +13,8 @@ struct ContentView: View {
     @AppStorage("tabBarShowsLabels") private var tabBarShowsLabels = false
     @State private var selectedTab: AppTab = .home
 
+    @StateObject private var deepLinkManager = DeepLinkManager.shared
+
     @ViewBuilder
     private func tabLabel(_ title: LocalizedStringKey, systemImage: String) -> some View {
         if tabBarShowsLabels {
@@ -86,6 +88,16 @@ struct ContentView: View {
                 }
             }
             .withToasts()
+            .sheet(isPresented: Binding<Bool>(
+                get: { deepLinkManager.targetMovieId != nil },
+                set: { if !$0 { deepLinkManager.targetMovieId = nil } }
+            )) {
+                if let movieId = deepLinkManager.targetMovieId {
+                    NavigationStack {
+                        DetailsView(movieId: movieId, navigationTransitionID: nil, navigationTransitionNamespace: nil)
+                    }
+                }
+            }
             .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("SlooshIntentPlayMovie"))) { notification in
                 selectedTab = .home
             }
