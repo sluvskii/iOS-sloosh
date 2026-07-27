@@ -2,154 +2,241 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>sloosh — Смотреть онлайн</title>
+    
+    <!-- OpenGraph Meta Tags -->
+    <meta property="og:title" content="sloosh — Смотреть онлайн">
+    <meta property="og:description" content="Смотри фильмы и сериалы в высоком качестве в sloosh">
+    <meta property="og:type" content="video.movie">
+    
     <style>
-        :root {
-            --bg-color: #0b0b0e;
-            --accent-color: #b6ff0c;
-            --text-color: #ffffff;
-            --glass-bg: rgba(255, 255, 255, 0.08);
-            --glass-border: rgba(255, 255, 255, 0.15);
-        }
-        
         * {
             box-sizing: border-box;
             margin: 0;
             padding: 0;
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            -webkit-tap-highlight-color: transparent;
         }
 
-        body {
-            background-color: var(--bg-color);
-            color: var(--text-color);
-            min-height: 100vh;
+        html, body {
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #050505;
+            color: #ffffff;
+        }
+
+        /* Fullscreen Poster Background */
+        .bg-poster {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            object-fit: cover;
+            object-position: center;
+            z-index: 1;
+            opacity: 0;
+            transition: opacity 0.6s ease;
+        }
+
+        .bg-poster.loaded {
+            opacity: 1;
+        }
+
+        /* Subtle Dark Overlay for Poster Depth */
+        .bg-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.3);
+            z-index: 2;
+        }
+
+        /* Centered Layout Wrapper */
+        .container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
             padding: 20px;
-            overflow: hidden;
-            position: relative;
-        }
-
-        /* Ambient Glow Spheres */
-        .glow-1 {
-            position: absolute;
-            width: 350px;
-            height: 350px;
-            background: radial-gradient(circle, rgba(182, 255, 12, 0.25) 0%, rgba(0, 0, 0, 0) 70%);
-            top: -50px;
-            left: -50px;
-            border-radius: 50%;
-            pointer-events: none;
-        }
-
-        .glow-2 {
-            position: absolute;
-            width: 400px;
-            height: 400px;
-            background: radial-gradient(circle, rgba(80, 120, 255, 0.2) 0%, rgba(0, 0, 0, 0) 70%);
-            bottom: -100px;
-            right: -100px;
-            border-radius: 50%;
-            pointer-events: none;
-        }
-
-        /* Liquid Glass Card */
-        .card {
-            background: var(--glass-bg);
-            backdrop-filter: blur(25px);
-            -webkit-backdrop-filter: blur(25px);
-            border: 1px solid var(--glass-border);
-            border-radius: 28px;
-            padding: 40px 28px;
-            width: 100%;
-            max-width: 400px;
-            text-align: center;
-            box-shadow: 0 30px 60px rgba(0, 0, 0, 0.5);
             z-index: 10;
         }
 
-        .logo {
-            font-size: 38px;
-            font-weight: 900;
-            letter-spacing: -1.5px;
-            margin-bottom: 8px;
-            background: linear-gradient(135deg, #ffffff 30%, var(--accent-color) 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-
-        .subtitle {
-            font-size: 15px;
-            color: rgba(255, 255, 255, 0.6);
-            margin-bottom: 32px;
-            font-weight: 400;
-        }
-
-        .film-info {
-            background: rgba(0, 0, 0, 0.3);
-            border-radius: 16px;
-            padding: 16px;
-            margin-bottom: 28px;
-            border: 1px solid rgba(255, 255, 255, 0.05);
-        }
-
-        .film-title {
-            font-size: 18px;
-            font-weight: 700;
-            color: #fff;
-            margin-bottom: 4px;
-        }
-
-        .film-id {
-            font-size: 13px;
-            color: rgba(255, 255, 255, 0.5);
-        }
-
-        .btn-open {
-            display: inline-block;
+        /* Minimal Liquid Glass Card (Matching Mockup) */
+        .card {
             width: 100%;
-            padding: 16px 24px;
-            background: var(--accent-color);
+            max-width: 440px;
+            background: rgba(18, 26, 14, 0.55);
+            backdrop-filter: blur(40px) saturate(150%);
+            -webkit-backdrop-filter: blur(40px) saturate(150%);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 40px;
+            padding: 32px 24px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+        }
+
+        /* Top Header Row inside Card */
+        .card-header {
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 32px;
+        }
+
+        .app-logo {
+            font-size: 28px;
+            font-weight: 900;
+            letter-spacing: -0.5px;
+            color: #b6ff0c;
+            text-transform: uppercase;
+        }
+
+        .btn-download {
+            background: #b6ff0c;
             color: #000000;
-            font-size: 17px;
-            font-weight: 800;
+            font-size: 15px;
+            font-weight: 700;
+            padding: 8px 22px;
             border-radius: 20px;
             text-decoration: none;
-            box-shadow: 0 10px 25px rgba(182, 255, 12, 0.3);
-            transition: all 0.2s ease;
+            transition: opacity 0.2s ease, transform 0.1s ease;
         }
 
-        .btn-open:active {
+        .btn-download:active {
+            opacity: 0.85;
+            transform: scale(0.96);
+        }
+
+        /* Middle Movie Info Section */
+        .movie-content {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            margin-bottom: 36px;
+            min-height: 110px;
+            justify-content: center;
+        }
+
+        .movie-logo-img {
+            max-width: 85%;
+            max-height: 90px;
+            object-fit: contain;
+            margin-bottom: 12px;
+            display: none;
+        }
+
+        .movie-title-text {
+            font-size: 32px;
+            font-weight: 800;
+            line-height: 1.1;
+            margin-bottom: 8px;
+            color: #ffffff;
+            display: block;
+        }
+
+        .movie-orig-title {
+            font-size: 16px;
+            color: rgba(255, 255, 255, 0.85);
+            font-weight: 400;
+            margin-bottom: 14px;
+            display: none;
+        }
+
+        .meta-row {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
+            font-size: 17px;
+            font-weight: 600;
+            color: #ffffff;
+        }
+
+        .rating-badge {
+            background: #1ebd58;
+            color: #ffffff;
+            font-size: 15px;
+            font-weight: 800;
+            padding: 4px 10px;
+            border-radius: 12px;
+            display: none;
+        }
+
+        /* Primary Action Button */
+        .btn-open-app {
+            width: 100%;
+            max-width: 320px;
+            background: #b6ff0c;
+            color: #000000;
+            font-size: 18px;
+            font-weight: 800;
+            padding: 16px 24px;
+            border-radius: 28px;
+            text-decoration: none;
+            margin-bottom: 24px;
+            transition: opacity 0.2s ease, transform 0.1s ease;
+            display: block;
+        }
+
+        .btn-open-app:active {
+            opacity: 0.85;
             transform: scale(0.97);
-            opacity: 0.9;
         }
 
-        .footer {
-            margin-top: 24px;
+        .hint-text {
             font-size: 13px;
-            color: rgba(255, 255, 255, 0.4);
+            color: rgba(255, 255, 255, 0.65);
+            line-height: 1.4;
+            max-width: 280px;
+            font-weight: 400;
         }
     </style>
 </head>
 <body>
-    <div class="glow-1"></div>
-    <div class="glow-2"></div>
+    <img id="bgPoster" class="bg-poster" alt="Backdrop">
+    <div class="bg-overlay"></div>
 
-    <div class="card">
-        <div class="logo">sloosh</div>
-        <div class="subtitle">Онлайн-кинотеатр нового поколения</div>
+    <div class="container">
+        <div class="card">
+            <!-- Top Header Row -->
+            <div class="card-header">
+                <div class="app-logo">SLOOSH</div>
+                <a href="https://t.me/slooshbeta" target="_blank" class="btn-download">Скачать</a>
+            </div>
 
-        <div class="film-info">
-            <div class="film-title" id="filmTitle">Загрузка фильма...</div>
-            <div class="film-id" id="filmIdText">ID: --</div>
-        </div>
+            <!-- Middle Movie Info -->
+            <div class="movie-content">
+                <img id="movieLogoImg" class="movie-logo-img" alt="Movie Logo">
+                <div id="movieTitleText" class="movie-title-text">sloosh</div>
+                <div id="movieOrigTitle" class="movie-orig-title"></div>
 
-        <a href="#" id="openBtn" class="btn-open">Открыть в sloosh 🍿</a>
+                <div class="meta-row">
+                    <span id="ratingBadge" class="rating-badge">7.8</span>
+                    <span id="movieYear"></span>
+                    <span id="movieCountry"></span>
+                </div>
+            </div>
 
-        <div class="footer">
-            Если приложение не открылось автоматически, нажмите кнопку выше.
+            <!-- Main Button -->
+            <a href="#" id="btnOpenApp" class="btn-open-app">Открыть в sloosh</a>
+
+            <!-- Hint -->
+            <div class="hint-text">
+                Если приложение не открылось автоматически, нажмите кнопку выше.
+            </div>
         </div>
     </div>
 
@@ -159,8 +246,12 @@
             let id = urlParams.get('id');
             if (!id) {
                 const parts = window.location.pathname.split('/').filter(Boolean);
-                if (parts.length > 0) {
-                    id = parts[parts.length - 1];
+                for (let i = parts.length - 1; i >= 0; i--) {
+                    const p = parts[i];
+                    if (p !== 'iOS-sloosh' && p !== 'details' && p !== 'movie' && p !== 'tv' && p !== 'index.html' && p !== '404.html') {
+                        id = p;
+                        break;
+                    }
                 }
             }
             if (id) {
@@ -170,24 +261,94 @@
         }
 
         const movieId = getMovieId();
-        const openBtn = document.getElementById('openBtn');
-        const filmTitle = document.getElementById('filmTitle');
-        const filmIdText = document.getElementById('filmIdText');
+        const bgPoster = document.getElementById('bgPoster');
+        const movieLogoImg = document.getElementById('movieLogoImg');
+        const movieTitleText = document.getElementById('movieTitleText');
+        const movieOrigTitle = document.getElementById('movieOrigTitle');
+        const ratingBadge = document.getElementById('ratingBadge');
+        const movieYear = document.getElementById('movieYear');
+        const movieCountry = document.getElementById('movieCountry');
+        const btnOpenApp = document.getElementById('btnOpenApp');
 
         if (movieId) {
-            filmTitle.textContent = "Ваш фильм готов к просмотру";
-            filmIdText.textContent = "ID фильма: " + movieId;
             const targetScheme = "sloosh://details/" + movieId;
-            openBtn.href = targetScheme;
+            btnOpenApp.href = targetScheme;
+
+            // Fetch details from api.neomovies.ru
+            fetch('https://api.neomovies.ru/api/v1/movies/details?id=' + movieId)
+                .then(res => res.json())
+                .then(data => {
+                    if (!data) return;
+
+                    // Backdrop / Poster
+                    const bgUrl = data.previewBackdropUrl || data.displayPosterUrl || (data.backdrop && data.backdrop.url) || (data.poster && data.poster.url);
+                    if (bgUrl) {
+                        bgPoster.src = bgUrl;
+                        bgPoster.onload = function() {
+                            bgPoster.classList.add('loaded');
+                        };
+                    }
+
+                    // Logo vs Title Text
+                    const logoUrl = data.displayLogoUrl || (data.logo && data.logo.url);
+                    if (logoUrl) {
+                        movieLogoImg.src = logoUrl;
+                        movieLogoImg.style.display = 'block';
+                        movieTitleText.style.display = 'none';
+                    } else {
+                        movieLogoImg.style.display = 'none';
+                        movieTitleText.textContent = data.title || data.name || "Фильм";
+                        movieTitleText.style.display = 'block';
+                    }
+
+                    // Original Title
+                    const origTitle = data.originalTitle || data.alternativeName || "";
+                    if (origTitle && origTitle !== (data.title || data.name)) {
+                        movieOrigTitle.textContent = origTitle;
+                        movieOrigTitle.style.display = 'block';
+                    } else {
+                        movieOrigTitle.style.display = 'none';
+                    }
+
+                    // Rating
+                    const ratingVal = (data.rating && (data.rating.kp || data.rating.imdb)) || data.kpRating || 0;
+                    if (ratingVal > 0) {
+                        ratingBadge.textContent = Number(ratingVal).toFixed(1);
+                        ratingBadge.style.display = 'inline-block';
+                    } else {
+                        ratingBadge.style.display = 'none';
+                    }
+
+                    // Year
+                    if (data.year) {
+                        movieYear.textContent = data.year;
+                        movieYear.style.display = 'inline-block';
+                    } else {
+                        movieYear.style.display = 'none';
+                    }
+
+                    // Country
+                    if (data.countries && data.countries.length > 0) {
+                        const countryNames = data.countries.map(c => typeof c === 'string' ? c : c.name).filter(Boolean).join(', ');
+                        movieCountry.textContent = countryNames;
+                        movieCountry.style.display = 'inline-block';
+                    } else {
+                        movieCountry.style.display = 'none';
+                    }
+                })
+                .catch(err => {
+                    console.error('Failed to load movie details:', err);
+                });
 
             // Auto-trigger app launch on mobile
             setTimeout(function() {
                 window.location.href = targetScheme;
-            }, 300);
+            }, 400);
         } else {
-            filmTitle.textContent = "Добро пожаловать в sloosh";
-            filmIdText.textContent = "Премиальный онлайн-кинотеатр";
-            openBtn.href = "sloosh://home";
+            btnOpenApp.href = "sloosh://home";
+            movieTitleText.textContent = "sloosh";
+            movieOrigTitle.textContent = "Премиальный онлайн-кинотеатр";
+            movieOrigTitle.style.display = 'block';
         }
     </script>
 </body>
