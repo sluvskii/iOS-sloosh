@@ -54,7 +54,7 @@ class PlaybackHlsRewriter {
             let line = filteredLines[i]
             
             if line.hasPrefix("#EXT-X-STREAM-INF") {
-                var modifiedLine = line
+                var modifiedLine = normalizeStreamInfVideoRange(line)
                 if !subtitles.isEmpty {
                     modifiedLine = addOrReplaceAttribute(modifiedLine, key: "SUBTITLES", value: subsGroupId)
                 }
@@ -146,6 +146,21 @@ class PlaybackHlsRewriter {
             }
         }
         return false
+    }
+
+    /// Strips VIDEO-RANGE=PQ and VIDEO-RANGE=HLG from non-HEVC/Dolby-Vision STREAM-INF lines.
+    /// iOS AVPlayer does not support H.264 with HDR transfer functions — this causes -11848 / -16190.
+    private static func normalizeStreamInfVideoRange(_ line: String) -> String {
+        let lower = line.lowercased()
+        let isHdrCapable = lower.contains("hvc1") || lower.contains("hev1") || lower.contains("dvh1") || lower.contains("dvhe")
+        guard !isHdrCapable else { return line }
+        
+        var result = line
+        if let regex = try? NSRegularExpression(pattern: ",?\\s*VIDEO-RANGE=[^,\\s]+", options: .caseInsensitive) {
+            let range = NSRange(result.startIndex..<result.endIndex, in: result)
+            result = regex.stringByReplacingMatches(in: result, options: [], range: range, withTemplate: "")
+        }
+        return result
     }
     
     private static func rewriteMediaLine(_ line: String, voices: [String]) -> String {
