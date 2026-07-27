@@ -48,6 +48,7 @@ struct ScrollOffsetPreferenceKey: PreferenceKey {
 
 struct HomeView: View {
     @StateObject private var viewModel = HomeViewModel()
+    @StateObject private var deepLinkManager = DeepLinkManager.shared
     @Namespace private var navigationTransition
     @State private var isFilterCollapsed = false
     @State private var scrollOffsets: [HomeCategory: CGFloat] = [:]
@@ -125,6 +126,14 @@ struct HomeView: View {
             }
             .sheet(isPresented: $viewModel.showFilters) {
                 SearchFilterSheet(filters: $viewModel.searchFilters, context: .home)
+            }
+            .navigationDestination(isPresented: Binding<Bool>(
+                get: { deepLinkManager.targetMovieId != nil },
+                set: { if !$0 { deepLinkManager.clear() } }
+            )) {
+                if let movieId = deepLinkManager.targetMovieId {
+                    DetailsView(movieId: movieId, navigationTransitionID: nil, navigationTransitionNamespace: nil)
+                }
             }
             .sheet(item: $viewModel.directPlaybackMovie) { movie in
                 let kpId = movie.externalIds?.kp ?? Int(movie.id) ?? 0
