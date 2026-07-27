@@ -88,14 +88,9 @@ struct ContentView: View {
                 }
             }
             .withToasts()
-            .fullScreenCover(isPresented: Binding<Bool>(
-                get: { deepLinkManager.targetMovieId != nil },
-                set: { if !$0 { deepLinkManager.clear() } }
-            )) {
-                if let movieId = deepLinkManager.targetMovieId {
-                    NavigationStack {
-                        DetailsView(movieId: movieId, navigationTransitionID: nil, navigationTransitionNamespace: nil)
-                    }
+            .onChange(of: deepLinkManager.targetMovieId) { _, newValue in
+                if newValue != nil {
+                    selectedTab = .home
                 }
             }
             .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("SlooshIntentPlayMovie"))) { notification in
