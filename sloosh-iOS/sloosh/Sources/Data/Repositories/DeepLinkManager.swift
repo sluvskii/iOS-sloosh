@@ -62,8 +62,6 @@ final class DeepLinkManager: ObservableObject {
     
     /// Clears the pending targetMovieId and dismisses deep link details presentation
     func clear() {
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-            targetMovieId = nil
-        }
+        targetMovieId = nil
     }
 }
