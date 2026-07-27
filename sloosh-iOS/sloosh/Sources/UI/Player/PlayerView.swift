@@ -879,12 +879,13 @@ class PlayerViewModel: ObservableObject {
     }
 
     private func makeResolvedQualityOption(label: String, url: URL, preferredPeakBitRate: Double?) -> PlaybackQualityOption {
-        makeQualityOption(
+        let isMp4 = url.pathExtension.lowercased() == "mp4" || (url.absoluteString.contains(".mp4") && !url.absoluteString.contains(".m3u8"))
+        return makeQualityOption(
             key: label,
             url: url,
             preferredPeakBitRate: preferredPeakBitRate,
             isAuto: false,
-            shouldReloadOnSelect: true
+            shouldReloadOnSelect: isMp4
         )
     }
 
