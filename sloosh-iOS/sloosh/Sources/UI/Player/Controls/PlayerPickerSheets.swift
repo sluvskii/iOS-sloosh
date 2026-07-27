@@ -14,7 +14,7 @@ struct VoiceoverPickerSheet: View {
                     label: displayTranslationName(name, at: idx, in: vm.availableVoiceovers),
                     isSelected: vm.currentTranslationName == name
                 ) {
-                    vm.switchVoiceover(to: name)
+                    vm.switchVoiceover(to: name, at: idx)
                     dismiss()
                 }
             }

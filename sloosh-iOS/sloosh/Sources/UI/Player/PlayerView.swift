@@ -605,15 +605,23 @@ class PlayerViewModel: ObservableObject {
     }
 
     /// Переключает озвучку без закрытия плеера
-    func switchVoiceover(to name: String) {
-        logDebug("switchVoiceover: switching to '\(name)'")
+    func switchVoiceover(to name: String, at index: Int? = nil) {
+        logDebug("switchVoiceover: switching to '\(name)' at index \(index ?? -1)")
         // 1. Пробуем переключить нативно в текущем AVPlayer (если дорожка встроена в HLS)
         if let player = player,
            let item = player.currentItem,
            let group = item.asset.mediaSelectionGroup(forMediaCharacteristic: .audible) {
             let options = group.options
             logDebug("switchVoiceover: native tracks available: \(options.map { $0.displayName })")
-            if let option = options.first(where: { allohaTranslationNamesMatch($0.displayName, name, exactOnly: true) }) {
+            if let idx = index, idx < options.count {
+                let option = options[idx]
+                _currentTranslationName = name
+                targetVoiceover = name
+                persistVoiceoverSelection(name)
+                item.select(option, in: group)
+                logDebug("switchVoiceover: switched audio natively by index to '\(option.displayName)'")
+                return
+            } else if let option = options.first(where: { allohaTranslationNamesMatch($0.displayName, name, exactOnly: true) }) {
                 _currentTranslationName = name
                 targetVoiceover = name
                 persistVoiceoverSelection(name)
@@ -627,16 +635,22 @@ class PlayerViewModel: ObservableObject {
         var targetIframeUrl: String?
         
         if isMovie {
-            if let movie = seriesResult?.movie,
-               let translation = movie.translations.first(where: { allohaTranslationNamesMatch($0.name, name, exactOnly: true) }) {
-                targetIframeUrl = translation.iframeUrl
+            if let movie = seriesResult?.movie {
+                if let idx = index, idx < movie.translations.count {
+                    targetIframeUrl = movie.translations[idx].iframeUrl
+                } else if let translation = movie.translations.first(where: { allohaTranslationNamesMatch($0.name, name, exactOnly: true) }) {
+                    targetIframeUrl = translation.iframeUrl
+                }
             }
         } else {
             if let seriesResult, let season = currentSeason, let episode = currentEpisode,
                let seasonObj = seriesResult.seasons.first(where: { $0.season == season }),
-               let epObj = seasonObj.episodes.first(where: { $0.episode == episode }),
-               let translation = epObj.translations.first(where: { allohaTranslationNamesMatch($0.name, name, exactOnly: true) }) {
-                targetIframeUrl = translation.iframeUrl
+               let epObj = seasonObj.episodes.first(where: { $0.episode == episode }) {
+                if let idx = index, idx < epObj.translations.count {
+                    targetIframeUrl = epObj.translations[idx].iframeUrl
+                } else if let translation = epObj.translations.first(where: { allohaTranslationNamesMatch($0.name, name, exactOnly: true) }) {
+                    targetIframeUrl = translation.iframeUrl
+                }
             }
         }
         
