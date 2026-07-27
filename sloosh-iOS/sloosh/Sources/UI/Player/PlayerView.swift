@@ -352,6 +352,7 @@ class PlayerViewModel: ObservableObject {
                     let res = match.replacingOccurrences(of: "RESOLUTION=", with: "")
                     let components = res.components(separatedBy: "x")
                     if components.count == 2, let height = Int(components[1]) {
+                        if height > 1080 { continue }
                         resStr = "\(height)p"
                     }
                 } else if let range = line.range(of: "BANDWIDTH=([^,\\s]+)", options: .regularExpression) {
@@ -414,13 +415,19 @@ class PlayerViewModel: ObservableObject {
             DispatchQueue.main.async { [weak self] in
                 guard let self = self else { return }
                 
-                // Keep the direct MP4 qualities (like 1440p, 2160p) from JSON that were not in the m3u8
                 var mergedQualities = qualities
                 let existingKeys = Set(qualities.map { $0.key })
                 for originalQuality in self.availableQualities {
                     if !existingKeys.contains(originalQuality.key) {
                         mergedQualities.append(originalQuality)
                     }
+                }
+                
+                // Capped at 1080p max
+                mergedQualities = mergedQualities.filter { q in
+                    if q.isAuto { return true }
+                    let h = Int(q.key.replacingOccurrences(of: "p", with: "")) ?? 0
+                    return h <= 1080
                 }
                 
                 if mergedQualities.count > 1 {
@@ -607,31 +614,8 @@ class PlayerViewModel: ObservableObject {
     /// Переключает озвучку без закрытия плеера
     func switchVoiceover(to name: String, at index: Int? = nil) {
         logDebug("switchVoiceover: switching to '\(name)' at index \(index ?? -1)")
-        // 1. Пробуем переключить нативно в текущем AVPlayer (если дорожка встроена в HLS)
-        if let player = player,
-           let item = player.currentItem,
-           let group = item.asset.mediaSelectionGroup(forMediaCharacteristic: .audible) {
-            let options = group.options
-            logDebug("switchVoiceover: native tracks available: \(options.map { $0.displayName })")
-            if let idx = index, idx < options.count {
-                let option = options[idx]
-                _currentTranslationName = name
-                targetVoiceover = name
-                persistVoiceoverSelection(name)
-                item.select(option, in: group)
-                logDebug("switchVoiceover: switched audio natively by index to '\(option.displayName)'")
-                return
-            } else if let option = options.first(where: { allohaTranslationNamesMatch($0.displayName, name, exactOnly: true) }) {
-                _currentTranslationName = name
-                targetVoiceover = name
-                persistVoiceoverSelection(name)
-                item.select(option, in: group)
-                logDebug("switchVoiceover: switched audio natively to '\(option.displayName)'")
-                return
-            }
-        }
-
-        // Ищем новый iframeUrl для нужной озвучки
+        
+        // 1. Ищем новый iframeUrl для нужной озвучки из Alloha DTO
         var targetIframeUrl: String?
         
         if isMovie {
@@ -654,29 +638,44 @@ class PlayerViewModel: ObservableObject {
             }
         }
         
-        guard let iframeUrl = targetIframeUrl, !iframeUrl.isEmpty else {
-            logDebug("switchVoiceover error: failed to find translation iframeUrl for '\(name)'")
+        if let iframeUrl = targetIframeUrl, !iframeUrl.isEmpty {
+            logDebug("switchVoiceover: reloading from translation iframeUrl=\(iframeUrl)")
+            _currentTranslationName = name
+            targetVoiceover = name
+            persistVoiceoverSelection(name)
+            
+            AllohaRuntimeResolver.invalidateCache(for: iframeUrl)
+            resolveTask?.cancel()
+            resolver?.cancel()
+            hasStartedLoading = false
+            beginLoad(
+                iframeUrl: iframeUrl,
+                kpId: currentKpId,
+                season: currentSeason,
+                episode: currentEpisode,
+                selectedVoiceover: name
+            )
             return
         }
-
-        logDebug("switchVoiceover: reloading from translation iframeUrl=\(iframeUrl)")
-        _currentTranslationName = name
-        targetVoiceover = name
-        persistVoiceoverSelection(name)
         
-        // Инвалидируем кэш перед re-resolve
-        AllohaRuntimeResolver.invalidateCache(for: iframeUrl)
-        resolveTask?.cancel()
-        resolver?.cancel()
-        hasStartedLoading = false
-        beginLoad(
-            iframeUrl: iframeUrl,
-            kpId: currentKpId,
-            season: currentSeason,
-            episode: currentEpisode,
-            selectedVoiceover: name
-        )
-        return
+        // 2. Если отдельного iframeUrl нет, проигрыватель пробует нативно выбрать дорожку в HLS (если дорожки мульти-аудио)
+        if let player = player,
+           let item = player.currentItem,
+           let group = item.asset.mediaSelectionGroup(forMediaCharacteristic: .audible) {
+            let options = group.options
+            logDebug("switchVoiceover: native tracks available: \(options.map { $0.displayName })")
+            if let option = options.first(where: { allohaTranslationNamesMatch($0.displayName, name, exactOnly: true) }) ??
+                            options.first(where: { allohaTranslationNamesMatch($0.displayName, name, exactOnly: false) }) {
+                _currentTranslationName = name
+                targetVoiceover = name
+                persistVoiceoverSelection(name)
+                item.select(option, in: group)
+                logDebug("switchVoiceover: switched audio natively to '\(option.displayName)'")
+                return
+            }
+        }
+
+        logDebug("switchVoiceover error: failed to find translation iframeUrl or native track for '\(name)'")
     }
 
     /// Сохраняет текущую позицию воспроизведения. Вызывается и по таймеру, и при сворачивании приложения.
@@ -706,40 +705,24 @@ class PlayerViewModel: ObservableObject {
         }
         self.currentQualityKey = key
         
-        // Сохраняем выбор пользователя для текущего сеанса просмотра,
-        // чтобы при переключении озвучки качество не сбрасывалось на авто.
         if let newPreference = VideoQualityPreference(rawValue: key) {
             self.targetQualityPreference = newPreference
         }
         
-        let isHls = quality.url.pathExtension.lowercased() == "m3u8" || quality.url.absoluteString.contains(".m3u8")
-        logDebug("changeQuality: quality='\(key)', url=\(quality.url.absoluteString), isHls=\(isHls), isAuto=\(quality.isAuto), shouldReload=\(quality.shouldReloadOnSelect)")
+        let targetBitrate = resolvedBitrate(for: quality)
+        logDebug("changeQuality: quality='\(key)', targetBitrate=\(targetBitrate)")
         
         if quality.isAuto {
             if shouldReloadForAutoSelection(autoURL: quality.url) {
-                logDebug("changeQuality: reloading for auto selection")
                 reloadPlayback(to: quality.url, preferredPeakBitRate: 0)
             } else {
-                logDebug("changeQuality: updating preferredPeakBitRate to 0 (auto)")
                 player?.currentItem?.preferredPeakBitRate = 0
             }
             return
         }
 
-        if quality.shouldReloadOnSelect {
-            logDebug("changeQuality: shouldReloadOnSelect is true, calling reloadPlayback")
-            reloadPlayback(to: quality.url, preferredPeakBitRate: quality.preferredPeakBitRate)
-            return
-        }
-
-        if isHls, let currentItem = self.player?.currentItem {
-            logDebug("changeQuality: updating preferredPeakBitRate for HLS to \(resolvedBitrate(for: quality))")
-            currentItem.preferredPeakBitRate = resolvedBitrate(for: quality)
-            return
-        }
-
-        logDebug("changeQuality: fallback, calling reloadPlayback")
-        reloadPlayback(to: quality.url, preferredPeakBitRate: quality.preferredPeakBitRate)
+        // Вызываем reloadPlayback для мгновенного переключения качества с сохранением позиции
+        reloadPlayback(to: quality.url, preferredPeakBitRate: targetBitrate)
     }
 
     private func reloadPlayback(to sourceURL: URL, preferredPeakBitRate: Double?) {
@@ -918,6 +901,13 @@ class PlayerViewModel: ObservableObject {
            let firstAudio = audioVariants.first,
            let nestedQualityVariants = firstAudio["qualityVariants"] as? [[String: Any]] {
             appendQualityVariants(nestedQualityVariants, to: &qualities, seenKeys: &seenKeys)
+        }
+
+        // Filter out any qualities higher than 1080p (e.g. 1440p, 2160p)
+        qualities = qualities.filter { q in
+            if q.isAuto { return true }
+            let h = Int(q.key.replacingOccurrences(of: "p", with: "")) ?? 0
+            return h <= 1080
         }
 
         if qualities.count > 1 {

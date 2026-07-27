@@ -131,6 +131,17 @@ class PlaybackHlsRewriter {
         if lower.contains("avc1.4d403") || lower.contains("avc1.64003") || lower.contains("avc1.4d4032") || lower.contains("avc1.640032") {
             return true
         }
+        // Filter out any resolution variants higher than 1080p (e.g. 1440p, 2160p, 4K, 2592x1080)
+        if let resRange = line.range(of: "RESOLUTION=([^,\\s]+)", options: .regularExpression) {
+            let resStr = String(line[resRange]).replacingOccurrences(of: "RESOLUTION=", with: "")
+            let parts = resStr.components(separatedBy: "x")
+            if parts.count == 2, let h = Int(parts[1]), h > 1080 {
+                return true
+            }
+            if parts.count == 2, let w = Int(parts[0]), w > 1920 {
+                return true
+            }
+        }
         return false
     }
     
