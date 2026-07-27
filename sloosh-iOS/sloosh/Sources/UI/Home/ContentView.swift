@@ -13,7 +13,7 @@ struct ContentView: View {
     @AppStorage("tabBarShowsLabels") private var tabBarShowsLabels = false
     @State private var selectedTab: AppTab = .home
 
-    @StateObject private var deepLinkManager = DeepLinkManager.shared
+    @ObservedObject private var deepLinkManager = DeepLinkManager.shared
 
     @ViewBuilder
     private func tabLabel(_ title: LocalizedStringKey, systemImage: String) -> some View {
