@@ -10,31 +10,25 @@ struct WatchSelectorChip: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 6) {
-                if isSelected {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 13, weight: .bold))
-                }
-                Text(title)
-                    .font(.system(size: 14, weight: isSelected ? .bold : .medium))
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-            .foregroundStyle(
-                isSelected 
-                    ? (colorScheme == .dark ? Color.black : Color.white) 
-                    : (isAvailable ? Color.primary : Color.secondary)
-            )
-            .background(
-                Capsule()
-                    .fill(
-                        isSelected
-                            ? (colorScheme == .dark ? Color.white : Color.primary)
-                            : (isAvailable ? Color(UIColor.secondarySystemFill) : Color(UIColor.tertiarySystemFill))
-                    )
-            )
+            Text(title)
+                .font(.system(size: 14, weight: isSelected ? .bold : .medium))
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .foregroundStyle(
+                    isSelected 
+                        ? (colorScheme == .dark ? Color.black : Color.white) 
+                        : (isAvailable ? Color.primary : Color.secondary)
+                )
+                .background(
+                    Capsule()
+                        .fill(
+                            isSelected
+                                ? (colorScheme == .dark ? Color.white : Color.primary)
+                                : (isAvailable ? Color(UIColor.secondarySystemFill) : Color(UIColor.tertiarySystemFill))
+                        )
+                )
         }
         .buttonStyle(ChipButtonStyle())
         .opacity(isAvailable ? 1.0 : 0.5)
