@@ -164,6 +164,7 @@ struct DetailsView: View {
                 in: navigationTransitionNamespace
             )
             .environment(\.colorScheme, .dark)
+            .ignoresSafeArea(edges: .top)
             .toolbar(.hidden, for: .navigationBar)
             .safeAreaInset(edge: .top, spacing: 0) {
                 ZStack {
@@ -181,7 +182,7 @@ struct DetailsView: View {
                     
                     HStack {
                         Button {
-                            DeepLinkManager.shared.clear()
+                            NavigationPopPresenter.pop()
                             dismiss()
                             presentationMode.wrappedValue.dismiss()
                         } label: {
