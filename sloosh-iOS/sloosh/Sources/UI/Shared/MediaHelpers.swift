@@ -33,3 +33,51 @@ func isCartoonByTitle(_ title: String?) -> Bool {
     let words = t.components(separatedBy: .punctuationCharacters.union(.whitespaces))
     return words.contains("мультфильм") || words.contains("мультфильмы") || words.contains("аниме")
 }
+
+// MARK: - Translation Name Sanitization
+
+/// Очищает и красиво форматирует названия озвучек (убирает тех. релиз-теги типа INTERNAL2160pWEB-DL, переводит языковые имена)
+func cleanTranslationName(_ rawName: String) -> String {
+    var name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !name.isEmpty else { return "По умолчанию" }
+    
+    // 1. Убираем тяжелые сцен-теги типа X-MenTheLastStand2006INTERNAL2160pWEB-DLHDR10DV...
+    if let regex = try? NSRegularExpression(pattern: "(?i)[a-z0-9._-]{3,}(?:2160p|1080p|720p|480p|internal|web-dl|web-dlrip|bdrip|bluray|hdr10|hdr|dv|hevc|x264|x265).*", options: []) {
+        let range = NSRange(location: 0, length: name.utf16.count)
+        name = regex.stringByReplacingMatches(in: name, options: [], range: range, withTemplate: "").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    
+    // 2. Если название пустое после очистки
+    if name.isEmpty {
+        name = rawName.components(separatedBy: " ").first ?? rawName
+    }
+    
+    // 3. Перевод известных языковых префиксов на красивый русский язык
+    let languageMappings: [(prefix: String, replacement: String)] = [
+        ("Russian", "Русский"),
+        ("English", "Английский"),
+        ("Ukrainian", "Украинский"),
+        ("Kazakh", "Казахский"),
+        ("Georgian", "Грузинский"),
+        ("Spanish", "Испанский"),
+        ("German", "Немецкий"),
+        ("French", "Французский"),
+        ("Italian", "Итальянский"),
+        ("Japanese", "Японский"),
+        ("Korean", "Корейский"),
+        ("Chinese", "Китайский")
+    ]
+    
+    for (lang, ru) in languageMappings {
+        if name.hasPrefix(lang) {
+            let remainder = name.dropFirst(lang.count).trimmingCharacters(in: .whitespacesAndNewlines)
+            if remainder.isEmpty {
+                return ru
+            } else {
+                return "\(ru) \(remainder)"
+            }
+        }
+    }
+    
+    return name
+}

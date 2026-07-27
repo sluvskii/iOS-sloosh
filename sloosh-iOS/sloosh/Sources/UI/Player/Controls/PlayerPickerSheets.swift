@@ -11,7 +11,7 @@ struct VoiceoverPickerSheet: View {
         PopoverContainer(title: "Озвучка") {
             ForEach(vm.availableVoiceovers, id: \.self) { name in
                 popoverRow(
-                    label: name,
+                    label: cleanTranslationName(name),
                     isSelected: vm.currentTranslationName == name
                 ) {
                     vm.switchVoiceover(to: name)
@@ -125,6 +125,8 @@ private func popoverRow(label: String, isSelected: Bool, action: @escaping () ->
         Text(label)
             .font(.system(size: 15, weight: isSelected ? .semibold : .medium))
             .foregroundStyle(isSelected ? .black : .white)
+            .lineLimit(1)
+            .truncationMode(.tail)
             .padding(.vertical, 12)
             .padding(.horizontal, 16)
             .frame(maxWidth: .infinity)

@@ -10,8 +10,10 @@ struct WatchSelectorChip: View {
 
     var body: some View {
         Button(action: action) {
-            Text(title)
+            Text(cleanTranslationName(title))
                 .font(.system(size: 15, weight: isSelected ? .semibold : .medium))
+                .lineLimit(1)
+                .truncationMode(.tail)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 9)
                 .foregroundStyle(
