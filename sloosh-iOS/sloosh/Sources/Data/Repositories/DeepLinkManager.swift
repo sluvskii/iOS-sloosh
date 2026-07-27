@@ -54,10 +54,16 @@ final class DeepLinkManager: ObservableObject {
         let cleanTitle = title.trimmingCharacters(in: .whitespacesAndNewlines)
         let cleanId = movieId.replacingOccurrences(of: "kp_", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
         let link = "https://sluvskii.github.io/iOS-sloosh/?id=\(cleanId)"
-        
         if cleanTitle.isEmpty {
             return "Смотри в sloosh! 🍿\n\(link)"
         }
         return "Смотри «\(cleanTitle)» в sloosh! 🍿\n\(link)"
+    }
+    
+    /// Clears the pending targetMovieId and dismisses deep link details presentation
+    func clear() {
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+            targetMovieId = nil
+        }
     }
 }

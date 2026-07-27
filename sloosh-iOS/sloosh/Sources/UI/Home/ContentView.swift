@@ -88,9 +88,9 @@ struct ContentView: View {
                 }
             }
             .withToasts()
-            .sheet(isPresented: Binding<Bool>(
+            .fullScreenCover(isPresented: Binding<Bool>(
                 get: { deepLinkManager.targetMovieId != nil },
-                set: { if !$0 { deepLinkManager.targetMovieId = nil } }
+                set: { if !$0 { deepLinkManager.clear() } }
             )) {
                 if let movieId = deepLinkManager.targetMovieId {
                     NavigationStack {
