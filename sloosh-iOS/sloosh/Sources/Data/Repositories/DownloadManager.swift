@@ -534,15 +534,14 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         try? FileManager.default.removeItem(at: finalUrl)
         try? FileManager.default.moveItem(at: location, to: finalUrl)
         
-        var bgTaskId: UIBackgroundTaskIdentifier = .invalid
-        bgTaskId = UIApplication.shared.beginBackgroundTask(withName: "ProcessDownloadSegment_\(comps.itemId)") {
-            if bgTaskId != .invalid {
-                UIApplication.shared.endBackgroundTask(bgTaskId)
-                bgTaskId = .invalid
-            }
-        }
-        
         Task { @MainActor in
+            var bgTaskId: UIBackgroundTaskIdentifier = .invalid
+            bgTaskId = UIApplication.shared.beginBackgroundTask(withName: "ProcessDownloadSegment_\(comps.itemId)") {
+                if bgTaskId != .invalid {
+                    UIApplication.shared.endBackgroundTask(bgTaskId)
+                    bgTaskId = .invalid
+                }
+            }
             defer {
                 if bgTaskId != .invalid {
                     UIApplication.shared.endBackgroundTask(bgTaskId)
