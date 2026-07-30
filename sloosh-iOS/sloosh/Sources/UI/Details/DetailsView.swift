@@ -661,7 +661,7 @@ struct DetailsView: View {
                             GeometryReader { geo in
                                 Color.clear
                                     .onChange(of: geo.frame(in: .global).midY) { _, midY in
-                                        let isAtTop = midY < 80
+                                        let isAtTop = midY < 140
                                         if isLogoAtTop != isAtTop {
                                             withAnimation(.easeInOut(duration: 0.3)) {
                                                 isLogoAtTop = isAtTop
@@ -669,7 +669,7 @@ struct DetailsView: View {
                                         }
                                     }
                                     .onAppear {
-                                        isLogoAtTop = geo.frame(in: .global).midY < 80
+                                        isLogoAtTop = geo.frame(in: .global).midY < 140
                                     }
                             }
                         )
