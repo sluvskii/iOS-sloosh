@@ -21,6 +21,13 @@ struct ContinueView: View {
                                 }
                                 .buttonStyle(ScaleButtonStyle())
                                 .disabled(viewModel.isLaunching)
+                                .onAppear {
+                                    if item.id == viewModel.items.first?.id {
+                                        Task(priority: .background) { @MainActor in
+                                            SharedWebViewProvider.shared.prewarm()
+                                        }
+                                    }
+                                }
                                 .contextMenu {
                                     Group {
                                         NavigationLink(destination: DetailsView(movieId: String(item.kpId), navigationTransitionID: nil, navigationTransitionNamespace: nil)) {

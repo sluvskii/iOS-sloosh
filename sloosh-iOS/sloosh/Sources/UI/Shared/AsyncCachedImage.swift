@@ -7,7 +7,16 @@ public final class ImageCache {
     
     private init() {
         // Set maximum cost of 50 MB in memory to prevent memory pressure
-        cache.totalCostLimit = 50 * 1024 * 1024
+        let limit = ProcessInfo.processInfo.isLowPowerModeEnabled ? 20 * 1024 * 1024 : 50 * 1024 * 1024
+        cache.totalCostLimit = limit
+        
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.didReceiveMemoryWarningNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.clear()
+        }
     }
     
     public func image(forKey key: String) -> UIImage? {
