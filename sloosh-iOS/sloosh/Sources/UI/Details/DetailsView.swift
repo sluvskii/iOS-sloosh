@@ -106,7 +106,7 @@ struct DetailsView: View {
     @State private var showTooltip = false
 
     private var detailsBaseBackgroundColor: UIColor {
-        UIColor.systemBackground.resolvedColor(with: UITraitCollection(userInterfaceStyle: .dark))
+        UIColor.systemBackground
     }
 
     private var effectiveBackgroundColor: Color {
@@ -178,7 +178,7 @@ struct DetailsView: View {
                     }
                     
                     HStack {
-                        TelegramGlassIconButton(systemName: "chevron.left", tintColor: .white) {
+                        TelegramGlassIconButton(systemName: "chevron.left") {
                             dismiss()
                         }
                         
@@ -186,7 +186,7 @@ struct DetailsView: View {
                         
                         TelegramGlassIconButton(
                             systemName: viewModel.isFavorite ? "heart.fill" : "heart",
-                            tintColor: viewModel.isFavorite ? .slooshAccent : .white
+                            tintColor: viewModel.isFavorite ? .slooshAccent : nil
                         ) {
                             let generator = UIImpactFeedbackGenerator(style: .light)
                             generator.prepare()
@@ -340,6 +340,7 @@ struct DetailsView: View {
         } message: {
             Text("Вы действительно хотите удалить этот фильм из памяти устройства?")
         }
+        .toolbarColorScheme(isLogoAtTop ? nil : .dark, for: .navigationBar)
     }
 
     private func handlePlayAction(details: MediaDetailsDto) {
