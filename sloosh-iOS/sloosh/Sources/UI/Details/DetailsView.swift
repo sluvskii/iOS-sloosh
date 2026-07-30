@@ -106,7 +106,7 @@ struct DetailsView: View {
     @State private var showTooltip = false
 
     private var detailsBaseBackgroundColor: UIColor {
-        UIColor.systemBackground
+        UIColor.systemBackground.resolvedColor(with: UITraitCollection(userInterfaceStyle: .dark))
     }
 
     private var effectiveBackgroundColor: Color {
@@ -178,7 +178,7 @@ struct DetailsView: View {
                     }
                     
                     HStack {
-                        TelegramGlassIconButton(systemName: "chevron.left") {
+                        TelegramGlassIconButton(systemName: "chevron.left", tintColor: .white) {
                             dismiss()
                         }
                         
@@ -186,7 +186,7 @@ struct DetailsView: View {
                         
                         TelegramGlassIconButton(
                             systemName: viewModel.isFavorite ? "heart.fill" : "heart",
-                            tintColor: viewModel.isFavorite ? .slooshAccent : nil
+                            tintColor: viewModel.isFavorite ? .slooshAccent : .white
                         ) {
                             let generator = UIImpactFeedbackGenerator(style: .light)
                             generator.prepare()
@@ -203,7 +203,7 @@ struct DetailsView: View {
                 .padding(.horizontal, 16)
                 .padding(.bottom, 8)
                 .background(
-                    VariableBlurView(tintColor: effectiveBackgroundColor, tintOpacity: 0.6, style: .systemMaterialDark)
+                    VariableBlurView(tintColor: .clear, tintOpacity: 0.0, style: .systemMaterialDark)
                         .padding(.bottom, -60)
                         .ignoresSafeArea(edges: .top)
                         .opacity(isLogoAtTop ? 1.0 : 0.0)
@@ -340,7 +340,7 @@ struct DetailsView: View {
         } message: {
             Text("Вы действительно хотите удалить этот фильм из памяти устройства?")
         }
-        .toolbarColorScheme(isLogoAtTop ? nil : .dark, for: .navigationBar)
+        .preferredColorScheme(.dark)
     }
 
     private func handlePlayAction(details: MediaDetailsDto) {
