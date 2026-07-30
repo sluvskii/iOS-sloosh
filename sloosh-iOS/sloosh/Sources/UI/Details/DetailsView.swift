@@ -178,14 +178,15 @@ struct DetailsView: View {
                     }
                     
                     HStack {
-                        TelegramGlassIconButton(systemName: "chevron.left") {
+                        TelegramGlassIconButton(systemName: "chevron.left", tintColor: .white) {
                             dismiss()
                         }
                         
                         Spacer()
                         
                         TelegramGlassIconButton(
-                            systemName: viewModel.isFavorite ? "heart.fill" : "heart"
+                            systemName: viewModel.isFavorite ? "heart.fill" : "heart",
+                            tintColor: viewModel.isFavorite ? .slooshAccent : .white
                         ) {
                             let generator = UIImpactFeedbackGenerator(style: .light)
                             generator.prepare()
