@@ -69,8 +69,9 @@ struct ToastView: View {
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: toast.icon)
-                .font(.system(size: 24, weight: .semibold))
+                .font(.system(size: 22, weight: .semibold))
                 .foregroundColor(toast.iconColor ?? .primary)
+                .frame(width: 28, height: 28, alignment: .center)
                 .contentTransition(.symbolEffect(.replace))
             
             VStack(alignment: .leading, spacing: 2) {
