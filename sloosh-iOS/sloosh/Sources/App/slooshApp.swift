@@ -55,10 +55,9 @@ struct slooshApp: App {
         let cache = URLCache(memoryCapacity: memoryCapacity, diskCapacity: diskCapacity, diskPath: "sloosh_image_cache")
         URLCache.shared = cache
         
-        // Настраиваем аудиосессию, чтобы звук работал даже в беззвучном режиме
+        // Настраиваем категории аудиосессии, не перехватывая фоновую музыку пользователя при старте
         do {
-            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
-            try AVAudioSession.sharedInstance().setActive(true)
+            try AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback, options: [.mixWithOthers])
         } catch {
             print("Failed to set audio session category: \(error)")
         }
@@ -69,6 +68,11 @@ struct slooshApp: App {
                 .displayFrequency(.immediate),
                 .datastoreLocation(.applicationDefault)
             ])
+        }
+        
+        // Упреждающе разогреваем WebKit для мгновенного разбора Alloha-токенов
+        Task { @MainActor in
+            SharedWebViewProvider.shared.prewarm()
         }
     }
     

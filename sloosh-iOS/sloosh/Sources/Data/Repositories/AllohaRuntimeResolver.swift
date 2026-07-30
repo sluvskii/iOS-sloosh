@@ -495,12 +495,28 @@ final class SharedWebViewProvider {
         // No background killing; keep webview alive so background playback and proxy work
     }
     
-    private func destroyWebView() {
-        reset()
-        webView?.removeFromSuperview()
-        hostView?.removeFromSuperview()
-        webView = nil
-        hostView = nil
+    func prewarm() {
+        if webView == nil {
+            let config = WKWebViewConfiguration()
+            config.allowsInlineMediaPlayback = true
+            let newWebView = WKWebView(frame: .init(x: -1000, y: -1000, width: 1, height: 1), configuration: config)
+            newWebView.isHidden = true
+            newWebView.isOpaque = false
+            newWebView.backgroundColor = .clear
+            self.webView = newWebView
+            
+            if let rootView = UIApplication.shared.connectedScenes
+                .compactMap({ ($0 as? UIWindowScene)?.windows.first(where: \.isKeyWindow) })
+                .first?
+                .rootViewController?
+                .view {
+                let host = UIView(frame: .zero)
+                host.isHidden = true
+                host.addSubview(newWebView)
+                rootView.addSubview(host)
+                self.hostView = host
+            }
+        }
     }
     
     func prepare(for delegate: WKNavigationDelegate & WKScriptMessageHandler) {

@@ -120,18 +120,19 @@ struct DetailsView: View {
 
     private func fetchAverageColor(from url: URL?) async -> UIColor? {
         guard let url else { return nil }
-
-        do {
-            let request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad)
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200,
-                  let image = UIImage(data: data) else {
+        return await Task.detached(priority: .userInitiated) {
+            do {
+                let request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad)
+                let (data, response) = try await URLSession.shared.data(for: request)
+                guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200,
+                      let image = UIImage(data: data) else {
+                    return nil
+                }
+                return image.averageColor
+            } catch {
                 return nil
             }
-            return image.averageColor
-        } catch {
-            return nil
-        }
+        }.value
     }
 
     private func preloadDominantColor(for details: MediaDetailsDto) async {

@@ -839,8 +839,31 @@ class HomeViewModel: ObservableObject {
             cachedItems[key] = currentItems + uniqueNewItems
             cachedCursors[key] = cursor
             cachedCanLoadMore[key] = canLoad
+
+            // Упреждающая фоновая предзагрузка смежных категорий без блокировки UI
+            Task(priority: .background) { [weak self] in
+                await self?.prefetchAdjacentCategories(currentCategory: cat)
+            }
         } catch {
             print("Failed to load category data: \(error)")
+        }
+    }
+
+    private func prefetchAdjacentCategories(currentCategory: HomeCategory) async {
+        let adjacent: [HomeCategory] = HomeCategory.allCases.filter { $0 != currentCategory }
+        for cat in adjacent {
+            if Task.isCancelled { break }
+            let key = HomeCacheKey(category: cat, filter: selectedFilter, searchFilters: searchFilters)
+            if cachedItems[key] == nil {
+                switch cat {
+                case .all, .movies:
+                    _ = try? await MoviesRepository.shared.getPopularMovies(page: 1)
+                case .tvShows:
+                    _ = try? await MoviesRepository.shared.getTopTv(page: 1)
+                case .cartoons:
+                    _ = try? await MoviesRepository.shared.getTopMovies(page: 1)
+                }
+            }
         }
     }
 
