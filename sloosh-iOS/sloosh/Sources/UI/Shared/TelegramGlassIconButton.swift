@@ -2,22 +2,25 @@ import SwiftUI
 import UIKit
 
 /// Кастомная кнопка-иконка в стиле Telegram-iOS: 100% надежные тапы через UIKit UIControl,
-/// полное отсутствие дефолтного потемнения/прозрачности, нативный Liquid Glass и плавный сквиши-эффект.
+/// полное отсутствие дефолтного потемнения/прозрачности, нативный Liquid Glass и адаптивный динамический цвет (Light/Dark Mode).
 struct TelegramGlassIconButton: View {
     let systemName: String
     let iconSize: CGFloat
     let buttonSize: CGFloat
+    let tintColor: Color?
     let action: () -> Void
     
     init(
         systemName: String,
         iconSize: CGFloat = 22,
         buttonSize: CGFloat = 44,
+        tintColor: Color? = nil,
         action: @escaping () -> Void
     ) {
         self.systemName = systemName
         self.iconSize = iconSize
         self.buttonSize = buttonSize
+        self.tintColor = tintColor
         self.action = action
     }
     
@@ -25,6 +28,7 @@ struct TelegramGlassIconButton: View {
         TelegramUIButtonRepresentable(
             systemName: systemName,
             iconSize: iconSize,
+            tintColor: tintColor,
             action: action
         )
         .frame(width: buttonSize, height: buttonSize)
@@ -35,6 +39,7 @@ struct TelegramGlassIconButton: View {
 private struct TelegramUIButtonRepresentable: UIViewRepresentable {
     let systemName: String
     let iconSize: CGFloat
+    let tintColor: Color?
     let action: () -> Void
     
     func makeUIView(context: Context) -> UIButton {
@@ -45,7 +50,7 @@ private struct TelegramUIButtonRepresentable: UIViewRepresentable {
         let config = UIImage.SymbolConfiguration(pointSize: iconSize, weight: .medium)
         let image = UIImage(systemName: systemName, withConfiguration: config)?.withRenderingMode(.alwaysTemplate)
         button.setImage(image, for: .normal)
-        button.tintColor = .white
+        button.tintColor = tintColor != nil ? UIColor(tintColor!) : UIColor.label
         
         button.action = action
         return button
@@ -57,6 +62,7 @@ private struct TelegramUIButtonRepresentable: UIViewRepresentable {
             let config = UIImage.SymbolConfiguration(pointSize: iconSize, weight: .medium)
             let image = UIImage(systemName: systemName, withConfiguration: config)?.withRenderingMode(.alwaysTemplate)
             button.setImage(image, for: .normal)
+            button.tintColor = tintColor != nil ? UIColor(tintColor!) : UIColor.label
         }
     }
 }
