@@ -183,6 +183,9 @@ struct DetailsView: View {
                     }
                 }
             }
+            .onDisappear {
+                DeepLinkManager.shared.clear()
+            }
             .onChange(of: showTooltip) { _, newValue in
                 if !newValue {
                     hasSeenSourceSelectionTooltip = true
@@ -518,9 +521,7 @@ struct DetailsView: View {
 
             HStack {
                 Button {
-                    NavigationPopPresenter.pop()
                     dismiss()
-                    presentationMode.wrappedValue.dismiss()
                 } label: {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 22, weight: .medium))
