@@ -1099,7 +1099,7 @@ private struct DetailsInfoSection: View {
                     .animation(.spring(response: 0.35, dampingFraction: 0.8), value: isDescriptionExpanded)
 
                     if canExpand {
-                        Button(action: {
+                        TelegramTouchView(action: {
                             let generator = UIImpactFeedbackGenerator(style: .light)
                             generator.prepare()
                             generator.impactOccurred()
@@ -1120,7 +1120,6 @@ private struct DetailsInfoSection: View {
                             .glassEffect(.regular.interactive(), in: .capsule)
                             .shadow(color: .black.opacity(0.15), radius: 8, x: 0, y: 4)
                         }
-                        .buttonStyle(.plain)
                         .frame(maxWidth: .infinity, alignment: .center)
                         .padding(.top, isDescriptionExpanded ? 12 : -28)
                         .zIndex(1)

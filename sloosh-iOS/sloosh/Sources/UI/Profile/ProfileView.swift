@@ -115,17 +115,9 @@ struct ProfileView: View {
                             HStack {
                                 Spacer()
                                 
-                                Button {
+                                TelegramGlassIconButton(systemName: "gearshape.fill") {
                                     showsSettings = true
-                                } label: {
-                                    Image(systemName: "gearshape.fill")
-                                        .font(.system(size: 22))
-                                        .foregroundStyle(.primary)
-                                        .frame(width: 44, height: 44)
-                                        .glassEffect(.regular.interactive(), in: .circle)
                                 }
-                                .buttonStyle(.glassPress)
-                                .tint(.primary)
                             }
                         }
                         .padding(.horizontal, 16)
