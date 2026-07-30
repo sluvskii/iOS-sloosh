@@ -186,7 +186,7 @@ struct DetailsView: View {
                         
                         TelegramGlassIconButton(
                             systemName: viewModel.isFavorite ? "heart.fill" : "heart",
-                            tintColor: viewModel.isFavorite ? .slooshAccent : nil
+                            tintColor: viewModel.isFavorite ? .red : nil
                         ) {
                             let generator = UIImpactFeedbackGenerator(style: .light)
                             generator.prepare()
