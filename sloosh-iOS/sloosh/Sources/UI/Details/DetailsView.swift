@@ -186,6 +186,7 @@ struct DetailsView: View {
                                 .frame(width: 44, height: 44)
                                 .glassEffect(.regular.interactive(), in: .circle)
                         }
+                        .buttonStyle(GlassBarButtonStyle())
                         .tint(.white)
                         
                         Spacer()
@@ -206,6 +207,7 @@ struct DetailsView: View {
                                 .frame(width: 44, height: 44)
                                 .glassEffect(.regular.interactive(), in: .circle)
                         }
+                        .buttonStyle(GlassBarButtonStyle())
                         .disabled(viewModel.details == nil)
                         .accessibilityLabel(viewModel.isFavorite ? "Убрать из избранного" : "Добавить в избранное")
                     }
@@ -2038,6 +2040,15 @@ struct GlassDownloadButtonStyle: ButtonStyle {
             .foregroundStyle(.white)
             .glassEffect(in: Circle())
             .scaleEffect(configuration.isPressed ? 0.94 : 1.0)
+            .animation(.spring(response: 0.25, dampingFraction: 0.6), value: configuration.isPressed)
+    }
+}
+
+struct GlassBarButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .opacity(1.0)
+            .scaleEffect(configuration.isPressed ? 0.92 : 1.0)
             .animation(.spring(response: 0.25, dampingFraction: 0.6), value: configuration.isPressed)
     }
 }
