@@ -233,6 +233,7 @@ struct SettingsView: View {
         .onDisappear {
             applyTabBarLabelsTask?.cancel()
         }
+        .fullWidthSwipeBack()
         .sheet(isPresented: $showLogsShareSheet) {
             ShareSheet(items: [AppDiagnostics.shared.getLogsURL()])
         }

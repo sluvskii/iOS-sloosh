@@ -15,6 +15,24 @@ class MoviesRepository: ObservableObject {
     private let detailsDiskCache = MediaDetailsDiskCache()
     private let listDiskCache = MediaListDiskCache()
 
+    private init() {
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.didReceiveMemoryWarningNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            self?.clearMemoryCache()
+        }
+    }
+
+    func clearMemoryCache() {
+        popularCache.removeAll()
+        topMoviesCache.removeAll()
+        topTvCache.removeAll()
+        episodeCache.removeAll()
+        detailsMemory.removeAll()
+    }
+
     // MARK: - Lists
 
     func getPopularMovies(page: Int = 1) async throws -> [MediaDto] {
