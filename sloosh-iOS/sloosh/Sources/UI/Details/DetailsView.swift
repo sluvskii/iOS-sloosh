@@ -177,20 +177,15 @@ struct DetailsView: View {
                     }
                     
                     HStack {
-                        Button {
+                        TelegramGlassIconButton(systemName: "chevron.left") {
                             dismiss()
-                        } label: {
-                            Image(systemName: "chevron.left")
-                                .font(.system(size: 22, weight: .medium))
-                                .foregroundStyle(.white)
-                                .frame(width: 44, height: 44)
-                                .glassEffect(.regular.interactive(), in: .circle)
                         }
-                        .buttonStyle(.plain)
                         
                         Spacer()
                         
-                        Button {
+                        TelegramGlassIconButton(
+                            systemName: viewModel.isFavorite ? "heart.fill" : "heart"
+                        ) {
                             let generator = UIImpactFeedbackGenerator(style: .light)
                             generator.prepare()
                             generator.impactOccurred()
@@ -198,15 +193,7 @@ struct DetailsView: View {
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.5, blendDuration: 0.5)) {
                                 viewModel.toggleFavorite()
                             }
-                        } label: {
-                            Image(systemName: viewModel.isFavorite ? "heart.fill" : "heart")
-                                .font(.system(size: 22, weight: .medium))
-                                .foregroundStyle(.white)
-                                .symbolEffect(.bounce, value: favoriteBounce)
-                                .frame(width: 44, height: 44)
-                                .glassEffect(.regular.interactive(), in: .circle)
                         }
-                        .buttonStyle(.plain)
                         .disabled(viewModel.details == nil)
                         .accessibilityLabel(viewModel.isFavorite ? "Убрать из избранного" : "Добавить в избранное")
                     }
