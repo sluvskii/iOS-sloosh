@@ -86,17 +86,8 @@ private class HighlightableTelegramButton: UIButton {
     
     override var isHighlighted: Bool {
         didSet {
-            guard isHighlighted != oldValue else { return }
-            UIView.animate(
-                withDuration: isHighlighted ? 0.1 : 0.25,
-                delay: 0,
-                usingSpringWithDamping: 0.7,
-                initialSpringVelocity: 0,
-                options: [.allowUserInteraction, .beginFromCurrentState]
-            ) {
-                self.transform = self.isHighlighted ? CGAffineTransform(scaleX: 0.90, y: 0.90) : .identity
-                self.alpha = 1.0
-            }
+            self.alpha = 1.0
+            self.transform = .identity
         }
     }
 }
