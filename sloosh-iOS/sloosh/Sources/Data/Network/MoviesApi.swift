@@ -1,10 +1,29 @@
 import Foundation
 
-enum NetworkError: Error {
+enum NetworkError: LocalizedError {
     case invalidURL
     case noData
     case decodingError
     case serverError(Int)
+    case noInternetConnection
+    case timeout
+    
+    var errorDescription: String? {
+        switch self {
+        case .invalidURL:
+            return "Некорректный адрес сервера"
+        case .noData:
+            return "Сервер не вернул данные"
+        case .decodingError:
+            return "Ошибка обработки ответа сервера"
+        case .serverError(let code):
+            return "Ошибка сервера (\(code))"
+        case .noInternetConnection:
+            return "Нет подключения к интернету"
+        case .timeout:
+            return "Превышено время ожидания ответа"
+        }
+    }
 }
 
 class MoviesApi {
@@ -35,20 +54,28 @@ class MoviesApi {
         
         var request = URLRequest(url: url)
         request.httpMethod = method
-        // Add auth headers if needed
-        
-        let (data, response) = try await session.data(for: request)
-        
-        guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
-            let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 500
-            throw NetworkError.serverError(statusCode)
-        }
         
         do {
+            let (data, response) = try await session.data(for: request)
+            
+            guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
+                let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 500
+                throw NetworkError.serverError(statusCode)
+            }
+            
             let decoder = JSONDecoder()
             return try decoder.decode(T.self, from: data)
+        } catch let error as NetworkError {
+            throw error
+        } catch let urlError as URLError {
+            if urlError.code == .notConnectedToInternet || urlError.code == .networkConnectionLost {
+                throw NetworkError.noInternetConnection
+            } else if urlError.code == .timedOut {
+                throw NetworkError.timeout
+            }
+            throw NetworkError.noInternetConnection
         } catch {
-            print("Decoding error: \(error)")
+            print("Decoding/Network error: \(error)")
             throw NetworkError.decodingError
         }
     }
