@@ -1,5 +1,4 @@
 import SwiftUI
-import Photos
 
 struct RemoteBackdropView: View {
     let url: URL?
@@ -99,7 +98,6 @@ struct DetailsView: View {
 
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.presentationMode) private var presentationMode
 
     @State private var dominantBackdropColor: UIColor? = nil
     @State private var dominantPosterColor: UIColor? = nil
@@ -153,17 +151,78 @@ struct DetailsView: View {
     }
     
     @State private var isLogoAtTop: Bool = false
-    @State private var isSavingImage: Bool = false
     
     var body: some View {
-        detailsContent
+        ZStack {
+            detailsContent
+        }
             .optionalMovieNavigationTransition(
                 sourceID: navigationTransitionID,
                 in: navigationTransitionNamespace
             )
             .environment(\.colorScheme, .dark)
+            .ignoresSafeArea(edges: .top)
             .toolbar(.hidden, for: .navigationBar)
-            .navigationBarBackButtonHidden(true)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                ZStack {
+                    if let details = viewModel.details, isLogoAtTop {
+                        RemoteLogoView(
+                            url: URL(string: details.displayLogoUrl ?? ""),
+                            fallbackTitle: details.title ?? details.originalTitle ?? "Без названия",
+                            alignment: .center
+                        )
+                        .frame(height: 32)
+                        .padding(.horizontal, 72)
+                        .transition(.blurFadeScale)
+                    }
+                    
+                    HStack {
+                        Button {
+                            dismiss()
+                        } label: {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 22, weight: .medium))
+                                .foregroundStyle(.white)
+                                .frame(width: 44, height: 44)
+                                .glassEffect(.regular.interactive(), in: .circle)
+                        }
+                        .buttonStyle(.glassPress)
+                        .tint(.white)
+                        
+                        Spacer()
+                        
+                        Button {
+                            let generator = UIImpactFeedbackGenerator(style: .light)
+                            generator.prepare()
+                            generator.impactOccurred()
+                            favoriteBounce.toggle()
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.5, blendDuration: 0.5)) {
+                                viewModel.toggleFavorite()
+                            }
+                        } label: {
+                            Image(systemName: viewModel.isFavorite ? "heart.fill" : "heart")
+                                .font(.system(size: 22, weight: .medium))
+                                .foregroundStyle(.white)
+                                .symbolEffect(.bounce, value: favoriteBounce)
+                                .frame(width: 44, height: 44)
+                                .glassEffect(.regular.interactive(), in: .circle)
+                        }
+                        .buttonStyle(.glassPress)
+                        .disabled(viewModel.details == nil)
+                        .accessibilityLabel(viewModel.isFavorite ? "Убрать из избранного" : "Добавить в избранное")
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 8)
+                .background(
+                    VariableBlurView(tintColor: effectiveBackgroundColor, tintOpacity: 0.6, style: .systemMaterialDark)
+                        .padding(.bottom, -60)
+                        .ignoresSafeArea(edges: .top)
+                        .opacity(isLogoAtTop ? 1.0 : 0.0)
+                        .animation(.easeInOut(duration: 0.25), value: isLogoAtTop)
+                        .allowsHitTesting(false)
+                )
+            }
             .task {
                 await viewModel.loadDetails(id: movieId)
             }
@@ -297,7 +356,6 @@ struct DetailsView: View {
             Text("Вы действительно хотите удалить этот фильм из памяти устройства?")
         }
     }
-
 
     private func handlePlayAction(details: MediaDetailsDto) {
         let generator = UIImpactFeedbackGenerator(style: .medium)
@@ -449,52 +507,6 @@ struct DetailsView: View {
         }
     }
 
-    // MARK: - Image Saving
-
-    @MainActor
-    private func saveImage(from urlString: String?, label: String) async {
-        guard let urlString, let url = URL(string: urlString) else { return }
-        isSavingImage = true
-        defer { isSavingImage = false }
-
-        // Check/request authorization
-        let currentStatus = PHPhotoLibrary.authorizationStatus(for: .addOnly)
-        if currentStatus == .notDetermined {
-            let granted = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
-            guard granted == .authorized || granted == .limited else {
-                ToastManager.shared.show(title: "Нет доступа к Фото", icon: "lock")
-                return
-            }
-        } else if currentStatus != .authorized && currentStatus != .limited {
-            ToastManager.shared.show(title: "Нет доступа к Фото", icon: "lock")
-            return
-        }
-
-        do {
-            let (data, _) = try await URLSession.shared.data(from: url)
-            guard UIImage(data: data) != nil else {
-                ToastManager.shared.show(title: "Не удалось скачать \(label)", icon: "xmark.circle")
-                return
-            }
-            // Use completion-based API to avoid ObjC exception crashes
-            let saved = await withCheckedContinuation { (cont: CheckedContinuation<Bool, Never>) in
-                PHPhotoLibrary.shared().performChanges({
-                    let req = PHAssetCreationRequest.forAsset()
-                    req.addResource(with: .photo, data: data, options: nil)
-                }, completionHandler: { success, _ in
-                    cont.resume(returning: success)
-                })
-            }
-            if saved {
-                ToastManager.shared.show(title: "Сохранено в Фото", icon: "checkmark.circle.fill")
-            } else {
-                ToastManager.shared.show(title: "Не удалось сохранить", icon: "xmark.circle")
-            }
-        } catch {
-            ToastManager.shared.show(title: "Ошибка при загрузке", icon: "xmark.circle")
-        }
-    }
-
     private var detailsContent: some View {
         Group {
             if verticalSizeClass == .compact {
@@ -503,85 +515,6 @@ struct DetailsView: View {
                 portraitDetailsContent
             }
         }
-    }
-
-    private var detailsTopBar: some View {
-        ZStack {
-            if let details = viewModel.details, isLogoAtTop {
-                RemoteLogoView(
-                    url: URL(string: details.displayLogoUrl ?? ""),
-                    fallbackTitle: details.title ?? details.originalTitle ?? "Без названия",
-                    alignment: .center
-                )
-                .frame(height: 32)
-                .padding(.horizontal, 72)
-                .transition(.blurFadeScale)
-                .allowsHitTesting(false)
-            }
-
-            HStack {
-                Button {
-                    dismiss()
-                } label: {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 22, weight: .medium))
-                        .foregroundStyle(.white)
-                        .frame(width: 44, height: 44)
-                        .glassEffect(.regular.interactive(), in: .circle)
-                }
-                .buttonStyle(.glassPress)
-                .tint(.white)
-
-                Spacer()
-
-                HStack(spacing: 0) {
-                    Button {
-                        favoriteBounce.toggle()
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.5, blendDuration: 0.5)) {
-                            viewModel.toggleFavorite()
-                        }
-                    } label: {
-                        Image(systemName: viewModel.isFavorite ? "heart.fill" : "heart")
-                            .font(.system(size: 20, weight: .medium))
-                            .foregroundStyle(.white)
-                            .symbolEffect(.bounce, value: favoriteBounce)
-                            .frame(width: 44, height: 44)
-                    }
-                    .buttonStyle(.glassPress)
-                    .disabled(viewModel.details == nil)
-                    .accessibilityLabel(viewModel.isFavorite ? "Убрать из избранного" : "Добавить в избранное")
-
-                    Button {
-                        guard let details = viewModel.details else { return }
-                        let shareUrl = DeepLinkManager.shared.createShareURL(for: movieId)
-                        let shareText = DeepLinkManager.shared.createShareMessage(
-                            title: details.title ?? details.originalTitle ?? "",
-                            movieId: movieId
-                        )
-                        SharePresenter.presentShare(url: shareUrl, text: shareText)
-                    } label: {
-                        Image(systemName: "square.and.arrow.up")
-                            .font(.system(size: 19, weight: .medium))
-                            .foregroundStyle(.white)
-                            .frame(width: 44, height: 44)
-                    }
-                    .buttonStyle(.glassPress)
-                    .disabled(viewModel.details == nil)
-                    .accessibilityLabel("Поделиться")
-                }
-                .glassEffect(.regular.interactive(), in: Capsule())
-            }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 8)
-        }
-        .background(
-            VariableBlurView(tintColor: effectiveBackgroundColor, tintOpacity: 0.6, style: .systemMaterialDark)
-                .padding(.bottom, -60)
-                .ignoresSafeArea(edges: .top)
-                .opacity(isLogoAtTop ? 1.0 : 0.0)
-                .animation(.easeInOut(duration: 0.25), value: isLogoAtTop)
-                .allowsHitTesting(false)
-        )
     }
 
     private var portraitDetailsContent: some View {
@@ -609,35 +542,6 @@ struct DetailsView: View {
                         .offset(y: offset)
                     }
                     .frame(height: baseHeight)
-                    .contextMenu {
-                        Button {
-                            Task { await saveImage(from: details.displayBackdropUrl, label: "обложка") }
-                        } label: {
-                            Label("Сохранить обложку", systemImage: "photo.badge.arrow.down")
-                        }
-                        Button {
-                            Task { await saveImage(from: details.displayPosterUrl, label: "постер") }
-                        } label: {
-                            Label("Сохранить постер", systemImage: "photo")
-                        }
-                        if details.displayLogoUrl != nil {
-                            Button {
-                                Task { await saveImage(from: details.displayLogoUrl, label: "логотип") }
-                            } label: {
-                                Label("Сохранить логотип", systemImage: "text.below.photo")
-                            }
-                        }
-                    } preview: {
-                        AsyncCachedImage(url: URL(string: details.displayBackdropUrl ?? ""),
-                                         fallbackUrl: URL(string: details.displayPosterUrl ?? "")) {
-                            Rectangle().fill(Color.gray.opacity(0.3)).frame(width: 300, height: 200)
-                        } content: { image in
-                            Image(uiImage: image).resizable().aspectRatio(contentMode: .fill)
-                                .frame(width: 300, height: 200).clipped()
-                        } fallback: {
-                            Rectangle().fill(Color.gray.opacity(0.3)).frame(width: 300, height: 200)
-                        }
-                    }
 
                     VStack(alignment: .center, spacing: 12) {
                         ZStack {
@@ -662,7 +566,7 @@ struct DetailsView: View {
                             GeometryReader { geo in
                                 Color.clear
                                     .onChange(of: geo.frame(in: .global).midY) { _, midY in
-                                        let isAtTop = midY < 140
+                                        let isAtTop = midY < 80
                                         if isLogoAtTop != isAtTop {
                                             withAnimation(.easeInOut(duration: 0.3)) {
                                                 isLogoAtTop = isAtTop
@@ -670,7 +574,7 @@ struct DetailsView: View {
                                         }
                                     }
                                     .onAppear {
-                                        isLogoAtTop = geo.frame(in: .global).midY < 140
+                                        isLogoAtTop = geo.frame(in: .global).midY < 80
                                     }
                             }
                         )
@@ -723,9 +627,6 @@ struct DetailsView: View {
         }
         .refreshable {
             await viewModel.loadDetails(id: movieId, force: true)
-        }
-        .safeAreaInset(edge: .top, spacing: 0) {
-            detailsTopBar
         }
     }
 
@@ -843,10 +744,7 @@ struct DetailsView: View {
             .refreshable {
                 await viewModel.loadDetails(id: movieId, force: true)
             }
-            .safeAreaInset(edge: .top, spacing: 0) {
-                detailsTopBar
-            }
-        }
+        }.ignoresSafeArea()
     }
 }
 
@@ -1017,10 +915,7 @@ struct SourceSelectionLoadingView: View {
                     .accessibilityLabel("Закрыть")
                 }
             }
-            .scrollContentBackground(.hidden)
-            .background(Color.clear)
         }
-        .presentationBackground { Color.clear.glassEffect(in: .rect) }
         .presentationDragIndicator(.visible)
     }
 }
@@ -1183,7 +1078,7 @@ private struct DetailsInfoSection: View {
                                         LinearGradient(
                                             gradient: Gradient(stops: [
                                                 .init(color: .black, location: 0.0),
-                                                .init(color: .black, location: 0.7),
+                                                .init(color: .black, location: 0.4),
                                                 .init(color: .clear, location: 1.0)
                                             ]),
                                             startPoint: .top,
@@ -1225,20 +1120,27 @@ private struct DetailsInfoSection: View {
                             let generator = UIImpactFeedbackGenerator(style: .light)
                             generator.prepare()
                             generator.impactOccurred()
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
                                 isDescriptionExpanded.toggle()
                             }
                         }) {
                             HStack(spacing: 6) {
-                                Text(isDescriptionExpanded ? "Свернуть" : "Развернуть")
+                                Text(isDescriptionExpanded ? "Свернуть" : "Читать далее")
                                 Image(systemName: "chevron.down")
-                                    .font(.system(size: 13, weight: .bold))
+                                    .font(.system(size: 11, weight: .heavy))
                                     .rotationEffect(.degrees(isDescriptionExpanded ? 180 : 0))
                             }
-                            .font(.system(size: 15, weight: .bold))
-                            .foregroundColor(Color.slooshAccent)
-                            .padding(.vertical, 4)
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 20)
+                            .padding(.vertical, 10)
+                            .glassEffect(.regular.interactive(), in: .capsule)
+                            .shadow(color: .black.opacity(0.15), radius: 8, x: 0, y: 4)
                         }
+                        .buttonStyle(.plain)
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.top, isDescriptionExpanded ? 12 : -28)
+                        .zIndex(1)
                     }
                 }
                 .onChange(of: details.description) { _, _ in
@@ -1866,7 +1768,7 @@ struct InlineEpisodesSection: View {
                                 )
                                 .foregroundColor(selectedSeason == season ? .black : .primary)
                             }
-                            .buttonStyle(.glassPress)
+                            .buttonStyle(.plain)
                         }
                     }
                     .padding(.horizontal, horizontalPadding)
@@ -2129,7 +2031,9 @@ struct GlassPlayButtonStyle: ButtonStyle {
                 Capsule()
                     .fill(.white.opacity(0.85))
             )
-            .glassEffect(.regular.interactive(), in: Capsule())
+            .glassEffect(in: Capsule())
+            .scaleEffect(configuration.isPressed ? 0.94 : 1.0)
+            .animation(.spring(response: 0.25, dampingFraction: 0.6), value: configuration.isPressed)
     }
 }
 
@@ -2137,10 +2041,11 @@ struct GlassDownloadButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .foregroundStyle(.white)
-            .glassEffect(.regular.interactive(), in: Circle())
+            .glassEffect(in: Circle())
+            .scaleEffect(configuration.isPressed ? 0.94 : 1.0)
+            .animation(.spring(response: 0.25, dampingFraction: 0.6), value: configuration.isPressed)
     }
 }
-
 struct BlurFadeScaleModifier: ViewModifier {
     let isBlurry: Bool
     func body(content: Content) -> some View {
