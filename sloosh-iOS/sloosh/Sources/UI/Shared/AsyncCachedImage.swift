@@ -136,7 +136,11 @@ public struct AsyncCachedImage<Placeholder: View, Content: View, Fallback: View>
                 isSuccessful = true // For file:// URLs
             }
             
-            if isSuccessful, let uiImg = UIImage(data: data) {
+            let uiImg = await Task.detached(priority: .userInitiated) {
+                UIImage(data: data)
+            }.value
+            
+            if isSuccessful, let uiImg {
                 ImageCache.shared.insertImage(uiImg, forKey: url.absoluteString)
                 await MainActor.run {
                     self.image = uiImg

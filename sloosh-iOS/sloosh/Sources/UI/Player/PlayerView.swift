@@ -548,7 +548,9 @@ class PlayerViewModel: ObservableObject {
         // Final progress save before cleanup
         saveCurrentProgress()
         clearNowPlaying()
-
+        
+        // Вежливо освобождаем аудиосессию, чтобы возобновилась фоновая музыка пользователя
+        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
 
         resolveTask?.cancel()
         resolveTask = nil
