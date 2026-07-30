@@ -108,5 +108,6 @@ struct AboutView: View {
         } action: { _, newOffset in
             scrollOffset = newOffset
         }
+        .fullWidthSwipeBack()
     }
 }

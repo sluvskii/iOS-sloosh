@@ -535,6 +535,8 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         try? FileManager.default.moveItem(at: location, to: finalUrl)
         
         Task { @MainActor in
+            self.downloadedSegmentsCache[comps.itemId]?.insert(comps.index)
+            
             var bgTaskId: UIBackgroundTaskIdentifier = .invalid
             bgTaskId = UIApplication.shared.beginBackgroundTask(withName: "ProcessDownloadSegment_\(comps.itemId)") {
                 if bgTaskId != .invalid {

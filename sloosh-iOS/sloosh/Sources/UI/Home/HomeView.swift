@@ -584,7 +584,7 @@ struct MoviePosterCard: View {
             ZStack(alignment: .bottomLeading) {
                 // Progressive blur at the bottom of the card
                 Rectangle()
-                    .fill(.regularMaterial)
+                    .glassEffect()
                     .padding(.horizontal, -2)
                     .padding(.bottom, -2)
                     .mask(
