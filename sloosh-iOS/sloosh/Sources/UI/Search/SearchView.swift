@@ -329,7 +329,11 @@ class SearchViewModel: ObservableObject {
                 }
             } catch {
                 if !Task.isCancelled {
-                    self.error = "Ошибка поиска: \(error.localizedDescription)"
+                    if let localized = error as? LocalizedError, let desc = localized.errorDescription {
+                        self.error = desc
+                    } else {
+                        self.error = "Нет подключения к интернету"
+                    }
                 }
             }
 

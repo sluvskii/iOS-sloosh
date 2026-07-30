@@ -117,10 +117,36 @@ struct slooshApp: App {
 extension UINavigationController: @retroactive UIGestureRecognizerDelegate {
     override open func viewDidLoad() {
         super.viewDidLoad()
-        interactivePopGestureRecognizer?.delegate = self
+        
+        guard let interactivePopGestureRecognizer = interactivePopGestureRecognizer,
+              let targets = interactivePopGestureRecognizer.value(forKey: "targets") as? [NSObject],
+              let targetObjc = targets.first,
+              let target = targetObjc.value(forKey: "target") else {
+            return
+        }
+        
+        interactivePopGestureRecognizer.isEnabled = false
+        
+        let fullWidthPanGesture = UIPanGestureRecognizer(target: target, action: Selector(("handleNavigationTransition:")))
+        fullWidthPanGesture.delegate = self
+        view.addGestureRecognizer(fullWidthPanGesture)
     }
 
     public func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-        return viewControllers.count > 1
+        guard viewControllers.count > 1 else { return false }
+        
+        if let topVC = viewControllers.last {
+            let typeString = String(describing: type(of: topVC))
+            if typeString.contains("DetailsView") {
+                return false
+            }
+        }
+        
+        if let pan = gestureRecognizer as? UIPanGestureRecognizer {
+            let velocity = pan.velocity(in: view)
+            return velocity.x > 0 && abs(velocity.x) > abs(velocity.y)
+        }
+        
+        return true
     }
 }
