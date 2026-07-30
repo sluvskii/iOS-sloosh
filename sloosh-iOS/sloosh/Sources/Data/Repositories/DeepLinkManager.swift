@@ -1,7 +1,7 @@
 import Foundation
 import SwiftUI
 
-struct DeepLinkMovie: Identifiable, Equatable {
+struct DeepLinkMovie: Identifiable, Hashable {
     let id: String
 }
 
