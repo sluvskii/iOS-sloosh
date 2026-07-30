@@ -185,8 +185,7 @@ struct DetailsView: View {
                         Spacer()
                         
                         TelegramGlassIconButton(
-                            systemName: viewModel.isFavorite ? "heart.fill" : "heart",
-                            tintColor: viewModel.isFavorite ? .red : nil
+                            systemName: viewModel.isFavorite ? "heart.fill" : "heart"
                         ) {
                             let generator = UIImpactFeedbackGenerator(style: .light)
                             generator.prepare()
@@ -1958,7 +1957,7 @@ class DetailsViewModel: ObservableObject {
         if isFavorite {
             FavoritesRepository.shared.removeFromFavorites(mediaId: mediaId, mediaType: mediaType)
             generator.notificationOccurred(.warning)
-            ToastManager.shared.show(title: "Удалено из избранного", icon: "heart.slash.fill", duration: 2.0)
+            ToastManager.shared.show(title: "Удалено из избранного", icon: "heart.slash.fill", iconColor: .primary, duration: 2.0)
         } else {
             FavoritesRepository.shared.addToFavorites(
                 mediaId: mediaId,
@@ -1970,7 +1969,7 @@ class DetailsViewModel: ObservableObject {
                 genres: details.genres?.compactMap { GenreDto(id: $0.lowercased(), name: $0) }
             )
             generator.notificationOccurred(.success)
-            ToastManager.shared.show(title: "Добавлено в избранное", icon: "heart.fill", duration: 2.0)
+            ToastManager.shared.show(title: "Добавлено в избранное", icon: "heart.fill", iconColor: .primary, duration: 2.0)
         }
         isFavorite.toggle()
     }
