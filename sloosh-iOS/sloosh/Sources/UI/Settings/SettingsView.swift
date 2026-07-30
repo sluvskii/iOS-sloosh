@@ -192,17 +192,9 @@ struct SettingsView: View {
                     .foregroundStyle(.primary)
                 
                 HStack {
-                    Button {
+                    TelegramGlassIconButton(systemName: "chevron.left") {
                         dismiss()
-                    } label: {
-                        Image(systemName: "chevron.left")
-                            .font(.system(size: 22, weight: .medium))
-                            .foregroundStyle(.primary)
-                            .frame(width: 44, height: 44)
-                            .glassEffect(.regular.interactive(), in: .circle)
                     }
-                    .buttonStyle(.glassPress)
-                    .tint(.primary)
                     
                     Spacer()
                 }
