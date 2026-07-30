@@ -604,6 +604,15 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             $0.errorMessage = message
         }
         
+        // Отменяем все активные таски URLSession для данного item
+        session.getAllTasks { tasks in
+            for task in tasks {
+                if let desc = task.taskDescription, desc.hasPrefix(id + "|") {
+                    task.cancel()
+                }
+            }
+        }
+        
         if let item = downloads.first(where: { $0.id == id }) {
             ToastManager.shared.show(
                 title: "Ошибка",

@@ -1004,6 +1004,7 @@ class PlayerViewModel: ObservableObject {
 
         setupPlayerItemObservers(for: playerItem)
 
+        rateObserver?.invalidate()
         rateObserver = self.player?.observe(\.timeControlStatus, options: [.new]) { [weak self] player, _ in
             Task { @MainActor [weak self] in
                 guard let self else { return }

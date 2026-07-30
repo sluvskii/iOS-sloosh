@@ -11,7 +11,7 @@ final class JSONDataStore<T: Codable> {
         self.fileName = fileName
         let documentsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
         self.fileURL = documentsDir.appendingPathComponent("\(fileName).json")
-        self.queue = DispatchQueue(label: "ru.neomovies.jsondatastore.\(fileName)", attributes: .concurrent)
+        self.queue = DispatchQueue(label: "ru.sloosh.jsondatastore.\(fileName)")
     }
     
     func load(defaultValue: T) -> T {

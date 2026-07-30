@@ -37,8 +37,8 @@ class AppDiagnostics: ObservableObject {
             if FileManager.default.fileExists(atPath: self.logsFileURL.path) {
                 if let fileHandle = try? FileHandle(forWritingTo: self.logsFileURL) {
                     fileHandle.seekToEndOfFile()
-                    fileHandle.write(data)
-                    fileHandle.closeFile()
+                    try? fileHandle.write(contentsOf: data)
+                    try? fileHandle.close()
                 }
             } else {
                 try? data.write(to: self.logsFileURL, options: .atomic)

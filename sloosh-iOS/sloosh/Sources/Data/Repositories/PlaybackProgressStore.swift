@@ -328,5 +328,4 @@ public final class PlaybackProgressStore {
         return try? context.fetch(descriptor).first?.episode
     }
 
-    public var positionKeyPrefix: String { "neomovies.collaps.progress." }
 }

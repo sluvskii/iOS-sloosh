@@ -156,8 +156,23 @@ class HlsProxyServer {
                 return
             }
             
-            if let requestString = String(data: currentData, encoding: .utf8),
-               requestString.contains("\r\n\r\n") {
+            // Проверяем конец заголовков на уровне Data, чтобы избежать зависания
+            // при TCP-разбиении многобайтовых UTF-8 символов (например, кириллица в User-Agent)
+            let separator: [UInt8] = [0x0D, 0x0A, 0x0D, 0x0A] // \r\n\r\n
+            let hasHeaderEnd = currentData.withUnsafeBytes { buf -> Bool in
+                guard buf.count >= 4 else { return false }
+                return buf.indices.dropLast(3).contains(where: {
+                    buf[$0] == separator[0] && buf[$0+1] == separator[1] &&
+                    buf[$0+2] == separator[2] && buf[$0+3] == separator[3]
+                })
+            }
+            
+            if hasHeaderEnd, let requestString = String(data: currentData, encoding: .utf8) {
+                Task {
+                    await self.processRequest(requestString, on: connection)
+                }
+            } else if hasHeaderEnd, let requestString = String(data: currentData, encoding: .isoLatin1) {
+                // Fallback для нестандартных символов в заголовках
                 Task {
                     await self.processRequest(requestString, on: connection)
                 }
