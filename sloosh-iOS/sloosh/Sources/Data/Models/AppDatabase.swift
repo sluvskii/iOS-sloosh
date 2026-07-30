@@ -34,11 +34,10 @@ public final class AppDatabase {
                 if let memoryContainer = try? ModelContainer(for: schema, configurations: [fallbackConfig]) {
                     container = memoryContainer
                 } else {
-                    print("AppDatabase: Emergency fallback to empty in-memory schema container.")
-                    let emergencySchema = Schema([])
-                    let emergencyConfig = ModelConfiguration(schema: emergencySchema, isStoredInMemoryOnly: true)
-                    container = (try? ModelContainer(for: emergencySchema, configurations: [emergencyConfig]))
-                        ?? (try! ModelContainer(for: Schema([FavoriteModel.self]), configurations: [ModelConfiguration(isStoredInMemoryOnly: true)]))
+                    let msg = "AppDatabase: Critical — all ModelContainer fallbacks exhausted. Cannot launch."
+                    print(msg)
+                    AppDiagnostics.shared.log(msg)
+                    fatalError(msg)
                 }
             }
         }

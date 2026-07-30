@@ -1343,7 +1343,7 @@ struct EpisodeDetailsSheet: View {
             
             let matching = epObj.translations.first(where: { allohaTranslationNamesMatch($0.name, savedVoiceover, exactOnly: true) })
             let globalMatching = epObj.translations.first(where: { allohaTranslationNamesMatch($0.name, globalVoiceover, exactOnly: false) })
-            let translation = matching ?? globalMatching ?? epObj.translations.first!
+            guard let translation = matching ?? globalMatching ?? epObj.translations.first else { return }
             
             let preferredQuality = VideoQualityPreference(rawValue: UserDefaults.standard.string(forKey: "preferredVideoQuality") ?? "Спрашивать каждый раз") ?? .ask
             DownloadManager.shared.startDownload(

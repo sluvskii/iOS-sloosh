@@ -10,6 +10,7 @@ class MoviesRepository: ObservableObject {
     private var topMoviesCache: [Int: [MediaDto]] = [:]
     private var topTvCache: [Int: [MediaDto]] = [:]
     private var episodeCache: [String: TvEpisodeDetailsDto] = [:]
+    private var memoryWarningToken: Any?
 
     // MARK: - Details cache (memory + disk, 24h TTL)
     private var detailsMemory: [String: MediaDetailsDto] = [:]
@@ -17,7 +18,7 @@ class MoviesRepository: ObservableObject {
     private let listDiskCache = MediaListDiskCache()
 
     private init() {
-        NotificationCenter.default.addObserver(
+        memoryWarningToken = NotificationCenter.default.addObserver(
             forName: UIApplication.didReceiveMemoryWarningNotification,
             object: nil,
             queue: .main

@@ -55,7 +55,7 @@ struct PlayerContainerView: View {
             }
         }
         .onAppear { scheduleAutoHide() }
-        .onDisappear { hideTask?.cancel() }
+        .onDisappear { hideTask?.cancel(); tapTask?.cancel() }
         .onChange(of: vm.isPlaying) { _, _ in
             if vm.isPlaying { scheduleAutoHide() }
         }
