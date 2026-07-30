@@ -156,21 +156,14 @@ struct DetailsView: View {
     @State private var isSavingImage: Bool = false
     
     var body: some View {
-        ZStack(alignment: .top) {
-            detailsContent
-                .ignoresSafeArea(edges: .top)
-
-            // Top bar overlay — поверх ScrollView, всегда получает тапы первой
-            topBarView
-                .zIndex(10)
-        }
-        .optionalMovieNavigationTransition(
-            sourceID: navigationTransitionID,
-            in: navigationTransitionNamespace
-        )
-        .environment(\.colorScheme, .dark)
-        .toolbar(.hidden, for: .navigationBar)
-        .navigationBarBackButtonHidden(true)
+        detailsContent
+            .optionalMovieNavigationTransition(
+                sourceID: navigationTransitionID,
+                in: navigationTransitionNamespace
+            )
+            .environment(\.colorScheme, .dark)
+            .toolbar(.hidden, for: .navigationBar)
+            .navigationBarBackButtonHidden(true)
             .task {
                 await viewModel.loadDetails(id: movieId)
             }
@@ -302,90 +295,6 @@ struct DetailsView: View {
         }
     }
 
-    @ViewBuilder
-    private var topBarView: some View {
-        ZStack {
-            // Blur фон появляется только когда лого поднялось наверх
-            VariableBlurView(tintColor: effectiveBackgroundColor, tintOpacity: 0.6, style: .systemMaterialDark)
-                .padding(.bottom, -60)
-                .ignoresSafeArea(edges: .top)
-                .opacity(isLogoAtTop ? 1.0 : 0.0)
-                .animation(.easeInOut(duration: 0.25), value: isLogoAtTop)
-                .allowsHitTesting(false)
-
-            // Лого по центру когда прокручено
-            if let details = viewModel.details, isLogoAtTop {
-                RemoteLogoView(
-                    url: URL(string: details.displayLogoUrl ?? ""),
-                    fallbackTitle: details.title ?? details.originalTitle ?? "Без названия",
-                    alignment: .center
-                )
-                .frame(height: 32)
-                .padding(.horizontal, 72)
-                .transition(.blurFadeScale)
-                .allowsHitTesting(false)
-            }
-
-            // Кнопки — всегда поверх всего
-            HStack {
-                Button {
-                    NavigationPopPresenter.pop()
-                    dismiss()
-                    presentationMode.wrappedValue.dismiss()
-                } label: {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 22, weight: .medium))
-                        .foregroundStyle(.white)
-                        .frame(width: 44, height: 44)
-                        .glassEffect(.regular.interactive(), in: .circle)
-                }
-                .buttonStyle(.glassPress)
-                .tint(.white)
-
-                Spacer()
-
-                HStack(spacing: 0) {
-                    Button {
-                        favoriteBounce.toggle()
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.5, blendDuration: 0.5)) {
-                            viewModel.toggleFavorite()
-                        }
-                    } label: {
-                        Image(systemName: viewModel.isFavorite ? "heart.fill" : "heart")
-                            .font(.system(size: 20, weight: .medium))
-                            .foregroundStyle(.white)
-                            .symbolEffect(.bounce, value: favoriteBounce)
-                            .frame(width: 44, height: 44)
-                    }
-                    .buttonStyle(.glassPress)
-                    .disabled(viewModel.details == nil)
-                    .accessibilityLabel(viewModel.isFavorite ? "Убрать из избранного" : "Добавить в избранное")
-
-                    Button {
-                        guard let details = viewModel.details else { return }
-                        let shareUrl = DeepLinkManager.shared.createShareURL(for: movieId)
-                        let shareText = DeepLinkManager.shared.createShareMessage(
-                            title: details.title ?? details.originalTitle ?? "",
-                            movieId: movieId
-                        )
-                        SharePresenter.presentShare(url: shareUrl, text: shareText)
-                    } label: {
-                        Image(systemName: "square.and.arrow.up")
-                            .font(.system(size: 19, weight: .medium))
-                            .foregroundStyle(.white)
-                            .frame(width: 44, height: 44)
-                    }
-                    .buttonStyle(.glassPress)
-                    .disabled(viewModel.details == nil)
-                    .accessibilityLabel("Поделиться")
-                }
-                .glassEffect(.regular.interactive(), in: Capsule())
-            }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 8)
-        }
-        .frame(maxWidth: .infinity)
-    }
 
     private func handlePlayAction(details: MediaDetailsDto) {
         let generator = UIImpactFeedbackGenerator(style: .medium)
@@ -593,6 +502,87 @@ struct DetailsView: View {
         }
     }
 
+    private var detailsTopBar: some View {
+        ZStack {
+            if let details = viewModel.details, isLogoAtTop {
+                RemoteLogoView(
+                    url: URL(string: details.displayLogoUrl ?? ""),
+                    fallbackTitle: details.title ?? details.originalTitle ?? "Без названия",
+                    alignment: .center
+                )
+                .frame(height: 32)
+                .padding(.horizontal, 72)
+                .transition(.blurFadeScale)
+                .allowsHitTesting(false)
+            }
+
+            HStack {
+                Button {
+                    NavigationPopPresenter.pop()
+                    dismiss()
+                    presentationMode.wrappedValue.dismiss()
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 22, weight: .medium))
+                        .foregroundStyle(.white)
+                        .frame(width: 44, height: 44)
+                        .glassEffect(.regular.interactive(), in: .circle)
+                }
+                .buttonStyle(.glassPress)
+                .tint(.white)
+
+                Spacer()
+
+                HStack(spacing: 0) {
+                    Button {
+                        favoriteBounce.toggle()
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.5, blendDuration: 0.5)) {
+                            viewModel.toggleFavorite()
+                        }
+                    } label: {
+                        Image(systemName: viewModel.isFavorite ? "heart.fill" : "heart")
+                            .font(.system(size: 20, weight: .medium))
+                            .foregroundStyle(.white)
+                            .symbolEffect(.bounce, value: favoriteBounce)
+                            .frame(width: 44, height: 44)
+                    }
+                    .buttonStyle(.glassPress)
+                    .disabled(viewModel.details == nil)
+                    .accessibilityLabel(viewModel.isFavorite ? "Убрать из избранного" : "Добавить в избранное")
+
+                    Button {
+                        guard let details = viewModel.details else { return }
+                        let shareUrl = DeepLinkManager.shared.createShareURL(for: movieId)
+                        let shareText = DeepLinkManager.shared.createShareMessage(
+                            title: details.title ?? details.originalTitle ?? "",
+                            movieId: movieId
+                        )
+                        SharePresenter.presentShare(url: shareUrl, text: shareText)
+                    } label: {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.system(size: 19, weight: .medium))
+                            .foregroundStyle(.white)
+                            .frame(width: 44, height: 44)
+                    }
+                    .buttonStyle(.glassPress)
+                    .disabled(viewModel.details == nil)
+                    .accessibilityLabel("Поделиться")
+                }
+                .glassEffect(.regular.interactive(), in: Capsule())
+            }
+            .padding(.horizontal, 16)
+            .padding(.bottom, 8)
+        }
+        .background(
+            VariableBlurView(tintColor: effectiveBackgroundColor, tintOpacity: 0.6, style: .systemMaterialDark)
+                .padding(.bottom, -60)
+                .ignoresSafeArea(edges: .top)
+                .opacity(isLogoAtTop ? 1.0 : 0.0)
+                .animation(.easeInOut(duration: 0.25), value: isLogoAtTop)
+                .allowsHitTesting(false)
+        )
+    }
+
     private var portraitDetailsContent: some View {
         ScrollView {
             VStack(spacing: 0) {
@@ -733,6 +723,9 @@ struct DetailsView: View {
         .refreshable {
             await viewModel.loadDetails(id: movieId, force: true)
         }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            detailsTopBar
+        }
     }
 
     private var landscapeDetailsContent: some View {
@@ -849,7 +842,10 @@ struct DetailsView: View {
             .refreshable {
                 await viewModel.loadDetails(id: movieId, force: true)
             }
-        }.ignoresSafeArea()
+            .safeAreaInset(edge: .top, spacing: 0) {
+                detailsTopBar
+            }
+        }
     }
 }
 
