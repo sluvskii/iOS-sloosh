@@ -64,6 +64,16 @@ public final class AppDatabase {
                     try? fileManager.removeItem(at: fileUrl)
                 }
             }
+            
+            if let files = try? fileManager.contentsOfDirectory(at: dirUrl, includingPropertiesForKeys: [.creationDateKey]) {
+                let cutoff = Date().addingTimeInterval(-7 * 24 * 60 * 60)
+                for file in files where file.pathExtension == "bak" {
+                    if let attrs = try? fileManager.attributesOfItem(atPath: file.path),
+                       let creationDate = attrs[.creationDate] as? Date, creationDate < cutoff {
+                        try? fileManager.removeItem(at: file)
+                    }
+                }
+            }
         }
     }
 }
