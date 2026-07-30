@@ -12,6 +12,7 @@ private enum AppTab: Hashable {
 struct ContentView: View {
     @AppStorage("tabBarShowsLabels") private var tabBarShowsLabels = false
     @State private var selectedTab: AppTab = .home
+    @ObservedObject private var deepLinkManager = DeepLinkManager.shared
 
     @ViewBuilder
     private func tabLabel(_ title: LocalizedStringKey, systemImage: String) -> some View {
@@ -91,6 +92,11 @@ struct ContentView: View {
             }
             .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("SlooshIntentContinueWatching"))) { notification in
                 selectedTab = .continueWatching
+            }
+            .onChange(of: deepLinkManager.targetMovieId) { _, newValue in
+                if newValue != nil {
+                    selectedTab = .home
+                }
             }
         }
     }

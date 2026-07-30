@@ -1,6 +1,10 @@
 import Foundation
 import SwiftUI
 
+struct DeepLinkMovie: Identifiable, Equatable {
+    let id: String
+}
+
 @MainActor
 final class DeepLinkManager: ObservableObject {
     static let shared = DeepLinkManager()
