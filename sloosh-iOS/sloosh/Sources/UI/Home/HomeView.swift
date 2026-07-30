@@ -48,7 +48,6 @@ struct ScrollOffsetPreferenceKey: PreferenceKey {
 
 struct HomeView: View {
     @StateObject private var viewModel = HomeViewModel()
-    @ObservedObject private var deepLinkManager = DeepLinkManager.shared
     @Namespace private var navigationTransition
     @State private var isFilterCollapsed = false
     @State private var scrollOffsets: [HomeCategory: CGFloat] = [:]
@@ -126,14 +125,6 @@ struct HomeView: View {
             }
             .sheet(isPresented: $viewModel.showFilters) {
                 SearchFilterSheet(filters: $viewModel.searchFilters, context: .home)
-            }
-            .navigationDestination(isPresented: Binding<Bool>(
-                get: { deepLinkManager.targetMovieId != nil },
-                set: { if !$0 { deepLinkManager.clear() } }
-            )) {
-                if let movieId = deepLinkManager.targetMovieId {
-                    DetailsView(movieId: movieId, navigationTransitionID: nil, navigationTransitionNamespace: nil)
-                }
             }
             .sheet(item: $viewModel.directPlaybackMovie) { movie in
                 let kpId = movie.externalIds?.kp ?? Int(movie.id) ?? 0
@@ -220,6 +211,15 @@ struct HomeCategoryContentView: View {
                     LazyVGrid(columns: columns, spacing: spacing) {
                         ForEach(items) { movie in
                             MovieDetailsNavigationLink(movie: movie, navigationTransition: navigationTransition)
+                                .scrollTransition(.animated, axis: .vertical) { content, phase in
+                                    content
+                                        .opacity(phase.isIdentity ? 1 : 0.85)
+                                        .scaleEffect(phase.isIdentity ? 1 : 0.95)
+                                        .rotation3DEffect(
+                                            .degrees(phase.value * -10),
+                                            axis: (x: 1, y: 0, z: 0)
+                                        )
+                                }
                                 .contextMenu {
                                     Group {
                                         Button {
@@ -321,6 +321,7 @@ private struct TabScaleButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .scaleEffect(configuration.isPressed ? 0.94 : 1.0)
+            .opacity(configuration.isPressed ? 0.8 : 1.0)
             .animation(.spring(response: 0.25, dampingFraction: 0.7), value: configuration.isPressed)
     }
 }
