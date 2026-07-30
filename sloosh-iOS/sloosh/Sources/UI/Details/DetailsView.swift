@@ -242,9 +242,6 @@ struct DetailsView: View {
                     }
                 }
             }
-            .onDisappear {
-                DeepLinkManager.shared.clear()
-            }
             .onChange(of: showTooltip) { _, newValue in
                 if !newValue {
                     hasSeenSourceSelectionTooltip = true
