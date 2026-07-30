@@ -4,11 +4,13 @@ struct Toast: Equatable {
     let title: String
     let subtitle: String?
     let icon: String
+    let iconColor: Color?
     
-    init(title: String, subtitle: String? = nil, icon: String = "checkmark.circle.fill") {
+    init(title: String, subtitle: String? = nil, icon: String = "checkmark.circle.fill", iconColor: Color? = nil) {
         self.title = title
         self.subtitle = subtitle
         self.icon = icon
+        self.iconColor = iconColor
     }
 }
 
@@ -22,11 +24,11 @@ class ToastManager: ObservableObject {
     private init() {}
     
     @MainActor
-    func show(title: String, subtitle: String? = nil, icon: String = "checkmark.circle.fill", duration: TimeInterval = 3.0) {
+    func show(title: String, subtitle: String? = nil, icon: String = "checkmark.circle.fill", iconColor: Color? = nil, duration: TimeInterval = 3.0) {
         dismissTask?.cancel()
         
         withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-            self.currentToast = Toast(title: title, subtitle: subtitle, icon: icon)
+            self.currentToast = Toast(title: title, subtitle: subtitle, icon: icon, iconColor: iconColor)
         }
         
         dismissTask = Task {
@@ -68,7 +70,7 @@ struct ToastView: View {
         HStack(spacing: 12) {
             Image(systemName: toast.icon)
                 .font(.system(size: 24, weight: .semibold))
-                .foregroundColor(.slooshAccent)
+                .foregroundColor(toast.iconColor ?? .primary)
                 .contentTransition(.symbolEffect(.replace))
             
             VStack(alignment: .leading, spacing: 2) {
