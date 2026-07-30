@@ -506,7 +506,13 @@ class PlayerViewModel: ObservableObject {
                 return
             } catch {
                 guard let self, !Task.isCancelled else { return }
-                self.error = error.localizedDescription
+                if let localized = error as? LocalizedError, let desc = localized.errorDescription {
+                    self.error = desc
+                } else if error is URLError {
+                    self.error = "Нет подключения к интернету"
+                } else {
+                    self.error = "Не удалось загрузить видеопоток. Попробуйте еще раз."
+                }
                 self.isLoading = false
             }
         }
@@ -551,6 +557,7 @@ class PlayerViewModel: ObservableObject {
         
         // Вежливо освобождаем аудиосессию, чтобы возобновилась фоновая музыка пользователя
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [.mixWithOthers])
 
         resolveTask?.cancel()
         resolveTask = nil
@@ -932,6 +939,8 @@ class PlayerViewModel: ObservableObject {
     
     private func playVideo(url: URL, headers: [String: String], voices: [String] = [], subtitles: [PlaybackSubtitle] = []) {
         logDebug("playVideo: starting playback, url=\(url.absoluteString)")
+        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
+        try? AVAudioSession.sharedInstance().setActive(true)
         // Сохраняем оригинальный URL ДО проксирования — нужен для перезапуска после фона
         originalStreamURL = url.absoluteURL
         currentHeaders = headers
@@ -1097,7 +1106,13 @@ class PlayerViewModel: ObservableObject {
                             self.reloadPlayback(to: url, preferredPeakBitRate: self.player?.currentItem?.preferredPeakBitRate)
                         }
                     } else {
-                        self.error = item.error?.localizedDescription ?? "Ошибка воспроизведения"
+                        if let itemError = item.error as? URLError {
+                            self.error = "Нет подключения к интернету"
+                        } else if let localized = item.error as? LocalizedError, let desc = localized.errorDescription {
+                            self.error = desc
+                        } else {
+                            self.error = "Не удалось воспроизвести видео. Проверьте подключение к сети."
+                        }
                         self.isLoading = false
                     }
                 } else if item.status == .readyToPlay {

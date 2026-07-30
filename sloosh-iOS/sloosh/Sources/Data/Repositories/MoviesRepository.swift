@@ -32,6 +32,10 @@ class MoviesRepository: ObservableObject {
         topTvCache.removeAll()
         episodeCache.removeAll()
         detailsMemory.removeAll()
+        Task {
+            await detailsDiskCache.cleanUpExpired()
+            await listDiskCache.cleanUpExpired()
+        }
     }
 
     // MARK: - Lists
@@ -198,6 +202,23 @@ actor MediaDetailsDiskCache {
         guard let data = try? JSONEncoder().encode(entry) else { return }
         try? data.write(to: url, options: .atomic)
     }
+
+    func cleanUpExpired() {
+        guard let dir = cacheDir, let files = try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.contentModificationDateKey]) else { return }
+        let now = Date()
+        for file in files {
+            if let data = try? Data(contentsOf: file),
+               let entry = try? JSONDecoder().decode(Entry.self, from: data) {
+                if now.timeIntervalSince(entry.savedAt) >= ttl {
+                    try? FileManager.default.removeItem(at: file)
+                }
+            } else if let attrs = try? FileManager.default.attributesOfItem(atPath: file.path),
+                      let modDate = attrs[.modificationDate] as? Date,
+                      now.timeIntervalSince(modDate) >= ttl {
+                try? FileManager.default.removeItem(at: file)
+            }
+        }
+    }
 }
 
 // MARK: - MediaListDiskCache
@@ -238,5 +259,22 @@ actor MediaListDiskCache {
         let entry = Entry(savedAt: Date(), items: items)
         guard let data = try? JSONEncoder().encode(entry) else { return }
         try? data.write(to: url, options: .atomic)
+    }
+
+    func cleanUpExpired() {
+        guard let dir = cacheDir, let files = try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.contentModificationDateKey]) else { return }
+        let now = Date()
+        for file in files {
+            if let data = try? Data(contentsOf: file),
+               let entry = try? JSONDecoder().decode(Entry.self, from: data) {
+                if now.timeIntervalSince(entry.savedAt) >= ttl {
+                    try? FileManager.default.removeItem(at: file)
+                }
+            } else if let attrs = try? FileManager.default.attributesOfItem(atPath: file.path),
+                      let modDate = attrs[.modificationDate] as? Date,
+                      now.timeIntervalSince(modDate) >= ttl {
+                try? FileManager.default.removeItem(at: file)
+            }
+        }
     }
 }

@@ -325,7 +325,7 @@ class HlsProxyServer {
                     self.sendResponse(data: data, statusCode: statusCode, contentType: "application/vnd.apple.mpegurl", contentRange: nil, connection: connection)
                 }
             } else {
-                let (bytes, response) = try await session.bytes(for: request)
+                let (data, response) = try await session.data(for: request)
                 guard let httpResponse = response as? HTTPURLResponse else {
                     self.send404(on: connection)
                     return
@@ -334,43 +334,8 @@ class HlsProxyServer {
                 let statusCode = httpResponse.statusCode
                 let contentType = resolveContentType(for: realUrl, httpResponse: httpResponse)
                 let contentRange = httpResponse.value(forHTTPHeaderField: "Content-Range")
-                let contentLength = httpResponse.expectedContentLength
                 
-                let reason = statusCode == 206 ? "Partial Content" : (statusCode == 200 ? "OK" : "Error")
-                var header = "HTTP/1.1 \(statusCode) \(reason)\r\nContent-Type: \(contentType)\r\n"
-                if contentLength > 0 {
-                    header += "Content-Length: \(contentLength)\r\n"
-                }
-                if let cr = contentRange {
-                    header += "Content-Range: \(cr)\r\n"
-                }
-                header += "Accept-Ranges: bytes\r\nConnection: keep-alive\r\n\r\n"
-                
-                guard let headerData = header.data(using: .utf8) else { connection.cancel(); return }
-                
-                await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-                    connection.send(content: headerData, completion: .contentProcessed({ _ in continuation.resume() }))
-                }
-                
-                var chunk = Data()
-                chunk.reserveCapacity(65536)
-                for try await byte in bytes {
-                    chunk.append(byte)
-                    if chunk.count >= 65536 {
-                        let toSend = chunk
-                        chunk = Data()
-                        chunk.reserveCapacity(65536)
-                        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-                            connection.send(content: toSend, isComplete: false, completion: .contentProcessed({ _ in continuation.resume() }))
-                        }
-                    }
-                }
-                if !chunk.isEmpty {
-                    let toSend = chunk
-                    connection.send(content: toSend, isComplete: true, completion: .contentProcessed({ _ in connection.cancel() }))
-                } else {
-                    connection.send(content: nil, isComplete: true, completion: .contentProcessed({ _ in connection.cancel() }))
-                }
+                self.sendResponse(data: data, statusCode: statusCode, contentType: contentType, contentRange: contentRange, connection: connection)
             }
         } catch {
             AppDiagnostics.shared.log("HlsProxyServer fetch failed: \(error)")
