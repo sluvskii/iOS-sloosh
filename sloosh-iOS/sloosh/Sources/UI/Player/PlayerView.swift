@@ -171,6 +171,7 @@ class PlayerViewModel: ObservableObject {
 
     // MARK: - Scrub Preview Thumbnails (Telegram-style)
     @Published var scrubPreviewImage: UIImage? = nil
+    @Published var scrubPreviewAspectRatio: CGFloat = 16.0 / 9.0
     private var imageGenerator: AVAssetImageGenerator?
     private var thumbnailTask: Task<Void, Never>?
     private var lastRequestedThumbnailTime: Double = -1
@@ -178,7 +179,7 @@ class PlayerViewModel: ObservableObject {
     func setupImageGenerator(asset: AVAsset) {
         let gen = AVAssetImageGenerator(asset: asset)
         gen.appliesPreferredTrackTransform = true
-        gen.maximumSize = CGSize(width: 200, height: 112)
+        gen.maximumSize = CGSize(width: 240, height: 240) // Позволяет извлекать любое соотношение сторон
         gen.requestedTimeToleranceBefore = .positiveInfinity
         gen.requestedTimeToleranceAfter = .positiveInfinity
         self.imageGenerator = gen
@@ -196,7 +197,9 @@ class PlayerViewModel: ObservableObject {
             await Task.detached(priority: .userInitiated) {
                 if let cgImage = try? gen.copyCGImage(at: time, actualTime: nil) {
                     let uiImage = UIImage(cgImage: cgImage)
+                    let ratio = CGFloat(cgImage.width) / max(1.0, CGFloat(cgImage.height))
                     await MainActor.run {
+                        self.scrubPreviewAspectRatio = ratio
                         self.scrubPreviewImage = uiImage
                     }
                 }
