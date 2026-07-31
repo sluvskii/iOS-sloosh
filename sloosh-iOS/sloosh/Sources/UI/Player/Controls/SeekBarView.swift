@@ -82,12 +82,16 @@ struct SeekBarView: View {
                 .fill(Color.black.opacity(0.6))
             
             if let logoUrl = vm.displayLogoUrl {
-                AsyncCachedImage(url: logoUrl) { uiImg in
-                    Image(uiImage: uiImg)
+                AsyncCachedImage(url: logoUrl) {
+                    Image(systemName: "film")
+                        .font(.system(size: 22))
+                        .foregroundStyle(.white.opacity(0.35))
+                } content: { image in
+                    Image(uiImage: image)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
                         .padding(12)
-                } placeholder: {
+                } fallback: {
                     Image(systemName: "film")
                         .font(.system(size: 22))
                         .foregroundStyle(.white.opacity(0.35))
