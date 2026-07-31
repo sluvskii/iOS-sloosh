@@ -18,6 +18,7 @@ struct BottomRowView: View {
                     .foregroundStyle(.white.opacity(0.65))
                     .blendMode(.plusLighter)
                     .frame(width: 44, height: 40)
+                    .contentShape(Rectangle())
             }
             .accessibilityLabel("Скорость воспроизведения: \(speedLabel)")
             .popover(isPresented: $showSpeedSheet) {
@@ -32,6 +33,7 @@ struct BottomRowView: View {
                         .foregroundStyle(.white.opacity(0.65))
                         .blendMode(.plusLighter)
                         .frame(width: 44, height: 40)
+                        .contentShape(Rectangle())
                 }
                 .accessibilityLabel("Озвучка")
                 .popover(isPresented: $showVoiceoverSheet) {
@@ -47,6 +49,7 @@ struct BottomRowView: View {
                         .foregroundStyle(.white.opacity(0.65))
                         .blendMode(.plusLighter)
                         .frame(width: 44, height: 40)
+                        .contentShape(Rectangle())
                 }
                 .accessibilityLabel("Качество видео")
                 .popover(isPresented: $showQualitySheet) {
@@ -62,6 +65,7 @@ struct BottomRowView: View {
                         .foregroundStyle(.white.opacity(0.65))
                         .blendMode(.plusLighter)
                         .frame(width: 44, height: 40)
+                        .contentShape(Rectangle())
                 }
                 .accessibilityLabel(vm.currentSubtitle != nil ? "Субтитры (включены)" : "Субтитры")
                 .popover(isPresented: $showSubtitleSheet) {
