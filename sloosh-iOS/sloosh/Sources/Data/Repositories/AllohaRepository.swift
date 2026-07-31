@@ -216,7 +216,7 @@ final class AllohaRepository: @unchecked Sendable {
     
     private var catalogCache: [Int: (result: AllohaApiResult, expiresAt: Date)] = [:]
     private let cacheTtl: TimeInterval = 5 * 60 // 5 minutes
-    private let cacheQueue = DispatchQueue(label: "ru.neomovies.alloharepo.cache", attributes: .concurrent)
+    private let cacheQueue = DispatchQueue(label: "ru.sloosh.alloharepo.cache", attributes: .concurrent)
 
     // Create a URLSession that ignores SSL certificate errors
     private lazy var session: URLSession = {

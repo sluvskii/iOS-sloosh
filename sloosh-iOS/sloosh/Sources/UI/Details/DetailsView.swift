@@ -1560,7 +1560,6 @@ struct EpisodeCellView: View {
                 if isWatchedState {
                     Button(role: .destructive) {
                         PlaybackProgressStore.shared.setWatched(mediaId: progressKey, watched: false)
-                        UserDefaults.standard.removeObject(forKey: PlaybackProgressStore.shared.positionKeyPrefix + progressKey)
                         updateProgressState()
                         onUpdate()
                     } label: {
@@ -1659,7 +1658,7 @@ struct InlineEpisodesSection: View {
     var allSeasons: [Int] {
         viewModel.inlineSourceWrapper?.allohaResult?.seasons.map { $0.season }.sorted() ?? []
     }
-    
+
     var rawId: String {
         details.ids?.kp?.description ?? details.id?.replacingOccurrences(of: "kp_", with: "") ?? ""
     }
@@ -1678,7 +1677,7 @@ struct InlineEpisodesSection: View {
     private func updateWatchedSeasons() {
         guard let seasons = viewModel.inlineSourceWrapper?.allohaResult?.seasons else { return }
         var completed = Set<Int>()
-        
+
         for s in seasons {
             let episodes = s.episodes.map { $0.episode }
             if !episodes.isEmpty {
@@ -1702,116 +1701,15 @@ struct InlineEpisodesSection: View {
                 .padding(.horizontal, horizontalPadding)
 
             if viewModel.isFetchingInlineSeasons {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 12) {
-                        ForEach(0..<4) { _ in
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(Color.gray.opacity(0.15))
-                                .frame(width: 160, height: 90)
-                                .shimmer()
-                        }
-                    }
-                    .padding(.horizontal, horizontalPadding)
-                }
+                loadingView
             } else if allSeasons.isEmpty {
                 Text("Эпизоды не найдены")
                     .font(.system(size: 15))
                     .foregroundColor(.secondary)
                     .padding(.horizontal, horizontalPadding)
             } else {
-                // Season Picker
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 8) {
-                        ForEach(allSeasons, id: \.self) { season in
-                            Button(action: {
-                                let generator = UIImpactFeedbackGenerator(style: .light)
-                                generator.prepare()
-                                generator.impactOccurred()
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                    selectedSeason = season
-                                }
-                            }) {
-                                HStack(spacing: 6) {
-                                    Text("\(season) сезон")
-                                        .font(.system(size: 14, weight: .semibold))
-                                    if fullyWatchedSeasons.contains(season) {
-                                        Image(systemName: "checkmark.circle.fill")
-                                            .foregroundColor(selectedSeason == season ? .black : Color.slooshAccent)
-                                            .font(.system(size: 12, weight: .bold))
-                                    }
-                                }
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 8)
-                                .background(
-                                    ZStack {
-                                        if selectedSeason == season {
-                                            Capsule().fill(Color.white)
-                                        } else {
-                                            Color.clear.glassEffect(in: Capsule())
-                                        }
-                                    }
-                                )
-                                .foregroundColor(selectedSeason == season ? .black : .primary)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(.horizontal, horizontalPadding)
-                }
-
-                // Episodes List
-                ScrollViewReader { proxy in
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 12) {
-                            ForEach(episodesForSelectedSeason, id: \.self) { episode in
-                                
-                                Button(action: {
-                                    let generator = UIImpactFeedbackGenerator(style: .medium)
-                                    generator.prepare()
-                                    generator.impactOccurred()
-                                    onEpisodeTap(selectedSeason, episode)
-                                }) {
-                                    EpisodeCellView(
-                                        movieId: rawId,
-                                        season: selectedSeason,
-                                        episode: episode,
-                                        fallbackTitle: "Серия",
-                                        onPlayTap: { () -> Void in
-                                            onEpisodeTap(selectedSeason, episode)
-                                        },
-                                        onUpdate: { () -> Void in
-                                            updateWatchedSeasons()
-                                            redrawTrigger.toggle()
-                                        },
-                                        onInfoTap: { (fetchedMeta: TvEpisodeDetailsDto?) -> Void in
-                                            selectedEpisodeForSheet = EpisodeDetailsSheetItem(
-                                                movieId: rawId,
-                                                season: selectedSeason,
-                                                episode: episode,
-                                                meta: fetchedMeta,
-                                                fallbackTitle: "Серия"
-                                            )
-                                        }
-                                    )
-                                    .environmentObject(viewModel)
-                                    .id(redrawTrigger)
-                                }
-                                .buttonStyle(.plain)
-                                .id("\(selectedSeason)-\(episode)")
-                            }
-                        }
-                        .padding(.horizontal, horizontalPadding)
-                    }
-                    .onAppear {
-                        scrollToLastPlayed(proxy: proxy)
-                    }
-                    .onChange(of: selectedSeason) { _, _ in
-                        scrollToLastPlayed(proxy: proxy)
-                    }
-                    .onChange(of: episodesForSelectedSeason) { _, _ in
-                        scrollToLastPlayed(proxy: proxy)
-                    }
-                }
+                seasonPickerView
+                episodesListView
             }
         }
         .onAppear {
@@ -1842,7 +1740,6 @@ struct InlineEpisodesSection: View {
                         PlaybackProgressStore.shared.markAsWatched(mediaId: progressKey)
                     } else {
                         PlaybackProgressStore.shared.setWatched(mediaId: progressKey, watched: false)
-                        UserDefaults.standard.removeObject(forKey: PlaybackProgressStore.shared.positionKeyPrefix + progressKey)
                     }
                     updateWatchedSeasons()
                     redrawTrigger.toggle()
@@ -1853,11 +1750,123 @@ struct InlineEpisodesSection: View {
         }
     }
 
+    @ViewBuilder
+    private var loadingView: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 12) {
+                ForEach(0..<4) { _ in
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color.gray.opacity(0.15))
+                        .frame(width: 160, height: 90)
+                        .shimmer()
+                }
+            }
+            .padding(.horizontal, horizontalPadding)
+        }
+    }
+
+    @ViewBuilder
+    private var seasonPickerView: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(allSeasons, id: \.self) { season in
+                    Button(action: {
+                        let generator = UIImpactFeedbackGenerator(style: .light)
+                        generator.prepare()
+                        generator.impactOccurred()
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                            selectedSeason = season
+                        }
+                    }) {
+                        HStack(spacing: 6) {
+                            Text("\(season) сезон")
+                                .font(.system(size: 14, weight: .semibold))
+                            if fullyWatchedSeasons.contains(season) {
+                                Image(systemName: "checkmark.circle.fill")
+                                    .foregroundColor(selectedSeason == season ? .black : Color.slooshAccent)
+                                    .font(.system(size: 12, weight: .bold))
+                            }
+                        }
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                        .background(
+                            ZStack {
+                                if selectedSeason == season {
+                                    Capsule().fill(Color.white)
+                                } else {
+                                    Color.clear.glassEffect(in: Capsule())
+                                }
+                            }
+                        )
+                        .foregroundColor(selectedSeason == season ? .black : .primary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, horizontalPadding)
+        }
+    }
+
+    @ViewBuilder
+    private var episodesListView: some View {
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 12) {
+                    ForEach(episodesForSelectedSeason, id: \.self) { episode in
+                        Button(action: {
+                            let generator = UIImpactFeedbackGenerator(style: .medium)
+                            generator.prepare()
+                            generator.impactOccurred()
+                            onEpisodeTap(selectedSeason, episode)
+                        }) {
+                            EpisodeCellView(
+                                movieId: rawId,
+                                season: selectedSeason,
+                                episode: episode,
+                                fallbackTitle: "Серия",
+                                onPlayTap: { () -> Void in
+                                    onEpisodeTap(selectedSeason, episode)
+                                },
+                                onUpdate: { () -> Void in
+                                    updateWatchedSeasons()
+                                    redrawTrigger.toggle()
+                                },
+                                onInfoTap: { (fetchedMeta: TvEpisodeDetailsDto?) -> Void in
+                                    selectedEpisodeForSheet = EpisodeDetailsSheetItem(
+                                        movieId: rawId,
+                                        season: selectedSeason,
+                                        episode: episode,
+                                        meta: fetchedMeta,
+                                        fallbackTitle: "Серия"
+                                    )
+                                }
+                            )
+                            .environmentObject(viewModel)
+                            .id(redrawTrigger)
+                        }
+                        .buttonStyle(.plain)
+                        .id("\(selectedSeason)-\(episode)")
+                    }
+                }
+                .padding(.horizontal, horizontalPadding)
+            }
+            .onAppear {
+                scrollToLastPlayed(proxy: proxy)
+            }
+            .onChange(of: selectedSeason) { _, _ in
+                scrollToLastPlayed(proxy: proxy)
+            }
+            .onChange(of: episodesForSelectedSeason) { _, _ in
+                scrollToLastPlayed(proxy: proxy)
+            }
+        }
+    }
+
     private func scrollToLastPlayed(proxy: ScrollViewProxy) {
         guard let kpId = details.ids?.kp else { return }
         let lastSeason = PlaybackProgressStore.shared.loadLastSeason(kpId: kpId) ?? 1
         let lastEpisode = PlaybackProgressStore.shared.loadLastEpisode(kpId: kpId) ?? 1
-        
+
         if selectedSeason == lastSeason {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
                 withAnimation(.spring(response: 0.45, dampingFraction: 0.82)) {
