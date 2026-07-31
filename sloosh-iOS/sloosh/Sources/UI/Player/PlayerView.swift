@@ -176,14 +176,16 @@ class PlayerViewModel: ObservableObject {
     private var videoOutput: AVPlayerItemVideoOutput?
     private var thumbnailTask: Task<Void, Never>?
     private var lastRequestedThumbnailTime: Double = -1
+    private var thumbnailCache: [Int: (image: UIImage, ratio: CGFloat)] = [:]
 
     func setupImageGenerator(asset: AVAsset, item: AVPlayerItem? = nil) {
         let gen = AVAssetImageGenerator(asset: asset)
         gen.appliesPreferredTrackTransform = true
-        gen.maximumSize = CGSize(width: 320, height: 320)
-        gen.requestedTimeToleranceBefore = .positiveInfinity
-        gen.requestedTimeToleranceAfter = .positiveInfinity
+        gen.maximumSize = CGSize(width: 320, height: 180)
+        gen.requestedTimeToleranceBefore = CMTime(seconds: 15, preferredTimescale: 600)
+        gen.requestedTimeToleranceAfter = CMTime(seconds: 15, preferredTimescale: 600)
         self.imageGenerator = gen
+        self.thumbnailCache.removeAll()
         
         if let item {
             let pixAttrs: [String: Any] = [
@@ -196,12 +198,22 @@ class PlayerViewModel: ObservableObject {
     }
 
     func generateScrubThumbnail(at seconds: Double) {
-        guard seconds >= 0, abs(seconds - lastRequestedThumbnailTime) > 0.25 else { return }
+        guard seconds >= 0 else { return }
+        let cacheKey = Int(seconds / 5.0) * 5
+        
+        // 1. Пробуем взять мгновенный кадр из оперативного кэша
+        if let cached = thumbnailCache[cacheKey] {
+            self.scrubPreviewAspectRatio = cached.ratio
+            self.scrubPreviewImage = cached.image
+            return
+        }
+        
+        guard abs(seconds - lastRequestedThumbnailTime) > 0.2 else { return }
         lastRequestedThumbnailTime = seconds
         
         let time = CMTime(seconds: seconds, preferredTimescale: 600)
         
-        // 1. Сначала пробуем взять мгновенный декодированный кадр из AVPlayerItemVideoOutput
+        // 2. Пробуем взять мгновенный декодированный кадр из AVPlayerItemVideoOutput (текущая позиция)
         if let output = self.videoOutput, output.hasNewPixelBuffer(forItemTime: time) {
             if let pixelBuffer = output.copyPixelBuffer(forItemTime: time, itemTimeForDisplay: nil) {
                 let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
@@ -209,6 +221,7 @@ class PlayerViewModel: ObservableObject {
                 if let cgImage = context.createCGImage(ciImage, from: ciImage.extent) {
                     let uiImage = UIImage(cgImage: cgImage)
                     let ratio = CGFloat(cgImage.width) / max(1.0, CGFloat(cgImage.height))
+                    self.thumbnailCache[cacheKey] = (uiImage, ratio)
                     self.scrubPreviewAspectRatio = ratio
                     self.scrubPreviewImage = uiImage
                     return
@@ -216,21 +229,20 @@ class PlayerViewModel: ObservableObject {
             }
         }
         
-        // 2. Фоново извлекаем из AVAssetImageGenerator
-        thumbnailTask?.cancel()
-        thumbnailTask = Task { @MainActor [weak self] in
-            guard let self, let gen = self.imageGenerator else { return }
+        // 3. Асинхронно извлекаем кадр через AVAssetImageGenerator с допущением I-Frame
+        guard let gen = self.imageGenerator else { return }
+        let timeValue = NSValue(time: time)
+        
+        gen.generateCGImagesAsynchronously(forTimes: [timeValue]) { [weak self] requestedTime, cgImage, actualTime, result, error in
+            guard let self, let cgImage, result == .succeeded else { return }
+            let uiImage = UIImage(cgImage: cgImage)
+            let ratio = CGFloat(cgImage.width) / max(1.0, CGFloat(cgImage.height))
             
-            await Task.detached(priority: .userInitiated) {
-                if let cgImage = try? gen.copyCGImage(at: time, actualTime: nil) {
-                    let uiImage = UIImage(cgImage: cgImage)
-                    let ratio = CGFloat(cgImage.width) / max(1.0, CGFloat(cgImage.height))
-                    await MainActor.run {
-                        self.scrubPreviewAspectRatio = ratio
-                        self.scrubPreviewImage = uiImage
-                    }
-                }
-            }.value
+            DispatchQueue.main.async {
+                self.thumbnailCache[cacheKey] = (uiImage, ratio)
+                self.scrubPreviewAspectRatio = ratio
+                self.scrubPreviewImage = uiImage
+            }
         }
     }
 
