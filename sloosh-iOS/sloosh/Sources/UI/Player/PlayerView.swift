@@ -178,14 +178,14 @@ class PlayerViewModel: ObservableObject {
     func setupImageGenerator(asset: AVAsset) {
         let gen = AVAssetImageGenerator(asset: asset)
         gen.appliesPreferredTrackTransform = true
-        gen.maximumSize = CGSize(width: 240, height: 135)
-        gen.requestedTimeToleranceBefore = CMTime(seconds: 4, preferredTimescale: 600)
-        gen.requestedTimeToleranceAfter = CMTime(seconds: 4, preferredTimescale: 600)
+        gen.maximumSize = CGSize(width: 200, height: 112)
+        gen.requestedTimeToleranceBefore = .positiveInfinity
+        gen.requestedTimeToleranceAfter = .positiveInfinity
         self.imageGenerator = gen
     }
 
     func generateScrubThumbnail(at seconds: Double) {
-        guard seconds >= 0, abs(seconds - lastRequestedThumbnailTime) > 0.5 else { return }
+        guard seconds >= 0, abs(seconds - lastRequestedThumbnailTime) > 0.4 else { return }
         lastRequestedThumbnailTime = seconds
         
         thumbnailTask?.cancel()
@@ -194,13 +194,12 @@ class PlayerViewModel: ObservableObject {
             let time = CMTime(seconds: seconds, preferredTimescale: 600)
             
             await Task.detached(priority: .userInitiated) {
-                do {
-                    let cgImage = try gen.copyCGImage(at: time, actualTime: nil)
+                if let cgImage = try? gen.copyCGImage(at: time, actualTime: nil) {
                     let uiImage = UIImage(cgImage: cgImage)
                     await MainActor.run {
                         self.scrubPreviewImage = uiImage
                     }
-                } catch {}
+                }
             }.value
         }
     }

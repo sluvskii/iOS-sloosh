@@ -23,32 +23,43 @@ struct SeekBarView: View {
     }
 
     var body: some View {
-        VStack(spacing: 8) {
+        ZStack(alignment: .bottom) {
             if isDragging || isHStackScrubbing || vm.screenScrubTime != nil {
-                VStack(spacing: 6) {
-                    if let preview = vm.scrubPreviewImage {
-                        Image(uiImage: preview)
-                            .resizable()
-                            .aspectRatio(16/9, contentMode: .fill)
-                            .frame(width: 140, height: 79)
-                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    } else {
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .fill(Color.white.opacity(0.12))
-                            .frame(width: 140, height: 79)
-                            .overlay {
-                                ProgressView()
-                                    .tint(.white.opacity(0.7))
-                            }
-                    }
+                GeometryReader { proxy in
+                    let sliderWidth = proxy.size.width
+                    let padding: CGFloat = 50
+                    let trackWidth = max(10, sliderWidth - (padding * 2))
+                    let rawThumbX = padding + (CGFloat(progress) * trackWidth)
                     
-                    Text(formatTime(displayTime))
-                        .font(.system(size: 12, weight: .bold, design: .rounded).monospacedDigit())
-                        .foregroundStyle(.white)
+                    let cardWidth: CGFloat = 124
+                    let cardHeight: CGFloat = 70
+                    
+                    let clampedX = max(cardWidth / 2 + 8, min(sliderWidth - cardWidth / 2 - 8, rawThumbX))
+                    
+                    ZStack {
+                        if let preview = vm.scrubPreviewImage {
+                            Image(uiImage: preview)
+                                .resizable()
+                                .aspectRatio(16/9, contentMode: .fill)
+                                .frame(width: cardWidth, height: cardHeight)
+                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        } else {
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(Color.white.opacity(0.15))
+                                .frame(width: cardWidth, height: cardHeight)
+                                .overlay {
+                                    ProgressView()
+                                        .tint(.white.opacity(0.8))
+                                }
+                        }
+                    }
+                    .padding(4)
+                    .glassEffect(.regular, in: .rect(cornerRadius: 14, style: .continuous))
+                    .position(x: clampedX, y: -48)
+                    .animation(.spring(response: 0.15, dampingFraction: 0.8), value: clampedX)
                 }
-                .padding(6)
-                .glassEffect(.regular, in: .rect(cornerRadius: 16, style: .continuous))
-                .transition(.move(edge: .bottom).combined(with: .opacity).combined(with: .scale(scale: 0.9)))
+                .frame(height: 0)
+                .transition(.scale(scale: 0.85).combined(with: .opacity))
             }
 
             HStack(spacing: 12) {
