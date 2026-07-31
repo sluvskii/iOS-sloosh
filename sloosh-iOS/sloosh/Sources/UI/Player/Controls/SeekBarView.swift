@@ -138,7 +138,6 @@ struct SeekBarView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
         .glassEffect(.regular, in: .capsule)
-    }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Прогресс воспроизведения")
         .accessibilityValue("\(formatTime(displayTime)) из \(formatTime(vm.currentDuration))")
@@ -157,15 +156,13 @@ struct SeekBarView: View {
                     }
                     
                     let screen = (UIApplication.shared.connectedScenes.first as? UIWindowScene)?.screen
-                    let trackWidth = (screen?.bounds.width ?? 393) - 32 // Примерная ширина рабочей области
+                    let trackWidth = (screen?.bounds.width ?? 393) - 32
                     let startX = max(1, min(trackWidth - 1, scrubStartLocationX))
                     
                     let thumbX = (screenScrubInitialTime / vm.currentDuration) * Double(trackWidth)
                     let distanceToThumb = abs(Double(startX) - thumbX)
                     
-                    // Чем дальше тап от ползунка, тем быстрее свайп (до 6 раз быстрее)
                     let speedFactor = 1.0 + (distanceToThumb / Double(trackWidth)) * 5.0
-                    
                     let baseMultiplier = vm.currentDuration / Double(trackWidth)
                     let deltaSeconds = Double(value.translation.width) * baseMultiplier * speedFactor
                     
