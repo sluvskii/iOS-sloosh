@@ -177,6 +177,7 @@ class PlayerViewModel: ObservableObject {
     private var thumbnailTask: Task<Void, Never>?
     private var lastRequestedThumbnailTime: Double = -1
     private var thumbnailCache: [Int: (image: UIImage, ratio: CGFloat)] = [:]
+    @Published var isLocalPlayback: Bool = false
 
     func setupImageGenerator(asset: AVAsset, item: AVPlayerItem? = nil) {
         let gen = AVAssetImageGenerator(asset: asset)
@@ -1028,6 +1029,8 @@ class PlayerViewModel: ObservableObject {
         let asset: AVURLAsset
         let urlStringLower = url.absoluteString.lowercased()
         let isMp4 = url.pathExtension.lowercased() == "mp4" || (!urlStringLower.contains(".m3u8") && urlStringLower.contains(".mp4"))
+        // Определяем, является ли контент локальным (скачанным)
+        let isLocalFile = url.absoluteString.contains("/local/") || url.isFileURL
 
         if url.absoluteString.contains("127.0.0.1") || url.absoluteString.contains("localhost") {
             // Уже локальный URL — не проксируем
@@ -1072,7 +1075,17 @@ class PlayerViewModel: ObservableObject {
         }
 
         let playerItem = AVPlayerItem(asset: asset)
-        setupImageGenerator(asset: asset, item: playerItem)
+        // Превью кадров доступно только для локального (скачанного) или MP4 контента
+        let supportsThumbnails = isLocalFile || isMp4
+        self.isLocalPlayback = supportsThumbnails
+        if supportsThumbnails {
+            setupImageGenerator(asset: asset, item: playerItem)
+        } else {
+            self.imageGenerator = nil
+            self.videoOutput = nil
+            self.scrubPreviewImage = nil
+            self.thumbnailCache.removeAll()
+        }
         
         if self.player == nil { 
             let newPlayer = AVPlayer()

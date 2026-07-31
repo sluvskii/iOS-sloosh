@@ -43,13 +43,13 @@ struct SeekBarView: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            if isDragging || isHStackScrubbing || vm.screenScrubTime != nil {
+            if vm.isLocalPlayback && (isDragging || isHStackScrubbing || vm.screenScrubTime != nil) {
                 previewCardOverlay
             }
             sliderBar
         }
         .onChange(of: displayTime) { _, newTime in
-            if isDragging || isHStackScrubbing || vm.screenScrubTime != nil {
+            if vm.isLocalPlayback && (isDragging || isHStackScrubbing || vm.screenScrubTime != nil) {
                 vm.generateScrubThumbnail(at: newTime)
             }
         }
