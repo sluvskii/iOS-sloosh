@@ -179,6 +179,19 @@ struct PlayerContainerView: View {
     private func handleTap(side: TapSide) {
         tapTask?.cancel()
         
+        // Если контролы скрыты — показываем их мгновенно по первому касанию без 250мс задержки!
+        if !showControls {
+            consecutiveTaps = 0
+            activeTapSide = nil
+            multiSeekSeconds = nil
+            withAnimation(showAnimation) {
+                showControls = true
+            }
+            scheduleAutoHide()
+            return
+        }
+        
+        // Если контролы открыты — отслеживаем одиночный тап (для скрытия) или двойной тап (для перемотки)
         if activeTapSide != side {
             consecutiveTaps = 0
             activeTapSide = side
@@ -196,7 +209,9 @@ struct PlayerContainerView: View {
                 
                 self.consecutiveTaps = 0
                 self.activeTapSide = nil
-                self.toggleControls()
+                withAnimation(hideAnimation) {
+                    self.showControls = false
+                }
             }
         } else {
             let seconds = 10
@@ -210,10 +225,7 @@ struct PlayerContainerView: View {
             let targetTime = initialSeekTime + Double(totalSeconds) * direction
             vm.screenScrubTime = max(0, min(vm.currentDuration, targetTime))
             
-            if showControls {
-                scheduleAutoHide()
-            }
-            
+            scheduleAutoHide()
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             
             tapTask = Task { @MainActor in
