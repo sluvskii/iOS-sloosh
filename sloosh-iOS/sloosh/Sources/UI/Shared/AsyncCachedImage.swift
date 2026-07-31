@@ -118,17 +118,20 @@ public struct AsyncCachedImage<Placeholder: View, Content: View, Fallback: View>
             return
         }
         
-        // Check URLCache
-        let request = URLRequest(url: url, cachePolicy: cachePolicy)
-        if let cachedResponse = URLCache.shared.cachedResponse(for: request),
-           let uiImg = UIImage(data: cachedResponse.data) {
-            ImageCache.shared.insertImage(uiImg, forKey: url.absoluteString)
-            await MainActor.run {
-                self.image = uiImg
-                self.isLoading = false
-                self.hasError = false
+        if let cachedResponse = URLCache.shared.cachedResponse(for: request) {
+            let uiImg = await Task.detached(priority: .userInitiated) {
+                UIImage(data: cachedResponse.data)
+            }.value
+            
+            if let uiImg = uiImg {
+                ImageCache.shared.insertImage(uiImg, forKey: url.absoluteString)
+                await MainActor.run {
+                    self.image = uiImg
+                    self.isLoading = false
+                    self.hasError = false
+                }
+                return
             }
-            return
         }
         
         await MainActor.run {
@@ -178,15 +181,20 @@ public struct AsyncCachedImage<Placeholder: View, Content: View, Fallback: View>
             }
             
             let fallbackRequest = URLRequest(url: fallbackUrl, cachePolicy: cachePolicy)
-            if let cachedResponse = URLCache.shared.cachedResponse(for: fallbackRequest),
-               let uiImg = UIImage(data: cachedResponse.data) {
-                ImageCache.shared.insertImage(uiImg, forKey: fallbackUrl.absoluteString)
-                await MainActor.run {
-                    self.image = uiImg
-                    self.isLoading = false
-                    self.hasError = false
+            if let cachedResponse = URLCache.shared.cachedResponse(for: fallbackRequest) {
+                let uiImg = await Task.detached(priority: .userInitiated) {
+                    UIImage(data: cachedResponse.data)
+                }.value
+                
+                if let uiImg = uiImg {
+                    ImageCache.shared.insertImage(uiImg, forKey: fallbackUrl.absoluteString)
+                    await MainActor.run {
+                        self.image = uiImg
+                        self.isLoading = false
+                        self.hasError = false
+                    }
+                    return
                 }
-                return
             }
             
             do {

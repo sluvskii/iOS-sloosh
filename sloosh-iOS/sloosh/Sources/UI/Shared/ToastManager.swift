@@ -41,6 +41,12 @@ class ToastManager: ObservableObject {
                 }
             }
         }
+    @MainActor
+    func dismiss() {
+        dismissTask?.cancel()
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+            self.currentToast = nil
+        }
     }
 }
 
@@ -105,9 +111,7 @@ struct ToastView: View {
                 }
                 .onEnded { value in
                     if value.translation.height < -30 || value.predictedEndTranslation.height < -50 {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                            ToastManager.shared.currentToast = nil
-                        }
+                        ToastManager.shared.dismiss()
                     } else {
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                             dragOffset = 0
@@ -116,9 +120,7 @@ struct ToastView: View {
                 }
         )
         .onTapGesture {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                ToastManager.shared.currentToast = nil
-            }
+            ToastManager.shared.dismiss()
         }
     }
 }

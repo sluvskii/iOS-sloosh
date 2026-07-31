@@ -175,11 +175,16 @@ actor MediaDetailsDiskCache {
         let details: MediaDetailsDto
     }
 
-    private var cacheDir: URL? {
-        guard let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else { return nil }
-        let dir = base.appendingPathComponent("sloosh.mediadetails", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir
+    private let cacheDir: URL?
+
+    init() {
+        if let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first {
+            let dir = base.appendingPathComponent("sloosh.mediadetails", isDirectory: true)
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            self.cacheDir = dir
+        } else {
+            self.cacheDir = nil
+        }
     }
 
     private func fileURL(for id: String) -> URL? {
@@ -209,15 +214,11 @@ actor MediaDetailsDiskCache {
         guard let dir = cacheDir, let files = try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.contentModificationDateKey]) else { return }
         let now = Date()
         for file in files {
-            if let data = try? Data(contentsOf: file),
-               let entry = try? JSONDecoder().decode(Entry.self, from: data) {
-                if now.timeIntervalSince(entry.savedAt) >= ttl {
+            if let values = try? file.resourceValues(forKeys: [.contentModificationDateKey]),
+               let modDate = values.contentModificationDate {
+                if now.timeIntervalSince(modDate) >= ttl {
                     try? FileManager.default.removeItem(at: file)
                 }
-            } else if let attrs = try? FileManager.default.attributesOfItem(atPath: file.path),
-                      let modDate = attrs[.modificationDate] as? Date,
-                      now.timeIntervalSince(modDate) >= ttl {
-                try? FileManager.default.removeItem(at: file)
             }
         }
     }
@@ -234,11 +235,16 @@ actor MediaListDiskCache {
         let items: [MediaDto]
     }
 
-    private var cacheDir: URL? {
-        guard let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first else { return nil }
-        let dir = base.appendingPathComponent("sloosh.medialist", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        return dir
+    private let cacheDir: URL?
+
+    init() {
+        if let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first {
+            let dir = base.appendingPathComponent("sloosh.medialist", isDirectory: true)
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            self.cacheDir = dir
+        } else {
+            self.cacheDir = nil
+        }
     }
 
     private func fileURL(for key: String) -> URL? {
@@ -267,15 +273,11 @@ actor MediaListDiskCache {
         guard let dir = cacheDir, let files = try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.contentModificationDateKey]) else { return }
         let now = Date()
         for file in files {
-            if let data = try? Data(contentsOf: file),
-               let entry = try? JSONDecoder().decode(Entry.self, from: data) {
-                if now.timeIntervalSince(entry.savedAt) >= ttl {
+            if let values = try? file.resourceValues(forKeys: [.contentModificationDateKey]),
+               let modDate = values.contentModificationDate {
+                if now.timeIntervalSince(modDate) >= ttl {
                     try? FileManager.default.removeItem(at: file)
                 }
-            } else if let attrs = try? FileManager.default.attributesOfItem(atPath: file.path),
-                      let modDate = attrs[.modificationDate] as? Date,
-                      now.timeIntervalSince(modDate) >= ttl {
-                try? FileManager.default.removeItem(at: file)
             }
         }
     }
