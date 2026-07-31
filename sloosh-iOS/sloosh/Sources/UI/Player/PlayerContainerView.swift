@@ -51,10 +51,23 @@ struct PlayerContainerView: View {
 
                 // 7. Контролы
                 let isSeeking = multiSeekSeconds != nil || isInteracting
-                PlayerControlsView(vm: vm, onDismiss: onDismiss, isInteracting: $isInteracting, isPopoverOpen: $isPopoverOpen, showControls: showControls, isSeeking: isSeeking)
-                    .blur(radius: showControls ? 0 : 20)
-                    .opacity(showControls ? 1 : 0)
-                    .allowsHitTesting(showControls)
+                PlayerControlsView(
+                    vm: vm,
+                    onDismiss: onDismiss,
+                    onBackgroundTap: {
+                        withAnimation(hideAnimation) {
+                            showControls = false
+                        }
+                        hideTask?.cancel()
+                    },
+                    isInteracting: $isInteracting,
+                    isPopoverOpen: $isPopoverOpen,
+                    showControls: showControls,
+                    isSeeking: isSeeking
+                )
+                .blur(radius: showControls ? 0 : 20)
+                .opacity(showControls ? 1 : 0)
+                .allowsHitTesting(showControls)
             }
         }
         .onAppear { scheduleAutoHide() }
@@ -110,7 +123,7 @@ struct PlayerContainerView: View {
     private func handleTap(side: TapSide) {
         tapTask?.cancel()
         
-        // Если контролы скрыты — показываем их мгновенно по первому касанию без 250мс задержки!
+        // Если контролы скрыты — показываем их мгновенно по первому касанию
         if !showControls {
             consecutiveTaps = 0
             activeTapSide = nil
@@ -122,7 +135,7 @@ struct PlayerContainerView: View {
             return
         }
         
-        // Если контролы открыты — отслеживаем одиночный тап (для скрытия) или двойной тап (для перемотки)
+        // Если контролы открыты — обрабатываем двойной тап для перемотки
         if activeTapSide != side {
             consecutiveTaps = 0
             activeTapSide = side
@@ -133,18 +146,7 @@ struct PlayerContainerView: View {
         consecutiveTaps += 1
         let currentTaps = consecutiveTaps
         
-        if currentTaps == 1 {
-            tapTask = Task { @MainActor in
-                try? await Task.sleep(for: .milliseconds(250))
-                guard !Task.isCancelled else { return }
-                
-                self.consecutiveTaps = 0
-                self.activeTapSide = nil
-                withAnimation(hideAnimation) {
-                    self.showControls = false
-                }
-            }
-        } else {
+        if currentTaps >= 2 {
             let seconds = 10
             let direction = (side == .right) ? 1.0 : -1.0
             
