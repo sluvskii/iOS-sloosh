@@ -306,6 +306,7 @@ class HlsProxyServer {
         do {
             if isPlaylist {
                 let (data, response) = try await session.data(for: request)
+                guard !Task.isCancelled else { return }
                 guard let httpResponse = response as? HTTPURLResponse else {
                     AppDiagnostics.shared.log("HlsProxyServer fetchAndServe: invalid response for \(realUrl)")
                     self.send404(on: connection)
@@ -335,12 +336,15 @@ class HlsProxyServer {
                     }
                     
                     let rewrittenData = rewritten.data(using: .utf8) ?? Data()
+                    guard !Task.isCancelled else { return }
                     self.sendResponse(data: rewrittenData, statusCode: 200, contentType: "application/vnd.apple.mpegurl", contentRange: nil, connection: connection)
                 } else {
+                    guard !Task.isCancelled else { return }
                     self.sendResponse(data: data, statusCode: statusCode, contentType: "application/vnd.apple.mpegurl", contentRange: nil, connection: connection)
                 }
             } else {
                 let (data, response) = try await session.data(for: request)
+                guard !Task.isCancelled else { return }
                 guard let httpResponse = response as? HTTPURLResponse else {
                     self.send404(on: connection)
                     return
@@ -353,6 +357,7 @@ class HlsProxyServer {
                 self.sendResponse(data: data, statusCode: statusCode, contentType: contentType, contentRange: contentRange, connection: connection)
             }
         } catch {
+            if Task.isCancelled { return }
             AppDiagnostics.shared.log("HlsProxyServer fetch failed: \(error)")
             self.send404(on: connection)
         }

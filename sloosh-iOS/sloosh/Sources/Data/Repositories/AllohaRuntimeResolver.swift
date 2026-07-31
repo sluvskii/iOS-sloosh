@@ -562,7 +562,7 @@ final class SharedWebViewProvider {
                     forMainFrameOnly: false
                 )
             )
-            uc.add(delegate, name: "allohaResolver")
+            uc.add(WeakScriptMessageHandler(delegate: delegate), name: "allohaResolver")
         }
         webView?.navigationDelegate = delegate
     }
@@ -573,5 +573,18 @@ final class SharedWebViewProvider {
         }
         webView?.navigationDelegate = nil
         webView?.loadHTMLString("", baseURL: nil)
+    }
+}
+
+private final class WeakScriptMessageHandler: NSObject, WKScriptMessageHandler {
+    private weak var delegate: WKScriptMessageHandler?
+    
+    init(delegate: WKScriptMessageHandler) {
+        self.delegate = delegate
+        super.init()
+    }
+    
+    func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
+        delegate?.userContentController(userContentController, didReceive: message)
     }
 }
