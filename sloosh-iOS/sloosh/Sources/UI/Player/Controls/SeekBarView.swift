@@ -23,36 +23,70 @@ struct SeekBarView: View {
     }
 
     var body: some View {
-        HStack(spacing: 12) {
-            Text(formatTime(displayTime))
-                .font(.system(size: 13, weight: .medium).monospacedDigit())
-                .foregroundStyle(.white.opacity(0.65))
-                .blendMode(.plusLighter)
-
-            // Нативный слайдер — обеспечивает эффект стекла, как у MPVolumeView
-            SystemUISliderView(
-                value: Binding(
-                    get: { progress },
-                    set: { dragProgress = $0 }
-                ),
-                isDragging: $isDragging,
-                onSeek: { val in
-                    vm.seek(to: val * vm.currentDuration)
+        VStack(spacing: 8) {
+            if isDragging || isHStackScrubbing || vm.screenScrubTime != nil {
+                VStack(spacing: 6) {
+                    if let preview = vm.scrubPreviewImage {
+                        Image(uiImage: preview)
+                            .resizable()
+                            .aspectRatio(16/9, contentMode: .fill)
+                            .frame(width: 140, height: 79)
+                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    } else {
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(Color.white.opacity(0.12))
+                            .frame(width: 140, height: 79)
+                            .overlay {
+                                ProgressView()
+                                    .tint(.white.opacity(0.7))
+                            }
+                    }
+                    
+                    Text(formatTime(displayTime))
+                        .font(.system(size: 12, weight: .bold, design: .rounded).monospacedDigit())
+                        .foregroundStyle(.white)
                 }
-            )
-            .frame(height: 24)
-            .colorMultiply(.white.opacity(0.65))
-            .blendMode(.plusLighter)
+                .padding(6)
+                .glassEffect(.regular, in: .rect(cornerRadius: 16, style: .continuous))
+                .transition(.move(edge: .bottom).combined(with: .opacity).combined(with: .scale(scale: 0.9)))
+            }
 
-            Text("-" + formatTime(max(0, vm.currentDuration - displayTime)))
-                .font(.system(size: 13, weight: .medium).monospacedDigit())
-                .foregroundStyle(.white.opacity(0.65))
+            HStack(spacing: 12) {
+                Text(formatTime(displayTime))
+                    .font(.system(size: 13, weight: .medium).monospacedDigit())
+                    .foregroundStyle(.white.opacity(0.65))
+                    .blendMode(.plusLighter)
+
+                // Нативный слайдер — обеспечивает эффект стекла, как у MPVolumeView
+                SystemUISliderView(
+                    value: Binding(
+                        get: { progress },
+                        set: { dragProgress = $0 }
+                    ),
+                    isDragging: $isDragging,
+                    onSeek: { val in
+                        vm.seek(to: val * vm.currentDuration)
+                    }
+                )
+                .frame(height: 24)
+                .colorMultiply(.white.opacity(0.65))
                 .blendMode(.plusLighter)
+
+                Text("-" + formatTime(max(0, vm.currentDuration - displayTime)))
+                    .font(.system(size: 13, weight: .medium).monospacedDigit())
+                    .foregroundStyle(.white.opacity(0.65))
+                    .blendMode(.plusLighter)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            // Liquid Glass — нативный iOS 26, без fallback
+            .glassEffect(.regular, in: .capsule)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        // Liquid Glass — нативный iOS 26, без fallback
-        .glassEffect(.regular, in: .capsule)
+        .onChange(of: displayTime) { _, newTime in
+            if isDragging || isHStackScrubbing || vm.screenScrubTime != nil {
+                vm.generateScrubThumbnail(at: newTime)
+            }
+        }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Прогресс воспроизведения")
         .accessibilityValue("\(formatTime(displayTime)) из \(formatTime(vm.currentDuration))")
