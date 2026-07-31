@@ -4,6 +4,8 @@ import MediaPlayer
 struct PlayerGesturesModifier: ViewModifier {
     var onInteractionBegan: (() -> Void)?
     var onInteractionEnded: (() -> Void)?
+    var onHoldBegan: (() -> Void)?
+    var onHoldEnded: (() -> Void)?
     
     @State private var showIndicator = false
     @State private var indicatorValue: Double = 0
@@ -13,8 +15,10 @@ struct PlayerGesturesModifier: ViewModifier {
     @State private var initialBrightness: CGFloat = 0.0
     @State private var initialVolume: Float = 0.0
     @State private var isDragging: Bool = false
+    @State private var isHolding: Bool = false
     @State private var draggingSide: TapSide? = nil
     @State private var hideTask: Task<Void, Never>?
+    @State private var holdTask: Task<Void, Never>?
     
     enum TapSide { case left, right }
     
@@ -23,12 +27,16 @@ struct PlayerGesturesModifier: ViewModifier {
     func body(content: Content) -> some View {
         GeometryReader { geo in
             ZStack(alignment: .top) {
-                // Передаем весь контент (например, gestureLayer с тапами), 
-                // и параллельно перехватываем свайпы без блокировки тапов!
                 content
                     .simultaneousGesture(
                         DragGesture(minimumDistance: 15)
                             .onChanged { value in
+                                holdTask?.cancel()
+                                holdTask = nil
+                                if isHolding {
+                                    isHolding = false
+                                    onHoldEnded?()
+                                }
                                 hideTask?.cancel()
                                 hideTask = nil
                                 
@@ -44,6 +52,10 @@ struct PlayerGesturesModifier: ViewModifier {
                             }
                             .onEnded { _ in
                                 isDragging = false
+                                if isHolding {
+                                    isHolding = false
+                                    onHoldEnded?()
+                                }
                                 onInteractionEnded?()
                                 
                                 hideTask?.cancel()
@@ -56,6 +68,14 @@ struct PlayerGesturesModifier: ViewModifier {
                                         }
                                     }
                                 }
+                            }
+                    )
+                    .simultaneousGesture(
+                        LongPressGesture(minimumDuration: 0.4)
+                            .onEnded { _ in
+                                guard !isDragging else { return }
+                                isHolding = true
+                                onHoldBegan?()
                             }
                     )
                 
@@ -125,11 +145,15 @@ struct PlayerGesturesModifier: ViewModifier {
 extension View {
     func playerGestures(
         onInteractionBegan: (() -> Void)? = nil,
-        onInteractionEnded: (() -> Void)? = nil
+        onInteractionEnded: (() -> Void)? = nil,
+        onHoldBegan: (() -> Void)? = nil,
+        onHoldEnded: (() -> Void)? = nil
     ) -> some View {
         self.modifier(PlayerGesturesModifier(
             onInteractionBegan: onInteractionBegan,
-            onInteractionEnded: onInteractionEnded
+            onInteractionEnded: onInteractionEnded,
+            onHoldBegan: onHoldBegan,
+            onHoldEnded: onHoldEnded
         ))
     }
 }
