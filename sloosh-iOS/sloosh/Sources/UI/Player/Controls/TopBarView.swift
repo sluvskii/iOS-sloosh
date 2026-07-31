@@ -31,6 +31,7 @@ struct TopBarView: View {
                     .foregroundStyle(.white.opacity(0.65))
                     .blendMode(.plusLighter)
                     .frame(width: 44, height: 40)
+                    .contentShape(Rectangle())
             }
             .accessibilityLabel("Закрыть плеер")
 
@@ -44,6 +45,7 @@ struct TopBarView: View {
                         .foregroundStyle(.white.opacity(0.65))
                         .blendMode(.plusLighter)
                         .frame(width: 44, height: 40)
+                        .contentShape(Rectangle())
                 }
                 .accessibilityLabel(vm.isPiPActive ? "Выйти из режима картинка в картинке" : "Картинка в картинке")
 

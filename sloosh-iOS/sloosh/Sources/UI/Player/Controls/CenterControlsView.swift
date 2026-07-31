@@ -24,6 +24,7 @@ struct CenterControlsView: View {
                             .foregroundStyle(.white.opacity(0.65))
                             .blendMode(.plusLighter)
                             .frame(width: 56, height: 56)
+                            .contentShape(Circle())
                             .scaleEffect(seekBackwardFlash ? 0.82 : 1.0)
                             .animation(.spring(response: 0.2, dampingFraction: 0.6), value: seekBackwardFlash)
                             .opacity(vm.hasPreviousEpisode ? 1.0 : 0.4)
@@ -55,6 +56,7 @@ struct CenterControlsView: View {
                         }
                     }
                     .frame(width: 72, height: 72)
+                    .contentShape(Circle())
                 }
                 .accessibilityLabel(vm.isPlaying ? "Пауза" : "Воспроизвести")
                 .buttonStyle(.glassPress)
@@ -73,6 +75,7 @@ struct CenterControlsView: View {
                             .foregroundStyle(.white.opacity(0.65))
                             .blendMode(.plusLighter)
                             .frame(width: 56, height: 56)
+                            .contentShape(Circle())
                             .scaleEffect(seekForwardFlash ? 0.82 : 1.0)
                             .animation(.spring(response: 0.2, dampingFraction: 0.6), value: seekForwardFlash)
                             .opacity(vm.hasNextEpisode ? 1.0 : 0.4)
