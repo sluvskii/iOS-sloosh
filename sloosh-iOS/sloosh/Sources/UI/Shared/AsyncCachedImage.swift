@@ -118,6 +118,7 @@ public struct AsyncCachedImage<Placeholder: View, Content: View, Fallback: View>
             return
         }
         
+        let request = URLRequest(url: url, cachePolicy: cachePolicy)
         if let cachedResponse = URLCache.shared.cachedResponse(for: request) {
             let uiImg = await Task.detached(priority: .userInitiated) {
                 UIImage(data: cachedResponse.data)
