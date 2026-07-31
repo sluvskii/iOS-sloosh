@@ -24,6 +24,8 @@ struct PlayerGesturesModifier: ViewModifier {
     
     private let volumeManager = VolumeManager.shared
     
+    @GestureState private var isDetectingLongPress = false
+
     func body(content: Content) -> some View {
         GeometryReader { geo in
             ZStack(alignment: .top) {
@@ -71,13 +73,20 @@ struct PlayerGesturesModifier: ViewModifier {
                             }
                     )
                     .simultaneousGesture(
-                        LongPressGesture(minimumDuration: 0.4)
-                            .onEnded { _ in
-                                guard !isDragging else { return }
-                                isHolding = true
-                                onHoldBegan?()
+                        LongPressGesture(minimumDuration: 0.35)
+                            .updating($isDetectingLongPress) { currentState, gestureState, _ in
+                                gestureState = currentState
                             }
                     )
+                    .onChange(of: isDetectingLongPress) { _, isDetecting in
+                        if isDetecting && !isDragging {
+                            isHolding = true
+                            onHoldBegan?()
+                        } else if !isDetecting && isHolding {
+                            isHolding = false
+                            onHoldEnded?()
+                        }
+                    }
                 
                 // Верхний индикатор (подобен системному), только для яркости (левая сторона)
                 if showIndicator && draggingSide == .left {
