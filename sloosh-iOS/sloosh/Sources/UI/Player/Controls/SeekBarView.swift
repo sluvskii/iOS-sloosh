@@ -23,27 +23,34 @@ struct SeekBarView: View {
         return isDragging ? (dragProgress * vm.currentDuration) : vm.currentTime
     }
 
+    private var previewRatio: CGFloat {
+        max(0.5, min(2.4, vm.scrubPreviewAspectRatio))
+    }
+
+    private var previewCardWidth: CGFloat { 132 }
+
+    private var previewCardHeight: CGFloat {
+        min(88, max(52, previewCardWidth / previewRatio))
+    }
+
+    private var previewCardOffset: CGFloat {
+        let rawThumbX = CGFloat(progress) * sliderWidth
+        let centerSliderX = sliderWidth / 2
+        let rawOffset = rawThumbX - centerSliderX
+        let maxAllowedOffset = max(0, (sliderWidth - previewCardWidth) / 2)
+        return max(-maxAllowedOffset, min(maxAllowedOffset, rawOffset))
+    }
+
     var body: some View {
         VStack(spacing: 12) {
             // Плавающая карточка превью
             if isDragging || isHStackScrubbing || vm.screenScrubTime != nil {
-                let ratio = max(0.5, min(2.4, vm.scrubPreviewAspectRatio))
-                let cardWidth: CGFloat = 132
-                let cardHeight: CGFloat = min(88, max(52, cardWidth / ratio))
-                
-                // Вычисляем офсет карточки ровно над пальцем пользователя
-                let rawThumbX = CGFloat(progress) * sliderWidth
-                let centerSliderX = sliderWidth / 2
-                let rawOffset = rawThumbX - centerSliderX
-                let maxAllowedOffset = max(0, (sliderWidth - cardWidth) / 2)
-                let cardOffset = max(-maxAllowedOffset, min(maxAllowedOffset, rawOffset))
-
                 ZStack {
                     if let preview = vm.scrubPreviewImage {
                         Image(uiImage: preview)
                             .resizable()
-                            .aspectRatio(ratio, contentMode: .fit)
-                            .frame(width: cardWidth, height: cardHeight)
+                            .aspectRatio(previewRatio, contentMode: .fit)
+                            .frame(width: previewCardWidth, height: previewCardHeight)
                             .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                     } else {
                         ZStack {
@@ -66,13 +73,13 @@ struct SeekBarView: View {
                                     .foregroundStyle(.white.opacity(0.35))
                             }
                         }
-                        .frame(width: cardWidth, height: cardHeight)
+                        .frame(width: previewCardWidth, height: previewCardHeight)
                         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                     }
                 }
                 .padding(4)
                 .glassEffect(.regular, in: .rect(cornerRadius: 14, style: .continuous))
-                .offset(x: cardOffset)
+                .offset(x: previewCardOffset)
                 .transition(.move(edge: .bottom).combined(with: .opacity).combined(with: .scale(scale: 0.85)))
                 .animation(.spring(response: 0.15, dampingFraction: 0.85), value: progress)
             }
