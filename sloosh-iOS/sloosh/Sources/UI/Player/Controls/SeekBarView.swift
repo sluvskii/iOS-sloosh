@@ -43,50 +43,11 @@ struct SeekBarView: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            if vm.isLocalPlayback && (isDragging || isHStackScrubbing || vm.screenScrubTime != nil) {
-                previewCardOverlay
-            }
             sliderBar
-        }
-        .onChange(of: displayTime) { _, newTime in
-            if vm.isLocalPlayback && (isDragging || isHStackScrubbing || vm.screenScrubTime != nil) {
-                vm.generateScrubThumbnail(at: newTime)
-            }
         }
     }
 
     // MARK: - Subviews for compiler optimization
-
-    private var previewCardOverlay: some View {
-        ZStack {
-            if let preview = vm.scrubPreviewImage {
-                Image(uiImage: preview)
-                    .resizable()
-                    .aspectRatio(previewRatio, contentMode: .fit)
-                    .frame(width: previewCardWidth, height: previewCardHeight)
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-            } else {
-                fallbackPoster
-            }
-        }
-        .padding(4)
-        .glassEffect(.regular, in: .rect(cornerRadius: 14, style: .continuous))
-        .offset(x: previewCardOffset)
-        .transition(.move(edge: .bottom).combined(with: .opacity).combined(with: .scale(scale: 0.85)))
-        .animation(.spring(response: 0.15, dampingFraction: 0.85), value: progress)
-    }
-
-    private var fallbackPoster: some View {
-        ZStack {
-            Rectangle()
-                .fill(Color.black.opacity(0.65))
-            
-            ProgressView()
-                .tint(.white.opacity(0.8))
-        }
-        .frame(width: previewCardWidth, height: previewCardHeight)
-        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-    }
 
     private var sliderBar: some View {
         HStack(spacing: 12) {
