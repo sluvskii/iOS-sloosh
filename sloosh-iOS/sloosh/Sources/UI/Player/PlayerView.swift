@@ -572,10 +572,13 @@ class PlayerViewModel: ObservableObject {
 
     func togglePlayPause() {
         guard let player else { return }
-        if player.timeControlStatus == .playing {
+        if isPlaying || player.rate > 0 || player.timeControlStatus == .playing {
             player.pause()
+            isPlaying = false
+            isBuffering = false
         } else {
             player.play()
+            isPlaying = true
         }
         updateNowPlaying()
     }
