@@ -33,12 +33,7 @@ struct PlayerGesturesModifier: ViewModifier {
                     .simultaneousGesture(
                         DragGesture(minimumDistance: 15)
                             .onChanged { value in
-                                holdTask?.cancel()
-                                holdTask = nil
-                                if isHolding {
-                                    isHolding = false
-                                    onHoldEnded?()
-                                }
+                                guard !isHolding else { return }
                                 hideTask?.cancel()
                                 hideTask = nil
                                 
@@ -53,11 +48,8 @@ struct PlayerGesturesModifier: ViewModifier {
                                 handleDrag(value: value, height: geo.size.height)
                             }
                             .onEnded { _ in
+                                guard !isHolding else { return }
                                 isDragging = false
-                                if isHolding {
-                                    isHolding = false
-                                    onHoldEnded?()
-                                }
                                 onInteractionEnded?()
                                 
                                 hideTask?.cancel()
@@ -73,7 +65,7 @@ struct PlayerGesturesModifier: ViewModifier {
                             }
                     )
                     .simultaneousGesture(
-                        LongPressGesture(minimumDuration: 0.35)
+                        LongPressGesture(minimumDuration: 0.3)
                             .updating($isDetectingLongPress) { currentState, gestureState, _ in
                                 gestureState = currentState
                             }
