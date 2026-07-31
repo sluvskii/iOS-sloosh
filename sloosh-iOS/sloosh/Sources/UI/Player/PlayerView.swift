@@ -183,8 +183,8 @@ class PlayerViewModel: ObservableObject {
         let gen = AVAssetImageGenerator(asset: asset)
         gen.appliesPreferredTrackTransform = true
         gen.maximumSize = CGSize(width: 320, height: 180)
-        gen.requestedTimeToleranceBefore = CMTime(seconds: 15, preferredTimescale: 600)
-        gen.requestedTimeToleranceAfter = CMTime(seconds: 15, preferredTimescale: 600)
+        gen.requestedTimeToleranceBefore = CMTime(seconds: 5, preferredTimescale: 600)
+        gen.requestedTimeToleranceAfter = CMTime(seconds: 5, preferredTimescale: 600)
         self.imageGenerator = gen
         self.thumbnailCache.removeAll()
         
@@ -209,13 +209,13 @@ class PlayerViewModel: ObservableObject {
             return
         }
         
-        guard abs(seconds - lastRequestedThumbnailTime) > 0.2 else { return }
+        guard abs(seconds - lastRequestedThumbnailTime) > 0.15 else { return }
         lastRequestedThumbnailTime = seconds
         
         let time = CMTime(seconds: seconds, preferredTimescale: 600)
         
-        // 2. Пробуем взять мгновенный декодированный кадр из AVPlayerItemVideoOutput (текущая позиция)
-        if let output = self.videoOutput, output.hasNewPixelBuffer(forItemTime: time) {
+        // 2. Пробуем взять мгновенный декодированный кадр из AVPlayerItemVideoOutput (ТОЛЬКО около текущей точки воспроизведения)
+        if abs(seconds - currentTime) < 5.0, let output = self.videoOutput, output.hasNewPixelBuffer(forItemTime: time) {
             if let pixelBuffer = output.copyPixelBuffer(forItemTime: time, itemTimeForDisplay: nil) {
                 let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
                 let context = CIContext()
@@ -230,12 +230,18 @@ class PlayerViewModel: ObservableObject {
             }
         }
         
-        // 3. Асинхронно извлекаем кадр через AVAssetImageGenerator с допущением I-Frame
+        // 3. Асинхронно извлекаем точный кадр через AVAssetImageGenerator
         guard let gen = self.imageGenerator else { return }
         let timeValue = NSValue(time: time)
         
         gen.generateCGImagesAsynchronously(forTimes: [timeValue]) { [weak self] requestedTime, cgImage, actualTime, result, error in
             guard let self, let cgImage, result == .succeeded else { return }
+            
+            // Защита от фальшивых первых секунд: проверяем, что вытащенный кадр реально соответствует запрашиваемому времени (+- 30 сек)
+            let reqSec = requestedTime.seconds
+            let actSec = actualTime.seconds
+            guard reqSec.isFinite, actSec.isFinite, abs(reqSec - actSec) < 30.0 else { return }
+            
             let uiImage = UIImage(cgImage: cgImage)
             let ratio = CGFloat(cgImage.width) / max(1.0, CGFloat(cgImage.height))
             
