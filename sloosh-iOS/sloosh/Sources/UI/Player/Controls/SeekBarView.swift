@@ -10,6 +10,7 @@ struct SeekBarView: View {
     @State private var isHStackScrubbing = false
     @State private var screenScrubInitialTime: Double = 0
     @State private var scrubStartLocationX: CGFloat = 0
+    @State private var sliderWidth: CGFloat = 260
 
     private var progress: Double {
         guard vm.currentDuration > 0 else { return 0 }
@@ -23,74 +24,98 @@ struct SeekBarView: View {
     }
 
     var body: some View {
-        HStack(spacing: 12) {
-            Text(formatTime(displayTime))
-                .font(.system(size: 13, weight: .medium).monospacedDigit())
-                .foregroundStyle(.white.opacity(0.65))
-                .blendMode(.plusLighter)
+        VStack(spacing: 12) {
+            // Плавающая карточка превью
+            if isDragging || isHStackScrubbing || vm.screenScrubTime != nil {
+                let ratio = max(0.5, min(2.4, vm.scrubPreviewAspectRatio))
+                let cardWidth: CGFloat = 132
+                let cardHeight: CGFloat = min(88, max(52, cardWidth / ratio))
+                
+                // Вычисляем офсет карточки ровно над пальцем пользователя
+                let rawThumbX = CGFloat(progress) * sliderWidth
+                let centerSliderX = sliderWidth / 2
+                let rawOffset = rawThumbX - centerSliderX
+                let maxAllowedOffset = max(0, (sliderWidth - cardWidth) / 2)
+                let cardOffset = max(-maxAllowedOffset, min(maxAllowedOffset, rawOffset))
 
-            // Нативный слайдер — обеспечивает эффект стекла, как у MPVolumeView
-            SystemUISliderView(
-                value: Binding(
-                    get: { progress },
-                    set: { dragProgress = $0 }
-                ),
-                isDragging: $isDragging,
-                onSeek: { val in
-                    vm.seek(to: val * vm.currentDuration)
-                }
-            )
-            .frame(height: 24)
-            .colorMultiply(.white.opacity(0.65))
-            .blendMode(.plusLighter)
-            .overlay(alignment: .top) {
-                if isDragging || isHStackScrubbing || vm.screenScrubTime != nil {
-                    GeometryReader { sliderGeo in
-                        let sliderWidth = sliderGeo.size.width
-                        let thumbRadius: CGFloat = 12
-                        let thumbX = thumbRadius + (CGFloat(progress) * max(1, sliderWidth - (thumbRadius * 2)))
-                        let cardOffset = thumbX - (sliderWidth / 2)
-                        
-                        let ratio = max(0.5, min(2.4, vm.scrubPreviewAspectRatio))
-                        let cardWidth: CGFloat = 136
-                        let cardHeight: CGFloat = min(90, max(54, cardWidth / ratio))
-                        
+                ZStack {
+                    if let preview = vm.scrubPreviewImage {
+                        Image(uiImage: preview)
+                            .resizable()
+                            .aspectRatio(ratio, contentMode: .fit)
+                            .frame(width: cardWidth, height: cardHeight)
+                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    } else {
                         ZStack {
-                            if let preview = vm.scrubPreviewImage {
-                                Image(uiImage: preview)
-                                    .resizable()
-                                    .aspectRatio(ratio, contentMode: .fit)
-                                    .frame(width: cardWidth, height: cardHeight)
-                                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                            Rectangle()
+                                .fill(Color.black.opacity(0.6))
+                            
+                            if let logoUrl = vm.displayLogoUrl {
+                                AsyncCachedImage(url: logoUrl) { img in
+                                    img.resizable()
+                                        .aspectRatio(contentMode: .fit)
+                                        .padding(12)
+                                } placeholder: {
+                                    Image(systemName: "film")
+                                        .font(.system(size: 22))
+                                        .foregroundStyle(.white.opacity(0.35))
+                                }
                             } else {
-                                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                    .fill(Color.white.opacity(0.18))
-                                    .frame(width: cardWidth, height: 73)
-                                    .overlay {
-                                        ProgressView()
-                                            .tint(.white.opacity(0.85))
-                                    }
+                                Image(systemName: "film")
+                                    .font(.system(size: 22))
+                                    .foregroundStyle(.white.opacity(0.35))
                             }
                         }
-                        .padding(4)
-                        .glassEffect(.regular, in: .rect(cornerRadius: 14, style: .continuous))
-                        .offset(x: cardOffset, y: -cardHeight - 20)
-                        .animation(.spring(response: 0.15, dampingFraction: 0.85), value: progress)
+                        .frame(width: cardWidth, height: cardHeight)
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                     }
-                    .allowsHitTesting(false)
-                    .transition(.scale(scale: 0.85).combined(with: .opacity))
                 }
+                .padding(4)
+                .glassEffect(.regular, in: .rect(cornerRadius: 14, style: .continuous))
+                .offset(x: cardOffset)
+                .transition(.move(edge: .bottom).combined(with: .opacity).combined(with: .scale(scale: 0.85)))
+                .animation(.spring(response: 0.15, dampingFraction: 0.85), value: progress)
             }
 
-            Text("-" + formatTime(max(0, vm.currentDuration - displayTime)))
-                .font(.system(size: 13, weight: .medium).monospacedDigit())
-                .foregroundStyle(.white.opacity(0.65))
+            // Капсула слайдера
+            HStack(spacing: 12) {
+                Text(formatTime(displayTime))
+                    .font(.system(size: 13, weight: .medium).monospacedDigit())
+                    .foregroundStyle(.white.opacity(0.65))
+                    .blendMode(.plusLighter)
+
+                // Нативный слайдер
+                SystemUISliderView(
+                    value: Binding(
+                        get: { progress },
+                        set: { dragProgress = $0 }
+                    ),
+                    isDragging: $isDragging,
+                    onSeek: { val in
+                        vm.seek(to: val * vm.currentDuration)
+                    }
+                )
+                .frame(height: 24)
+                .colorMultiply(.white.opacity(0.65))
                 .blendMode(.plusLighter)
+                .background(
+                    GeometryReader { geo in
+                        Color.clear
+                            .onAppear { sliderWidth = geo.size.width }
+                            .onChange(of: geo.size.width) { _, w in sliderWidth = w }
+                    }
+                )
+
+                Text("-" + formatTime(max(0, vm.currentDuration - displayTime)))
+                    .font(.system(size: 13, weight: .medium).monospacedDigit())
+                    .foregroundStyle(.white.opacity(0.65))
+                    .blendMode(.plusLighter)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 12)
+            // Liquid Glass — нативный iOS 26, без fallback
+            .glassEffect(.regular, in: .capsule)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        // Liquid Glass — нативный iOS 26, без fallback
-        .glassEffect(.regular, in: .capsule)
         .onChange(of: displayTime) { _, newTime in
             if isDragging || isHStackScrubbing || vm.screenScrubTime != nil {
                 vm.generateScrubThumbnail(at: newTime)
