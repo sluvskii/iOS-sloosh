@@ -4,8 +4,6 @@ import MediaPlayer
 struct PlayerGesturesModifier: ViewModifier {
     var onInteractionBegan: (() -> Void)?
     var onInteractionEnded: (() -> Void)?
-    var onHoldBegan: (() -> Void)?
-    var onHoldEnded: (() -> Void)?
     
     @State private var showIndicator = false
     @State private var indicatorValue: Double = 0
@@ -15,16 +13,12 @@ struct PlayerGesturesModifier: ViewModifier {
     @State private var initialBrightness: CGFloat = 0.0
     @State private var initialVolume: Float = 0.0
     @State private var isDragging: Bool = false
-    @State private var isHolding: Bool = false
     @State private var draggingSide: TapSide? = nil
     @State private var hideTask: Task<Void, Never>?
-    @State private var holdTask: Task<Void, Never>?
     
     enum TapSide { case left, right }
     
     private let volumeManager = VolumeManager.shared
-    
-    @GestureState private var isDetectingLongPress = false
 
     func body(content: Content) -> some View {
         GeometryReader { geo in
@@ -33,7 +27,6 @@ struct PlayerGesturesModifier: ViewModifier {
                     .simultaneousGesture(
                         DragGesture(minimumDistance: 15)
                             .onChanged { value in
-                                guard !isHolding else { return }
                                 hideTask?.cancel()
                                 hideTask = nil
                                 
@@ -48,7 +41,6 @@ struct PlayerGesturesModifier: ViewModifier {
                                 handleDrag(value: value, height: geo.size.height)
                             }
                             .onEnded { _ in
-                                guard !isHolding else { return }
                                 isDragging = false
                                 onInteractionEnded?()
                                 
@@ -64,21 +56,6 @@ struct PlayerGesturesModifier: ViewModifier {
                                 }
                             }
                     )
-                    .simultaneousGesture(
-                        LongPressGesture(minimumDuration: 0.3)
-                            .updating($isDetectingLongPress) { currentState, gestureState, _ in
-                                gestureState = currentState
-                            }
-                    )
-                    .onChange(of: isDetectingLongPress) { _, isDetecting in
-                        if isDetecting && !isDragging {
-                            isHolding = true
-                            onHoldBegan?()
-                        } else if !isDetecting && isHolding {
-                            isHolding = false
-                            onHoldEnded?()
-                        }
-                    }
                 
                 // Верхний индикатор (подобен системному), только для яркости (левая сторона)
                 if showIndicator && draggingSide == .left {
@@ -118,16 +95,13 @@ struct PlayerGesturesModifier: ViewModifier {
         let isRightSide = draggingSide == .right
         
         if isRightSide {
-            // Громкость (система сама показывает свой ползунок сверху, так как мы меняем MPVolumeView slider программно)
             let newVolume = max(0.0, min(1.0, Float(initialVolume) + Float(delta)))
             volumeManager.setVolume(newVolume)
             
-            // Для громкости наш кастомный UI больше не показываем
             if showIndicator {
                 withAnimation { showIndicator = false }
             }
         } else {
-            // Яркость
             let newBrightness = max(0.0, min(1.0, initialBrightness + delta))
             (UIApplication.shared.connectedScenes.first as? UIWindowScene)?.screen.brightness = newBrightness
             
@@ -146,15 +120,11 @@ struct PlayerGesturesModifier: ViewModifier {
 extension View {
     func playerGestures(
         onInteractionBegan: (() -> Void)? = nil,
-        onInteractionEnded: (() -> Void)? = nil,
-        onHoldBegan: (() -> Void)? = nil,
-        onHoldEnded: (() -> Void)? = nil
+        onInteractionEnded: (() -> Void)? = nil
     ) -> some View {
         self.modifier(PlayerGesturesModifier(
             onInteractionBegan: onInteractionBegan,
-            onInteractionEnded: onInteractionEnded,
-            onHoldBegan: onHoldBegan,
-            onHoldEnded: onHoldEnded
+            onInteractionEnded: onInteractionEnded
         ))
     }
 }
