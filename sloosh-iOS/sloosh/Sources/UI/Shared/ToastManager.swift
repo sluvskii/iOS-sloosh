@@ -41,6 +41,8 @@ class ToastManager: ObservableObject {
                 }
             }
         }
+    }
+    
     @MainActor
     func dismiss() {
         dismissTask?.cancel()
