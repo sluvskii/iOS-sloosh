@@ -46,6 +46,29 @@ struct PlayerContainerView: View {
                 MultiSeekFeedbackView(side: activeTapSide, seconds: multiSeekSeconds)
                     .allowsHitTesting(false)
 
+                // 6.5. Hold-to-2x Speed indicator (Telegram style)
+                if vm.isHoldingSpeedUp {
+                    VStack {
+                        HStack(spacing: 8) {
+                            Image(systemName: "forward.fill")
+                                .font(.system(size: 14, weight: .bold))
+                            Text("2x ускорение")
+                                .font(.system(size: 14, weight: .bold, design: .rounded))
+                        }
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 8)
+                        .glassEffect(.regular, in: .capsule)
+                        .padding(.top, 28)
+                        
+                        Spacer()
+                    }
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .animation(.spring(response: 0.3, dampingFraction: 0.7), value: vm.isHoldingSpeedUp)
+                    .allowsHitTesting(false)
+                    .zIndex(8)
+                }
+
                 // 7. Контролы
                 let isSeeking = multiSeekSeconds != nil || isInteracting
                 PlayerControlsView(vm: vm, onDismiss: onDismiss, isInteracting: $isInteracting, isPopoverOpen: $isPopoverOpen, showControls: showControls, isSeeking: isSeeking)
@@ -107,6 +130,12 @@ struct PlayerContainerView: View {
         .playerGestures(
             onInteractionBegan: {
                 withAnimation(hideAnimation) { showControls = false }
+            },
+            onHoldBegan: {
+                vm.startHoldingSpeedUp()
+            },
+            onHoldEnded: {
+                vm.stopHoldingSpeedUp()
             }
         )
     }
