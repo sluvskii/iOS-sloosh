@@ -72,8 +72,12 @@ struct PlayerContainerView: View {
         }
         .onAppear { scheduleAutoHide() }
         .onDisappear { hideTask?.cancel(); tapTask?.cancel() }
-        .onChange(of: vm.isPlaying) { _, _ in
-            if vm.isPlaying { scheduleAutoHide() }
+        .onChange(of: vm.isPlaying) { _, playing in
+            if playing {
+                scheduleAutoHide()
+            } else {
+                hideTask?.cancel()
+            }
         }
         .onChange(of: isInteracting) { _, interacting in
             if interacting {
@@ -239,9 +243,10 @@ struct PlayerContainerView: View {
 
     private func scheduleAutoHide() {
         hideTask?.cancel()
+        guard vm.isPlaying else { return }
         hideTask = Task { @MainActor in
             try? await Task.sleep(for: .seconds(2.5))
-            guard !Task.isCancelled, vm.isPlaying, !isInteracting else { return }
+            guard !Task.isCancelled, vm.isPlaying, !isInteracting, !isPopoverOpen else { return }
             withAnimation(hideAnimation) { showControls = false }
         }
     }
