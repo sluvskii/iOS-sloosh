@@ -527,6 +527,14 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     nonisolated func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
         guard let desc = downloadTask.taskDescription, let comps = extractTaskInfo(desc: desc) else { return }
         
+        var bgTaskId: UIBackgroundTaskIdentifier = .invalid
+        bgTaskId = UIApplication.shared.beginBackgroundTask(withName: "ProcessSegment_\(comps.itemId)_\(comps.index)") {
+            if bgTaskId != .invalid {
+                UIApplication.shared.endBackgroundTask(bgTaskId)
+                bgTaskId = .invalid
+            }
+        }
+        
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
         let taskDir = docs.appendingPathComponent(comps.localDirectory)
         let finalUrl = taskDir.appendingPathComponent("segment_\(comps.index).ts")
@@ -535,21 +543,13 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         try? FileManager.default.moveItem(at: location, to: finalUrl)
         
         Task { @MainActor in
-            self.downloadedSegmentsCache[comps.itemId]?.insert(comps.index)
-            
-            var bgTaskId: UIBackgroundTaskIdentifier = .invalid
-            bgTaskId = UIApplication.shared.beginBackgroundTask(withName: "ProcessDownloadSegment_\(comps.itemId)") {
-                if bgTaskId != .invalid {
-                    UIApplication.shared.endBackgroundTask(bgTaskId)
-                    bgTaskId = .invalid
-                }
-            }
             defer {
                 if bgTaskId != .invalid {
                     UIApplication.shared.endBackgroundTask(bgTaskId)
                     bgTaskId = .invalid
                 }
             }
+            self.downloadedSegmentsCache[comps.itemId]?.insert(comps.index)
             await self.enqueueNextBatch(for: comps.itemId)
         }
     }
@@ -557,14 +557,40 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     nonisolated func urlSession(_ session: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
         guard let desc = task.taskDescription, let comps = extractTaskInfo(desc: desc) else { return }
         
-        if let error = error as NSError? {
-            if error.domain == NSURLErrorDomain && error.code == NSURLErrorCancelled {
-                return
+        if let error = error as NSError?, error.domain == NSURLErrorDomain && error.code == NSURLErrorCancelled {
+            return
+        }
+        
+        var bgTaskId: UIBackgroundTaskIdentifier = .invalid
+        bgTaskId = UIApplication.shared.beginBackgroundTask(withName: "RetrySegment_\(comps.itemId)_\(comps.index)") {
+            if bgTaskId != .invalid {
+                UIApplication.shared.endBackgroundTask(bgTaskId)
+                bgTaskId = .invalid
+            }
+        }
+        
+        Task { @MainActor in
+            defer {
+                if bgTaskId != .invalid {
+                    UIApplication.shared.endBackgroundTask(bgTaskId)
+                    bgTaskId = .invalid
+                }
             }
             
-            if comps.retries < 3 {
-                Task { @MainActor in
-                    guard let manifest = self.activeManifests[comps.itemId] else { return }
+            // Ленивое восстановление манифеста при пробуждении в фоне
+            if self.activeManifests[comps.itemId] == nil {
+                let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+                let manifestUrl = docs.appendingPathComponent(comps.localDirectory).appendingPathComponent("manifest.json")
+                if let data = try? Data(contentsOf: manifestUrl),
+                   let manifest = try? JSONDecoder().decode(DownloadManifest.self, from: data) {
+                    self.activeManifests[comps.itemId] = manifest
+                }
+            }
+            
+            guard let manifest = self.activeManifests[comps.itemId] else { return }
+            
+            if error != nil {
+                if comps.retries < 3 {
                     let url = manifest.segmentUrls[comps.index]
                     var request = URLRequest(url: url)
                     for (k, v) in manifest.headers { request.setValue(v, forHTTPHeaderField: k) }
@@ -572,9 +598,7 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                     let newTask = self.session.downloadTask(with: request)
                     newTask.taskDescription = "\(comps.itemId)|\(comps.index)|\(comps.retries + 1)|\(manifest.localDirectory)"
                     newTask.resume()
-                }
-            } else {
-                Task { @MainActor in
+                } else {
                     await self.finishWithError(id: comps.itemId, message: "Ошибка сети после 3 попыток")
                 }
             }
