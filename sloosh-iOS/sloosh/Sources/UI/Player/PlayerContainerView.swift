@@ -69,6 +69,23 @@ struct PlayerContainerView: View {
                     .zIndex(8)
                 }
 
+                // 6.6. Zoom feedback indicator
+                if let notice = zoomNotice {
+                    VStack {
+                        Text(notice)
+                            .font(.system(size: 14, weight: .semibold, design: .rounded))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .glassEffect(.regular, in: .capsule)
+                            .padding(.top, 28)
+                        Spacer()
+                    }
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .allowsHitTesting(false)
+                    .zIndex(9)
+                }
+
                 // 7. Контролы
                 let isSeeking = multiSeekSeconds != nil || isInteracting
                 PlayerControlsView(vm: vm, onDismiss: onDismiss, isInteracting: $isInteracting, isPopoverOpen: $isPopoverOpen, showControls: showControls, isSeeking: isSeeking)
@@ -101,17 +118,33 @@ struct PlayerContainerView: View {
                 .onEnded { val in
                     if !isZoomedToFill && val > 1.25 {
                         withAnimation(showAnimation) { isZoomedToFill = true }
+                        showZoomNotice("Заполнение экрана")
                         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     } else if isZoomedToFill && val < 0.85 {
                         withAnimation(showAnimation) { isZoomedToFill = false }
+                        showZoomNotice("Вписать в экран")
                         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     }
                 }
         )
     }
-    
-    private let showAnimation: Animation = .easeInOut(duration: 0.15)
-    private let hideAnimation: Animation = .easeOut(duration: 0.25)
+
+    @State private var zoomNotice: String? = nil
+    @State private var zoomTask: Task<Void, Never>? = nil
+
+    private func showZoomNotice(_ text: String) {
+        zoomTask?.cancel()
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+            zoomNotice = text
+        }
+        zoomTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(1.2))
+            guard !Task.isCancelled else { return }
+            withAnimation(.easeOut(duration: 0.3)) {
+                zoomNotice = nil
+            }
+        }
+    }
 
     // MARK: - Gesture layer
 
