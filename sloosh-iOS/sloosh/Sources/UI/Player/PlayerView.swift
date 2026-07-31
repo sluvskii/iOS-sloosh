@@ -173,23 +173,6 @@ class PlayerViewModel: ObservableObject {
     @Published var availableQualities: [PlaybackQualityOption] = []
     @Published var currentQualityKey: String?
     @Published var playbackRate: Float = 1.0
-    @Published var isHoldingSpeedUp: Bool = false
-    private var preHoldPlaybackRate: Float = 1.0
-
-    func startHoldingSpeedUp() {
-        guard isPlaying, !isHoldingSpeedUp else { return }
-        preHoldPlaybackRate = playbackRate
-        isHoldingSpeedUp = true
-        player?.rate = 2.0
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-    }
-
-    func stopHoldingSpeedUp() {
-        guard isHoldingSpeedUp else { return }
-        isHoldingSpeedUp = false
-        player?.rate = preHoldPlaybackRate
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-    }
 
     // MARK: - Voiceovers
     @Published var availableVoiceovers: [String] = []
