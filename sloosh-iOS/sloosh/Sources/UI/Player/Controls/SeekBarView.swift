@@ -23,46 +23,39 @@ struct SeekBarView: View {
     }
 
     var body: some View {
-        ZStack(alignment: .bottom) {
+        VStack(spacing: 12) {
+            // Плавающая карточка превью (СТРОГО НАД полосой!)
             if isDragging || isHStackScrubbing || vm.screenScrubTime != nil {
-                GeometryReader { proxy in
-                    let sliderWidth = proxy.size.width
-                    let padding: CGFloat = 50
-                    let trackWidth = max(10, sliderWidth - (padding * 2))
-                    let rawThumbX = padding + (CGFloat(progress) * trackWidth)
-                    
-                    let ratio = max(0.5, min(2.4, vm.scrubPreviewAspectRatio))
-                    let cardWidth: CGFloat = 130
-                    let cardHeight: CGFloat = min(90, max(52, cardWidth / ratio))
-                    
-                    let clampedX = max(cardWidth / 2 + 8, min(sliderWidth - cardWidth / 2 - 8, rawThumbX))
-                    
-                    ZStack {
-                        if let preview = vm.scrubPreviewImage {
-                            Image(uiImage: preview)
-                                .resizable()
-                                .aspectRatio(ratio, contentMode: .fit)
-                                .frame(width: cardWidth, height: cardHeight)
-                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                        } else {
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .fill(Color.white.opacity(0.15))
-                                .frame(width: cardWidth, height: 73)
-                                .overlay {
-                                    ProgressView()
-                                        .tint(.white.opacity(0.8))
-                                }
-                        }
+                let ratio = max(0.5, min(2.4, vm.scrubPreviewAspectRatio))
+                let cardWidth: CGFloat = 136
+                let cardHeight: CGFloat = min(90, max(54, cardWidth / ratio))
+                let shiftX = (CGFloat(progress) - 0.5) * 180
+
+                ZStack {
+                    if let preview = vm.scrubPreviewImage {
+                        Image(uiImage: preview)
+                            .resizable()
+                            .aspectRatio(ratio, contentMode: .fit)
+                            .frame(width: cardWidth, height: cardHeight)
+                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    } else {
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(Color.white.opacity(0.15))
+                            .frame(width: cardWidth, height: 73)
+                            .overlay {
+                                ProgressView()
+                                    .tint(.white.opacity(0.8))
+                            }
                     }
-                    .padding(4)
-                    .glassEffect(.regular, in: .rect(cornerRadius: 14, style: .continuous))
-                    .position(x: clampedX, y: -cardHeight / 2 - 12)
-                    .animation(.spring(response: 0.15, dampingFraction: 0.8), value: clampedX)
                 }
-                .frame(height: 0)
-                .transition(.scale(scale: 0.85).combined(with: .opacity))
+                .padding(4)
+                .glassEffect(.regular, in: .rect(cornerRadius: 14, style: .continuous))
+                .offset(x: shiftX)
+                .transition(.move(edge: .bottom).combined(with: .opacity).combined(with: .scale(scale: 0.85)))
+                .animation(.spring(response: 0.2, dampingFraction: 0.8), value: progress)
             }
 
+            // Капсула слайдера
             HStack(spacing: 12) {
                 Text(formatTime(displayTime))
                     .font(.system(size: 13, weight: .medium).monospacedDigit())
