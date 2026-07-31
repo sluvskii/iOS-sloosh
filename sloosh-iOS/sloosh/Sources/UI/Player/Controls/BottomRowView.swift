@@ -19,6 +19,7 @@ struct BottomRowView: View {
                     .blendMode(.plusLighter)
                     .frame(width: 44, height: 40)
             }
+            .accessibilityLabel("Скорость воспроизведения: \(speedLabel)")
             .popover(isPresented: $showSpeedSheet) {
                 SpeedPickerSheet(vm: vm)
             }
@@ -32,6 +33,7 @@ struct BottomRowView: View {
                         .blendMode(.plusLighter)
                         .frame(width: 44, height: 40)
                 }
+                .accessibilityLabel("Озвучка")
                 .popover(isPresented: $showVoiceoverSheet) {
                     VoiceoverPickerSheet(vm: vm)
                 }
@@ -46,6 +48,7 @@ struct BottomRowView: View {
                         .blendMode(.plusLighter)
                         .frame(width: 44, height: 40)
                 }
+                .accessibilityLabel("Качество видео")
                 .popover(isPresented: $showQualitySheet) {
                     QualityPickerSheet(vm: vm)
                 }
@@ -60,6 +63,7 @@ struct BottomRowView: View {
                         .blendMode(.plusLighter)
                         .frame(width: 44, height: 40)
                 }
+                .accessibilityLabel(vm.currentSubtitle != nil ? "Субтитры (включены)" : "Субтитры")
                 .popover(isPresented: $showSubtitleSheet) {
                     SubtitlePickerSheet(vm: vm)
                 }

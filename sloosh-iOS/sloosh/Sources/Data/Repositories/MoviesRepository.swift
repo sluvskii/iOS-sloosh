@@ -27,6 +27,7 @@ class MoviesRepository: ObservableObject {
         }
     }
 
+    @MainActor
     func clearMemoryCache() {
         popularCache.removeAll()
         topMoviesCache.removeAll()

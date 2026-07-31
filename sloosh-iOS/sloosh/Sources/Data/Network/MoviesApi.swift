@@ -55,29 +55,62 @@ class MoviesApi {
         var request = URLRequest(url: url)
         request.httpMethod = method
         
-        do {
-            let (data, response) = try await session.data(for: request)
-            
-            guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
-                let statusCode = (response as? HTTPURLResponse)?.statusCode ?? 500
-                throw NetworkError.serverError(statusCode)
+        let maxRetries = 3
+        var lastError: Error = NetworkError.timeout
+        
+        for attempt in 0..<maxRetries {
+            if attempt > 0 {
+                // Экспоненциальная задержка: 0.5с, 1с, 2с
+                let delay = UInt64(500_000_000) * UInt64(1 << (attempt - 1)) // 0.5s * 2^(attempt-1)
+                try? await Task.sleep(nanoseconds: delay)
             }
             
-            let decoder = JSONDecoder()
-            return try decoder.decode(T.self, from: data)
-        } catch let error as NetworkError {
-            throw error
-        } catch let urlError as URLError {
-            if urlError.code == .notConnectedToInternet || urlError.code == .networkConnectionLost {
-                throw NetworkError.noInternetConnection
-            } else if urlError.code == .timedOut {
-                throw NetworkError.timeout
+            do {
+                let (data, response) = try await session.data(for: request)
+                
+                guard let httpResponse = response as? HTTPURLResponse else {
+                    lastError = NetworkError.serverError(500)
+                    continue
+                }
+                
+                // 4xx — не ретраим, это клиентская ошибка
+                if (400...499).contains(httpResponse.statusCode) {
+                    throw NetworkError.serverError(httpResponse.statusCode)
+                }
+                
+                // 5xx — ретраим
+                if !(200...299).contains(httpResponse.statusCode) {
+                    lastError = NetworkError.serverError(httpResponse.statusCode)
+                    continue
+                }
+                
+                let decoder = JSONDecoder()
+                return try decoder.decode(T.self, from: data)
+            } catch let error as NetworkError {
+                // Наши собственные ошибки — пробрасываем немедленно (4xx, invalidURL)
+                throw error
+            } catch let urlError as URLError {
+                if urlError.code == .notConnectedToInternet || urlError.code == .networkConnectionLost {
+                    lastError = NetworkError.noInternetConnection
+                    // При отсутствии интернета нет смысла ретраить немедленно, но
+                    // даём одну-две попытки на случай нестабильного соединения
+                    continue
+                } else if urlError.code == .timedOut {
+                    lastError = NetworkError.timeout
+                    continue
+                } else if urlError.code == .cancelled {
+                    throw URLError(.cancelled)
+                }
+                lastError = NetworkError.noInternetConnection
+                continue
+            } catch {
+                // DecodingError — не ретраим
+                print("Decoding error: \(error)")
+                throw NetworkError.decodingError
             }
-            throw NetworkError.noInternetConnection
-        } catch {
-            print("Decoding/Network error: \(error)")
-            throw NetworkError.decodingError
         }
+        
+        throw lastError
     }
     
     func getPopularMovies(page: Int = 1) async throws -> ApiEnvelope<MediaResponse> {

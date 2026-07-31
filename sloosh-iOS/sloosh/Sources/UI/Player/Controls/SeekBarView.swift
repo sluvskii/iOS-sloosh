@@ -53,6 +53,9 @@ struct SeekBarView: View {
         .padding(.vertical, 12)
         // Liquid Glass — нативный iOS 26, без fallback
         .glassEffect(.regular, in: .capsule)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Прогресс воспроизведения")
+        .accessibilityValue("\(formatTime(displayTime)) из \(formatTime(vm.currentDuration))")
         .simultaneousGesture(
             DragGesture(minimumDistance: 10)
                 .onChanged { value in

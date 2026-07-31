@@ -32,6 +32,7 @@ struct TopBarView: View {
                     .blendMode(.plusLighter)
                     .frame(width: 44, height: 40)
             }
+            .accessibilityLabel("Закрыть плеер")
 
             divider
 
@@ -44,6 +45,7 @@ struct TopBarView: View {
                         .blendMode(.plusLighter)
                         .frame(width: 44, height: 40)
                 }
+                .accessibilityLabel(vm.isPiPActive ? "Выйти из режима картинка в картинке" : "Картинка в картинке")
 
                 divider
             }
