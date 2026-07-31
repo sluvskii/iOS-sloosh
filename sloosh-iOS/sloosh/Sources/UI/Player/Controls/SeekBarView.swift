@@ -79,28 +79,10 @@ struct SeekBarView: View {
     private var fallbackPoster: some View {
         ZStack {
             Rectangle()
-                .fill(Color.black.opacity(0.6))
+                .fill(Color.black.opacity(0.65))
             
-            if let logoUrl = vm.displayLogoUrl {
-                AsyncCachedImage(url: logoUrl) {
-                    Image(systemName: "film")
-                        .font(.system(size: 22))
-                        .foregroundStyle(.white.opacity(0.35))
-                } content: { image in
-                    Image(uiImage: image)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .padding(12)
-                } fallback: {
-                    Image(systemName: "film")
-                        .font(.system(size: 22))
-                        .foregroundStyle(.white.opacity(0.35))
-                }
-            } else {
-                Image(systemName: "film")
-                    .font(.system(size: 22))
-                    .foregroundStyle(.white.opacity(0.35))
-            }
+            ProgressView()
+                .tint(.white.opacity(0.8))
         }
         .frame(width: previewCardWidth, height: previewCardHeight)
         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
