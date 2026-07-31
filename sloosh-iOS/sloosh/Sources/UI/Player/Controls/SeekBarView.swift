@@ -43,92 +43,102 @@ struct SeekBarView: View {
 
     var body: some View {
         VStack(spacing: 12) {
-            // Плавающая карточка превью
             if isDragging || isHStackScrubbing || vm.screenScrubTime != nil {
-                ZStack {
-                    if let preview = vm.scrubPreviewImage {
-                        Image(uiImage: preview)
-                            .resizable()
-                            .aspectRatio(previewRatio, contentMode: .fit)
-                            .frame(width: previewCardWidth, height: previewCardHeight)
-                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    } else {
-                        ZStack {
-                            Rectangle()
-                                .fill(Color.black.opacity(0.6))
-                            
-                            if let logoUrl = vm.displayLogoUrl {
-                                AsyncCachedImage(url: logoUrl) { uiImg in
-                                    Image(uiImage: uiImg)
-                                        .resizable()
-                                        .aspectRatio(contentMode: .fit)
-                                        .padding(12)
-                                } placeholder: {
-                                    Image(systemName: "film")
-                                        .font(.system(size: 22))
-                                        .foregroundStyle(.white.opacity(0.35))
-                                }
-                            } else {
-                                Image(systemName: "film")
-                                    .font(.system(size: 22))
-                                    .foregroundStyle(.white.opacity(0.35))
-                            }
-                        }
-                        .frame(width: previewCardWidth, height: previewCardHeight)
-                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                    }
-                }
-                .padding(4)
-                .glassEffect(.regular, in: .rect(cornerRadius: 14, style: .continuous))
-                .offset(x: previewCardOffset)
-                .transition(.move(edge: .bottom).combined(with: .opacity).combined(with: .scale(scale: 0.85)))
-                .animation(.spring(response: 0.15, dampingFraction: 0.85), value: progress)
+                previewCardOverlay
             }
-
-            // Капсула слайдера
-            HStack(spacing: 12) {
-                Text(formatTime(displayTime))
-                    .font(.system(size: 13, weight: .medium).monospacedDigit())
-                    .foregroundStyle(.white.opacity(0.65))
-                    .blendMode(.plusLighter)
-
-                // Нативный слайдер
-                SystemUISliderView(
-                    value: Binding(
-                        get: { progress },
-                        set: { dragProgress = $0 }
-                    ),
-                    isDragging: $isDragging,
-                    onSeek: { val in
-                        vm.seek(to: val * vm.currentDuration)
-                    }
-                )
-                .frame(height: 24)
-                .colorMultiply(.white.opacity(0.65))
-                .blendMode(.plusLighter)
-                .background(
-                    GeometryReader { geo in
-                        Color.clear
-                            .onAppear { sliderWidth = geo.size.width }
-                            .onChange(of: geo.size.width) { _, w in sliderWidth = w }
-                    }
-                )
-
-                Text("-" + formatTime(max(0, vm.currentDuration - displayTime)))
-                    .font(.system(size: 13, weight: .medium).monospacedDigit())
-                    .foregroundStyle(.white.opacity(0.65))
-                    .blendMode(.plusLighter)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            // Liquid Glass — нативный iOS 26, без fallback
-            .glassEffect(.regular, in: .capsule)
+            sliderBar
         }
         .onChange(of: displayTime) { _, newTime in
             if isDragging || isHStackScrubbing || vm.screenScrubTime != nil {
                 vm.generateScrubThumbnail(at: newTime)
             }
         }
+    }
+
+    // MARK: - Subviews for compiler optimization
+
+    private var previewCardOverlay: some View {
+        ZStack {
+            if let preview = vm.scrubPreviewImage {
+                Image(uiImage: preview)
+                    .resizable()
+                    .aspectRatio(previewRatio, contentMode: .fit)
+                    .frame(width: previewCardWidth, height: previewCardHeight)
+                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            } else {
+                fallbackPoster
+            }
+        }
+        .padding(4)
+        .glassEffect(.regular, in: .rect(cornerRadius: 14, style: .continuous))
+        .offset(x: previewCardOffset)
+        .transition(.move(edge: .bottom).combined(with: .opacity).combined(with: .scale(scale: 0.85)))
+        .animation(.spring(response: 0.15, dampingFraction: 0.85), value: progress)
+    }
+
+    private var fallbackPoster: some View {
+        ZStack {
+            Rectangle()
+                .fill(Color.black.opacity(0.6))
+            
+            if let logoUrl = vm.displayLogoUrl {
+                AsyncCachedImage(url: logoUrl) { uiImg in
+                    Image(uiImage: uiImg)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .padding(12)
+                } placeholder: {
+                    Image(systemName: "film")
+                        .font(.system(size: 22))
+                        .foregroundStyle(.white.opacity(0.35))
+                }
+            } else {
+                Image(systemName: "film")
+                    .font(.system(size: 22))
+                    .foregroundStyle(.white.opacity(0.35))
+            }
+        }
+        .frame(width: previewCardWidth, height: previewCardHeight)
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private var sliderBar: some View {
+        HStack(spacing: 12) {
+            Text(formatTime(displayTime))
+                .font(.system(size: 13, weight: .medium).monospacedDigit())
+                .foregroundStyle(.white.opacity(0.65))
+                .blendMode(.plusLighter)
+
+            SystemUISliderView(
+                value: Binding(
+                    get: { progress },
+                    set: { dragProgress = $0 }
+                ),
+                isDragging: $isDragging,
+                onSeek: { val in
+                    vm.seek(to: val * vm.currentDuration)
+                }
+            )
+            .frame(height: 24)
+            .colorMultiply(.white.opacity(0.65))
+            .blendMode(.plusLighter)
+            .background(
+                GeometryReader { geo in
+                    Color.clear
+                        .onAppear { sliderWidth = geo.size.width }
+                        .onChange(of: geo.size.width) { _, w in sliderWidth = w }
+                }
+            )
+
+            Text("-" + formatTime(max(0, vm.currentDuration - displayTime)))
+                .font(.system(size: 13, weight: .medium).monospacedDigit())
+                .foregroundStyle(.white.opacity(0.65))
+                .blendMode(.plusLighter)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+        .glassEffect(.regular, in: .capsule)
+    }
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Прогресс воспроизведения")
         .accessibilityValue("\(formatTime(displayTime)) из \(formatTime(vm.currentDuration))")
