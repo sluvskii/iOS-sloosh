@@ -173,26 +173,53 @@ class PlayerViewModel: ObservableObject {
     @Published var scrubPreviewImage: UIImage? = nil
     @Published var scrubPreviewAspectRatio: CGFloat = 16.0 / 9.0
     private var imageGenerator: AVAssetImageGenerator?
+    private var videoOutput: AVPlayerItemVideoOutput?
     private var thumbnailTask: Task<Void, Never>?
     private var lastRequestedThumbnailTime: Double = -1
 
-    func setupImageGenerator(asset: AVAsset) {
+    func setupImageGenerator(asset: AVAsset, item: AVPlayerItem? = nil) {
         let gen = AVAssetImageGenerator(asset: asset)
         gen.appliesPreferredTrackTransform = true
-        gen.maximumSize = CGSize(width: 240, height: 240) // Позволяет извлекать любое соотношение сторон
+        gen.maximumSize = CGSize(width: 320, height: 320)
         gen.requestedTimeToleranceBefore = .positiveInfinity
         gen.requestedTimeToleranceAfter = .positiveInfinity
         self.imageGenerator = gen
+        
+        if let item {
+            let pixAttrs: [String: Any] = [
+                kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_32BGRA)
+            ]
+            let output = AVPlayerItemVideoOutput(pixelBufferAttributes: pixAttrs)
+            item.add(output)
+            self.videoOutput = output
+        }
     }
 
     func generateScrubThumbnail(at seconds: Double) {
-        guard seconds >= 0, abs(seconds - lastRequestedThumbnailTime) > 0.4 else { return }
+        guard seconds >= 0, abs(seconds - lastRequestedThumbnailTime) > 0.25 else { return }
         lastRequestedThumbnailTime = seconds
         
+        let time = CMTime(seconds: seconds, preferredTimescale: 600)
+        
+        // 1. Сначала пробуем взять мгновенный декодированный кадр из AVPlayerItemVideoOutput
+        if let output = self.videoOutput, output.hasNewPixelBuffer(forItemTime: time) {
+            if let pixelBuffer = output.copyPixelBuffer(forItemTime: time, itemTimeForDisplay: nil) {
+                let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+                let context = CIContext()
+                if let cgImage = context.createCGImage(ciImage, from: ciImage.extent) {
+                    let uiImage = UIImage(cgImage: cgImage)
+                    let ratio = CGFloat(cgImage.width) / max(1.0, CGFloat(cgImage.height))
+                    self.scrubPreviewAspectRatio = ratio
+                    self.scrubPreviewImage = uiImage
+                    return
+                }
+            }
+        }
+        
+        // 2. Фоново извлекаем из AVAssetImageGenerator
         thumbnailTask?.cancel()
         thumbnailTask = Task { @MainActor [weak self] in
             guard let self, let gen = self.imageGenerator else { return }
-            let time = CMTime(seconds: seconds, preferredTimescale: 600)
             
             await Task.detached(priority: .userInitiated) {
                 if let cgImage = try? gen.copyCGImage(at: time, actualTime: nil) {
@@ -1033,7 +1060,7 @@ class PlayerViewModel: ObservableObject {
         }
 
         let playerItem = AVPlayerItem(asset: asset)
-        setupImageGenerator(asset: asset)
+        setupImageGenerator(asset: asset, item: playerItem)
         
         if self.player == nil { 
             let newPlayer = AVPlayer()
