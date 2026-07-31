@@ -251,7 +251,7 @@ private final class ContinueViewModel: ObservableObject {
             // Берём запись, которую нужно показать пользователю.
             // Для сериалов: если последний просмотренный эпизод досмотрен (watched),
             // ищем следующий эпизод по номеру сезона/серии.
-            let latestRecord = group.max(by: { $0.updatedAtMs < $1.updatedAtMs })!
+            guard let latestRecord = group.max(by: { $0.updatedAtMs < $1.updatedAtMs }) else { return nil }
 
             let displayRecord: PlaybackProgressRecord
             if latestRecord.watched, let nextRecord = nextEpisodeRecord(after: latestRecord, in: group, allRecords: records) {

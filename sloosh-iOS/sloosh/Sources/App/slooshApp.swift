@@ -76,7 +76,7 @@ struct slooshApp: App {
         }
     }
     
-    @StateObject private var diagnostics = AppDiagnostics.shared
+    @ObservedObject private var diagnostics = AppDiagnostics.shared
     @State private var showShareSheet = false
     @Environment(\.scenePhase) private var scenePhase
     
