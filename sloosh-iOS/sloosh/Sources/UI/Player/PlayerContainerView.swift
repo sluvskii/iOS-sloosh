@@ -21,6 +21,9 @@ struct PlayerContainerView: View {
 
     enum TapSide { case left, right }
 
+    private let showAnimation: Animation = .easeInOut(duration: 0.15)
+    private let hideAnimation: Animation = .easeOut(duration: 0.25)
+
     var body: some View {
         ZStack {
             // 1. Чёрный фон
