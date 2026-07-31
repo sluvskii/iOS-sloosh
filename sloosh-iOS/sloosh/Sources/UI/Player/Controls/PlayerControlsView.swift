@@ -5,6 +5,7 @@ import SwiftUI
 struct PlayerControlsView: View {
     @ObservedObject var vm: PlayerViewModel
     let onDismiss: () -> Void
+    var onBackgroundTap: (() -> Void)? = nil
 
     @State private var showVoiceoverSheet = false
     @State private var showQualitySheet = false
@@ -23,10 +24,13 @@ struct PlayerControlsView: View {
                 startPoint: .top,
                 endPoint: .bottom
             )
+            .contentShape(Rectangle())
+            .onTapGesture {
+                onBackgroundTap?()
+            }
             .opacity(isSeeking ? 0 : 1)
             .animation(.easeInOut(duration: 0.2), value: isSeeking)
             .ignoresSafeArea()
-            .allowsHitTesting(false)
 
             // ── Верхний и нижний блоки ───────────────────────
             VStack {
