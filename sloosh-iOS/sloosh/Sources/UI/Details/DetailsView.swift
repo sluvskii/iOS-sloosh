@@ -204,12 +204,30 @@ struct DetailsView: View {
                 .padding(.horizontal, 16)
                 .padding(.bottom, 8)
                 .background(
-                    VariableBlurView(tintColor: effectiveBackgroundColor, tintOpacity: 1.0)
+                    ZStack(alignment: .top) {
+                        // Постоянный верхний прогрессивный блюр (Apple TV / Telegram style) для статус-бара
+                        VariableBlurView(
+                            direction: .blurredTopClearBottom,
+                            tintColor: effectiveBackgroundColor,
+                            tintOpacity: 0.85
+                        )
+                        .frame(height: 120)
+                        .padding(.bottom, -40)
+                        .ignoresSafeArea(edges: .top)
+                        .allowsHitTesting(false)
+
+                        // Полный блюр при скролле (когда логотип уходит наверх)
+                        VariableBlurView(
+                            direction: .blurredTopClearBottom,
+                            tintColor: effectiveBackgroundColor,
+                            tintOpacity: 1.0
+                        )
                         .padding(.bottom, -60)
                         .ignoresSafeArea(edges: .top)
                         .opacity(isLogoAtTop ? 1.0 : 0.0)
                         .animation(.easeInOut(duration: 0.25), value: isLogoAtTop)
                         .allowsHitTesting(false)
+                    }
                 )
             }
             .task {
@@ -567,7 +585,7 @@ struct DetailsView: View {
                         .transition(.opacity)
                 } else if let details = viewModel.details {
                     // Stretchy Backdrop
-                    let baseHeight: CGFloat = 450
+                    let baseHeight: CGFloat = 480
                     
                     GeometryReader { geometry in
                         let minY = geometry.frame(in: .global).minY
@@ -683,7 +701,7 @@ struct DetailsView: View {
                             .padding(.bottom, 20)
                         }
                     }
-                    .offset(y: -80)
+                    .offset(y: -30)
                     .transition(.opacity)
                 } else {
                     Text("Не удалось загрузить данные.")
