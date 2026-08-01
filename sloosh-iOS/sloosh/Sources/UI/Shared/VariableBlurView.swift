@@ -6,13 +6,13 @@ import QuartzCore
 /// плавно переходящего от полного блюра к полной прозрачности.
 /// Реализация скопирована из Telegram-iOS с обходом приватного API.
 public struct VariableBlurView: View {
-    public var maxBlurRadius: CGFloat = 2
+    public var maxBlurRadius: CGFloat = 20
     public var direction: VariableBlurRepresentable.BlurDirection = .blurredTopClearBottom
-    public var tintColor: Color = Color.clear
+    public var tintColor: Color = Color(UIColor.systemBackground)
     public var tintOpacity: Double = 0.0
     public var style: UIBlurEffect.Style = .systemMaterial
     
-    public init(maxBlurRadius: CGFloat = 2, direction: VariableBlurRepresentable.BlurDirection = .blurredTopClearBottom, tintColor: Color = Color.clear, tintOpacity: Double = 0.0, style: UIBlurEffect.Style = .systemMaterial) {
+    public init(maxBlurRadius: CGFloat = 20, direction: VariableBlurRepresentable.BlurDirection = .blurredTopClearBottom, tintColor: Color = Color(UIColor.systemBackground), tintOpacity: Double = 0.0, style: UIBlurEffect.Style = .systemMaterial) {
         self.maxBlurRadius = maxBlurRadius
         self.direction = direction
         self.tintColor = tintColor
@@ -62,7 +62,7 @@ public struct VariableBlurRepresentable: UIViewRepresentable {
         case blurredTrailingClearLeading
     }
     
-    public init(maxBlurRadius: CGFloat = 2, direction: BlurDirection = .blurredTopClearBottom, style: UIBlurEffect.Style = .systemMaterial) {
+    public init(maxBlurRadius: CGFloat = 20, direction: BlurDirection = .blurredTopClearBottom, style: UIBlurEffect.Style = .systemMaterial) {
         self.maxBlurRadius = maxBlurRadius
         self.direction = direction
         self.style = style
@@ -101,7 +101,7 @@ public final class VariableBlurUIView: UIVisualEffectView {
         }
     }
     
-    public init(maxBlurRadius: CGFloat = 2, direction: VariableBlurRepresentable.BlurDirection = .blurredTopClearBottom, style: UIBlurEffect.Style = .systemMaterial) {
+    public init(maxBlurRadius: CGFloat = 20, direction: VariableBlurRepresentable.BlurDirection = .blurredTopClearBottom, style: UIBlurEffect.Style = .systemMaterial) {
         self.maxBlurRadius = maxBlurRadius
         self.direction = direction
         self.style = style
