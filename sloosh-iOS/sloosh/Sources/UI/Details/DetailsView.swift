@@ -204,30 +204,15 @@ struct DetailsView: View {
                 .padding(.horizontal, 16)
                 .padding(.bottom, 8)
                 .background(
-                    ZStack(alignment: .top) {
-                        // Постоянный верхний прогрессивный блюр (Apple TV / Telegram style) для статус-бара
-                        VariableBlurView(
-                            direction: .blurredTopClearBottom,
-                            tintColor: effectiveBackgroundColor,
-                            tintOpacity: 0.85
-                        )
-                        .frame(height: 120)
-                        .padding(.bottom, -40)
-                        .ignoresSafeArea(edges: .top)
-                        .allowsHitTesting(false)
-
-                        // Полный блюр при скролле (когда логотип уходит наверх)
-                        VariableBlurView(
-                            direction: .blurredTopClearBottom,
-                            tintColor: effectiveBackgroundColor,
-                            tintOpacity: 1.0
-                        )
-                        .padding(.bottom, -60)
-                        .ignoresSafeArea(edges: .top)
-                        .opacity(isLogoAtTop ? 1.0 : 0.0)
-                        .animation(.easeInOut(duration: 0.25), value: isLogoAtTop)
-                        .allowsHitTesting(false)
-                    }
+                    VariableBlurView(
+                        direction: .blurredTopClearBottom,
+                        tintColor: effectiveBackgroundColor,
+                        tintOpacity: isLogoAtTop ? 1.0 : 0.85
+                    )
+                    .padding(.bottom, -60)
+                    .ignoresSafeArea(edges: .top)
+                    .animation(.easeInOut(duration: 0.25), value: isLogoAtTop)
+                    .allowsHitTesting(false)
                 )
             }
             .task {
