@@ -847,6 +847,7 @@ private struct DetailsSkeletonView: View {
             // Backdrop
             Rectangle()
                 .fill(Color.gray.opacity(0.2))
+                .shimmer()
                 .frame(height: baseHeight)
                 .mask(
                     LinearGradient(
@@ -861,7 +862,6 @@ private struct DetailsSkeletonView: View {
                         endPoint: .bottom
                     )
                 )
-                .shimmer()
             
             VStack(alignment: .center, spacing: 12) {
                 // Logo placeholder: replaced with a textual representation of loading to match RemoteLogoView
