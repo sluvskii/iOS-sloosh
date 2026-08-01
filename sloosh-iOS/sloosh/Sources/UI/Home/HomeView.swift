@@ -102,7 +102,7 @@ struct HomeView: View {
                 // Уменьшен tintOpacity, чтобы через блюр пробивались цвета постеров.
                 // Это необходимо, чтобы наш Vibrant-текст мог их впитывать!
                 .background(
-                    VariableBlurView(tintOpacity: 0.75)
+                    VariableBlurView(tintOpacity: 1.0)
                         .padding(.bottom, -30) // Увеличиваем длину размытия вниз, но не так сильно
                         .ignoresSafeArea(edges: .top)
                         .opacity(blurOpacity) // Плавно появляемся при скролле

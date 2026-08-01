@@ -130,7 +130,7 @@ struct ProfileView: View {
                         .padding(.bottom, 2)
                     }
                     .background(
-                        VariableBlurView(tintOpacity: 0.75)
+                        VariableBlurView(tintOpacity: 1.0)
                             .padding(.bottom, -60) // Более длинный прогрессивный блюр для двух слоев
                             .ignoresSafeArea(edges: .top)
                             .opacity(blurOpacity)
