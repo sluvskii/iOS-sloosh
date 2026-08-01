@@ -115,7 +115,7 @@ struct DownloadsView: View {
                     .padding(.top, 4)
                     .padding(.bottom, 2)
                     .background(
-                        VariableBlurView(tintOpacity: 0.75)
+                        VariableBlurView(tintOpacity: 1.0)
                             .padding(.bottom, -30)
                             .ignoresSafeArea(edges: .top)
                             .opacity(blurOpacity)

@@ -201,7 +201,7 @@ struct SettingsView: View {
             }
             .padding(.horizontal, 16)
             .background(
-                VariableBlurView(tintOpacity: 0.75)
+                VariableBlurView(tintOpacity: 1.0)
                     .padding(.bottom, -60)
                     .ignoresSafeArea(edges: .top)
                     .opacity(blurOpacity)
