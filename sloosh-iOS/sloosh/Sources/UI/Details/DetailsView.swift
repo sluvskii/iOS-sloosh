@@ -204,26 +204,18 @@ struct DetailsView: View {
                 .padding(.horizontal, 16)
                 .padding(.bottom, 8)
                 .background(
-                    VariableBlurView(
-                        direction: .blurredTopClearBottom,
-                        tintColor: effectiveBackgroundColor,
-                        tintOpacity: isLogoAtTop ? 1.0 : 0.85
-                    )
-                    .padding(.bottom, -60)
-                    .ignoresSafeArea(edges: .top)
-                    .animation(.easeInOut(duration: 0.25), value: isLogoAtTop)
-                    .allowsHitTesting(false)
+                    VariableBlurView(tintColor: effectiveBackgroundColor, tintOpacity: 1.0)
+                        .padding(.bottom, -60)
+                        .ignoresSafeArea(edges: .top)
+                        .opacity(isLogoAtTop ? 1.0 : 0.0)
+                        .animation(.easeInOut(duration: 0.25), value: isLogoAtTop)
+                        .allowsHitTesting(false)
                 )
             }
             .task {
                 await viewModel.loadDetails(id: movieId)
             }
             .task(id: viewModel.details?.id) {
-                await MainActor.run {
-                    dominantBackdropColor = nil
-                    dominantPosterColor = nil
-                }
-
                 guard let details = viewModel.details else { return }
                 await preloadDominantColor(for: details)
             }
