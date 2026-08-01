@@ -585,7 +585,7 @@ struct DetailsView: View {
                         .transition(.opacity)
                 } else if let details = viewModel.details {
                     // Stretchy Backdrop
-                    let baseHeight: CGFloat = 480
+                    let baseHeight: CGFloat = 450
                     
                     GeometryReader { geometry in
                         let minY = geometry.frame(in: .global).minY
@@ -701,7 +701,7 @@ struct DetailsView: View {
                             .padding(.bottom, 20)
                         }
                     }
-                    .offset(y: -30)
+                    .offset(y: -80)
                     .transition(.opacity)
                 } else {
                     Text("Не удалось загрузить данные.")
