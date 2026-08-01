@@ -127,19 +127,6 @@ struct PlayerContainerView: View {
     private func handleTap(side: TapSide) {
         tapTask?.cancel()
         
-        // Если контролы скрыты — показываем их мгновенно по первому касанию
-        if !showControls {
-            consecutiveTaps = 0
-            activeTapSide = nil
-            multiSeekSeconds = nil
-            withAnimation(showAnimation) {
-                showControls = true
-            }
-            scheduleAutoHide()
-            return
-        }
-        
-        // Если контролы открыты — обрабатываем двойной тап для перемотки
         if activeTapSide != side {
             consecutiveTaps = 0
             activeTapSide = side
@@ -150,7 +137,23 @@ struct PlayerContainerView: View {
         consecutiveTaps += 1
         let currentTaps = consecutiveTaps
         
-        if currentTaps >= 2 {
+        if currentTaps == 1 {
+            let wasControlsShown = showControls
+            tapTask = Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(250))
+                guard !Task.isCancelled else { return }
+                
+                self.consecutiveTaps = 0
+                self.activeTapSide = nil
+                
+                withAnimation(wasControlsShown ? hideAnimation : showAnimation) {
+                    self.showControls = !wasControlsShown
+                }
+                if !wasControlsShown {
+                    self.scheduleAutoHide()
+                }
+            }
+        } else if currentTaps >= 2 {
             let seconds = 10
             let direction = (side == .right) ? 1.0 : -1.0
             
@@ -166,7 +169,7 @@ struct PlayerContainerView: View {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             
             tapTask = Task { @MainActor in
-                try? await Task.sleep(for: .milliseconds(800))
+                try? await Task.sleep(for: .milliseconds(700))
                 guard !Task.isCancelled else { return }
                 
                 if let finalScrubTime = vm.screenScrubTime {
