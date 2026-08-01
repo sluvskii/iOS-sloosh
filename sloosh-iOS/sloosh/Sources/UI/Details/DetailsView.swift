@@ -696,11 +696,9 @@ struct DetailsView: View {
         }
         .scrollIndicators(.hidden)
         .background {
-            if #available(iOS 18.0, *) {
-                PremiumMeshBackground(dominantColor: dominantBackdropColor ?? dominantPosterColor)
-            } else {
-                effectiveBackgroundColor
-            }
+            effectiveBackgroundColor
+                .animation(.easeInOut(duration: 0.4), value: effectiveBackgroundColor)
+                .ignoresSafeArea()
         }
         .refreshable {
             await viewModel.loadDetails(id: movieId, force: true)
@@ -812,11 +810,9 @@ struct DetailsView: View {
             }
             .scrollIndicators(.hidden)
             .background {
-                if #available(iOS 18.0, *) {
-                    PremiumMeshBackground(dominantColor: dominantBackdropColor ?? dominantPosterColor)
-                } else {
-                    effectiveBackgroundColor
-                }
+                effectiveBackgroundColor
+                    .animation(.easeInOut(duration: 0.4), value: effectiveBackgroundColor)
+                    .ignoresSafeArea()
             }
             .refreshable {
                 await viewModel.loadDetails(id: movieId, force: true)
