@@ -846,8 +846,7 @@ private struct DetailsSkeletonView: View {
         VStack(spacing: 0) {
             // Backdrop
             Rectangle()
-                .fill(Color.gray.opacity(0.2))
-                .shimmer()
+                .fill(Color.white.opacity(0.08))
                 .frame(height: baseHeight)
                 .mask(
                     LinearGradient(
@@ -864,78 +863,57 @@ private struct DetailsSkeletonView: View {
                 )
             
             VStack(alignment: .center, spacing: 12) {
-                // Logo placeholder: replaced with a textual representation of loading to match RemoteLogoView
-                Rectangle()
-                    .fill(Color.gray.opacity(0.2))
+                // Logo placeholder
+                RoundedRectangle(cornerRadius: 8)
+                    .fill(Color.white.opacity(0.12))
                     .frame(width: 240, height: 40)
-                    .cornerRadius(8)
                     .padding(.bottom, 8)
-                    .shimmer()
                 
                 // Metadata row placeholder
                 HStack(spacing: 16) {
                     ForEach(0..<4) { _ in
-                        Rectangle()
-                            .fill(Color.gray.opacity(0.2))
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(Color.white.opacity(0.12))
                             .frame(width: 40, height: 16)
-                            .cornerRadius(4)
                     }
                 }
-                .shimmer()
                 .padding(.bottom, 4)
                 
                 // Play Button placeholder
                 Capsule()
-                    .fill(Color.gray.opacity(0.2))
+                    .fill(Color.white.opacity(0.15))
                     .frame(width: 180, height: 50)
-                    .shimmer()
                     .padding(.top, 8)
                     .padding(.bottom, -4)
                 
                 // Info Section placeholder
                 VStack(alignment: .leading, spacing: 18) {
                     VStack(alignment: .leading, spacing: 10) {
-                        Rectangle()
-                            .fill(Color.gray.opacity(0.2))
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(Color.white.opacity(0.12))
                             .frame(width: 80, height: 20)
-                            .cornerRadius(4)
                         
                         HStack(spacing: 8) {
                             ForEach(0..<3) { i in
                                 Capsule()
-                                    .fill(Color.gray.opacity(0.2))
+                                    .fill(Color.white.opacity(0.12))
                                     .frame(width: CGFloat(60 + i * 20), height: 32)
                             }
                         }
                     }
-                    .shimmer()
                     
                     VStack(alignment: .leading, spacing: 10) {
-                        Rectangle()
-                            .fill(Color.gray.opacity(0.2))
+                        RoundedRectangle(cornerRadius: 4)
+                            .fill(Color.white.opacity(0.12))
                             .frame(width: 100, height: 20)
-                            .cornerRadius(4)
                         
                         VStack(alignment: .leading, spacing: 6) {
-                            Rectangle()
-                                .fill(Color.gray.opacity(0.2))
-                                .frame(height: 16)
-                                .cornerRadius(4)
-                            Rectangle()
-                                .fill(Color.gray.opacity(0.2))
-                                .frame(height: 16)
-                                .cornerRadius(4)
-                            Rectangle()
-                                .fill(Color.gray.opacity(0.2))
-                                .frame(height: 16)
-                                .cornerRadius(4)
-                            Rectangle()
-                                .fill(Color.gray.opacity(0.2))
-                                .frame(width: 200, height: 16)
-                                .cornerRadius(4)
+                            RoundedRectangle(cornerRadius: 4).fill(Color.white.opacity(0.1)).frame(height: 16)
+                            RoundedRectangle(cornerRadius: 4).fill(Color.white.opacity(0.1)).frame(height: 16)
+                            RoundedRectangle(cornerRadius: 4).fill(Color.white.opacity(0.1)).frame(height: 16)
+                            RoundedRectangle(cornerRadius: 4).fill(Color.white.opacity(0.1)).frame(width: 200, height: 16)
                         }
                     }
-                    .shimmer()
                 }
                 .padding(.top, 20)
                 .padding(.horizontal)
@@ -945,6 +923,7 @@ private struct DetailsSkeletonView: View {
             .frame(maxWidth: .infinity, alignment: .center)
             .offset(y: verticalSizeClass == .compact ? -60 : -80)
         }
+        .shimmer()
     }
 }
 
