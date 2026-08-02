@@ -177,7 +177,6 @@ struct ProfileView: View {
                 }
             }
         }
-    }
 
     private var userHeaderView: some View {
         Button {
@@ -232,6 +231,7 @@ struct ProfileView: View {
         }
         .buttonStyle(.plain)
     }
+}
 
 struct ProfileCategoryContentView: View {
     let category: FavoriteCategory
