@@ -1,5 +1,4 @@
 import SwiftUI
-import AuthenticationServices
 
 public struct AuthSheetView: View {
     enum AuthTab: String, CaseIterable {
@@ -72,46 +71,6 @@ public struct AuthSheetView: View {
                         .clipShape(Capsule())
                         .padding(.horizontal, 24)
 
-                        // Native Sign in with Apple
-                        SignInWithAppleButton(
-                            .signIn,
-                            onRequest: { request in
-                                request.requestedScopes = [.fullName, .email]
-                            },
-                            onCompletion: { result in
-                                switch result {
-                                case .success(let authorization):
-                                    if let appleIDCredential = authorization.credential as? ASAuthorizationAppleIDCredential {
-                                        let token = String(data: appleIDCredential.identityToken ?? Data(), encoding: .utf8) ?? ""
-                                        Task {
-                                            let success = await authRepo.signInWithApple(
-                                                idToken: token,
-                                                rawNonce: "",
-                                                email: appleIDCredential.email,
-                                                fullName: appleIDCredential.fullName
-                                            )
-                                            if success { dismiss() }
-                                        }
-                                    }
-                                case .failure(let error):
-                                    AppDiagnostics.shared.log("Apple Auth error: \(error.localizedDescription)")
-                                }
-                            }
-                        )
-                        .signInWithAppleButtonStyle(.white)
-                        .frame(height: 50)
-                        .clipShape(RoundedRectangle(cornerRadius: 16))
-                        .padding(.horizontal, 24)
-
-                        // Divider OR
-                        HStack(spacing: 16) {
-                            Rectangle().fill(Color.white.opacity(0.15)).frame(height: 1)
-                            Text("или через Email")
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundColor(.secondary)
-                            Rectangle().fill(Color.white.opacity(0.15)).frame(height: 1)
-                        }
-                        .padding(.horizontal, 24)
 
                         // Input Form
                         VStack(spacing: 16) {
