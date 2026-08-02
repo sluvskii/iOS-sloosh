@@ -25,29 +25,23 @@ public struct AuthSheetView: View {
                 Color.black.ignoresSafeArea()
 
                 ScrollView {
-                    VStack(spacing: 24) {
-                        // Header Logo & Title
-                        VStack(spacing: 8) {
-                            Text("sloosh")
-                                .font(.system(size: 38, weight: .black, design: .rounded))
-                                .foregroundStyle(
-                                    LinearGradient(
-                                        colors: [.white, Color.slooshAccent],
-                                        startPoint: .topLeading,
-                                        endPoint: .bottomTrailing
-                                    )
-                                )
+                    VStack(spacing: 22) {
+                        // Title & Subtitle
+                        VStack(spacing: 6) {
+                            Text(selectedTab == .signIn ? "Вход в аккаунт" : "Создание аккаунта")
+                                .font(.system(size: 22, weight: .bold, design: .rounded))
+                                .foregroundColor(.primary)
 
-                            Text("Войдите, чтобы синхронизировать Избранное и Историю на всех устройствах")
-                                .font(.system(size: 14, weight: .medium))
+                            Text("Синхронизируйте Избранное и историю просмотра между всеми устройствами")
+                                .font(.system(size: 13, weight: .regular))
                                 .foregroundColor(.secondary)
                                 .multilineTextAlignment(.center)
-                                .padding(.horizontal, 20)
+                                .padding(.horizontal, 24)
                         }
-                        .padding(.top, 16)
+                        .padding(.top, 24)
 
                         // Segment Picker: Вход / Регистрация
-                        HStack(spacing: 0) {
+                        HStack(spacing: 4) {
                             ForEach(AuthTab.allCases, id: \.self) { tab in
                                 Button {
                                     withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
@@ -55,25 +49,27 @@ public struct AuthSheetView: View {
                                     }
                                 } label: {
                                     Text(tab.rawValue)
-                                        .font(.system(size: 15, weight: .semibold))
+                                        .font(.system(size: 14, weight: .semibold, design: .rounded))
                                         .frame(maxWidth: .infinity)
                                         .padding(.vertical, 10)
                                         .background(
-                                            selectedTab == tab ? Color.white : Color.clear
+                                            selectedTab == tab ? Color.white.opacity(0.18) : Color.clear
                                         )
-                                        .foregroundColor(selectedTab == tab ? .black : .white.opacity(0.7))
+                                        .foregroundColor(selectedTab == tab ? .white : .white.opacity(0.6))
                                         .clipShape(Capsule())
                                 }
                             }
                         }
                         .padding(4)
-                        .background(Color.white.opacity(0.1))
+                        .background(Color.white.opacity(0.06))
                         .clipShape(Capsule())
-                        .padding(.horizontal, 24)
+                        .overlay(
+                            Capsule().stroke(Color.white.opacity(0.1), lineWidth: 1)
+                        )
+                        .padding(.horizontal, 20)
 
-
-                        // Input Form
-                        VStack(spacing: 16) {
+                        // Form Fields
+                        VStack(spacing: 14) {
                             if selectedTab == .signUp {
                                 CustomTextField(
                                     icon: "person.fill",
@@ -102,16 +98,16 @@ public struct AuthSheetView: View {
                                     showResetAlert = true
                                 } label: {
                                     Text("Забыли пароль?")
-                                        .font(.system(size: 13, weight: .semibold))
+                                        .font(.system(size: 13, weight: .medium, design: .rounded))
                                         .foregroundColor(Color.slooshAccent)
                                         .frame(maxWidth: .infinity, alignment: .trailing)
                                 }
                                 .padding(.trailing, 4)
                             }
                         }
-                        .padding(.horizontal, 24)
+                        .padding(.horizontal, 20)
 
-                        // Action Button
+                        // Main Action Button
                         Button {
                             Task {
                                 let success: Bool
@@ -127,40 +123,36 @@ public struct AuthSheetView: View {
                                 if authRepo.isLoading {
                                     ProgressView().tint(.black)
                                 } else {
-                                    Text(selectedTab == .signIn ? "Войти в аккаунт" : "Зарегистрироваться")
-                                        .font(.system(size: 16, weight: .bold))
+                                    Text(selectedTab == .signIn ? "Войти" : "Зарегистрироваться")
+                                        .font(.system(size: 16, weight: .bold, design: .rounded))
                                 }
                             }
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 16)
+                            .padding(.vertical, 14)
                             .background(Color.slooshAccent)
                             .foregroundColor(.black)
-                            .clipShape(RoundedRectangle(cornerRadius: 16))
+                            .clipShape(Capsule())
                         }
                         .disabled(authRepo.isLoading)
-                        .padding(.horizontal, 24)
-                        .padding(.top, 8)
+                        .padding(.horizontal, 20)
+                        .padding(.top, 4)
 
-                        // Close / Guest Action
+                        // Continue as Guest
                         Button {
                             dismiss()
                         } label: {
-                            Text("Продолжить без входа")
-                                .font(.system(size: 14, weight: .medium))
+                            Text("Продолжить как гость")
+                                .font(.system(size: 13, weight: .medium, design: .rounded))
                                 .foregroundColor(.secondary)
                         }
-                        .padding(.bottom, 24)
+                        .padding(.bottom, 20)
                     }
                 }
             }
             .toolbar {
                 ToolbarItem(placement: .navigationBarTrailing) {
-                    Button {
+                    TelegramGlassIconButton(systemName: "xmark") {
                         dismiss()
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 22))
-                            .foregroundColor(.white.opacity(0.6))
                     }
                 }
             }
@@ -173,13 +165,13 @@ public struct AuthSheetView: View {
                     }
                 }
             } message: {
-                Text("Мы отправим ссылку для сброса пароля на ваш Email.")
+                Text("Мы отправим инструкцию по сбросу пароля на ваш Email.")
             }
         }
     }
 }
 
-// MARK: - UI Helpers
+// MARK: - Refined Glass Input Helpers
 
 private struct CustomTextField: View {
     let icon: String
@@ -190,10 +182,12 @@ private struct CustomTextField: View {
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: icon)
-                .foregroundColor(.white.opacity(0.5))
+                .font(.system(size: 14))
+                .foregroundColor(.white.opacity(0.4))
                 .frame(width: 20)
 
             TextField(placeholder, text: $text)
+                .font(.system(size: 15, weight: .regular, design: .rounded))
                 .keyboardType(keyboardType)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
@@ -201,11 +195,11 @@ private struct CustomTextField: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
-        .background(Color.white.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .background(Color.white.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 14)
-                .stroke(Color.white.opacity(0.12), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(Color.white.opacity(0.1), lineWidth: 1)
         )
     }
 }
@@ -219,16 +213,19 @@ private struct CustomPasswordField: View {
     var body: some View {
         HStack(spacing: 12) {
             Image(systemName: icon)
-                .foregroundColor(.white.opacity(0.5))
+                .font(.system(size: 14))
+                .foregroundColor(.white.opacity(0.4))
                 .frame(width: 20)
 
             if isVisible {
                 TextField(placeholder, text: $text)
+                    .font(.system(size: 15, weight: .regular, design: .rounded))
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
                     .foregroundColor(.white)
             } else {
                 SecureField(placeholder, text: $text)
+                    .font(.system(size: 15, weight: .regular, design: .rounded))
                     .foregroundColor(.white)
             }
 
@@ -236,16 +233,17 @@ private struct CustomPasswordField: View {
                 isVisible.toggle()
             } label: {
                 Image(systemName: isVisible ? "eye.slash.fill" : "eye.fill")
-                    .foregroundColor(.white.opacity(0.5))
+                    .font(.system(size: 14))
+                    .foregroundColor(.white.opacity(0.4))
             }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
-        .background(Color.white.opacity(0.08))
-        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .background(Color.white.opacity(0.06))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: 14)
-                .stroke(Color.white.opacity(0.12), lineWidth: 1)
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(Color.white.opacity(0.1), lineWidth: 1)
         )
     }
 }

@@ -189,21 +189,27 @@ struct ProfileView: View {
             HStack(spacing: 12) {
                 ZStack {
                     Circle()
-                        .fill(Color.white.opacity(0.12))
-                        .frame(width: 38, height: 38)
+                        .fill(
+                            LinearGradient(
+                                colors: [Color.slooshAccent.opacity(0.3), Color.white.opacity(0.1)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                        )
+                        .frame(width: 40, height: 40)
                     
                     Text(authRepo.currentUser?.avatarInitials ?? "👤")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.system(size: 14, weight: .bold, design: .rounded))
                         .foregroundColor(.white)
                 }
                 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(authRepo.currentUser?.displayTitle ?? "Гость")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.system(size: 15, weight: .bold, design: .rounded))
                         .foregroundColor(.primary)
                     
                     Text(syncService.statusText)
-                        .font(.system(size: 11, weight: .medium))
+                        .font(.system(size: 12, weight: .medium, design: .rounded))
                         .foregroundColor(.secondary)
                 }
                 
@@ -211,22 +217,26 @@ struct ProfileView: View {
                 
                 if authRepo.isAuthenticated {
                     Image(systemName: "rectangle.portrait.and.arrow.right")
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundColor(.red.opacity(0.8))
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(.red.opacity(0.85))
                 } else {
                     Text("Войти")
-                        .font(.system(size: 12, weight: .bold))
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 6)
+                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 7)
                         .background(Color.slooshAccent)
                         .foregroundColor(.black)
                         .clipShape(Capsule())
                 }
             }
             .padding(.horizontal, 14)
-            .padding(.vertical, 8)
+            .padding(.vertical, 10)
             .background(Color.white.opacity(0.06))
-            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
+            )
             .padding(.horizontal, 16)
         }
         .buttonStyle(.plain)
