@@ -20,8 +20,11 @@ enum FavoriteCategory: String, CaseIterable {
 
 struct ProfileView: View {
     @StateObject private var favoritesRepo = FavoritesRepository.shared
+    @StateObject private var authRepo = AuthRepository.shared
+    @StateObject private var syncService = CloudSyncService.shared
     @State private var selectedCategory: FavoriteCategory = .all
     @SceneStorage("profileShowsSettings") private var showsSettings = false
+    @State private var showAuthSheet = false
     @Namespace private var navigationTransition
     @AppStorage("cardDensity") private var cardDensity: CardDensity = .regular
     @State private var scrollOffsets: [FavoriteCategory: CGFloat] = [:]
@@ -122,6 +125,8 @@ struct ProfileView: View {
                         }
                         .padding(.horizontal, 16)
                         
+                        userHeaderView
+                        
                         // Нижний слой: Текстовые табы
                         ProfileCategoryTextTabs(
                             selectedCategory: $selectedCategory,
@@ -139,6 +144,9 @@ struct ProfileView: View {
                 }
                 .navigationDestination(isPresented: $showsSettings) {
                     SettingsView()
+                }
+                .sheet(isPresented: $showAuthSheet) {
+                    AuthSheetView()
                 }
                 .sheet(item: $directPlaybackMovie) { movie in
                     let kpId = movie.externalIds?.kp ?? Int(movie.id) ?? 0
@@ -168,8 +176,60 @@ struct ProfileView: View {
                     )
                 }
             }
+    private var userHeaderView: some View {
+        Button {
+            if authRepo.isAuthenticated {
+                authRepo.signOut()
+            } else {
+                showAuthSheet = true
+            }
+        } label: {
+            HStack(spacing: 12) {
+                ZStack {
+                    Circle()
+                        .fill(Color.white.opacity(0.12))
+                        .frame(width: 38, height: 38)
+                    
+                    Text(authRepo.currentUser?.avatarInitials ?? "👤")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(.white)
+                }
+                
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(authRepo.currentUser?.displayTitle ?? "Гость")
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(.primary)
+                    
+                    Text(syncService.statusText)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.secondary)
+                }
+                
+                Spacer()
+                
+                if authRepo.isAuthenticated {
+                    Image(systemName: "rectangle.portrait.and.arrow.right")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundColor(.red.opacity(0.8))
+                } else {
+                    Text("Войти")
+                        .font(.system(size: 12, weight: .bold))
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 6)
+                        .background(Color.slooshAccent)
+                        .foregroundColor(.black)
+                        .clipShape(Capsule())
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(Color.white.opacity(0.06))
+            .clipShape(RoundedRectangle(cornerRadius: 14))
+            .padding(.horizontal, 16)
         }
+        .buttonStyle(.plain)
     }
+}
 
 struct ProfileCategoryContentView: View {
     let category: FavoriteCategory
