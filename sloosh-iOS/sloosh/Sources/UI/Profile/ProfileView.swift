@@ -147,8 +147,7 @@ struct ProfileView: View {
                 }
                 .sheet(isPresented: $showAuthSheet) {
                     AuthSheetView()
-                        .presentationDetents([.height(390), .medium])
-                        .presentationCornerRadius(32)
+                        .presentationDetents([.height(360), .medium])
                 }
                 .sheet(item: $directPlaybackMovie) { movie in
                     let kpId = movie.externalIds?.kp ?? Int(movie.id) ?? 0
