@@ -232,7 +232,6 @@ struct ProfileView: View {
         }
         .buttonStyle(.plain)
     }
-}
 
 struct ProfileCategoryContentView: View {
     let category: FavoriteCategory
