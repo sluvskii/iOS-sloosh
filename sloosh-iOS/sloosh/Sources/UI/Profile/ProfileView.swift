@@ -176,6 +176,9 @@ struct ProfileView: View {
                     )
                 }
             }
+        }
+    }
+
     private var userHeaderView: some View {
         Button {
             if authRepo.isAuthenticated {
