@@ -201,17 +201,17 @@ struct ProfileView: View {
                         .frame(width: 40, height: 40)
                     
                     Text(authRepo.currentUser?.avatarInitials ?? "👤")
-                        .font(.system(size: 14, weight: .bold, design: .rounded))
+                        .font(.system(size: 14, weight: .bold))
                         .foregroundColor(.white)
                 }
                 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(authRepo.currentUser?.displayTitle ?? "Гость")
-                        .font(.system(size: 15, weight: .bold, design: .rounded))
+                        .font(.system(size: 15, weight: .bold))
                         .foregroundColor(.primary)
                     
                     Text(syncService.statusText)
-                        .font(.system(size: 12, weight: .medium, design: .rounded))
+                        .font(.system(size: 12, weight: .medium))
                         .foregroundColor(.secondary)
                 }
                 
@@ -223,7 +223,7 @@ struct ProfileView: View {
                         .foregroundColor(.red.opacity(0.85))
                 } else {
                     Text("Войти")
-                        .font(.system(size: 13, weight: .bold, design: .rounded))
+                        .font(.system(size: 13, weight: .bold))
                         .padding(.horizontal, 16)
                         .padding(.vertical, 7)
                         .background(Color.slooshAccent)
@@ -233,12 +233,7 @@ struct ProfileView: View {
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
-            .background(Color.white.opacity(0.06))
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
-            )
+            .glassEffect(in: Capsule())
             .padding(.horizontal, 16)
         }
         .buttonStyle(.plain)

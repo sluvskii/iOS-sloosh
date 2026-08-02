@@ -20,133 +20,126 @@ public struct AuthSheetView: View {
     public init() {}
 
     public var body: some View {
-        ZStack {
-            Color.black.ignoresSafeArea()
+        VStack(spacing: 20) {
+            // Top Bar with native .glassEffect close button
+            HStack {
+                Spacer()
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundColor(.primary)
+                        .frame(width: 32, height: 32)
+                        .glassEffect(.regular.interactive(), in: .circle)
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 20)
+            .padding(.top, 16)
 
-            VStack(spacing: 20) {
-                // Top Bar with single Glass Close Button
-                HStack {
-                    Spacer()
+            // Liquid Glass Segment Switcher
+            HStack(spacing: 0) {
+                ForEach(AuthTab.allCases, id: \.self) { tab in
                     Button {
-                        dismiss()
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                            selectedTab = tab
+                        }
                     } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundColor(.white.opacity(0.8))
-                            .frame(width: 32, height: 32)
-                            .background(Color.white.opacity(0.12))
-                            .clipShape(Circle())
+                        Text(tab.rawValue)
+                            .font(.system(size: 14, weight: .semibold))
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                            .background(
+                                selectedTab == tab ? Color.white.opacity(0.18) : Color.clear
+                            )
+                            .foregroundColor(selectedTab == tab ? .primary : .secondary)
+                            .clipShape(Capsule())
                     }
                     .buttonStyle(.plain)
                 }
-                .padding(.horizontal, 20)
-                .padding(.top, 16)
-
-                // Segment Pill Switcher
-                HStack(spacing: 0) {
-                    ForEach(AuthTab.allCases, id: \.self) { tab in
-                        Button {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                                selectedTab = tab
-                            }
-                        } label: {
-                            Text(tab.rawValue)
-                                .font(.system(size: 14, weight: .bold, design: .rounded))
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 10)
-                                .background(
-                                    selectedTab == tab ? Color.white.opacity(0.16) : Color.clear
-                                )
-                                .foregroundColor(selectedTab == tab ? .white : .white.opacity(0.5))
-                                .clipShape(Capsule())
-                        }
-                    }
-                }
-                .padding(4)
-                .background(Color.white.opacity(0.06))
-                .clipShape(Capsule())
-                .overlay(
-                    Capsule().stroke(Color.white.opacity(0.08), lineWidth: 1)
-                )
-                .padding(.horizontal, 20)
-
-                // Form Fields Card
-                VStack(spacing: 12) {
-                    if selectedTab == .signUp {
-                        GlassInputField(
-                            icon: "person.fill",
-                            placeholder: "Ваше имя (необязательно)",
-                            text: $name
-                        )
-                        .transition(.opacity.combined(with: .move(edge: .top)))
-                    }
-
-                    GlassInputField(
-                        icon: "envelope.fill",
-                        placeholder: "Email",
-                        text: $email,
-                        keyboardType: .emailAddress
-                    )
-
-                    GlassPasswordField(
-                        icon: "lock.fill",
-                        placeholder: "Пароль",
-                        text: $password,
-                        isVisible: $isPasswordVisible
-                    )
-
-                    if selectedTab == .signIn {
-                        HStack {
-                            Spacer()
-                            Button {
-                                resetEmail = email
-                                showResetAlert = true
-                            } label: {
-                                Text("Забыли пароль?")
-                                    .font(.system(size: 13, weight: .medium, design: .rounded))
-                                    .foregroundColor(Color.slooshAccent.opacity(0.9))
-                            }
-                        }
-                        .padding(.horizontal, 4)
-                        .padding(.top, 2)
-                    }
-                }
-                .padding(.horizontal, 20)
-
-                // Primary Action Pill
-                Button {
-                    Task {
-                        let success: Bool
-                        if selectedTab == .signIn {
-                            success = await authRepo.signIn(email: email, password: password)
-                        } else {
-                            success = await authRepo.signUp(email: email, password: password, displayName: name)
-                        }
-                        if success { dismiss() }
-                    }
-                } label: {
-                    HStack {
-                        if authRepo.isLoading {
-                            ProgressView().tint(.black)
-                        } else {
-                            Text(selectedTab == .signIn ? "Войти" : "Создать аккаунт")
-                                .font(.system(size: 16, weight: .bold, design: .rounded))
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 15)
-                    .background(Color.slooshAccent)
-                    .foregroundColor(.black)
-                    .clipShape(Capsule())
-                    .shadow(color: Color.slooshAccent.opacity(0.25), radius: 12, x: 0, y: 4)
-                }
-                .disabled(authRepo.isLoading)
-                .padding(.horizontal, 20)
-                .padding(.top, 8)
-
-                Spacer()
             }
+            .padding(4)
+            .glassEffect(in: Capsule())
+            .padding(.horizontal, 20)
+
+            // Liquid Glass Capsule Form Fields
+            VStack(spacing: 12) {
+                if selectedTab == .signUp {
+                    GlassCapsuleInputField(
+                        icon: "person.fill",
+                        placeholder: "Ваше имя (необязательно)",
+                        text: $name
+                    )
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+                }
+
+                GlassCapsuleInputField(
+                    icon: "envelope.fill",
+                    placeholder: "Email",
+                    text: $email,
+                    keyboardType: .emailAddress
+                )
+
+                GlassCapsulePasswordField(
+                    icon: "lock.fill",
+                    placeholder: "Пароль",
+                    text: $password,
+                    isVisible: $isPasswordVisible
+                )
+
+                if selectedTab == .signIn {
+                    HStack {
+                        Spacer()
+                        Button {
+                            resetEmail = email
+                            showResetAlert = true
+                        } label: {
+                            Text("Забыли пароль?")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundColor(Color.slooshAccent)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.horizontal, 6)
+                }
+            }
+            .padding(.horizontal, 20)
+
+            // Primary Action Pill Button
+            Button {
+                Task {
+                    let success: Bool
+                    if selectedTab == .signIn {
+                        success = await authRepo.signIn(email: email, password: password)
+                    } else {
+                        success = await authRepo.signUp(email: email, password: password, displayName: name)
+                    }
+                    if success { dismiss() }
+                }
+            } label: {
+                HStack {
+                    if authRepo.isLoading {
+                        ProgressView().tint(.black)
+                    } else {
+                        Text(selectedTab == .signIn ? "Войти" : "Создать аккаунт")
+                            .font(.system(size: 16, weight: .bold))
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 14)
+                .background(Color.slooshAccent)
+                .foregroundColor(.black)
+                .clipShape(Capsule())
+            }
+            .buttonStyle(.plain)
+            .disabled(authRepo.isLoading)
+            .padding(.horizontal, 20)
+            .padding(.top, 6)
+
+            Spacer(minLength: 10)
         }
+        .presentationBackground { Color.clear.glassEffect(in: .rect) }
         .alert("Сброс пароля", isPresented: $showResetAlert) {
             TextField("Введите Email", text: $resetEmail)
             Button("Отмена", role: .cancel) {}
@@ -161,9 +154,9 @@ public struct AuthSheetView: View {
     }
 }
 
-// MARK: - Ultra-Clean Floating Input Components
+// MARK: - Native iOS 26 Liquid Glass Capsule Inputs
 
-private struct GlassInputField: View {
+private struct GlassCapsuleInputField: View {
     let icon: String
     let placeholder: String
     @Binding var text: String
@@ -173,28 +166,23 @@ private struct GlassInputField: View {
         HStack(spacing: 12) {
             Image(systemName: icon)
                 .font(.system(size: 14))
-                .foregroundColor(.white.opacity(0.4))
+                .foregroundColor(.secondary)
                 .frame(width: 18)
 
             TextField(placeholder, text: $text)
-                .font(.system(size: 15, weight: .regular, design: .rounded))
+                .font(.system(size: 15, weight: .regular))
                 .keyboardType(keyboardType)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
-                .foregroundColor(.white)
+                .foregroundColor(.primary)
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 18)
         .padding(.vertical, 14)
-        .background(Color.white.opacity(0.06))
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(Color.white.opacity(0.08), lineWidth: 1)
-        )
+        .glassEffect(in: Capsule())
     }
 }
 
-private struct GlassPasswordField: View {
+private struct GlassCapsulePasswordField: View {
     let icon: String
     let placeholder: String
     @Binding var text: String
@@ -204,19 +192,19 @@ private struct GlassPasswordField: View {
         HStack(spacing: 12) {
             Image(systemName: icon)
                 .font(.system(size: 14))
-                .foregroundColor(.white.opacity(0.4))
+                .foregroundColor(.secondary)
                 .frame(width: 18)
 
             if isVisible {
                 TextField(placeholder, text: $text)
-                    .font(.system(size: 15, weight: .regular, design: .rounded))
+                    .font(.system(size: 15, weight: .regular))
                     .textInputAutocapitalization(.never)
                     .autocorrectionDisabled()
-                    .foregroundColor(.white)
+                    .foregroundColor(.primary)
             } else {
                 SecureField(placeholder, text: $text)
-                    .font(.system(size: 15, weight: .regular, design: .rounded))
-                    .foregroundColor(.white)
+                    .font(.system(size: 15, weight: .regular))
+                    .foregroundColor(.primary)
             }
 
             Button {
@@ -224,16 +212,12 @@ private struct GlassPasswordField: View {
             } label: {
                 Image(systemName: isVisible ? "eye.slash.fill" : "eye.fill")
                     .font(.system(size: 13))
-                    .foregroundColor(.white.opacity(0.4))
+                    .foregroundColor(.secondary)
             }
+            .buttonStyle(.plain)
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, 18)
         .padding(.vertical, 14)
-        .background(Color.white.opacity(0.06))
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(Color.white.opacity(0.08), lineWidth: 1)
-        )
+        .glassEffect(in: Capsule())
     }
 }
