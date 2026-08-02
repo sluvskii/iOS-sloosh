@@ -145,9 +145,8 @@ struct ProfileView: View {
                 .navigationDestination(isPresented: $showsSettings) {
                     SettingsView()
                 }
-                .sheet(isPresented: $showAuthSheet) {
-                    AuthSheetView()
-                        .presentationDetents([.height(490), .large])
+                .fullScreenCover(isPresented: $showAuthSheet) {
+                    AuthView()
                 }
                 .sheet(item: $directPlaybackMovie) { movie in
                     let kpId = movie.externalIds?.kp ?? Int(movie.id) ?? 0
