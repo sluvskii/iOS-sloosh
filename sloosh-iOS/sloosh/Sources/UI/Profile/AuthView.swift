@@ -1,7 +1,7 @@
 import SwiftUI
 import UIKit
 
-// MARK: - Telegram-iOS AuthorizationSequenceController Architecture
+// MARK: - 1:1 Implementation of Telegram-iOS AuthorizationSequenceController Architecture
 
 public struct AuthView: View {
     public enum SequenceStep: Hashable {
@@ -29,14 +29,14 @@ public struct AuthView: View {
 
     public var body: some View {
         ZStack {
-            // Dark Telegram-iOS Canvas Background
+            // Telegram iOS Dark Canvas
             Color.black.ignoresSafeArea()
 
             VStack(spacing: 0) {
-                // Telegram Navigation Header
+                // Telegram Navigation Header (AuthorizationSequenceNavigationBar)
                 navigationHeaderBar
 
-                // Animated Step Container
+                // Animated Step Node Container
                 ZStack {
                     switch currentStep {
                     case .email:
@@ -63,13 +63,13 @@ public struct AuthView: View {
 
                 Spacer(minLength: 0)
 
-                // Telegram Floating Action Button (above keyboard)
+                // Telegram SolidRoundedButtonNode (Continue Action Pill)
                 actionButtonNode
                     .padding(.horizontal, 24)
-                    .padding(.bottom, 20)
+                    .padding(.bottom, 24)
             }
 
-            // Telegram Confirmation Overlay Card (Step 1 -> 2)
+            // Telegram Confirmation Overlay Card (AuthorizationConfirmationController)
             if showConfirmOverlay {
                 confirmationCardOverlay
             }
@@ -102,7 +102,7 @@ public struct AuthView: View {
                     }
                 } label: {
                     Image(systemName: "chevron.left")
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.system(size: 17, weight: .semibold))
                         .foregroundColor(.white)
                         .frame(width: 36, height: 36)
                         .glassEffect(.regular.interactive(), in: .circle)
@@ -128,28 +128,28 @@ public struct AuthView: View {
         .padding(.bottom, 4)
     }
 
-    // MARK: - Step 1: AuthorizationSequenceEmailEntryController
+    // MARK: - Step 1: AuthorizationSequenceEmailEntryControllerNode
 
     private var emailEntryStepNode: some View {
         VStack(spacing: 24) {
-            // 3D Hero Emoji
+            // Telegram Animated Sticker Placeholder (IntroPhone)
             Text("✉️")
                 .font(.system(size: 76))
                 .padding(.top, 16)
 
             VStack(spacing: 8) {
                 Text("Ваш Email")
-                    .font(.system(size: 28, weight: .bold))
+                    .font(.system(size: 28, weight: .semibold))
                     .foregroundColor(.white)
 
                 Text("Введите адрес вашей электронной почты для входа или регистрации в sloosh.")
-                    .font(.system(size: 15, weight: .regular))
+                    .font(.system(size: 17, weight: .regular))
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, 16)
             }
 
-            // Telegram Form Input Group
+            // Telegram Grouped Input Node
             VStack(spacing: 0) {
                 HStack(spacing: 14) {
                     Text("Email")
@@ -158,7 +158,7 @@ public struct AuthView: View {
                         .frame(width: 60, alignment: .leading)
 
                     TextField("email@example.com", text: $email)
-                        .font(.system(size: 18, weight: .medium))
+                        .font(.system(size: 17, weight: .medium))
                         .keyboardType(.emailAddress)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
@@ -178,7 +178,7 @@ public struct AuthView: View {
         }
     }
 
-    // MARK: - Step 2: AuthorizationSequenceCodeEntryController
+    // MARK: - Step 2: AuthorizationSequenceCodeEntryControllerNode
 
     private var codeEntryStepNode: some View {
         VStack(spacing: 24) {
@@ -188,17 +188,17 @@ public struct AuthView: View {
 
             VStack(spacing: 8) {
                 Text("Проверьте почту")
-                    .font(.system(size: 28, weight: .bold))
+                    .font(.system(size: 28, weight: .semibold))
                     .foregroundColor(.white)
 
                 Text("Мы отправили 5-значный код подтверждения на \(maskedEmail(email))")
-                    .font(.system(size: 15, weight: .regular))
+                    .font(.system(size: 17, weight: .regular))
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, 16)
             }
 
-            // 5-Digit Code Input Node (AuthorizationCodeInputNode)
+            // CodeInputView (5 Digit Boxes)
             ZStack {
                 TextField("", text: $pinCode)
                     .keyboardType(.numberPad)
@@ -260,7 +260,7 @@ public struct AuthView: View {
                 }
             } label: {
                 Text("Не получили код?")
-                    .font(.system(size: 15, weight: .medium))
+                    .font(.system(size: 17, weight: .medium))
                     .foregroundColor(Color.slooshAccent)
             }
             .buttonStyle(.plain)
@@ -271,38 +271,39 @@ public struct AuthView: View {
         }
     }
 
-    // MARK: - Step 3: AuthorizationSequencePasswordEntryController
+    // MARK: - Step 3: AuthorizationSequencePasswordEntryControllerNode
 
     private var passwordEntryStepNode: some View {
         VStack(spacing: 24) {
+            // IntroPassword Sticker (Telegram 2FA Monkey 🙈)
             Text("🙈")
                 .font(.system(size: 76))
                 .padding(.top, 16)
 
             VStack(spacing: 8) {
                 Text("Ваш пароль")
-                    .font(.system(size: 28, weight: .bold))
+                    .font(.system(size: 28, weight: .semibold))
                     .foregroundColor(.white)
 
                 Text("Ваш аккаунт защищен дополнительным паролем. Введите ваш пароль для входа.")
-                    .font(.system(size: 15, weight: .regular))
+                    .font(.system(size: 17, weight: .regular))
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, 16)
             }
 
             VStack(spacing: 0) {
                 HStack(spacing: 12) {
                     if isPasswordVisible {
                         TextField("Пароль", text: $password)
-                            .font(.system(size: 18, weight: .medium))
+                            .font(.system(size: 17, weight: .medium))
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
                             .foregroundColor(.white)
                             .focused($focusedField, equals: .password)
                     } else {
                         SecureField("Пароль", text: $password)
-                            .font(.system(size: 18, weight: .medium))
+                            .font(.system(size: 17, weight: .medium))
                             .foregroundColor(.white)
                             .focused($focusedField, equals: .password)
                     }
@@ -329,7 +330,7 @@ public struct AuthView: View {
                 showResetAlert = true
             } label: {
                 Text("Забыли пароль?")
-                    .font(.system(size: 15, weight: .medium))
+                    .font(.system(size: 17, weight: .medium))
                     .foregroundColor(Color.slooshAccent)
             }
             .buttonStyle(.plain)
@@ -340,7 +341,7 @@ public struct AuthView: View {
         }
     }
 
-    // MARK: - Action Button Node (AuthorizationSequenceActionButton)
+    // MARK: - Action Button Node (SolidRoundedButtonNode)
 
     private var actionButtonNode: some View {
         Button {
@@ -409,7 +410,7 @@ public struct AuthView: View {
                     .multilineTextAlignment(.center)
 
                 Text("Это ваш правильный Email?")
-                    .font(.system(size: 16, weight: .regular))
+                    .font(.system(size: 17, weight: .regular))
                     .foregroundColor(.secondary)
 
                 Button {
@@ -419,7 +420,7 @@ public struct AuthView: View {
                     }
                 } label: {
                     Text("Изменить")
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.system(size: 17, weight: .semibold))
                         .foregroundColor(Color.slooshAccent)
                 }
                 .buttonStyle(.plain)
@@ -472,7 +473,7 @@ public struct AuthView: View {
     }
 }
 
-// MARK: - Shake Effect Helper for Error Feedback
+// MARK: - Shake Effect Helper
 
 private struct ShakeEffect: GeometryEffect {
     var animatableData: CGFloat
