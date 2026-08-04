@@ -1,7 +1,7 @@
 import SwiftUI
 import UIKit
 
-// MARK: - 1:1 Implementation of Telegram-iOS AuthorizationSequenceController Architecture
+// MARK: - Official Telegram-iOS AuthorizationSequenceController Architecture & Micro-Animations
 
 public struct AuthView: View {
     public enum SequenceStep: Hashable {
@@ -21,6 +21,10 @@ public struct AuthView: View {
     @State private var showConfirmOverlay: Bool = false
     @State private var showResetAlert: Bool = false
     @State private var resetEmail: String = ""
+
+    // Telegram Animation States
+    @State private var heroScale: CGFloat = 1.0
+    @State private var heroOffsetY: CGFloat = 0
     @State private var shakeOffset: CGFloat = 0
 
     @FocusState private var focusedField: SequenceStep?
@@ -33,10 +37,10 @@ public struct AuthView: View {
             Color.black.ignoresSafeArea()
 
             VStack(spacing: 0) {
-                // Telegram Navigation Header (AuthorizationSequenceNavigationBar)
+                // Telegram Navigation Header
                 navigationHeaderBar
 
-                // Animated Step Node Container
+                // Animated Step Container
                 ZStack {
                     switch currentStep {
                     case .email:
@@ -60,16 +64,17 @@ public struct AuthView: View {
                     }
                 }
                 .modifier(ShakeEffect(animatableData: shakeOffset))
+                .animation(.spring(response: 0.38, dampingFraction: 0.82), value: currentStep)
 
                 Spacer(minLength: 0)
 
-                // Telegram SolidRoundedButtonNode (Continue Action Pill)
+                // Telegram Action Button Node (SolidRoundedButtonNode)
                 actionButtonNode
                     .padding(.horizontal, 24)
                     .padding(.bottom, 24)
             }
 
-            // Telegram Confirmation Overlay Card (AuthorizationConfirmationController)
+            // Telegram Confirmation Overlay (AuthorizationConfirmationController)
             if showConfirmOverlay {
                 confirmationCardOverlay
             }
@@ -87,6 +92,22 @@ public struct AuthView: View {
         } message: {
             Text("Инструкция по сбросу пароля будет отправлена на ваш Email.")
         }
+        .onChange(of: currentStep) { _, _ in
+            triggerHeroBounce()
+        }
+    }
+
+    private func triggerHeroBounce() {
+        withAnimation(.interpolatingSpring(stiffness: 220, damping: 11)) {
+            heroScale = 1.18
+            heroOffsetY = -10
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                heroScale = 1.0
+                heroOffsetY = 0
+            }
+        }
     }
 
     // MARK: - Navigation Header (AuthorizationSequenceNavigationBar)
@@ -96,7 +117,7 @@ public struct AuthView: View {
             if currentStep != .email {
                 Button {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                    withAnimation(.spring(response: 0.38, dampingFraction: 0.82)) {
                         if currentStep == .password { currentStep = .code }
                         else if currentStep == .code { currentStep = .email }
                     }
@@ -107,7 +128,7 @@ public struct AuthView: View {
                         .frame(width: 36, height: 36)
                         .glassEffect(.regular.interactive(), in: .circle)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(TelegramScaleButtonStyle())
             } else {
                 Button {
                     dismiss()
@@ -118,7 +139,7 @@ public struct AuthView: View {
                         .frame(width: 36, height: 36)
                         .glassEffect(.regular.interactive(), in: .circle)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(TelegramScaleButtonStyle())
             }
 
             Spacer()
@@ -132,9 +153,11 @@ public struct AuthView: View {
 
     private var emailEntryStepNode: some View {
         VStack(spacing: 24) {
-            // Telegram Animated Sticker Placeholder (IntroPhone)
+            // Telegram Hero 3D Emoji Node
             Text("✉️")
-                .font(.system(size: 76))
+                .font(.system(size: 78))
+                .scaleEffect(heroScale)
+                .offset(y: heroOffsetY)
                 .padding(.top, 16)
 
             VStack(spacing: 8) {
@@ -183,7 +206,9 @@ public struct AuthView: View {
     private var codeEntryStepNode: some View {
         VStack(spacing: 24) {
             Text("📨")
-                .font(.system(size: 76))
+                .font(.system(size: 78))
+                .scaleEffect(heroScale)
+                .offset(y: heroOffsetY)
                 .padding(.top, 16)
 
             VStack(spacing: 8) {
@@ -198,7 +223,7 @@ public struct AuthView: View {
                     .padding(.horizontal, 16)
             }
 
-            // CodeInputView (5 Digit Boxes)
+            // CodeInputView (5 Digit Boxes with Telegram Bounce)
             ZStack {
                 TextField("", text: $pinCode)
                     .keyboardType(.numberPad)
@@ -213,7 +238,7 @@ public struct AuthView: View {
                                 let valid = await authRepo.verifyCode(pinCode)
                                 if valid {
                                     UINotificationFeedbackGenerator().notificationOccurred(.success)
-                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                    withAnimation(.spring(response: 0.38, dampingFraction: 0.82)) {
                                         currentStep = .password
                                     }
                                 } else {
@@ -240,10 +265,13 @@ public struct AuthView: View {
                                     isCurrent ? Color.slooshAccent : Color.white.opacity(0.12),
                                     lineWidth: isCurrent ? 2 : 1
                                 )
+                                .shadow(color: isCurrent ? Color.slooshAccent.opacity(0.3) : Color.clear, radius: 6)
 
                             Text(digit)
                                 .font(.system(size: 24, weight: .bold))
                                 .foregroundColor(.white)
+                                .scaleEffect(digit.isEmpty ? 0.6 : 1.0)
+                                .animation(.spring(response: 0.25, dampingFraction: 0.65), value: digit)
                         }
                         .frame(width: 52, height: 60)
                         .onTapGesture {
@@ -263,7 +291,7 @@ public struct AuthView: View {
                     .font(.system(size: 17, weight: .medium))
                     .foregroundColor(Color.slooshAccent)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(TelegramScaleButtonStyle())
             .padding(.top, 8)
         }
         .onAppear {
@@ -275,9 +303,11 @@ public struct AuthView: View {
 
     private var passwordEntryStepNode: some View {
         VStack(spacing: 24) {
-            // IntroPassword Sticker (Telegram 2FA Monkey 🙈)
+            // Telegram 2FA Monkey 🙈 Node
             Text("🙈")
-                .font(.system(size: 76))
+                .font(.system(size: 78))
+                .scaleEffect(heroScale)
+                .offset(y: heroOffsetY)
                 .padding(.top, 16)
 
             VStack(spacing: 8) {
@@ -315,7 +345,7 @@ public struct AuthView: View {
                             .font(.system(size: 15))
                             .foregroundColor(.secondary)
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(TelegramScaleButtonStyle())
                 }
                 .padding(.vertical, 14)
 
@@ -333,7 +363,7 @@ public struct AuthView: View {
                     .font(.system(size: 17, weight: .medium))
                     .foregroundColor(Color.slooshAccent)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(TelegramScaleButtonStyle())
             .padding(.top, 8)
         }
         .onAppear {
@@ -363,7 +393,7 @@ public struct AuthView: View {
             .foregroundColor(.black)
             .clipShape(Capsule())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(TelegramScaleButtonStyle())
         .disabled(authRepo.isLoading || (currentStep == .email && email.isEmpty))
         .opacity((currentStep == .email && email.isEmpty) ? 0.5 : 1.0)
     }
@@ -378,7 +408,7 @@ public struct AuthView: View {
             Task {
                 let valid = await authRepo.verifyCode(pinCode)
                 if valid {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                    withAnimation(.spring(response: 0.38, dampingFraction: 0.82)) {
                         currentStep = .password
                     }
                 }
@@ -423,7 +453,7 @@ public struct AuthView: View {
                         .font(.system(size: 17, weight: .semibold))
                         .foregroundColor(Color.slooshAccent)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(TelegramScaleButtonStyle())
                 .padding(.top, 4)
 
                 Button {
@@ -446,7 +476,7 @@ public struct AuthView: View {
                     .foregroundColor(.black)
                     .clipShape(Capsule())
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(TelegramScaleButtonStyle())
                 .padding(.top, 8)
             }
             .padding(24)
@@ -470,6 +500,16 @@ public struct AuthView: View {
         guard parts.count == 2, let first = parts.first, let domain = parts.last else { return raw }
         let maskedPrefix = String(first.prefix(2)) + "****" + String(first.suffix(1))
         return "\(maskedPrefix)@\(domain)"
+    }
+}
+
+// MARK: - Telegram Spring Button Style
+
+private struct TelegramScaleButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.95 : 1.0)
+            .animation(.spring(response: 0.22, dampingFraction: 0.7), value: configuration.isPressed)
     }
 }
 
