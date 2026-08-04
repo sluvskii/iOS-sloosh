@@ -6,7 +6,9 @@ public struct UserProfile: Codable, Identifiable, Equatable {
     public let displayName: String?
     public let photoURL: String?
     public let isAnonymous: Bool
-    public let provider: String // "email", "apple", "anonymous"
+    public let provider: String // "email", "google", "anonymous"
+    public let idToken: String?
+    public let refreshToken: String?
     public let createdAt: Date
 
     public init(
@@ -16,6 +18,8 @@ public struct UserProfile: Codable, Identifiable, Equatable {
         photoURL: String? = nil,
         isAnonymous: Bool = true,
         provider: String = "anonymous",
+        idToken: String? = nil,
+        refreshToken: String? = nil,
         createdAt: Date = Date()
     ) {
         self.id = id
@@ -24,6 +28,8 @@ public struct UserProfile: Codable, Identifiable, Equatable {
         self.photoURL = photoURL
         self.isAnonymous = isAnonymous
         self.provider = provider
+        self.idToken = idToken
+        self.refreshToken = refreshToken
         self.createdAt = createdAt
     }
 
@@ -42,9 +48,9 @@ public struct UserProfile: Codable, Identifiable, Equatable {
 
     public var displaySubtitle: String {
         if isAnonymous {
-            return "Войдите для синхронизации избранного"
+            return "Войдите для синхронизации Избранного"
         }
-        return email ?? "Войден через Apple ID"
+        return email ?? "Аккаунт sloosh"
     }
 
     public var avatarInitials: String {
