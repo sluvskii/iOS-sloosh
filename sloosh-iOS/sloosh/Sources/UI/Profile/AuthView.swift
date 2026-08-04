@@ -1,82 +1,222 @@
 import SwiftUI
 import UIKit
 
-// MARK: - Official Telegram-iOS AuthorizationSequenceController Architecture & Micro-Animations
+// MARK: - Telegram-iOS Styled Authentication View for Firebase (Google + Email & Password)
 
 public struct AuthView: View {
-    public enum SequenceStep: Hashable {
-        case email
-        case code
-        case password
+    public enum AuthMode {
+        case signIn
+        case signUp
     }
 
     @Environment(\.dismiss) private var dismiss
     @StateObject private var authRepo = AuthRepository.shared
 
-    @State private var currentStep: SequenceStep = .email
+    @State private var mode: AuthMode = .signIn
     @State private var email: String = ""
-    @State private var pinCode: String = ""
     @State private var password: String = ""
+    @State private var name: String = ""
     @State private var isPasswordVisible: Bool = false
-    @State private var showConfirmOverlay: Bool = false
     @State private var showResetAlert: Bool = false
     @State private var resetEmail: String = ""
 
-    // Telegram Animation States
+    // Telegram Spring Animation States
     @State private var heroScale: CGFloat = 1.0
     @State private var heroOffsetY: CGFloat = 0
     @State private var shakeOffset: CGFloat = 0
 
-    @FocusState private var focusedField: SequenceStep?
+    @FocusState private var focusedField: Field?
+
+    private enum Field: Hashable {
+        case name
+        case email
+        case password
+    }
 
     public init() {}
 
     public var body: some View {
         ZStack {
-            // Telegram iOS Dark Canvas
+            // Telegram Dark Canvas
             Color.black.ignoresSafeArea()
 
             VStack(spacing: 0) {
-                // Telegram Navigation Header
-                navigationHeaderBar
+                // Top Navigation Bar (Telegram xmark)
+                topNavigationBar
 
-                // Animated Step Container
-                ZStack {
-                    switch currentStep {
-                    case .email:
-                        emailEntryStepNode
-                            .transition(.asymmetric(
-                                insertion: .move(edge: .trailing).combined(with: .opacity),
-                                removal: .move(edge: .leading).combined(with: .opacity)
-                            ))
-                    case .code:
-                        codeEntryStepNode
-                            .transition(.asymmetric(
-                                insertion: .move(edge: .trailing).combined(with: .opacity),
-                                removal: .move(edge: .leading).combined(with: .opacity)
-                            ))
-                    case .password:
-                        passwordEntryStepNode
-                            .transition(.asymmetric(
-                                insertion: .move(edge: .trailing).combined(with: .opacity),
-                                removal: .move(edge: .leading).combined(with: .opacity)
-                            ))
+                ScrollView(showsIndicators: false) {
+                    VStack(spacing: 24) {
+                        // Telegram Hero 3D Emoji Node
+                        Text(mode == .signIn ? "🔐" : "👤")
+                            .font(.system(size: 78))
+                            .scaleEffect(heroScale)
+                            .offset(y: heroOffsetY)
+                            .padding(.top, 12)
+
+                        // Title & Subtitle Node
+                        VStack(spacing: 8) {
+                            Text(mode == .signIn ? "Вход в sloosh" : "Регистрация")
+                                .font(.system(size: 28, weight: .semibold))
+                                .foregroundColor(.white)
+
+                            Text(mode == .signIn ? "Войдите через Google или по Email с паролем для синхронизации Избранного." : "Укажите имя, Email и пароль для создания нового аккаунта.")
+                                .font(.system(size: 16, weight: .regular))
+                                .foregroundColor(.secondary)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 20)
+                        }
+
+                        // Firebase Google Auth Button (Telegram Prominent Glass Pill)
+                        Button {
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            Task {
+                                let success = await authRepo.signInWithGoogle()
+                                if success { dismiss() }
+                            }
+                        } label: {
+                            HStack(spacing: 12) {
+                                Image(systemName: "g.circle.fill")
+                                    .font(.system(size: 22, weight: .bold))
+                                    .foregroundColor(.white)
+
+                                Text("Продолжить с Google")
+                                    .font(.system(size: 17, weight: .semibold))
+                                    .foregroundColor(.white)
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 14)
+                            .glassEffect(in: Capsule())
+                        }
+                        .buttonStyle(TelegramScaleButtonStyle())
+                        .padding(.horizontal, 24)
+
+                        // Divider Line: — или через Email —
+                        HStack(spacing: 12) {
+                            Rectangle()
+                                .fill(Color.white.opacity(0.15))
+                                .frame(height: 1)
+                            Text("или через Email")
+                                .font(.system(size: 14, weight: .regular))
+                                .foregroundColor(.secondary)
+                            Rectangle()
+                                .fill(Color.white.opacity(0.15))
+                                .frame(height: 1)
+                        }
+                        .padding(.horizontal, 24)
+
+                        // Telegram Grouped Glass Input Card
+                        VStack(spacing: 0) {
+                            if mode == .signUp {
+                                HStack(spacing: 14) {
+                                    Text("Имя")
+                                        .font(.system(size: 17, weight: .regular))
+                                        .foregroundColor(.secondary)
+                                        .frame(width: 65, alignment: .leading)
+
+                                    TextField("Ваше имя", text: $name)
+                                        .font(.system(size: 17, weight: .medium))
+                                        .foregroundColor(.white)
+                                        .focused($focusedField, equals: .name)
+                                }
+                                .padding(.horizontal, 16)
+                                .padding(.vertical, 14)
+
+                                Divider()
+                                    .background(Color.white.opacity(0.15))
+                                    .padding(.leading, 16)
+                            }
+
+                            HStack(spacing: 14) {
+                                Text("Email")
+                                    .font(.system(size: 17, weight: .regular))
+                                    .foregroundColor(.secondary)
+                                    .frame(width: 65, alignment: .leading)
+
+                                TextField("email@example.com", text: $email)
+                                    .font(.system(size: 17, weight: .medium))
+                                    .keyboardType(.emailAddress)
+                                    .textInputAutocapitalization(.never)
+                                    .autocorrectionDisabled()
+                                    .foregroundColor(.white)
+                                    .focused($focusedField, equals: .email)
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 14)
+
+                            Divider()
+                                .background(Color.white.opacity(0.15))
+                                .padding(.leading, 16)
+
+                            HStack(spacing: 14) {
+                                Text("Пароль")
+                                    .font(.system(size: 17, weight: .regular))
+                                    .foregroundColor(.secondary)
+                                    .frame(width: 65, alignment: .leading)
+
+                                if isPasswordVisible {
+                                    TextField("Пароль", text: $password)
+                                        .font(.system(size: 17, weight: .medium))
+                                        .textInputAutocapitalization(.never)
+                                        .autocorrectionDisabled()
+                                        .foregroundColor(.white)
+                                        .focused($focusedField, equals: .password)
+                                } else {
+                                    SecureField("Пароль", text: $password)
+                                        .font(.system(size: 17, weight: .medium))
+                                        .foregroundColor(.white)
+                                        .focused($focusedField, equals: .password)
+                                }
+
+                                Button {
+                                    isPasswordVisible.toggle()
+                                } label: {
+                                    Image(systemName: isPasswordVisible ? "eye.slash.fill" : "eye.fill")
+                                        .font(.system(size: 15))
+                                        .foregroundColor(.secondary)
+                                }
+                                .buttonStyle(TelegramScaleButtonStyle())
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 14)
+                        }
+                        .glassEffect(in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        .padding(.horizontal, 24)
+                        .modifier(ShakeEffect(animatableData: shakeOffset))
+
+                        // Action Links: Forgot Password & Mode Switcher
+                        VStack(spacing: 12) {
+                            if mode == .signIn {
+                                Button("Забыли пароль?") {
+                                    resetEmail = email
+                                    showResetAlert = true
+                                }
+                                .font(.system(size: 15, weight: .medium))
+                                .foregroundColor(Color.slooshAccent)
+                                .buttonStyle(TelegramScaleButtonStyle())
+                            }
+
+                            Button {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                                    mode = (mode == .signIn) ? .signUp : .signIn
+                                }
+                            } label: {
+                                Text(mode == .signIn ? "Ещё нет аккаунта? Зарегистрироваться" : "Уже есть аккаунт? Войти")
+                                    .font(.system(size: 15, weight: .medium))
+                                    .foregroundColor(Color.slooshAccent)
+                            }
+                            .buttonStyle(TelegramScaleButtonStyle())
+                        }
                     }
+                    .padding(.top, 12)
                 }
-                .modifier(ShakeEffect(animatableData: shakeOffset))
-                .animation(.spring(response: 0.38, dampingFraction: 0.82), value: currentStep)
 
                 Spacer(minLength: 0)
 
-                // Telegram Action Button Node (SolidRoundedButtonNode)
+                // Bottom Floating Primary Action Button (Continue)
                 actionButtonNode
                     .padding(.horizontal, 24)
                     .padding(.bottom, 24)
-            }
-
-            // Telegram Confirmation Overlay (AuthorizationConfirmationController)
-            if showConfirmOverlay {
-                confirmationCardOverlay
             }
         }
         .navigationBarBackButtonHidden(true)
@@ -90,9 +230,9 @@ public struct AuthView: View {
                 }
             }
         } message: {
-            Text("Инструкция по сбросу пароля будет отправлена на ваш Email.")
+            Text("Ссылка для сброса пароля будет отправлена на ваш Email.")
         }
-        .onChange(of: currentStep) { _, _ in
+        .onChange(of: mode) { _, _ in
             triggerHeroBounce()
         }
     }
@@ -110,268 +250,29 @@ public struct AuthView: View {
         }
     }
 
-    // MARK: - Navigation Header (AuthorizationSequenceNavigationBar)
+    // MARK: - Navigation Header
 
-    private var navigationHeaderBar: some View {
+    private var topNavigationBar: some View {
         HStack {
-            if currentStep != .email {
-                Button {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    withAnimation(.spring(response: 0.38, dampingFraction: 0.82)) {
-                        if currentStep == .password { currentStep = .code }
-                        else if currentStep == .code { currentStep = .email }
-                    }
-                } label: {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundColor(.white)
-                        .frame(width: 36, height: 36)
-                        .glassEffect(.regular.interactive(), in: .circle)
-                }
-                .buttonStyle(TelegramScaleButtonStyle())
-            } else {
-                Button {
-                    dismiss()
-                } label: {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(.white)
-                        .frame(width: 36, height: 36)
-                        .glassEffect(.regular.interactive(), in: .circle)
-                }
-                .buttonStyle(TelegramScaleButtonStyle())
-            }
-
             Spacer()
+
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundColor(.white)
+                    .frame(width: 36, height: 36)
+                    .glassEffect(.regular.interactive(), in: .circle)
+            }
+            .buttonStyle(TelegramScaleButtonStyle())
         }
         .padding(.horizontal, 20)
         .padding(.top, 12)
         .padding(.bottom, 4)
     }
 
-    // MARK: - Step 1: AuthorizationSequenceEmailEntryControllerNode
-
-    private var emailEntryStepNode: some View {
-        VStack(spacing: 24) {
-            // Telegram Hero 3D Emoji Node
-            Text("✉️")
-                .font(.system(size: 78))
-                .scaleEffect(heroScale)
-                .offset(y: heroOffsetY)
-                .padding(.top, 16)
-
-            VStack(spacing: 8) {
-                Text("Ваш Email")
-                    .font(.system(size: 28, weight: .semibold))
-                    .foregroundColor(.white)
-
-                Text("Введите адрес вашей электронной почты для входа или регистрации в sloosh.")
-                    .font(.system(size: 17, weight: .regular))
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 16)
-            }
-
-            // Telegram Grouped Input Node
-            VStack(spacing: 0) {
-                HStack(spacing: 14) {
-                    Text("Email")
-                        .font(.system(size: 17, weight: .regular))
-                        .foregroundColor(.secondary)
-                        .frame(width: 60, alignment: .leading)
-
-                    TextField("email@example.com", text: $email)
-                        .font(.system(size: 17, weight: .medium))
-                        .keyboardType(.emailAddress)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .foregroundColor(.white)
-                        .focused($focusedField, equals: .email)
-                }
-                .padding(.vertical, 14)
-
-                Divider()
-                    .background(Color.white.opacity(0.15))
-            }
-            .padding(.horizontal, 24)
-            .padding(.top, 16)
-        }
-        .onAppear {
-            focusedField = .email
-        }
-    }
-
-    // MARK: - Step 2: AuthorizationSequenceCodeEntryControllerNode
-
-    private var codeEntryStepNode: some View {
-        VStack(spacing: 24) {
-            Text("📨")
-                .font(.system(size: 78))
-                .scaleEffect(heroScale)
-                .offset(y: heroOffsetY)
-                .padding(.top, 16)
-
-            VStack(spacing: 8) {
-                Text("Проверьте почту")
-                    .font(.system(size: 28, weight: .semibold))
-                    .foregroundColor(.white)
-
-                Text("Мы отправили 5-значный код подтверждения на \(maskedEmail(email))")
-                    .font(.system(size: 17, weight: .regular))
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 16)
-            }
-
-            // CodeInputView (5 Digit Boxes with Telegram Bounce)
-            ZStack {
-                TextField("", text: $pinCode)
-                    .keyboardType(.numberPad)
-                    .focused($focusedField, equals: .code)
-                    .opacity(0.01)
-                    .onChange(of: pinCode) { _, newValue in
-                        if newValue.count > 5 {
-                            pinCode = String(newValue.prefix(5))
-                        }
-                        if pinCode.count == 5 {
-                            Task {
-                                let valid = await authRepo.verifyCode(pinCode)
-                                if valid {
-                                    UINotificationFeedbackGenerator().notificationOccurred(.success)
-                                    withAnimation(.spring(response: 0.38, dampingFraction: 0.82)) {
-                                        currentStep = .password
-                                    }
-                                } else {
-                                    UINotificationFeedbackGenerator().notificationOccurred(.error)
-                                    withAnimation(.default) {
-                                        shakeOffset = 6
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                HStack(spacing: 12) {
-                    ForEach(0..<5, id: \.self) { index in
-                        let digit = getDigit(at: index)
-                        let isCurrent = (pinCode.count == index)
-
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .fill(Color.white.opacity(0.06))
-
-                            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                .stroke(
-                                    isCurrent ? Color.slooshAccent : Color.white.opacity(0.12),
-                                    lineWidth: isCurrent ? 2 : 1
-                                )
-                                .shadow(color: isCurrent ? Color.slooshAccent.opacity(0.3) : Color.clear, radius: 6)
-
-                            Text(digit)
-                                .font(.system(size: 24, weight: .bold))
-                                .foregroundColor(.white)
-                                .scaleEffect(digit.isEmpty ? 0.6 : 1.0)
-                                .animation(.spring(response: 0.25, dampingFraction: 0.65), value: digit)
-                        }
-                        .frame(width: 52, height: 60)
-                        .onTapGesture {
-                            focusedField = .code
-                        }
-                    }
-                }
-            }
-            .padding(.top, 16)
-
-            Button {
-                Task {
-                    _ = await authRepo.sendVerificationCode(email: email)
-                }
-            } label: {
-                Text("Не получили код?")
-                    .font(.system(size: 17, weight: .medium))
-                    .foregroundColor(Color.slooshAccent)
-            }
-            .buttonStyle(TelegramScaleButtonStyle())
-            .padding(.top, 8)
-        }
-        .onAppear {
-            focusedField = .code
-        }
-    }
-
-    // MARK: - Step 3: AuthorizationSequencePasswordEntryControllerNode
-
-    private var passwordEntryStepNode: some View {
-        VStack(spacing: 24) {
-            // Telegram 2FA Monkey 🙈 Node
-            Text("🙈")
-                .font(.system(size: 78))
-                .scaleEffect(heroScale)
-                .offset(y: heroOffsetY)
-                .padding(.top, 16)
-
-            VStack(spacing: 8) {
-                Text("Ваш пароль")
-                    .font(.system(size: 28, weight: .semibold))
-                    .foregroundColor(.white)
-
-                Text("Ваш аккаунт защищен дополнительным паролем. Введите ваш пароль для входа.")
-                    .font(.system(size: 17, weight: .regular))
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 16)
-            }
-
-            VStack(spacing: 0) {
-                HStack(spacing: 12) {
-                    if isPasswordVisible {
-                        TextField("Пароль", text: $password)
-                            .font(.system(size: 17, weight: .medium))
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            .foregroundColor(.white)
-                            .focused($focusedField, equals: .password)
-                    } else {
-                        SecureField("Пароль", text: $password)
-                            .font(.system(size: 17, weight: .medium))
-                            .foregroundColor(.white)
-                            .focused($focusedField, equals: .password)
-                    }
-
-                    Button {
-                        isPasswordVisible.toggle()
-                    } label: {
-                        Image(systemName: isPasswordVisible ? "eye.slash.fill" : "eye.fill")
-                            .font(.system(size: 15))
-                            .foregroundColor(.secondary)
-                    }
-                    .buttonStyle(TelegramScaleButtonStyle())
-                }
-                .padding(.vertical, 14)
-
-                Divider()
-                    .background(Color.white.opacity(0.15))
-            }
-            .padding(.horizontal, 24)
-            .padding(.top, 16)
-
-            Button {
-                resetEmail = email
-                showResetAlert = true
-            } label: {
-                Text("Забыли пароль?")
-                    .font(.system(size: 17, weight: .medium))
-                    .foregroundColor(Color.slooshAccent)
-            }
-            .buttonStyle(TelegramScaleButtonStyle())
-            .padding(.top, 8)
-        }
-        .onAppear {
-            focusedField = .password
-        }
-    }
-
-    // MARK: - Action Button Node (SolidRoundedButtonNode)
+    // MARK: - Primary Action Button Node
 
     private var actionButtonNode: some View {
         Button {
@@ -383,7 +284,7 @@ public struct AuthView: View {
                 if authRepo.isLoading {
                     ProgressView().tint(.black)
                 } else {
-                    Text("Продолжить")
+                    Text(mode == .signIn ? "Войти" : "Зарегистрироваться")
                         .font(.system(size: 17, weight: .bold))
                 }
                 Spacer()
@@ -394,112 +295,27 @@ public struct AuthView: View {
             .clipShape(Capsule())
         }
         .buttonStyle(TelegramScaleButtonStyle())
-        .disabled(authRepo.isLoading || (currentStep == .email && email.isEmpty))
-        .opacity((currentStep == .email && email.isEmpty) ? 0.5 : 1.0)
+        .disabled(authRepo.isLoading || email.isEmpty || password.isEmpty)
+        .opacity((email.isEmpty || password.isEmpty) ? 0.5 : 1.0)
     }
 
     private func handlePrimaryAction() {
-        if currentStep == .email {
-            guard !email.isEmpty else { return }
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                showConfirmOverlay = true
+        Task {
+            let success: Bool
+            if mode == .signIn {
+                success = await authRepo.signIn(email: email, password: password)
+            } else {
+                success = await authRepo.signUp(email: email, password: password, displayName: name)
             }
-        } else if currentStep == .code {
-            Task {
-                let valid = await authRepo.verifyCode(pinCode)
-                if valid {
-                    withAnimation(.spring(response: 0.38, dampingFraction: 0.82)) {
-                        currentStep = .password
-                    }
-                }
-            }
-        } else if currentStep == .password {
-            Task {
-                let success = await authRepo.signIn(email: email, password: password)
-                if success {
-                    dismiss()
+            if success {
+                dismiss()
+            } else {
+                UINotificationFeedbackGenerator().notificationOccurred(.error)
+                withAnimation(.default) {
+                    shakeOffset = 6
                 }
             }
         }
-    }
-
-    // MARK: - Confirmation Card Overlay (AuthorizationConfirmationController)
-
-    private var confirmationCardOverlay: some View {
-        ZStack {
-            Color.black.opacity(0.7)
-                .ignoresSafeArea()
-                .onTapGesture {
-                    withAnimation { showConfirmOverlay = false }
-                }
-
-            VStack(spacing: 16) {
-                Text(email)
-                    .font(.system(size: 26, weight: .bold))
-                    .foregroundColor(.white)
-                    .multilineTextAlignment(.center)
-
-                Text("Это ваш правильный Email?")
-                    .font(.system(size: 17, weight: .regular))
-                    .foregroundColor(.secondary)
-
-                Button {
-                    withAnimation {
-                        showConfirmOverlay = false
-                        focusedField = .email
-                    }
-                } label: {
-                    Text("Изменить")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundColor(Color.slooshAccent)
-                }
-                .buttonStyle(TelegramScaleButtonStyle())
-                .padding(.top, 4)
-
-                Button {
-                    withAnimation {
-                        showConfirmOverlay = false
-                        currentStep = .code
-                    }
-                    Task {
-                        _ = await authRepo.sendVerificationCode(email: email)
-                    }
-                } label: {
-                    HStack {
-                        Spacer()
-                        Text("Продолжить")
-                            .font(.system(size: 17, weight: .bold))
-                        Spacer()
-                    }
-                    .padding(.vertical, 15)
-                    .background(Color.slooshAccent)
-                    .foregroundColor(.black)
-                    .clipShape(Capsule())
-                }
-                .buttonStyle(TelegramScaleButtonStyle())
-                .padding(.top, 8)
-            }
-            .padding(24)
-            .background(Color.white.opacity(0.12))
-            .glassEffect(in: RoundedRectangle(cornerRadius: 32, style: .continuous))
-            .padding(.horizontal, 20)
-        }
-        .transition(.move(edge: .bottom).combined(with: .opacity))
-    }
-
-    // MARK: - Helpers
-
-    private func getDigit(at index: Int) -> String {
-        guard index < pinCode.count else { return "" }
-        let charIndex = pinCode.index(pinCode.startIndex, offsetBy: index)
-        return String(pinCode[charIndex])
-    }
-
-    private func maskedEmail(_ raw: String) -> String {
-        let parts = raw.components(separatedBy: "@")
-        guard parts.count == 2, let first = parts.first, let domain = parts.last else { return raw }
-        let maskedPrefix = String(first.prefix(2)) + "****" + String(first.suffix(1))
-        return "\(maskedPrefix)@\(domain)"
     }
 }
 

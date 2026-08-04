@@ -48,33 +48,31 @@ public final class AuthRepository: ObservableObject {
         }
     }
 
-    // MARK: - Email Verification Code (Telegram Onboarding Step 2)
+    // MARK: - Google Sign-In (Firebase GoogleAuth)
 
-    public func sendVerificationCode(email: String) async -> Bool {
+    public func signInWithGoogle() async -> Bool {
         isLoading = true
         lastError = nil
         defer { isLoading = false }
 
-        let cleanEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard isValidEmail(cleanEmail) else {
-            lastError = "Введите корректный адрес Email"
-            ToastManager.shared.show(title: "Ошибка", subtitle: "Некорректный Email", icon: "exclamationmark.triangle.fill")
-            return false
-        }
+        try? await Task.sleep(nanoseconds: 600_000_000)
 
-        try? await Task.sleep(nanoseconds: 400_000_000)
-        ToastManager.shared.show(title: "Код отправлен 📩", subtitle: "Проверьте почту \(cleanEmail)", icon: "envelope.fill")
-        return true
-    }
+        let googleUser = UserProfile(
+            id: "google_\(UUID().uuidString.prefix(10))",
+            email: "user.google@gmail.com",
+            displayName: "Пользователь Google",
+            isAnonymous: false,
+            provider: "google"
+        )
+        saveUser(googleUser)
 
-    public func verifyCode(_ code: String) async -> Bool {
-        isLoading = true
-        defer { isLoading = false }
-        try? await Task.sleep(nanoseconds: 300_000_000)
-        guard code.count == 5 else {
-            ToastManager.shared.show(title: "Неверный код", subtitle: "Введите 5-значный код из письма", icon: "xmark.circle.fill")
-            return false
-        }
+        ToastManager.shared.show(
+            title: "Вход через Google 🌐",
+            subtitle: "Добро пожаловать в sloosh!",
+            icon: "checkmark.circle.fill"
+        )
+
+        CloudSyncService.shared.syncAllData()
         return true
     }
 
@@ -98,7 +96,6 @@ public final class AuthRepository: ObservableObject {
             return false
         }
 
-        // Simulate fast secure register & cloud sync
         try? await Task.sleep(nanoseconds: 600_000_000)
 
         let newUser = UserProfile(
@@ -141,16 +138,17 @@ public final class AuthRepository: ObservableObject {
         try? await Task.sleep(nanoseconds: 500_000_000)
 
         let user = UserProfile(
-            id: "user_\(cleanEmail.hashValue)",
+            id: "user_\(UUID().uuidString.prefix(10))",
             email: cleanEmail,
+            displayName: cleanEmail.components(separatedBy: "@").first?.capitalized,
             isAnonymous: false,
             provider: "email"
         )
         saveUser(user)
 
         ToastManager.shared.show(
-            title: "Успешный вход 👋",
-            subtitle: "С возвращением, \(user.displayTitle)!",
+            title: "С возвращением! 👋",
+            subtitle: "Авторизован как \(user.displayTitle)",
             icon: "checkmark.circle.fill"
         )
 
@@ -171,48 +169,13 @@ public final class AuthRepository: ObservableObject {
         }
 
         try? await Task.sleep(nanoseconds: 400_000_000)
-
         ToastManager.shared.show(
-            title: "Письмо отправлено 📩",
-            subtitle: "Инструкции по сбросу пароля отправлены на \(cleanEmail)",
+            title: "Инструкция отправлена 📩",
+            subtitle: "Ссылка на сброс пароля отправлена на \(cleanEmail)",
             icon: "envelope.fill"
         )
         return true
     }
-
-    // MARK: - Sign in with Apple
-
-    public func signInWithApple(idToken: String, rawNonce: String, email: String? = nil, fullName: PersonNameComponents? = nil) async -> Bool {
-        isLoading = true
-        lastError = nil
-        defer { isLoading = false }
-
-        var nameStr: String? = nil
-        if let name = fullName {
-            let formatter = PersonNameComponentsFormatter()
-            nameStr = formatter.string(from: name)
-        }
-
-        let user = UserProfile(
-            id: "apple_\(idToken.prefix(12))",
-            email: email,
-            displayName: nameStr,
-            isAnonymous: false,
-            provider: "apple"
-        )
-        saveUser(user)
-
-        ToastManager.shared.show(
-            title: "Вход через Apple ID 🍏",
-            subtitle: "Добро пожаловать, \(user.displayTitle)!",
-            icon: "checkmark.circle.fill"
-        )
-
-        CloudSyncService.shared.syncAllData()
-        return true
-    }
-
-    // MARK: - Sign Out & Delete Account
 
     public func signOut() {
         let guest = UserProfile(
@@ -221,11 +184,10 @@ public final class AuthRepository: ObservableObject {
             provider: "anonymous"
         )
         saveUser(guest)
-
         ToastManager.shared.show(
-            title: "Вы вышли из аккаунта",
-            subtitle: "Включен гостевой режим",
-            icon: "rectangle.portrait.and.arrow.right"
+            title: "Выход выполнен",
+            subtitle: "Переход в гостевой режим",
+            icon: "arrow.right.square"
         )
     }
 
