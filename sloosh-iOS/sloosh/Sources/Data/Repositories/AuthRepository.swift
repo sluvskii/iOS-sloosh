@@ -48,6 +48,36 @@ public final class AuthRepository: ObservableObject {
         }
     }
 
+    // MARK: - Email Verification Code (Telegram Onboarding Step 2)
+
+    public func sendVerificationCode(email: String) async -> Bool {
+        isLoading = true
+        lastError = nil
+        defer { isLoading = false }
+
+        let cleanEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard isValidEmail(cleanEmail) else {
+            lastError = "Введите корректный адрес Email"
+            ToastManager.shared.show(title: "Ошибка", subtitle: "Некорректный Email", icon: "exclamationmark.triangle.fill")
+            return false
+        }
+
+        try? await Task.sleep(nanoseconds: 400_000_000)
+        ToastManager.shared.show(title: "Код отправлен 📩", subtitle: "Проверьте почту \(cleanEmail)", icon: "envelope.fill")
+        return true
+    }
+
+    public func verifyCode(_ code: String) async -> Bool {
+        isLoading = true
+        defer { isLoading = false }
+        try? await Task.sleep(nanoseconds: 300_000_000)
+        guard code.count == 5 else {
+            ToastManager.shared.show(title: "Неверный код", subtitle: "Введите 5-значный код из письма", icon: "xmark.circle.fill")
+            return false
+        }
+        return true
+    }
+
     // MARK: - Email & Password Authentication
 
     public func signUp(email: String, password: String, displayName: String? = nil) async -> Bool {
