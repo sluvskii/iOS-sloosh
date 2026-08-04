@@ -1,7 +1,10 @@
 import SwiftUI
+import UIKit
+
+// MARK: - Telegram-iOS AuthorizationSequenceController Architecture
 
 public struct AuthView: View {
-    enum Step {
+    public enum SequenceStep: Hashable {
         case email
         case code
         case password
@@ -9,55 +12,66 @@ public struct AuthView: View {
 
     @Environment(\.dismiss) private var dismiss
     @StateObject private var authRepo = AuthRepository.shared
-    
-    @State private var step: Step = .email
+
+    @State private var currentStep: SequenceStep = .email
     @State private var email: String = ""
     @State private var pinCode: String = ""
     @State private var password: String = ""
     @State private var isPasswordVisible: Bool = false
-    @State private var showConfirmSheet: Bool = false
+    @State private var showConfirmOverlay: Bool = false
     @State private var showResetAlert: Bool = false
     @State private var resetEmail: String = ""
-    @FocusState private var isCodeFocused: Bool
-    @FocusState private var isEmailFocused: Bool
-    @FocusState private var isPasswordFocused: Bool
+    @State private var shakeOffset: CGFloat = 0
+
+    @FocusState private var focusedField: SequenceStep?
 
     public init() {}
 
     public var body: some View {
         ZStack {
+            // Dark Telegram-iOS Canvas Background
             Color.black.ignoresSafeArea()
 
             VStack(spacing: 0) {
-                // Top Bar Navigation
-                topNavigationBar
+                // Telegram Navigation Header
+                navigationHeaderBar
 
-                ScrollView(showsIndicators: false) {
-                    VStack(spacing: 24) {
-                        switch step {
-                        case .email:
-                            emailStepView
-                        case .code:
-                            codeStepView
-                        case .password:
-                            passwordStepView
-                        }
+                // Animated Step Container
+                ZStack {
+                    switch currentStep {
+                    case .email:
+                        emailEntryStepNode
+                            .transition(.asymmetric(
+                                insertion: .move(edge: .trailing).combined(with: .opacity),
+                                removal: .move(edge: .leading).combined(with: .opacity)
+                            ))
+                    case .code:
+                        codeEntryStepNode
+                            .transition(.asymmetric(
+                                insertion: .move(edge: .trailing).combined(with: .opacity),
+                                removal: .move(edge: .leading).combined(with: .opacity)
+                            ))
+                    case .password:
+                        passwordEntryStepNode
+                            .transition(.asymmetric(
+                                insertion: .move(edge: .trailing).combined(with: .opacity),
+                                removal: .move(edge: .leading).combined(with: .opacity)
+                            ))
                     }
-                    .padding(.horizontal, 24)
-                    .padding(.top, 20)
                 }
+                .modifier(ShakeEffect(animatableData: shakeOffset))
 
                 Spacer(minLength: 0)
 
-                // Bottom Floating Action Button (Continue)
-                bottomActionButton
+                // Telegram Floating Action Button (above keyboard)
+                actionButtonNode
                     .padding(.horizontal, 24)
-                    .padding(.bottom, 24)
+                    .padding(.bottom, 20)
             }
 
-            // Step 1.5: Confirmation Card Popup (1:1 Telegram Screenshot 2)
-            if showConfirmSheet {
-                emailConfirmationOverlay
+            // Telegram Confirmation Overlay Card (Step 1 -> 2)
+            if showConfirmOverlay {
+                confirmationCardOverlay
             }
         }
         .navigationBarBackButtonHidden(true)
@@ -75,20 +89,21 @@ public struct AuthView: View {
         }
     }
 
-    // MARK: - Top Navigation Bar
+    // MARK: - Navigation Header (AuthorizationSequenceNavigationBar)
 
-    private var topNavigationBar: some View {
+    private var navigationHeaderBar: some View {
         HStack {
-            if step != .email {
+            if currentStep != .email {
                 Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                        if step == .password { step = .code }
-                        else if step == .code { step = .email }
+                        if currentStep == .password { currentStep = .code }
+                        else if currentStep == .code { currentStep = .email }
                     }
                 } label: {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(.primary)
+                        .foregroundColor(.white)
                         .frame(width: 36, height: 36)
                         .glassEffect(.regular.interactive(), in: .circle)
                 }
@@ -99,7 +114,7 @@ public struct AuthView: View {
                 } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(.primary)
+                        .foregroundColor(.white)
                         .frame(width: 36, height: 36)
                         .glassEffect(.regular.interactive(), in: .circle)
                 }
@@ -113,14 +128,14 @@ public struct AuthView: View {
         .padding(.bottom, 4)
     }
 
-    // MARK: - Step 1: Email (1:1 Screenshot 1)
+    // MARK: - Step 1: AuthorizationSequenceEmailEntryController
 
-    private var emailStepView: some View {
+    private var emailEntryStepNode: some View {
         VStack(spacing: 24) {
-            // 3D Emoji Hero Header
+            // 3D Hero Emoji
             Text("✉️")
                 .font(.system(size: 76))
-                .padding(.top, 12)
+                .padding(.top, 16)
 
             VStack(spacing: 8) {
                 Text("Ваш Email")
@@ -131,41 +146,45 @@ public struct AuthView: View {
                     .font(.system(size: 15, weight: .regular))
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, 8)
+                    .padding(.horizontal, 24)
             }
 
-            // Telegram Input Line
+            // Telegram Form Input Group
             VStack(spacing: 0) {
-                HStack(spacing: 12) {
+                HStack(spacing: 14) {
                     Text("Email")
                         .font(.system(size: 17, weight: .regular))
                         .foregroundColor(.secondary)
                         .frame(width: 60, alignment: .leading)
 
-                    TextField("000 000 0000", text: $email)
+                    TextField("email@example.com", text: $email)
                         .font(.system(size: 18, weight: .medium))
                         .keyboardType(.emailAddress)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                         .foregroundColor(.white)
-                        .focused($isEmailFocused)
+                        .focused($focusedField, equals: .email)
                 }
                 .padding(.vertical, 14)
 
                 Divider()
                     .background(Color.white.opacity(0.15))
             }
+            .padding(.horizontal, 24)
             .padding(.top, 16)
+        }
+        .onAppear {
+            focusedField = .email
         }
     }
 
-    // MARK: - Step 2: Verification Code 5 Digits (1:1 Screenshot 3)
+    // MARK: - Step 2: AuthorizationSequenceCodeEntryController
 
-    private var codeStepView: some View {
+    private var codeEntryStepNode: some View {
         VStack(spacing: 24) {
             Text("📨")
                 .font(.system(size: 76))
-                .padding(.top, 12)
+                .padding(.top, 16)
 
             VStack(spacing: 8) {
                 Text("Проверьте почту")
@@ -176,15 +195,14 @@ public struct AuthView: View {
                     .font(.system(size: 15, weight: .regular))
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, 8)
+                    .padding(.horizontal, 24)
             }
 
-            // 5 Pin Code Boxes (Screenshot 3)
+            // 5-Digit Code Input Node (AuthorizationCodeInputNode)
             ZStack {
-                // Invisible TextField catching focus
                 TextField("", text: $pinCode)
                     .keyboardType(.numberPad)
-                    .focused($isCodeFocused)
+                    .focused($focusedField, equals: .code)
                     .opacity(0.01)
                     .onChange(of: pinCode) { _, newValue in
                         if newValue.count > 5 {
@@ -194,8 +212,14 @@ public struct AuthView: View {
                             Task {
                                 let valid = await authRepo.verifyCode(pinCode)
                                 if valid {
+                                    UINotificationFeedbackGenerator().notificationOccurred(.success)
                                     withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                        step = .password
+                                        currentStep = .password
+                                    }
+                                } else {
+                                    UINotificationFeedbackGenerator().notificationOccurred(.error)
+                                    withAnimation(.default) {
+                                        shakeOffset = 6
                                     }
                                 }
                             }
@@ -223,7 +247,7 @@ public struct AuthView: View {
                         }
                         .frame(width: 52, height: 60)
                         .onTapGesture {
-                            isCodeFocused = true
+                            focusedField = .code
                         }
                     }
                 }
@@ -243,29 +267,28 @@ public struct AuthView: View {
             .padding(.top, 8)
         }
         .onAppear {
-            isCodeFocused = true
+            focusedField = .code
         }
     }
 
-    // MARK: - Step 3: Password / 2FA Monkey (1:1 Screenshot 4)
+    // MARK: - Step 3: AuthorizationSequencePasswordEntryController
 
-    private var passwordStepView: some View {
+    private var passwordEntryStepNode: some View {
         VStack(spacing: 24) {
-            // Iconic Telegram 2FA Monkey See-No-Evil Emoji
             Text("🙈")
                 .font(.system(size: 76))
-                .padding(.top, 12)
+                .padding(.top, 16)
 
             VStack(spacing: 8) {
                 Text("Ваш пароль")
                     .font(.system(size: 28, weight: .bold))
                     .foregroundColor(.white)
 
-                Text("Ваш аккаунт защищен паролем. Введите ваш пароль для завершения входа.")
+                Text("Ваш аккаунт защищен дополнительным паролем. Введите ваш пароль для входа.")
                     .font(.system(size: 15, weight: .regular))
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, 8)
+                    .padding(.horizontal, 24)
             }
 
             VStack(spacing: 0) {
@@ -276,12 +299,12 @@ public struct AuthView: View {
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
                             .foregroundColor(.white)
-                            .focused($isPasswordFocused)
+                            .focused($focusedField, equals: .password)
                     } else {
                         SecureField("Пароль", text: $password)
                             .font(.system(size: 18, weight: .medium))
                             .foregroundColor(.white)
-                            .focused($isPasswordFocused)
+                            .focused($focusedField, equals: .password)
                     }
 
                     Button {
@@ -298,6 +321,7 @@ public struct AuthView: View {
                 Divider()
                     .background(Color.white.opacity(0.15))
             }
+            .padding(.horizontal, 24)
             .padding(.top, 16)
 
             Button {
@@ -312,15 +336,16 @@ public struct AuthView: View {
             .padding(.top, 8)
         }
         .onAppear {
-            isPasswordFocused = true
+            focusedField = .password
         }
     }
 
-    // MARK: - Bottom Floating Action Button
+    // MARK: - Action Button Node (AuthorizationSequenceActionButton)
 
-    private var bottomActionButton: some View {
+    private var actionButtonNode: some View {
         Button {
-            handleContinue()
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            handlePrimaryAction()
         } label: {
             HStack {
                 Spacer()
@@ -338,26 +363,26 @@ public struct AuthView: View {
             .clipShape(Capsule())
         }
         .buttonStyle(.plain)
-        .disabled(authRepo.isLoading || (step == .email && email.isEmpty))
-        .opacity((step == .email && email.isEmpty) ? 0.5 : 1.0)
+        .disabled(authRepo.isLoading || (currentStep == .email && email.isEmpty))
+        .opacity((currentStep == .email && email.isEmpty) ? 0.5 : 1.0)
     }
 
-    private func handleContinue() {
-        if step == .email {
+    private func handlePrimaryAction() {
+        if currentStep == .email {
             guard !email.isEmpty else { return }
             withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                showConfirmSheet = true
+                showConfirmOverlay = true
             }
-        } else if step == .code {
+        } else if currentStep == .code {
             Task {
                 let valid = await authRepo.verifyCode(pinCode)
                 if valid {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                        step = .password
+                        currentStep = .password
                     }
                 }
             }
-        } else if step == .password {
+        } else if currentStep == .password {
             Task {
                 let success = await authRepo.signIn(email: email, password: password)
                 if success {
@@ -367,14 +392,14 @@ public struct AuthView: View {
         }
     }
 
-    // MARK: - Confirmation Card Overlay (1:1 Screenshot 2)
+    // MARK: - Confirmation Card Overlay (AuthorizationConfirmationController)
 
-    private var emailConfirmationOverlay: some View {
+    private var confirmationCardOverlay: some View {
         ZStack {
-            Color.black.opacity(0.65)
+            Color.black.opacity(0.7)
                 .ignoresSafeArea()
                 .onTapGesture {
-                    withAnimation { showConfirmSheet = false }
+                    withAnimation { showConfirmOverlay = false }
                 }
 
             VStack(spacing: 16) {
@@ -389,8 +414,8 @@ public struct AuthView: View {
 
                 Button {
                     withAnimation {
-                        showConfirmSheet = false
-                        isEmailFocused = true
+                        showConfirmOverlay = false
+                        focusedField = .email
                     }
                 } label: {
                     Text("Изменить")
@@ -402,8 +427,8 @@ public struct AuthView: View {
 
                 Button {
                     withAnimation {
-                        showConfirmSheet = false
-                        step = .code
+                        showConfirmOverlay = false
+                        currentStep = .code
                     }
                     Task {
                         _ = await authRepo.sendVerificationCode(email: email)
@@ -444,5 +469,15 @@ public struct AuthView: View {
         guard parts.count == 2, let first = parts.first, let domain = parts.last else { return raw }
         let maskedPrefix = String(first.prefix(2)) + "****" + String(first.suffix(1))
         return "\(maskedPrefix)@\(domain)"
+    }
+}
+
+// MARK: - Shake Effect Helper for Error Feedback
+
+private struct ShakeEffect: GeometryEffect {
+    var animatableData: CGFloat
+
+    func effectValue(size: CGSize) -> ProjectionTransform {
+        ProjectionTransform(CGAffineTransform(translationX: sin(animatableData * .pi * 2) * 8, y: 0))
     }
 }
