@@ -135,7 +135,7 @@ jobs:
             "apps": [
               {
                 "name": "sloosh",
-                "bundleIdentifier": "com.sluvskii.sloosh",
+                "bundleIdentifier": "com.sloosh.ios",
                 "developerName": "sluvskii",
                 "version": "$FULL_VER",
                 "versionDate": "$DATE",
