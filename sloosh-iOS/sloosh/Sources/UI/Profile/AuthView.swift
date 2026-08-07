@@ -99,6 +99,31 @@ public struct AuthView: View {
                     }
                 }
 
+                // MARK: Google Sign-In (ASWebAuthenticationSession + PKCE + Firebase signInWithIdp)
+                Section {
+                    Button {
+                        handleGoogleSignIn()
+                    } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: "globe")
+                                .font(.system(size: 17, weight: .semibold))
+                                .foregroundStyle(Color.slooshAccent)
+                            Text("Продолжить с Google")
+                                .font(.body.weight(.medium))
+                                .foregroundStyle(.primary)
+                            Spacer()
+                            if authRepo.isLoading {
+                                ProgressView().tint(Color.slooshAccent)
+                            }
+                        }
+                    }
+                    .disabled(authRepo.isLoading)
+                } footer: {
+                    Text("Откроется браузер для выбора аккаунта Google. Требуется включить Google Sign-In в Firebase Console (Authentication → Sign-in method).")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
+
                 // MARK: Primary Action Button
                 Section {
                     Button {
@@ -194,10 +219,20 @@ public struct AuthView: View {
                 withAnimation(.default) {
                     shakeOffset = 6
                 }
-                // Reset shake after animation
                 DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
                     shakeOffset = 0
                 }
+            }
+        }
+    }
+
+    private func handleGoogleSignIn() {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        focusedField = nil
+        Task {
+            let success = await authRepo.signInWithGoogle()
+            if success {
+                dismiss()
             }
         }
     }
