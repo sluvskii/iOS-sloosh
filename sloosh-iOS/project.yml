@@ -19,6 +19,7 @@ targets:
     sources:
       - path: sloosh/Sources
       - path: sloosh/Resources
+      - path: sloosh/GoogleService-Info.plist
     info:
       path: sloosh/Info.plist
       properties:
