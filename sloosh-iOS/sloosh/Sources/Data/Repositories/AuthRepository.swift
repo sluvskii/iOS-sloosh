@@ -2,7 +2,9 @@ import Foundation
 import SwiftUI
 import Combine
 
-// MARK: - Real Production-Grade Firebase Auth Repository via REST API
+// MARK: - Firebase Auth Repository via Identity Toolkit REST API
+// Используем прямые HTTP-запросы к Firebase Identity Toolkit вместо Firebase iOS SDK,
+// так как SDK не подключён через SPM в проекте.
 
 @MainActor
 public final class AuthRepository: ObservableObject {
@@ -14,13 +16,14 @@ public final class AuthRepository: ObservableObject {
 
     private let userDefaultsKey = "sloosh_user_profile"
 
+    // API_KEY читается из GoogleService-Info.plist, который уже есть в проекте
     private var firebaseApiKey: String {
         if let path = Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist"),
            let dict = NSDictionary(contentsOfFile: path),
            let key = dict["API_KEY"] as? String, !key.isEmpty {
             return key
         }
-        return "AIzaSyB2-pwth7wkTCVnVmwzdSUBPo9vGdMytsY"
+        return ""
     }
 
     public var isAuthenticated: Bool {
@@ -36,12 +39,15 @@ public final class AuthRepository: ObservableObject {
         loadStoredUser()
     }
 
+    public func clearError() {
+        lastError = nil
+    }
+
     private func loadStoredUser() {
         if let data = UserDefaults.standard.data(forKey: userDefaultsKey),
            let user = try? JSONDecoder().decode(UserProfile.self, from: data) {
             self.currentUser = user
         } else {
-            // Default to Anonymous Guest Mode
             let guest = UserProfile(
                 id: "guest_\(UUID().uuidString.prefix(8))",
                 isAnonymous: true,
@@ -59,7 +65,8 @@ public final class AuthRepository: ObservableObject {
         }
     }
 
-    // MARK: - Real Firebase Sign Up (Email & Password)
+    // MARK: - Регистрация (Firebase accounts:signUp)
+    // Создаёт реального пользователя в вашем Firebase проекте
 
     public func signUp(email: String, password: String, displayName: String? = nil) async -> Bool {
         isLoading = true
@@ -67,28 +74,31 @@ public final class AuthRepository: ObservableObject {
         defer { isLoading = false }
 
         let cleanEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+
         guard isValidEmail(cleanEmail) else {
-            let err = "Введите корректный адрес Email (например, name@domain.com)"
-            lastError = err
-            ToastManager.shared.show(title: "Ошибка ввода", subtitle: err, icon: "exclamationmark.triangle.fill")
+            lastError = "Введите корректный Email (например, name@domain.com)"
             return false
         }
 
         guard password.count >= 6 else {
-            let err = "Пароль должен содержать минимум 6 символов"
-            lastError = err
-            ToastManager.shared.show(title: "Слишком короткий пароль", subtitle: err, icon: "exclamationmark.triangle.fill")
+            lastError = "Пароль должен содержать не менее 6 символов"
+            return false
+        }
+
+        guard !firebaseApiKey.isEmpty else {
+            lastError = "Ошибка конфигурации: не найден GoogleService-Info.plist"
             return false
         }
 
         guard let url = URL(string: "https://identitytoolkit.googleapis.com/v1/accounts:signUp?key=\(firebaseApiKey)") else {
-            lastError = "Ошибка конфигурации Firebase API"
+            lastError = "Ошибка конфигурации Firebase"
             return false
         }
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 15
 
         let body: [String: Any] = [
             "email": cleanEmail,
@@ -99,35 +109,24 @@ public final class AuthRepository: ObservableObject {
         do {
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
             let (data, response) = try await URLSession.shared.data(for: request)
-
-            guard let httpResponse = response as? HTTPURLResponse else {
-                lastError = "Ошибка сети"
-                ToastManager.shared.show(title: "Ошибка сети", subtitle: "Проверьте подключение к интернету", icon: "wifi.slash")
-                return false
-            }
-
             let json = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
 
-            if httpResponse.statusCode != 200 {
-                let firebaseError = parseFirebaseError(json)
-                lastError = firebaseError
-                ToastManager.shared.show(title: "Ошибка регистрации", subtitle: firebaseError, icon: "xmark.circle.fill")
+            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+                lastError = parseFirebaseError(json)
                 return false
             }
 
             guard let idToken = json["idToken"] as? String,
                   let refreshToken = json["refreshToken"] as? String,
                   let localId = json["localId"] as? String else {
-                lastError = "Неверный ответ от Firebase"
+                lastError = "Неожиданный ответ от Firebase"
                 return false
             }
 
-            var finalName = displayName?.trimmingCharacters(in: .whitespacesAndNewlines)
-            if finalName?.isEmpty == true { finalName = nil }
+            let finalName = displayName?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
 
-            // If Display Name provided, update Firebase user profile
             if let name = finalName {
-                await updateFirebaseDisplayName(idToken: idToken, name: name)
+                await updateDisplayName(idToken: idToken, name: name)
             }
 
             let newUser = UserProfile(
@@ -142,21 +141,27 @@ public final class AuthRepository: ObservableObject {
             saveUser(newUser)
 
             ToastManager.shared.show(
-                title: "Регистрация успешна 🎉",
-                subtitle: "Добро пожаловать в sloosh, \(newUser.displayTitle)!",
+                title: "Добро пожаловать! 🎉",
+                subtitle: "Аккаунт создан для \(cleanEmail)",
                 icon: "checkmark.circle.fill"
             )
 
             CloudSyncService.shared.syncAllData()
             return true
+
         } catch {
-            lastError = error.localizedDescription
-            ToastManager.shared.show(title: "Сбой запроса", subtitle: error.localizedDescription, icon: "exclamationmark.triangle.fill")
+            if (error as NSError).code == NSURLErrorNotConnectedToInternet {
+                lastError = "Нет соединения с интернетом"
+            } else if (error as NSError).code == NSURLErrorTimedOut {
+                lastError = "Превышено время ожидания. Повторите попытку."
+            } else {
+                lastError = "Ошибка сети: \(error.localizedDescription)"
+            }
             return false
         }
     }
 
-    // MARK: - Real Firebase Sign In (Email & Password)
+    // MARK: - Вход по паролю (Firebase accounts:signInWithPassword)
 
     public func signIn(email: String, password: String) async -> Bool {
         isLoading = true
@@ -164,28 +169,31 @@ public final class AuthRepository: ObservableObject {
         defer { isLoading = false }
 
         let cleanEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+
         guard isValidEmail(cleanEmail) else {
-            let err = "Введите корректный адрес Email"
-            lastError = err
-            ToastManager.shared.show(title: "Ошибка ввода", subtitle: err, icon: "exclamationmark.triangle.fill")
+            lastError = "Введите корректный Email"
             return false
         }
 
         guard !password.isEmpty else {
-            let err = "Введите пароль"
-            lastError = err
-            ToastManager.shared.show(title: "Ошибка ввода", subtitle: err, icon: "exclamationmark.triangle.fill")
+            lastError = "Введите пароль"
+            return false
+        }
+
+        guard !firebaseApiKey.isEmpty else {
+            lastError = "Ошибка конфигурации: не найден GoogleService-Info.plist"
             return false
         }
 
         guard let url = URL(string: "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=\(firebaseApiKey)") else {
-            lastError = "Ошибка конфигурации Firebase API"
+            lastError = "Ошибка конфигурации Firebase"
             return false
         }
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 15
 
         let body: [String: Any] = [
             "email": cleanEmail,
@@ -196,35 +204,27 @@ public final class AuthRepository: ObservableObject {
         do {
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
             let (data, response) = try await URLSession.shared.data(for: request)
-
-            guard let httpResponse = response as? HTTPURLResponse else {
-                lastError = "Ошибка сети"
-                ToastManager.shared.show(title: "Ошибка сети", subtitle: "Проверьте подключение к интернету", icon: "wifi.slash")
-                return false
-            }
-
             let json = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
 
-            if httpResponse.statusCode != 200 {
-                let firebaseError = parseFirebaseError(json)
-                lastError = firebaseError
-                ToastManager.shared.show(title: "Ошибка входа", subtitle: firebaseError, icon: "xmark.circle.fill")
+            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+                lastError = parseFirebaseError(json)
                 return false
             }
 
             guard let idToken = json["idToken"] as? String,
                   let refreshToken = json["refreshToken"] as? String,
                   let localId = json["localId"] as? String else {
-                lastError = "Неверный ответ от Firebase"
+                lastError = "Неожиданный ответ от Firebase"
                 return false
             }
 
-            let name = json["displayName"] as? String ?? cleanEmail.components(separatedBy: "@").first?.capitalized
+            let displayName = (json["displayName"] as? String)?.nilIfEmpty
+                ?? cleanEmail.components(separatedBy: "@").first?.capitalized
 
             let user = UserProfile(
                 id: localId,
                 email: cleanEmail,
-                displayName: name,
+                displayName: displayName,
                 isAnonymous: false,
                 provider: "email",
                 idToken: idToken,
@@ -240,14 +240,21 @@ public final class AuthRepository: ObservableObject {
 
             CloudSyncService.shared.syncAllData()
             return true
+
         } catch {
-            lastError = error.localizedDescription
-            ToastManager.shared.show(title: "Сбой запроса", subtitle: error.localizedDescription, icon: "exclamationmark.triangle.fill")
+            if (error as NSError).code == NSURLErrorNotConnectedToInternet {
+                lastError = "Нет соединения с интернетом"
+            } else if (error as NSError).code == NSURLErrorTimedOut {
+                lastError = "Превышено время ожидания. Повторите попытку."
+            } else {
+                lastError = "Ошибка сети: \(error.localizedDescription)"
+            }
             return false
         }
     }
 
-    // MARK: - Real Firebase Send Password Reset Link (sendOobCode)
+    // MARK: - Сброс пароля (Firebase accounts:sendOobCode)
+    // Firebase отправляет письмо со ссылкой для сброса пароля (не код!)
 
     public func resetPassword(email: String) async -> Bool {
         isLoading = true
@@ -255,21 +262,26 @@ public final class AuthRepository: ObservableObject {
         defer { isLoading = false }
 
         let cleanEmail = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+
         guard isValidEmail(cleanEmail) else {
-            let err = "Введите корректный адрес Email"
-            lastError = err
-            ToastManager.shared.show(title: "Ошибка ввода", subtitle: err, icon: "exclamationmark.triangle.fill")
+            lastError = "Введите корректный Email"
+            return false
+        }
+
+        guard !firebaseApiKey.isEmpty else {
+            lastError = "Ошибка конфигурации Firebase"
             return false
         }
 
         guard let url = URL(string: "https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=\(firebaseApiKey)") else {
-            lastError = "Ошибка конфигурации Firebase API"
+            lastError = "Ошибка конфигурации Firebase"
             return false
         }
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 15
 
         let body: [String: Any] = [
             "requestType": "PASSWORD_RESET",
@@ -279,63 +291,31 @@ public final class AuthRepository: ObservableObject {
         do {
             request.httpBody = try JSONSerialization.data(withJSONObject: body)
             let (data, response) = try await URLSession.shared.data(for: request)
-
-            guard let httpResponse = response as? HTTPURLResponse else {
-                lastError = "Ошибка сети"
-                ToastManager.shared.show(title: "Ошибка сети", subtitle: "Проверьте подключение к интернету", icon: "wifi.slash")
-                return false
-            }
-
             let json = (try? JSONSerialization.jsonObject(with: data) as? [String: Any]) ?? [:]
 
-            if httpResponse.statusCode != 200 {
-                let firebaseError = parseFirebaseError(json)
-                lastError = firebaseError
-                ToastManager.shared.show(title: "Ошибка сброса", subtitle: firebaseError, icon: "xmark.circle.fill")
+            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+                lastError = parseFirebaseError(json)
                 return false
             }
 
             ToastManager.shared.show(
-                title: "Ссылка отправлена 📩",
-                subtitle: "Firebase отправил письмо на \(cleanEmail)",
+                title: "Письмо отправлено 📩",
+                subtitle: "Ссылка для сброса пароля отправлена на \(cleanEmail)",
                 icon: "envelope.fill"
             )
             return true
+
         } catch {
-            lastError = error.localizedDescription
-            ToastManager.shared.show(title: "Сбой запроса", subtitle: error.localizedDescription, icon: "exclamationmark.triangle.fill")
+            if (error as NSError).code == NSURLErrorNotConnectedToInternet {
+                lastError = "Нет соединения с интернетом"
+            } else {
+                lastError = "Ошибка сети: \(error.localizedDescription)"
+            }
             return false
         }
     }
 
-    // MARK: - Real Firebase Google Auth Token Provider
-
-    public func signInWithGoogle() async -> Bool {
-        isLoading = true
-        lastError = nil
-        defer { isLoading = false }
-
-        // Real Google OAuth & Firebase credential auth flow
-        try? await Task.sleep(nanoseconds: 600_000_000)
-
-        let googleUser = UserProfile(
-            id: "google_\(UUID().uuidString.prefix(10))",
-            email: "user.google@gmail.com",
-            displayName: "Пользователь Google",
-            isAnonymous: false,
-            provider: "google"
-        )
-        saveUser(googleUser)
-
-        ToastManager.shared.show(
-            title: "Вход через Google 🌐",
-            subtitle: "Добро пожаловать в sloosh!",
-            icon: "checkmark.circle.fill"
-        )
-
-        CloudSyncService.shared.syncAllData()
-        return true
-    }
+    // MARK: - Выход из аккаунта
 
     public func signOut() {
         let guest = UserProfile(
@@ -344,6 +324,7 @@ public final class AuthRepository: ObservableObject {
             provider: "anonymous"
         )
         saveUser(guest)
+        lastError = nil
         ToastManager.shared.show(
             title: "Выход выполнен",
             subtitle: "Переход в гостевой режим",
@@ -351,18 +332,21 @@ public final class AuthRepository: ObservableObject {
         )
     }
 
-    // MARK: - Helper Methods & Error Translation
+    // MARK: - Вспомогательные методы
 
-    private func updateFirebaseDisplayName(idToken: String, name: String) async {
-        guard let url = URL(string: "https://identitytoolkit.googleapis.com/v1/accounts:update?key=\(firebaseApiKey)") else { return }
+    private func updateDisplayName(idToken: String, name: String) async {
+        guard !firebaseApiKey.isEmpty,
+              let url = URL(string: "https://identitytoolkit.googleapis.com/v1/accounts:update?key=\(firebaseApiKey)") else { return }
+
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 10
 
         let body: [String: Any] = [
             "idToken": idToken,
             "displayName": name,
-            "returnSecureToken": true
+            "returnSecureToken": false
         ]
 
         if let data = try? JSONSerialization.data(withJSONObject: body) {
@@ -374,31 +358,41 @@ public final class AuthRepository: ObservableObject {
     private func parseFirebaseError(_ json: [String: Any]) -> String {
         guard let errorDict = json["error"] as? [String: Any],
               let message = errorDict["message"] as? String else {
-            return "Произошла неизвестная ошибка авторизации"
+            return "Неизвестная ошибка. Попробуйте ещё раз."
         }
 
-        if message.contains("EMAIL_EXISTS") {
-            return "Этот Email уже зарегистрирован. Войдите в существующий аккаунт."
-        } else if message.contains("INVALID_PASSWORD") || message.contains("INVALID_LOGIN_CREDENTIALS") {
+        switch true {
+        case message.contains("EMAIL_EXISTS"):
+            return "Этот Email уже зарегистрирован. Войдите в аккаунт."
+        case message.contains("INVALID_PASSWORD"), message.contains("INVALID_LOGIN_CREDENTIALS"), message.contains("INVALID_EMAIL"):
             return "Неверный Email или пароль"
-        } else if message.contains("EMAIL_NOT_FOUND") {
+        case message.contains("EMAIL_NOT_FOUND"):
             return "Пользователь с таким Email не найден"
-        } else if message.contains("USER_DISABLED") {
-            return "Учетная запись отключена администратором"
-        } else if message.contains("TOO_MANY_ATTEMPTS_TRY_LATER") {
-            return "Слишком много неверных попыток. Попробуйте позже."
-        } else if message.contains("WEAK_PASSWORD") {
+        case message.contains("USER_DISABLED"):
+            return "Учётная запись заблокирована"
+        case message.contains("TOO_MANY_ATTEMPTS_TRY_LATER"):
+            return "Слишком много попыток. Попробуйте позже."
+        case message.contains("WEAK_PASSWORD"):
             return "Пароль слишком слабый (минимум 6 символов)"
-        } else if message.contains("INVALID_EMAIL") {
-            return "Некорректный адрес Email"
+        case message.contains("OPERATION_NOT_ALLOWED"):
+            return "Вход по Email/паролю не включён в Firebase Console"
+        case message.contains("USER_NOT_FOUND"):
+            return "Пользователь не найден"
+        default:
+            return message
         }
-
-        return message
     }
 
     private func isValidEmail(_ email: String) -> Bool {
-        let emailRegEx = "[A-Z0-9a-z._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,64}"
-        let emailPred = NSPredicate(format: "SELF MATCHES %@", emailRegEx)
-        return emailPred.evaluate(with: email)
+        let pattern = "[A-Z0-9a-z._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,64}"
+        return NSPredicate(format: "SELF MATCHES %@", pattern).evaluate(with: email)
+    }
+}
+
+// MARK: - String helper
+
+private extension String {
+    var nilIfEmpty: String? {
+        isEmpty ? nil : self
     }
 }
