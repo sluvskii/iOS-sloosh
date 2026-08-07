@@ -6,7 +6,7 @@ import UIKit
 /// Google Sign-In убран — для него нужен GoogleSignIn iOS SDK, которого нет в проекте.
 public struct AuthView: View {
 
-    public enum AuthMode {
+    public enum AuthMode: Hashable, Equatable {
         case signIn
         case signUp
     }
