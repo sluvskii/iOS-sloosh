@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import Combine
+import UIKit
 
 // MARK: - Firebase Auth Repository via Identity Toolkit REST API
 // Используем прямые HTTP-запросы к Firebase Identity Toolkit вместо Firebase iOS SDK,
@@ -33,6 +34,77 @@ public final class AuthRepository: ObservableObject {
 
     public var isAnonymous: Bool {
         currentUser?.isAnonymous ?? true
+    }
+
+    // MARK: - Google Sign-In (ASWebAuthenticationSession + PKCE + Firebase signInWithIdp)
+
+    public func signInWithGoogle() async -> Bool {
+        isLoading = true
+        lastError = nil
+        defer { isLoading = false }
+
+        // Получаем rootViewController для презентации браузерного окна
+        guard let windowScene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first(where: { $0.activationState == .foregroundActive }),
+              let rootVC = windowScene.windows.first(where: { $0.isKeyWindow })?.rootViewController else {
+            lastError = "Не удалось получить контекст приложения"
+            return false
+        }
+
+        // Находим самый верхний presented ViewController
+        var topVC = rootVC
+        while let presented = topVC.presentedViewController {
+            topVC = presented
+        }
+
+        // Устанавливаем ASWebAuthenticationPresentationContextProviding
+        let contextProvider = WebAuthContextProvider(window: windowScene.windows.first { $0.isKeyWindow }!)
+
+        do {
+            let result = try await GoogleOAuthService.shared.signIn(
+                presentingViewController: topVC,
+                contextProvider: contextProvider
+            )
+
+            let displayName = result.displayName?.nilIfEmpty
+                ?? result.email?.components(separatedBy: "@").first?.capitalized
+
+            let user = UserProfile(
+                id: result.localId,
+                email: result.email,
+                displayName: displayName,
+                photoURL: result.photoURL,
+                isAnonymous: false,
+                provider: "google",
+                idToken: result.idToken,
+                refreshToken: result.refreshToken
+            )
+            saveUser(user)
+
+            ToastManager.shared.show(
+                title: "Вход через Google ✅",
+                subtitle: "Добро пожаловать, \(user.displayTitle)!",
+                icon: "checkmark.circle.fill"
+            )
+
+            CloudSyncService.shared.syncAllData()
+            return true
+
+        } catch let error as GoogleOAuthError {
+            // Не показываем ошибку если пользователь сам отменил
+            if case .userCancelled = error { return false }
+            lastError = error.errorDescription
+            ToastManager.shared.show(
+                title: "Ошибка Google",
+                subtitle: error.errorDescription ?? "Неизвестная ошибка",
+                icon: "xmark.circle.fill"
+            )
+            return false
+        } catch {
+            lastError = error.localizedDescription
+            return false
+        }
     }
 
     private init() {

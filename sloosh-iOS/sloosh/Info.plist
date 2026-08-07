@@ -49,6 +49,16 @@
                 <string>sloosh</string>
             </array>
         </dict>
+        <dict>
+            <key>CFBundleTypeRole</key>
+            <string>Editor</string>
+            <key>CFBundleURLName</key>
+            <string>com.sloosh.ios.google</string>
+            <key>CFBundleURLSchemes</key>
+            <array>
+                <string>com.googleusercontent.apps.535135371915-8iou4igr3g5rfan904mtolv5r5uatfuv</string>
+            </array>
+        </dict>
     </array>
 </dict>
 </plist>
