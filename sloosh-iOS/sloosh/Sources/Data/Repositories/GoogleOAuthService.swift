@@ -61,10 +61,10 @@ public final class GoogleOAuthService: NSObject {
         let codeVerifier = generateCodeVerifier()
         let codeChallenge = generateCodeChallenge(from: codeVerifier)
 
-        // 2. Redirect URI — кастомная схема из GoogleService-Info.plist
-        // ASWebAuthenticationSession перехватывает этот redirect автоматически,
-        // регистрация в Info.plist не нужна
-        let redirectURI = "\(reversedClientId):/oauth2redirect"
+        // 2. Redirect URI — кастомная схема из GoogleService-Info.plist.
+        // Путь /oauth2callback — официальный стандарт из GoogleSignIn iOS SDK (kBrowserCallbackPath).
+        // ASWebAuthenticationSession перехватывает этот redirect автоматически по callbackURLScheme.
+        let redirectURI = "\(reversedClientId):/oauth2callback"
 
         // 3. Google OAuth URL
         let authURL = buildAuthorizationURL(
