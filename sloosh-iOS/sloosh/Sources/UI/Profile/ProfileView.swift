@@ -228,13 +228,13 @@ private struct ProfileAvatarButton: View {
                         initialsView
                     }
                 }
-                .frame(width: 32, height: 32)
+                .frame(width: 44, height: 44)
                 .clipShape(Circle())
             } else {
                 initialsView
             }
         }
-        .frame(width: 32, height: 32)
+        .frame(width: 44, height: 44)
         .overlay(Circle().stroke(Color.white.opacity(0.15), lineWidth: 1))
     }
 
@@ -243,9 +243,9 @@ private struct ProfileAvatarButton: View {
         ZStack {
             Circle()
                 .fill(Color.slooshAccent.opacity(0.25))
-                .frame(width: 32, height: 32)
+                .frame(width: 44, height: 44)
             Text(user?.avatarInitials ?? "SL")
-                .font(.system(size: 12, weight: .bold))
+                .font(.system(size: 14, weight: .bold))
                 .foregroundStyle(.white)
         }
     }
@@ -253,10 +253,10 @@ private struct ProfileAvatarButton: View {
     // Кнопка входа для неавторизованных
     private var signInButton: some View {
         Text("Войти")
-            .font(.system(size: 14, weight: .semibold))
-            .foregroundStyle(.primary)
+            .font(.system(size: 15, weight: .semibold))
+            .foregroundStyle(Color.slooshAccent)
+            .padding(.horizontal, 18)
             .frame(height: 44)
-            .padding(.horizontal, 16)
             .glassEffect(.regular.interactive(), in: Capsule())
     }
 }
