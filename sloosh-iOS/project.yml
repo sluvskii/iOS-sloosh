@@ -20,6 +20,7 @@ targets:
       - path: sloosh/Sources
       - path: sloosh/Resources
       - path: sloosh/GoogleService-Info.plist
+        buildPhase: resources
     info:
       path: sloosh/Info.plist
       properties:
@@ -37,3 +38,7 @@ targets:
             CFBundleURLName: com.sloosh.ios
             CFBundleURLSchemes:
               - sloosh
+          - CFBundleTypeRole: Editor
+            CFBundleURLName: com.sloosh.ios.google
+            CFBundleURLSchemes:
+              - com.googleusercontent.apps.535135371915-8iou4igr3g5rfan904mtolv5r5uatfuv
