@@ -1,6 +1,7 @@
 import Foundation
 import SwiftData
 import SwiftUI
+import Combine
 
 public struct PlaybackProgressRecord: Identifiable, Codable {
     public let mediaId: String
@@ -22,6 +23,17 @@ public struct PlaybackProgressRecord: Identifiable, Codable {
         guard durationSec.isFinite, durationSec > 0, positionSec.isFinite else { return 0 }
         return max(0, min(positionSec / durationSec, 0.999))
     }
+
+    public init(mediaId: String, kpId: Int, season: Int? = nil, episode: Int? = nil, positionSec: Double = 0, durationSec: Double = 0, watched: Bool = false, updatedAtMs: Int = Int(Date().timeIntervalSince1970 * 1000)) {
+        self.mediaId = mediaId
+        self.kpId = kpId
+        self.season = season
+        self.episode = episode
+        self.positionSec = positionSec
+        self.durationSec = durationSec
+        self.watched = watched
+        self.updatedAtMs = updatedAtMs
+    }
 }
 
 public struct PlaybackMediaMetadata: Codable {
@@ -32,22 +44,62 @@ public struct PlaybackMediaMetadata: Codable {
     public let posterUrl: String?
     public let backdropUrl: String?
     public let logoUrl: String?
+
+    public init(kpId: Int, detailsId: String, title: String, type: String? = nil, posterUrl: String? = nil, backdropUrl: String? = nil, logoUrl: String? = nil) {
+        self.kpId = kpId
+        self.detailsId = detailsId
+        self.title = title
+        self.type = type
+        self.posterUrl = posterUrl
+        self.backdropUrl = backdropUrl
+        self.logoUrl = logoUrl
+    }
 }
 
 @MainActor
-public final class PlaybackProgressStore {
+public final class PlaybackProgressStore: ObservableObject {
     public static let shared = PlaybackProgressStore()
     
     private var context: ModelContext { AppDatabase.shared.container.mainContext }
+    private var cancellables = Set<AnyCancellable>()
 
     private static let episodeRegex = try! NSRegularExpression(pattern: "^kp_(\\d+)_s(\\d+)_e(\\d+)$")
     private static let movieRegex   = try! NSRegularExpression(pattern: "^kp_(\\d+)$")
 
+    public var currentUserId: String {
+        guard let user = AuthRepository.shared.currentUser, !user.isAnonymous else {
+            return "guest"
+        }
+        return user.id
+    }
+
     private init() {
+        AuthRepository.shared.$currentUser
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                self?.handleUserChanged()
+            }
+            .store(in: &cancellables)
+    }
+
+    public func handleUserChanged() {
+        let user = AuthRepository.shared.currentUser
+        if AuthRepository.shared.isAuthenticated, let user = user {
+            Task {
+                if let remoteProgress = await CloudSyncService.shared.fetchRemoteProgress(userId: user.id, idToken: user.idToken) {
+                    await self.syncRemoteProgressToLocal(remoteProgress, userId: user.id)
+                }
+                if let remoteMetadata = await CloudSyncService.shared.fetchRemoteMetadata(userId: user.id, idToken: user.idToken) {
+                    await self.syncRemoteMetadataToLocal(remoteMetadata, userId: user.id)
+                }
+            }
+        }
     }
 
     private func getRecordModel(mediaId: String) -> ProgressRecordModel? {
-        let descriptor = FetchDescriptor<ProgressRecordModel>(predicate: #Predicate { $0.mediaId == mediaId })
+        let activeUserId = currentUserId
+        let compositeKey = "\(activeUserId)_\(mediaId)"
+        let descriptor = FetchDescriptor<ProgressRecordModel>(predicate: #Predicate { $0.userMediaIdKey == compositeKey })
         return try? context.fetch(descriptor).first
     }
     
@@ -66,6 +118,7 @@ public final class PlaybackProgressStore {
     }
 
     private func mutateRecord(mediaId: String, mutate: @escaping (inout PlaybackProgressRecord) -> Void) {
+        let activeUserId = currentUserId
         var record = getRecord(mediaId: mediaId) ?? createDefaultRecord(mediaId: mediaId)
         mutate(&record)
         record.updatedAtMs = Int(Date().timeIntervalSince1970 * 1000)
@@ -77,6 +130,7 @@ public final class PlaybackProgressStore {
             model.updatedAtMs = record.updatedAtMs
         } else {
             let newModel = ProgressRecordModel(
+                userId: activeUserId,
                 mediaId: record.mediaId,
                 kpId: record.kpId,
                 season: record.season,
@@ -89,6 +143,14 @@ public final class PlaybackProgressStore {
             context.insert(newModel)
         }
         try? context.save()
+
+        // Push progress to Cloud if authenticated
+        if AuthRepository.shared.isAuthenticated, let user = AuthRepository.shared.currentUser {
+            let allRecords = self.listProgressRecords()
+            Task {
+                await CloudSyncService.shared.pushRemoteProgress(allRecords, userId: user.id, idToken: user.idToken)
+            }
+        }
     }
     
     private func createDefaultRecord(mediaId: String) -> PlaybackProgressRecord {
@@ -197,8 +259,10 @@ public final class PlaybackProgressStore {
         logoUrl: String?
     ) {
         guard kpId > 0, !detailsId.isEmpty, !title.isEmpty else { return }
+        let activeUserId = currentUserId
+        let compositeKey = "\(activeUserId)_\(kpId)"
 
-        let descriptor = FetchDescriptor<PlaybackMetadataModel>(predicate: #Predicate { $0.kpId == kpId })
+        let descriptor = FetchDescriptor<PlaybackMetadataModel>(predicate: #Predicate { $0.userKpIdKey == compositeKey })
         if let model = try? context.fetch(descriptor).first {
             model.detailsId = detailsId
             model.title = title
@@ -208,6 +272,7 @@ public final class PlaybackProgressStore {
             model.logoUrl = logoUrl
         } else {
             let model = PlaybackMetadataModel(
+                userId: activeUserId,
                 kpId: kpId,
                 detailsId: detailsId,
                 title: title,
@@ -219,6 +284,13 @@ public final class PlaybackProgressStore {
             context.insert(model)
         }
         try? context.save()
+
+        if AuthRepository.shared.isAuthenticated, let user = AuthRepository.shared.currentUser {
+            let allMetadata = self.listAllMetadata()
+            Task {
+                await CloudSyncService.shared.pushRemoteMetadata(allMetadata, userId: user.id, idToken: user.idToken)
+            }
+        }
     }
 
     func saveMetadata(details: MediaDetailsDto) {
@@ -240,7 +312,9 @@ public final class PlaybackProgressStore {
 
     public func loadMetadata(kpId: Int) -> PlaybackMediaMetadata? {
         guard kpId > 0 else { return nil }
-        let descriptor = FetchDescriptor<PlaybackMetadataModel>(predicate: #Predicate { $0.kpId == kpId })
+        let activeUserId = currentUserId
+        let compositeKey = "\(activeUserId)_\(kpId)"
+        let descriptor = FetchDescriptor<PlaybackMetadataModel>(predicate: #Predicate { $0.userKpIdKey == compositeKey })
         guard let model = try? context.fetch(descriptor).first else { return nil }
         return PlaybackMediaMetadata(
             kpId: model.kpId,
@@ -253,8 +327,29 @@ public final class PlaybackProgressStore {
         )
     }
 
+    public func listAllMetadata() -> [PlaybackMediaMetadata] {
+        let activeUserId = currentUserId
+        let descriptor = FetchDescriptor<PlaybackMetadataModel>(predicate: #Predicate { $0.userId == activeUserId })
+        let models = (try? context.fetch(descriptor)) ?? []
+        return models.map {
+            PlaybackMediaMetadata(
+                kpId: $0.kpId,
+                detailsId: $0.detailsId,
+                title: $0.title,
+                type: $0.type,
+                posterUrl: $0.posterUrl,
+                backdropUrl: $0.backdropUrl,
+                logoUrl: $0.logoUrl
+            )
+        }
+    }
+
     public func listProgressRecords(kpId: Int? = nil) -> [PlaybackProgressRecord] {
-        let descriptor = FetchDescriptor<ProgressRecordModel>(sortBy: [SortDescriptor(\.updatedAtMs, order: .reverse)])
+        let activeUserId = currentUserId
+        let descriptor = FetchDescriptor<ProgressRecordModel>(
+            predicate: #Predicate { $0.userId == activeUserId },
+            sortBy: [SortDescriptor(\.updatedAtMs, order: .reverse)]
+        )
         let allModels = (try? context.fetch(descriptor)) ?? []
         
         var results: [PlaybackProgressRecord] = []
@@ -284,14 +379,16 @@ public final class PlaybackProgressStore {
     }
 
     public func saveLastVoiceover(kpId: Int, source: String, voiceover: String?) {
+        let activeUserId = currentUserId
         let key = "neomovies.\(source).lastVoiceover.kp_\(kpId)"
-        let descriptor = FetchDescriptor<LastPlayedVoiceoverModel>(predicate: #Predicate { $0.key == key })
+        let compositeKey = "\(activeUserId)_\(key)"
+        let descriptor = FetchDescriptor<LastPlayedVoiceoverModel>(predicate: #Predicate { $0.userSourceKey == compositeKey })
         
         if let v = voiceover {
             if let model = try? context.fetch(descriptor).first {
                 model.voiceover = v
             } else {
-                context.insert(LastPlayedVoiceoverModel(key: key, source: source, voiceover: v))
+                context.insert(LastPlayedVoiceoverModel(userId: activeUserId, key: key, source: source, voiceover: v))
             }
         } else {
             if let model = try? context.fetch(descriptor).first {
@@ -302,30 +399,88 @@ public final class PlaybackProgressStore {
     }
 
     public func loadLastVoiceover(kpId: Int, source: String) -> String? {
+        let activeUserId = currentUserId
         let key = "neomovies.\(source).lastVoiceover.kp_\(kpId)"
-        let descriptor = FetchDescriptor<LastPlayedVoiceoverModel>(predicate: #Predicate { $0.key == key })
+        let compositeKey = "\(activeUserId)_\(key)"
+        let descriptor = FetchDescriptor<LastPlayedVoiceoverModel>(predicate: #Predicate { $0.userSourceKey == compositeKey })
         return try? context.fetch(descriptor).first?.voiceover
     }
 
     public func saveLastPlayed(kpId: Int, season: Int?, episode: Int?) {
-        let descriptor = FetchDescriptor<LastPlayedEpisodeModel>(predicate: #Predicate { $0.kpId == kpId })
+        let activeUserId = currentUserId
+        let compositeKey = "\(activeUserId)_\(kpId)"
+        let descriptor = FetchDescriptor<LastPlayedEpisodeModel>(predicate: #Predicate { $0.userKpIdKey == compositeKey })
         if let model = try? context.fetch(descriptor).first {
             if let s = season { model.season = s }
             if let e = episode { model.episode = e }
         } else {
-            context.insert(LastPlayedEpisodeModel(kpId: kpId, season: season, episode: episode))
+            context.insert(LastPlayedEpisodeModel(userId: activeUserId, kpId: kpId, season: season, episode: episode))
         }
         try? context.save()
     }
 
     public func loadLastSeason(kpId: Int) -> Int? {
-        let descriptor = FetchDescriptor<LastPlayedEpisodeModel>(predicate: #Predicate { $0.kpId == kpId })
+        let activeUserId = currentUserId
+        let compositeKey = "\(activeUserId)_\(kpId)"
+        let descriptor = FetchDescriptor<LastPlayedEpisodeModel>(predicate: #Predicate { $0.userKpIdKey == compositeKey })
         return try? context.fetch(descriptor).first?.season
     }
 
     public func loadLastEpisode(kpId: Int) -> Int? {
-        let descriptor = FetchDescriptor<LastPlayedEpisodeModel>(predicate: #Predicate { $0.kpId == kpId })
+        let activeUserId = currentUserId
+        let compositeKey = "\(activeUserId)_\(kpId)"
+        let descriptor = FetchDescriptor<LastPlayedEpisodeModel>(predicate: #Predicate { $0.userKpIdKey == compositeKey })
         return try? context.fetch(descriptor).first?.episode
     }
 
+    private func syncRemoteProgressToLocal(_ remoteRecords: [PlaybackProgressRecord], userId: String) async {
+        let predicate = #Predicate<ProgressRecordModel> { $0.userId == userId }
+        if let existing = try? context.fetch(FetchDescriptor<ProgressRecordModel>(predicate: predicate)) {
+            for model in existing {
+                context.delete(model)
+            }
+        }
+
+        for record in remoteRecords {
+            let model = ProgressRecordModel(
+                userId: userId,
+                mediaId: record.mediaId,
+                kpId: record.kpId,
+                season: record.season,
+                episode: record.episode,
+                positionSec: record.positionSec,
+                durationSec: record.durationSec,
+                watched: record.watched,
+                updatedAtMs: record.updatedAtMs
+            )
+            context.insert(model)
+        }
+
+        try? context.save()
+    }
+
+    private func syncRemoteMetadataToLocal(_ remoteMetadata: [PlaybackMediaMetadata], userId: String) async {
+        let predicate = #Predicate<PlaybackMetadataModel> { $0.userId == userId }
+        if let existing = try? context.fetch(FetchDescriptor<PlaybackMetadataModel>(predicate: predicate)) {
+            for model in existing {
+                context.delete(model)
+            }
+        }
+
+        for item in remoteMetadata {
+            let model = PlaybackMetadataModel(
+                userId: userId,
+                kpId: item.kpId,
+                detailsId: item.detailsId,
+                title: item.title,
+                type: item.type,
+                posterUrl: item.posterUrl,
+                backdropUrl: item.backdropUrl,
+                logoUrl: item.logoUrl
+            )
+            context.insert(model)
+        }
+
+        try? context.save()
+    }
 }

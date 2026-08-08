@@ -3,7 +3,9 @@ import SwiftData
 
 @Model
 final class ProgressRecordModel {
-    @Attribute(.unique) var mediaId: String
+    @Attribute(.unique) var userMediaIdKey: String // composite key: "<userId>_<mediaId>"
+    var userId: String
+    var mediaId: String
     var kpId: Int
     var season: Int?
     var episode: Int?
@@ -12,8 +14,10 @@ final class ProgressRecordModel {
     var watched: Bool
     var updatedAtMs: Int
 
-    init(mediaId: String, kpId: Int, season: Int? = nil, episode: Int? = nil, positionSec: Double = 0, durationSec: Double = 0, watched: Bool = false, updatedAtMs: Int) {
+    init(userId: String = "guest", mediaId: String, kpId: Int, season: Int? = nil, episode: Int? = nil, positionSec: Double = 0, durationSec: Double = 0, watched: Bool = false, updatedAtMs: Int) {
+        self.userId = userId
         self.mediaId = mediaId
+        self.userMediaIdKey = "\(userId)_\(mediaId)"
         self.kpId = kpId
         self.season = season
         self.episode = episode
@@ -26,7 +30,9 @@ final class ProgressRecordModel {
 
 @Model
 final class PlaybackMetadataModel {
-    @Attribute(.unique) var kpId: Int
+    @Attribute(.unique) var userKpIdKey: String // composite key: "<userId>_<kpId>"
+    var userId: String
+    var kpId: Int
     var detailsId: String
     var title: String
     var type: String?
@@ -34,8 +40,10 @@ final class PlaybackMetadataModel {
     var backdropUrl: String?
     var logoUrl: String?
 
-    init(kpId: Int, detailsId: String, title: String, type: String? = nil, posterUrl: String? = nil, backdropUrl: String? = nil, logoUrl: String? = nil) {
+    init(userId: String = "guest", kpId: Int, detailsId: String, title: String, type: String? = nil, posterUrl: String? = nil, backdropUrl: String? = nil, logoUrl: String? = nil) {
+        self.userId = userId
         self.kpId = kpId
+        self.userKpIdKey = "\(userId)_\(kpId)"
         self.detailsId = detailsId
         self.title = title
         self.type = type
@@ -47,12 +55,16 @@ final class PlaybackMetadataModel {
 
 @Model
 final class LastPlayedVoiceoverModel {
-    @Attribute(.unique) var key: String // e.g. "alloha_12345"
+    @Attribute(.unique) var userSourceKey: String // composite key: "<userId>_<key>"
+    var userId: String
+    var key: String // e.g. "alloha_12345"
     var source: String
     var voiceover: String
 
-    init(key: String, source: String, voiceover: String) {
+    init(userId: String = "guest", key: String, source: String, voiceover: String) {
+        self.userId = userId
         self.key = key
+        self.userSourceKey = "\(userId)_\(key)"
         self.source = source
         self.voiceover = voiceover
     }
@@ -60,12 +72,16 @@ final class LastPlayedVoiceoverModel {
 
 @Model
 final class LastPlayedEpisodeModel {
-    @Attribute(.unique) var kpId: Int
+    @Attribute(.unique) var userKpIdKey: String // composite key: "<userId>_<kpId>"
+    var userId: String
+    var kpId: Int
     var season: Int?
     var episode: Int?
     
-    init(kpId: Int, season: Int? = nil, episode: Int? = nil) {
+    init(userId: String = "guest", kpId: Int, season: Int? = nil, episode: Int? = nil) {
+        self.userId = userId
         self.kpId = kpId
+        self.userKpIdKey = "\(userId)_\(kpId)"
         self.season = season
         self.episode = episode
     }
