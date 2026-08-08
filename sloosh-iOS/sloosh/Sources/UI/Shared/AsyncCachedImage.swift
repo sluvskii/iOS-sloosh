@@ -228,3 +228,45 @@ public struct AsyncCachedImage<Placeholder: View, Content: View, Fallback: View>
         }
     }
 }
+
+extension AsyncCachedImage where Fallback == Placeholder {
+    public init(
+        url: URL?,
+        fallbackUrl: URL? = nil,
+        cachePolicy: URLRequest.CachePolicy = .returnCacheDataElseLoad,
+        isExternalLoading: Binding<Bool>? = nil,
+        @ViewBuilder placeholder: @escaping () -> Placeholder,
+        @ViewBuilder content: @escaping (UIImage) -> Content
+    ) {
+        self.init(
+            url: url,
+            fallbackUrl: fallbackUrl,
+            cachePolicy: cachePolicy,
+            isExternalLoading: isExternalLoading,
+            placeholder: placeholder,
+            content: content,
+            fallback: placeholder
+        )
+    }
+
+    public init(
+        urlString: String?,
+        fallbackUrlString: String? = nil,
+        cachePolicy: URLRequest.CachePolicy = .returnCacheDataElseLoad,
+        isExternalLoading: Binding<Bool>? = nil,
+        @ViewBuilder placeholder: @escaping () -> Placeholder,
+        @ViewBuilder content: @escaping (UIImage) -> Content
+    ) {
+        let u = urlString.flatMap { URL(string: $0) }
+        let f = fallbackUrlString.flatMap { URL(string: $0) }
+        self.init(
+            url: u,
+            fallbackUrl: f,
+            cachePolicy: cachePolicy,
+            isExternalLoading: isExternalLoading,
+            placeholder: placeholder,
+            content: content,
+            fallback: placeholder
+        )
+    }
+}

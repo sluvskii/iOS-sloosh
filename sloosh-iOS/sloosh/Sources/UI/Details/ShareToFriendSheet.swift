@@ -18,10 +18,10 @@ public struct ShareToFriendSheet: View {
                 // Карточка делящегося фильма
                 HStack(spacing: 12) {
                     if let posterUrl = movie.displayPosterUrl, !posterUrl.isEmpty {
-                        AsyncCachedImage(url: posterUrl) { image in
-                            image.resizable().aspectRatio(contentMode: .fill)
-                        } placeholder: {
+                        AsyncCachedImage(urlString: posterUrl) {
                             Rectangle().fill(Color.secondary.opacity(0.2))
+                        } content: { image in
+                            Image(uiImage: image).resizable().aspectRatio(contentMode: .fill)
                         }
                         .frame(width: 50, height: 70)
                         .clipShape(RoundedRectangle(cornerRadius: 8))
