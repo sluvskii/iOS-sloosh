@@ -14,6 +14,14 @@ public final class MessengerRepository: ObservableObject {
 
     private init() {}
 
+    private func makeURL(path: String) -> URL? {
+        var urlString = "\(databaseBaseURL)/\(path).json"
+        if let token = AuthRepository.shared.currentUser?.idToken, !token.isEmpty {
+            urlString += "?auth=\(token)"
+        }
+        return URL(string: urlString)
+    }
+
     // MARK: - User Registration & Search
 
     public func syncCurrentUserProfile() async {
@@ -30,7 +38,7 @@ public final class MessengerRepository: ObservableObject {
         guard let body = try? JSONEncoder().encode(slooshUser) else { return }
 
         // 1. Сохраняем в публичный каталог профилей /user_profiles/{uid}.json
-        if let url1 = URL(string: "\(databaseBaseURL)/user_profiles/\(user.id).json") {
+        if let url1 = makeURL(path: "user_profiles/\(user.id)") {
             var req = URLRequest(url: url1)
             req.httpMethod = "PUT"
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -39,7 +47,7 @@ public final class MessengerRepository: ObservableObject {
         }
 
         // 2. Сохраняем профиль под ветку пользователя /users/{uid}/profile.json
-        if let url2 = URL(string: "\(databaseBaseURL)/users/\(user.id)/profile.json") {
+        if let url2 = makeURL(path: "users/\(user.id)/profile") {
             var req = URLRequest(url: url2)
             req.httpMethod = "PUT"
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -90,8 +98,7 @@ public final class MessengerRepository: ObservableObject {
     }
 
     private func fetchUsersFromNode(_ nodeName: String) async -> [SlooshUser]? {
-        let urlString = "\(databaseBaseURL)/\(nodeName).json"
-        guard let url = URL(string: urlString) else { return nil }
+        guard let url = makeURL(path: nodeName) else { return nil }
 
         do {
             let (data, response) = try await URLSession.shared.data(from: url)
@@ -152,8 +159,7 @@ public final class MessengerRepository: ObservableObject {
             return
         }
 
-        let urlString = "\(databaseBaseURL)/user_chats/\(currentUser.id).json"
-        guard let url = URL(string: urlString) else { return }
+        guard let url = makeURL(path: "user_chats/\(currentUser.id)") else { return }
 
         isLoading = true
         defer { isLoading = false }
@@ -204,8 +210,7 @@ public final class MessengerRepository: ObservableObject {
     public func fetchMessages(chatId: String) async -> [ChatMessage] {
         guard !chatId.isEmpty else { return [] }
         
-        let urlString = "\(databaseBaseURL)/chats/\(chatId)/messages.json"
-        guard let url = URL(string: urlString) else { return [] }
+        guard let url = makeURL(path: "chats/\(chatId)/messages") else { return [] }
 
         do {
             let (data, response) = try await URLSession.shared.data(from: url)
@@ -243,8 +248,7 @@ public final class MessengerRepository: ObservableObject {
             media: mediaPayload
         )
 
-        let msgUrlString = "\(databaseBaseURL)/chats/\(chatId)/messages/\(message.id).json"
-        guard let msgUrl = URL(string: msgUrlString) else { return false }
+        guard let msgUrl = makeURL(path: "chats/\(chatId)/messages/\(message.id)") else { return false }
 
         do {
             var request = URLRequest(url: msgUrl)
@@ -278,8 +282,7 @@ public final class MessengerRepository: ObservableObject {
                 "updatedAtMs": message.timestampMs
             ] as [String: Any]
 
-            let senderUrlString = "\(databaseBaseURL)/user_chats/\(currentUser.id)/\(chatId).json"
-            if let senderUrl = URL(string: senderUrlString) {
+            if let senderUrl = makeURL(path: "user_chats/\(currentUser.id)/\(chatId)") {
                 var req = URLRequest(url: senderUrl)
                 req.httpMethod = "PUT"
                 req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -307,8 +310,7 @@ public final class MessengerRepository: ObservableObject {
                 "updatedAtMs": message.timestampMs
             ] as [String: Any]
 
-            let receiverUrlString = "\(databaseBaseURL)/user_chats/\(peerUser.id)/\(chatId).json"
-            if let receiverUrl = URL(string: receiverUrlString) {
+            if let receiverUrl = makeURL(path: "user_chats/\(peerUser.id)/\(chatId)") {
                 var req = URLRequest(url: receiverUrl)
                 req.httpMethod = "PUT"
                 req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -325,3 +327,4 @@ public final class MessengerRepository: ObservableObject {
         }
     }
 }
+
