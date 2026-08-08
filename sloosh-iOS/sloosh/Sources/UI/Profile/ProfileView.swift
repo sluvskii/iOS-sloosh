@@ -23,6 +23,7 @@ struct ProfileView: View {
     @StateObject private var authRepo = AuthRepository.shared
     @State private var selectedCategory: FavoriteCategory = .all
     @SceneStorage("profileShowsSettings") private var showsSettings = false
+    @SceneStorage("profileShowsDownloads") private var showsDownloads = false
     @State private var showAuthSheet = false
     @State private var showSignOutAlert = false
     @Namespace private var navigationTransition
@@ -151,8 +152,14 @@ struct ProfileView: View {
 
                                 Spacer()
 
-                                TelegramGlassIconButton(systemName: "gearshape.fill") {
-                                    showsSettings = true
+                                HStack(spacing: 8) {
+                                    TelegramGlassIconButton(systemName: "arrow.down.circle.fill") {
+                                        showsDownloads = true
+                                    }
+
+                                    TelegramGlassIconButton(systemName: "gearshape.fill") {
+                                        showsSettings = true
+                                    }
                                 }
                             }
                         }
