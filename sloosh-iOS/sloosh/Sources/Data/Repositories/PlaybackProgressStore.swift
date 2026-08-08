@@ -144,12 +144,24 @@ public final class PlaybackProgressStore: ObservableObject {
         }
         try? context.save()
 
-        // Push progress to Cloud if authenticated
-        if AuthRepository.shared.isAuthenticated, let user = AuthRepository.shared.currentUser {
-            let allRecords = self.listProgressRecords()
-            Task {
-                await CloudSyncService.shared.pushRemoteProgress(allRecords, userId: user.id, idToken: user.idToken)
-            }
+        // Push progress to Cloud if authenticated (throttled to at most once per 60 seconds during active playback)
+        scheduleCloudProgressPush()
+    }
+
+    private var lastCloudProgressPushDate: Date?
+
+    public func scheduleCloudProgressPush(force: Bool = false) {
+        guard AuthRepository.shared.isAuthenticated, let user = AuthRepository.shared.currentUser else { return }
+        
+        let now = Date()
+        if !force, let lastPush = lastCloudProgressPushDate, now.timeIntervalSince(lastPush) < 60.0 {
+            return
+        }
+        
+        lastCloudProgressPushDate = now
+        let allRecords = self.listProgressRecords()
+        Task {
+            await CloudSyncService.shared.pushRemoteProgress(allRecords, userId: user.id, idToken: user.idToken)
         }
     }
     
