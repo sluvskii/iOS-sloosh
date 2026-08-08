@@ -223,31 +223,26 @@ private struct ProfileAvatarButton: View {
                             .resizable()
                             .scaledToFill()
                     case .failure, .empty:
-                        initialsView
+                        initialsText
                     @unknown default:
-                        initialsView
+                        initialsText
                     }
                 }
-                .frame(width: 44, height: 44)
+                .frame(width: 32, height: 32)
                 .clipShape(Circle())
             } else {
-                initialsView
+                initialsText
             }
         }
         .frame(width: 44, height: 44)
-        .overlay(Circle().stroke(Color.white.opacity(0.15), lineWidth: 1))
+        .glassEffect(.regular.interactive(), in: .circle)
     }
 
     // Инициалы как fallback
-    private var initialsView: some View {
-        ZStack {
-            Circle()
-                .fill(Color.slooshAccent.opacity(0.25))
-                .frame(width: 44, height: 44)
-            Text(user?.avatarInitials ?? "SL")
-                .font(.system(size: 14, weight: .bold))
-                .foregroundStyle(.white)
-        }
+    private var initialsText: some View {
+        Text(user?.avatarInitials ?? "SL")
+            .font(.system(size: 14, weight: .bold))
+            .foregroundStyle(Color.slooshAccent)
     }
 
     // Кнопка входа для неавторизованных
