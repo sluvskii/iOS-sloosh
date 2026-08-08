@@ -254,9 +254,9 @@ private struct ProfileAvatarButton: View {
     private var signInButton: some View {
         Text("Войти")
             .font(.system(size: 14, weight: .semibold))
-            .foregroundStyle(Color.slooshAccent)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 6)
+            .foregroundStyle(.primary)
+            .frame(height: 44)
+            .padding(.horizontal, 16)
             .glassEffect(.regular.interactive(), in: Capsule())
     }
 }
