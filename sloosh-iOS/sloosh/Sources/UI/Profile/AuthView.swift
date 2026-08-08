@@ -1,9 +1,8 @@
 import SwiftUI
 import UIKit
 
-/// Полноэкранный экран авторизации.
-/// Использует Firebase Identity Toolkit REST API напрямую (без Firebase iOS SDK).
-/// Google Sign-In убран — для него нужен GoogleSignIn iOS SDK, которого нет в проекте.
+/// Полноэкранный экран авторизации в дизайне ChatGPT / Liquid Glass.
+/// Поддерживает входы через Email/Пароль и Google Sign-In (через ASWebAuthenticationSession + PKCE).
 public struct AuthView: View {
 
     public enum AuthMode: Hashable, Equatable {
@@ -33,74 +32,106 @@ public struct AuthView: View {
 
     public var body: some View {
         NavigationStack {
-            Form {
-                // MARK: Mode Picker
-                Section {
-                    Picker("Режим", selection: $mode.animation()) {
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 22) {
+                    // MARK: - Hero Logo & Headline
+                    VStack(spacing: 12) {
+                        Image("LogoText")
+                            .renderingMode(.template)
+                            .resizable()
+                            .scaledToFit()
+                            .frame(height: 36)
+                            .foregroundStyle(Color.slooshAccent)
+                            .padding(.bottom, 4)
+
+                        Text(mode == .signIn ? "Войти в sloosh" : "Создать аккаунт")
+                            .font(.system(size: 26, weight: .bold, design: .rounded))
+                            .foregroundStyle(.primary)
+                            .multilineTextAlignment(.center)
+                            .animation(.default, value: mode)
+
+                        Text("Синхронизируйте избранное, историю просмотров и продолжение на всех устройствах.")
+                            .font(.system(size: 14, weight: .regular))
+                            .foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                            .lineSpacing(3)
+                            .padding(.horizontal, 16)
+                    }
+                    .padding(.top, 12)
+
+                    // MARK: - Mode Picker
+                    Picker("Режим", selection: $mode.animation(.spring(response: 0.3, dampingFraction: 0.8))) {
                         Text("Вход").tag(AuthMode.signIn)
                         Text("Регистрация").tag(AuthMode.signUp)
                     }
                     .pickerStyle(.segmented)
-                    .listRowBackground(Color.clear)
-                    .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
-                }
 
-                // MARK: Input Fields
-                Section {
-                    if mode == .signUp {
-                        HStack {
-                            Image(systemName: "person.fill")
-                                .foregroundStyle(Color.slooshAccent)
-                                .frame(width: 22)
-                            TextField("Ваше имя", text: $name)
-                                .focused($focusedField, equals: .name)
+                    // MARK: - Input Fields Card
+                    VStack(spacing: 12) {
+                        if mode == .signUp {
+                            HStack(spacing: 12) {
+                                Image(systemName: "person.fill")
+                                    .foregroundStyle(Color.slooshAccent)
+                                    .frame(width: 20)
+                                TextField("Ваше имя", text: $name)
+                                    .focused($focusedField, equals: .name)
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 14)
+                            .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 16))
+                            .transition(.move(edge: .top).combined(with: .opacity))
                         }
-                    }
 
-                    HStack {
-                        Image(systemName: "envelope.fill")
-                            .foregroundStyle(Color.slooshAccent)
-                            .frame(width: 22)
-                        TextField("Email", text: $email)
-                            .keyboardType(.emailAddress)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            .focused($focusedField, equals: .email)
-                    }
-
-                    HStack {
-                        Image(systemName: "lock.fill")
-                            .foregroundStyle(Color.slooshAccent)
-                            .frame(width: 22)
-                        if isPasswordVisible {
-                            TextField("Пароль (мин. 6 символов)", text: $password)
+                        HStack(spacing: 12) {
+                            Image(systemName: "envelope.fill")
+                                .foregroundStyle(Color.slooshAccent)
+                                .frame(width: 20)
+                            TextField("Электронная почта", text: $email)
+                                .keyboardType(.emailAddress)
                                 .textInputAutocapitalization(.never)
                                 .autocorrectionDisabled()
-                                .focused($focusedField, equals: .password)
-                        } else {
-                            SecureField("Пароль (мин. 6 символов)", text: $password)
-                                .focused($focusedField, equals: .password)
+                                .focused($focusedField, equals: .email)
                         }
-                        Button {
-                            isPasswordVisible.toggle()
-                        } label: {
-                            Image(systemName: isPasswordVisible ? "eye.slash" : "eye")
-                                .foregroundStyle(.secondary)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                } footer: {
-                    // Показываем ошибку прямо под полями
-                    if let error = authRepo.lastError {
-                        Text(error)
-                            .foregroundStyle(.red)
-                            .font(.footnote)
-                            .modifier(ShakeEffect(animatableData: shakeOffset))
-                    }
-                }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 14)
+                        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 16))
 
-                // MARK: Primary Action Button
-                Section {
+                        HStack(spacing: 12) {
+                            Image(systemName: "lock.fill")
+                                .foregroundStyle(Color.slooshAccent)
+                                .frame(width: 20)
+                            if isPasswordVisible {
+                                TextField("Пароль (мин. 6 символов)", text: $password)
+                                    .textInputAutocapitalization(.never)
+                                    .autocorrectionDisabled()
+                                    .focused($focusedField, equals: .password)
+                            } else {
+                                SecureField("Пароль (мин. 6 символов)", text: $password)
+                                    .focused($focusedField, equals: .password)
+                            }
+                            Button {
+                                isPasswordVisible.toggle()
+                            } label: {
+                                Image(systemName: isPasswordVisible ? "eye.slash" : "eye")
+                                    .foregroundStyle(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 14)
+                        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 16))
+
+                        if let error = authRepo.lastError {
+                            Text(error)
+                                .foregroundStyle(.red)
+                                .font(.system(size: 13, weight: .medium))
+                                .multilineTextAlignment(.center)
+                                .modifier(ShakeEffect(animatableData: shakeOffset))
+                                .padding(.top, 4)
+                        }
+                    }
+
+                    // MARK: - Primary Action Button
                     Button {
                         handlePrimaryAction()
                     } label: {
@@ -108,68 +139,90 @@ public struct AuthView: View {
                             Spacer()
                             if authRepo.isLoading {
                                 ProgressView()
-                                    .tint(Color.slooshAccent)
+                                    .tint(.black)
                             } else {
                                 Text(mode == .signIn ? "Войти" : "Зарегистрироваться")
-                                    .font(.body.weight(.semibold))
-                                    .foregroundStyle(Color.slooshAccent)
+                                    .font(.system(size: 16, weight: .bold))
+                                    .foregroundStyle(.black)
                             }
                             Spacer()
                         }
+                        .frame(height: 50)
+                        .background(Color.slooshAccent)
+                        .clipShape(Capsule())
                     }
                     .disabled(authRepo.isLoading || email.isEmpty || password.isEmpty)
-                }
+                    .opacity(email.isEmpty || password.isEmpty ? 0.6 : 1.0)
+                    .buttonStyle(ScaleButtonStyle())
 
-                // MARK: Google Sign-In
-                Section {
+                    // MARK: - Divider "или"
+                    HStack(spacing: 16) {
+                        Rectangle()
+                            .fill(Color.primary.opacity(0.12))
+                            .frame(height: 1)
+                        Text("или")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(.secondary)
+                        Rectangle()
+                            .fill(Color.primary.opacity(0.12))
+                            .frame(height: 1)
+                    }
+                    .padding(.vertical, 2)
+
+                    // MARK: - SSO: Google Sign-In Button
                     Button {
                         handleGoogleSignIn()
                     } label: {
-                        HStack(spacing: 10) {
+                        HStack(spacing: 12) {
                             Image("GoogleLogo")
                                 .renderingMode(.original)
                                 .resizable()
                                 .scaledToFit()
-                                .frame(width: 18, height: 18)
-                            Text("Продолжить с Google")
-                                .font(.body.weight(.medium))
+                                .frame(width: 20, height: 20)
+                            Text("Продолжить через Google")
+                                .font(.system(size: 15, weight: .semibold))
                                 .foregroundStyle(.primary)
                             Spacer()
                             if authRepo.isLoading {
                                 ProgressView().tint(Color.slooshAccent)
                             }
                         }
+                        .padding(.horizontal, 20)
+                        .frame(height: 50)
+                        .glassEffect(.regular.interactive(), in: Capsule())
                     }
                     .disabled(authRepo.isLoading)
-                }
+                    .buttonStyle(ScaleButtonStyle())
 
-                // MARK: Forgot Password
-                if mode == .signIn {
-                    Section {
-                        Button("Забыли пароль?") {
+                    // MARK: - Forgot Password Link
+                    if mode == .signIn {
+                        Button {
                             resetEmail = email
                             showResetAlert = true
+                        } label: {
+                            Text("Забыли пароль?")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundStyle(Color.slooshAccent)
                         }
-                        .foregroundStyle(Color.slooshAccent)
+                        .padding(.top, 4)
                     }
                 }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 32)
             }
-            .navigationTitle(mode == .signIn ? "Вход" : "Регистрация")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(action: { dismiss() }) {
                         Image(systemName: "xmark")
-                            .symbolRenderingMode(.monochrome)
+                            .font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(.primary)
                     }
                     .tint(.primary)
                 }
             }
-            .scrollContentBackground(.hidden)
             .onChange(of: email) { _, _ in authRepo.clearError() }
             .onChange(of: password) { _, _ in authRepo.clearError() }
-
             .alert("Сброс пароля", isPresented: $showResetAlert) {
                 TextField("Email", text: $resetEmail)
                     .keyboardType(.emailAddress)
@@ -181,7 +234,7 @@ public struct AuthView: View {
                     }
                 }
             } message: {
-                Text("Firebase отправит ссылку сброса пароля на указанный адрес.")
+                Text("Firebase отправит ссылку для сброса пароля на указанный адрес.")
             }
         }
     }
@@ -223,6 +276,16 @@ public struct AuthView: View {
                 dismiss()
             }
         }
+    }
+}
+
+// MARK: - Scale Button Style
+
+private struct ScaleButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.97 : 1.0)
+            .animation(.spring(response: 0.25, dampingFraction: 0.75), value: configuration.isPressed)
     }
 }
 

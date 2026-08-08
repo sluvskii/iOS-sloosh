@@ -1,44 +1,6 @@
-<svg width="721" height="737" viewBox="0 0 721 737" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <defs>
-    <!-- Top Arc Gradient: Red to Yellow -->
-    <linearGradient id="topGrad" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#EA4335"/>
-      <stop offset="35%" stop-color="#FF5C31"/>
-      <stop offset="70%" stop-color="#FF9115"/>
-      <stop offset="100%" stop-color="#FBBC05"/>
-    </linearGradient>
-    
-    <!-- Left Arc Gradient: Yellow to Green -->
-    <linearGradient id="leftGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-      <stop offset="0%" stop-color="#FBBC05"/>
-      <stop offset="40%" stop-color="#A8C500"/>
-      <stop offset="100%" stop-color="#34A853"/>
-    </linearGradient>
-    
-    <!-- Bottom Arc Gradient: Green to Blue -->
-    <linearGradient id="bottomGrad" x1="0%" y1="100%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#34A853"/>
-      <stop offset="40%" stop-color="#0A99BB"/>
-      <stop offset="100%" stop-color="#4285F4"/>
-    </linearGradient>
-    
-    <!-- Right Arc & Bar Gradient: Blue to Red -->
-    <linearGradient id="rightGrad" x1="100%" y1="100%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#4285F4"/>
-      <stop offset="60%" stop-color="#4285F4"/>
-      <stop offset="100%" stop-color="#DE4742"/>
-    </linearGradient>
-  </defs>
-
-  <!-- Right Part & Bar -->
-  <path d="M721 376.538C721 350.431 718.659 325.329 714.312 301.23L460.213 301.23V443.812L565.831 443.812C557.136 489.666 531.052 528.492 491.925 554.598V647.31H611.312C680.87 583.048 721 488.662 721 376.538Z" fill="url(#rightGrad)"/>
-  
-  <!-- Bottom Arc -->
-  <path d="M367.857 736.34C467.179 736.34 550.448 703.54 611.312 647.31L491.925 554.598C459.153 576.688 417.351 590.076 367.857 590.076C272.214 590.076 190.951 525.479 161.857 438.457H39.461V533.512C99.9903 653.669 224.058 736.34 367.857 736.34Z" fill="url(#bottomGrad)"/>
-  
-  <!-- Left Arc -->
-  <path d="M161.857 438.123C154.5 416.032 150.153 392.603 150.153 368.17C150.153 343.737 154.5 320.308 161.857 298.218V203.163H39.461C14.3799 252.699 0 308.594 0 368.17C0 427.747 14.3799 483.642 39.461 533.177L134.77 458.874L161.857 438.123Z" fill="url(#leftGrad)"/>
-  
-  <!-- Top Arc -->
-  <path d="M367.857 146.599C422.033 146.599 470.188 165.342 508.646 201.49L613.987 96.059C550.114 36.4823 467.179 0 367.857 0C224.058 0 99.9903 82.671 39.461 203.163L161.857 298.218C190.951 211.196 272.214 146.599 367.857 146.599Z" fill="url(#topGrad)"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" width="48" height="48">
+  <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+  <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+  <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+  <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
 </svg>
