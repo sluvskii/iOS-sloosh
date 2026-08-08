@@ -123,7 +123,7 @@ public struct ChatDetailView: View {
                     .padding(.vertical, 10)
                     .background(
                         Capsule()
-                            .glassEffect(.regular.interactive(), in: .capsule)
+                            .glassEffect(.regular.interactive(), in: Capsule())
                     )
 
                 Button {
@@ -150,7 +150,7 @@ public struct ChatDetailView: View {
         }
         .toolbar(.hidden, for: .navigationBar)
         .navigationDestination(item: $selectedMovieIdForDetails) { movieId in
-            DetailsView(movieId: movieId, navigationTransitionID: nil)
+            DetailsView(movieId: movieId, navigationTransitionID: nil, navigationTransitionNamespace: nil)
         }
         .task {
             await loadMessages()

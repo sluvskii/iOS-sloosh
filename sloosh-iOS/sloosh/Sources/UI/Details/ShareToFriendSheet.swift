@@ -42,7 +42,7 @@ public struct ShareToFriendSheet: View {
                     Spacer()
                 }
                 .padding(12)
-                .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 14))
+                .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 14))
 
                 // Поиск друга
                 HStack {
@@ -57,7 +57,7 @@ public struct ShareToFriendSheet: View {
                 }
                 .padding(.horizontal, 14)
                 .padding(.vertical, 10)
-                .background(Capsule().glassEffect(.regular.interactive(), in: .capsule))
+                .background(Capsule().glassEffect(.regular.interactive(), in: Capsule()))
 
                 // Список друзей / результатов поиска
                 let displayList = searchQuery.isEmpty ? repo.conversations.map { $0.peerUser } : repo.searchResults
@@ -115,7 +115,7 @@ public struct ShareToFriendSheet: View {
                                     .disabled(sendingToUserId != nil)
                                 }
                                 .padding(12)
-                                .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 14))
+                                .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 14))
                             }
                         }
                     }
