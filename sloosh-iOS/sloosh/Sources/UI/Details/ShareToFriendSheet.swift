@@ -1,18 +1,18 @@
 import SwiftUI
 
-public struct ShareToFriendSheet: View {
-    public let movie: MediaDetailsDto
+struct ShareToFriendSheet: View {
+    let movie: MediaDetailsDto
     @Environment(\.dismiss) private var dismiss
 
     @StateObject private var repo = MessengerRepository.shared
     @State private var searchQuery: String = ""
     @State private var sendingToUserId: String? = nil
 
-    public init(movie: MediaDetailsDto) {
+    init(movie: MediaDetailsDto) {
         self.movie = movie
     }
 
-    public var body: some View {
+    var body: some View {
         NavigationStack {
             VStack(spacing: 16) {
                 // Карточка делящегося фильма
