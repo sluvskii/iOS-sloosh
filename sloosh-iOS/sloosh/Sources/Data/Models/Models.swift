@@ -220,9 +220,14 @@ struct MediaDetailsDto: Codable {
     }
 }
 
-struct GenreDto: Codable {
-    let id: String?
-    let name: String?
+public struct GenreDto: Codable {
+    public let id: String?
+    public let name: String?
+
+    public init(id: String? = nil, name: String? = nil) {
+        self.id = id
+        self.name = name
+    }
 }
 
 struct ExternalIdsDto: Codable {
@@ -272,15 +277,35 @@ struct EpisodeRatingsDto: Codable {
     let imdb: Double?
 }
 
-struct FavoriteDto: Codable, Identifiable {
-    let id: String?
-    let mediaId: String?
-    let type: String?
-    let title: String?
-    let posterUrl: String?
-    let rating: Double?
-    let year: String?
-    let genres: [GenreDto]?
+public struct FavoriteDto: Codable, Identifiable {
+    public let id: String?
+    public let mediaId: String?
+    public let type: String?
+    public let title: String?
+    public let posterUrl: String?
+    public let rating: Double?
+    public let year: String?
+    public let genres: [GenreDto]?
+
+    public init(
+        id: String? = nil,
+        mediaId: String? = nil,
+        type: String? = nil,
+        title: String? = nil,
+        posterUrl: String? = nil,
+        rating: Double? = nil,
+        year: String? = nil,
+        genres: [GenreDto]? = nil
+    ) {
+        self.id = id
+        self.mediaId = mediaId
+        self.type = type
+        self.title = title
+        self.posterUrl = posterUrl
+        self.rating = rating
+        self.year = year
+        self.genres = genres
+    }
     
     // Mapping to MediaDto for UI reuse
     func toMediaDto() -> MediaDto {
