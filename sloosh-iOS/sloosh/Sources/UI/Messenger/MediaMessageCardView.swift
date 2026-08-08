@@ -19,13 +19,13 @@ public struct MediaMessageCardView: View {
                 // Постер + плашка рейтинга
                 ZStack(alignment: .topLeading) {
                     if let posterUrl = media.posterUrl, !posterUrl.isEmpty {
-                        AsyncCachedImage(url: posterUrl) { image in
-                            image
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                        } placeholder: {
+                        AsyncCachedImage(urlString: posterUrl) {
                             Rectangle()
                                 .fill(Color.secondary.opacity(0.2))
+                        } content: { image in
+                            Image(uiImage: image)
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
                         }
                         .frame(height: 140)
                         .clipped()
