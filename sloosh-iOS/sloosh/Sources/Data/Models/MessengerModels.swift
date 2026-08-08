@@ -1,11 +1,11 @@
 import Foundation
 
-public enum MessageType: String, Codable {
+public enum MessageType: String, Codable, Hashable {
     case text
     case media
 }
 
-public struct MediaCardPayload: Codable, Equatable {
+public struct MediaCardPayload: Codable, Equatable, Hashable {
     public let mediaId: String
     public let type: String
     public let title: String
@@ -30,7 +30,7 @@ public struct MediaCardPayload: Codable, Equatable {
     }
 }
 
-public struct SlooshUser: Identifiable, Codable, Equatable {
+public struct SlooshUser: Identifiable, Codable, Equatable, Hashable {
     public let id: String
     public let displayName: String
     public let email: String
@@ -52,7 +52,7 @@ public struct SlooshUser: Identifiable, Codable, Equatable {
     }
 }
 
-public struct ChatMessage: Identifiable, Codable, Equatable {
+public struct ChatMessage: Identifiable, Codable, Equatable, Hashable {
     public let id: String
     public let senderId: String
     public let receiverId: String
@@ -80,7 +80,7 @@ public struct ChatMessage: Identifiable, Codable, Equatable {
     }
 }
 
-public struct ChatConversation: Identifiable, Equatable {
+public struct ChatConversation: Identifiable, Equatable, Hashable {
     public var id: String { chatId }
     public let chatId: String
     public let peerUser: SlooshUser
@@ -96,3 +96,4 @@ public struct ChatConversation: Identifiable, Equatable {
         self.updatedAtMs = updatedAtMs
     }
 }
+
