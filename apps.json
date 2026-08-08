@@ -1,0 +1,20 @@
+{
+  "name": "sloosh repo",
+  "identifier": "com.sloosh.ios.repo",
+  "sourceURL": "https://sluvskii.github.io/iOS-sloosh/apps.json",
+  "apps": [
+    {
+      "name": "sloosh",
+      "bundleIdentifier": "com.sloosh.ios",
+      "developerName": "sluvskii",
+      "version": "1.5.1373",
+      "versionDate": "2026-08-08T18:43:46Z",
+      "versionDescription": "Build #1373",
+      "downloadURL": "https://github.com/sluvskii/iOS-sloosh/releases/download/build-1373/sloosh.ipa",
+      "localizedDescription": "sloosh — стриминг фильмов и сериалов",
+      "iconURL": "https://raw.githubusercontent.com/sluvskii/iOS-sloosh/main/sloosh-iOS/sloosh/Resources/Assets.xcassets/AppIcon.appiconset/light.png",
+      "tintColor": "000000",
+      "size": 2691059
+    }
+  ]
+}
