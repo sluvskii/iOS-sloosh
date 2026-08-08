@@ -32,185 +32,166 @@ public struct AuthView: View {
     public init() {}
 
     public var body: some View {
-        ZStack(alignment: .topLeading) {
-            NavigationStack {
-                Form {
-                    // MARK: Mode Picker
-                    Section {
-                        Picker("Режим", selection: $mode.animation()) {
-                            Text("Вход").tag(AuthMode.signIn)
-                            Text("Регистрация").tag(AuthMode.signUp)
-                        }
-                        .pickerStyle(.segmented)
-                        .listRowBackground(Color.clear)
-                        .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
+        NavigationStack {
+            Form {
+                // MARK: Mode Picker
+                Section {
+                    Picker("Режим", selection: $mode.animation()) {
+                        Text("Вход").tag(AuthMode.signIn)
+                        Text("Регистрация").tag(AuthMode.signUp)
                     }
+                    .pickerStyle(.segmented)
+                    .listRowBackground(Color.clear)
+                    .listRowInsets(.init(top: 0, leading: 0, bottom: 0, trailing: 0))
+                }
 
-                    // MARK: Input Fields
-                    Section {
-                        if mode == .signUp {
-                            HStack {
-                                Image(systemName: "person.fill")
-                                    .foregroundStyle(Color.slooshAccent)
-                                    .frame(width: 22)
-                                TextField("Ваше имя", text: $name)
-                                    .focused($focusedField, equals: .name)
-                            }
-                        }
-
+                // MARK: Input Fields
+                Section {
+                    if mode == .signUp {
                         HStack {
-                            Image(systemName: "envelope.fill")
+                            Image(systemName: "person.fill")
                                 .foregroundStyle(Color.slooshAccent)
                                 .frame(width: 22)
-                            TextField("Email", text: $email)
-                                .keyboardType(.emailAddress)
-                                .textInputAutocapitalization(.never)
-                                .autocorrectionDisabled()
-                                .focused($focusedField, equals: .email)
-                        }
-
-                        HStack {
-                            Image(systemName: "lock.fill")
-                                .foregroundStyle(Color.slooshAccent)
-                                .frame(width: 22)
-                            if isPasswordVisible {
-                                TextField("Пароль (мин. 6 символов)", text: $password)
-                                    .textInputAutocapitalization(.never)
-                                    .autocorrectionDisabled()
-                                    .focused($focusedField, equals: .password)
-                            } else {
-                                SecureField("Пароль (мин. 6 символов)", text: $password)
-                                    .focused($focusedField, equals: .password)
-                            }
-                            Button {
-                                isPasswordVisible.toggle()
-                            } label: {
-                                Image(systemName: isPasswordVisible ? "eye.slash" : "eye")
-                                    .foregroundStyle(.secondary)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    } footer: {
-                        if let error = authRepo.lastError {
-                            Text(error)
-                                .foregroundStyle(.red)
-                                .font(.footnote)
-                                .modifier(ShakeEffect(animatableData: shakeOffset))
+                            TextField("Ваше имя", text: $name)
+                                .focused($focusedField, equals: .name)
                         }
                     }
-
-                    // MARK: Google Sign-In
-                    Section {
-                        Button {
-                            handleGoogleSignIn()
-                        } label: {
-                            HStack(spacing: 10) {
-                                Image(systemName: "globe")
-                                    .font(.system(size: 17, weight: .semibold))
-                                    .foregroundStyle(Color.slooshAccent)
-                                Text("Продолжить с Google")
-                                    .font(.body.weight(.medium))
-                                    .foregroundStyle(.primary)
-                                Spacer()
-                                if authRepo.isLoading {
-                                    ProgressView().tint(Color.slooshAccent)
-                                }
-                            }
-                        }
-                        .disabled(authRepo.isLoading)
-                    }
-
-                    // MARK: Primary Action Button
-                    Section {
-                        Button {
-                            handlePrimaryAction()
-                        } label: {
-                            HStack {
-                                Spacer()
-                                if authRepo.isLoading {
-                                    ProgressView()
-                                        .tint(Color.slooshAccent)
-                                } else {
-                                    Text(mode == .signIn ? "Войти" : "Зарегистрироваться")
-                                        .font(.body.weight(.semibold))
-                                        .foregroundStyle(Color.slooshAccent)
-                                }
-                                Spacer()
-                            }
-                        }
-                        .disabled(authRepo.isLoading || email.isEmpty || password.isEmpty)
-                    }
-
-                    // MARK: Secondary Actions
-                    Section {
-                        if mode == .signIn {
-                            Button("Забыли пароль?") {
-                                resetEmail = email
-                                showResetAlert = true
-                            }
-                            .foregroundStyle(Color.slooshAccent)
-                        }
-
-                        Button {
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                                mode = (mode == .signIn) ? .signUp : .signIn
-                                authRepo.clearError()
-                            }
-                        } label: {
-                            Text(mode == .signIn ? "Нет аккаунта? Зарегистрироваться" : "Уже есть аккаунт? Войти")
-                                .foregroundStyle(Color.slooshAccent)
-                        }
-                    }
-                }
-                .navigationTitle(mode == .signIn ? "Вход" : "Регистрация")
-                .navigationBarTitleDisplayMode(.inline)
-                .navigationBarBackButtonHidden(true)
-                .toolbar(.hidden, for: .navigationBar) // скрываем стандартный toolbar — кнопку делаем сами
-                .scrollContentBackground(.hidden)
-                .onChange(of: email) { _, _ in authRepo.clearError() }
-                .onChange(of: password) { _, _ in authRepo.clearError() }
-                .alert("Сброс пароля", isPresented: $showResetAlert) {
-                    TextField("Email", text: $resetEmail)
-                        .keyboardType(.emailAddress)
-                        .textInputAutocapitalization(.never)
-                    Button("Отмена", role: .cancel) {}
-                    Button("Отправить ссылку") {
-                        Task {
-                            _ = await authRepo.resetPassword(email: resetEmail)
-                        }
-                    }
-                } message: {
-                    Text("Firebase отправит ссылку сброса пароля на указанный адрес.")
-                }
-            }
-
-            // Шапка поверх скрытого navigationBar: заголовок по центру + кнопка X справа
-            VStack(spacing: 0) {
-                ZStack {
-                    Text(mode == .signIn ? "Вход" : "Регистрация")
-                        .font(.system(size: 17, weight: .semibold))
-                        .foregroundStyle(.primary)
-                        .animation(.default, value: mode)
 
                     HStack {
-                        Spacer()
+                        Image(systemName: "envelope.fill")
+                            .foregroundStyle(Color.slooshAccent)
+                            .frame(width: 22)
+                        TextField("Email", text: $email)
+                            .keyboardType(.emailAddress)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .focused($focusedField, equals: .email)
+                    }
+
+                    HStack {
+                        Image(systemName: "lock.fill")
+                            .foregroundStyle(Color.slooshAccent)
+                            .frame(width: 22)
+                        if isPasswordVisible {
+                            TextField("Пароль (мин. 6 символов)", text: $password)
+                                .textInputAutocapitalization(.never)
+                                .autocorrectionDisabled()
+                                .focused($focusedField, equals: .password)
+                        } else {
+                            SecureField("Пароль (мин. 6 символов)", text: $password)
+                                .focused($focusedField, equals: .password)
+                        }
                         Button {
-                            dismiss()
+                            isPasswordVisible.toggle()
                         } label: {
-                            Image(systemName: "xmark")
-                                .font(.system(size: 12, weight: .bold))
+                            Image(systemName: isPasswordVisible ? "eye.slash" : "eye")
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                } footer: {
+                    // Показываем ошибку прямо под полями
+                    if let error = authRepo.lastError {
+                        Text(error)
+                            .foregroundStyle(.red)
+                            .font(.footnote)
+                            .modifier(ShakeEffect(animatableData: shakeOffset))
+                    }
+                }
+
+                // MARK: Google Sign-In (ASWebAuthenticationSession + PKCE + Firebase signInWithIdp)
+                Section {
+                    Button {
+                        handleGoogleSignIn()
+                    } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: "globe")
+                                .font(.system(size: 17, weight: .semibold))
+                                .foregroundStyle(Color.slooshAccent)
+                            Text("Продолжить с Google")
+                                .font(.body.weight(.medium))
                                 .foregroundStyle(.primary)
-                                .frame(width: 32, height: 32)
-                                .glassEffect(.regular.interactive(), in: .circle)
+                            Spacer()
+                            if authRepo.isLoading {
+                                ProgressView().tint(Color.slooshAccent)
+                            }
                         }
                     }
-                    .padding(.horizontal, 16)
+                    .disabled(authRepo.isLoading)
                 }
-                .frame(height: 44)
-                .padding(.top, 8)
-                Spacer()
+
+                // MARK: Primary Action Button
+                Section {
+                    Button {
+                        handlePrimaryAction()
+                    } label: {
+                        HStack {
+                            Spacer()
+                            if authRepo.isLoading {
+                                ProgressView()
+                                    .tint(Color.slooshAccent)
+                            } else {
+                                Text(mode == .signIn ? "Войти" : "Зарегистрироваться")
+                                    .font(.body.weight(.semibold))
+                                    .foregroundStyle(Color.slooshAccent)
+                            }
+                            Spacer()
+                        }
+                    }
+                    .disabled(authRepo.isLoading || email.isEmpty || password.isEmpty)
+                }
+
+                // MARK: Secondary Actions
+                Section {
+                    if mode == .signIn {
+                        Button("Забыли пароль?") {
+                            resetEmail = email
+                            showResetAlert = true
+                        }
+                        .foregroundStyle(Color.slooshAccent)
+                    }
+
+                    Button {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            mode = (mode == .signIn) ? .signUp : .signIn
+                            authRepo.clearError()
+                        }
+                    } label: {
+                        Text(mode == .signIn ? "Нет аккаунта? Зарегистрироваться" : "Уже есть аккаунт? Войти")
+                            .foregroundStyle(Color.slooshAccent)
+                    }
+                }
             }
-            .allowsHitTesting(true)
+            .navigationTitle(mode == .signIn ? "Вход" : "Регистрация")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .symbolRenderingMode(.hierarchical)
+                    }
+                    .tint(.primary)
+                }
+            }
+            .scrollContentBackground(.hidden)
+            .onChange(of: email) { _, _ in authRepo.clearError() }
+            .onChange(of: password) { _, _ in authRepo.clearError() }
+
+            .alert("Сброс пароля", isPresented: $showResetAlert) {
+                TextField("Email", text: $resetEmail)
+                    .keyboardType(.emailAddress)
+                    .textInputAutocapitalization(.never)
+                Button("Отмена", role: .cancel) {}
+                Button("Отправить ссылку") {
+                    Task {
+                        _ = await authRepo.resetPassword(email: resetEmail)
+                    }
+                }
+            } message: {
+                Text("Firebase отправит ссылку сброса пароля на указанный адрес.")
+            }
         }
     }
 
