@@ -21,7 +21,6 @@ enum FavoriteCategory: String, CaseIterable {
 struct ProfileView: View {
     @StateObject private var favoritesRepo = FavoritesRepository.shared
     @StateObject private var authRepo = AuthRepository.shared
-    @StateObject private var syncService = CloudSyncService.shared
     @State private var selectedCategory: FavoriteCategory = .all
     @SceneStorage("profileShowsSettings") private var showsSettings = false
     @State private var showAuthSheet = false
@@ -109,25 +108,35 @@ struct ProfileView: View {
             .toolbar(.hidden, for: .navigationBar)
                 .safeAreaInset(edge: .top, spacing: 0) {
                     VStack(spacing: 8) {
-                    // Верхний слой: Заголовок и Настройки
-                    ZStack {
-                        Text("Профиль")
-                            .font(.system(size: 18, weight: .semibold))
-                            .foregroundStyle(.primary)
-                            
+                        // Шапка: аватар/войти слева, "Профиль" по центру, шестерня справа
+                        ZStack {
+                            Text("Профиль")
+                                .font(.system(size: 18, weight: .semibold))
+                                .foregroundStyle(.primary)
+
                             HStack {
+                                // Левая кнопка: аватар (если вошёл) или "Войти"
+                                Button {
+                                    if authRepo.isAuthenticated {
+                                        showAuthSheet = true
+                                    } else {
+                                        showAuthSheet = true
+                                    }
+                                } label: {
+                                    ProfileAvatarButton(user: authRepo.currentUser)
+                                }
+                                .buttonStyle(.plain)
+
                                 Spacer()
-                                
+
                                 TelegramGlassIconButton(systemName: "gearshape.fill") {
                                     showsSettings = true
                                 }
                             }
                         }
                         .padding(.horizontal, 16)
-                        
-                        userHeaderView
-                        
-                        // Нижний слой: Текстовые табы
+
+                        // Табы категорий
                         ProfileCategoryTextTabs(
                             selectedCategory: $selectedCategory,
                             categoryCounts: categoryCounts
@@ -136,7 +145,7 @@ struct ProfileView: View {
                     }
                     .background(
                         VariableBlurView(tintOpacity: 1.0)
-                            .padding(.bottom, -60) // Более длинный прогрессивный блюр для двух слоев
+                            .padding(.bottom, -60)
                             .ignoresSafeArea(edges: .top)
                             .opacity(blurOpacity)
                             .animation(.easeInOut(duration: 0.2), value: blurOpacity)
@@ -178,65 +187,80 @@ struct ProfileView: View {
             }
         }
 
-    private var userHeaderView: some View {
-        Button {
-            if authRepo.isAuthenticated {
-                authRepo.signOut()
+    // MARK: - Аватар / кнопка входа в шапке
+
+}
+
+/// Аватар пользователя (фото с Google / инициалы / кнопка «Войти»)
+private struct ProfileAvatarButton: View {
+    let user: UserProfile?
+
+    private var isAuthenticated: Bool {
+        guard let user else { return false }
+        return !user.isAnonymous
+    }
+
+    var body: some View {
+        Group {
+            if isAuthenticated {
+                authenticatedAvatar
             } else {
-                showAuthSheet = true
+                signInButton
             }
-        } label: {
-            HStack(spacing: 12) {
-                ZStack {
-                    Circle()
-                        .fill(
-                            LinearGradient(
-                                colors: [Color.slooshAccent.opacity(0.3), Color.white.opacity(0.1)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .frame(width: 40, height: 40)
-                    
-                    Text(authRepo.currentUser?.avatarInitials ?? "👤")
-                        .font(.system(size: 14, weight: .bold))
-                        .foregroundColor(.white)
-                }
-                
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(authRepo.currentUser?.displayTitle ?? "Гость")
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundColor(.primary)
-                    
-                    Text(syncService.statusText)
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(.secondary)
-                }
-                
-                Spacer()
-                
-                if authRepo.isAuthenticated {
-                    Image(systemName: "rectangle.portrait.and.arrow.right")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundColor(.red.opacity(0.85))
-                } else {
-                    Text("Войти")
-                        .font(.system(size: 13, weight: .bold))
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 7)
-                        .background(Color.slooshAccent)
-                        .foregroundColor(.black)
-                        .clipShape(Capsule())
-                }
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .glassEffect(in: Capsule())
-            .padding(.horizontal, 16)
         }
-        .buttonStyle(.plain)
+    }
+
+    // Аватар вошедшего пользователя
+    private var authenticatedAvatar: some View {
+        ZStack {
+            if let photoURLString = user?.photoURL,
+               let photoURL = URL(string: photoURLString) {
+                // Реальное фото из Google аккаунта
+                AsyncImage(url: photoURL) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    case .failure, .empty:
+                        initialsView
+                    @unknown default:
+                        initialsView
+                    }
+                }
+                .frame(width: 32, height: 32)
+                .clipShape(Circle())
+            } else {
+                initialsView
+            }
+        }
+        .frame(width: 32, height: 32)
+        .overlay(Circle().stroke(Color.white.opacity(0.15), lineWidth: 1))
+    }
+
+    // Инициалы как fallback
+    private var initialsView: some View {
+        ZStack {
+            Circle()
+                .fill(Color.slooshAccent.opacity(0.25))
+                .frame(width: 32, height: 32)
+            Text(user?.avatarInitials ?? "SL")
+                .font(.system(size: 12, weight: .bold))
+                .foregroundStyle(.white)
+        }
+    }
+
+    // Кнопка входа для неавторизованных
+    private var signInButton: some View {
+        Text("Войти")
+            .font(.system(size: 14, weight: .semibold))
+            .foregroundStyle(Color.slooshAccent)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 6)
+            .glassEffect(.regular.interactive(), in: Capsule())
     }
 }
+
 
 struct ProfileCategoryContentView: View {
     let category: FavoriteCategory
