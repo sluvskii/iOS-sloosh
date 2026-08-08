@@ -44,12 +44,6 @@ public struct AuthView: View {
                             .foregroundStyle(Color.slooshAccent)
                             .padding(.bottom, 4)
 
-                        Text(mode == .signIn ? "Войти в sloosh" : "Создать аккаунт")
-                            .font(.system(size: 26, weight: .bold, design: .rounded))
-                            .foregroundStyle(.primary)
-                            .multilineTextAlignment(.center)
-                            .animation(.default, value: mode)
-
                         Text("Синхронизируйте избранное, историю просмотров и продолжение на всех устройствах.")
                             .font(.system(size: 14, weight: .regular))
                             .foregroundStyle(.secondary)
@@ -76,9 +70,9 @@ public struct AuthView: View {
                                 TextField("Ваше имя", text: $name)
                                     .focused($focusedField, equals: .name)
                             }
-                            .padding(.horizontal, 16)
+                            .padding(.horizontal, 20)
                             .padding(.vertical, 14)
-                            .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 16))
+                            .glassEffect(.regular.interactive(), in: Capsule())
                             .transition(.move(edge: .top).combined(with: .opacity))
                         }
 
@@ -92,9 +86,9 @@ public struct AuthView: View {
                                 .autocorrectionDisabled()
                                 .focused($focusedField, equals: .email)
                         }
-                        .padding(.horizontal, 16)
+                        .padding(.horizontal, 20)
                         .padding(.vertical, 14)
-                        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 16))
+                        .glassEffect(.regular.interactive(), in: Capsule())
 
                         HStack(spacing: 12) {
                             Image(systemName: "lock.fill")
@@ -117,9 +111,9 @@ public struct AuthView: View {
                             }
                             .buttonStyle(.plain)
                         }
-                        .padding(.horizontal, 16)
+                        .padding(.horizontal, 20)
                         .padding(.vertical, 14)
-                        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 16))
+                        .glassEffect(.regular.interactive(), in: Capsule())
 
                         if let error = authRepo.lastError {
                             Text(error)
