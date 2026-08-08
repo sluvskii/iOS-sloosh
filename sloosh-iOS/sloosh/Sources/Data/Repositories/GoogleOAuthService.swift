@@ -25,24 +25,24 @@ public final class GoogleOAuthService: NSObject {
     // MARK: - Config from GoogleService-Info.plist
 
     private var clientId: String {
-        plistValue(for: "CLIENT_ID") ?? "535135371915-8iou4igr3g5rfan904mtolv5r5uatfuv.apps.googleusercontent.com"
+        plistValue(for: "CLIENT_ID") ?? ""
     }
 
     private var reversedClientId: String {
-        plistValue(for: "REVERSED_CLIENT_ID") ?? "com.googleusercontent.apps.535135371915-8iou4igr3g5rfan904mtolv5r5uatfuv"
+        plistValue(for: "REVERSED_CLIENT_ID") ?? ""
     }
 
     private var firebaseApiKey: String {
-        plistValue(for: "API_KEY") ?? "AIzaSyB2-pwth7wkTCVnVmwzdSUBPo9vGdMytsY"
+        plistValue(for: "API_KEY") ?? ""
     }
 
     private func plistValue(for key: String) -> String? {
-        if let path = Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist"),
-           let dict = NSDictionary(contentsOfFile: path),
-           let value = dict[key] as? String, !value.isEmpty {
-            return value
+        guard let path = Bundle.main.path(forResource: "GoogleService-Info", ofType: "plist"),
+              let dict = NSDictionary(contentsOfFile: path),
+              let value = dict[key] as? String, !value.isEmpty else {
+            return nil
         }
-        return nil
+        return value
     }
 
     // MARK: - Public entry point

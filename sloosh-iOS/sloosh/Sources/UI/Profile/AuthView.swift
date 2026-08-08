@@ -182,6 +182,9 @@ public struct AuthView: View {
                 }
             }
             .scrollContentBackground(.hidden)
+            .onChange(of: email) { _, _ in authRepo.clearError() }
+            .onChange(of: password) { _, _ in authRepo.clearError() }
+
             .alert("Сброс пароля", isPresented: $showResetAlert) {
                 TextField("Email", text: $resetEmail)
                     .keyboardType(.emailAddress)

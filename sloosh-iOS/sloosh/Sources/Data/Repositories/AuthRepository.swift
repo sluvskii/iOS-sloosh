@@ -24,7 +24,7 @@ public final class AuthRepository: ObservableObject {
            let key = dict["API_KEY"] as? String, !key.isEmpty {
             return key
         }
-        return "AIzaSyB2-pwth7wkTCVnVmwzdSUBPo9vGdMytsY"
+        return ""
     }
 
     public var isAuthenticated: Bool {

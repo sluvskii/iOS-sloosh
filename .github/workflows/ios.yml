@@ -127,10 +127,10 @@ jobs:
           SIZE=$(stat -f%z sloosh-iOS/sloosh.ipa || echo 0)
           DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
           # FULL_VER is set in GITHUB_ENV by "Inject Build Number" step (e.g. "1.5.1097")
-          cat << EOF > altstore/apps.json
+          cat <<EOF > altstore/apps.json
           {
             "name": "sloosh repo",
-            "identifier": "com.sluvskii.sloosh.repo",
+            "identifier": "com.sloosh.ios.repo",
             "sourceURL": "https://sluvskii.github.io/iOS-sloosh/apps.json",
             "apps": [
               {
@@ -141,7 +141,7 @@ jobs:
                 "versionDate": "$DATE",
                 "versionDescription": "Build #${{ github.run_number }}",
                 "downloadURL": "https://github.com/${{ github.repository }}/releases/download/build-${{ github.run_number }}/sloosh.ipa",
-                "localizedDescription": "sloosh premium streaming",
+                "localizedDescription": "sloosh — стриминг фильмов и сериалов",
                 "iconURL": "https://raw.githubusercontent.com/${{ github.repository }}/main/sloosh-iOS/sloosh/Resources/Assets.xcassets/AppIcon.appiconset/light.png",
                 "tintColor": "000000",
                 "size": $SIZE
