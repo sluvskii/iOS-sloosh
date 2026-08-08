@@ -66,6 +66,9 @@ public final class MessengerRepository: ObservableObject {
         isLoading = true
         defer { isLoading = false }
 
+        // Гарантируем синхронизацию профиля текущего пользователя в Firebase
+        await syncCurrentUserProfile()
+
         var allUsersMap: [String: SlooshUser] = [:]
 
         // Загружаем профили из /user_profiles.json
@@ -86,15 +89,33 @@ public final class MessengerRepository: ObservableObject {
 
         let currentUserId = AuthRepository.shared.currentUser?.id ?? ""
         let matched = allUsersMap.values.filter { slooshUser in
-            guard slooshUser.id != currentUserId else { return false }
             let nameMatch = slooshUser.displayName.lowercased().contains(trimmed)
             let emailMatch = slooshUser.email.lowercased().contains(trimmed)
             return nameMatch || emailMatch
         }
 
-        let results = Array(matched)
-        self.searchResults = results
-        return results
+        let results = matched.map { user -> SlooshUser in
+            if user.id == currentUserId && !user.displayName.contains("(Вы)") {
+                return SlooshUser(
+                    id: user.id,
+                    displayName: "\(user.displayName) (Вы)",
+                    email: user.email,
+                    avatarUrl: user.avatarUrl,
+                    isOnline: user.isOnline
+                )
+            }
+            return user
+        }
+
+        let finalArray = Array(results).sorted { u1, u2 in
+            if u1.id == currentUserId { return true }
+            if u2.id == currentUserId { return false }
+            return u1.displayName < u2.displayName
+        }
+
+        self.searchResults = finalArray
+        AppDiagnostics.shared.log("MessengerRepository: searchUsers('\(trimmed)') matched \(finalArray.count) users (total in DB: \(allUsersMap.count))")
+        return finalArray
     }
 
     private func fetchUsersFromNode(_ nodeName: String) async -> [SlooshUser]? {
