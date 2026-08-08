@@ -130,6 +130,24 @@ struct ProfileView: View {
                                     ProfileAvatarButton(user: authRepo.currentUser)
                                 }
                                 .buttonStyle(.plain)
+                                .confirmationDialog(
+                                    "Выйти из аккаунта?",
+                                    isPresented: $showSignOutAlert,
+                                    titleVisibility: .visible
+                                ) {
+                                    Button("Выйти из аккаунта", role: .destructive) {
+                                        authRepo.signOut()
+                                    }
+                                    Button("Отмена", role: .cancel) {}
+                                } message: {
+                                    if let email = authRepo.currentUser?.email, !email.isEmpty {
+                                        Text("Вы действительно хотите выйти из аккаунта \(email)?")
+                                    } else if let name = authRepo.currentUser?.displayName, !name.isEmpty {
+                                        Text("Вы действительно хотите выйти из аккаунта \(name)?")
+                                    } else {
+                                        Text("Вы действительно хотите выйти из своего аккаунта?")
+                                    }
+                                }
 
                                 Spacer()
 
@@ -160,24 +178,6 @@ struct ProfileView: View {
                 }
                 .fullScreenCover(isPresented: $showAuthSheet) {
                     AuthView()
-                }
-                .confirmationDialog(
-                    "Выйти из аккаунта?",
-                    isPresented: $showSignOutAlert,
-                    titleVisibility: .visible
-                ) {
-                    Button("Выйти из аккаунта", role: .destructive) {
-                        authRepo.signOut()
-                    }
-                    Button("Отмена", role: .cancel) {}
-                } message: {
-                    if let email = authRepo.currentUser?.email, !email.isEmpty {
-                        Text("Вы действительно хотите выйти из аккаунта \(email)?")
-                    } else if let name = authRepo.currentUser?.displayName, !name.isEmpty {
-                        Text("Вы действительно хотите выйти из аккаунта \(name)?")
-                    } else {
-                        Text("Вы действительно хотите выйти из своего аккаунта?")
-                    }
                 }
                 .sheet(item: $directPlaybackMovie) { movie in
                     let kpId = movie.externalIds?.kp ?? Int(movie.id) ?? 0
