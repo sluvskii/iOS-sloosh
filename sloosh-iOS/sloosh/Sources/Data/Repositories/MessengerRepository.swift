@@ -27,17 +27,24 @@ public final class MessengerRepository: ObservableObject {
             isOnline: true
         )
         
-        let urlString = "\(databaseBaseURL)/users/\(user.id).json"
-        guard let url = URL(string: urlString) else { return }
-        
-        do {
-            var request = URLRequest(url: url)
-            request.httpMethod = "PUT"
-            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            request.httpBody = try JSONEncoder().encode(slooshUser)
-            _ = try await URLSession.shared.data(for: request)
-        } catch {
-            AppDiagnostics.shared.log("MessengerRepository sync profile error: \(error.localizedDescription)")
+        guard let body = try? JSONEncoder().encode(slooshUser) else { return }
+
+        // 1. Сохраняем в публичный каталог профилей /user_profiles/{uid}.json
+        if let url1 = URL(string: "\(databaseBaseURL)/user_profiles/\(user.id).json") {
+            var req = URLRequest(url: url1)
+            req.httpMethod = "PUT"
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            req.httpBody = body
+            _ = try? await URLSession.shared.data(for: req)
+        }
+
+        // 2. Сохраняем профиль под ветку пользователя /users/{uid}/profile.json
+        if let url2 = URL(string: "\(databaseBaseURL)/users/\(user.id)/profile.json") {
+            var req = URLRequest(url: url2)
+            req.httpMethod = "PUT"
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            req.httpBody = body
+            _ = try? await URLSession.shared.data(for: req)
         }
     }
 
@@ -48,38 +55,92 @@ public final class MessengerRepository: ObservableObject {
             return []
         }
 
-        let urlString = "\(databaseBaseURL)/users.json"
-        guard let url = URL(string: urlString) else { return [] }
-
         isLoading = true
         defer { isLoading = false }
+
+        var allUsersMap: [String: SlooshUser] = [:]
+
+        // Загружаем профили из /user_profiles.json
+        if let profiles = await fetchUsersFromNode("user_profiles") {
+            for p in profiles {
+                allUsersMap[p.id] = p
+            }
+        }
+
+        // Загружаем профили из /users.json (fallback)
+        if let users = await fetchUsersFromNode("users") {
+            for u in users {
+                if allUsersMap[u.id] == nil {
+                    allUsersMap[u.id] = u
+                }
+            }
+        }
+
+        let currentUserId = AuthRepository.shared.currentUser?.id ?? ""
+        let matched = allUsersMap.values.filter { slooshUser in
+            guard slooshUser.id != currentUserId else { return false }
+            let nameMatch = slooshUser.displayName.lowercased().contains(trimmed)
+            let emailMatch = slooshUser.email.lowercased().contains(trimmed)
+            return nameMatch || emailMatch
+        }
+
+        let results = Array(matched)
+        self.searchResults = results
+        return results
+    }
+
+    private func fetchUsersFromNode(_ nodeName: String) async -> [SlooshUser]? {
+        let urlString = "\(databaseBaseURL)/\(nodeName).json"
+        guard let url = URL(string: urlString) else { return nil }
 
         do {
             let (data, response) = try await URLSession.shared.data(from: url)
             guard let httpResp = response as? HTTPURLResponse, (200...299).contains(httpResp.statusCode) else {
-                return []
+                return nil
             }
 
             if data.isEmpty || String(data: data, encoding: .utf8) == "null" {
-                return []
+                return nil
             }
 
-            let usersDict = try JSONDecoder().decode([String: SlooshUser].self, from: data)
-            let currentUserId = AuthRepository.shared.currentUser?.id ?? ""
-            
-            let matched = usersDict.values.filter { slooshUser in
-                guard slooshUser.id != currentUserId else { return false }
-                let nameMatch = slooshUser.displayName.lowercased().contains(trimmed)
-                let emailMatch = slooshUser.email.lowercased().contains(trimmed)
-                return nameMatch || emailMatch
+            guard let jsonObject = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                return nil
             }
 
-            let results = Array(matched)
-            self.searchResults = results
+            var results: [SlooshUser] = []
+            for (key, val) in jsonObject {
+                guard let dict = val as? [String: Any] else { continue }
+                
+                let sourceDict: [String: Any]
+                if let profileDict = dict["profile"] as? [String: Any] {
+                    sourceDict = profileDict
+                } else {
+                    sourceDict = dict
+                }
+
+                let id = (sourceDict["id"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? key
+                let displayName = (sourceDict["displayName"] as? String)
+                    ?? (sourceDict["name"] as? String)
+                    ?? ""
+                let email = (sourceDict["email"] as? String) ?? ""
+                let avatarUrl = sourceDict["avatarUrl"] as? String
+                let isOnline = sourceDict["isOnline"] as? Bool ?? true
+
+                if !displayName.isEmpty || !email.isEmpty {
+                    let user = SlooshUser(
+                        id: id,
+                        displayName: displayName,
+                        email: email,
+                        avatarUrl: avatarUrl,
+                        isOnline: isOnline
+                    )
+                    results.append(user)
+                }
+            }
             return results
         } catch {
-            AppDiagnostics.shared.log("MessengerRepository searchUsers error: \(error.localizedDescription)")
-            return []
+            AppDiagnostics.shared.log("MessengerRepository fetchUsersFromNode error: \(error.localizedDescription)")
+            return nil
         }
     }
 

@@ -18,6 +18,9 @@ public final class CloudSyncService: ObservableObject {
         guard AuthRepository.shared.isAuthenticated else { return }
         FavoritesRepository.shared.handleUserChanged()
         PlaybackProgressStore.shared.handleUserChanged()
+        Task {
+            await MessengerRepository.shared.syncCurrentUserProfile()
+        }
     }
 
     /// Загружает избранное аккаунта с сервера Firebase
