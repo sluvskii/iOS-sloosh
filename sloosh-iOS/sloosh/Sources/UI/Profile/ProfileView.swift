@@ -111,9 +111,12 @@ struct ProfileView: View {
                     VStack(spacing: 8) {
                         // Шапка: аватар/войти слева, "Профиль" по центру, шестерня справа
                         ZStack {
-                            Text("Профиль")
+                            Text(authRepo.isAuthenticated ? (authRepo.currentUser?.displayTitle ?? "Профиль") : "Профиль")
                                 .font(.system(size: 18, weight: .semibold))
                                 .foregroundStyle(.primary)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
+                                .padding(.horizontal, 64)
 
                             HStack {
                                 // Левая кнопка: аватар (если вошёл) или "Войти"
