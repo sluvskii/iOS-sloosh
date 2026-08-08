@@ -37,6 +37,14 @@ public struct SlooshUser: Identifiable, Codable, Equatable, Hashable {
     public let avatarUrl: String?
     public let isOnline: Bool?
 
+    enum CodingKeys: String, CodingKey {
+        case id
+        case displayName
+        case email
+        case avatarUrl
+        case isOnline
+    }
+
     public var displayTitle: String {
         if !displayName.isEmpty { return displayName }
         if !email.isEmpty { return email.components(separatedBy: "@").first ?? email }
@@ -49,6 +57,15 @@ public struct SlooshUser: Identifiable, Codable, Equatable, Hashable {
         self.email = email
         self.avatarUrl = avatarUrl
         self.isOnline = isOnline
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = (try? container.decodeIfPresent(String.self, forKey: .id)) ?? ""
+        self.displayName = (try? container.decodeIfPresent(String.self, forKey: .displayName)) ?? ""
+        self.email = (try? container.decodeIfPresent(String.self, forKey: .email)) ?? ""
+        self.avatarUrl = try? container.decodeIfPresent(String.self, forKey: .avatarUrl)
+        self.isOnline = try? container.decodeIfPresent(Bool.self, forKey: .isOnline)
     }
 }
 
