@@ -124,7 +124,7 @@ public struct MessengerView: View {
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
-            .background(Capsule().glassEffect(.regular.interactive(), in: .capsule))
+            .background(Capsule().glassEffect(.regular.interactive(), in: Capsule()))
             .padding(.horizontal, 16)
 
             // Контент: Результаты поиска или Список диалогов
@@ -187,7 +187,7 @@ public struct MessengerView: View {
                                         .foregroundColor(Color.slooshAccent)
                                 }
                                 .padding(12)
-                                .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 16))
+                                .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 16))
                             }
                             .buttonStyle(.plain)
                         }
@@ -254,7 +254,7 @@ public struct MessengerView: View {
                                     }
                                 }
                                 .padding(12)
-                                .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 16))
+                                .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 16))
                             }
                             .buttonStyle(.plain)
                         }

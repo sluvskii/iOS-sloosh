@@ -80,7 +80,7 @@ public struct MediaMessageCardView: View {
                 .padding(10)
             }
             .frame(width: 210)
-            .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 16))
+            .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 16))
             .overlay(
                 RoundedRectangle(cornerRadius: 16)
                     .stroke(Color.primary.opacity(0.12), lineWidth: 1)
