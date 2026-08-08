@@ -127,6 +127,7 @@ public struct AuthView: View {
                     } label: {
                         HStack(spacing: 10) {
                             Image("GoogleLogo")
+                                .renderingMode(.original)
                                 .resizable()
                                 .scaledToFit()
                                 .frame(width: 18, height: 18)
