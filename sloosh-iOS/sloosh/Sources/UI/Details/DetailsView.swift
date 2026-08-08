@@ -96,6 +96,7 @@ struct DetailsView: View {
     @State private var favoriteBounce = false
     @State private var movieToDelete: DownloadItem? = nil
     @State private var showDeleteMovieAlert = false
+    @State private var showShareToFriendSheet = false
 
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Environment(\.dismiss) private var dismiss
@@ -386,6 +387,26 @@ struct DetailsView: View {
             playButton(for: details)
                 .tooltip(text: "Нажмите для выбора перевода", isVisible: $showTooltip, isTailTop: false)
             downloadButton(for: details)
+            shareToFriendButton(for: details)
+        }
+    }
+
+    private func shareToFriendButton(for details: MediaDetailsDto) -> some View {
+        Button(action: {
+            let generator = UIImpactFeedbackGenerator(style: .medium)
+            generator.prepare()
+            generator.impactOccurred()
+            showShareToFriendSheet = true
+        }) {
+            Image(systemName: "paperplane.fill")
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundColor(.primary)
+                .frame(width: 50, height: 50)
+        }
+        .buttonStyle(GlassDownloadButtonStyle())
+        .contentShape(Capsule())
+        .sheet(isPresented: $showShareToFriendSheet) {
+            ShareToFriendSheet(movie: details)
         }
     }
 
