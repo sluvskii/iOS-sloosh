@@ -13,6 +13,12 @@ public final class CloudSyncService: ObservableObject {
 
     private init() {}
 
+    /// Запускает полную синхронизацию данных при входе в аккаунт
+    public func syncAllData() {
+        guard AuthRepository.shared.isAuthenticated else { return }
+        FavoritesRepository.shared.handleUserChanged()
+    }
+
     /// Загружает избранное аккаунта с сервера Firebase
     public func fetchRemoteFavorites(userId: String, idToken: String? = nil) async -> [FavoriteDto]? {
         guard !userId.isEmpty, userId != "guest" else { return nil }
