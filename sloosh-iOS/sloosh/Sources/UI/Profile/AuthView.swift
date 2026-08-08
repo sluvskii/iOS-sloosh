@@ -126,9 +126,10 @@ public struct AuthView: View {
                         handleGoogleSignIn()
                     } label: {
                         HStack(spacing: 10) {
-                            Image(systemName: "globe")
-                                .font(.system(size: 17, weight: .semibold))
-                                .foregroundStyle(Color.slooshAccent)
+                            Image("GoogleLogo")
+                                .resizable()
+                                .scaledToFit()
+                                .frame(width: 18, height: 18)
                             Text("Продолжить с Google")
                                 .font(.body.weight(.medium))
                                 .foregroundStyle(.primary)
