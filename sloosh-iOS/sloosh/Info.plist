@@ -37,29 +37,6 @@
     </array>
     <key>NSPhotoLibraryAddUsageDescription</key>
     <string>Sloosh сохранит постер или логотип фильма в вашу Медиатеку.</string>
-    <key>CFBundleURLTypes</key>
-    <array>
-        <dict>
-            <key>CFBundleTypeRole</key>
-            <string>Editor</string>
-            <key>CFBundleURLName</key>
-            <string>com.sloosh.ios</string>
-            <key>CFBundleURLSchemes</key>
-            <array>
-                <string>sloosh</string>
-            </array>
-        </dict>
-        <dict>
-            <key>CFBundleTypeRole</key>
-            <string>Editor</string>
-            <key>CFBundleURLName</key>
-            <string>com.sloosh.ios.google</string>
-            <key>CFBundleURLSchemes</key>
-            <array>
-                <string>com.googleusercontent.apps.535135371915-8iou4igr3g5rfan904mtolv5r5uatfuv</string>
-            </array>
-        </dict>
-    </array>
 </dict>
 </plist>
 
