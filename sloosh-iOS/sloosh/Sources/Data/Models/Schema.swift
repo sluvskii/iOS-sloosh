@@ -73,7 +73,8 @@ final class LastPlayedEpisodeModel {
 
 @Model
 final class FavoriteModel {
-    @Attribute(.unique) var mediaIdTypeKey: String // composite key: "12345_movie"
+    @Attribute(.unique) var userMediaIdTypeKey: String // composite key: "<userId>_<mediaId>_<type>"
+    var userId: String
     var mediaId: String
     var type: String
     var title: String?
@@ -83,10 +84,11 @@ final class FavoriteModel {
     var genresRaw: String? // JSON encoded
     var addedAt: Date
     
-    init(mediaId: String, type: String, title: String? = nil, posterUrl: String? = nil, rating: Double? = nil, year: String? = nil, genresRaw: String? = nil, addedAt: Date = Date()) {
-        self.mediaIdTypeKey = "\(mediaId)_\(type)"
+    init(userId: String = "guest", mediaId: String, type: String, title: String? = nil, posterUrl: String? = nil, rating: Double? = nil, year: String? = nil, genresRaw: String? = nil, addedAt: Date = Date()) {
+        self.userId = userId
         self.mediaId = mediaId
         self.type = type
+        self.userMediaIdTypeKey = "\(userId)_\(mediaId)_\(type)"
         self.title = title
         self.posterUrl = posterUrl
         self.rating = rating
