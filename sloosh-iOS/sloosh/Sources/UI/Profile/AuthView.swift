@@ -99,27 +99,6 @@ public struct AuthView: View {
                     }
                 }
 
-                // MARK: Google Sign-In (ASWebAuthenticationSession + PKCE + Firebase signInWithIdp)
-                Section {
-                    Button {
-                        handleGoogleSignIn()
-                    } label: {
-                        HStack(spacing: 10) {
-                            Image(systemName: "globe")
-                                .font(.system(size: 17, weight: .semibold))
-                                .foregroundStyle(Color.slooshAccent)
-                            Text("Продолжить с Google")
-                                .font(.body.weight(.medium))
-                                .foregroundStyle(.primary)
-                            Spacer()
-                            if authRepo.isLoading {
-                                ProgressView().tint(Color.slooshAccent)
-                            }
-                        }
-                    }
-                    .disabled(authRepo.isLoading)
-                }
-
                 // MARK: Primary Action Button
                 Section {
                     Button {
@@ -141,24 +120,35 @@ public struct AuthView: View {
                     .disabled(authRepo.isLoading || email.isEmpty || password.isEmpty)
                 }
 
-                // MARK: Secondary Actions
+                // MARK: Google Sign-In
                 Section {
-                    if mode == .signIn {
+                    Button {
+                        handleGoogleSignIn()
+                    } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: "globe")
+                                .font(.system(size: 17, weight: .semibold))
+                                .foregroundStyle(Color.slooshAccent)
+                            Text("Продолжить с Google")
+                                .font(.body.weight(.medium))
+                                .foregroundStyle(.primary)
+                            Spacer()
+                            if authRepo.isLoading {
+                                ProgressView().tint(Color.slooshAccent)
+                            }
+                        }
+                    }
+                    .disabled(authRepo.isLoading)
+                }
+
+                // MARK: Forgot Password
+                if mode == .signIn {
+                    Section {
                         Button("Забыли пароль?") {
                             resetEmail = email
                             showResetAlert = true
                         }
                         .foregroundStyle(Color.slooshAccent)
-                    }
-
-                    Button {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                            mode = (mode == .signIn) ? .signUp : .signIn
-                            authRepo.clearError()
-                        }
-                    } label: {
-                        Text(mode == .signIn ? "Нет аккаунта? Зарегистрироваться" : "Уже есть аккаунт? Войти")
-                            .foregroundStyle(Color.slooshAccent)
                     }
                 }
             }
@@ -166,11 +156,10 @@ public struct AuthView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .symbolRenderingMode(.hierarchical)
+                    Button(action: { dismiss() }) {
+                        Image(systemName: "xmark")
+                            .symbolRenderingMode(.monochrome)
+                            .foregroundStyle(.primary)
                     }
                     .tint(.primary)
                 }
