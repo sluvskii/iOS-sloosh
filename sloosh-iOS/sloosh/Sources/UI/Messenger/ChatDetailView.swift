@@ -455,7 +455,7 @@ public struct ChatDetailView: View {
 
 private struct iMessageReactionPickerView: View {
     let onSelect: (String) -> Void
-    private let emojis = ["❤️", "👍", "🔥", "😂", "😢", "👏"]
+    private let emojis = ["❤️", "👍", "👎", "‼️", "❓", "🥶", "😮"]
 
     var body: some View {
         HStack(spacing: 10) {
@@ -551,12 +551,14 @@ private struct PeakMessageBubbleView: View {
                 onPlayDirectly(payload)
             })
             .contextMenu {
-                Button {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) {
-                        showReactionPicker.toggle()
-                    }
-                } label: {
-                    Label("Реакция...", systemImage: "face.smiling")
+                ControlGroup {
+                    Button("❤️") { onReact("❤️", message) }
+                    Button("👍") { onReact("👍", message) }
+                    Button("👎") { onReact("👎", message) }
+                    Button("‼️") { onReact("‼️", message) }
+                    Button("❓") { onReact("❓", message) }
+                    Button("🥶") { onReact("🥶", message) }
+                    Button("😮") { onReact("😮", message) }
                 }
 
                 Button {
@@ -618,12 +620,14 @@ private struct PeakMessageBubbleView: View {
                     .stroke(Color.primary.opacity(0.06), lineWidth: isFromMe ? 0 : 0.5)
             )
             .contextMenu {
-                Button {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) {
-                        showReactionPicker.toggle()
-                    }
-                } label: {
-                    Label("Реакция...", systemImage: "face.smiling")
+                ControlGroup {
+                    Button("❤️") { onReact("❤️", message) }
+                    Button("👍") { onReact("👍", message) }
+                    Button("👎") { onReact("👎", message) }
+                    Button("‼️") { onReact("‼️", message) }
+                    Button("❓") { onReact("❓", message) }
+                    Button("🥶") { onReact("🥶", message) }
+                    Button("😮") { onReact("😮", message) }
                 }
 
                 Button {
