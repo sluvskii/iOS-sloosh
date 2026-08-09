@@ -270,6 +270,14 @@ public struct ChatDetailView: View {
         isMultilineInput ? 18 : 22
     }
 
+    private var inputBarHorizontalPadding: CGFloat {
+        isInputFocused ? 6 : 12
+    }
+
+    private var inputBarVerticalPadding: CGFloat {
+        isInputFocused ? 6 : 8
+    }
+
     private var inputBar: some View {
         HStack(alignment: .bottom, spacing: 8) {
             // Floating Glass Text Field Capsule / Rounded Box (Telegram-style morphing shape)
@@ -314,8 +322,9 @@ public struct ChatDetailView: View {
                 .disabled(isSending)
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 6)
+        .padding(.horizontal, inputBarHorizontalPadding)
+        .padding(.vertical, inputBarVerticalPadding)
+        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: isInputFocused)
         .animation(.spring(response: 0.32, dampingFraction: 0.78), value: hasTextToSending)
     }
 
