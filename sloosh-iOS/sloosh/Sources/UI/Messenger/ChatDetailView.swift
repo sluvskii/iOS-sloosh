@@ -339,6 +339,34 @@ public struct ChatDetailView: View {
 
     // MARK: - Actions & Logic
 
+    private func syncMessages(remoteList: [ChatMessage]) async {
+        var current = self.messages
+        
+        // 1. Обновляем существующие и добавляем новые с сервера
+        for remote in remoteList {
+            if let idx = current.firstIndex(where: { $0.id == remote.id }) {
+                current[idx] = remote
+            } else {
+                current.append(remote)
+            }
+        }
+        
+        // 2. Удаляем сообщения, которых физически больше нет на сервере
+        current.removeAll { local in
+            !remoteList.contains(where: { $0.id == local.id })
+        }
+        
+        current.sort(by: { $0.timestampMs < $1.timestampMs })
+        
+        if current != self.messages {
+            withAnimation(.easeInOut(duration: 0.18)) {
+                self.messages = current
+            }
+            let chatId = repo.getOrCreateChatId(peerUserId: peerUser.id)
+            await repo.markMessagesAsRead(chatId: chatId, peerUserId: peerUser.id, messages: current)
+        }
+    }
+
     private func loadMessages() async {
         let chatId = repo.getOrCreateChatId(peerUserId: peerUser.id)
         let list = await repo.fetchMessages(chatId: chatId)
