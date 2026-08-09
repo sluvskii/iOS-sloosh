@@ -241,7 +241,7 @@ struct DetailsView: View {
                 viewModel.resetSourceSheet()
                 if pendingPlayerLaunch {
                     pendingPlayerLaunch = false
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                    DispatchQueue.main.async {
                         showPlayer = true
                     }
                 }
