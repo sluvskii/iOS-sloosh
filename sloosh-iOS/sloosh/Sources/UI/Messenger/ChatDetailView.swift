@@ -419,25 +419,40 @@ public struct ChatDetailView: View {
     private func addReaction(_ emoji: String, to msg: ChatMessage) {
         guard let myId = AuthRepository.shared.currentUser?.id else { return }
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        Task {
-            var newReactions = msg.reactions ?? [:]
+
+        var newReactions = msg.reactions ?? [:]
+        if newReactions[myId] == emoji {
+            // Если повторный клик на ту же реакцию — снимаем её!
+            newReactions.removeValue(forKey: myId)
+        } else {
+            // Иначе ставим или меняем реакцию
             newReactions[myId] = emoji
-            let updatedMsg = ChatMessage(
-                id: msg.id,
-                senderId: msg.senderId,
-                receiverId: msg.receiverId,
-                type: msg.type,
-                text: msg.text,
-                media: msg.media,
-                timestampMs: msg.timestampMs,
-                replyToId: msg.replyToId,
-                reactions: newReactions,
-                isEdited: msg.isEdited,
-                isRead: msg.isRead
-            )
+        }
+
+        let updatedMsg = ChatMessage(
+            id: msg.id,
+            senderId: msg.senderId,
+            receiverId: msg.receiverId,
+            type: msg.type,
+            text: msg.text,
+            media: msg.media,
+            timestampMs: msg.timestampMs,
+            replyToId: msg.replyToId,
+            reactions: newReactions.isEmpty ? nil : newReactions,
+            isEdited: msg.isEdited,
+            isRead: msg.isRead
+        )
+
+        // Оптимистично за 0мс обновляем в UI
+        withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+            if let idx = self.messages.firstIndex(where: { $0.id == msg.id }) {
+                self.messages[idx] = updatedMsg
+            }
+        }
+
+        Task {
             let chatId = repo.getOrCreateChatId(peerUserId: peerUser.id)
             await repo.postMessageToFirebase(chatId: chatId, message: updatedMsg)
-            await loadMessages()
         }
     }
 
@@ -453,28 +468,49 @@ public struct ChatDetailView: View {
     }
 }
 
+// MARK: - iMessage Style Horizontal Reaction Picker
+
 private struct iMessageReactionPickerView: View {
+    let currentMyReaction: String?
     let onSelect: (String) -> Void
-    private let emojis = ["❤️", "👍", "👎", "‼️", "❓", "🥶", "😮"]
+    private let emojis = ["❤️", "👍", "🔥", "😂", "😢", "👏"]
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             ForEach(emojis, id: \.self) { emoji in
+                let isSelected = (currentMyReaction == emoji)
                 Button {
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     onSelect(emoji)
                 } label: {
                     Text(emoji)
                         .font(.system(size: 24))
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 2)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 4)
+                        .background(
+                            Group {
+                                if isSelected {
+                                    Circle()
+                                        .fill(Color.slooshAccent.opacity(0.3))
+                                }
+                            }
+                        )
+                        .overlay(
+                            Group {
+                                if isSelected {
+                                    Circle()
+                                        .stroke(Color.slooshAccent, lineWidth: 1.5)
+                                }
+                            }
+                        )
+                        .scaleEffect(isSelected ? 1.15 : 1.0)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(OpaquePressButtonStyle())
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 6)
         .glassEffect(.regular.interactive(), in: Capsule())
         .shadow(color: .black.opacity(0.2), radius: 10, x: 0, y: 5)
     }
@@ -496,6 +532,11 @@ private struct PeakMessageBubbleView: View {
 
     @State private var showReactionPicker: Bool = false
 
+    private var myCurrentReaction: String? {
+        guard let myId = AuthRepository.shared.currentUser?.id else { return nil }
+        return message.reactions?[myId]
+    }
+
     private var repliedMessage: ChatMessage? {
         if let replyToId = message.replyToId {
             return allMessages.first(where: { $0.id == replyToId })
@@ -509,7 +550,7 @@ private struct PeakMessageBubbleView: View {
 
             VStack(alignment: isFromMe ? .trailing : .leading, spacing: 5) {
                 if showReactionPicker {
-                    iMessageReactionPickerView { emoji in
+                    iMessageReactionPickerView(currentMyReaction: myCurrentReaction) { emoji in
                         onReact(emoji, message)
                         withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
                             showReactionPicker = false
@@ -543,55 +584,6 @@ private struct PeakMessageBubbleView: View {
     }
 
     @ViewBuilder
-    private var rawBubbleContent: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            // Replied Message Header
-            if let replied = repliedMessage {
-                HStack(spacing: 8) {
-                    Capsule()
-                        .fill(isFromMe ? Color(UIColor.systemBackground) : Color.slooshAccent)
-                        .frame(width: 2)
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Ответ")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(isFromMe ? Color(UIColor.systemBackground) : .slooshAccent)
-                        Text(replied.text ?? "Медиа")
-                            .font(.system(size: 13))
-                            .foregroundColor(isFromMe ? Color(UIColor.systemBackground).opacity(0.7) : .secondary)
-                            .lineLimit(1)
-                    }
-                }
-                .padding(.bottom, 2)
-            }
-
-            // Text content
-            if let text = message.text, !text.isEmpty {
-                Text(text)
-                    .font(.system(size: 16))
-                    .foregroundColor(isFromMe ? Color(UIColor.systemBackground) : .primary)
-            }
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(
-            Group {
-                if isFromMe {
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .fill(Color.primary)
-                } else {
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .fill(Color(UIColor.secondarySystemGroupedBackground))
-                }
-            }
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .stroke(Color.primary.opacity(0.06), lineWidth: isFromMe ? 0 : 0.5)
-        )
-    }
-
-    @ViewBuilder
     private var bubbleBody: some View {
         if message.type == .media, let media = message.media {
             MediaMessageCardView(media: media, onOpenDetails: { movieId in
@@ -600,6 +592,14 @@ private struct PeakMessageBubbleView: View {
                 onPlayDirectly(payload)
             })
             .contextMenu {
+                Button {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) {
+                        showReactionPicker.toggle()
+                    }
+                } label: {
+                    Label("Реакция...", systemImage: "face.smiling")
+                }
+
                 Button {
                     onReply(message)
                 } label: {
@@ -611,46 +611,82 @@ private struct PeakMessageBubbleView: View {
                 } label: {
                     Label("Удалить у всех", systemImage: "trash")
                 }
-            } preview: {
-                VStack(alignment: isFromMe ? .trailing : .leading, spacing: 10) {
-                    iMessageReactionPickerView { emoji in
-                        onReact(emoji, message)
-                    }
-                    MediaMessageCardView(media: media)
-                }
-                .padding(12)
             }
         } else {
-            rawBubbleContent
-                .contextMenu {
-                    Button {
-                        onReply(message)
-                    } label: {
-                        Label("Ответить", systemImage: "arrowshape.turn.up.left")
-                    }
+            VStack(alignment: .leading, spacing: 4) {
+                // Replied Message Header
+                if let replied = repliedMessage {
+                    HStack(spacing: 8) {
+                        Capsule()
+                            .fill(isFromMe ? Color(UIColor.systemBackground) : Color.slooshAccent)
+                            .frame(width: 2)
 
-                    if isFromMe && message.type == .text {
-                        Button {
-                            onEdit(message)
-                        } label: {
-                            Label("Редактировать", systemImage: "pencil")
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Ответ")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(isFromMe ? Color(UIColor.systemBackground) : .slooshAccent)
+                            Text(replied.text ?? "Медиа")
+                                .font(.system(size: 13))
+                                .foregroundColor(isFromMe ? Color(UIColor.systemBackground).opacity(0.7) : .secondary)
+                                .lineLimit(1)
                         }
                     }
-
-                    Button(role: .destructive) {
-                        onDelete(message)
-                    } label: {
-                        Label("Удалить у всех", systemImage: "trash")
-                    }
-                } preview: {
-                    VStack(alignment: isFromMe ? .trailing : .leading, spacing: 10) {
-                        iMessageReactionPickerView { emoji in
-                            onReact(emoji, message)
-                        }
-                        rawBubbleContent
-                    }
-                    .padding(12)
+                    .padding(.bottom, 2)
                 }
+
+                // Text content
+                if let text = message.text, !text.isEmpty {
+                    Text(text)
+                        .font(.system(size: 16))
+                        .foregroundColor(isFromMe ? Color(UIColor.systemBackground) : .primary)
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(
+                Group {
+                    if isFromMe {
+                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            .fill(Color.primary)
+                    } else {
+                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            .fill(Color(UIColor.secondarySystemGroupedBackground))
+                    }
+                }
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .stroke(Color.primary.opacity(0.06), lineWidth: isFromMe ? 0 : 0.5)
+            )
+            .contextMenu {
+                Button {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) {
+                        showReactionPicker.toggle()
+                    }
+                } label: {
+                    Label("Реакция...", systemImage: "face.smiling")
+                }
+
+                Button {
+                    onReply(message)
+                } label: {
+                    Label("Ответить", systemImage: "arrowshape.turn.up.left")
+                }
+
+                if isFromMe && message.type == .text {
+                    Button {
+                        onEdit(message)
+                    } label: {
+                        Label("Редактировать", systemImage: "pencil")
+                    }
+                }
+
+                Button(role: .destructive) {
+                    onDelete(message)
+                } label: {
+                    Label("Удалить у всех", systemImage: "trash")
+                }
+            }
         }
     }
 
@@ -676,23 +712,47 @@ private struct PeakMessageBubbleView: View {
 
     @ViewBuilder
     private func reactionsOverlay(_ reactionsDict: [String: String]) -> some View {
+        let myId = AuthRepository.shared.currentUser?.id ?? ""
         let grouped = Dictionary(grouping: reactionsDict.values, by: { $0 })
+
         HStack(spacing: 4) {
             ForEach(grouped.map { ($0.key, $0.value.count) }, id: \.0) { emoji, count in
-                HStack(spacing: 2) {
-                    Text(emoji)
-                        .font(.system(size: 11))
-                    if count > 1 {
-                        Text("\(count)")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(isFromMe ? Color(UIColor.systemBackground) : .primary)
+                let isMyReaction = (reactionsDict[myId] == emoji)
+
+                Button {
+                    onReact(emoji, message)
+                } label: {
+                    HStack(spacing: 3) {
+                        Text(emoji)
+                            .font(.system(size: 12))
+                        if count > 1 {
+                            Text("\(count)")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(isMyReaction ? .slooshAccent : (isFromMe ? Color(UIColor.systemBackground) : .primary))
+                        }
                     }
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 4)
+                    .background(
+                        Group {
+                            if isMyReaction {
+                                Color.slooshAccent.opacity(0.25)
+                            } else {
+                                isFromMe ? Color.primary : Color(white: 0.18)
+                            }
+                        }
+                    )
+                    .overlay(
+                        Group {
+                            if isMyReaction {
+                                Capsule().stroke(Color.slooshAccent, lineWidth: 1.2)
+                            }
+                        }
+                    )
+                    .clipShape(Capsule())
+                    .shadow(color: .black.opacity(0.12), radius: 2)
                 }
-                .padding(.horizontal, 6)
-                .padding(.vertical, 3)
-                .background(isFromMe ? Color.primary : Color(white: 0.18))
-                .clipShape(Capsule())
-                .shadow(color: .black.opacity(0.1), radius: 1)
+                .buttonStyle(OpaquePressButtonStyle())
             }
         }
         .offset(y: 10)
