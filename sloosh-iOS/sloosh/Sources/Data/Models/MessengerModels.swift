@@ -5,7 +5,8 @@ public enum MessageType: String, Codable, Hashable {
     case media
 }
 
-public struct MediaCardPayload: Codable, Equatable, Hashable {
+public struct MediaCardPayload: Identifiable, Codable, Equatable, Hashable {
+    public var id: String { mediaId }
     public let mediaId: String
     public let type: String
     public let title: String

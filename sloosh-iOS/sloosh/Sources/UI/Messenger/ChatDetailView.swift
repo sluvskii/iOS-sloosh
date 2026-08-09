@@ -109,15 +109,15 @@ public struct ChatDetailView: View {
         .fullScreenCover(item: $activePlayerConfig) { config in
             PlayerView(
                 iframeUrl: config.iframeUrl,
-                title: config.title,
+                fallbackTitle: config.title,
                 kpId: config.kpId,
                 season: config.season,
                 episode: config.episode,
-                voiceover: config.voiceover,
-                streamUrl: config.streamUrl,
+                selectedVoiceover: config.voiceover,
+                directStreamUrl: config.streamUrl,
                 voices: config.voices,
                 subtitles: config.subtitles,
-                qualityPreference: config.quality,
+                initialQuality: config.quality,
                 seriesResult: config.seriesResult
             )
         }
