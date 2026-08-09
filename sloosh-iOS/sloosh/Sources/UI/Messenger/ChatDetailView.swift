@@ -143,10 +143,8 @@ public struct ChatDetailView: View {
                 isShowingInfo = true
             } label: {
                 PeakAvatarView(user: peerUser, size: 34, showOnline: true)
-                    .padding(3)
-                    .glassEffect(.regular.interactive(), in: Circle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(PeakPressButtonStyle())
         }
     }
 
