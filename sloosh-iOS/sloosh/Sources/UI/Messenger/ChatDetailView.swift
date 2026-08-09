@@ -99,11 +99,9 @@ public struct ChatDetailView: View {
             DetailsView(movieId: movieId, navigationTransitionID: nil, navigationTransitionNamespace: nil)
         }
         .sheet(item: $selectedMediaForDirectPlay) { media in
-            if let kpId = Int(media.mediaId) {
-                HomeDirectPlayWrapper(kpId: kpId, title: media.title) { config in
-                    selectedMediaForDirectPlay = nil
-                    activePlayerConfig = config
-                }
+            HomeDirectPlayWrapper(movieId: media.mediaId, fallbackTitle: media.title) { config in
+                selectedMediaForDirectPlay = nil
+                activePlayerConfig = config
             }
         }
         .fullScreenCover(item: $activePlayerConfig) { config in

@@ -1031,7 +1031,7 @@ struct SourceSelectionSkeletonSection: View {
     }
 }
 
-private struct SourceSelectionEmptyView: View {
+struct SourceSelectionEmptyView: View {
     let title: String
 
     @Environment(\.dismiss) private var dismiss

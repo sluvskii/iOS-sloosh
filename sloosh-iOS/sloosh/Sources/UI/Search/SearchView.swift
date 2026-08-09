@@ -132,10 +132,10 @@ struct SearchView: View {
             .navigationTitle("Поиск")
             .searchable(text: $viewModel.searchQuery, prompt: "Фильмы и сериалы...")
             .sheet(item: $viewModel.directPlaybackMovie) { movie in
-                let kpId = movie.externalIds?.kp ?? Int(movie.id) ?? 0
                 HomeDirectPlayWrapper(
-                    kpId: kpId,
-                    title: movie.title ?? movie.name ?? movie.originalTitle ?? ""
+                    movieId: movie.id,
+                    fallbackTitle: movie.title ?? movie.name ?? movie.originalTitle ?? "",
+                    initialKpId: movie.externalIds?.kp
                 ) { config in
                     viewModel.directPlaybackMovie = nil
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
