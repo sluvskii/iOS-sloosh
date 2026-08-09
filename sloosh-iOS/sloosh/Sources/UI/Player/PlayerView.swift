@@ -104,7 +104,6 @@ struct PlayerView: View {
     var body: some View {
         PlayerPresenter(vm: viewModel) {
             viewModel.cleanup()
-            dismissEnv()
         }
         .ignoresSafeArea()
         .onAppear {

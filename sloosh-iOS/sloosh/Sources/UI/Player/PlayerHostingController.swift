@@ -2,16 +2,21 @@ import SwiftUI
 import UIKit
 
 // MARK: - UIHostingController, который принудительно держит landscape
-// и при закрытии возвращает портрет через AppDelegate.orientationLock.
+// и при закрытии плавно возвращает портрет через AppDelegate.orientationLock.
 
 final class PlayerHostingController<Content: View>: UIHostingController<Content> {
 
     var onDismissed: (() -> Void)?
 
-    override var supportedInterfaceOrientations: UIInterfaceOrientationMask { .landscape }
-    override var preferredInterfaceOrientationForPresentation: UIInterfaceOrientation { .landscapeRight }
-    override var shouldAutorotate: Bool { true }
+    override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
+        return AppDelegate.orientationLock
+    }
 
+    override var preferredInterfaceOrientationForPresentation: UIInterfaceOrientation {
+        return .landscapeRight
+    }
+
+    override var shouldAutorotate: Bool { true }
     override var prefersStatusBarHidden: Bool { true }
     override var prefersHomeIndicatorAutoHidden: Bool { true }
 
@@ -20,18 +25,14 @@ final class PlayerHostingController<Content: View>: UIHostingController<Content>
         view.backgroundColor = .black
     }
 
-    override func viewWillAppear(_ animated: Bool) {
-        super.viewWillAppear(animated)
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
         AppDelegate.lockToLandscape()
-    }
-
-    override func viewWillDisappear(_ animated: Bool) {
-        super.viewWillDisappear(animated)
-        AppDelegate.lockToPortrait()
     }
 
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
+        AppDelegate.lockToPortrait()
         onDismissed?()
     }
 }
