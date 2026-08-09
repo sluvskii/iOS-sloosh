@@ -3,12 +3,18 @@ import SwiftUI
 public struct MediaMessageCardView: View {
     public let media: MediaCardPayload
     public var onOpenDetails: ((String) -> Void)?
+    public var onPlayDirectly: ((MediaCardPayload) -> Void)?
 
     @State private var cardBgColor: Color = Color(white: 0.14)
 
-    public init(media: MediaCardPayload, onOpenDetails: ((String) -> Void)? = nil) {
+    public init(
+        media: MediaCardPayload,
+        onOpenDetails: ((String) -> Void)? = nil,
+        onPlayDirectly: ((MediaCardPayload) -> Void)? = nil
+    ) {
         self.media = media
         self.onOpenDetails = onOpenDetails
+        self.onPlayDirectly = onPlayDirectly
     }
 
     public var body: some View {
@@ -72,21 +78,32 @@ public struct MediaMessageCardView: View {
                             .foregroundColor(.white.opacity(0.7))
                     }
 
-                    // Белая кнопка "Смотреть" из DetailsView (GlassPlayButtonStyle)
-                    HStack(spacing: 6) {
-                        Image(systemName: "play.fill")
-                            .font(.system(size: 14, weight: .black))
-                        Text("Смотреть")
-                            .font(.system(size: 15, weight: .heavy))
+                    // Белая кнопка "Смотреть" из DetailsView (открывает панель озвучек / запуск плеера)
+                    Button {
+                        let generator = UIImpactFeedbackGenerator(style: .medium)
+                        generator.impactOccurred()
+                        if let onPlayDirectly = onPlayDirectly {
+                            onPlayDirectly(media)
+                        } else {
+                            onOpenDetails?(media.mediaId)
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "play.fill")
+                                .font(.system(size: 14, weight: .black))
+                            Text("Смотреть")
+                                .font(.system(size: 15, weight: .heavy))
+                        }
+                        .foregroundColor(.black)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 40)
+                        .background(
+                            Capsule()
+                                .fill(Color.white.opacity(0.92))
+                        )
+                        .glassEffect(in: Capsule())
                     }
-                    .foregroundColor(.black)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 40)
-                    .background(
-                        Capsule()
-                            .fill(Color.white.opacity(0.92))
-                    )
-                    .glassEffect(in: Capsule())
+                    .buttonStyle(.plain)
                     .padding(.top, 4)
                 }
                 .padding(.horizontal, 4)

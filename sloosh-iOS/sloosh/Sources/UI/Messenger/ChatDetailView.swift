@@ -9,6 +9,8 @@ public struct ChatDetailView: View {
     @State private var isSending: Bool = false
 
     @State private var selectedMovieIdForDetails: String? = nil
+    @State private var selectedMediaForDirectPlay: MediaCardPayload? = nil
+    @State private var activePlayerConfig: PlayerConfig? = nil
     @State private var isShowingInfo: Bool = false
     @State private var pollTask: Task<Void, Never>? = nil
 
@@ -96,6 +98,29 @@ public struct ChatDetailView: View {
         .navigationDestination(item: $selectedMovieIdForDetails) { movieId in
             DetailsView(movieId: movieId, navigationTransitionID: nil, navigationTransitionNamespace: nil)
         }
+        .sheet(item: $selectedMediaForDirectPlay) { media in
+            if let kpId = Int(media.mediaId) {
+                HomeDirectPlayWrapper(kpId: kpId, title: media.title) { config in
+                    selectedMediaForDirectPlay = nil
+                    activePlayerConfig = config
+                }
+            }
+        }
+        .fullScreenCover(item: $activePlayerConfig) { config in
+            PlayerView(
+                iframeUrl: config.iframeUrl,
+                title: config.title,
+                kpId: config.kpId,
+                season: config.season,
+                episode: config.episode,
+                voiceover: config.voiceover,
+                streamUrl: config.streamUrl,
+                voices: config.voices,
+                subtitles: config.subtitles,
+                qualityPreference: config.quality,
+                seriesResult: config.seriesResult
+            )
+        }
         .task {
             await loadMessages()
             startPolling()
@@ -160,6 +185,9 @@ public struct ChatDetailView: View {
                             allMessages: messages,
                             onOpenMovie: { movieId in
                                 selectedMovieIdForDetails = movieId
+                            },
+                            onPlayDirectly: { media in
+                                selectedMediaForDirectPlay = media
                             },
                             onReply: { msg in
                                 replyingMessage = msg
@@ -361,6 +389,7 @@ private struct PeakMessageBubbleView: View {
     let showMeta: Bool
     let allMessages: [ChatMessage]
     let onOpenMovie: (String) -> Void
+    let onPlayDirectly: (MediaCardPayload) -> Void
     let onReply: (ChatMessage) -> Void
     let onEdit: (ChatMessage) -> Void
     let onReact: (String, ChatMessage) -> Void
@@ -403,9 +432,11 @@ private struct PeakMessageBubbleView: View {
     @ViewBuilder
     private var bubbleBody: some View {
         if message.type == .media, let media = message.media {
-            MediaMessageCardView(media: media) { movieId in
+            MediaMessageCardView(media: media, onOpenDetails: { movieId in
                 onOpenMovie(movieId)
-            }
+            }, onPlayDirectly: { payload in
+                onPlayDirectly(payload)
+            })
             .contextMenu {
                 Section("Реакция") {
                     Button("❤️") { onReact("❤️", message) }
