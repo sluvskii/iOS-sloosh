@@ -305,7 +305,7 @@ public final class MessengerRepository: ObservableObject {
             }
 
             let messagesDict = try JSONDecoder().decode([String: ChatMessage].self, from: data)
-            return messagesDict.values.sorted { $0.timestampMs < $1.timestampMs }
+            return Array(messagesDict.values).sorted(by: { $0.timestampMs < $1.timestampMs })
         } catch {
             AppDiagnostics.shared.log("MessengerRepository fetchMessages error: \(error.localizedDescription)")
             return []

@@ -372,7 +372,7 @@ public struct PeakAvatarView: View {
 
     public var body: some View {
         ZStack(alignment: .bottomTrailing) {
-            if let avatarUrl = user.avatarUrl, let url = URL(string: avatarUrl) {
+            if let avatarUrl = user.avatarUrl, URL(string: avatarUrl) != nil {
                 AsyncCachedImage(urlString: avatarUrl) {
                     fallbackAvatar
                 } content: { image in
