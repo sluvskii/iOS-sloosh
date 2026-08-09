@@ -3,7 +3,7 @@ import AVFoundation
 import TipKit
 
 class AppDelegate: NSObject, UIApplicationDelegate {
-    static var orientationLock = UIInterfaceOrientationMask.portrait
+    static var orientationLock = UIInterfaceOrientationMask.allButUpsideDown
 
     func application(_ application: UIApplication, supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {
         return AppDelegate.orientationLock
@@ -21,7 +21,7 @@ class AppDelegate: NSObject, UIApplicationDelegate {
     }
 
     static func lockToPortrait() {
-        AppDelegate.orientationLock = .portrait
+        AppDelegate.orientationLock = .allButUpsideDown
         let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
         if let windowScene = scenes.first(where: { $0.activationState == .foregroundActive }) ?? scenes.first {
             windowScene.requestGeometryUpdate(.iOS(interfaceOrientations: .portrait)) { _ in }
