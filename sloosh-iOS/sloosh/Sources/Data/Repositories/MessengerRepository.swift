@@ -308,13 +308,20 @@ public final class MessengerRepository: ObservableObject {
             }
 
             let chatsDict = try JSONDecoder().decode([String: RawChatEntry].self, from: data)
-            let list = chatsDict.values.map {
-                ChatConversation(
-                    chatId: $0.chatId,
-                    peerUser: $0.peerUser,
-                    lastMessageText: $0.lastMessageText,
-                    unreadCount: $0.unreadCount ?? 0,
-                    updatedAtMs: $0.updatedAtMs
+            let list = chatsDict.values.map { raw -> ChatConversation in
+                let cachedMsgs = self.loadMessagesFromDisk(chatId: raw.chatId)
+                let currentUserId = AuthRepository.shared.currentUser?.id ?? ""
+                let hasUnreadIncoming = cachedMsgs.contains(where: { $0.senderId != currentUserId && $0.isRead != true })
+
+                // Если в локальном кэше нет непрочитанных входящих, принудительно обнуляем unreadCount
+                let finalUnread = hasUnreadIncoming ? (raw.unreadCount ?? 0) : 0
+
+                return ChatConversation(
+                    chatId: raw.chatId,
+                    peerUser: raw.peerUser,
+                    lastMessageText: raw.lastMessageText,
+                    unreadCount: finalUnread,
+                    updatedAtMs: raw.updatedAtMs
                 )
             }.sorted { $0.updatedAtMs > $1.updatedAtMs }
 
