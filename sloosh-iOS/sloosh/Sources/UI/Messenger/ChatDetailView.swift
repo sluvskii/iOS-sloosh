@@ -1,4 +1,7 @@
-import SwiftUI
+struct OverlayTarget: Equatable {
+    let message: ChatMessage
+    let frame: CGRect
+}
 
 public struct ChatDetailView: View {
     public let peerUser: SlooshUser
@@ -18,6 +21,7 @@ public struct ChatDetailView: View {
     // Peak Messenger state variables for Reply & Edit
     @State private var replyingMessage: ChatMessage? = nil
     @State private var editingMessage: ChatMessage? = nil
+    @State private var activeOverlayTarget: OverlayTarget? = nil
 
     @FocusState private var isInputFocused: Bool
     @Environment(\.dismiss) private var dismiss
@@ -80,7 +84,63 @@ public struct ChatDetailView: View {
                         inputBar
                     }
                 }
+
+            // Authentic Telegram Precise Geometry Coordinate Context Overlay
+            if let target = activeOverlayTarget {
+                TelegramContextMenuOverlay(
+                    target: target,
+                    peerUser: peerUser,
+                    allMessages: messages,
+                    onDismiss: {
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                            activeOverlayTarget = nil
+                        }
+                    },
+                    onReact: { emoji in
+                        addReaction(emoji, to: target.message)
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                            activeOverlayTarget = nil
+                        }
+                    },
+                    onReply: {
+                        replyingMessage = target.message
+                        isInputFocused = true
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                            activeOverlayTarget = nil
+                        }
+                    },
+                    onEdit: {
+                        editingMessage = target.message
+                        messageText = target.message.text ?? ""
+                        isInputFocused = true
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                            activeOverlayTarget = nil
+                        }
+                    },
+                    onDelete: {
+                        deleteMessage(target.message)
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                            activeOverlayTarget = nil
+                        }
+                    },
+                    onOpenMovie: { movieId in
+                        selectedMovieIdForDetails = movieId
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                            activeOverlayTarget = nil
+                        }
+                    },
+                    onPlayDirectly: { media in
+                        selectedMediaForDirectPlay = media
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                            activeOverlayTarget = nil
+                        }
+                    }
+                )
+                .transition(.opacity)
+                .zIndex(999)
+            }
         }
+        .coordinateSpace(name: "chatZStack")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { navBarContent }
         .toolbarVisibility(.hidden, for: .tabBar)
@@ -211,6 +271,11 @@ public struct ChatDetailView: View {
                                     },
                                     onReact: { emoji, msg in
                                         addReaction(emoji, to: msg)
+                                    },
+                                    onLongPress: { msg, frame in
+                                        withAnimation(.spring(response: 0.28, dampingFraction: 0.82)) {
+                                            activeOverlayTarget = OverlayTarget(message: msg, frame: frame)
+                                        }
                                     }
                                 )
                                 .id(message.id)
@@ -491,6 +556,9 @@ private struct PeakMessageBubbleView: View {
     let onEdit: (ChatMessage) -> Void
     let onDelete: (ChatMessage) -> Void
     let onReact: (String, ChatMessage) -> Void
+    let onLongPress: (ChatMessage, CGRect) -> Void
+
+    @State private var selfFrame: CGRect = .zero
 
     private var myCurrentReaction: String? {
         guard let myId = AuthRepository.shared.currentUser?.id else { return nil }
@@ -530,6 +598,17 @@ private struct PeakMessageBubbleView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, showMeta ? 3 : 1)
+        .background(
+            GeometryReader { geo in
+                Color.clear
+                    .onAppear {
+                        self.selfFrame = geo.frame(in: .named("chatZStack"))
+                    }
+                    .onChange(of: geo.frame(in: .named("chatZStack"))) { _, newFrame in
+                        self.selfFrame = newFrame
+                    }
+            }
+        )
     }
 
     @ViewBuilder
@@ -540,27 +619,9 @@ private struct PeakMessageBubbleView: View {
             }, onPlayDirectly: { payload in
                 onPlayDirectly(payload)
             })
-            .contextMenu {
-                ControlGroup {
-                    Button("❤️") { onReact("❤️", message) }
-                    Button("👍") { onReact("👍", message) }
-                    Button("🔥") { onReact("🔥", message) }
-                    Button("😂") { onReact("😂", message) }
-                    Button("😢") { onReact("😢", message) }
-                    Button("👏") { onReact("👏", message) }
-                }
-
-                Button {
-                    onReply(message)
-                } label: {
-                    Label("Ответить", systemImage: "arrowshape.turn.up.left")
-                }
-
-                Button(role: .destructive) {
-                    onDelete(message)
-                } label: {
-                    Label("Удалить у всех", systemImage: "trash")
-                }
+            .onLongPressGesture(minimumDuration: 0.28) {
+                UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+                onLongPress(message, selfFrame)
             }
         } else {
             VStack(alignment: .leading, spacing: 4) {
@@ -608,35 +669,9 @@ private struct PeakMessageBubbleView: View {
                 RoundedRectangle(cornerRadius: 20, style: .continuous)
                     .stroke(Color.primary.opacity(0.06), lineWidth: isFromMe ? 0 : 0.5)
             )
-            .contextMenu {
-                ControlGroup {
-                    Button("❤️") { onReact("❤️", message) }
-                    Button("👍") { onReact("👍", message) }
-                    Button("🔥") { onReact("🔥", message) }
-                    Button("😂") { onReact("😂", message) }
-                    Button("😢") { onReact("😢", message) }
-                    Button("👏") { onReact("👏", message) }
-                }
-
-                Button {
-                    onReply(message)
-                } label: {
-                    Label("Ответить", systemImage: "arrowshape.turn.up.left")
-                }
-
-                if isFromMe && message.type == .text {
-                    Button {
-                        onEdit(message)
-                    } label: {
-                        Label("Редактировать", systemImage: "pencil")
-                    }
-                }
-
-                Button(role: .destructive) {
-                    onDelete(message)
-                } label: {
-                    Label("Удалить у всех", systemImage: "trash")
-                }
+            .onLongPressGesture(minimumDuration: 0.28) {
+                UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+                onLongPress(message, selfFrame)
             }
         }
     }
@@ -847,6 +882,179 @@ private struct OpaquePressButtonStyle: ButtonStyle {
             .scaleEffect(configuration.isPressed ? 0.92 : 1.0)
             .opacity(1.0)
             .animation(.spring(response: 0.22, dampingFraction: 0.68), value: configuration.isPressed)
+    }
+}
+
+// MARK: - Authentic Telegram Precise Geometry Context Menu Overlay
+
+private struct TelegramContextMenuOverlay: View {
+    let target: OverlayTarget
+    let peerUser: SlooshUser
+    let allMessages: [ChatMessage]
+    let onDismiss: () -> Void
+    let onReact: (String) -> Void
+    let onReply: () -> Void
+    let onEdit: () -> Void
+    let onDelete: () -> Void
+    let onOpenMovie: (String) -> Void
+    let onPlayDirectly: (MediaCardPayload) -> Void
+
+    private var isFromMe: Bool {
+        target.message.senderId == (AuthRepository.shared.currentUser?.id ?? "")
+    }
+
+    private var myCurrentReaction: String? {
+        guard let myId = AuthRepository.shared.currentUser?.id else { return nil }
+        return target.message.reactions?[myId]
+    }
+
+    private let emojis = ["❤️", "👍", "🔥", "😂", "😢", "👏"]
+
+    var body: some View {
+        GeometryReader { outerGeo in
+            let frame = target.frame
+            let screenHeight = outerGeo.size.height
+            let screenWidth = outerGeo.size.width
+
+            // Оцениваем свободу сверху и снизу сообщения для размещения меню
+            let spaceBelow = screenHeight - frame.maxY
+            let showMenuBelow = spaceBelow >= 170
+
+            // Точные координаты выравнивания реакционного бара над сообщением
+            let reactionBarY = max(outerGeo.safeAreaInsets.top + 28, frame.minY - 32)
+            let reactionBarX = isFromMe ? max(140, frame.maxX - 130) : min(screenWidth - 140, frame.minX + 130)
+
+            // Точные координаты меню действий под или над сообщением
+            let actionBarY = showMenuBelow ? min(screenHeight - 80, frame.maxY + 85) : max(outerGeo.safeAreaInsets.top + 140, frame.minY - 85)
+            let actionBarX = isFromMe ? max(130, frame.maxX - 120) : min(screenWidth - 130, frame.minX + 120)
+
+            ZStack(alignment: .topLeading) {
+                // 1. Нативное затемнение Telegram с размытием
+                Color.black.opacity(0.45)
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        onDismiss()
+                    }
+
+                // 2. Горизонтальная плашка реакций над баблом сообщения
+                HStack(spacing: 8) {
+                    ForEach(emojis, id: \.self) { emoji in
+                        let isSelected = (myCurrentReaction == emoji)
+                        Button {
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            onReact(emoji)
+                        } label: {
+                            Text(emoji)
+                                .font(.system(size: 24))
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 4)
+                                .background(
+                                    Group {
+                                        if isSelected {
+                                            Circle()
+                                                .fill(Color.slooshAccent.opacity(0.35))
+                                        }
+                                    }
+                                )
+                                .overlay(
+                                    Group {
+                                        if isSelected {
+                                            Circle()
+                                                .stroke(Color.slooshAccent, lineWidth: 1.5)
+                                        }
+                                    }
+                                )
+                                .scaleEffect(isSelected ? 1.15 : 1.0)
+                        }
+                        .buttonStyle(OpaquePressButtonStyle())
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .glassEffect(.regular.interactive(), in: Capsule())
+                .shadow(color: .black.opacity(0.25), radius: 10, x: 0, y: 5)
+                .position(x: reactionBarX, y: reactionBarY)
+
+                // 3. Дубликат бабла сообщения СТРОГО НА ЕГО НАСТОЯЩЕМ МЕСТЕ В ЧАТЕ!
+                PeakMessageBubbleView(
+                    message: target.message,
+                    isFromMe: isFromMe,
+                    showMeta: true,
+                    allMessages: allMessages,
+                    onOpenMovie: onOpenMovie,
+                    onPlayDirectly: onPlayDirectly,
+                    onReply: { _ in onReply() },
+                    onEdit: { _ in onEdit() },
+                    onDelete: { _ in onDelete() },
+                    onReact: { emoji, _ in onReact(emoji) },
+                    onLongPress: { _, _ in }
+                )
+                .scaleEffect(1.02)
+                .shadow(color: .black.opacity(0.25), radius: 8, x: 0, y: 4)
+                .position(x: frame.midX, y: frame.midY)
+
+                // 4. Плавающее меню действий строго под баблом сообщения
+                VStack(spacing: 0) {
+                    Button {
+                        onReply()
+                    } label: {
+                        HStack {
+                            Text("Ответить")
+                                .font(.system(size: 16, weight: .semibold))
+                            Spacer()
+                            Image(systemName: "arrowshape.turn.up.left")
+                        }
+                        .foregroundColor(.primary)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                    }
+
+                    if isFromMe && target.message.type == .text {
+                        Divider()
+                            .padding(.horizontal, 12)
+
+                        Button {
+                            onEdit()
+                        } label: {
+                            HStack {
+                                Text("Редактировать")
+                                    .font(.system(size: 16, weight: .semibold))
+                                Spacer()
+                                Image(systemName: "pencil")
+                            }
+                            .foregroundColor(.primary)
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 12)
+                        }
+                    }
+
+                    Divider()
+                        .padding(.horizontal, 12)
+
+                    Button {
+                        onDelete()
+                    } label: {
+                        HStack {
+                            Text("Удалить у всех")
+                                .font(.system(size: 16, weight: .bold))
+                            Spacer()
+                            Image(systemName: "trash")
+                        }
+                        .foregroundColor(.red)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                    }
+                }
+                .frame(width: 240)
+                .background(
+                    RoundedRectangle(cornerRadius: 18, style: .continuous)
+                        .fill(Color(UIColor.secondarySystemGroupedBackground))
+                )
+                .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .shadow(color: .black.opacity(0.2), radius: 12, x: 0, y: 6)
+                .position(x: actionBarX, y: actionBarY)
+            }
+        }
     }
 }
 
