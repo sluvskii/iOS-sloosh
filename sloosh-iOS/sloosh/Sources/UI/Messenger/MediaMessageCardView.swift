@@ -68,8 +68,9 @@ public struct MediaMessageCardView: View {
                                     .onAppear {
                                         if let avg = image.averageColor {
                                             let blended = avg.blended(with: .black, fraction: 0.65)
-                                            withAnimation(.easeInOut(duration: 0.3)) {
-                                                cardBgColor = Color(blended)
+                                            let newColor = Color(blended)
+                                            if cardBgColor != newColor {
+                                                cardBgColor = newColor
                                             }
                                         }
                                     }
