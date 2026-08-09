@@ -21,6 +21,7 @@ public struct ChatDetailView: View {
 
     @FocusState private var isInputFocused: Bool
     @Environment(\.dismiss) private var dismiss
+    @Namespace private var cardZoomTransition
 
     public var body: some View {
         ZStack {
@@ -38,9 +39,6 @@ public struct ChatDetailView: View {
                                         .font(.system(size: 12, weight: .bold))
                                         .foregroundColor(.slooshAccent)
                                     Text(editing.text ?? "")
-                                        .font(.system(size: 14))
-                                        .foregroundColor(.secondary)
-                                        .lineLimit(1)
                                 }
                                 Spacer()
                                 Button {
@@ -52,21 +50,18 @@ public struct ChatDetailView: View {
                                 }
                             }
                             .padding(.horizontal, 16)
-                            .padding(.vertical, 10)
-                            .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                            .padding(.horizontal, 14)
-                            .padding(.bottom, 8)
+                            .padding(.vertical, 8)
+                            .background(Color(UIColor.secondarySystemGroupedBackground))
                         }
-
                         // Banner for replying message
-                        if let replying = replyingMessage {
+                        else if let replying = replyingMessage {
                             HStack {
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text("Ответ")
+                                    Text("Ответ на сообщение")
                                         .font(.system(size: 12, weight: .bold))
                                         .foregroundColor(.slooshAccent)
-                                    Text(replying.text ?? "Медиа")
-                                        .font(.system(size: 14))
+                                    Text(replying.text ?? "Медиа карточка")
+                                        .font(.system(size: 13))
                                         .foregroundColor(.secondary)
                                         .lineLimit(1)
                                 }
@@ -79,15 +74,12 @@ public struct ChatDetailView: View {
                                 }
                             }
                             .padding(.horizontal, 16)
-                            .padding(.vertical, 10)
-                            .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                            .padding(.horizontal, 14)
-                            .padding(.bottom, 8)
+                            .padding(.vertical, 8)
+                            .background(Color(UIColor.secondarySystemGroupedBackground))
                         }
 
                         inputBar
                     }
-                    .background(Color.clear)
                 }
         }
         .navigationBarTitleDisplayMode(.inline)
@@ -112,6 +104,7 @@ public struct ChatDetailView: View {
                 selectedMediaForDirectPlay = nil
             }
         }
+        .navigationTransition(.zoom(sourceID: selectedMediaForDirectPlay?.mediaId ?? "", in: cardZoomTransition))
         .fullScreenCover(item: $activePlayerConfig, onDismiss: {
             activePlayerConfig = nil
         }) { config in
@@ -191,6 +184,7 @@ public struct ChatDetailView: View {
                             isFromMe: isFromMe,
                             showMeta: showMeta,
                             allMessages: messages,
+                            transitionNamespace: cardZoomTransition,
                             onOpenMovie: { movieId in
                                 selectedMovieIdForDetails = movieId
                             },
@@ -396,6 +390,7 @@ private struct PeakMessageBubbleView: View {
     let isFromMe: Bool
     let showMeta: Bool
     let allMessages: [ChatMessage]
+    let transitionNamespace: Namespace.ID?
     let onOpenMovie: (String) -> Void
     let onPlayDirectly: (MediaCardPayload) -> Void
     let onReply: (ChatMessage) -> Void
@@ -444,7 +439,7 @@ private struct PeakMessageBubbleView: View {
                 onOpenMovie(movieId)
             }, onPlayDirectly: { payload in
                 onPlayDirectly(payload)
-            })
+            }, transitionNamespace: transitionNamespace)
             .contextMenu {
                 Section("Реакция") {
                     Button("❤️") { onReact("❤️", message) }

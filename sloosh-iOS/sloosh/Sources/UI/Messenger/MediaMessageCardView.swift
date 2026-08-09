@@ -4,17 +4,48 @@ public struct MediaMessageCardView: View {
     public let media: MediaCardPayload
     public var onOpenDetails: ((String) -> Void)?
     public var onPlayDirectly: ((MediaCardPayload) -> Void)?
+    public var transitionNamespace: Namespace.ID?
 
     @State private var cardBgColor: Color = Color(white: 0.14)
 
     public init(
         media: MediaCardPayload,
         onOpenDetails: ((String) -> Void)? = nil,
-        onPlayDirectly: ((MediaCardPayload) -> Void)? = nil
+        onPlayDirectly: ((MediaCardPayload) -> Void)? = nil,
+        transitionNamespace: Namespace.ID? = nil
     ) {
         self.media = media
         self.onOpenDetails = onOpenDetails
         self.onPlayDirectly = onPlayDirectly
+        self.transitionNamespace = transitionNamespace
+    }
+
+    private var playButton: some View {
+        Button {
+            let generator = UIImpactFeedbackGenerator(style: .medium)
+            generator.impactOccurred()
+            if let onPlayDirectly = onPlayDirectly {
+                onPlayDirectly(media)
+            } else {
+                onOpenDetails?(media.mediaId)
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "play.fill")
+                    .font(.system(size: 14, weight: .black))
+                Text("Смотреть")
+                    .font(.system(size: 15, weight: .heavy))
+            }
+            .foregroundColor(.black)
+            .frame(maxWidth: .infinity)
+            .frame(height: 40)
+            .background(
+                Capsule()
+                    .fill(Color.white.opacity(0.92))
+            )
+            .glassEffect(in: Capsule())
+        }
+        .buttonStyle(.plain)
     }
 
     public var body: some View {
@@ -86,33 +117,16 @@ public struct MediaMessageCardView: View {
             .buttonStyle(.plain)
 
             // Белая кнопка "Смотреть" (открывает панель озвучек / запуск плеера напрямую)
-            Button {
-                let generator = UIImpactFeedbackGenerator(style: .medium)
-                generator.impactOccurred()
-                if let onPlayDirectly = onPlayDirectly {
-                    onPlayDirectly(media)
-                } else {
-                    onOpenDetails?(media.mediaId)
-                }
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "play.fill")
-                        .font(.system(size: 14, weight: .black))
-                    Text("Смотреть")
-                        .font(.system(size: 15, weight: .heavy))
-                }
-                .foregroundColor(.black)
-                .frame(maxWidth: .infinity)
-                .frame(height: 40)
-                .background(
-                    Capsule()
-                        .fill(Color.white.opacity(0.92))
-                )
-                .glassEffect(in: Capsule())
+            if let transitionNamespace {
+                playButton
+                    .matchedTransitionSource(id: media.mediaId, in: transitionNamespace)
+                    .padding(.horizontal, 4)
+                    .padding(.bottom, 4)
+            } else {
+                playButton
+                    .padding(.horizontal, 4)
+                    .padding(.bottom, 4)
             }
-            .buttonStyle(.plain)
-            .padding(.horizontal, 4)
-            .padding(.bottom, 4)
         }
         .padding(8)
         .frame(width: 220)
