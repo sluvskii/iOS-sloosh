@@ -21,7 +21,6 @@ public struct ChatDetailView: View {
 
     @FocusState private var isInputFocused: Bool
     @Environment(\.dismiss) private var dismiss
-    @Namespace private var cardZoomTransition
 
     public var body: some View {
         ZStack {
@@ -104,7 +103,6 @@ public struct ChatDetailView: View {
                 selectedMediaForDirectPlay = nil
             }
         }
-        .navigationTransition(.zoom(sourceID: selectedMediaForDirectPlay?.mediaId ?? "", in: cardZoomTransition))
         .fullScreenCover(item: $activePlayerConfig, onDismiss: {
             activePlayerConfig = nil
         }) { config in
@@ -184,7 +182,6 @@ public struct ChatDetailView: View {
                             isFromMe: isFromMe,
                             showMeta: showMeta,
                             allMessages: messages,
-                            transitionNamespace: cardZoomTransition,
                             onOpenMovie: { movieId in
                                 selectedMovieIdForDetails = movieId
                             },
@@ -390,7 +387,6 @@ private struct PeakMessageBubbleView: View {
     let isFromMe: Bool
     let showMeta: Bool
     let allMessages: [ChatMessage]
-    let transitionNamespace: Namespace.ID?
     let onOpenMovie: (String) -> Void
     let onPlayDirectly: (MediaCardPayload) -> Void
     let onReply: (ChatMessage) -> Void
@@ -439,7 +435,7 @@ private struct PeakMessageBubbleView: View {
                 onOpenMovie(movieId)
             }, onPlayDirectly: { payload in
                 onPlayDirectly(payload)
-            }, transitionNamespace: transitionNamespace)
+            })
             .contextMenu {
                 Section("Реакция") {
                     Button("❤️") { onReact("❤️", message) }

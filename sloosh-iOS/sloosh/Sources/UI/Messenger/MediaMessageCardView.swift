@@ -4,20 +4,17 @@ public struct MediaMessageCardView: View {
     public let media: MediaCardPayload
     public var onOpenDetails: ((String) -> Void)?
     public var onPlayDirectly: ((MediaCardPayload) -> Void)?
-    public var transitionNamespace: Namespace.ID?
 
     @State private var cardBgColor: Color = Color(white: 0.14)
 
     public init(
         media: MediaCardPayload,
         onOpenDetails: ((String) -> Void)? = nil,
-        onPlayDirectly: ((MediaCardPayload) -> Void)? = nil,
-        transitionNamespace: Namespace.ID? = nil
+        onPlayDirectly: ((MediaCardPayload) -> Void)? = nil
     ) {
         self.media = media
         self.onOpenDetails = onOpenDetails
         self.onPlayDirectly = onPlayDirectly
-        self.transitionNamespace = transitionNamespace
     }
 
     private var playButton: some View {
@@ -117,20 +114,9 @@ public struct MediaMessageCardView: View {
             .buttonStyle(.plain)
 
             // Белая кнопка "Смотреть" (открывает панель озвучек / запуск плеера напрямую)
-            if let transitionNamespace {
-                playButton
-                    .matchedTransitionSource(id: media.mediaId, in: transitionNamespace) { source in
-                        source
-                            .background(.clear)
-                            .clipShape(Capsule())
-                    }
-                    .padding(.horizontal, 4)
-                    .padding(.bottom, 4)
-            } else {
-                playButton
-                    .padding(.horizontal, 4)
-                    .padding(.bottom, 4)
-            }
+            playButton
+                .padding(.horizontal, 4)
+                .padding(.bottom, 4)
         }
         .padding(8)
         .frame(width: 220)
