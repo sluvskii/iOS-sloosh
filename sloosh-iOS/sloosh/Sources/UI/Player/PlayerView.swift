@@ -96,7 +96,6 @@ struct PlayerView: View {
 
     var body: some View {
         PlayerPresenter(vm: viewModel) {
-            viewModel.cleanup()
             dismissEnv()
         }
         .ignoresSafeArea()
@@ -122,10 +121,6 @@ struct PlayerView: View {
                 viewModel.error = "Нет URL для воспроизведения"
                 viewModel.isLoading = false
             }
-        }
-        .onDisappear {
-            AppDelegate.lockToPortrait()
-            viewModel.cleanup()
         }
     }
 }
