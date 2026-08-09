@@ -60,9 +60,13 @@ struct ContentView: View {
                 .tint(Color.slooshAccent)
                 
                 if UIDevice.current.userInterfaceIdiom == .phone && proxy.safeAreaInsets.top > 20 {
+                    // Telegram DeviceMetrics thresholds:
+                    // Dynamic Island (iPhone 14 Pro/Max, 15, 16): statusBarHeight >= 54pt
+                    // Standard Notch (iPhone X, XS, 11, 12, 13, 14): statusBarHeight >= 44pt
                     let isDynamicIsland = proxy.safeAreaInsets.top >= 54
-                    let topPadding: CGFloat = isDynamicIsland ? 11 : (proxy.safeAreaInsets.top >= 44 ? 5 : 2)
-                    let logoHeight: CGFloat = isDynamicIsland ? 11 : 12
+                    let topPadding: CGFloat = isDynamicIsland ? 11.5 : (proxy.safeAreaInsets.top >= 44 ? 5.5 : 2.0)
+                    let logoHeight: CGFloat = isDynamicIsland ? 11.0 : 12.0
+                    let hPadding: CGFloat = isDynamicIsland ? 14.0 : 16.0
 
                     Image("LogoText")
                         .renderingMode(.template)
@@ -70,7 +74,7 @@ struct ContentView: View {
                         .scaledToFit()
                         .foregroundColor(.black)
                         .frame(height: logoHeight)
-                        .padding(.horizontal, 14)
+                        .padding(.horizontal, hPadding)
                         .padding(.vertical, 5)
                         .background {
                             Capsule()
