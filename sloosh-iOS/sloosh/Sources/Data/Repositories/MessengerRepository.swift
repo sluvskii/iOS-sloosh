@@ -11,11 +11,31 @@ public final class MessengerRepository: ObservableObject {
     @Published public private(set) var isLoading: Bool = false
 
     private let databaseBaseURL = "https://sloosh-77434-default-rtdb.firebaseio.com"
+    private let knownUsersKey = "sloosh_messenger_known_users"
 
     private init() {}
 
+    // MARK: - Local Known Users Persistence
+
+    public func saveLocalKnownUser(_ user: SlooshUser) {
+        var current = getLocalKnownUsers()
+        current[user.id] = user
+        if let data = try? JSONEncoder().encode(current) {
+            UserDefaults.standard.set(data, forKey: knownUsersKey)
+        }
+    }
+
+    public func getLocalKnownUsers() -> [String: SlooshUser] {
+        guard let data = UserDefaults.standard.data(forKey: knownUsersKey),
+              let dict = try? JSONDecoder().decode([String: SlooshUser].self, from: data) else {
+            return [:]
+        }
+        return dict
+    }
+
     private func makeURL(path: String) async -> URL? {
-        var urlString = "\(databaseBaseURL)/\(path).json"
+        let safePath = path.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? path
+        var urlString = "\(databaseBaseURL)/\(safePath).json"
         if let token = await AuthRepository.shared.ensureFreshToken(), !token.isEmpty {
             urlString += "?auth=\(token)"
         }
@@ -34,6 +54,9 @@ public final class MessengerRepository: ObservableObject {
             avatarUrl: user.photoURL,
             isOnline: true
         )
+
+        // Сохраняем локально на устройстве
+        saveLocalKnownUser(slooshUser)
         
         guard let body = try? JSONEncoder().encode(slooshUser) else { return }
 
@@ -43,7 +66,15 @@ public final class MessengerRepository: ObservableObject {
             req.httpMethod = "PUT"
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
             req.httpBody = body
-            _ = try? await URLSession.shared.data(for: req)
+            do {
+                let (data, response) = try await URLSession.shared.data(for: req)
+                if let httpResp = response as? HTTPURLResponse, !(200...299).contains(httpResp.statusCode) {
+                    let errStr = String(data: data, encoding: .utf8) ?? ""
+                    AppDiagnostics.shared.log("MessengerRepository: sync user_profiles HTTP \(httpResp.statusCode): \(errStr)")
+                }
+            } catch {
+                AppDiagnostics.shared.log("MessengerRepository: sync user_profiles error: \(error.localizedDescription)")
+            }
         }
 
         // 2. Сохраняем профиль под ветку пользователя /users/{uid}/profile.json
@@ -52,7 +83,15 @@ public final class MessengerRepository: ObservableObject {
             req.httpMethod = "PUT"
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
             req.httpBody = body
-            _ = try? await URLSession.shared.data(for: req)
+            do {
+                let (data, response) = try await URLSession.shared.data(for: req)
+                if let httpResp = response as? HTTPURLResponse, !(200...299).contains(httpResp.statusCode) {
+                    let errStr = String(data: data, encoding: .utf8) ?? ""
+                    AppDiagnostics.shared.log("MessengerRepository: sync users/profile HTTP \(httpResp.statusCode): \(errStr)")
+                }
+            } catch {
+                AppDiagnostics.shared.log("MessengerRepository: sync users/profile error: \(error.localizedDescription)")
+            }
         }
     }
 
@@ -71,18 +110,26 @@ public final class MessengerRepository: ObservableObject {
 
         var allUsersMap: [String: SlooshUser] = [:]
 
-        // Загружаем профили из /user_profiles.json
+        // 1. Загружаем локально сохранённых пользователей с этого устройства
+        let localUsers = getLocalKnownUsers()
+        for (uId, user) in localUsers {
+            allUsersMap[uId] = user
+        }
+
+        // 2. Загружаем профили из /user_profiles.json
         if let profiles = await fetchUsersFromNode("user_profiles") {
             for p in profiles {
                 allUsersMap[p.id] = p
+                saveLocalKnownUser(p)
             }
         }
 
-        // Загружаем профили из /users.json (fallback)
+        // 3. Загружаем профили из /users.json (fallback)
         if let users = await fetchUsersFromNode("users") {
             for u in users {
                 if allUsersMap[u.id] == nil {
                     allUsersMap[u.id] = u
+                    saveLocalKnownUser(u)
                 }
             }
         }
@@ -91,7 +138,8 @@ public final class MessengerRepository: ObservableObject {
         let matched = allUsersMap.values.filter { slooshUser in
             let nameMatch = slooshUser.displayName.lowercased().contains(trimmed)
             let emailMatch = slooshUser.email.lowercased().contains(trimmed)
-            return nameMatch || emailMatch
+            let idMatch = slooshUser.id.lowercased().contains(trimmed)
+            return nameMatch || emailMatch || idMatch
         }
 
         let results = matched.map { user -> SlooshUser in
@@ -114,7 +162,7 @@ public final class MessengerRepository: ObservableObject {
         }
 
         self.searchResults = finalArray
-        AppDiagnostics.shared.log("MessengerRepository: searchUsers('\(trimmed)') matched \(finalArray.count) users (total in DB: \(allUsersMap.count))")
+        AppDiagnostics.shared.log("MessengerRepository: searchUsers('\(trimmed)') matched \(finalArray.count) users (total in DB/local: \(allUsersMap.count))")
         return finalArray
     }
 
@@ -123,7 +171,20 @@ public final class MessengerRepository: ObservableObject {
 
         do {
             let (data, response) = try await URLSession.shared.data(from: url)
-            guard let httpResp = response as? HTTPURLResponse, (200...299).contains(httpResp.statusCode) else {
+            guard let httpResp = response as? HTTPURLResponse else {
+                return nil
+            }
+
+            if !(200...299).contains(httpResp.statusCode) {
+                let errBody = String(data: data, encoding: .utf8) ?? ""
+                AppDiagnostics.shared.log("MessengerRepository fetchUsersFromNode '\(nodeName)' HTTP \(httpResp.statusCode): \(errBody)")
+                if httpResp.statusCode == 401 || httpResp.statusCode == 403 {
+                    ToastManager.shared.show(
+                        title: "Доступ Firebase ограничен (\(httpResp.statusCode))",
+                        subtitle: "Проверьте правила Realtime Database",
+                        icon: "lock.shield.fill"
+                    )
+                }
                 return nil
             }
 
