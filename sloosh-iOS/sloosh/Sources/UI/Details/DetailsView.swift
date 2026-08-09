@@ -75,6 +75,7 @@ struct DetailsView: View {
     @StateObject private var viewModel = DetailsViewModel()
     
     @State private var playerConfig: PlayerLaunchConfig? = nil
+    @State private var pendingPlayerConfig: PlayerLaunchConfig? = nil
     @State private var showSourceSheet = false
     @State private var sourceSheetTitle = ""
     @State private var sourceFetchTask: Task<Void, Never>?
@@ -227,6 +228,11 @@ struct DetailsView: View {
                 sourceSheetDetent = .medium
                 sourceSheetTitle = ""
                 viewModel.resetSourceSheet()
+
+                if let pending = pendingPlayerConfig {
+                    pendingPlayerConfig = nil
+                    playerConfig = pending
+                }
             }) {
                 ZStack {
                     if viewModel.isFetchingSources {
@@ -245,7 +251,7 @@ struct DetailsView: View {
                                    DownloadManager.shared.isDownloaded(kpId: kpId, season: season, episode: episode),
                                    let downloadItem = DownloadManager.shared.getDownloadItem(kpId: kpId, season: season, episode: episode),
                                    downloadItem.translationName == translation.name {
-                                    playerConfig = PlayerLaunchConfig(
+                                    pendingPlayerConfig = PlayerLaunchConfig(
                                         iframeUrl: nil,
                                         directStreamUrl: downloadItem.localPlayableUrl?.absoluteString,
                                         fallbackTitle: fallbackTitle,
@@ -259,7 +265,7 @@ struct DetailsView: View {
                                         seriesResult: result
                                     )
                                 } else {
-                                    playerConfig = PlayerLaunchConfig(
+                                    pendingPlayerConfig = PlayerLaunchConfig(
                                         iframeUrl: translation.iframeUrl,
                                         directStreamUrl: translation.streamUrl,
                                         fallbackTitle: fallbackTitle,
