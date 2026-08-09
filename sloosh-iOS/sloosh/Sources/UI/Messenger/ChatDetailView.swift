@@ -102,7 +102,7 @@ public struct ChatDetailView: View {
         .sheet(item: $selectedMediaForDirectPlay, onDismiss: {
             if let pending = pendingPlayerConfig {
                 pendingPlayerConfig = nil
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                DispatchQueue.main.async {
                     activePlayerConfig = pending
                 }
             }
@@ -114,7 +114,6 @@ public struct ChatDetailView: View {
         }
         .fullScreenCover(item: $activePlayerConfig, onDismiss: {
             activePlayerConfig = nil
-            AppDelegate.lockToPortrait()
         }) { config in
             PlayerView(
                 iframeUrl: config.iframeUrl,

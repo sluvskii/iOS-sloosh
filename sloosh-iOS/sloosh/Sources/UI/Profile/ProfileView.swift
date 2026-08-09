@@ -190,7 +190,7 @@ struct ProfileView: View {
                 .sheet(item: $directPlaybackMovie, onDismiss: {
                     if let pending = pendingPlayerConfig {
                         pendingPlayerConfig = nil
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        DispatchQueue.main.async {
                             playerConfig = pending
                         }
                     }
@@ -206,7 +206,6 @@ struct ProfileView: View {
                 }
                 .fullScreenCover(item: $playerConfig, onDismiss: {
                     playerConfig = nil
-                    AppDelegate.lockToPortrait()
                 }) { config in
                     PlayerView(
                         iframeUrl: config.iframeUrl,
