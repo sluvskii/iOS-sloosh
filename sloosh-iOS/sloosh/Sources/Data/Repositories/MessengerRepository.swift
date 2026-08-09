@@ -12,8 +12,41 @@ public final class MessengerRepository: ObservableObject {
 
     private let databaseBaseURL = "https://sloosh-77434-default-rtdb.firebaseio.com"
     private let knownUsersKey = "sloosh_messenger_known_users"
+    private init() {
+        self.conversations = loadConversationsFromDisk()
+    }
 
-    private init() {}
+    // MARK: - Disk Persistence (Instant Cold Start)
+
+    public func saveConversationsToDisk(_ list: [ChatConversation]) {
+        if let data = try? JSONEncoder().encode(list) {
+            UserDefaults.standard.set(data, forKey: "sloosh_messenger_conversations_v1")
+        }
+    }
+
+    public func loadConversationsFromDisk() -> [ChatConversation] {
+        guard let data = UserDefaults.standard.data(forKey: "sloosh_messenger_conversations_v1"),
+              let list = try? JSONDecoder().decode([ChatConversation].self, from: data) else {
+            return []
+        }
+        return list.sorted { $0.updatedAtMs > $1.updatedAtMs }
+    }
+
+    public func saveMessagesToDisk(_ messages: [ChatMessage], chatId: String) {
+        let key = "sloosh_messenger_messages_v1_\(chatId)"
+        if let data = try? JSONEncoder().encode(messages) {
+            UserDefaults.standard.set(data, forKey: key)
+        }
+    }
+
+    public func loadMessagesFromDisk(chatId: String) -> [ChatMessage] {
+        let key = "sloosh_messenger_messages_v1_\(chatId)"
+        guard let data = UserDefaults.standard.data(forKey: key),
+              let list = try? JSONDecoder().decode([ChatMessage].self, from: data) else {
+            return []
+        }
+        return list.sorted { $0.timestampMs < $1.timestampMs }
+    }
 
     // MARK: - Local Known Users Persistence
 
@@ -241,9 +274,17 @@ public final class MessengerRepository: ObservableObject {
             return
         }
 
+        // 1. Показываем мгновенно из дискового кэша, если текущий список пуст
+        if self.conversations.isEmpty {
+            self.conversations = loadConversationsFromDisk()
+        }
+
         guard let url = await makeURL(path: "user_chats/\(currentUser.id)") else { return }
 
-        isLoading = true
+        // Если есть локальные чаты, не вешаем полноэкранный spinner
+        if self.conversations.isEmpty {
+            isLoading = true
+        }
         defer { isLoading = false }
 
         do {
@@ -254,6 +295,7 @@ public final class MessengerRepository: ObservableObject {
 
             if data.isEmpty || String(data: data, encoding: .utf8) == "null" {
                 self.conversations = []
+                saveConversationsToDisk([])
                 return
             }
 
@@ -277,6 +319,7 @@ public final class MessengerRepository: ObservableObject {
             }.sorted { $0.updatedAtMs > $1.updatedAtMs }
 
             self.conversations = list
+            saveConversationsToDisk(list)
         } catch {
             AppDiagnostics.shared.log("MessengerRepository fetchConversations error: \(error.localizedDescription)")
         }
@@ -292,23 +335,92 @@ public final class MessengerRepository: ObservableObject {
     public func fetchMessages(chatId: String) async -> [ChatMessage] {
         guard !chatId.isEmpty else { return [] }
         
-        guard let url = await makeURL(path: "chats/\(chatId)/messages") else { return [] }
+        let localCached = loadMessagesFromDisk(chatId: chatId)
+
+        guard let url = await makeURL(path: "chats/\(chatId)/messages") else { return localCached }
 
         do {
             let (data, response) = try await URLSession.shared.data(from: url)
             guard let httpResp = response as? HTTPURLResponse, (200...299).contains(httpResp.statusCode) else {
-                return []
+                return localCached
             }
 
             if data.isEmpty || String(data: data, encoding: .utf8) == "null" {
-                return []
+                return localCached
             }
 
             let messagesDict = try JSONDecoder().decode([String: ChatMessage].self, from: data)
-            return Array(messagesDict.values).sorted(by: { $0.timestampMs < $1.timestampMs })
+            let list = Array(messagesDict.values).sorted(by: { $0.timestampMs < $1.timestampMs })
+            saveMessagesToDisk(list, chatId: chatId)
+            return list
         } catch {
             AppDiagnostics.shared.log("MessengerRepository fetchMessages error: \(error.localizedDescription)")
-            return []
+            return localCached
+        }
+    }
+
+    // MARK: - Read Receipts (isRead Sync)
+
+    public func markMessagesAsRead(chatId: String, peerUserId: String, messages: [ChatMessage]) async {
+        guard let currentUserId = AuthRepository.shared.currentUser?.id else { return }
+
+        // Ищем непрочитанные входящие сообщения
+        let unreadIncoming = messages.filter { $0.senderId == peerUserId && $0.isRead != true }
+        guard !unreadIncoming.isEmpty else { return }
+
+        // Обновляем локальный кэш прочитанности
+        var updatedList = messages
+        for msg in unreadIncoming {
+            if let idx = updatedList.firstIndex(where: { $0.id == msg.id }) {
+                let readMsg = ChatMessage(
+                    id: msg.id,
+                    senderId: msg.senderId,
+                    receiverId: msg.receiverId,
+                    type: msg.type,
+                    text: msg.text,
+                    media: msg.media,
+                    timestampMs: msg.timestampMs,
+                    replyToId: msg.replyToId,
+                    reactions: msg.reactions,
+                    isEdited: msg.isEdited,
+                    isRead: true
+                )
+                updatedList[idx] = readMsg
+
+                // Отправляем статус isRead в Firebase
+                Task {
+                    if let msgUrl = await makeURL(path: "chats/\(chatId)/messages/\(msg.id)") {
+                        var req = URLRequest(url: msgUrl)
+                        req.httpMethod = "PUT"
+                        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                        req.httpBody = try? JSONEncoder().encode(readMsg)
+                        _ = try? await URLSession.shared.data(for: req)
+                    }
+                }
+            }
+        }
+        saveMessagesToDisk(updatedList, chatId: chatId)
+
+        // Обнуляем unreadCount для текущего пользователя в user_chats
+        if let currentConvIdx = conversations.firstIndex(where: { $0.chatId == chatId }) {
+            let old = conversations[currentConvIdx]
+            let updatedConv = ChatConversation(
+                chatId: old.chatId,
+                peerUser: old.peerUser,
+                lastMessageText: old.lastMessageText,
+                unreadCount: 0,
+                updatedAtMs: old.updatedAtMs
+            )
+            conversations[currentConvIdx] = updatedConv
+            saveConversationsToDisk(conversations)
+        }
+
+        if let unreadUrl = await makeURL(path: "user_chats/\(currentUserId)/\(chatId)/unreadCount") {
+            var req = URLRequest(url: unreadUrl)
+            req.httpMethod = "PUT"
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            req.httpBody = try? JSONSerialization.data(withJSONObject: 0)
+            _ = try? await URLSession.shared.data(for: req)
         }
     }
 
@@ -332,7 +444,42 @@ public final class MessengerRepository: ObservableObject {
             replyToId: replyToId
         )
 
-        return await postMessageToFirebase(chatId: chatId, message: message, peerUser: peerUser)
+        // 1. Оптимистичное локальное обновление (0мс задержки для отправителя)
+        var currentMessages = loadMessagesFromDisk(chatId: chatId)
+        if !currentMessages.contains(where: { $0.id == message.id }) {
+            currentMessages.append(message)
+            saveMessagesToDisk(currentMessages, chatId: chatId)
+        }
+
+        let previewText: String
+        if let media = mediaPayload {
+            previewText = "🎬 \(media.title)"
+        } else {
+            previewText = text ?? ""
+        }
+
+        let updatedConv = ChatConversation(
+            chatId: chatId,
+            peerUser: peerUser,
+            lastMessageText: previewText,
+            unreadCount: 0,
+            updatedAtMs: message.timestampMs
+        )
+        var convs = self.conversations
+        if let idx = convs.firstIndex(where: { $0.chatId == chatId }) {
+            convs[idx] = updatedConv
+        } else {
+            convs.insert(updatedConv, at: 0)
+        }
+        convs.sort { $0.updatedAtMs > $1.updatedAtMs }
+        self.conversations = convs
+        saveConversationsToDisk(convs)
+
+        // 2. Фоновая отправка в Firebase в отдельном Task без ожидания
+        Task {
+            _ = await postMessageToFirebase(chatId: chatId, message: message, peerUser: peerUser)
+        }
+        return true
     }
 
     public func postMessageToFirebase(

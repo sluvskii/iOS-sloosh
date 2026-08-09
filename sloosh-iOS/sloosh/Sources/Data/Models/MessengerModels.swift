@@ -109,7 +109,7 @@ public struct ChatMessage: Identifiable, Codable, Equatable, Hashable {
     }
 }
 
-public struct ChatConversation: Identifiable, Equatable, Hashable {
+public struct ChatConversation: Identifiable, Codable, Equatable, Hashable {
     public var id: String { chatId }
     public let chatId: String
     public let peerUser: SlooshUser

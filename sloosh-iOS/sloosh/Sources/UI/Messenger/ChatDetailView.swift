@@ -242,20 +242,31 @@ public struct ChatDetailView: View {
 
     private func loadMessages() async {
         let chatId = repo.getOrCreateChatId(peerUserId: peerUser.id)
+        
+        // 1. Показываем кэш с диска за 0мс!
+        let cached = repo.loadMessagesFromDisk(chatId: chatId)
+        if !cached.isEmpty {
+            self.messages = cached
+            await repo.markMessagesAsRead(chatId: chatId, peerUserId: peerUser.id, messages: cached)
+        }
+        
+        // 2. Фоновая сеть
         let list = await repo.fetchMessages(chatId: chatId)
         self.messages = list
+        await repo.markMessagesAsRead(chatId: chatId, peerUserId: peerUser.id, messages: list)
     }
 
     private func startPolling() {
         pollTask?.cancel()
         pollTask = Task {
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 3_000_000_000)
+                try? await Task.sleep(nanoseconds: 2_500_000_000)
                 if Task.isCancelled { break }
                 let chatId = repo.getOrCreateChatId(peerUserId: peerUser.id)
                 let list = await repo.fetchMessages(chatId: chatId)
                 if list != self.messages {
                     self.messages = list
+                    await repo.markMessagesAsRead(chatId: chatId, peerUserId: peerUser.id, messages: list)
                 }
             }
         }
@@ -269,18 +280,31 @@ public struct ChatDetailView: View {
         generator.impactOccurred()
 
         let replyId = replyingMessage?.id
+        let currentUserId = AuthRepository.shared.currentUser?.id ?? ""
+
+        // Оптимистичное создание сообщения за 0мс!
+        let optimisticMessage = ChatMessage(
+            senderId: currentUserId,
+            receiverId: peerUser.id,
+            type: .text,
+            text: trimmed,
+            replyToId: replyId,
+            isRead: false
+        )
 
         messageText = ""
         replyingMessage = nil
         editingMessage = nil
-        isSending = true
+        isSending = false
+
+        // Добавляем на UI мгновенно за 0мс
+        withAnimation(.easeOut(duration: 0.15)) {
+            self.messages.append(optimisticMessage)
+        }
 
         Task {
-            let success = await repo.sendMessage(toPeerUser: peerUser, text: trimmed, replyToId: replyId)
-            isSending = false
-            if success {
-                await loadMessages()
-            }
+            _ = await repo.sendMessage(toPeerUser: peerUser, text: trimmed, replyToId: replyId)
+            await loadMessages()
         }
     }
 
