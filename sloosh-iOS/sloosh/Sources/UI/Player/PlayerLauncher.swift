@@ -40,6 +40,7 @@ struct PlayerLaunchConfig: Equatable {
 // поэтому его viewDidDisappear срабатывает ПОСЛЕ завершения анимации dismiss,
 // что делает безопасным вызов lockToPortrait() именно там.
 
+@MainActor
 struct PlayerLauncherRepresentable: UIViewControllerRepresentable {
     let config: PlayerLaunchConfig?
     let onDismiss: () -> Void
@@ -66,6 +67,7 @@ struct PlayerLauncherRepresentable: UIViewControllerRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     // MARK: - Coordinator
+    @MainActor
     class Coordinator {
         var isPresented = false
         private weak var playerVC: UIViewController?
@@ -145,6 +147,7 @@ struct PlayerLauncherRepresentable: UIViewControllerRepresentable {
 
 // MARK: - playerLauncher View Modifier
 
+@MainActor
 struct PlayerLauncherModifier: ViewModifier {
     let config: PlayerLaunchConfig?
     let onDismiss: () -> Void
@@ -162,6 +165,7 @@ extension View {
     /// Запускает плеер как настоящий UIKit full-screen модал.
     /// Используйте вместо .fullScreenCover для PlayerView.
     /// Плеер открывается когда config != nil, закрывается когда config == nil.
+    @MainActor
     func playerLauncher(config: PlayerLaunchConfig?, onDismiss: @escaping () -> Void) -> some View {
         modifier(PlayerLauncherModifier(config: config, onDismiss: onDismiss))
     }
