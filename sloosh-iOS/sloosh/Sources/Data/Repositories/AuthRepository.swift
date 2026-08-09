@@ -427,6 +427,51 @@ public final class AuthRepository: ObservableObject {
         }
     }
 
+    public func ensureFreshToken() async -> String? {
+        guard let user = currentUser, !user.isAnonymous, let refreshToken = user.refreshToken, !refreshToken.isEmpty else {
+            return currentUser?.idToken
+        }
+
+        guard let url = URL(string: "https://securetoken.googleapis.com/v1/token?key=\(firebaseApiKey)") else {
+            return user.idToken
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        request.timeoutInterval = 10
+
+        let bodyString = "grant_type=refresh_token&refresh_token=\(refreshToken)"
+        request.httpBody = bodyString.data(using: .utf8)
+
+        do {
+            let (data, response) = try await URLSession.shared.data(for: request)
+            guard let httpResp = response as? HTTPURLResponse, httpResp.statusCode == 200,
+                  let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let newIdToken = json["id_token"] as? String else {
+                return user.idToken
+            }
+
+            let newRefreshToken = (json["refresh_token"] as? String) ?? refreshToken
+
+            let updatedUser = UserProfile(
+                id: user.id,
+                email: user.email,
+                displayName: user.displayName,
+                photoURL: user.photoURL,
+                isAnonymous: user.isAnonymous,
+                provider: user.provider,
+                idToken: newIdToken,
+                refreshToken: newRefreshToken,
+                createdAt: user.createdAt
+            )
+            saveUser(updatedUser)
+            return newIdToken
+        } catch {
+            return user.idToken
+        }
+    }
+
     private func parseFirebaseError(_ json: [String: Any]) -> String {
         guard let errorDict = json["error"] as? [String: Any],
               let message = errorDict["message"] as? String else {

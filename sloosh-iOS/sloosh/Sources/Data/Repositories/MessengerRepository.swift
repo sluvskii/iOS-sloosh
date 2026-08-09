@@ -14,9 +14,9 @@ public final class MessengerRepository: ObservableObject {
 
     private init() {}
 
-    private func makeURL(path: String) -> URL? {
+    private func makeURL(path: String) async -> URL? {
         var urlString = "\(databaseBaseURL)/\(path).json"
-        if let token = AuthRepository.shared.currentUser?.idToken, !token.isEmpty {
+        if let token = await AuthRepository.shared.ensureFreshToken(), !token.isEmpty {
             urlString += "?auth=\(token)"
         }
         return URL(string: urlString)
@@ -38,7 +38,7 @@ public final class MessengerRepository: ObservableObject {
         guard let body = try? JSONEncoder().encode(slooshUser) else { return }
 
         // 1. Сохраняем в публичный каталог профилей /user_profiles/{uid}.json
-        if let url1 = makeURL(path: "user_profiles/\(user.id)") {
+        if let url1 = await makeURL(path: "user_profiles/\(user.id)") {
             var req = URLRequest(url: url1)
             req.httpMethod = "PUT"
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -47,7 +47,7 @@ public final class MessengerRepository: ObservableObject {
         }
 
         // 2. Сохраняем профиль под ветку пользователя /users/{uid}/profile.json
-        if let url2 = makeURL(path: "users/\(user.id)/profile") {
+        if let url2 = await makeURL(path: "users/\(user.id)/profile") {
             var req = URLRequest(url: url2)
             req.httpMethod = "PUT"
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -119,7 +119,7 @@ public final class MessengerRepository: ObservableObject {
     }
 
     private func fetchUsersFromNode(_ nodeName: String) async -> [SlooshUser]? {
-        guard let url = makeURL(path: nodeName) else { return nil }
+        guard let url = await makeURL(path: nodeName) else { return nil }
 
         do {
             let (data, response) = try await URLSession.shared.data(from: url)
@@ -180,7 +180,7 @@ public final class MessengerRepository: ObservableObject {
             return
         }
 
-        guard let url = makeURL(path: "user_chats/\(currentUser.id)") else { return }
+        guard let url = await makeURL(path: "user_chats/\(currentUser.id)") else { return }
 
         isLoading = true
         defer { isLoading = false }
@@ -231,7 +231,7 @@ public final class MessengerRepository: ObservableObject {
     public func fetchMessages(chatId: String) async -> [ChatMessage] {
         guard !chatId.isEmpty else { return [] }
         
-        guard let url = makeURL(path: "chats/\(chatId)/messages") else { return [] }
+        guard let url = await makeURL(path: "chats/\(chatId)/messages") else { return [] }
 
         do {
             let (data, response) = try await URLSession.shared.data(from: url)
@@ -269,7 +269,7 @@ public final class MessengerRepository: ObservableObject {
             media: mediaPayload
         )
 
-        guard let msgUrl = makeURL(path: "chats/\(chatId)/messages/\(message.id)") else { return false }
+        guard let msgUrl = await makeURL(path: "chats/\(chatId)/messages/\(message.id)") else { return false }
 
         do {
             var request = URLRequest(url: msgUrl)
@@ -303,7 +303,7 @@ public final class MessengerRepository: ObservableObject {
                 "updatedAtMs": message.timestampMs
             ] as [String: Any]
 
-            if let senderUrl = makeURL(path: "user_chats/\(currentUser.id)/\(chatId)") {
+            if let senderUrl = await makeURL(path: "user_chats/\(currentUser.id)/\(chatId)") {
                 var req = URLRequest(url: senderUrl)
                 req.httpMethod = "PUT"
                 req.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -331,7 +331,7 @@ public final class MessengerRepository: ObservableObject {
                 "updatedAtMs": message.timestampMs
             ] as [String: Any]
 
-            if let receiverUrl = makeURL(path: "user_chats/\(peerUser.id)/\(chatId)") {
+            if let receiverUrl = await makeURL(path: "user_chats/\(peerUser.id)/\(chatId)") {
                 var req = URLRequest(url: receiverUrl)
                 req.httpMethod = "PUT"
                 req.setValue("application/json", forHTTPHeaderField: "Content-Type")
