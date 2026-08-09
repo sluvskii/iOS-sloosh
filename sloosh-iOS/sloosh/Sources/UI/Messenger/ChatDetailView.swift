@@ -340,31 +340,27 @@ public struct ChatDetailView: View {
     // MARK: - Actions & Logic
 
     private func syncMessages(remoteList: [ChatMessage]) async {
-        var current = self.messages
+        let sortedRemote = remoteList.sorted(by: { $0.timestampMs < $1.timestampMs })
         
-        // 1. Обновляем существующие и добавляем новые с сервера
-        for remote in remoteList {
-            if let idx = current.firstIndex(where: { $0.id == remote.id }) {
-                current[idx] = remote
-            } else {
-                current.append(remote)
+        // 1. Если пришедший список полностью идентичен текущему UI — ранний выход (0 сбросов меню)
+        guard sortedRemote != self.messages else { return }
+
+        // 2. Если изменился лишь статус/реакции в существующих сообщениях (без добавлений/удалений)
+        let isContentOnlyUpdate = (sortedRemote.count == self.messages.count) &&
+            zip(sortedRemote, self.messages).allSatisfy { $0.id == $1.id }
+
+        if isContentOnlyUpdate {
+            // Обновляем данные без структурной инвалидации LazyVStack и без сброса .contextMenu
+            self.messages = sortedRemote
+        } else {
+            // Структурные изменения (новые/удаленные сообщения) анимируем плавно
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                self.messages = sortedRemote
             }
         }
-        
-        // 2. Удаляем сообщения, которых физически больше нет на сервере
-        current.removeAll { local in
-            !remoteList.contains(where: { $0.id == local.id })
-        }
-        
-        current.sort(by: { $0.timestampMs < $1.timestampMs })
-        
-        if current != self.messages {
-            withAnimation(.easeInOut(duration: 0.18)) {
-                self.messages = current
-            }
-            let chatId = repo.getOrCreateChatId(peerUserId: peerUser.id)
-            await repo.markMessagesAsRead(chatId: chatId, peerUserId: peerUser.id, messages: current)
-        }
+
+        let chatId = repo.getOrCreateChatId(peerUserId: peerUser.id)
+        await repo.markMessagesAsRead(chatId: chatId, peerUserId: peerUser.id, messages: sortedRemote)
     }
 
     private func loadMessages() async {
