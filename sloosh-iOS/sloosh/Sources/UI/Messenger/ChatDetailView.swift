@@ -201,6 +201,9 @@ public struct ChatDetailView: View {
                                         messageText = msg.text ?? ""
                                         isInputFocused = true
                                     },
+                                    onDelete: { msg in
+                                        deleteMessage(msg)
+                                    },
                                     onReact: { emoji, msg in
                                         addReaction(emoji, to: msg)
                                     }
@@ -423,6 +426,17 @@ public struct ChatDetailView: View {
             await loadMessages()
         }
     }
+
+    private func deleteMessage(_ msg: ChatMessage) {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        withAnimation(.easeInOut(duration: 0.22)) {
+            self.messages.removeAll(where: { $0.id == msg.id })
+        }
+        let chatId = repo.getOrCreateChatId(peerUserId: peerUser.id)
+        Task {
+            await repo.deleteMessage(chatId: chatId, messageId: msg.id, peerUser: peerUser)
+        }
+    }
 }
 
 // MARK: - Peak Message Bubble View (Adaptive Theme + Minute Grouping)
@@ -436,6 +450,7 @@ private struct PeakMessageBubbleView: View {
     let onPlayDirectly: (MediaCardPayload) -> Void
     let onReply: (ChatMessage) -> Void
     let onEdit: (ChatMessage) -> Void
+    let onDelete: (ChatMessage) -> Void
     let onReact: (String, ChatMessage) -> Void
 
     private var repliedMessage: ChatMessage? {
@@ -495,6 +510,12 @@ private struct PeakMessageBubbleView: View {
                     onReply(message)
                 } label: {
                     Label("Ответить", systemImage: "arrowshape.turn.up.left")
+                }
+
+                Button(role: .destructive) {
+                    onDelete(message)
+                } label: {
+                    Label("Удалить у всех", systemImage: "trash")
                 }
             }
         } else {
@@ -565,6 +586,12 @@ private struct PeakMessageBubbleView: View {
                     } label: {
                         Label("Редактировать", systemImage: "pencil")
                     }
+                }
+
+                Button(role: .destructive) {
+                    onDelete(message)
+                } label: {
+                    Label("Удалить у всех", systemImage: "trash")
                 }
             }
         }
