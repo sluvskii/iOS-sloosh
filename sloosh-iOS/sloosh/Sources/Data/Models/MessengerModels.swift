@@ -76,7 +76,10 @@ public struct ChatMessage: Identifiable, Codable, Equatable, Hashable {
     public let type: MessageType
     public let text: String?
     public let media: MediaCardPayload?
-    public let timestampMs: Int64
+    public let replyToId: String?
+    public let reactions: [String: String]?
+    public let isEdited: Bool?
+    public let isRead: Bool?
 
     public init(
         id: String = UUID().uuidString,
@@ -85,7 +88,11 @@ public struct ChatMessage: Identifiable, Codable, Equatable, Hashable {
         type: MessageType = .text,
         text: String? = nil,
         media: MediaCardPayload? = nil,
-        timestampMs: Int64 = Int64(Date().timeIntervalSince1970 * 1000)
+        timestampMs: Int64 = Int64(Date().timeIntervalSince1970 * 1000),
+        replyToId: String? = nil,
+        reactions: [String: String]? = nil,
+        isEdited: Bool? = nil,
+        isRead: Bool? = nil
     ) {
         self.id = id
         self.senderId = senderId
@@ -94,6 +101,10 @@ public struct ChatMessage: Identifiable, Codable, Equatable, Hashable {
         self.text = text
         self.media = media
         self.timestampMs = timestampMs
+        self.replyToId = replyToId
+        self.reactions = reactions
+        self.isEdited = isEdited
+        self.isRead = isRead
     }
 }
 

@@ -315,7 +315,8 @@ public final class MessengerRepository: ObservableObject {
     public func sendMessage(
         toPeerUser peerUser: SlooshUser,
         text: String? = nil,
-        mediaPayload: MediaCardPayload? = nil
+        mediaPayload: MediaCardPayload? = nil,
+        replyToId: String? = nil
     ) async -> Bool {
         guard let currentUser = AuthRepository.shared.currentUser, !currentUser.isAnonymous else { return false }
         
@@ -327,9 +328,19 @@ public final class MessengerRepository: ObservableObject {
             receiverId: peerUser.id,
             type: messageType,
             text: text,
-            media: mediaPayload
+            media: mediaPayload,
+            replyToId: replyToId
         )
 
+        return await postMessageToFirebase(chatId: chatId, message: message, peerUser: peerUser)
+    }
+
+    public func postMessageToFirebase(
+        chatId: String,
+        message: ChatMessage,
+        peerUser: SlooshUser? = nil
+    ) async -> Bool {
+        guard let currentUser = AuthRepository.shared.currentUser, !currentUser.isAnonymous else { return false }
         guard let msgUrl = await makeURL(path: "chats/\(chatId)/messages/\(message.id)") else { return false }
 
         do {
@@ -343,68 +354,68 @@ public final class MessengerRepository: ObservableObject {
                 return false
             }
 
-            let previewText: String
-            if let media = mediaPayload {
-                previewText = "🎬 \(media.title)"
-            } else {
-                previewText = text ?? ""
+            if let peerUser = peerUser {
+                let previewText: String
+                if let media = message.media {
+                    previewText = "🎬 \(media.title)"
+                } else {
+                    previewText = message.text ?? ""
+                }
+
+                // Update user_chats for sender
+                let senderEntry = [
+                    "chatId": chatId,
+                    "peerUser": [
+                        "id": peerUser.id,
+                        "displayName": peerUser.displayName,
+                        "email": peerUser.email,
+                        "avatarUrl": peerUser.avatarUrl ?? ""
+                    ] as [String: Any],
+                    "lastMessageText": previewText,
+                    "unreadCount": 0,
+                    "updatedAtMs": message.timestampMs
+                ] as [String: Any]
+
+                if let senderUrl = await makeURL(path: "user_chats/\(currentUser.id)/\(chatId)") {
+                    var req = URLRequest(url: senderUrl)
+                    req.httpMethod = "PUT"
+                    req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                    req.httpBody = try? JSONSerialization.data(withJSONObject: senderEntry)
+                    _ = try? await URLSession.shared.data(for: req)
+                }
+
+                // Update user_chats for receiver
+                let currentSlooshUser = SlooshUser(
+                    id: currentUser.id,
+                    displayName: currentUser.displayTitle,
+                    email: currentUser.email ?? "",
+                    avatarUrl: currentUser.photoURL
+                )
+                let receiverEntry = [
+                    "chatId": chatId,
+                    "peerUser": [
+                        "id": currentSlooshUser.id,
+                        "displayName": currentSlooshUser.displayName,
+                        "email": currentSlooshUser.email,
+                        "avatarUrl": currentSlooshUser.avatarUrl ?? ""
+                    ] as [String: Any],
+                    "lastMessageText": previewText,
+                    "unreadCount": 1,
+                    "updatedAtMs": message.timestampMs
+                ] as [String: Any]
+
+                if let receiverUrl = await makeURL(path: "user_chats/\(peerUser.id)/\(chatId)") {
+                    var req = URLRequest(url: receiverUrl)
+                    req.httpMethod = "PUT"
+                    req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                    req.httpBody = try? JSONSerialization.data(withJSONObject: receiverEntry)
+                    _ = try? await URLSession.shared.data(for: req)
+                }
             }
 
-            // Update user_chats for sender
-            let senderEntry = [
-                "chatId": chatId,
-                "peerUser": [
-                    "id": peerUser.id,
-                    "displayName": peerUser.displayName,
-                    "email": peerUser.email,
-                    "avatarUrl": peerUser.avatarUrl ?? ""
-                ] as [String: Any],
-                "lastMessageText": previewText,
-                "unreadCount": 0,
-                "updatedAtMs": message.timestampMs
-            ] as [String: Any]
-
-            if let senderUrl = await makeURL(path: "user_chats/\(currentUser.id)/\(chatId)") {
-                var req = URLRequest(url: senderUrl)
-                req.httpMethod = "PUT"
-                req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-                req.httpBody = try? JSONSerialization.data(withJSONObject: senderEntry)
-                _ = try? await URLSession.shared.data(for: req)
-            }
-
-            // Update user_chats for receiver
-            let currentSlooshUser = SlooshUser(
-                id: currentUser.id,
-                displayName: currentUser.displayTitle,
-                email: currentUser.email ?? "",
-                avatarUrl: currentUser.photoURL
-            )
-            let receiverEntry = [
-                "chatId": chatId,
-                "peerUser": [
-                    "id": currentSlooshUser.id,
-                    "displayName": currentSlooshUser.displayName,
-                    "email": currentSlooshUser.email,
-                    "avatarUrl": currentSlooshUser.avatarUrl ?? ""
-                ] as [String: Any],
-                "lastMessageText": previewText,
-                "unreadCount": 1,
-                "updatedAtMs": message.timestampMs
-            ] as [String: Any]
-
-            if let receiverUrl = await makeURL(path: "user_chats/\(peerUser.id)/\(chatId)") {
-                var req = URLRequest(url: receiverUrl)
-                req.httpMethod = "PUT"
-                req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-                req.httpBody = try? JSONSerialization.data(withJSONObject: receiverEntry)
-                _ = try? await URLSession.shared.data(for: req)
-            }
-
-            await fetchConversations()
             return true
-
         } catch {
-            AppDiagnostics.shared.log("MessengerRepository sendMessage error: \(error.localizedDescription)")
+            AppDiagnostics.shared.log("MessengerRepository postMessageToFirebase error: \(error.localizedDescription)")
             return false
         }
     }
