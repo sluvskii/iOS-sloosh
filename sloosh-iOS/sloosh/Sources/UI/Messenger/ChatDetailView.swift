@@ -49,10 +49,7 @@ public struct ChatDetailView: View {
                             }
                             .padding(.horizontal, 16)
                             .padding(.vertical, 10)
-                            .background(
-                                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                    .fill(Color(UIColor.secondarySystemGroupedBackground))
-                            )
+                            .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                             .padding(.horizontal, 14)
                             .padding(.bottom, 8)
                         }
@@ -79,10 +76,7 @@ public struct ChatDetailView: View {
                             }
                             .padding(.horizontal, 16)
                             .padding(.vertical, 10)
-                            .background(
-                                RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                    .fill(Color(UIColor.secondarySystemGroupedBackground))
-                            )
+                            .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                             .padding(.horizontal, 14)
                             .padding(.bottom, 8)
                         }
@@ -194,50 +188,42 @@ public struct ChatDetailView: View {
         }
     }
 
-    // MARK: - Input Bar (Peak Messenger Style)
+    // MARK: - Input Bar (iOS 26+ Liquid Glass)
 
     private var inputBar: some View {
-        HStack(alignment: .bottom, spacing: 8) {
+        HStack(alignment: .bottom, spacing: 10) {
+            // Floating Glass Text Field Panel
             HStack(alignment: .bottom, spacing: 8) {
                 TextField("Сообщение", text: $messageText, axis: .vertical)
                     .font(.system(size: 16))
                     .foregroundColor(.primary)
                     .lineLimit(1...6)
                     .focused($isInputFocused)
-                    .padding(.vertical, 8)
-                    .padding(.leading, 14)
+                    .padding(.vertical, 10)
+                    .padding(.horizontal, 14)
             }
-            .background(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(Color(UIColor.secondarySystemGroupedBackground))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(Color.primary.opacity(0.08), lineWidth: 0.5)
-            )
+            .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
 
+            // Separate Floating Glass Send Button
             Button {
                 sendMessage()
             } label: {
                 ZStack {
                     Circle()
                         .fill(Color.slooshAccent)
-                        .frame(width: 36, height: 36)
+                        .frame(width: 44, height: 44)
 
                     Image(systemName: "arrow.up")
-                        .font(.system(size: 16, weight: .bold))
+                        .font(.system(size: 18, weight: .bold))
                         .foregroundColor(.black)
                 }
+                .glassEffect(.regular.interactive(), in: Circle())
             }
             .disabled(messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSending)
             .opacity(messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.35 : 1.0)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(
-            VariableBlurView(tintOpacity: 1.0)
-                .ignoresSafeArea(edges: .bottom)
-        )
+        .padding(.horizontal, 14)
+        .padding(.vertical, 6)
     }
 
     // MARK: - Actions & Logic
