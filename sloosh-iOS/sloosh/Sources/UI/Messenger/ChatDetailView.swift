@@ -7,24 +7,93 @@ public struct ChatDetailView: View {
     @State private var messages: [ChatMessage] = []
     @State private var messageText: String = ""
     @State private var isSending: Bool = false
+
     @State private var selectedMovieIdForDetails: String? = nil
     @State private var pollTask: Task<Void, Never>? = nil
 
+    // Peak Messenger state variables for Reply & Edit
+    @State private var replyingMessage: ChatMessage? = nil
+    @State private var editingMessage: ChatMessage? = nil
+
+    @FocusState private var isInputFocused: Bool
     @Environment(\.dismiss) private var dismiss
 
     public var body: some View {
-        ZStack(alignment: .top) {
-            // Элементы истории сообщений (Edge-to-edge)
-            messageHistoryView
+        ZStack {
+            Color(UIColor.systemBackground).ignoresSafeArea()
 
-            // Летающая верхняя панель iOS 26+ Liquid Glass (Назад + Капсула Профиля)
-            floatingHeaderBar
+            messageList
+                .safeAreaInset(edge: .bottom) {
+                    VStack(spacing: 0) {
+                        // Banner for editing message
+                        if let editing = editingMessage {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Редактирование")
+                                        .font(.system(size: 12, weight: .bold))
+                                        .foregroundColor(.slooshAccent)
+                                    Text(editing.text ?? "")
+                                        .font(.system(size: 14))
+                                        .foregroundColor(.secondary)
+                                        .lineLimit(1)
+                                }
+                                Spacer()
+                                Button {
+                                    editingMessage = nil
+                                    messageText = ""
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+                            .background(
+                                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                    .fill(Color(UIColor.secondarySystemGroupedBackground))
+                            )
+                            .padding(.horizontal, 14)
+                            .padding(.bottom, 8)
+                        }
+
+                        // Banner for replying message
+                        if let replying = replyingMessage {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Ответ")
+                                        .font(.system(size: 12, weight: .bold))
+                                        .foregroundColor(.slooshAccent)
+                                    Text(replying.text ?? "Медиа")
+                                        .font(.system(size: 14))
+                                        .foregroundColor(.secondary)
+                                        .lineLimit(1)
+                                }
+                                Spacer()
+                                Button {
+                                    replyingMessage = nil
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundColor(.secondary)
+                                }
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 10)
+                            .background(
+                                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                    .fill(Color(UIColor.secondarySystemGroupedBackground))
+                            )
+                            .padding(.horizontal, 14)
+                            .padding(.bottom, 8)
+                        }
+
+                        inputBar
+                    }
+                    .background(Color.clear)
+                }
         }
-        .safeAreaInset(edge: .bottom) {
-            // Летающая нижняя панель ввода iOS 26+ Liquid Glass
-            floatingInputBar
-        }
-        .toolbar(.hidden, for: .navigationBar)
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbar { navBarContent }
+        .toolbarVisibility(.hidden, for: .tabBar)
         .navigationDestination(item: $selectedMovieIdForDetails) { movieId in
             DetailsView(movieId: movieId, navigationTransitionID: nil, navigationTransitionNamespace: nil)
         }
@@ -37,103 +106,73 @@ public struct ChatDetailView: View {
         }
     }
 
-    // MARK: - Floating Header Bar (iOS 26+ Liquid Glass)
+    // MARK: - Navigation Bar Content (Peak Messenger Style)
 
-    private var floatingHeaderBar: some View {
-        HStack(spacing: 10) {
-            // Летающая кругленькая кнопка Назад в стиле Liquid Glass
-            TelegramGlassIconButton(
-                systemName: "chevron.left",
-                iconSize: 16,
-                buttonSize: 40
-            ) {
-                dismiss()
-            }
-
-            Spacer()
-
-            // Летающая капсула профиля собеседника с Liquid Glass
+    @ToolbarContentBuilder
+    private var navBarContent: some ToolbarContent {
+        ToolbarItem(placement: .principal) {
             HStack(spacing: 8) {
-                ZStack(alignment: .bottomTrailing) {
-                    Circle()
-                        .fill(Color.slooshAccent.opacity(0.35))
-                        .frame(width: 32, height: 32)
-                        .overlay(
-                            Text(String(peerUser.displayTitle.prefix(1)).uppercased())
-                                .font(.system(size: 14, weight: .bold))
-                                .foregroundColor(.primary)
-                        )
+                PeakAvatarView(user: peerUser, size: 32, showOnline: true)
 
-                    if peerUser.isOnline == true {
-                        Circle()
-                            .fill(Color.green)
-                            .frame(width: 9, height: 9)
-                            .overlay(Circle().stroke(Color(UIColor.systemBackground), lineWidth: 1.5))
-                    }
-                }
-
-                VStack(alignment: .leading, spacing: 1) {
+                VStack(spacing: 1) {
                     Text(peerUser.displayTitle)
-                        .font(.system(size: 15, weight: .bold))
+                        .font(.system(size: 16, weight: .bold))
                         .foregroundColor(.primary)
                         .lineLimit(1)
 
                     if peerUser.isOnline == true {
                         Text("в сети")
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(Color.green)
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(.slooshAccent)
                     } else {
                         Text("был(а) недавно")
-                            .font(.system(size: 11))
+                            .font(.system(size: 12))
                             .foregroundColor(.secondary)
                     }
                 }
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 6)
-            .glassEffect(.regular.interactive(), in: Capsule())
-
-            Spacer()
-
-            // Невидимый балансировочный элемент
-            Spacer()
-                .frame(width: 40, height: 40)
         }
-        .padding(.horizontal, 14)
-        .padding(.top, 8)
     }
 
-    // MARK: - Message History View
+    // MARK: - Message List (Peak Messenger Style)
 
-    private var messageHistoryView: some View {
+    private var messageList: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(spacing: 12) {
-                    Spacer()
-                        .frame(height: 56)
-
-                    // Летающая капсула даты
-                    dateHeaderPill
-
-                    ForEach(messages) { msg in
-                        let isMe = msg.senderId == (AuthRepository.shared.currentUser?.id ?? "")
+                LazyVStack(spacing: 0) {
+                    ForEach(messages) { message in
+                        let isFromMe = message.senderId == (AuthRepository.shared.currentUser?.id ?? "")
                         
-                        LiquidGlassTelegramBubble(
-                            message: msg,
-                            isMe: isMe,
+                        PeakMessageBubbleView(
+                            message: message,
+                            isFromMe: isFromMe,
+                            allMessages: messages,
                             onOpenMovie: { movieId in
                                 selectedMovieIdForDetails = movieId
+                            },
+                            onReply: { msg in
+                                replyingMessage = msg
+                                isInputFocused = true
+                            },
+                            onEdit: { msg in
+                                editingMessage = msg
+                                messageText = msg.text ?? ""
+                                isInputFocused = true
+                            },
+                            onReact: { emoji, msg in
+                                addReaction(emoji, to: msg)
                             }
                         )
-                        .id(msg.id)
+                        .id(message.id)
                     }
                 }
-                .padding(.horizontal, 14)
-                .padding(.bottom, 12)
+                .padding(.vertical, 8)
             }
+            .scrollContentBackground(.hidden)
+            .scrollDismissesKeyboard(.interactively)
             .onChange(of: messages.count) { _, _ in
                 if let lastId = messages.last?.id {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    withAnimation(.easeOut(duration: 0.2)) {
                         proxy.scrollTo(lastId, anchor: .bottom)
                     }
                 }
@@ -141,23 +180,27 @@ public struct ChatDetailView: View {
         }
     }
 
-    private var dateHeaderPill: some View {
-        Text("Сегодня")
-            .font(.system(size: 12, weight: .semibold))
-            .foregroundColor(.secondary)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 5)
-            .glassEffect(.regular, in: Capsule())
-            .padding(.vertical, 4)
-    }
+    // MARK: - Input Bar (Peak Messenger Style)
 
-    // MARK: - Floating Bottom Input Bar (iOS 26+ Liquid Glass Capsule)
-
-    private var floatingInputBar: some View {
-        HStack(spacing: 10) {
-            TextField("Сообщение...", text: $messageText)
-                .font(.system(size: 16))
-                .padding(.leading, 6)
+    private var inputBar: some View {
+        HStack(alignment: .bottom, spacing: 8) {
+            HStack(alignment: .bottom, spacing: 8) {
+                TextField("Сообщение", text: $messageText, axis: .vertical)
+                    .font(.system(size: 16))
+                    .foregroundColor(.primary)
+                    .lineLimit(1...6)
+                    .focused($isInputFocused)
+                    .padding(.vertical, 8)
+                    .padding(.leading, 14)
+            }
+            .background(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .fill(Color(UIColor.secondarySystemGroupedBackground))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .stroke(Color.primary.opacity(0.08), lineWidth: 0.5)
+            )
 
             Button {
                 sendMessage()
@@ -165,7 +208,7 @@ public struct ChatDetailView: View {
                 ZStack {
                     Circle()
                         .fill(Color.slooshAccent)
-                        .frame(width: 38, height: 38)
+                        .frame(width: 36, height: 36)
 
                     Image(systemName: "arrow.up")
                         .font(.system(size: 16, weight: .bold))
@@ -177,12 +220,13 @@ public struct ChatDetailView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .glassEffect(.regular.interactive(), in: Capsule())
-        .padding(.horizontal, 16)
-        .padding(.bottom, 6)
+        .background(
+            VariableBlurView(tintOpacity: 1.0)
+                .ignoresSafeArea(edges: .bottom)
+        )
     }
 
-    // MARK: - Logic
+    // MARK: - Actions & Logic
 
     private func loadMessages() async {
         let chatId = repo.getOrCreateChatId(peerUserId: peerUser.id)
@@ -212,76 +256,215 @@ public struct ChatDetailView: View {
         let generator = UIImpactFeedbackGenerator(style: .medium)
         generator.impactOccurred()
 
+        let replyId = replyingMessage?.id
+
         messageText = ""
+        replyingMessage = nil
+        editingMessage = nil
         isSending = true
 
         Task {
-            let success = await repo.sendMessage(toPeerUser: peerUser, text: trimmed)
+            let success = await repo.sendMessage(toPeerUser: peerUser, text: trimmed, replyToId: replyId)
             isSending = false
             if success {
                 await loadMessages()
             }
         }
     }
+
+    private func addReaction(_ emoji: String, to msg: ChatMessage) {
+        guard let myId = AuthRepository.shared.currentUser?.id else { return }
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        Task {
+            var newReactions = msg.reactions ?? [:]
+            newReactions[myId] = emoji
+            let updatedMsg = ChatMessage(
+                id: msg.id,
+                senderId: msg.senderId,
+                receiverId: msg.receiverId,
+                type: msg.type,
+                text: msg.text,
+                media: msg.media,
+                timestampMs: msg.timestampMs,
+                replyToId: msg.replyToId,
+                reactions: newReactions,
+                isEdited: msg.isEdited,
+                isRead: msg.isRead
+            )
+            let chatId = repo.getOrCreateChatId(peerUserId: peerUser.id)
+            await repo.postMessageToFirebase(chatId: chatId, message: updatedMsg)
+            await loadMessages()
+        }
+    }
 }
 
-// MARK: - Liquid Glass Telegram Message Bubble (iOS 26+)
+// MARK: - Peak Message Bubble View
 
-private struct LiquidGlassTelegramBubble: View {
+private struct PeakMessageBubbleView: View {
     let message: ChatMessage
-    let isMe: Bool
+    let isFromMe: Bool
+    let allMessages: [ChatMessage]
     let onOpenMovie: (String) -> Void
+    let onReply: (ChatMessage) -> Void
+    let onEdit: (ChatMessage) -> Void
+    let onReact: (String, ChatMessage) -> Void
+
+    private var repliedMessage: ChatMessage? {
+        if let replyToId = message.replyToId {
+            return allMessages.first(where: { $0.id == replyToId })
+        }
+        return nil
+    }
 
     var body: some View {
         HStack(alignment: .bottom, spacing: 6) {
-            if isMe { Spacer(minLength: 44) }
+            if isFromMe { Spacer(minLength: 60) }
 
-            VStack(alignment: isMe ? .trailing : .leading, spacing: 4) {
-                if message.type == .media, let media = message.media {
-                    MediaMessageCardView(media: media) { movieId in
-                        onOpenMovie(movieId)
+            VStack(alignment: isFromMe ? .trailing : .leading, spacing: 4) {
+                ZStack(alignment: isFromMe ? .bottomTrailing : .bottomLeading) {
+                    bubbleBody
+                        .onTapGesture(count: 2) {
+                            onReact("❤️", message)
+                        }
+
+                    if let msgReactions = message.reactions, !msgReactions.isEmpty {
+                        reactionsOverlay(msgReactions)
                     }
                 }
+                .padding(.bottom, (message.reactions?.isEmpty == false) ? 8 : 0)
 
-                if let text = message.text, !text.isEmpty {
-                    HStack(alignment: .bottom, spacing: 6) {
-                        Text(text)
-                            .font(.system(size: 15))
-                            .foregroundColor(isMe ? .black : .primary)
-                            .fixedSize(horizontal: false, vertical: true)
+                metaRow
+            }
 
-                        // Время и галочка ВНУТРИ баббла внизу справа (Telegram Style)
-                        HStack(spacing: 2) {
-                            Text(formatTime(ms: message.timestampMs))
-                                .font(.system(size: 11))
-                                .foregroundColor(isMe ? .black.opacity(0.65) : .secondary)
+            if !isFromMe { Spacer(minLength: 60) }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 3)
+    }
 
-                            if isMe {
-                                Image(systemName: "checkmark")
-                                    .font(.system(size: 10, weight: .bold))
-                                    .foregroundColor(.black.opacity(0.75))
-                            }
-                        }
-                        .padding(.leading, 4)
+    @ViewBuilder
+    private var bubbleBody: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            // Replied Message Header
+            if let replied = repliedMessage {
+                HStack(spacing: 8) {
+                    Capsule()
+                        .fill(isFromMe ? Color.black : Color.slooshAccent)
+                        .frame(width: 2)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Ответ")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(isFromMe ? .black : .slooshAccent)
+                        Text(replied.text ?? "Медиа")
+                            .font(.system(size: 13))
+                            .foregroundColor(isFromMe ? .black.opacity(0.65) : .secondary)
+                            .lineLimit(1)
                     }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 9)
-                    .background(
-                        Group {
-                            if isMe {
-                                RoundedRectangle(cornerRadius: 20)
-                                    .fill(Color.slooshAccent)
-                            } else {
-                                RoundedRectangle(cornerRadius: 20)
-                                    .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 20))
-                            }
-                        }
-                    )
+                }
+                .padding(.bottom, 2)
+            }
+
+            // Movie Card
+            if message.type == .media, let media = message.media {
+                MediaMessageCardView(media: media) { movieId in
+                    onOpenMovie(movieId)
                 }
             }
 
-            if !isMe { Spacer(minLength: 44) }
+            // Text content
+            if let text = message.text, !text.isEmpty {
+                Text(text)
+                    .font(.system(size: 16))
+                    .foregroundColor(isFromMe ? .black : .primary)
+            }
         }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(
+            Group {
+                if isFromMe {
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .fill(Color.slooshAccent)
+                } else {
+                    RoundedRectangle(cornerRadius: 20, style: .continuous)
+                        .fill(Color(UIColor.secondarySystemGroupedBackground))
+                }
+            }
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                .stroke(Color.primary.opacity(0.06), lineWidth: isFromMe ? 0 : 0.5)
+        )
+        .contextMenu {
+            Section("Реакция") {
+                Button("❤️") { onReact("❤️", message) }
+                Button("👍") { onReact("👍", message) }
+                Button("🔥") { onReact("🔥", message) }
+                Button("😂") { onReact("😂", message) }
+                Button("😢") { onReact("😢", message) }
+                Button("👏") { onReact("👏", message) }
+            }
+
+            Button {
+                onReply(message)
+            } label: {
+                Label("Ответить", systemImage: "arrowshape.turn.up.left")
+            }
+
+            if isFromMe && message.type == .text {
+                Button {
+                    onEdit(message)
+                } label: {
+                    Label("Редактировать", systemImage: "pencil")
+                }
+            }
+        }
+    }
+
+    private var metaRow: some View {
+        HStack(spacing: 4) {
+            Text(formatTime(ms: message.timestampMs))
+                .font(.system(size: 11))
+                .foregroundColor(.secondary)
+
+            if isFromMe {
+                Image(systemName: message.isRead == true ? "checkmark.circle.fill" : "checkmark.circle")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.secondary)
+            }
+
+            if message.isEdited == true {
+                Text("изм.")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func reactionsOverlay(_ reactionsDict: [String: String]) -> some View {
+        let grouped = Dictionary(grouping: reactionsDict.values, by: { $0 })
+        HStack(spacing: 4) {
+            ForEach(grouped.map { ($0.key, $0.value.count) }, id: \.0) { emoji, count in
+                HStack(spacing: 2) {
+                    Text(emoji)
+                        .font(.system(size: 11))
+                    if count > 1 {
+                        Text("\(count)")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(isFromMe ? .black : .primary)
+                    }
+                }
+                .padding(.horizontal, 6)
+                .padding(.vertical, 3)
+                .background(isFromMe ? Color.white : Color(white: 0.18))
+                .clipShape(Capsule())
+                .shadow(color: .black.opacity(0.1), radius: 1)
+            }
+        }
+        .offset(y: 10)
+        .padding(.horizontal, 8)
     }
 
     private func formatTime(ms: Int64) -> String {

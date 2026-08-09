@@ -12,16 +12,41 @@ public struct MessengerView: View {
 
     public init() {}
 
+    private var filteredConversations: [ChatConversation] {
+        if searchQuery.isEmpty { return repo.conversations }
+        return repo.conversations.filter {
+            $0.peerUser.displayTitle.localizedCaseInsensitiveContains(searchQuery) ||
+            $0.peerUser.email.localizedCaseInsensitiveContains(searchQuery) ||
+            $0.lastMessageText.localizedCaseInsensitiveContains(searchQuery)
+        }
+    }
+
     public var body: some View {
         NavigationStack {
-            ZStack(alignment: .top) {
+            ZStack {
+                Color(UIColor.systemBackground).ignoresSafeArea()
+
                 if !authRepo.isAuthenticated {
                     guestView
+                } else if repo.isLoading && repo.conversations.isEmpty {
+                    skeletonList
+                } else if repo.conversations.isEmpty && searchQuery.isEmpty {
+                    emptyState
                 } else {
-                    authenticatedContentView
+                    chatList
                 }
             }
-            .toolbar(.hidden, for: .navigationBar)
+            .navigationTitle("Чаты")
+            .navigationBarTitleDisplayMode(.large)
+            .searchable(text: $searchQuery, prompt: "Поиск")
+            .onChange(of: searchQuery) { _, newValue in
+                if !newValue.isEmpty {
+                    Task {
+                        await repo.searchUsers(query: newValue)
+                    }
+                }
+            }
+            .toolbar { toolbarContent }
             .navigationDestination(item: $selectedPeerUser) { peer in
                 ChatDetailView(peerUser: peer)
             }
@@ -56,7 +81,103 @@ public struct MessengerView: View {
         }
     }
 
-    // MARK: - Guest View
+    // MARK: - Subviews (Peak Messenger Style)
+
+    private var chatList: some View {
+        ScrollView {
+            LazyVStack(spacing: 0) {
+                // Если есть активный поиск и есть найденные пользователи, не входящие в текущие диалоги
+                if !searchQuery.isEmpty && !repo.searchResults.isEmpty {
+                    Section {
+                        ForEach(repo.searchResults) { user in
+                            Button {
+                                selectedPeerUser = user
+                            } label: {
+                                PeakUserSearchRow(user: user)
+                            }
+                            .buttonStyle(PeakPressButtonStyle())
+
+                            PeakDivider()
+                                .padding(.leading, 86)
+                        }
+                    } header: {
+                        HStack {
+                            Text("ПОЛЬЗОВАТЕЛИ")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundColor(.secondary)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.top, 10)
+                        .padding(.bottom, 4)
+                    }
+                }
+
+                ForEach(filteredConversations) { chat in
+                    Button {
+                        selectedPeerUser = chat.peerUser
+                    } label: {
+                        PeakChatRow(chat: chat, onDelete: {
+                            peerToDelete = chat.peerUser
+                            showDeleteConfirm = true
+                        })
+                    }
+                    .buttonStyle(PeakPressButtonStyle())
+
+                    PeakDivider()
+                        .padding(.leading, 86)
+                }
+            }
+        }
+        .scrollContentBackground(.hidden)
+    }
+
+    private var emptyState: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "bubble.left.and.bubble.right")
+                .font(.system(size: 48, weight: .thin))
+                .foregroundColor(.secondary)
+            Text("Пока нет чатов")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundColor(.secondary)
+            Text("Введи имя или email друга в поиске выше, чтобы начать общение!")
+                .font(.system(size: 14))
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 36)
+        }
+    }
+
+    private var skeletonList: some View {
+        ScrollView {
+            LazyVStack(spacing: 0) {
+                ForEach(0..<6, id: \.self) { _ in
+                    HStack(spacing: 14) {
+                        Circle()
+                            .fill(Color.secondary.opacity(0.2))
+                            .frame(width: 56, height: 56)
+                        VStack(alignment: .leading, spacing: 8) {
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(Color.secondary.opacity(0.2))
+                                .frame(width: 120, height: 16)
+                            RoundedRectangle(cornerRadius: 4)
+                                .fill(Color.secondary.opacity(0.2))
+                                .frame(width: 200, height: 14)
+                        }
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .redacted(reason: .placeholder)
+                    .opacity(0.4)
+
+                    PeakDivider()
+                        .padding(.leading, 86)
+                }
+            }
+        }
+        .scrollContentBackground(.hidden)
+    }
 
     private var guestView: some View {
         VStack(spacing: 24) {
@@ -77,7 +198,7 @@ public struct MessengerView: View {
                     .font(.system(size: 24, weight: .bold))
                     .foregroundColor(.primary)
 
-                Text("Войдите в аккаунт через Google или Email, чтобы общаться с друзьями и делиться фильмами!")
+                Text("Войдите в аккаунт, чтобы общаться с друзьями и делиться любимыми фильмами!")
                     .font(.system(size: 15))
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
@@ -105,140 +226,16 @@ public struct MessengerView: View {
         }
     }
 
-    // MARK: - Authenticated View (iOS 26+ Liquid Glass Layout)
-
-    private var authenticatedContentView: some View {
-        ScrollView {
-            VStack(spacing: 14) {
-                // Заголовок экранов iOS 26+ с летающей кнопкой создания чата
-                HStack(alignment: .center) {
-                    Text("Чаты")
-                        .font(.system(size: 30, weight: .bold))
-                        .foregroundColor(.primary)
-
-                    Spacer()
-
-                    TelegramGlassIconButton(
-                        systemName: "square.and.pencil",
-                        iconSize: 18,
-                        buttonSize: 42
-                    ) {
-                        searchQuery = ""
-                    }
-                }
-                .padding(.horizontal, 4)
-                .padding(.top, 8)
-
-                // Летающее поле поиска в стиле Liquid Glass Capsule
-                HStack(spacing: 10) {
-                    Image(systemName: "magnifyingglass")
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(.secondary)
-
-                    TextField("Поиск людей...", text: $searchQuery)
-                        .font(.system(size: 15))
-                        .onChange(of: searchQuery) { _, newValue in
-                            Task {
-                                await repo.searchUsers(query: newValue)
-                            }
-                        }
-
-                    if !searchQuery.isEmpty {
-                        Button {
-                            searchQuery = ""
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 16))
-                                .foregroundColor(.secondary)
-                        }
-                    }
-                }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 11)
-                .glassEffect(.regular.interactive(), in: Capsule())
-
-                // Результаты поиска или Список диалогов
-                if !searchQuery.isEmpty {
-                    searchResultsSection
-                } else {
-                    conversationsSection
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.bottom, 24)
-        }
-    }
-
-    // MARK: - Search Results Section
-
-    private var searchResultsSection: some View {
-        Group {
-            if repo.isLoading {
-                ProgressView()
-                    .padding(.top, 40)
-            } else if repo.searchResults.isEmpty {
-                VStack(spacing: 8) {
-                    Image(systemName: "person.slash")
-                        .font(.system(size: 38))
-                        .foregroundColor(.secondary)
-                    Text("Пользователи не найдены")
-                        .font(.system(size: 15))
-                        .foregroundColor(.secondary)
-                }
-                .padding(.top, 40)
-            } else {
-                LazyVStack(spacing: 10) {
-                    ForEach(repo.searchResults) { user in
-                        Button {
-                            selectedPeerUser = user
-                        } label: {
-                            LiquidGlassUserCard(user: user)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-            }
-        }
-    }
-
-    // MARK: - Conversations Section
-
-    private var conversationsSection: some View {
-        Group {
-            if repo.conversations.isEmpty {
-                VStack(spacing: 14) {
-                    Spacer()
-                        .frame(height: 40)
-                    Image(systemName: "bubble.left.and.bubble.right.fill")
-                        .font(.system(size: 48))
-                        .foregroundColor(.secondary)
-                    Text("У вас пока нет чатов")
+    @ToolbarContentBuilder
+    private var toolbarContent: some ToolbarContent {
+        if authRepo.isAuthenticated {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button {
+                    searchQuery = ""
+                } label: {
+                    Image(systemName: "square.and.pencil")
                         .font(.system(size: 18, weight: .bold))
-                        .foregroundColor(.primary)
-                    Text("Введи имя или email друга в поиске выше, чтобы начать диалог!")
-                        .font(.system(size: 14))
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 24)
-                }
-            } else {
-                LazyVStack(spacing: 10) {
-                    ForEach(repo.conversations) { chat in
-                        Button {
-                            selectedPeerUser = chat.peerUser
-                        } label: {
-                            LiquidGlassChatCard(chat: chat)
-                        }
-                        .buttonStyle(.plain)
-                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                            Button(role: .destructive) {
-                                peerToDelete = chat.peerUser
-                                showDeleteConfirm = true
-                            } label: {
-                                Label("Удалить", systemImage: "trash.fill")
-                            }
-                        }
-                    }
+                        .foregroundColor(.slooshAccent)
                 }
             }
         }
@@ -253,98 +250,39 @@ public struct MessengerView: View {
     }
 }
 
-// MARK: - Liquid Glass User Card (iOS 26+)
+// MARK: - Peak Chat Row View (Peak Messenger Style)
 
-private struct LiquidGlassUserCard: View {
-    let user: SlooshUser
-
-    var body: some View {
-        HStack(spacing: 14) {
-            ZStack(alignment: .bottomTrailing) {
-                Circle()
-                    .fill(Color.slooshAccent.opacity(0.35))
-                    .frame(width: 48, height: 48)
-                    .overlay(
-                        Text(String(user.displayTitle.prefix(1)).uppercased())
-                            .font(.system(size: 18, weight: .bold))
-                            .foregroundColor(.primary)
-                    )
-
-                if user.isOnline == true {
-                    Circle()
-                        .fill(Color.green)
-                        .frame(width: 12, height: 12)
-                        .overlay(Circle().stroke(Color(UIColor.systemBackground), lineWidth: 2))
-                }
-            }
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text(user.displayTitle)
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(.primary)
-
-                if !user.email.isEmpty {
-                    Text(user.email)
-                        .font(.system(size: 13))
-                        .foregroundColor(.secondary)
-                }
-            }
-
-            Spacer()
-
-            Image(systemName: "chevron.right")
-                .font(.system(size: 13, weight: .bold))
-                .foregroundColor(.secondary.opacity(0.6))
-        }
-        .padding(12)
-        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 22))
-    }
-}
-
-// MARK: - Liquid Glass Chat Card (iOS 26+)
-
-private struct LiquidGlassChatCard: View {
+private struct PeakChatRow: View {
     let chat: ChatConversation
+    let onDelete: () -> Void
 
     var body: some View {
         HStack(spacing: 14) {
-            ZStack(alignment: .bottomTrailing) {
-                Circle()
-                    .fill(Color.slooshAccent.opacity(0.35))
-                    .frame(width: 50, height: 50)
-                    .overlay(
-                        Text(String(chat.peerUser.displayTitle.prefix(1)).uppercased())
-                            .font(.system(size: 19, weight: .bold))
-                            .foregroundColor(.primary)
-                    )
+            // Avatar with Online dot
+            PeakAvatarView(user: chat.peerUser, size: 56, showOnline: true)
 
-                if chat.peerUser.isOnline == true {
-                    Circle()
-                        .fill(Color.green)
-                        .frame(width: 13, height: 13)
-                        .overlay(Circle().stroke(Color(UIColor.systemBackground), lineWidth: 2))
-                }
-            }
-
-            VStack(alignment: .leading, spacing: 4) {
-                HStack {
+            // Content
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(alignment: .firstTextBaseline) {
                     Text(chat.peerUser.displayTitle)
-                        .font(.system(size: 16, weight: .bold))
+                        .font(.system(size: 17, weight: .bold))
                         .foregroundColor(.primary)
                         .lineLimit(1)
 
                     Spacer()
 
                     Text(formatTime(ms: chat.updatedAtMs))
-                        .font(.system(size: 12))
-                        .foregroundColor(.secondary)
+                        .font(.system(size: 13))
+                        .foregroundColor(chat.unreadCount > 0 ? .primary : .secondary)
                 }
 
-                HStack {
-                    Text(chat.lastMessageText)
-                        .font(.system(size: 14))
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
+                HStack(alignment: .bottom) {
+                    HStack(spacing: 4) {
+                        Text(chat.lastMessageText)
+                            .font(.system(size: 15))
+                            .foregroundColor(.secondary)
+                            .lineLimit(1)
+                    }
 
                     Spacer()
 
@@ -352,15 +290,23 @@ private struct LiquidGlassChatCard: View {
                         Text("\(chat.unreadCount)")
                             .font(.system(size: 12, weight: .bold))
                             .foregroundColor(.black)
-                            .padding(.horizontal, 8)
+                            .padding(.horizontal, 7)
                             .padding(.vertical, 3)
                             .background(Capsule().fill(Color.slooshAccent))
                     }
                 }
             }
         }
-        .padding(12)
-        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 22))
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .contentShape(Rectangle())
+        .contextMenu {
+            Button(role: .destructive) {
+                onDelete()
+            } label: {
+                Label("Удалить чат", systemImage: "trash")
+            }
+        }
     }
 
     private func formatTime(ms: Int64) -> String {
@@ -375,5 +321,112 @@ private struct LiquidGlassChatCard: View {
             formatter.dateFormat = "dd.MM"
             return formatter.string(from: date)
         }
+    }
+}
+
+// MARK: - Peak User Search Row
+
+private struct PeakUserSearchRow: View {
+    let user: SlooshUser
+
+    var body: some View {
+        HStack(spacing: 14) {
+            PeakAvatarView(user: user, size: 56, showOnline: true)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(user.displayTitle)
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundColor(.primary)
+
+                if !user.email.isEmpty {
+                    Text(user.email)
+                        .font(.system(size: 14))
+                        .foregroundColor(.secondary)
+                }
+            }
+
+            Spacer()
+
+            Image(systemName: "chevron.right")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundColor(.secondary.opacity(0.5))
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .contentShape(Rectangle())
+    }
+}
+
+// MARK: - Reusable Peak Components
+
+public struct PeakAvatarView: View {
+    public let user: SlooshUser
+    public let size: CGFloat
+    public var showOnline: Bool = false
+
+    public init(user: SlooshUser, size: CGFloat, showOnline: Bool = false) {
+        self.user = user
+        self.size = size
+        self.showOnline = showOnline
+    }
+
+    public var body: some View {
+        ZStack(alignment: .bottomTrailing) {
+            if let avatarUrl = user.avatarUrl, let url = URL(string: avatarUrl) {
+                AsyncCachedImage(urlString: avatarUrl) {
+                    fallbackAvatar
+                } content: { image in
+                    Image(uiImage: image)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: size, height: size)
+                        .clipShape(Circle())
+                }
+            } else {
+                fallbackAvatar
+            }
+
+            if showOnline && (user.isOnline == true) {
+                Circle()
+                    .fill(Color(UIColor.systemBackground))
+                    .frame(width: size * 0.28 + 2, height: size * 0.28 + 2)
+                    .overlay(
+                        Circle()
+                            .fill(Color.green)
+                            .frame(width: size * 0.28, height: size * 0.28)
+                    )
+                    .offset(x: 1, y: 1)
+            }
+        }
+    }
+
+    private var fallbackAvatar: some View {
+        Circle()
+            .fill(Color.slooshAccent.opacity(0.35))
+            .frame(width: size, height: size)
+            .overlay(
+                Text(String(user.displayTitle.prefix(1)).uppercased())
+                    .font(.system(size: size * 0.36, weight: .semibold))
+                    .foregroundColor(.primary)
+            )
+    }
+}
+
+public struct PeakPressButtonStyle: ButtonStyle {
+    public init() {}
+    public func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.98 : 1.0)
+            .opacity(configuration.isPressed ? 0.8 : 1.0)
+            .animation(.spring(duration: 0.2, bounce: 0.3), value: configuration.isPressed)
+    }
+}
+
+public struct PeakDivider: View {
+    public init() {}
+    public var body: some View {
+        Rectangle()
+            .fill(Color.primary.opacity(0.12))
+            .frame(height: 0.5)
     }
 }
