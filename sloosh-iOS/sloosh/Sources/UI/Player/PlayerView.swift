@@ -38,14 +38,7 @@ struct PlayerPresenter: UIViewControllerRepresentable {
         func dismissPlayer() {
             guard !dismissCalled else { return }
             dismissCalled = true
-            if let hc = hostingController {
-                let vcToDismiss = hc.presentingViewController ?? hc
-                vcToDismiss.dismiss(animated: true) { [weak self] in
-                    self?.onDismiss()
-                }
-            } else {
-                onDismiss()
-            }
+            onDismiss()
         }
 
         func didDismiss() {
