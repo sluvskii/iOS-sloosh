@@ -10,6 +10,7 @@ public struct ChatDetailView: View {
 
     @State private var selectedMovieIdForDetails: String? = nil
     @State private var selectedMediaForDirectPlay: MediaCardPayload? = nil
+    @State private var pendingPlayerConfig: PlayerConfig? = nil
     @State private var activePlayerConfig: PlayerConfig? = nil
     @State private var isShowingInfo: Bool = false
     @State private var pollTask: Task<Void, Never>? = nil
@@ -98,10 +99,17 @@ public struct ChatDetailView: View {
         .navigationDestination(item: $selectedMovieIdForDetails) { movieId in
             DetailsView(movieId: movieId, navigationTransitionID: nil, navigationTransitionNamespace: nil)
         }
-        .sheet(item: $selectedMediaForDirectPlay) { media in
+        .sheet(item: $selectedMediaForDirectPlay, onDismiss: {
+            if let pending = pendingPlayerConfig {
+                pendingPlayerConfig = nil
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                    activePlayerConfig = pending
+                }
+            }
+        }) { media in
             HomeDirectPlayWrapper(movieId: media.mediaId, fallbackTitle: media.title) { config in
+                pendingPlayerConfig = config
                 selectedMediaForDirectPlay = nil
-                activePlayerConfig = config
             }
         }
         .fullScreenCover(item: $activePlayerConfig, onDismiss: {

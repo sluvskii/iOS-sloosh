@@ -52,6 +52,7 @@ struct HomeView: View {
     @Namespace private var navigationTransition
     @State private var isFilterCollapsed = false
     @State private var scrollOffsets: [HomeCategory: CGFloat] = [:]
+    @State private var pendingPlayerConfig: PlayerConfig? = nil
 
     private var blurOpacity: Double {
         let offset = scrollOffsets[viewModel.selectedCategory] ?? 0
@@ -141,16 +142,21 @@ struct HomeView: View {
                     navigationTransitionNamespace: nil
                 )
             }
-            .sheet(item: $viewModel.directPlaybackMovie) { movie in
+            .sheet(item: $viewModel.directPlaybackMovie, onDismiss: {
+                if let pending = pendingPlayerConfig {
+                    pendingPlayerConfig = nil
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        viewModel.playerConfig = pending
+                    }
+                }
+            }) { movie in
                 HomeDirectPlayWrapper(
                     movieId: movie.id,
                     fallbackTitle: movie.title ?? movie.name ?? movie.originalTitle ?? "",
                     initialKpId: movie.externalIds?.kp
                 ) { config in
+                    pendingPlayerConfig = config
                     viewModel.directPlaybackMovie = nil
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        viewModel.playerConfig = config
-                    }
                 }
             }
             .fullScreenCover(item: $viewModel.playerConfig, onDismiss: {

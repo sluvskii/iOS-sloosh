@@ -73,6 +73,7 @@ struct PlayerView: View {
     let seriesResult: AllohaApiResult?
 
     @StateObject private var viewModel = PlayerViewModel()
+    @Environment(\.dismiss) private var dismissEnv
 
     init(
         iframeUrl: String? = nil,
@@ -103,6 +104,7 @@ struct PlayerView: View {
     var body: some View {
         PlayerPresenter(vm: viewModel) {
             viewModel.cleanup()
+            dismissEnv()
         }
         .ignoresSafeArea()
         .onAppear {
