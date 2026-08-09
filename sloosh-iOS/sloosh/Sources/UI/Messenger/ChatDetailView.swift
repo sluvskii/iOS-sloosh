@@ -468,54 +468,6 @@ public struct ChatDetailView: View {
     }
 }
 
-// MARK: - iMessage Style Horizontal Reaction Picker
-
-private struct iMessageReactionPickerView: View {
-    let currentMyReaction: String?
-    let onSelect: (String) -> Void
-    private let emojis = ["❤️", "👍", "🔥", "😂", "😢", "👏"]
-
-    var body: some View {
-        HStack(spacing: 8) {
-            ForEach(emojis, id: \.self) { emoji in
-                let isSelected = (currentMyReaction == emoji)
-                Button {
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    onSelect(emoji)
-                } label: {
-                    Text(emoji)
-                        .font(.system(size: 24))
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 4)
-                        .background(
-                            Group {
-                                if isSelected {
-                                    Circle()
-                                        .fill(Color.slooshAccent.opacity(0.3))
-                                }
-                            }
-                        )
-                        .overlay(
-                            Group {
-                                if isSelected {
-                                    Circle()
-                                        .stroke(Color.slooshAccent, lineWidth: 1.5)
-                                }
-                            }
-                        )
-                        .scaleEffect(isSelected ? 1.15 : 1.0)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(OpaquePressButtonStyle())
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 6)
-        .glassEffect(.regular.interactive(), in: Capsule())
-        .shadow(color: .black.opacity(0.2), radius: 10, x: 0, y: 5)
-    }
-}
-
 // MARK: - Peak Message Bubble View (Adaptive Theme + Minute Grouping)
 
 private struct PeakMessageBubbleView: View {
@@ -529,8 +481,6 @@ private struct PeakMessageBubbleView: View {
     let onEdit: (ChatMessage) -> Void
     let onDelete: (ChatMessage) -> Void
     let onReact: (String, ChatMessage) -> Void
-
-    @State private var showReactionPicker: Bool = false
 
     private var myCurrentReaction: String? {
         guard let myId = AuthRepository.shared.currentUser?.id else { return nil }
@@ -548,17 +498,7 @@ private struct PeakMessageBubbleView: View {
         HStack(alignment: .bottom, spacing: 6) {
             if isFromMe { Spacer(minLength: 60) }
 
-            VStack(alignment: isFromMe ? .trailing : .leading, spacing: 5) {
-                if showReactionPicker {
-                    iMessageReactionPickerView(currentMyReaction: myCurrentReaction) { emoji in
-                        onReact(emoji, message)
-                        withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
-                            showReactionPicker = false
-                        }
-                    }
-                    .transition(.scale(scale: 0.35).combined(with: .opacity).combined(with: .move(edge: .bottom)))
-                }
-
+            VStack(alignment: isFromMe ? .trailing : .leading, spacing: 3) {
                 ZStack(alignment: isFromMe ? .bottomTrailing : .bottomLeading) {
                     bubbleBody
                         .onTapGesture(count: 2) {
@@ -580,7 +520,6 @@ private struct PeakMessageBubbleView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, showMeta ? 3 : 1)
-        .animation(.spring(response: 0.32, dampingFraction: 0.78), value: showReactionPicker)
     }
 
     @ViewBuilder
@@ -592,12 +531,13 @@ private struct PeakMessageBubbleView: View {
                 onPlayDirectly(payload)
             })
             .contextMenu {
-                Button {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) {
-                        showReactionPicker.toggle()
-                    }
-                } label: {
-                    Label("Реакция...", systemImage: "face.smiling")
+                Section("Реакция") {
+                    Button(myCurrentReaction == "❤️" ? "❤️ (Снять)" : "❤️") { onReact("❤️", message) }
+                    Button(myCurrentReaction == "👍" ? "👍 (Снять)" : "👍") { onReact("👍", message) }
+                    Button(myCurrentReaction == "🔥" ? "🔥 (Снять)" : "🔥") { onReact("🔥", message) }
+                    Button(myCurrentReaction == "😂" ? "😂 (Снять)" : "😂") { onReact("😂", message) }
+                    Button(myCurrentReaction == "😢" ? "😢 (Снять)" : "😢") { onReact("😢", message) }
+                    Button(myCurrentReaction == "👏" ? "👏 (Снять)" : "👏") { onReact("👏", message) }
                 }
 
                 Button {
@@ -659,12 +599,13 @@ private struct PeakMessageBubbleView: View {
                     .stroke(Color.primary.opacity(0.06), lineWidth: isFromMe ? 0 : 0.5)
             )
             .contextMenu {
-                Button {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) {
-                        showReactionPicker.toggle()
-                    }
-                } label: {
-                    Label("Реакция...", systemImage: "face.smiling")
+                Section("Реакция") {
+                    Button(myCurrentReaction == "❤️" ? "❤️ (Снять)" : "❤️") { onReact("❤️", message) }
+                    Button(myCurrentReaction == "👍" ? "👍 (Снять)" : "👍") { onReact("👍", message) }
+                    Button(myCurrentReaction == "🔥" ? "🔥 (Снять)" : "🔥") { onReact("🔥", message) }
+                    Button(myCurrentReaction == "😂" ? "😂 (Снять)" : "😂") { onReact("😂", message) }
+                    Button(myCurrentReaction == "😢" ? "😢 (Снять)" : "😢") { onReact("😢", message) }
+                    Button(myCurrentReaction == "👏" ? "👏 (Снять)" : "👏") { onReact("👏", message) }
                 }
 
                 Button {
