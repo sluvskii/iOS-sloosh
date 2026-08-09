@@ -182,9 +182,9 @@ public struct ChatDetailView: View {
                         Spacer(minLength: 0)
 
                         LazyVStack(spacing: 0) {
-                            ForEach(Array(messages.enumerated()), id: \.element.id) { index, message in
+                            ForEach(messages) { message in
                                 let isFromMe = message.senderId == (AuthRepository.shared.currentUser?.id ?? "")
-                                let showMeta = shouldShowMeta(for: index)
+                                let showMeta = shouldShowMeta(for: message)
 
                                 PeakMessageBubbleView(
                                     message: message,
@@ -248,11 +248,10 @@ public struct ChatDetailView: View {
         }
     }
 
-    private func shouldShowMeta(for index: Int) -> Bool {
-        guard index < messages.count - 1 else { return true }
-        let current = messages[index]
+    private func shouldShowMeta(for message: ChatMessage) -> Bool {
+        guard let index = messages.firstIndex(where: { $0.id == message.id }), index < messages.count - 1 else { return true }
         let next = messages[index + 1]
-        if current.senderId == next.senderId && isSameMinute(ms1: current.timestampMs, ms2: next.timestampMs) {
+        if message.senderId == next.senderId && isSameMinute(ms1: message.timestampMs, ms2: next.timestampMs) {
             return false
         }
         return true
