@@ -56,11 +56,15 @@ struct PlayerLauncherRepresentable: UIViewControllerRepresentable {
         let coordinator = context.coordinator
 
         if let config, !coordinator.isPresented {
-            // Запускаем плеер
-            coordinator.present(config: config, from: anchor, onDismiss: onDismiss)
+            // Асинхронно запускаем плеер на следующем тике RunLoop, 
+            // чтобы не монтировать modal UIViewController во время фазы SwiftUI ViewGraph update
+            DispatchQueue.main.async {
+                coordinator.present(config: config, from: anchor, onDismiss: onDismiss)
+            }
         } else if config == nil, coordinator.isPresented {
-            // Закрываем плеер программно (если нужно)
-            coordinator.dismiss()
+            DispatchQueue.main.async {
+                coordinator.dismiss()
+            }
         }
     }
 
@@ -74,6 +78,7 @@ struct PlayerLauncherRepresentable: UIViewControllerRepresentable {
 
         func present(config: PlayerLaunchConfig, from anchor: UIViewController, onDismiss: @escaping () -> Void) {
             guard !isPresented else { return }
+            isPresented = true
 
             // Создаём ViewModel и инициализируем её
             let vm = PlayerViewModel()
