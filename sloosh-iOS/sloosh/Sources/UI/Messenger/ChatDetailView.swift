@@ -171,46 +171,59 @@ public struct ChatDetailView: View {
 
     private var messageList: some View {
         ScrollViewReader { proxy in
-            ScrollView {
-                LazyVStack(spacing: 0) {
-                    ForEach(Array(messages.enumerated()), id: \.element.id) { index, message in
-                        let isFromMe = message.senderId == (AuthRepository.shared.currentUser?.id ?? "")
-                        let showMeta = shouldShowMeta(for: index)
+            GeometryReader { geometry in
+                ScrollView {
+                    VStack(spacing: 0) {
+                        Spacer(minLength: 0)
 
-                        PeakMessageBubbleView(
-                            message: message,
-                            isFromMe: isFromMe,
-                            showMeta: showMeta,
-                            allMessages: messages,
-                            onOpenMovie: { movieId in
-                                selectedMovieIdForDetails = movieId
-                            },
-                            onPlayDirectly: { media in
-                                selectedMediaForDirectPlay = media
-                            },
-                            onReply: { msg in
-                                replyingMessage = msg
-                                isInputFocused = true
-                            },
-                            onEdit: { msg in
-                                editingMessage = msg
-                                messageText = msg.text ?? ""
-                                isInputFocused = true
-                            },
-                            onReact: { emoji, msg in
-                                addReaction(emoji, to: msg)
+                        LazyVStack(spacing: 0) {
+                            ForEach(Array(messages.enumerated()), id: \.element.id) { index, message in
+                                let isFromMe = message.senderId == (AuthRepository.shared.currentUser?.id ?? "")
+                                let showMeta = shouldShowMeta(for: index)
+
+                                PeakMessageBubbleView(
+                                    message: message,
+                                    isFromMe: isFromMe,
+                                    showMeta: showMeta,
+                                    allMessages: messages,
+                                    onOpenMovie: { movieId in
+                                        selectedMovieIdForDetails = movieId
+                                    },
+                                    onPlayDirectly: { media in
+                                        selectedMediaForDirectPlay = media
+                                    },
+                                    onReply: { msg in
+                                        replyingMessage = msg
+                                        isInputFocused = true
+                                    },
+                                    onEdit: { msg in
+                                        editingMessage = msg
+                                        messageText = msg.text ?? ""
+                                        isInputFocused = true
+                                    },
+                                    onReact: { emoji, msg in
+                                        addReaction(emoji, to: msg)
+                                    }
+                                )
+                                .id(message.id)
                             }
-                        )
-                        .id(message.id)
+                        }
+                    }
+                    .frame(minHeight: geometry.size.height, alignment: .bottom)
+                    .padding(.vertical, 8)
+                }
+                .defaultScrollAnchor(.bottom)
+                .scrollContentBackground(.hidden)
+                .scrollDismissesKeyboard(.interactively)
+                .onChange(of: messages.count) { _, _ in
+                    if let lastId = messages.last?.id {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                            proxy.scrollTo(lastId, anchor: .bottom)
+                        }
                     }
                 }
-                .padding(.vertical, 8)
-            }
-            .scrollContentBackground(.hidden)
-            .scrollDismissesKeyboard(.interactively)
-            .onChange(of: messages.count) { _, _ in
-                if let lastId = messages.last?.id {
-                    withAnimation(.easeOut(duration: 0.2)) {
+                .onAppear {
+                    if let lastId = messages.last?.id {
                         proxy.scrollTo(lastId, anchor: .bottom)
                     }
                 }
