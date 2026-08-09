@@ -87,6 +87,9 @@ struct ContentView: View {
                 }
             }
             .withToasts()
+            .task {
+                CloudSyncService.shared.syncAllData()
+            }
             .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("SlooshIntentPlayMovie"))) { notification in
                 selectedTab = .home
             }
