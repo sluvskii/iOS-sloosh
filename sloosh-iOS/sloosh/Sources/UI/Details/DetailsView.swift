@@ -74,25 +74,14 @@ struct DetailsView: View {
     let navigationTransitionNamespace: Namespace.ID?
     @StateObject private var viewModel = DetailsViewModel()
     
-    @State private var showPlayer = false
+    @State private var playerConfig: PlayerLaunchConfig? = nil
     @State private var showSourceSheet = false
-    @State private var selectedIframeUrl: String? = nil
     @State private var sourceSheetTitle = ""
     @State private var sourceFetchTask: Task<Void, Never>?
     @State private var sourceSheetDetent: PresentationDetent = .medium
     @State private var sourceSheetMode: SourceSelectionMode = .play
     @Namespace private var transition
     @State private var sourceSheetSourceID: String = "playBtn"
-    
-    @State private var playerKpId: Int?
-    @State private var playerSeason: Int?
-    @State private var playerEpisode: Int?
-    @State private var playerVoiceover: String?
-    @State private var playerStreamUrl: String?
-    @State private var playerVoices: [String] = []
-    @State private var playerSubtitles: [PlaybackSubtitle] = []
-    @State private var playerQuality: VideoQualityPreference? = nil
-    @State private var playerSeriesResult: AllohaApiResult?
     @State private var favoriteBounce = false
     @State private var movieToDelete: DownloadItem? = nil
     @State private var showDeleteMovieAlert = false
@@ -248,27 +237,43 @@ struct DetailsView: View {
                               let result = wrapper.allohaResult {
                         SourceSelectionView(mode: sourceSheetMode, result: result, kpId: wrapper.kpId, details: viewModel.details) { translation, season, episode, quality in
                             if sourceSheetMode == .play {
-                                playerKpId = wrapper.kpId
-                                playerSeason = season
-                                playerEpisode = episode
-                                playerQuality = quality
-                                playerSeriesResult = result
-                                playerVoices = result.allTranslationNames
+                                let details = viewModel.details
+                                let fallbackTitle = details?.title ?? details?.originalTitle ?? ""
                                 
+                                // Проверяем есть ли скачанная версия
                                 if let kpId = wrapper.kpId,
                                    DownloadManager.shared.isDownloaded(kpId: kpId, season: season, episode: episode),
                                    let downloadItem = DownloadManager.shared.getDownloadItem(kpId: kpId, season: season, episode: episode),
                                    downloadItem.translationName == translation.name {
-                                    selectedIframeUrl = nil
-                                    playerVoiceover = downloadItem.translationName
-                                    playerStreamUrl = downloadItem.localPlayableUrl?.absoluteString
+                                    playerConfig = PlayerLaunchConfig(
+                                        iframeUrl: nil,
+                                        directStreamUrl: downloadItem.localPlayableUrl?.absoluteString,
+                                        fallbackTitle: fallbackTitle,
+                                        kpId: wrapper.kpId,
+                                        season: season,
+                                        episode: episode,
+                                        selectedVoiceover: downloadItem.translationName,
+                                        voices: result.allTranslationNames,
+                                        subtitles: [],
+                                        initialQuality: quality,
+                                        seriesResult: result
+                                    )
                                 } else {
-                                    selectedIframeUrl = translation.iframeUrl
-                                    playerVoiceover = translation.name
-                                    playerStreamUrl = translation.streamUrl
+                                    playerConfig = PlayerLaunchConfig(
+                                        iframeUrl: translation.iframeUrl,
+                                        directStreamUrl: translation.streamUrl,
+                                        fallbackTitle: fallbackTitle,
+                                        kpId: wrapper.kpId,
+                                        season: season,
+                                        episode: episode,
+                                        selectedVoiceover: translation.name,
+                                        voices: result.allTranslationNames,
+                                        subtitles: [],
+                                        initialQuality: quality,
+                                        seriesResult: result
+                                    )
                                 }
                                 
-                                showPlayer = true
                                 viewModel.saveAllohaTranslation(translation.name)
                             } else {
                                 if let details = viewModel.details {
@@ -290,43 +295,9 @@ struct DetailsView: View {
                 .presentationDetents([.medium, .large], selection: $sourceSheetDetent)
                 .navigationTransition(.zoom(sourceID: sourceSheetSourceID, in: transition))
             }
-            .fullScreenCover(isPresented: $showPlayer, onDismiss: {
-                showPlayer = false
+            .playerLauncher(config: playerConfig) {
+                playerConfig = nil
                 showSourceSheet = false
-                selectedIframeUrl = nil
-                playerKpId = nil
-                playerSeason = nil
-                playerEpisode = nil
-                playerVoiceover = nil
-                playerStreamUrl = nil
-                playerVoices = []
-                playerSubtitles = []
-                playerQuality = nil
-                playerSeriesResult = nil
-            }) {
-                if let details = viewModel.details {
-                    if let iframeUrl = selectedIframeUrl {
-                        PlayerView(iframeUrl: iframeUrl, fallbackTitle: details.title ?? details.originalTitle ?? "", kpId: playerKpId, season: playerSeason, episode: playerEpisode, selectedVoiceover: playerVoiceover, directStreamUrl: playerStreamUrl, voices: playerVoices, subtitles: playerSubtitles, initialQuality: playerQuality, seriesResult: playerSeriesResult)
-                    } else if let streamUrl = playerStreamUrl {
-                        PlayerView(iframeUrl: "", fallbackTitle: details.title ?? details.originalTitle ?? "", kpId: playerKpId, season: playerSeason, episode: playerEpisode, selectedVoiceover: playerVoiceover, directStreamUrl: streamUrl, voices: playerVoices, subtitles: playerSubtitles, initialQuality: playerQuality, seriesResult: playerSeriesResult)
-                    } else {
-                        ZStack {
-                            Color.black.ignoresSafeArea()
-                            VStack(spacing: 20) {
-                                Text("Видео не найдено")
-                                    .foregroundColor(.white)
-                                    .font(.headline)
-                                Button("Закрыть") {
-                                    showPlayer = false
-                                }
-                                .foregroundColor(.white)
-                                .padding()
-                                .background(Color.white.opacity(0.2))
-                                .cornerRadius(8)
-                            }
-                        }
-                    }
-                }
             }
         .alert("Удалить фильм?", isPresented: $showDeleteMovieAlert) {
             Button("Отмена", role: .cancel) {}

@@ -3,145 +3,107 @@ import AVKit
 import AVFoundation
 import MediaPlayer
 
-// MARK: - UIViewControllerRepresentable: запускает PlayerHostingController
-// Это точка входа из SwiftUI fullScreenCover → UIKit-контроллер, который управляет landscape-ориентацией
+// MARK: - PlayerPresentationAnchor
+//
+// Якорный UIViewControllerRepresentable.
+// Возвращает ПУСТОЙ прозрачный UIViewController (anchor),
+// который затем ПРЕЗЕНТУЕТ PlayerHostingController как настоящий UIKit full-screen модал.
+//
+// Это принципиально отличается от старого подхода, где PlayerHostingController
+// добавлялся как дочерний (child) VC — в этом случае lifecycle-методы и ориентация
+// не работали корректно, создавая цикл открытия/закрытия.
+
+private final class AnchorViewController: UIViewController {
+    // Пустой прозрачный контроллер — служит точкой презентации
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .clear
+        view.isUserInteractionEnabled = false
+    }
+}
 
 struct PlayerPresenter: UIViewControllerRepresentable {
     @ObservedObject var vm: PlayerViewModel
     var onDismiss: () -> Void
 
-    func makeUIViewController(context: Context) -> PlayerHostingController<PlayerContainerView> {
-        let container = PlayerContainerView(vm: vm, onDismiss: {
-            context.coordinator.dismissPlayer()
-        })
-        let hc = PlayerHostingController(rootView: container)
-        hc.onDismissed = {
-            context.coordinator.didDismiss()
-        }
-        context.coordinator.hostingController = hc
-        return hc
+    func makeUIViewController(context: Context) -> AnchorViewController {
+        let anchor = AnchorViewController()
+        context.coordinator.anchor = anchor
+        return anchor
     }
 
-    func updateUIViewController(_ uiViewController: PlayerHostingController<PlayerContainerView>, context: Context) {
-        // vm обновляется через @ObservedObject, перерисовка SwiftUI-view автоматическая
+    func updateUIViewController(_ anchor: AnchorViewController, context: Context) {
+        // Нет дополнительных обновлений — управление происходит через Coordinator
     }
 
-    func makeCoordinator() -> Coordinator { Coordinator(onDismiss: onDismiss) }
+    func makeCoordinator() -> Coordinator { Coordinator(vm: vm, onDismiss: onDismiss) }
 
     class Coordinator {
-        weak var hostingController: UIViewController?
-        private let onDismiss: () -> Void
-        private var dismissCalled = false
+        weak var anchor: UIViewController?
+        let vm: PlayerViewModel
+        let onDismiss: () -> Void
+        private var playerHostingController: PlayerHostingController<PlayerContainerView>?
+        private var isDismissing = false
 
-        init(onDismiss: @escaping () -> Void) { self.onDismiss = onDismiss }
+        init(vm: PlayerViewModel, onDismiss: @escaping () -> Void) {
+            self.vm = vm
+            self.onDismiss = onDismiss
+        }
 
+        /// Вызывается из PlayerContainerView → TopBarView при нажатии кнопки ×
+        func presentPlayer() {
+            guard let anchor, anchor.presentedViewController == nil else { return }
+            guard !isDismissing else { return }
+
+            let container = PlayerContainerView(vm: vm, onDismiss: { [weak self] in
+                self?.dismissPlayer()
+            })
+            let hc = PlayerHostingController(rootView: container)
+            hc.modalPresentationStyle = .fullScreen
+            hc.onDismissed = { [weak self] in
+                // viewDidDisappear PlayerHostingController — после полного завершения анимации dismiss
+                // Здесь уже безопасно сбрасывать ориентацию, т.к. контроллер закрыт
+                guard let self else { return }
+                self.playerHostingController = nil
+                self.isDismissing = false
+                self.onDismiss()
+            }
+            self.playerHostingController = hc
+
+            // Находим реальный topmost VC для презентации
+            let presenter = topViewController(from: anchor)
+            presenter.present(hc, animated: true)
+        }
+
+        /// Вызывается при нажатии × — инициирует закрытие
         func dismissPlayer() {
-            guard !dismissCalled else { return }
-            dismissCalled = true
-            if let hc = hostingController {
-                let vcToDismiss = hc.presentingViewController ?? hc
-                vcToDismiss.dismiss(animated: true) { [weak self] in
-                    // Меняем ориентацию строго ПОСЛЕ завершения анимации dismiss.
-                    // Это предотвращает race condition: ориентация менялась
-                    // в середине анимации, iOS отменял dismiss, создавая loop.
-                    AppDelegate.lockToPortrait()
-                    self?.onDismiss()
-                }
+            guard !isDismissing else { return }
+            isDismissing = true
+            if let hc = playerHostingController {
+                hc.dismiss(animated: true)
+                // lockToPortrait вызывается в viewDidDisappear PlayerHostingController
             } else {
-                AppDelegate.lockToPortrait()
+                isDismissing = false
                 onDismiss()
             }
         }
 
-        func didDismiss() {
-            guard !dismissCalled else { return }
-            dismissCalled = true
-            AppDelegate.lockToPortrait()
-            onDismiss()
+        private func topViewController(from base: UIViewController) -> UIViewController {
+            if let presented = base.presentedViewController {
+                return topViewController(from: presented)
+            }
+            return base
         }
     }
 }
 
-// MARK: - PlayerView — публичная SwiftUI точка входа
+// MARK: - PlayerView
+// DEPRECATED: не используется напрямую. Вся логика запуска плеера
+// перенесена в PlayerLauncher.swift (playerLauncher view modifier).
+// Файл оставлен для хранения PlayerViewModel и связанных типов.
 
 struct PlayerView: View {
-    let iframeUrl: String?
-    let fallbackTitle: String
-    let kpId: Int?
-    let season: Int?
-    let episode: Int?
-    let selectedVoiceover: String?
-    /// Pre-resolved direct stream URL. When set, skips iframe resolution and name-matching.
-    let directStreamUrl: String?
-    let voices: [String]
-    let subtitles: [PlaybackSubtitle]
-    let initialQuality: VideoQualityPreference?
-    let seriesResult: AllohaApiResult?
-
-    @StateObject private var viewModel = PlayerViewModel()
-    @Environment(\.dismiss) private var dismissEnv
-
-    init(
-        iframeUrl: String? = nil,
-        fallbackTitle: String,
-        kpId: Int? = nil,
-        season: Int? = nil,
-        episode: Int? = nil,
-        selectedVoiceover: String? = nil,
-        directStreamUrl: String? = nil,
-        voices: [String] = [],
-        subtitles: [PlaybackSubtitle] = [],
-        initialQuality: VideoQualityPreference? = nil,
-        seriesResult: AllohaApiResult? = nil
-    ) {
-        self.iframeUrl = iframeUrl
-        self.fallbackTitle = fallbackTitle
-        self.kpId = kpId
-        self.season = season
-        self.episode = episode
-        self.selectedVoiceover = selectedVoiceover
-        self.directStreamUrl = directStreamUrl
-        self.voices = voices
-        self.subtitles = subtitles
-        self.initialQuality = initialQuality
-        self.seriesResult = seriesResult
-    }
-
-    var body: some View {
-        PlayerPresenter(vm: viewModel) {
-            viewModel.cleanup()
-        }
-        .ignoresSafeArea()
-        .onAppear {
-            guard viewModel.player == nil else { return }
-            viewModel.player = AVPlayer()
-            viewModel.fallbackTitle = fallbackTitle
-            viewModel.targetQualityPreference = initialQuality
-            viewModel.seriesResult = seriesResult
-
-            if iframeUrl != nil || directStreamUrl != nil {
-                viewModel.load(
-                    iframeUrl: iframeUrl,
-                    kpId: kpId,
-                    season: season,
-                    episode: episode,
-                    selectedVoiceover: selectedVoiceover,
-                    directStreamUrl: directStreamUrl,
-                    voices: voices,
-                    subtitles: subtitles
-                )
-            } else {
-                viewModel.error = "Нет URL для воспроизведения"
-                viewModel.isLoading = false
-            }
-        }
-        .onDisappear {
-            // Не вызываем lockToPortrait() здесь — это срабатывает
-            // в середине анимации dismiss и вызывает loop открытия/закрытия.
-            // Смена ориентации управляется только из Coordinator.dismissPlayer().
-            viewModel.cleanup()
-        }
-    }
+    var body: some View { Color.clear }
 }
 
 

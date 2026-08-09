@@ -1,19 +1,6 @@
 import SwiftUI
 
-struct PlayerConfig: Identifiable {
-    let id = UUID()
-    let iframeUrl: String?
-    let title: String
-    let kpId: Int?
-    let season: Int?
-    let episode: Int?
-    let voiceover: String?
-    let streamUrl: String?
-    let voices: [String]
-    let subtitles: [PlaybackSubtitle]
-    let quality: VideoQualityPreference?
-    let seriesResult: AllohaApiResult?
-}
+// PlayerConfig удалён — используется PlayerLaunchConfig из PlayerLauncher.swift
 
 struct HomeDirectPlayWrapper: View {
     let movieId: String
@@ -22,7 +9,7 @@ struct HomeDirectPlayWrapper: View {
     
     @StateObject private var viewModel = DetailsViewModel()
     @State private var fetchAttempted = false
-    @State private var playerConfig: PlayerConfig? = nil
+    @State private var launchConfig: PlayerLaunchConfig? = nil
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -33,18 +20,18 @@ struct HomeDirectPlayWrapper: View {
             } else if let wrapper = viewModel.sourceResultWrapper,
                       let result = wrapper.allohaResult {
                 SourceSelectionView(mode: .play, result: result, kpId: wrapper.kpId, details: viewModel.details) { translation, season, episode, quality in
-                    guard playerConfig == nil else { return }
-                    playerConfig = PlayerConfig(
+                    guard launchConfig == nil else { return }
+                    launchConfig = PlayerLaunchConfig(
                         iframeUrl: translation.iframeUrl,
-                        title: viewModel.details?.title ?? fallbackTitle,
+                        directStreamUrl: translation.streamUrl,
+                        fallbackTitle: viewModel.details?.title ?? fallbackTitle,
                         kpId: wrapper.kpId,
                         season: season,
                         episode: episode,
-                        voiceover: translation.name,
-                        streamUrl: translation.streamUrl,
+                        selectedVoiceover: translation.name,
                         voices: result.allTranslationNames,
                         subtitles: [],
-                        quality: quality,
+                        initialQuality: quality,
                         seriesResult: result
                     )
                 }
@@ -59,23 +46,9 @@ struct HomeDirectPlayWrapper: View {
         .animation(.easeInOut(duration: 0.3), value: fetchAttempted)
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
-        .fullScreenCover(item: $playerConfig, onDismiss: {
-            playerConfig = nil
+        .playerLauncher(config: launchConfig) {
+            launchConfig = nil
             dismiss()
-        }) { config in
-            PlayerView(
-                iframeUrl: config.iframeUrl,
-                fallbackTitle: config.title,
-                kpId: config.kpId,
-                season: config.season,
-                episode: config.episode,
-                selectedVoiceover: config.voiceover,
-                directStreamUrl: config.streamUrl,
-                voices: config.voices,
-                subtitles: config.subtitles,
-                initialQuality: config.quality,
-                seriesResult: config.seriesResult
-            )
         }
         .task {
             if let initialKpId = initialKpId, initialKpId > 0 {
