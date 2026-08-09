@@ -559,6 +559,8 @@ private struct PeakMessageBubbleView: View {
     let onLongPress: (ChatMessage, CGRect) -> Void
 
     @State private var selfFrame: CGRect = .zero
+    @State private var dragOffset: CGFloat = 0
+    @State private var hasTriggeredHaptic: Bool = false
 
     private var myCurrentReaction: String? {
         guard let myId = AuthRepository.shared.currentUser?.id else { return nil }
@@ -573,31 +575,66 @@ private struct PeakMessageBubbleView: View {
     }
 
     var body: some View {
-        HStack(alignment: .bottom, spacing: 6) {
-            if isFromMe { Spacer(minLength: 60) }
-
-            VStack(alignment: isFromMe ? .trailing : .leading, spacing: 3) {
-                ZStack(alignment: isFromMe ? .bottomTrailing : .bottomLeading) {
-                    bubbleBody
-                        .onTapGesture(count: 2) {
-                            onReact("❤️", message)
-                        }
-
-                    if let msgReactions = message.reactions, !msgReactions.isEmpty {
-                        reactionsOverlay(msgReactions)
-                    }
-                }
-                .padding(.bottom, (message.reactions?.isEmpty == false) ? 8 : 0)
-
-                if showMeta {
-                    metaRow
-                }
+        ZStack(alignment: .trailing) {
+            // Иконка ответа Telegram при свайпе влево
+            if dragOffset < -10 {
+                Image(systemName: "arrowshape.turn.up.left.circle.fill")
+                    .font(.system(size: 26, weight: .semibold))
+                    .foregroundColor(.slooshAccent)
+                    .scaleEffect(min(1.2, max(0.6, abs(dragOffset) / 45.0)))
+                    .padding(.trailing, 16)
+                    .transition(.opacity)
             }
 
-            if !isFromMe { Spacer(minLength: 60) }
+            HStack(alignment: .bottom, spacing: 6) {
+                if isFromMe { Spacer(minLength: 60) }
+
+                VStack(alignment: isFromMe ? .trailing : .leading, spacing: 3) {
+                    ZStack(alignment: isFromMe ? .bottomTrailing : .bottomLeading) {
+                        bubbleBody
+                            .onTapGesture(count: 2) {
+                                onReact("❤️", message)
+                            }
+
+                        if let msgReactions = message.reactions, !msgReactions.isEmpty {
+                            reactionsOverlay(msgReactions)
+                        }
+                    }
+                    .padding(.bottom, (message.reactions?.isEmpty == false) ? 8 : 0)
+
+                    if showMeta {
+                        metaRow
+                    }
+                }
+
+                if !isFromMe { Spacer(minLength: 60) }
+            }
+            .offset(x: dragOffset)
+            .gesture(
+                DragGesture(minimumDistance: 15, coordinateSpace: .local)
+                    .onChanged { value in
+                        if value.translation.width < 0 {
+                            let translation = value.translation.width
+                            self.dragOffset = max(-65, translation)
+                            if self.dragOffset <= -42 && !hasTriggeredHaptic {
+                                hasTriggeredHaptic = true
+                                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                            }
+                        }
+                    }
+                    .onEnded { _ in
+                        if dragOffset <= -40 {
+                            onReply(message)
+                        }
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.76)) {
+                            dragOffset = 0
+                        }
+                        hasTriggeredHaptic = false
+                    }
+            )
+            .padding(.horizontal, 12)
+            .padding(.vertical, showMeta ? 3 : 1)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, showMeta ? 3 : 1)
         .background(
             GeometryReader { geo in
                 Color.clear
