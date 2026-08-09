@@ -188,42 +188,54 @@ public struct ChatDetailView: View {
         }
     }
 
-    // MARK: - Input Bar (iOS 26+ Liquid Glass)
+    // MARK: - Animated Telegram Style Input Bar (iOS 26+ Liquid Glass)
+
+    private var hasTextToSending: Bool {
+        !messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
 
     private var inputBar: some View {
-        HStack(alignment: .bottom, spacing: 10) {
-            // Floating Glass Text Field Panel
+        HStack(alignment: .bottom, spacing: 8) {
+            // Floating Glass Text Field Capsule
             HStack(alignment: .bottom, spacing: 8) {
                 TextField("Сообщение", text: $messageText, axis: .vertical)
                     .font(.system(size: 16))
                     .foregroundColor(.primary)
                     .lineLimit(1...6)
                     .focused($isInputFocused)
-                    .padding(.vertical, 10)
-                    .padding(.horizontal, 14)
+                    .padding(.vertical, 9)
+                    .padding(.horizontal, 16)
             }
-            .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 24, style: .continuous))
+            .glassEffect(.regular.interactive(), in: Capsule())
 
-            // Separate Floating Glass Send Button
-            Button {
-                sendMessage()
-            } label: {
-                ZStack {
-                    Circle()
-                        .fill(Color.slooshAccent)
-                        .frame(width: 44, height: 44)
+            // Telegram-style Animated Sliding/Popping Send Button
+            if hasTextToSending {
+                Button {
+                    sendMessage()
+                } label: {
+                    ZStack {
+                        Circle()
+                            .fill(Color.slooshAccent)
+                            .frame(width: 40, height: 40)
 
-                    Image(systemName: "arrow.up")
-                        .font(.system(size: 18, weight: .bold))
-                        .foregroundColor(.black)
+                        Image(systemName: "arrow.up")
+                            .font(.system(size: 17, weight: .bold))
+                            .foregroundColor(.black)
+                    }
+                    .glassEffect(.regular.interactive(), in: Circle())
                 }
-                .glassEffect(.regular.interactive(), in: Circle())
+                .transition(
+                    .asymmetric(
+                        insertion: .scale(scale: 0.3).combined(with: .opacity).combined(with: .move(edge: .trailing)),
+                        removal: .scale(scale: 0.3).combined(with: .opacity).combined(with: .move(edge: .trailing))
+                    )
+                )
+                .disabled(isSending)
             }
-            .disabled(messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSending)
-            .opacity(messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.35 : 1.0)
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 6)
+        .animation(.spring(response: 0.32, dampingFraction: 0.78), value: hasTextToSending)
     }
 
     // MARK: - Actions & Logic
