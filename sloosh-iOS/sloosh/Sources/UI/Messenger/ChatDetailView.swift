@@ -1,3 +1,6 @@
+import SwiftUI
+import CoreGraphics
+
 struct OverlayTarget: Equatable {
     let message: ChatMessage
     let frame: CGRect
