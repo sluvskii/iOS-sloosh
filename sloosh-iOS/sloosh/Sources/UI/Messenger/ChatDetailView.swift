@@ -222,6 +222,15 @@ public struct ChatDetailView: View {
                         }
                     }
                 }
+                .onChange(of: isInputFocused) { _, isFocused in
+                    if isFocused, let lastId = messages.last?.id {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                            withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                                proxy.scrollTo(lastId, anchor: .bottom)
+                            }
+                        }
+                    }
+                }
                 .onAppear {
                     if let lastId = messages.last?.id {
                         proxy.scrollTo(lastId, anchor: .bottom)
@@ -253,19 +262,32 @@ public struct ChatDetailView: View {
         !messageText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    private var isMultilineInput: Bool {
+        messageText.contains("\n") || messageText.count > 32
+    }
+
+    private var inputBarCornerRadius: CGFloat {
+        isMultilineInput ? 18 : 22
+    }
+
     private var inputBar: some View {
         HStack(alignment: .bottom, spacing: 8) {
-            // Floating Glass Text Field Capsule
+            // Floating Glass Text Field Capsule / Rounded Box (Telegram-style morphing shape)
             HStack(alignment: .bottom, spacing: 8) {
                 TextField("Сообщение", text: $messageText, axis: .vertical)
                     .font(.system(size: 16))
                     .foregroundColor(.primary)
                     .lineLimit(1...6)
                     .focused($isInputFocused)
-                    .padding(.vertical, 9)
+                    .padding(.vertical, 10)
                     .padding(.horizontal, 16)
+                    .frame(minHeight: 40)
             }
-            .glassEffect(.regular.interactive(), in: Capsule())
+            .glassEffect(
+                .regular.interactive(),
+                in: RoundedRectangle(cornerRadius: inputBarCornerRadius, style: .continuous)
+            )
+            .animation(.easeInOut(duration: 0.2), value: isMultilineInput)
 
             // Telegram-style Animated Sliding/Popping Send Button
             if hasTextToSending {
