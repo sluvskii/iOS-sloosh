@@ -19,11 +19,12 @@ struct HomeDirectPlayWrapper: View {
     let movieId: String
     let fallbackTitle: String
     var initialKpId: Int? = nil
-    let onPlay: (PlayerConfig) -> Void
     
     @StateObject private var viewModel = DetailsViewModel()
     @State private var fetchAttempted = false
-    
+    @State private var playerConfig: PlayerConfig? = nil
+    @Environment(\.dismiss) private var dismiss
+
     var body: some View {
         ZStack {
             if !fetchAttempted || viewModel.isFetchingSources || viewModel.isLoading {
@@ -32,7 +33,8 @@ struct HomeDirectPlayWrapper: View {
             } else if let wrapper = viewModel.sourceResultWrapper,
                       let result = wrapper.allohaResult {
                 SourceSelectionView(mode: .play, result: result, kpId: wrapper.kpId, details: viewModel.details) { translation, season, episode, quality in
-                    let config = PlayerConfig(
+                    guard playerConfig == nil else { return }
+                    playerConfig = PlayerConfig(
                         iframeUrl: translation.iframeUrl,
                         title: viewModel.details?.title ?? fallbackTitle,
                         kpId: wrapper.kpId,
@@ -45,7 +47,6 @@ struct HomeDirectPlayWrapper: View {
                         quality: quality,
                         seriesResult: result
                     )
-                    onPlay(config)
                 }
                 .transition(.opacity)
             } else {
@@ -58,6 +59,25 @@ struct HomeDirectPlayWrapper: View {
         .animation(.easeInOut(duration: 0.3), value: fetchAttempted)
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
+        .fullScreenCover(item: $playerConfig, onDismiss: {
+            playerConfig = nil
+            AppDelegate.lockToPortrait()
+            dismiss()
+        }) { config in
+            PlayerView(
+                iframeUrl: config.iframeUrl,
+                fallbackTitle: config.title,
+                kpId: config.kpId,
+                season: config.season,
+                episode: config.episode,
+                selectedVoiceover: config.voiceover,
+                directStreamUrl: config.streamUrl,
+                voices: config.voices,
+                subtitles: config.subtitles,
+                initialQuality: config.quality,
+                seriesResult: config.seriesResult
+            )
+        }
         .task {
             if let initialKpId = initialKpId, initialKpId > 0 {
                 await viewModel.fetchSources(kpId: initialKpId, title: fallbackTitle)
