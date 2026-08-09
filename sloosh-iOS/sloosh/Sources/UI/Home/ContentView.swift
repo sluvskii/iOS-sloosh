@@ -60,28 +60,32 @@ struct ContentView: View {
                 .tint(Color.slooshAccent)
                 
                 if UIDevice.current.userInterfaceIdiom == .phone && proxy.safeAreaInsets.top > 20 {
+                    let isDynamicIsland = proxy.safeAreaInsets.top >= 54
+                    let topPadding: CGFloat = isDynamicIsland ? 11 : (proxy.safeAreaInsets.top >= 44 ? 5 : 2)
+                    let logoHeight: CGFloat = isDynamicIsland ? 11 : 12
+
                     Image("LogoText")
                         .renderingMode(.template)
                         .resizable()
                         .scaledToFit()
                         .foregroundColor(.black)
-                        .frame(height: 12)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 6)
+                        .frame(height: logoHeight)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 5)
                         .background {
                             Capsule()
                                 .fill(
                                     EllipticalGradient(
                                         stops: [
                                             .init(color: .white, location: 0.0),
-                                            .init(color: Color(red: 182/255, green: 255/255, blue: 12/255), location: 0.7)
+                                            .init(color: Color.slooshAccent, location: 0.75)
                                         ],
                                         center: .center
                                     )
                                 )
                         }
                         .frame(maxWidth: .infinity)
-                        .padding(.top, proxy.safeAreaInsets.top > 50 ? 11 : 5)
+                        .padding(.top, topPadding)
                         .ignoresSafeArea(edges: .top)
                         .allowsHitTesting(false)
                 }
