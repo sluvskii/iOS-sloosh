@@ -75,7 +75,6 @@ struct DetailsView: View {
     @StateObject private var viewModel = DetailsViewModel()
     
     @State private var showPlayer = false
-    @State private var pendingPlayerLaunch = false
     @State private var showSourceSheet = false
     @State private var selectedIframeUrl: String? = nil
     @State private var sourceSheetTitle = ""
@@ -239,12 +238,6 @@ struct DetailsView: View {
                 sourceSheetDetent = .medium
                 sourceSheetTitle = ""
                 viewModel.resetSourceSheet()
-                if pendingPlayerLaunch {
-                    pendingPlayerLaunch = false
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                        showPlayer = true
-                    }
-                }
             }) {
                 ZStack {
                     if viewModel.isFetchingSources {
@@ -275,8 +268,7 @@ struct DetailsView: View {
                                     playerStreamUrl = translation.streamUrl
                                 }
                                 
-                                pendingPlayerLaunch = true
-                                showSourceSheet = false
+                                showPlayer = true
                                 viewModel.saveAllohaTranslation(translation.name)
                             } else {
                                 if let details = viewModel.details {
@@ -300,6 +292,7 @@ struct DetailsView: View {
             }
             .fullScreenCover(isPresented: $showPlayer, onDismiss: {
                 showPlayer = false
+                showSourceSheet = false
                 AppDelegate.lockToPortrait()
                 selectedIframeUrl = nil
                 playerKpId = nil
