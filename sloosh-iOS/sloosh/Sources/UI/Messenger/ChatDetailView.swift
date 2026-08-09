@@ -9,6 +9,7 @@ public struct ChatDetailView: View {
     @State private var isSending: Bool = false
 
     @State private var selectedMovieIdForDetails: String? = nil
+    @State private var isShowingInfo: Bool = false
     @State private var pollTask: Task<Void, Never>? = nil
 
     // Peak Messenger state variables for Reply & Edit
@@ -94,6 +95,9 @@ public struct ChatDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar { navBarContent }
         .toolbarVisibility(.hidden, for: .tabBar)
+        .navigationDestination(isPresented: $isShowingInfo) {
+            ChatInfoView(peerUser: peerUser)
+        }
         .navigationDestination(item: $selectedMovieIdForDetails) { movieId in
             DetailsView(movieId: movieId, navigationTransitionID: nil, navigationTransitionNamespace: nil)
         }
@@ -106,14 +110,14 @@ public struct ChatDetailView: View {
         }
     }
 
-    // MARK: - Navigation Bar Content (Peak Messenger Style)
+    // MARK: - Navigation Bar Content (Peak Messenger Style with Liquid Glass Avatar Button on Trailing)
 
     @ToolbarContentBuilder
     private var navBarContent: some ToolbarContent {
         ToolbarItem(placement: .principal) {
-            HStack(spacing: 8) {
-                PeakAvatarView(user: peerUser, size: 32, showOnline: true)
-
+            Button {
+                isShowingInfo = true
+            } label: {
                 VStack(spacing: 1) {
                     Text(peerUser.displayTitle)
                         .font(.system(size: 16, weight: .bold))
@@ -131,6 +135,18 @@ public struct ChatDetailView: View {
                     }
                 }
             }
+            .buttonStyle(.plain)
+        }
+
+        ToolbarItem(placement: .navigationBarTrailing) {
+            Button {
+                isShowingInfo = true
+            } label: {
+                PeakAvatarView(user: peerUser, size: 34, showOnline: true)
+                    .padding(3)
+                    .glassEffect(.regular.interactive(), in: Circle())
+            }
+            .buttonStyle(.plain)
         }
     }
 
@@ -472,5 +488,128 @@ private struct PeakMessageBubbleView: View {
         let formatter = DateFormatter()
         formatter.dateFormat = "HH:mm"
         return formatter.string(from: date)
+    }
+}
+
+// MARK: - Chat Info View (Peak Messenger Style)
+
+public struct ChatInfoView: View {
+    public let peerUser: SlooshUser
+
+    @StateObject private var repo = MessengerRepository.shared
+    @Environment(\.dismiss) private var dismiss
+    @State private var showDeleteConfirm: Bool = false
+
+    public var body: some View {
+        ZStack {
+            Color(UIColor.systemGroupedBackground).ignoresSafeArea()
+
+            ScrollView {
+                VStack(spacing: 24) {
+                    // Header Section (Avatar + Username)
+                    VStack(spacing: 12) {
+                        PeakAvatarView(user: peerUser, size: 100, showOnline: true)
+                            .padding(4)
+                            .glassEffect(.regular.interactive(), in: Circle())
+
+                        VStack(spacing: 4) {
+                            Text(peerUser.displayTitle)
+                                .font(.system(size: 24, weight: .bold))
+                                .foregroundColor(.primary)
+
+                            Text(peerUser.isOnline == true ? "в сети" : "был(а) недавно")
+                                .font(.system(size: 15))
+                                .foregroundColor(peerUser.isOnline == true ? .slooshAccent : .secondary)
+                        }
+                    }
+                    .padding(.top, 24)
+
+                    // Info Section
+                    VStack(spacing: 0) {
+                        if !peerUser.email.isEmpty {
+                            HStack(spacing: 14) {
+                                Image(systemName: "envelope.fill")
+                                    .frame(width: 22)
+                                    .foregroundColor(.secondary)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Email")
+                                        .font(.system(size: 12))
+                                        .foregroundColor(.secondary)
+                                    Text(peerUser.email)
+                                        .font(.system(size: 16))
+                                        .foregroundColor(.primary)
+                                }
+                                Spacer()
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 12)
+
+                            PeakDivider().padding(.leading, 52)
+                        }
+
+                        HStack(spacing: 14) {
+                            Image(systemName: "person.fill")
+                                .frame(width: 22)
+                                .foregroundColor(.secondary)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("ID пользователя")
+                                    .font(.system(size: 12))
+                                    .foregroundColor(.secondary)
+                                Text(peerUser.id)
+                                    .font(.system(size: 14, design: .monospaced))
+                                    .foregroundColor(.primary)
+                            }
+                            Spacer()
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                    }
+                    .background(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .fill(Color(UIColor.secondarySystemGroupedBackground))
+                    )
+                    .padding(.horizontal, 16)
+
+                    // Actions Section
+                    VStack(spacing: 0) {
+                        Button {
+                            showDeleteConfirm = true
+                        } label: {
+                            HStack(spacing: 14) {
+                                Image(systemName: "trash.fill")
+                                    .frame(width: 22)
+                                    .foregroundColor(.red)
+                                Text("Удалить чат")
+                                    .font(.system(size: 16, weight: .medium))
+                                    .foregroundColor(.red)
+                                Spacer()
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 14)
+                        }
+                        .buttonStyle(PeakPressButtonStyle())
+                    }
+                    .background(
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            .fill(Color(UIColor.secondarySystemGroupedBackground))
+                    )
+                    .padding(.horizontal, 16)
+                }
+            }
+        }
+        .navigationTitle("Информация")
+        .navigationBarTitleDisplayMode(.inline)
+        .confirmationDialog(
+            "Удалить чат с \(peerUser.displayTitle)?",
+            isPresented: $showDeleteConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Удалить чат", role: .destructive) {
+                dismiss()
+            }
+            Button("Отмена", role: .cancel) {}
+        } message: {
+            Text("История сообщений будет удалена.")
+        }
     }
 }
