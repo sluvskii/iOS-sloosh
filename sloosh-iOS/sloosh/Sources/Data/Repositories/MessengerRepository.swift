@@ -357,7 +357,12 @@ public final class MessengerRepository: ObservableObject {
             }
 
             let messagesDict = try JSONDecoder().decode([String: ChatMessage].self, from: data)
-            let list = Array(messagesDict.values).sorted(by: { $0.timestampMs < $1.timestampMs })
+            let list = Array(messagesDict.values).sorted(by: {
+                if $0.timestampMs != $1.timestampMs {
+                    return $0.timestampMs < $1.timestampMs
+                }
+                return $0.id < $1.id
+            })
             saveMessagesToDisk(list, chatId: chatId)
             return list
         } catch {
