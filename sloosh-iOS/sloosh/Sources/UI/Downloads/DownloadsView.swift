@@ -59,6 +59,7 @@ struct DownloadsView: View {
     @ObservedObject private var downloadManager = DownloadManager.shared
     @State private var selectedFilter = 0 // 0 = Все, 1 = Фильмы, 2 = Сериалы
     @State private var playerItem: DownloadItem? = nil
+    @State private var playerLaunchConfig: PlayerLaunchConfig? = nil
     
     @State private var scrollOffset: CGFloat = 0
     
@@ -91,6 +92,19 @@ struct DownloadsView: View {
                             Button {
                                 if item.status == .completed {
                                     playerItem = item
+                                    playerLaunchConfig = PlayerLaunchConfig(
+                                        iframeUrl: nil,
+                                        directStreamUrl: item.localPlayableUrl?.absoluteString,
+                                        fallbackTitle: item.title,
+                                        kpId: item.kpId,
+                                        season: item.season,
+                                        episode: item.episode,
+                                        selectedVoiceover: item.translationName,
+                                        voices: [],
+                                        subtitles: [],
+                                        initialQuality: nil,
+                                        seriesResult: nil
+                                    )
                                 }
                             } label: {
                                 DownloadRowView(item: item)
@@ -125,17 +139,9 @@ struct DownloadsView: View {
             .navigationTitle("Загрузки")
             .toolbar(.hidden, for: .navigationBar)
             .background(Color(UIColor.systemBackground))
-            .fullScreenCover(item: $playerItem, onDismiss: {
+            .playerLauncher(config: playerLaunchConfig) {
+                playerLaunchConfig = nil
                 playerItem = nil
-            }) { item in
-                PlayerView(
-                    fallbackTitle: item.title,
-                    kpId: item.kpId,
-                    season: item.season,
-                    episode: item.episode,
-                    selectedVoiceover: item.translationName,
-                    directStreamUrl: item.localPlayableUrl?.absoluteString
-                )
             }
         }
     }

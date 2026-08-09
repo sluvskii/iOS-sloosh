@@ -186,7 +186,7 @@ class SearchViewModel: ObservableObject {
     @Published var page = 1
     @Published var totalPages = 1
     @Published var directPlaybackMovie: MediaDto? = nil
-    @Published var playerConfig: PlayerConfig? = nil
+    @Published var playerConfig: PlayerLaunchConfig? = nil
 
     private let historyKey = "search_history"
     private let maxHistory = 5

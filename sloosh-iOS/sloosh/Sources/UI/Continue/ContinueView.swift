@@ -62,33 +62,10 @@ struct ContinueView: View {
                     await viewModel.reload()
                 }
             }
-            .fullScreenCover(item: $viewModel.activePresentation, onDismiss: {
-                viewModel.activePresentation = nil
+            .playerLauncher(config: viewModel.playerLaunchConfig) {
+                viewModel.playerLaunchConfig = nil
                 Task {
                     await viewModel.reload()
-                }
-            }) { presentation in
-                if presentation.isReady, let playback = presentation.route {
-                    PlayerView(
-                        iframeUrl: playback.iframeUrl,
-                        fallbackTitle: playback.title,
-                        kpId: playback.kpId,
-                        season: playback.season,
-                        episode: playback.episode,
-                        selectedVoiceover: playback.voiceover,
-                        directStreamUrl: playback.streamUrl,
-                        voices: playback.voices,
-                        subtitles: [],
-                        initialQuality: playback.initialQuality,
-                        seriesResult: playback.seriesResult
-                    )
-                } else {
-                    ZStack {
-                        Color.black.edgesIgnoringSafeArea(.all)
-                        ProgressView()
-                            .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                            .scaleEffect(1.5)
-                    }
                 }
             }
             .alert("Не удалось начать воспроизведение", isPresented: launchErrorBinding) {
@@ -206,6 +183,7 @@ private final class ContinueViewModel: ObservableObject {
     @Published var isLaunching = false
     @Published var launchingTitle: String?
     @Published var activePresentation: ContinuePresentation?
+    @Published var playerLaunchConfig: PlayerLaunchConfig?
     @Published var launchErrorMessage: String?
 
     private let store = PlaybackProgressStore.shared
@@ -349,9 +327,6 @@ private final class ContinueViewModel: ObservableObject {
         launchingTitle = item.title
         launchErrorMessage = nil
         
-        // Показываем загрузочный экран плеера моментально
-        activePresentation = ContinuePresentation(id: item.kpId, isReady: false, title: item.title, route: nil)
-        
         defer {
             isLaunching = false
             launchingTitle = nil
@@ -360,15 +335,25 @@ private final class ContinueViewModel: ObservableObject {
         do {
             let result = try await AllohaRepository.shared.fetchByKpId(kpId: item.kpId)
             guard let route = makePlaybackRoute(for: item, result: result) else {
-                activePresentation = nil
                 launchErrorMessage = "Не удалось подобрать источник для продолжения просмотра."
                 return
             }
 
-            // Обновляем презентацию In-Place (ID тот же, поэтому SwiftUI просто обновит содержимое модального окна)
-            activePresentation = ContinuePresentation(id: item.kpId, isReady: true, title: item.title, route: route)
+            // Подготавливаем PlayerLaunchConfig для запуска через playerLauncher
+            playerLaunchConfig = PlayerLaunchConfig(
+                iframeUrl: route.iframeUrl,
+                directStreamUrl: route.streamUrl,
+                fallbackTitle: route.title,
+                kpId: route.kpId,
+                season: route.season,
+                episode: route.episode,
+                selectedVoiceover: route.voiceover,
+                voices: route.voices,
+                subtitles: [],
+                initialQuality: route.initialQuality,
+                seriesResult: route.seriesResult
+            )
         } catch {
-            activePresentation = nil
             launchErrorMessage = "Не удалось загрузить источник. Попробуй еще раз."
         }
     }

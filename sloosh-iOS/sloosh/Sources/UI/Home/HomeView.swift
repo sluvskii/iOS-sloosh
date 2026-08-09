@@ -708,7 +708,7 @@ class HomeViewModel: ObservableObject {
     @Published var isLoadingMore: [HomeCacheKey: Bool] = [:]
     
     @Published var directPlaybackMovie: MediaDto? = nil
-    @Published var playerConfig: PlayerConfig? = nil
+    @Published var playerConfig: PlayerLaunchConfig? = nil
 
     private var cachedCursors: [HomeCacheKey: InfiniteCursor] = [:]
     private var cachedCanLoadMore: [HomeCacheKey: Bool] = [:]
