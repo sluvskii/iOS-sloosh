@@ -402,79 +402,94 @@ private struct PeakMessageBubbleView: View {
 
     @ViewBuilder
     private var bubbleBody: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            // Replied Message Header
-            if let replied = repliedMessage {
-                HStack(spacing: 8) {
-                    Capsule()
-                        .fill(isFromMe ? Color(UIColor.systemBackground) : Color.slooshAccent)
-                        .frame(width: 2)
+        if message.type == .media, let media = message.media {
+            MediaMessageCardView(media: media) { movieId in
+                onOpenMovie(movieId)
+            }
+            .contextMenu {
+                Section("Реакция") {
+                    Button("❤️") { onReact("❤️", message) }
+                    Button("👍") { onReact("👍", message) }
+                    Button("🔥") { onReact("🔥", message) }
+                    Button("😂") { onReact("😂", message) }
+                    Button("😢") { onReact("😢", message) }
+                    Button("👏") { onReact("👏", message) }
+                }
 
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Ответ")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(isFromMe ? Color(UIColor.systemBackground) : .slooshAccent)
-                        Text(replied.text ?? "Медиа")
-                            .font(.system(size: 13))
-                            .foregroundColor(isFromMe ? Color(UIColor.systemBackground).opacity(0.7) : .secondary)
-                            .lineLimit(1)
+                Button {
+                    onReply(message)
+                } label: {
+                    Label("Ответить", systemImage: "arrowshape.turn.up.left")
+                }
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 4) {
+                // Replied Message Header
+                if let replied = repliedMessage {
+                    HStack(spacing: 8) {
+                        Capsule()
+                            .fill(isFromMe ? Color(UIColor.systemBackground) : Color.slooshAccent)
+                            .frame(width: 2)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Ответ")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(isFromMe ? Color(UIColor.systemBackground) : .slooshAccent)
+                            Text(replied.text ?? "Медиа")
+                                .font(.system(size: 13))
+                                .foregroundColor(isFromMe ? Color(UIColor.systemBackground).opacity(0.7) : .secondary)
+                                .lineLimit(1)
+                        }
+                    }
+                    .padding(.bottom, 2)
+                }
+
+                // Text content
+                if let text = message.text, !text.isEmpty {
+                    Text(text)
+                        .font(.system(size: 16))
+                        .foregroundColor(isFromMe ? Color(UIColor.systemBackground) : .primary)
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(
+                Group {
+                    if isFromMe {
+                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            .fill(Color.primary)
+                    } else {
+                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            .fill(Color(UIColor.secondarySystemGroupedBackground))
                     }
                 }
-                .padding(.bottom, 2)
-            }
-
-            // Movie Card
-            if message.type == .media, let media = message.media {
-                MediaMessageCardView(media: media) { movieId in
-                    onOpenMovie(movieId)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .stroke(Color.primary.opacity(0.06), lineWidth: isFromMe ? 0 : 0.5)
+            )
+            .contextMenu {
+                Section("Реакция") {
+                    Button("❤️") { onReact("❤️", message) }
+                    Button("👍") { onReact("👍", message) }
+                    Button("🔥") { onReact("🔥", message) }
+                    Button("😂") { onReact("😂", message) }
+                    Button("😢") { onReact("😢", message) }
+                    Button("👏") { onReact("👏", message) }
                 }
-            }
 
-            // Text content
-            if let text = message.text, !text.isEmpty {
-                Text(text)
-                    .font(.system(size: 16))
-                    .foregroundColor(isFromMe ? Color(UIColor.systemBackground) : .primary)
-            }
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .background(
-            Group {
-                if isFromMe {
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .fill(Color.primary)
-                } else {
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .fill(Color(UIColor.secondarySystemGroupedBackground))
-                }
-            }
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 20, style: .continuous)
-                .stroke(Color.primary.opacity(0.06), lineWidth: isFromMe ? 0 : 0.5)
-        )
-        .contextMenu {
-            Section("Реакция") {
-                Button("❤️") { onReact("❤️", message) }
-                Button("👍") { onReact("👍", message) }
-                Button("🔥") { onReact("🔥", message) }
-                Button("😂") { onReact("😂", message) }
-                Button("😢") { onReact("😢", message) }
-                Button("👏") { onReact("👏", message) }
-            }
-
-            Button {
-                onReply(message)
-            } label: {
-                Label("Ответить", systemImage: "arrowshape.turn.up.left")
-            }
-
-            if isFromMe && message.type == .text {
                 Button {
-                    onEdit(message)
+                    onReply(message)
                 } label: {
-                    Label("Редактировать", systemImage: "pencil")
+                    Label("Ответить", systemImage: "arrowshape.turn.up.left")
+                }
+
+                if isFromMe && message.type == .text {
+                    Button {
+                        onEdit(message)
+                    } label: {
+                        Label("Редактировать", systemImage: "pencil")
+                    }
                 }
             }
         }
