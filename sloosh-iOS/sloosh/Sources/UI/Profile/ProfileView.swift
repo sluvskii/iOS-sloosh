@@ -30,6 +30,7 @@ struct ProfileView: View {
     @AppStorage("cardDensity") private var cardDensity: CardDensity = .regular
     @State private var scrollOffsets: [FavoriteCategory: CGFloat] = [:]
     @State private var directPlaybackMovie: MediaDto?
+    @State private var pendingPlayerConfig: PlayerConfig?
     @State private var playerConfig: PlayerConfig?
     
     private var columns: [GridItem] {
@@ -186,16 +187,21 @@ struct ProfileView: View {
                 .fullScreenCover(isPresented: $showAuthSheet) {
                     AuthView()
                 }
-                .sheet(item: $directPlaybackMovie) { movie in
+                .sheet(item: $directPlaybackMovie, onDismiss: {
+                    if let pending = pendingPlayerConfig {
+                        pendingPlayerConfig = nil
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                            playerConfig = pending
+                        }
+                    }
+                }) { movie in
                     HomeDirectPlayWrapper(
                         movieId: movie.id,
                         fallbackTitle: movie.title ?? movie.name ?? movie.originalTitle ?? "",
                         initialKpId: movie.externalIds?.kp
                     ) { config in
+                        pendingPlayerConfig = config
                         directPlaybackMovie = nil
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                            playerConfig = config
-                        }
                     }
                 }
                 .fullScreenCover(item: $playerConfig, onDismiss: {

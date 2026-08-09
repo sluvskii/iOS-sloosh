@@ -75,6 +75,7 @@ struct DetailsView: View {
     @StateObject private var viewModel = DetailsViewModel()
     
     @State private var showPlayer = false
+    @State private var pendingPlayerLaunch = false
     @State private var showSourceSheet = false
     @State private var selectedIframeUrl: String? = nil
     @State private var sourceSheetTitle = ""
@@ -238,6 +239,12 @@ struct DetailsView: View {
                 sourceSheetDetent = .medium
                 sourceSheetTitle = ""
                 viewModel.resetSourceSheet()
+                if pendingPlayerLaunch {
+                    pendingPlayerLaunch = false
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        showPlayer = true
+                    }
+                }
             }) {
                 ZStack {
                     if viewModel.isFetchingSources {
@@ -268,7 +275,7 @@ struct DetailsView: View {
                                     playerStreamUrl = translation.streamUrl
                                 }
                                 
-                                showPlayer = true
+                                pendingPlayerLaunch = true
                                 showSourceSheet = false
                                 viewModel.saveAllohaTranslation(translation.name)
                             } else {

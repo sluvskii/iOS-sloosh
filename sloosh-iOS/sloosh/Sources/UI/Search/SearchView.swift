@@ -4,6 +4,7 @@ import Combine
 struct SearchView: View {
     @StateObject private var viewModel = SearchViewModel()
     @State private var showFilters = false
+    @State private var pendingPlayerConfig: PlayerConfig? = nil
     @Namespace private var navigationTransition
     @AppStorage("cardDensity") private var cardDensity: CardDensity = .regular
 
@@ -131,16 +132,21 @@ struct SearchView: View {
             }
             .navigationTitle("Поиск")
             .searchable(text: $viewModel.searchQuery, prompt: "Фильмы и сериалы...")
-            .sheet(item: $viewModel.directPlaybackMovie) { movie in
+            .sheet(item: $viewModel.directPlaybackMovie, onDismiss: {
+                if let pending = pendingPlayerConfig {
+                    pendingPlayerConfig = nil
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        viewModel.playerConfig = pending
+                    }
+                }
+            }) { movie in
                 HomeDirectPlayWrapper(
                     movieId: movie.id,
                     fallbackTitle: movie.title ?? movie.name ?? movie.originalTitle ?? "",
                     initialKpId: movie.externalIds?.kp
                 ) { config in
+                    pendingPlayerConfig = config
                     viewModel.directPlaybackMovie = nil
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                        viewModel.playerConfig = config
-                    }
                 }
             }
             .fullScreenCover(item: $viewModel.playerConfig, onDismiss: {
