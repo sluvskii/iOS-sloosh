@@ -313,6 +313,7 @@ public struct ChatDetailView: View {
                     }
                     .glassEffect(.regular.interactive(), in: Circle())
                 }
+                .buttonStyle(OpaquePressButtonStyle())
                 .transition(
                     .asymmetric(
                         insertion: .scale(scale: 0.3).combined(with: .opacity).combined(with: .move(edge: .trailing)),
@@ -742,5 +743,14 @@ public struct ChatInfoView: View {
         } message: {
             Text("История сообщений будет удалена.")
         }
+    }
+}
+
+private struct OpaquePressButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.92 : 1.0)
+            .opacity(1.0)
+            .animation(.spring(response: 0.22, dampingFraction: 0.68), value: configuration.isPressed)
     }
 }
