@@ -121,6 +121,11 @@ public struct ChatDetailView: View {
             )
         }
         .task {
+            let chatId = repo.getOrCreateChatId(peerUserId: peerUser.id)
+            let cached = repo.loadMessagesFromDisk(chatId: chatId)
+            if !cached.isEmpty {
+                self.messages = cached
+            }
             await loadMessages()
             startPolling()
         }
@@ -336,32 +341,19 @@ public struct ChatDetailView: View {
 
     private func loadMessages() async {
         let chatId = repo.getOrCreateChatId(peerUserId: peerUser.id)
-        
-        // 1. Показываем кэш с диска за 0мс!
-        let cached = repo.loadMessagesFromDisk(chatId: chatId)
-        if !cached.isEmpty {
-            self.messages = cached
-            await repo.markMessagesAsRead(chatId: chatId, peerUserId: peerUser.id, messages: cached)
-        }
-        
-        // 2. Фоновая сеть
         let list = await repo.fetchMessages(chatId: chatId)
-        self.messages = list
-        await repo.markMessagesAsRead(chatId: chatId, peerUserId: peerUser.id, messages: list)
+        await syncMessages(remoteList: list)
     }
 
     private func startPolling() {
         pollTask?.cancel()
         pollTask = Task {
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 2_500_000_000)
+                try? await Task.sleep(nanoseconds: 1_800_000_000)
                 if Task.isCancelled { break }
                 let chatId = repo.getOrCreateChatId(peerUserId: peerUser.id)
                 let list = await repo.fetchMessages(chatId: chatId)
-                if list != self.messages {
-                    self.messages = list
-                    await repo.markMessagesAsRead(chatId: chatId, peerUserId: peerUser.id, messages: list)
-                }
+                await syncMessages(remoteList: list)
             }
         }
     }
@@ -376,7 +368,7 @@ public struct ChatDetailView: View {
         let replyId = replyingMessage?.id
         let currentUserId = AuthRepository.shared.currentUser?.id ?? ""
 
-        // Оптимистичное создание сообщения за 0мс!
+        // Оптимистичное создание сообщения за 0мс с единым стабильным ID!
         let optimisticMessage = ChatMessage(
             senderId: currentUserId,
             receiverId: peerUser.id,
@@ -391,14 +383,13 @@ public struct ChatDetailView: View {
         editingMessage = nil
         isSending = false
 
-        // Добавляем на UI мгновенно за 0мс
-        withAnimation(.easeOut(duration: 0.15)) {
+        // Добавляем на UI мгновенно за 0мс без мигания
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
             self.messages.append(optimisticMessage)
         }
 
         Task {
-            _ = await repo.sendMessage(toPeerUser: peerUser, text: trimmed, replyToId: replyId)
-            await loadMessages()
+            _ = await repo.sendMessage(toPeerUser: peerUser, message: optimisticMessage)
         }
     }
 

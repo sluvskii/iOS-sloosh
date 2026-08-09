@@ -433,36 +433,26 @@ public final class MessengerRepository: ObservableObject {
 
     public func sendMessage(
         toPeerUser peerUser: SlooshUser,
-        text: String? = nil,
-        mediaPayload: MediaCardPayload? = nil,
-        replyToId: String? = nil
+        message: ChatMessage
     ) async -> Bool {
         guard let currentUser = AuthRepository.shared.currentUser, !currentUser.isAnonymous else { return false }
         
         let chatId = getOrCreateChatId(peerUserId: peerUser.id)
-        let messageType: MessageType = (mediaPayload != nil) ? .media : .text
-        
-        let message = ChatMessage(
-            senderId: currentUser.id,
-            receiverId: peerUser.id,
-            type: messageType,
-            text: text,
-            media: mediaPayload,
-            replyToId: replyToId
-        )
 
         // 1. Оптимистичное локальное обновление (0мс задержки для отправителя)
         var currentMessages = loadMessagesFromDisk(chatId: chatId)
-        if !currentMessages.contains(where: { $0.id == message.id }) {
+        if let idx = currentMessages.firstIndex(where: { $0.id == message.id }) {
+            currentMessages[idx] = message
+        } else {
             currentMessages.append(message)
-            saveMessagesToDisk(currentMessages, chatId: chatId)
         }
+        saveMessagesToDisk(currentMessages, chatId: chatId)
 
         let previewText: String
-        if let media = mediaPayload {
+        if let media = message.media {
             previewText = "🎬 \(media.title)"
         } else {
-            previewText = text ?? ""
+            previewText = message.text ?? ""
         }
 
         let updatedConv = ChatConversation(
@@ -487,6 +477,26 @@ public final class MessengerRepository: ObservableObject {
             _ = await postMessageToFirebase(chatId: chatId, message: message, peerUser: peerUser)
         }
         return true
+    }
+
+    public func sendMessage(
+        toPeerUser peerUser: SlooshUser,
+        text: String? = nil,
+        mediaPayload: MediaCardPayload? = nil,
+        replyToId: String? = nil
+    ) async -> Bool {
+        guard let currentUser = AuthRepository.shared.currentUser, !currentUser.isAnonymous else { return false }
+        let messageType: MessageType = (mediaPayload != nil) ? .media : .text
+        
+        let message = ChatMessage(
+            senderId: currentUser.id,
+            receiverId: peerUser.id,
+            type: messageType,
+            text: text,
+            media: mediaPayload,
+            replyToId: replyToId
+        )
+        return await sendMessage(toPeerUser: peerUser, message: message)
     }
 
     public func postMessageToFirebase(
