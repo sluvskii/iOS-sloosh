@@ -419,7 +419,7 @@ public final class MessengerRepository: ObservableObject {
             var req = URLRequest(url: unreadUrl)
             req.httpMethod = "PUT"
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            req.httpBody = try? JSONSerialization.data(withJSONObject: 0)
+            req.httpBody = "0".data(using: .utf8)
             _ = try? await URLSession.shared.data(for: req)
         }
     }
