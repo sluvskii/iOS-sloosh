@@ -104,7 +104,10 @@ public struct ChatDetailView: View {
                 activePlayerConfig = config
             }
         }
-        .fullScreenCover(item: $activePlayerConfig) { config in
+        .fullScreenCover(item: $activePlayerConfig, onDismiss: {
+            activePlayerConfig = nil
+            AppDelegate.lockToPortrait()
+        }) { config in
             PlayerView(
                 iframeUrl: config.iframeUrl,
                 fallbackTitle: config.title,

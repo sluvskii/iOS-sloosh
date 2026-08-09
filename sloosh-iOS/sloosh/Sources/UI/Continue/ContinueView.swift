@@ -63,6 +63,8 @@ struct ContinueView: View {
                 }
             }
             .fullScreenCover(item: $viewModel.activePresentation, onDismiss: {
+                viewModel.activePresentation = nil
+                AppDelegate.lockToPortrait()
                 Task {
                     await viewModel.reload()
                 }
