@@ -573,5 +573,68 @@ public final class MessengerRepository: ObservableObject {
             return false
         }
     }
+
+    // MARK: - Message Deletion (Physical Delete from Firebase & Local Disk)
+
+    public func deleteMessage(
+        chatId: String,
+        messageId: String,
+        peerUser: SlooshUser
+    ) async {
+        guard let currentUser = AuthRepository.shared.currentUser, !currentUser.isAnonymous else { return }
+
+        // 1. Оптимистичное локальное удаление с диска
+        var currentMessages = loadMessagesFromDisk(chatId: chatId)
+        currentMessages.removeAll(where: { $0.id == messageId })
+        saveMessagesToDisk(currentMessages, chatId: chatId)
+
+        // 2. Обновление previewText в user_chats
+        let lastMsg = currentMessages.last
+        let previewText: String
+        if let media = lastMsg?.media {
+            previewText = "🎬 \(media.title)"
+        } else {
+            previewText = lastMsg?.text ?? ""
+        }
+        let lastTimestamp = lastMsg?.timestampMs ?? Int64(Date().timeIntervalSince1970 * 1000)
+
+        let updatedConv = ChatConversation(
+            chatId: chatId,
+            peerUser: peerUser,
+            lastMessageText: previewText,
+            unreadCount: 0,
+            updatedAtMs: lastTimestamp
+        )
+        var convs = self.conversations
+        if let idx = convs.firstIndex(where: { $0.chatId == chatId }) {
+            convs[idx] = updatedConv
+        }
+        self.conversations = convs
+        saveConversationsToDisk(convs)
+
+        // 3. Физическое удаление в Firebase Realtime Database
+        if let msgUrl = await makeURL(path: "chats/\(chatId)/messages/\(messageId)") {
+            var req = URLRequest(url: msgUrl)
+            req.httpMethod = "DELETE"
+            _ = try? await URLSession.shared.data(for: req)
+        }
+
+        // 4. Обновление user_chats для обоих участников
+        if let senderUrl = await makeURL(path: "user_chats/\(currentUser.id)/\(chatId)/lastMessageText") {
+            var req = URLRequest(url: senderUrl)
+            req.httpMethod = "PUT"
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            req.httpBody = try? JSONEncoder().encode(previewText)
+            _ = try? await URLSession.shared.data(for: req)
+        }
+
+        if let receiverUrl = await makeURL(path: "user_chats/\(peerUser.id)/\(chatId)/lastMessageText") {
+            var req = URLRequest(url: receiverUrl)
+            req.httpMethod = "PUT"
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            req.httpBody = try? JSONEncoder().encode(previewText)
+            _ = try? await URLSession.shared.data(for: req)
+        }
+    }
 }
 
