@@ -401,7 +401,12 @@ public struct ChatDetailView: View {
     // MARK: - Actions & Logic
 
     private func syncMessages(remoteList: [ChatMessage]) async {
-        let sortedRemote = remoteList.sorted(by: { $0.timestampMs < $1.timestampMs })
+        let sortedRemote = remoteList.sorted(by: {
+            if $0.timestampMs != $1.timestampMs {
+                return $0.timestampMs < $1.timestampMs
+            }
+            return $0.id < $1.id
+        })
         
         // 1. Если пришедший список полностью идентичен текущему UI — ранний выход (0 сбросов меню)
         guard sortedRemote != self.messages else { return }
@@ -452,6 +457,10 @@ public struct ChatDetailView: View {
 
         let replyId = replyingMessage?.id
         let currentUserId = AuthRepository.shared.currentUser?.id ?? ""
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let lastMsgTimestamp = self.messages.last?.timestampMs ?? 0
+        // Гарантируем монотонность времени: новое сообщение ВСЕГДА получит timestampMs > последнего сообщения
+        let effectiveTimestamp = max(nowMs, lastMsgTimestamp + 1)
 
         // Оптимистичное создание сообщения за 0мс с единым стабильным ID!
         let optimisticMessage = ChatMessage(
@@ -459,6 +468,7 @@ public struct ChatDetailView: View {
             receiverId: peerUser.id,
             type: .text,
             text: trimmed,
+            timestampMs: effectiveTimestamp,
             replyToId: replyId,
             isRead: false
         )
