@@ -76,6 +76,7 @@ public struct ChatMessage: Identifiable, Codable, Equatable, Hashable {
     public let type: MessageType
     public let text: String?
     public let media: MediaCardPayload?
+    public let timestampMs: Int64
     public let replyToId: String?
     public let reactions: [String: String]?
     public let isEdited: Bool?
