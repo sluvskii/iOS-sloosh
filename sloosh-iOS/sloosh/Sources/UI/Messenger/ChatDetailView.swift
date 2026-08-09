@@ -21,7 +21,8 @@ public struct ChatDetailView: View {
 
     public var body: some View {
         ZStack {
-            Color(UIColor.systemBackground).ignoresSafeArea()
+            // Нативный глубокий задник iOS (в светлой теме не слепяще-белый, а нативный systemGroupedBackground)
+            Color(UIColor.systemGroupedBackground).ignoresSafeArea()
 
             messageList
                 .safeAreaInset(edge: .bottom) {
@@ -104,7 +105,7 @@ public struct ChatDetailView: View {
         }
     }
 
-    // MARK: - Navigation Bar Content (Peak Messenger Style with Liquid Glass Avatar Button on Trailing)
+    // MARK: - Navigation Bar Content
 
     @ToolbarContentBuilder
     private var navBarContent: some ToolbarContent {
@@ -142,18 +143,20 @@ public struct ChatDetailView: View {
         }
     }
 
-    // MARK: - Message List (Peak Messenger Style)
+    // MARK: - Message List (Minute-Grouping Enabled)
 
     private var messageList: some View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: 0) {
-                    ForEach(messages) { message in
+                    ForEach(Array(messages.enumerated()), id: \.element.id) { index, message in
                         let isFromMe = message.senderId == (AuthRepository.shared.currentUser?.id ?? "")
-                        
+                        let showMeta = shouldShowMeta(for: index)
+
                         PeakMessageBubbleView(
                             message: message,
                             isFromMe: isFromMe,
+                            showMeta: showMeta,
                             allMessages: messages,
                             onOpenMovie: { movieId in
                                 selectedMovieIdForDetails = movieId
@@ -186,6 +189,22 @@ public struct ChatDetailView: View {
                 }
             }
         }
+    }
+
+    private func shouldShowMeta(for index: Int) -> Bool {
+        guard index < messages.count - 1 else { return true }
+        let current = messages[index]
+        let next = messages[index + 1]
+        if current.senderId == next.senderId && isSameMinute(ms1: current.timestampMs, ms2: next.timestampMs) {
+            return false
+        }
+        return true
+    }
+
+    private func isSameMinute(ms1: Int64, ms2: Int64) -> Bool {
+        let date1 = Date(timeIntervalSince1970: TimeInterval(ms1) / 1000.0)
+        let date2 = Date(timeIntervalSince1970: TimeInterval(ms2) / 1000.0)
+        return Calendar.current.isDate(date1, equalTo: date2, toGranularity: .minute)
     }
 
     // MARK: - Animated Telegram Style Input Bar (iOS 26+ Liquid Glass)
@@ -334,11 +353,12 @@ public struct ChatDetailView: View {
     }
 }
 
-// MARK: - Peak Message Bubble View
+// MARK: - Peak Message Bubble View (Adaptive Theme + Minute Grouping)
 
 private struct PeakMessageBubbleView: View {
     let message: ChatMessage
     let isFromMe: Bool
+    let showMeta: Bool
     let allMessages: [ChatMessage]
     let onOpenMovie: (String) -> Void
     let onReply: (ChatMessage) -> Void
@@ -356,7 +376,7 @@ private struct PeakMessageBubbleView: View {
         HStack(alignment: .bottom, spacing: 6) {
             if isFromMe { Spacer(minLength: 60) }
 
-            VStack(alignment: isFromMe ? .trailing : .leading, spacing: 4) {
+            VStack(alignment: isFromMe ? .trailing : .leading, spacing: 3) {
                 ZStack(alignment: isFromMe ? .bottomTrailing : .bottomLeading) {
                     bubbleBody
                         .onTapGesture(count: 2) {
@@ -369,13 +389,15 @@ private struct PeakMessageBubbleView: View {
                 }
                 .padding(.bottom, (message.reactions?.isEmpty == false) ? 8 : 0)
 
-                metaRow
+                if showMeta {
+                    metaRow
+                }
             }
 
             if !isFromMe { Spacer(minLength: 60) }
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 3)
+        .padding(.vertical, showMeta ? 3 : 1)
     }
 
     @ViewBuilder
@@ -385,16 +407,16 @@ private struct PeakMessageBubbleView: View {
             if let replied = repliedMessage {
                 HStack(spacing: 8) {
                     Capsule()
-                        .fill(isFromMe ? Color.black : Color.slooshAccent)
+                        .fill(isFromMe ? Color(UIColor.systemBackground) : Color.slooshAccent)
                         .frame(width: 2)
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Ответ")
                             .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(isFromMe ? .black : .slooshAccent)
+                            .foregroundColor(isFromMe ? Color(UIColor.systemBackground) : .slooshAccent)
                         Text(replied.text ?? "Медиа")
                             .font(.system(size: 13))
-                            .foregroundColor(isFromMe ? .black.opacity(0.65) : .secondary)
+                            .foregroundColor(isFromMe ? Color(UIColor.systemBackground).opacity(0.7) : .secondary)
                             .lineLimit(1)
                     }
                 }
@@ -412,7 +434,7 @@ private struct PeakMessageBubbleView: View {
             if let text = message.text, !text.isEmpty {
                 Text(text)
                     .font(.system(size: 16))
-                    .foregroundColor(isFromMe ? .black : .primary)
+                    .foregroundColor(isFromMe ? Color(UIColor.systemBackground) : .primary)
             }
         }
         .padding(.horizontal, 14)
@@ -421,7 +443,7 @@ private struct PeakMessageBubbleView: View {
             Group {
                 if isFromMe {
                     RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .fill(Color.slooshAccent)
+                        .fill(Color.primary)
                 } else {
                     RoundedRectangle(cornerRadius: 20, style: .continuous)
                         .fill(Color(UIColor.secondarySystemGroupedBackground))
@@ -489,12 +511,12 @@ private struct PeakMessageBubbleView: View {
                     if count > 1 {
                         Text("\(count)")
                             .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(isFromMe ? .black : .primary)
+                            .foregroundColor(isFromMe ? Color(UIColor.systemBackground) : .primary)
                     }
                 }
                 .padding(.horizontal, 6)
                 .padding(.vertical, 3)
-                .background(isFromMe ? Color.white : Color(white: 0.18))
+                .background(isFromMe ? Color.primary : Color(white: 0.18))
                 .clipShape(Capsule())
                 .shadow(color: .black.opacity(0.1), radius: 1)
             }
