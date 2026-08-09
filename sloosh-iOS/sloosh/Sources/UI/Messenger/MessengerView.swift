@@ -7,7 +7,6 @@ public struct MessengerView: View {
     @State private var searchQuery: String = ""
     @State private var selectedPeerUser: SlooshUser? = nil
     @State private var showAuthSheet: Bool = false
-    @State private var isSearchFocused: Bool = false
     @State private var peerToDelete: SlooshUser? = nil
     @State private var showDeleteConfirm: Bool = false
 
@@ -15,10 +14,7 @@ public struct MessengerView: View {
 
     public var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                // Telegram-style Header Bar
-                headerBar
-
+            ZStack(alignment: .top) {
                 if !authRepo.isAuthenticated {
                     guestView
                 } else {
@@ -60,37 +56,10 @@ public struct MessengerView: View {
         }
     }
 
-    // MARK: - Header Bar (Telegram iOS Style)
-
-    private var headerBar: some View {
-        HStack(alignment: .center) {
-            Text("Чаты")
-                .font(.system(size: 26, weight: .bold))
-                .foregroundColor(.primary)
-
-            Spacer()
-
-            if authRepo.isAuthenticated {
-                TelegramGlassIconButton(
-                    systemName: "square.and.pencil",
-                    iconSize: 18,
-                    buttonSize: 38
-                ) {
-                    // Переключаем фокус на поиск для создания диалога
-                    searchQuery = ""
-                    isSearchFocused = true
-                }
-            }
-        }
-        .padding(.horizontal, 18)
-        .padding(.top, 10)
-        .padding(.bottom, 6)
-    }
-
     // MARK: - Guest View
 
     private var guestView: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: 24) {
             Spacer()
 
             Image(systemName: "bubble.left.and.bubble.right.fill")
@@ -104,16 +73,15 @@ public struct MessengerView: View {
                 )
 
             VStack(spacing: 8) {
-                Text("Чаты в Sloosh")
-                    .font(.system(size: 22, weight: .bold))
+                Text("Чаты Sloosh")
+                    .font(.system(size: 24, weight: .bold))
                     .foregroundColor(.primary)
-                    .multilineTextAlignment(.center)
 
-                Text("Войдите в аккаунт через Google или Email, чтобы общаться с друзьями и делиться любимыми фильмами!")
+                Text("Войдите в аккаунт, чтобы переписываться с друзьями и делиться фильмами!")
                     .font(.system(size: 15))
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, 28)
             }
 
             Button {
@@ -137,132 +105,132 @@ public struct MessengerView: View {
         }
     }
 
-    // MARK: - Authenticated View
+    // MARK: - Authenticated Content View
 
     private var authenticatedContentView: some View {
-        VStack(spacing: 10) {
-            // Поле поиска друзей в стиле Telegram Pill
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass")
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundColor(.secondary)
+        ScrollView {
+            VStack(spacing: 14) {
+                // Плавающий заголовок экранов iOS 26+
+                HStack {
+                    Text("Чаты")
+                        .font(.system(size: 30, weight: .bold))
+                        .foregroundColor(.primary)
 
-                TextField("Поиск по людям и почте...", text: $searchQuery)
-                    .font(.system(size: 15))
-                    .onChange(of: searchQuery) { _, newValue in
-                        Task {
-                            await repo.searchUsers(query: newValue)
+                    Spacer()
+                }
+                .padding(.horizontal, 4)
+                .padding(.top, 12)
+
+                // Поиск по людям в стиле Liquid Glass Pill
+                HStack(spacing: 10) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(.secondary)
+
+                    TextField("Поиск по имени или имейлу...", text: $searchQuery)
+                        .font(.system(size: 15))
+                        .onChange(of: searchQuery) { _, newValue in
+                            Task {
+                                await repo.searchUsers(query: newValue)
+                            }
+                        }
+
+                    if !searchQuery.isEmpty {
+                        Button {
+                            searchQuery = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 16))
+                                .foregroundColor(.secondary)
                         }
                     }
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 11)
+                .glassEffect(.regular.interactive(), in: Capsule())
 
+                // Результаты поиска или Список диалогов
                 if !searchQuery.isEmpty {
-                    Button {
-                        searchQuery = ""
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 16))
-                            .foregroundColor(.secondary)
-                    }
+                    searchResultsSection
+                } else {
+                    conversationsSection
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 9)
-            .background(Capsule().glassEffect(.regular.interactive(), in: Capsule()))
             .padding(.horizontal, 16)
-
-            // Результаты поиска или Список диалогов
-            if !searchQuery.isEmpty {
-                searchResultsList
-            } else {
-                conversationsList
-            }
+            .padding(.bottom, 24)
         }
     }
 
-    // MARK: - Search Results List
+    // MARK: - Search Results Section
 
-    private var searchResultsList: some View {
+    private var searchResultsSection: some View {
         Group {
             if repo.isLoading {
                 ProgressView()
-                    .frame(maxHeight: .infinity)
+                    .padding(.top, 40)
             } else if repo.searchResults.isEmpty {
                 VStack(spacing: 8) {
                     Image(systemName: "person.slash")
-                        .font(.system(size: 40))
+                        .font(.system(size: 38))
                         .foregroundColor(.secondary)
                     Text("Пользователи не найдены")
                         .font(.system(size: 15))
                         .foregroundColor(.secondary)
                 }
-                .frame(maxHeight: .infinity)
+                .padding(.top, 40)
             } else {
-                ScrollView {
-                    LazyVStack(spacing: 8) {
-                        ForEach(repo.searchResults) { user in
-                            Button {
-                                selectedPeerUser = user
-                            } label: {
-                                TelegramUserRow(user: user)
-                            }
-                            .buttonStyle(.plain)
+                LazyVStack(spacing: 10) {
+                    ForEach(repo.searchResults) { user in
+                        Button {
+                            selectedPeerUser = user
+                        } label: {
+                            LiquidGlassUserRow(user: user)
                         }
+                        .buttonStyle(.plain)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 4)
                 }
             }
         }
     }
 
-    // MARK: - Conversations List (Telegram iOS Style)
+    // MARK: - Conversations Section
 
-    private var conversationsList: some View {
+    private var conversationsSection: some View {
         Group {
             if repo.conversations.isEmpty {
                 VStack(spacing: 14) {
                     Spacer()
-                    Image(systemName: "bubble.left.and.text.bubble.right.fill")
-                        .font(.system(size: 54))
-                        .foregroundStyle(
-                            LinearGradient(
-                                colors: [.slooshAccent, .secondary],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
+                        .frame(height: 40)
+                    Image(systemName: "bubble.left.and.bubble.right")
+                        .font(.system(size: 48))
+                        .foregroundColor(.secondary)
                     Text("У вас пока нет чатов")
-                        .font(.system(size: 20, weight: .bold))
+                        .font(.system(size: 18, weight: .bold))
                         .foregroundColor(.primary)
-                    Text("Найдите друга по имени или почте в строке поиска выше и отправьте фильм или сообщение!")
+                    Text("Введи имя или email друга в поиске выше, чтобы начать диалог!")
                         .font(.system(size: 14))
                         .foregroundColor(.secondary)
                         .multilineTextAlignment(.center)
-                        .padding(.horizontal, 36)
-                    Spacer()
+                        .padding(.horizontal, 24)
                 }
             } else {
-                ScrollView {
-                    LazyVStack(spacing: 8) {
-                        ForEach(repo.conversations) { chat in
-                            Button {
-                                selectedPeerUser = chat.peerUser
+                LazyVStack(spacing: 10) {
+                    ForEach(repo.conversations) { chat in
+                        Button {
+                            selectedPeerUser = chat.peerUser
+                        } label: {
+                            LiquidGlassChatRow(chat: chat)
+                        }
+                        .buttonStyle(.plain)
+                        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                            Button(role: .destructive) {
+                                peerToDelete = chat.peerUser
+                                showDeleteConfirm = true
                             } label: {
-                                TelegramChatRow(chat: chat)
-                            }
-                            .buttonStyle(.plain)
-                            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
-                                Button(role: .destructive) {
-                                    peerToDelete = chat.peerUser
-                                    showDeleteConfirm = true
-                                } label: {
-                                    Label("Удалить", systemImage: "trash.fill")
-                                }
+                                Label("Удалить", systemImage: "trash.fill")
                             }
                         }
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 4)
                 }
             }
         }
@@ -271,41 +239,33 @@ public struct MessengerView: View {
     private func deleteChat(peer: SlooshUser) {
         let generator = UIImpactFeedbackGenerator(style: .medium)
         generator.impactOccurred()
-        // Сбрасываем чат из локального списка
         Task {
             await repo.fetchConversations()
         }
     }
 }
 
-// MARK: - Telegram User Search Row
+// MARK: - Liquid Glass User Row
 
-private struct TelegramUserRow: View {
+private struct LiquidGlassUserRow: View {
     let user: SlooshUser
 
     var body: some View {
         HStack(spacing: 14) {
-            // Аватар
             ZStack(alignment: .bottomTrailing) {
                 Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: [Color.slooshAccent.opacity(0.8), Color.slooshAccent.opacity(0.3)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
+                    .fill(Color.slooshAccent.opacity(0.35))
                     .frame(width: 48, height: 48)
                     .overlay(
                         Text(String(user.displayTitle.prefix(1)).uppercased())
-                            .font(.system(size: 19, weight: .bold))
-                            .foregroundColor(.black)
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundColor(.primary)
                     )
 
                 if user.isOnline == true {
                     Circle()
                         .fill(Color.green)
-                        .frame(width: 13, height: 13)
+                        .frame(width: 12, height: 12)
                         .overlay(
                             Circle().stroke(Color(UIColor.systemBackground), lineWidth: 2)
                         )
@@ -327,43 +287,35 @@ private struct TelegramUserRow: View {
             Spacer()
 
             Image(systemName: "chevron.right")
-                .font(.system(size: 13, weight: .semibold))
+                .font(.system(size: 13, weight: .bold))
                 .foregroundColor(.secondary.opacity(0.6))
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 16))
+        .padding(12)
+        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 20))
     }
 }
 
-// MARK: - Telegram Chat Row View
+// MARK: - Liquid Glass Chat Row
 
-private struct TelegramChatRow: View {
+private struct LiquidGlassChatRow: View {
     let chat: ChatConversation
 
     var body: some View {
         HStack(spacing: 14) {
-            // Аватар с индикатором онлайн
             ZStack(alignment: .bottomTrailing) {
                 Circle()
-                    .fill(
-                        LinearGradient(
-                            colors: [Color.slooshAccent, Color.slooshAccent.opacity(0.4)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
-                    .frame(width: 52, height: 52)
+                    .fill(Color.slooshAccent.opacity(0.35))
+                    .frame(width: 50, height: 50)
                     .overlay(
                         Text(String(chat.peerUser.displayTitle.prefix(1)).uppercased())
-                            .font(.system(size: 20, weight: .bold))
-                            .foregroundColor(.black)
+                            .font(.system(size: 19, weight: .bold))
+                            .foregroundColor(.primary)
                     )
 
                 if chat.peerUser.isOnline == true {
                     Circle()
                         .fill(Color.green)
-                        .frame(width: 14, height: 14)
+                        .frame(width: 13, height: 13)
                         .overlay(
                             Circle().stroke(Color(UIColor.systemBackground), lineWidth: 2)
                         )
@@ -371,20 +323,20 @@ private struct TelegramChatRow: View {
             }
 
             VStack(alignment: .leading, spacing: 4) {
-                HStack(alignment: .firstTextBaseline) {
+                HStack {
                     Text(chat.peerUser.displayTitle)
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.system(size: 16, weight: .bold))
                         .foregroundColor(.primary)
                         .lineLimit(1)
 
                     Spacer()
 
                     Text(formatTime(ms: chat.updatedAtMs))
-                        .font(.system(size: 12, weight: .regular))
+                        .font(.system(size: 12))
                         .foregroundColor(.secondary)
                 }
 
-                HStack(spacing: 4) {
+                HStack {
                     Text(chat.lastMessageText)
                         .font(.system(size: 14))
                         .foregroundColor(.secondary)
@@ -396,16 +348,15 @@ private struct TelegramChatRow: View {
                         Text("\(chat.unreadCount)")
                             .font(.system(size: 12, weight: .bold))
                             .foregroundColor(.black)
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 2)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
                             .background(Capsule().fill(Color.slooshAccent))
                     }
                 }
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 18))
+        .padding(12)
+        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 20))
     }
 
     private func formatTime(ms: Int64) -> String {
