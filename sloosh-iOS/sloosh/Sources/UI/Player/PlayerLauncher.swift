@@ -142,10 +142,20 @@ struct PlayerLauncherRepresentable: UIViewControllerRepresentable {
         }
 
         private func topVC(from base: UIViewController) -> UIViewController {
-            if let presented = base.presentedViewController {
-                return topVC(from: presented)
+            var top: UIViewController = base
+            if top.view.window == nil {
+                if let keyWindow = UIApplication.shared.connectedScenes
+                    .compactMap({ $0 as? UIWindowScene })
+                    .flatMap({ $0.windows })
+                    .first(where: { $0.isKeyWindow }),
+                   let root = keyWindow.rootViewController {
+                    top = root
+                }
             }
-            return base
+            while let presented = top.presentedViewController, !presented.isBeingDismissed {
+                top = presented
+            }
+            return top
         }
     }
 }

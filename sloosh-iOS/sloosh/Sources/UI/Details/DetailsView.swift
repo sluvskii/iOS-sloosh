@@ -275,6 +275,7 @@ struct DetailsView: View {
                                 }
                                 
                                 viewModel.saveAllohaTranslation(translation.name)
+                                showSourceSheet = false
                             } else {
                                 if let details = viewModel.details {
                                     DownloadManager.shared.startDownload(
