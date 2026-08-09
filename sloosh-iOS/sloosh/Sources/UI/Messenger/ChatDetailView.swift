@@ -13,44 +13,16 @@ public struct ChatDetailView: View {
     @Environment(\.dismiss) private var dismiss
 
     public var body: some View {
-        VStack(spacing: 0) {
-            // Нативная Telegram шапка
-            telegramTopBar
+        ZStack(alignment: .top) {
+            // Элементы истории сообщений (Edge-to-edge)
+            messageHistoryView
 
-            // Область сообщений
-            ScrollViewReader { proxy in
-                ScrollView {
-                    LazyVStack(spacing: 8) {
-                        // Капсула даты
-                        dateHeaderPill
-
-                        ForEach(messages) { msg in
-                            let isMe = msg.senderId == (AuthRepository.shared.currentUser?.id ?? "")
-                            TelegramMessageBubble(
-                                message: msg,
-                                isMe: isMe,
-                                onOpenMovie: { movieId in
-                                    selectedMovieIdForDetails = movieId
-                                }
-                            )
-                            .id(msg.id)
-                        }
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 10)
-                }
-                .background(Color(UIColor.systemGroupedBackground).ignoresSafeArea())
-                .onChange(of: messages.count) { _, _ in
-                    if let lastId = messages.last?.id {
-                        withAnimation(.easeOut(duration: 0.2)) {
-                            proxy.scrollTo(lastId, anchor: .bottom)
-                        }
-                    }
-                }
-            }
-
-            // Нижняя панель ввода Telegram
-            telegramInputBar
+            // Летающая верхняя панель iOS 26+ Liquid Glass (Назад + Капсула Профиля)
+            floatingHeaderBar
+        }
+        .safeAreaInset(edge: .bottom) {
+            // Летающая нижняя панель ввода iOS 26+ Liquid Glass
+            floatingInputBar
         }
         .toolbar(.hidden, for: .navigationBar)
         .navigationDestination(item: $selectedMovieIdForDetails) { movieId in
@@ -65,103 +37,127 @@ public struct ChatDetailView: View {
         }
     }
 
-    // MARK: - Telegram Top Navigation Bar
+    // MARK: - Floating Header Bar (iOS 26+ Liquid Glass)
 
-    private var telegramTopBar: some View {
-        HStack(spacing: 12) {
-            Button {
+    private var floatingHeaderBar: some View {
+        HStack(spacing: 10) {
+            // Летающая кругленькая кнопка Назад в стиле Liquid Glass
+            TelegramGlassIconButton(
+                systemName: "chevron.left",
+                iconSize: 16,
+                buttonSize: 40
+            ) {
                 dismiss()
-            } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "chevron.left")
-                        .font(.system(size: 18, weight: .semibold))
-                    Text("Чаты")
-                        .font(.system(size: 17))
-                }
-                .foregroundColor(.slooshAccent)
             }
 
             Spacer()
 
-            // Профиль собеседника по центру
-            VStack(spacing: 2) {
-                Text(peerUser.displayTitle)
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundColor(.primary)
-                    .lineLimit(1)
-
-                if peerUser.isOnline == true {
-                    Text("в сети")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(.slooshAccent)
-                } else {
-                    Text("был(а) недавно")
-                        .font(.system(size: 12))
-                        .foregroundColor(.secondary)
-                }
-            }
-
-            Spacer()
-
-            // Аватар справа
-            ZStack(alignment: .bottomTrailing) {
-                Circle()
-                    .fill(Color.slooshAccent.opacity(0.3))
-                    .frame(width: 36, height: 36)
-                    .overlay(
-                        Text(String(peerUser.displayTitle.prefix(1)).uppercased())
-                            .font(.system(size: 16, weight: .bold))
-                            .foregroundColor(.primary)
-                    )
-
-                if peerUser.isOnline == true {
+            // Летающая капсула профиля собеседника с Liquid Glass
+            HStack(spacing: 8) {
+                ZStack(alignment: .bottomTrailing) {
                     Circle()
-                        .fill(Color.green)
-                        .frame(width: 10, height: 10)
-                        .overlay(Circle().stroke(Color(UIColor.systemBackground), lineWidth: 1.5))
+                        .fill(Color.slooshAccent.opacity(0.35))
+                        .frame(width: 32, height: 32)
+                        .overlay(
+                            Text(String(peerUser.displayTitle.prefix(1)).uppercased())
+                                .font(.system(size: 14, weight: .bold))
+                                .foregroundColor(.primary)
+                        )
+
+                    if peerUser.isOnline == true {
+                        Circle()
+                            .fill(Color.green)
+                            .frame(width: 9, height: 9)
+                            .overlay(Circle().stroke(Color(UIColor.systemBackground), lineWidth: 1.5))
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(peerUser.displayTitle)
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundColor(.primary)
+                        .lineLimit(1)
+
+                    if peerUser.isOnline == true {
+                        Text("в сети")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(Color.green)
+                    } else {
+                        Text("был(а) недавно")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 6)
+            .glassEffect(.regular.interactive(), in: Capsule())
+
+            Spacer()
+
+            // Невидимый балансировочный элемент
+            Spacer()
+                .frame(width: 40, height: 40)
+        }
+        .padding(.horizontal, 14)
+        .padding(.top, 8)
+    }
+
+    // MARK: - Message History View
+
+    private var messageHistoryView: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                LazyVStack(spacing: 12) {
+                    Spacer()
+                        .frame(height: 56)
+
+                    // Летающая капсула даты
+                    dateHeaderPill
+
+                    ForEach(messages) { msg in
+                        let isMe = msg.senderId == (AuthRepository.shared.currentUser?.id ?? "")
+                        
+                        LiquidGlassTelegramBubble(
+                            message: msg,
+                            isMe: isMe,
+                            onOpenMovie: { movieId in
+                                selectedMovieIdForDetails = movieId
+                            }
+                        )
+                        .id(msg.id)
+                    }
+                }
+                .padding(.horizontal, 14)
+                .padding(.bottom, 12)
+            }
+            .onChange(of: messages.count) { _, _ in
+                if let lastId = messages.last?.id {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                        proxy.scrollTo(lastId, anchor: .bottom)
+                    }
                 }
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(
-            VariableBlurView(tintOpacity: 1.0)
-                .ignoresSafeArea(edges: .top)
-        )
     }
-
-    // MARK: - Date Header Pill
 
     private var dateHeaderPill: some View {
         Text("Сегодня")
-            .font(.system(size: 12, weight: .medium))
+            .font(.system(size: 12, weight: .semibold))
             .foregroundColor(.secondary)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 4)
-            .background(
-                Capsule()
-                    .fill(Color(UIColor.tertiarySystemFill))
-            )
+            .padding(.horizontal, 12)
+            .padding(.vertical, 5)
+            .glassEffect(.regular, in: Capsule())
             .padding(.vertical, 4)
     }
 
-    // MARK: - Telegram Input Bar
+    // MARK: - Floating Bottom Input Bar (iOS 26+ Liquid Glass Capsule)
 
-    private var telegramInputBar: some View {
+    private var floatingInputBar: some View {
         HStack(spacing: 10) {
-            TextField("Сообщение...", text: $messageText, axis: .vertical)
+            TextField("Сообщение...", text: $messageText)
                 .font(.system(size: 16))
-                .lineLimit(1...5)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-                .background(
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .fill(Color(UIColor.secondarySystemGroupedBackground))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 20, style: .continuous)
-                        .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-                )
+                .padding(.leading, 6)
 
             Button {
                 sendMessage()
@@ -169,7 +165,7 @@ public struct ChatDetailView: View {
                 ZStack {
                     Circle()
                         .fill(Color.slooshAccent)
-                        .frame(width: 36, height: 36)
+                        .frame(width: 38, height: 38)
 
                     Image(systemName: "arrow.up")
                         .font(.system(size: 16, weight: .bold))
@@ -181,10 +177,9 @@ public struct ChatDetailView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
-        .background(
-            VariableBlurView(tintOpacity: 1.0)
-                .ignoresSafeArea(edges: .bottom)
-        )
+        .glassEffect(.regular.interactive(), in: Capsule())
+        .padding(.horizontal, 16)
+        .padding(.bottom, 6)
     }
 
     // MARK: - Logic
@@ -230,9 +225,9 @@ public struct ChatDetailView: View {
     }
 }
 
-// MARK: - Telegram Authentic Message Bubble
+// MARK: - Liquid Glass Telegram Message Bubble (iOS 26+)
 
-private struct TelegramMessageBubble: View {
+private struct LiquidGlassTelegramBubble: View {
     let message: ChatMessage
     let isMe: Bool
     let onOpenMovie: (String) -> Void
@@ -251,38 +246,37 @@ private struct TelegramMessageBubble: View {
                 if let text = message.text, !text.isEmpty {
                     HStack(alignment: .bottom, spacing: 6) {
                         Text(text)
-                            .font(.system(size: 16))
+                            .font(.system(size: 15))
                             .foregroundColor(isMe ? .black : .primary)
                             .fixedSize(horizontal: false, vertical: true)
 
-                        // Время и галочка прочтения внизу СПРАВА ВНУТРИ БАББЛА (Telegram Style)
+                        // Время и галочка ВНУТРИ баббла внизу справа (Telegram Style)
                         HStack(spacing: 2) {
                             Text(formatTime(ms: message.timestampMs))
                                 .font(.system(size: 11))
-                                .foregroundColor(isMe ? .black.opacity(0.6) : .secondary)
+                                .foregroundColor(isMe ? .black.opacity(0.65) : .secondary)
 
                             if isMe {
                                 Image(systemName: "checkmark")
                                     .font(.system(size: 10, weight: .bold))
-                                    .foregroundColor(.black.opacity(0.7))
+                                    .foregroundColor(.black.opacity(0.75))
                             }
                         }
                         .padding(.leading, 4)
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 9)
                     .background(
                         Group {
                             if isMe {
-                                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                RoundedRectangle(cornerRadius: 20)
                                     .fill(Color.slooshAccent)
                             } else {
-                                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                    .fill(Color(UIColor.secondarySystemGroupedBackground))
+                                RoundedRectangle(cornerRadius: 20)
+                                    .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 20))
                             }
                         }
                     )
-                    .shadow(color: .black.opacity(0.04), radius: 2, x: 0, y: 1)
                 }
             }
 
