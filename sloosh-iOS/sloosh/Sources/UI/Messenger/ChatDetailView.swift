@@ -453,6 +453,33 @@ public struct ChatDetailView: View {
     }
 }
 
+private struct iMessageReactionPickerView: View {
+    let onSelect: (String) -> Void
+    private let emojis = ["❤️", "👍", "🔥", "😂", "😢", "👏"]
+
+    var body: some View {
+        HStack(spacing: 10) {
+            ForEach(emojis, id: \.self) { emoji in
+                Button {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    onSelect(emoji)
+                } label: {
+                    Text(emoji)
+                        .font(.system(size: 24))
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 2)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(OpaquePressButtonStyle())
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .glassEffect(.regular.interactive(), in: Capsule())
+        .shadow(color: .black.opacity(0.2), radius: 10, x: 0, y: 5)
+    }
+}
+
 // MARK: - Peak Message Bubble View (Adaptive Theme + Minute Grouping)
 
 private struct PeakMessageBubbleView: View {
@@ -467,6 +494,8 @@ private struct PeakMessageBubbleView: View {
     let onDelete: (ChatMessage) -> Void
     let onReact: (String, ChatMessage) -> Void
 
+    @State private var showReactionPicker: Bool = false
+
     private var repliedMessage: ChatMessage? {
         if let replyToId = message.replyToId {
             return allMessages.first(where: { $0.id == replyToId })
@@ -478,7 +507,17 @@ private struct PeakMessageBubbleView: View {
         HStack(alignment: .bottom, spacing: 6) {
             if isFromMe { Spacer(minLength: 60) }
 
-            VStack(alignment: isFromMe ? .trailing : .leading, spacing: 3) {
+            VStack(alignment: isFromMe ? .trailing : .leading, spacing: 5) {
+                if showReactionPicker {
+                    iMessageReactionPickerView { emoji in
+                        onReact(emoji, message)
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
+                            showReactionPicker = false
+                        }
+                    }
+                    .transition(.scale(scale: 0.35).combined(with: .opacity).combined(with: .move(edge: .bottom)))
+                }
+
                 ZStack(alignment: isFromMe ? .bottomTrailing : .bottomLeading) {
                     bubbleBody
                         .onTapGesture(count: 2) {
@@ -500,6 +539,7 @@ private struct PeakMessageBubbleView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, showMeta ? 3 : 1)
+        .animation(.spring(response: 0.32, dampingFraction: 0.78), value: showReactionPicker)
     }
 
     @ViewBuilder
@@ -511,13 +551,12 @@ private struct PeakMessageBubbleView: View {
                 onPlayDirectly(payload)
             })
             .contextMenu {
-                Section("Реакция") {
-                    Button("❤️") { onReact("❤️", message) }
-                    Button("👍") { onReact("👍", message) }
-                    Button("🔥") { onReact("🔥", message) }
-                    Button("😂") { onReact("😂", message) }
-                    Button("😢") { onReact("😢", message) }
-                    Button("👏") { onReact("👏", message) }
+                Button {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) {
+                        showReactionPicker.toggle()
+                    }
+                } label: {
+                    Label("Реакция...", systemImage: "face.smiling")
                 }
 
                 Button {
@@ -579,13 +618,12 @@ private struct PeakMessageBubbleView: View {
                     .stroke(Color.primary.opacity(0.06), lineWidth: isFromMe ? 0 : 0.5)
             )
             .contextMenu {
-                Section("Реакция") {
-                    Button("❤️") { onReact("❤️", message) }
-                    Button("👍") { onReact("👍", message) }
-                    Button("🔥") { onReact("🔥", message) }
-                    Button("😂") { onReact("😂", message) }
-                    Button("😢") { onReact("😢", message) }
-                    Button("👏") { onReact("👏", message) }
+                Button {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) {
+                        showReactionPicker.toggle()
+                    }
+                } label: {
+                    Label("Реакция...", systemImage: "face.smiling")
                 }
 
                 Button {
