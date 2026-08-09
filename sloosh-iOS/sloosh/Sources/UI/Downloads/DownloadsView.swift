@@ -127,7 +127,6 @@ struct DownloadsView: View {
             .background(Color(UIColor.systemBackground))
             .fullScreenCover(item: $playerItem, onDismiss: {
                 playerItem = nil
-                AppDelegate.lockToPortrait()
             }) { item in
                 PlayerView(
                     fallbackTitle: item.title,

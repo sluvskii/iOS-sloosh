@@ -41,9 +41,14 @@ struct PlayerPresenter: UIViewControllerRepresentable {
             if let hc = hostingController {
                 let vcToDismiss = hc.presentingViewController ?? hc
                 vcToDismiss.dismiss(animated: true) { [weak self] in
+                    // Меняем ориентацию строго ПОСЛЕ завершения анимации dismiss.
+                    // Это предотвращает race condition: ориентация менялась
+                    // в середине анимации, iOS отменял dismiss, создавая loop.
+                    AppDelegate.lockToPortrait()
                     self?.onDismiss()
                 }
             } else {
+                AppDelegate.lockToPortrait()
                 onDismiss()
             }
         }
@@ -51,6 +56,7 @@ struct PlayerPresenter: UIViewControllerRepresentable {
         func didDismiss() {
             guard !dismissCalled else { return }
             dismissCalled = true
+            AppDelegate.lockToPortrait()
             onDismiss()
         }
     }
@@ -130,7 +136,9 @@ struct PlayerView: View {
             }
         }
         .onDisappear {
-            AppDelegate.lockToPortrait()
+            // Не вызываем lockToPortrait() здесь — это срабатывает
+            // в середине анимации dismiss и вызывает loop открытия/закрытия.
+            // Смена ориентации управляется только из Coordinator.dismissPlayer().
             viewModel.cleanup()
         }
     }
