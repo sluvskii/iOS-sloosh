@@ -20,18 +20,18 @@ final class PlayerHostingController<Content: View>: UIHostingController<Content>
         view.backgroundColor = .black
     }
 
-    override func viewDidAppear(_ animated: Bool) {
-        super.viewDidAppear(animated)
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
         AppDelegate.lockToLandscape()
     }
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
+        AppDelegate.lockToPortrait()
     }
 
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
-        AppDelegate.lockToPortrait()
         onDismissed?()
     }
 }

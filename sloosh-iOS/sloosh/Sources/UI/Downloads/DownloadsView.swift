@@ -125,7 +125,10 @@ struct DownloadsView: View {
             .navigationTitle("Загрузки")
             .toolbar(.hidden, for: .navigationBar)
             .background(Color(UIColor.systemBackground))
-            .fullScreenCover(item: $playerItem) { item in
+            .fullScreenCover(item: $playerItem, onDismiss: {
+                playerItem = nil
+                AppDelegate.lockToPortrait()
+            }) { item in
                 PlayerView(
                     fallbackTitle: item.title,
                     kpId: item.kpId,

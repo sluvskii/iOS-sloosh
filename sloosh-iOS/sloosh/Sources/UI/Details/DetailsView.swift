@@ -292,6 +292,8 @@ struct DetailsView: View {
                 .navigationTransition(.zoom(sourceID: sourceSheetSourceID, in: transition))
             }
             .fullScreenCover(isPresented: $showPlayer, onDismiss: {
+                showPlayer = false
+                AppDelegate.lockToPortrait()
                 selectedIframeUrl = nil
                 playerKpId = nil
                 playerSeason = nil

@@ -198,7 +198,10 @@ struct ProfileView: View {
                         }
                     }
                 }
-                .fullScreenCover(item: $playerConfig) { config in
+                .fullScreenCover(item: $playerConfig, onDismiss: {
+                    playerConfig = nil
+                    AppDelegate.lockToPortrait()
+                }) { config in
                     PlayerView(
                         iframeUrl: config.iframeUrl,
                         fallbackTitle: config.title,
