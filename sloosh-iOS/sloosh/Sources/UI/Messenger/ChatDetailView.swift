@@ -271,11 +271,11 @@ public struct ChatDetailView: View {
     }
 
     private var inputBarHorizontalPadding: CGFloat {
-        isInputFocused ? 6 : 16
+        isInputFocused ? 6 : 20
     }
 
     private var inputBarVerticalPadding: CGFloat {
-        isInputFocused ? 4 : 6
+        2
     }
 
     private var inputBar: some View {
