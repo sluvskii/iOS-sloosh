@@ -61,7 +61,6 @@ struct HomeDirectPlayWrapper: View {
         .presentationDragIndicator(.visible)
         .fullScreenCover(item: $playerConfig, onDismiss: {
             playerConfig = nil
-            AppDelegate.lockToPortrait()
             dismiss()
         }) { config in
             PlayerView(

@@ -293,7 +293,6 @@ struct DetailsView: View {
             .fullScreenCover(isPresented: $showPlayer, onDismiss: {
                 showPlayer = false
                 showSourceSheet = false
-                AppDelegate.lockToPortrait()
                 selectedIframeUrl = nil
                 playerKpId = nil
                 playerSeason = nil
