@@ -133,7 +133,15 @@ struct PlayerLauncherRepresentable: UIViewControllerRepresentable {
 
             // Находим topmost VC для презентации
             let presenter = topVC(from: anchor)
-            presenter.present(hc, animated: true)
+            if presenter.isBeingDismissed {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self, weak anchor] in
+                    guard let self, let anchor else { return }
+                    let freshPresenter = self.topVC(from: anchor)
+                    freshPresenter.present(hc, animated: true)
+                }
+            } else {
+                presenter.present(hc, animated: true)
+            }
         }
 
         func dismiss() {
