@@ -119,7 +119,11 @@ public struct MediaMessageCardView: View {
             // Белая кнопка "Смотреть" (открывает панель озвучек / запуск плеера напрямую)
             if let transitionNamespace {
                 playButton
-                    .matchedTransitionSource(id: media.mediaId, in: transitionNamespace)
+                    .matchedTransitionSource(id: media.mediaId, in: transitionNamespace) { source in
+                        source
+                            .background(.clear)
+                            .clipShape(Capsule())
+                    }
                     .padding(.horizontal, 4)
                     .padding(.bottom, 4)
             } else {
