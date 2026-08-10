@@ -691,50 +691,50 @@ private struct PeakMessageBubbleView: View {
     @ViewBuilder
     private func reactionsOverlay(_ reactionsDict: [String: String]) -> some View {
         let myId = AuthRepository.shared.currentUser?.id ?? ""
-        let grouped = Dictionary(grouping: reactionsDict.values, by: { $0 })
+        let grouped: [(String, Int)] = Dictionary(grouping: reactionsDict.values, by: { $0 })
+            .map { ($0.key, $0.value.count) }
 
         HStack(spacing: 4) {
-            ForEach(grouped.map { ($0.key, $0.value.count) }, id: \.0) { emoji, count in
-                let isMyReaction = (reactionsDict[myId] == emoji)
-
-                Button {
-                    onReact(emoji, message)
-                } label: {
-                    HStack(spacing: 3) {
-                        Text(emoji)
-                            .font(.system(size: 12))
-                        if count > 1 {
-                            Text("\(count)")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(isMyReaction ? .slooshAccent : (isFromMe ? Color(UIColor.systemBackground) : .primary))
-                        }
-                    }
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 4)
-                    .background(
-                        Group {
-                            if isMyReaction {
-                                Color.slooshAccent.opacity(0.25)
-                            } else {
-                                isFromMe ? Color.primary : Color(white: 0.18)
-                            }
-                        }
-                    )
-                    .overlay(
-                        Group {
-                            if isMyReaction {
-                                Capsule().stroke(Color.slooshAccent, lineWidth: 1.2)
-                            }
-                        }
-                    )
-                    .clipShape(Capsule())
-                    .shadow(color: .black.opacity(0.12), radius: 2)
-                }
-                .buttonStyle(OpaquePressButtonStyle())
+            ForEach(grouped, id: \.0) { emoji, count in
+                reactionChip(emoji: emoji, count: count, myId: myId, reactionsDict: reactionsDict)
             }
         }
         .offset(y: 10)
         .padding(.horizontal, 8)
+    }
+
+    @ViewBuilder
+    private func reactionChip(emoji: String, count: Int, myId: String, reactionsDict: [String: String]) -> some View {
+        let isMyReaction: Bool = reactionsDict[myId] == emoji
+        let bgColor: Color = isMyReaction
+            ? Color.slooshAccent.opacity(0.25)
+            : (isFromMe ? Color.primary.opacity(0.18) : Color(white: 0.18))
+        let fgColor: Color = isMyReaction
+            ? .slooshAccent
+            : (isFromMe ? Color(UIColor.systemBackground) : .primary)
+        Button {
+            onReact(emoji, message)
+        } label: {
+            HStack(spacing: 3) {
+                Text(emoji).font(.system(size: 12))
+                if count > 1 {
+                    Text("\(count)")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(fgColor)
+                }
+            }
+            .padding(.horizontal, 7)
+            .padding(.vertical, 4)
+            .background(bgColor)
+            .overlay(
+                isMyReaction
+                    ? AnyView(Capsule().stroke(Color.slooshAccent, lineWidth: 1.2))
+                    : AnyView(EmptyView())
+            )
+            .clipShape(Capsule())
+            .shadow(color: .black.opacity(0.12), radius: 2)
+        }
+        .buttonStyle(OpaquePressButtonStyle())
     }
 
     private func formatTime(ms: Int64) -> String {
@@ -911,5 +911,16 @@ private struct WindowFrameCapture: UIViewRepresentable {
                 self.onFrame(frameInWindow)
             }
         }
+    }
+}
+
+// MARK: - Button Styles
+
+private struct OpaquePressButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.92 : 1.0)
+            .opacity(1.0)
+            .animation(.spring(response: 0.22, dampingFraction: 0.68), value: configuration.isPressed)
     }
 }
