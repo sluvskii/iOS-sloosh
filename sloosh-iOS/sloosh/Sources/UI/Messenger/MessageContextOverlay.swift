@@ -67,7 +67,6 @@ struct TelegramMessageContextView: View {
         let gap: CGFloat = 12
         let reactionBarUsed: CGFloat = 52 + 8  // высота плашки реакций + gap
         let spaceBelow = screenSize.height - bubbleFrame.maxY - safeAreaInsets.bottom
-        let spaceAbove = bubbleFrame.minY - safeAreaInsets.top - reactionBarUsed
 
         if spaceBelow >= menuHeight + gap + 8 {
             return bubbleFrame.maxY + gap + menuHeight / 2
