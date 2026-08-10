@@ -229,6 +229,7 @@ public struct ChatDetailView: View {
                                             message: msg,
                                             isFromMe: isOwn,
                                             bubbleFrame: windowFrame,
+                                            allMessages: messages,
                                             onDismiss: {
                                                 withAnimation(.spring(response: 0.22, dampingFraction: 0.8)) {
                                                     focusedMessageId = nil
