@@ -9,7 +9,6 @@ struct TelegramMessageContextView: View {
     let bubbleFrame: CGRect              // фрейм бабла в точных window-координатах
     let screenSize: CGSize
     let safeAreaInsets: EdgeInsets
-    let allMessages: [ChatMessage]
     let onDismiss: () -> Void
     let onReact: (String) -> Void
     let onReply: () -> Void
@@ -25,7 +24,7 @@ struct TelegramMessageContextView: View {
         return message.reactions?[myId]
     }
 
-    // MARK: - Layout Geometry & Adaptive Clamping
+    // MARK: - Geometry & Placement Math
 
     private var reactionPillWidth: CGFloat { CGFloat(emojis.count) * 48 + 12 }
     private var reactionPillHeight: CGFloat { 52 }
@@ -36,41 +35,20 @@ struct TelegramMessageContextView: View {
         return canEdit ? 148 : 98
     }
 
-    private var topBound: CGFloat { safeAreaInsets.top + 12 }
-    private var bottomBound: CGFloat { screenSize.height - safeAreaInsets.bottom - 12 }
-
-    // Смещение всей группы вверх если бабл или меню не влезают снизу
-    private var shiftUp: CGFloat {
-        let desiredMenuBottom = bubbleFrame.maxY + 10 + menuHeight
-        if desiredMenuBottom > bottomBound {
-            return min(desiredMenuBottom - bottomBound, bubbleFrame.minY - topBound - reactionPillHeight - 20)
-        }
-        return 0
-    }
-
-    private var bubbleCenterY: CGFloat {
-        bubbleFrame.midY - shiftUp
-    }
-
-    private var reactionBarY: CGFloat {
-        let desired = (bubbleFrame.minY - shiftUp) - 10 - (reactionPillHeight / 2)
-        return max(topBound + reactionPillHeight / 2, desired)
-    }
-
-    private var menuY: CGFloat {
-        let spaceBelow = bottomBound - (bubbleFrame.maxY - shiftUp)
-        if spaceBelow >= menuHeight + 8 {
-            return (bubbleFrame.maxY - shiftUp) + 10 + (menuHeight / 2)
-        } else {
-            return reactionBarY - (reactionPillHeight / 2) - 10 - (menuHeight / 2)
-        }
-    }
-
+    // X реакций — по центру бабла с clamp
     private var reactionBarX: CGFloat {
         let half = reactionPillWidth / 2
         return bubbleFrame.midX.clamped(to: half + 16 ... screenSize.width - half - 16)
     }
 
+    // Y реакций — строго над баблом
+    private var reactionBarY: CGFloat {
+        let desired = bubbleFrame.minY - 10 - (reactionPillHeight / 2)
+        let minY = safeAreaInsets.top + (reactionPillHeight / 2) + 8
+        return max(minY, desired)
+    }
+
+    // X меню — по правому краю для моих, по левому для чужих
     private var menuX: CGFloat {
         let half = menuWidth / 2
         if isFromMe {
@@ -82,11 +60,21 @@ struct TelegramMessageContextView: View {
         }
     }
 
+    // Y меню — под баблом (или над, если мало места снизу)
+    private var menuY: CGFloat {
+        let spaceBelow = screenSize.height - safeAreaInsets.bottom - bubbleFrame.maxY
+        if spaceBelow >= menuHeight + 16 {
+            return bubbleFrame.maxY + 10 + (menuHeight / 2)
+        } else {
+            return bubbleFrame.minY - 10 - (menuHeight / 2)
+        }
+    }
+
     // MARK: - Body
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            // 1. Затемнение экрана Telegram
+            // 1. Затемнение экрана Telegram с размытием (закрывается при тапе)
             Color.black
                 .opacity(appeared ? 0.45 : 0)
                 .ignoresSafeArea()
@@ -100,27 +88,7 @@ struct TelegramMessageContextView: View {
                 .opacity(appeared ? 1 : 0)
                 .animation(.spring(response: 0.30, dampingFraction: 0.72).delay(0.02), value: appeared)
 
-            // 3. Дубликат сообщения на его точной позиции в чате
-            PeakMessageBubbleView(
-                message: message,
-                isFromMe: isFromMe,
-                showMeta: true,
-                allMessages: allMessages,
-                onOpenMovie: { _ in },
-                onPlayDirectly: { _ in },
-                onReply: { _ in },
-                onEdit: { _ in },
-                onDelete: { _ in },
-                onReact: { _, _ in },
-                onLongPress: { _, _ in }
-            )
-            .scaleEffect(appeared ? 1.03 : 1.0)
-            .shadow(color: .black.opacity(appeared ? 0.35 : 0), radius: 16, x: 0, y: 8)
-            .position(x: bubbleFrame.midX, y: bubbleCenterY)
-            .animation(.spring(response: 0.28, dampingFraction: 0.72), value: appeared)
-            .allowsHitTesting(false)
-
-            // 4. Меню действий под баблом (Liquid Glass)
+            // 3. Меню действий под баблом (Liquid Glass)
             actionsMenu
                 .position(x: menuX, y: menuY)
                 .scaleEffect(
@@ -254,7 +222,7 @@ final class ContextMenuCoordinator: ObservableObject {
         message: ChatMessage,
         isFromMe: Bool,
         bubbleFrame: CGRect,
-        allMessages: [ChatMessage],
+        onDismiss: @escaping () -> Void,
         onReact: @escaping (String) -> Void,
         onReply: @escaping () -> Void,
         onEdit: @escaping () -> Void,
@@ -276,7 +244,10 @@ final class ContextMenuCoordinator: ObservableObject {
         )
 
         let dismissAction: () -> Void = { [weak self] in
-            Task { @MainActor in self?.dismiss(animated: true) }
+            Task { @MainActor in
+                onDismiss()
+                self?.dismiss(animated: true)
+            }
         }
 
         let rootView = TelegramMessageContextView(
@@ -285,7 +256,6 @@ final class ContextMenuCoordinator: ObservableObject {
             bubbleFrame: bubbleFrame,
             screenSize: screen.size,
             safeAreaInsets: swiftUISafe,
-            allMessages: allMessages,
             onDismiss: dismissAction,
             onReact: { emoji in onReact(emoji); dismissAction() },
             onReply:  { onReply();  dismissAction() },
@@ -295,7 +265,6 @@ final class ContextMenuCoordinator: ObservableObject {
 
         let vc = UIHostingController(rootView: rootView)
         vc.view.backgroundColor = .clear
-        // Снимаем дефолтные safeArea вью-контроллера для точного совпадения 1:1 с окном
         vc.additionalSafeAreaInsets = UIEdgeInsets(
             top: -safeInsets.top,
             left: -safeInsets.left,
