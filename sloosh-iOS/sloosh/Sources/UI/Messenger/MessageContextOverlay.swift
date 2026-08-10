@@ -25,7 +25,7 @@ struct TelegramMessageContextView: View {
         return message.reactions?[myId]
     }
 
-    // MARK: - Geometry Measurements
+    // MARK: - Layout Geometry & Adaptive Clamping
 
     private var reactionPillWidth: CGFloat { CGFloat(emojis.count) * 48 + 12 }
     private var reactionPillHeight: CGFloat { 52 }
@@ -36,21 +36,41 @@ struct TelegramMessageContextView: View {
         return canEdit ? 148 : 98
     }
 
-    // X реакций — строго по центру бабла с clamp у краев экрана
+    private var topBound: CGFloat { safeAreaInsets.top + 12 }
+    private var bottomBound: CGFloat { screenSize.height - safeAreaInsets.bottom - 12 }
+
+    // Смещение всей группы вверх если бабл или меню не влезают снизу
+    private var shiftUp: CGFloat {
+        let desiredMenuBottom = bubbleFrame.maxY + 10 + menuHeight
+        if desiredMenuBottom > bottomBound {
+            return min(desiredMenuBottom - bottomBound, bubbleFrame.minY - topBound - reactionPillHeight - 20)
+        }
+        return 0
+    }
+
+    private var bubbleCenterY: CGFloat {
+        bubbleFrame.midY - shiftUp
+    }
+
+    private var reactionBarY: CGFloat {
+        let desired = (bubbleFrame.minY - shiftUp) - 10 - (reactionPillHeight / 2)
+        return max(topBound + reactionPillHeight / 2, desired)
+    }
+
+    private var menuY: CGFloat {
+        let spaceBelow = bottomBound - (bubbleFrame.maxY - shiftUp)
+        if spaceBelow >= menuHeight + 8 {
+            return (bubbleFrame.maxY - shiftUp) + 10 + (menuHeight / 2)
+        } else {
+            return reactionBarY - (reactionPillHeight / 2) - 10 - (menuHeight / 2)
+        }
+    }
+
     private var reactionBarX: CGFloat {
         let half = reactionPillWidth / 2
-        let ideal = isFromMe ? (bubbleFrame.maxX - half) : (bubbleFrame.minX + half)
-        return ideal.clamped(to: half + 16 ... screenSize.width - half - 16)
+        return bubbleFrame.midX.clamped(to: half + 16 ... screenSize.width - half - 16)
     }
 
-    // Y реакций — строго над баблом
-    private var reactionBarY: CGFloat {
-        let desiredCenter = bubbleFrame.minY - 10 - reactionPillHeight / 2
-        let minY = safeAreaInsets.top + reactionPillHeight / 2 + 12
-        return max(desiredCenter, minY)
-    }
-
-    // X меню — по правой стороне для моих, по левой для чужих
     private var menuX: CGFloat {
         let half = menuWidth / 2
         if isFromMe {
@@ -62,22 +82,11 @@ struct TelegramMessageContextView: View {
         }
     }
 
-    // Y меню — под баблом если помещается, иначе над
-    private var menuY: CGFloat {
-        let gap: CGFloat = 10
-        let spaceBelow = screenSize.height - safeAreaInsets.bottom - bubbleFrame.maxY
-        if spaceBelow >= menuHeight + gap {
-            return bubbleFrame.maxY + gap + menuHeight / 2
-        } else {
-            return max(safeAreaInsets.top + 80, bubbleFrame.minY - gap - menuHeight / 2)
-        }
-    }
-
     // MARK: - Body
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            // 1. Нативное затемнение экрана Telegram (тап закрывает)
+            // 1. Затемнение экрана Telegram
             Color.black
                 .opacity(appeared ? 0.45 : 0)
                 .ignoresSafeArea()
@@ -91,7 +100,7 @@ struct TelegramMessageContextView: View {
                 .opacity(appeared ? 1 : 0)
                 .animation(.spring(response: 0.30, dampingFraction: 0.72).delay(0.02), value: appeared)
 
-            // 3. Дубликат сообщения на его точной позиции в чате (выделение в фокус)
+            // 3. Дубликат сообщения на его точной позиции в чате
             PeakMessageBubbleView(
                 message: message,
                 isFromMe: isFromMe,
@@ -107,7 +116,7 @@ struct TelegramMessageContextView: View {
             )
             .scaleEffect(appeared ? 1.03 : 1.0)
             .shadow(color: .black.opacity(appeared ? 0.35 : 0), radius: 16, x: 0, y: 8)
-            .position(x: bubbleFrame.midX, y: bubbleFrame.midY)
+            .position(x: bubbleFrame.midX, y: bubbleCenterY)
             .animation(.spring(response: 0.28, dampingFraction: 0.72), value: appeared)
             .allowsHitTesting(false)
 
@@ -286,6 +295,13 @@ final class ContextMenuCoordinator: ObservableObject {
 
         let vc = UIHostingController(rootView: rootView)
         vc.view.backgroundColor = .clear
+        // Снимаем дефолтные safeArea вью-контроллера для точного совпадения 1:1 с окном
+        vc.additionalSafeAreaInsets = UIEdgeInsets(
+            top: -safeInsets.top,
+            left: -safeInsets.left,
+            bottom: -safeInsets.bottom,
+            right: -safeInsets.right
+        )
 
         let window = UIWindow(windowScene: windowScene)
         window.windowLevel = .alert + 1
