@@ -249,9 +249,7 @@ public struct ChatDetailView: View {
                                         )
                                     }
                                 )
-                                .scaleEffect(isFocused ? 1.04 : 1.0)
-                                .zIndex(isFocused ? 999 : 0)
-                                .animation(.spring(response: 0.28, dampingFraction: 0.72), value: isFocused)
+                                .opacity(isFocused ? 0 : 1)
                                 .id(message.id)
                             }
                         }

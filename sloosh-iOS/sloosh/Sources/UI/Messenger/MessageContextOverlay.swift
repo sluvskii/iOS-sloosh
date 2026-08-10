@@ -32,54 +32,70 @@ struct TelegramMessageContextView: View {
         return nil
     }
 
-    // MARK: - Geometry & Placement Math
+    // MARK: - Geometry & Placement Math (Contiguous Telegram Vertical Block)
 
-    private var reactionPillWidth: CGFloat { CGFloat(emojis.count) * 48 + 12 }
-    private var reactionPillHeight: CGFloat { 52 }
+    private var pillW: CGFloat { CGFloat(emojis.count) * 48 + 12 }
+    private var pillH: CGFloat { 52 }
 
-    private var menuWidth: CGFloat { 240 }
-    private var menuHeight: CGFloat {
+    private var menuW: CGFloat { 240 }
+    private var menuH: CGFloat {
         let canEdit = isFromMe && message.type == .text
         return canEdit ? 148 : 98
     }
 
-    private var topBound: CGFloat { safeAreaInsets.top + 16 }
-    private var bottomBound: CGFloat { screenSize.height - safeAreaInsets.bottom - 16 }
+    private var bubbleH: CGFloat { max(36, bubbleFrame.height) }
+    private var gap: CGFloat { 8 }
 
-    // Смещение всей группы вверх если бабл или меню выходят за нижнюю границу экрана
+    private var topMargin: CGFloat { safeAreaInsets.top + 16 }
+    private var bottomMargin: CGFloat { screenSize.height - safeAreaInsets.bottom - 16 }
+
+    // Вычисляем смещение группы вверх если меню снизу выходит за границы экрана
+    private var idealMenuBottom: CGFloat { bubbleFrame.maxY + gap + menuH }
     private var shiftUp: CGFloat {
-        let desiredMenuBottom = bubbleFrame.maxY + 10 + menuHeight
-        if desiredMenuBottom > bottomBound {
-            return min(desiredMenuBottom - bottomBound, bubbleFrame.minY - topBound - reactionPillHeight - 20)
+        if idealMenuBottom > bottomMargin {
+            return idealMenuBottom - bottomMargin
         }
         return 0
     }
 
-    private var bubbleCenterY: CGFloat {
-        bubbleFrame.midY - shiftUp
+    // Проверяем помещаются ли реакции сверху при смещении
+    private var idealPillTop: CGFloat { (bubbleFrame.minY - shiftUp) - gap - pillH }
+    private var isFlipped: Bool {
+        return idealPillTop < topMargin
     }
 
-    private var reactionBarY: CGFloat {
-        let desired = (bubbleFrame.minY - shiftUp) - 10 - (reactionPillHeight / 2)
-        return max(topBound + (reactionPillHeight / 2), desired)
+    // Итоговые Y-центры бабла, реакций и меню
+    private var finalBubbleY: CGFloat {
+        if isFlipped {
+            return bottomMargin - (bubbleH / 2)
+        }
+        return bubbleFrame.midY - shiftUp
     }
 
-    private var menuY: CGFloat {
-        let spaceBelow = bottomBound - (bubbleFrame.maxY - shiftUp)
-        if spaceBelow >= menuHeight + 12 {
-            return (bubbleFrame.maxY - shiftUp) + 10 + (menuHeight / 2)
+    private var finalReactionsY: CGFloat {
+        if isFlipped {
+            return (finalBubbleY - (bubbleH / 2)) - gap - (pillH / 2)
         } else {
-            return reactionBarY - (reactionPillHeight / 2) - 10 - (menuHeight / 2)
+            return (finalBubbleY - (bubbleH / 2)) - gap - (pillH / 2)
         }
     }
 
+    private var finalMenuY: CGFloat {
+        if isFlipped {
+            return finalReactionsY - (pillH / 2) - gap - (menuH / 2)
+        } else {
+            return (finalBubbleY + (bubbleH / 2)) + gap + (menuH / 2)
+        }
+    }
+
+    // X-центры
     private var reactionBarX: CGFloat {
-        let half = reactionPillWidth / 2
+        let half = pillW / 2
         return bubbleFrame.midX.clamped(to: half + 16 ... screenSize.width - half - 16)
     }
 
     private var menuX: CGFloat {
-        let half = menuWidth / 2
+        let half = menuW / 2
         if isFromMe {
             let ideal = bubbleFrame.maxX - half
             return ideal.clamped(to: half + 16 ... screenSize.width - half - 16)
@@ -100,28 +116,28 @@ struct TelegramMessageContextView: View {
                 .onTapGesture { onDismiss() }
                 .animation(.easeOut(duration: 0.2), value: appeared)
 
-            // 2. Горизонтальная плашка реакций над баблом (Liquid Glass)
+            // 2. Горизонтальная плашка реакций (Liquid Glass)
             reactionPill
-                .position(x: reactionBarX, y: reactionBarY)
-                .scaleEffect(appeared ? 1 : 0.4, anchor: .bottom)
+                .position(x: reactionBarX, y: finalReactionsY)
+                .scaleEffect(appeared ? 1 : 0.4, anchor: isFlipped ? .top : .bottom)
                 .opacity(appeared ? 1 : 0)
                 .animation(.spring(response: 0.30, dampingFraction: 0.72).delay(0.02), value: appeared)
 
-            // 3. Копия ТОЛЬКО самого прямоугольника бабла сообщения (без Spacers/аватарки)
+            // 3. Прямоугольник бабла сообщения (без Spacers и внешних отступов)
             bubbleContentOnly
-                .frame(width: bubbleFrame.width, height: bubbleFrame.height)
-                .position(x: bubbleFrame.midX, y: bubbleCenterY)
+                .frame(width: bubbleFrame.width, height: bubbleH)
+                .position(x: bubbleFrame.midX, y: finalBubbleY)
                 .scaleEffect(appeared ? 1.04 : 1.0)
                 .shadow(color: .black.opacity(appeared ? 0.4 : 0), radius: 16, x: 0, y: 8)
                 .animation(.spring(response: 0.28, dampingFraction: 0.72), value: appeared)
                 .allowsHitTesting(false)
 
-            // 4. Меню действий под баблом (Liquid Glass)
+            // 4. Меню действий под баблом (или над реакциями) (Liquid Glass)
             actionsMenu
-                .position(x: menuX, y: menuY)
+                .position(x: menuX, y: finalMenuY)
                 .scaleEffect(
                     appeared ? 1 : 0.4,
-                    anchor: isFromMe ? .topTrailing : .topLeading
+                    anchor: isFromMe ? (isFlipped ? .bottomTrailing : .topTrailing) : (isFlipped ? .bottomLeading : .topLeading)
                 )
                 .opacity(appeared ? 1 : 0)
                 .animation(.spring(response: 0.28, dampingFraction: 0.72).delay(0.04), value: appeared)
@@ -251,7 +267,7 @@ struct TelegramMessageContextView: View {
                 action: onDelete
             )
         }
-        .frame(width: menuWidth)
+        .frame(width: menuW)
         .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .shadow(color: .black.opacity(0.25), radius: 14, x: 0, y: 7)
     }
