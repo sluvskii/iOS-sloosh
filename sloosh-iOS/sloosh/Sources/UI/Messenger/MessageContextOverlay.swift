@@ -32,7 +32,7 @@ struct TelegramMessageContextView: View {
         return nil
     }
 
-    // MARK: - Geometry & Placement Math (Contiguous Telegram Vertical Block)
+    // MARK: - Layout Geometry (Strict Telegram Order: Reactions -> Bubble -> Menu)
 
     private var pillW: CGFloat { CGFloat(emojis.count) * 48 + 12 }
     private var pillH: CGFloat { 52 }
@@ -46,49 +46,36 @@ struct TelegramMessageContextView: View {
     private var bubbleH: CGFloat { max(36, bubbleFrame.height) }
     private var gap: CGFloat { 8 }
 
-    private var topMargin: CGFloat { safeAreaInsets.top + 16 }
-    private var bottomMargin: CGFloat { screenSize.height - safeAreaInsets.bottom - 16 }
+    private var topBound: CGFloat { safeAreaInsets.top + 12 }
+    private var bottomBound: CGFloat { screenSize.height - safeAreaInsets.bottom - 12 }
 
-    // Вычисляем смещение группы вверх если меню снизу выходит за границы экрана
-    private var idealMenuBottom: CGFloat { bubbleFrame.maxY + gap + menuH }
-    private var shiftUp: CGFloat {
-        if idealMenuBottom > bottomMargin {
-            return idealMenuBottom - bottomMargin
+    // Смещение всей единой группы вверх или вниз если она заходит за границы экрана
+    private var verticalShift: CGFloat {
+        let desiredMenuBottom = bubbleFrame.maxY + gap + menuH
+        if desiredMenuBottom > bottomBound {
+            return desiredMenuBottom - bottomBound
+        }
+        let desiredPillTop = bubbleFrame.minY - gap - pillH
+        if desiredPillTop < topBound {
+            return desiredPillTop - topBound // отрицательное значение (смещение вниз)
         }
         return 0
     }
 
-    // Проверяем помещаются ли реакции сверху при смещении
-    private var idealPillTop: CGFloat { (bubbleFrame.minY - shiftUp) - gap - pillH }
-    private var isFlipped: Bool {
-        return idealPillTop < topMargin
-    }
-
-    // Итоговые Y-центры бабла, реакций и меню
+    // Итоговые центры элементов (ПОРЯДОК СТРОГО ФИКСИРОВАН: Реакции (top) -> Бабл (mid) -> Меню (bot))
     private var finalBubbleY: CGFloat {
-        if isFlipped {
-            return bottomMargin - (bubbleH / 2)
-        }
-        return bubbleFrame.midY - shiftUp
+        bubbleFrame.midY - verticalShift
     }
 
     private var finalReactionsY: CGFloat {
-        if isFlipped {
-            return (finalBubbleY - (bubbleH / 2)) - gap - (pillH / 2)
-        } else {
-            return (finalBubbleY - (bubbleH / 2)) - gap - (pillH / 2)
-        }
+        (bubbleFrame.minY - verticalShift) - gap - (pillH / 2)
     }
 
     private var finalMenuY: CGFloat {
-        if isFlipped {
-            return finalReactionsY - (pillH / 2) - gap - (menuH / 2)
-        } else {
-            return (finalBubbleY + (bubbleH / 2)) + gap + (menuH / 2)
-        }
+        (bubbleFrame.maxY - verticalShift) + gap + (menuH / 2)
     }
 
-    // X-центры
+    // X-центры выравнивания
     private var reactionBarX: CGFloat {
         let half = pillW / 2
         return bubbleFrame.midX.clamped(to: half + 16 ... screenSize.width - half - 16)
@@ -116,14 +103,14 @@ struct TelegramMessageContextView: View {
                 .onTapGesture { onDismiss() }
                 .animation(.easeOut(duration: 0.2), value: appeared)
 
-            // 2. Горизонтальная плашка реакций (Liquid Glass)
+            // 2. Горизонтальная плашка реакций НАД баблом (Liquid Glass)
             reactionPill
                 .position(x: reactionBarX, y: finalReactionsY)
-                .scaleEffect(appeared ? 1 : 0.4, anchor: isFlipped ? .top : .bottom)
+                .scaleEffect(appeared ? 1 : 0.4, anchor: .bottom)
                 .opacity(appeared ? 1 : 0)
                 .animation(.spring(response: 0.30, dampingFraction: 0.72).delay(0.02), value: appeared)
 
-            // 3. Прямоугольник бабла сообщения (без Spacers и внешних отступов)
+            // 3. Баббл сообщения строго по центру
             bubbleContentOnly
                 .frame(width: bubbleFrame.width, height: bubbleH)
                 .position(x: bubbleFrame.midX, y: finalBubbleY)
@@ -132,12 +119,12 @@ struct TelegramMessageContextView: View {
                 .animation(.spring(response: 0.28, dampingFraction: 0.72), value: appeared)
                 .allowsHitTesting(false)
 
-            // 4. Меню действий под баблом (или над реакциями) (Liquid Glass)
+            // 4. Меню действий ПОД баблом (Liquid Glass)
             actionsMenu
                 .position(x: menuX, y: finalMenuY)
                 .scaleEffect(
                     appeared ? 1 : 0.4,
-                    anchor: isFromMe ? (isFlipped ? .bottomTrailing : .topTrailing) : (isFlipped ? .bottomLeading : .topLeading)
+                    anchor: isFromMe ? .topTrailing : .topLeading
                 )
                 .opacity(appeared ? 1 : 0)
                 .animation(.spring(response: 0.28, dampingFraction: 0.72).delay(0.04), value: appeared)
