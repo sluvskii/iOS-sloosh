@@ -235,14 +235,6 @@ private struct MenuRowPressStyle: ButtonStyle {
     }
 }
 
-// MARK: - Helpers
-
-private extension Comparable {
-    func clamped(to range: ClosedRange<Self>) -> Self {
-        min(max(self, range.lowerBound), range.upperBound)
-    }
-}
-
 // MARK: - ContextMenuCoordinator (UIKit presenter)
 
 @MainActor
