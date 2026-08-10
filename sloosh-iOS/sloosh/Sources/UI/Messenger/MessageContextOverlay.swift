@@ -6,9 +6,10 @@ import UIKit
 struct TelegramMessageContextView: View {
     let message: ChatMessage
     let isFromMe: Bool
-    let bubbleFrame: CGRect              // фрейм бабла в точных window-координатах
+    let bubbleFrame: CGRect              // точный фрейм бабла в window-координатах
     let screenSize: CGSize
     let safeAreaInsets: EdgeInsets
+    let allMessages: [ChatMessage]
     let onDismiss: () -> Void
     let onReact: (String) -> Void
     let onReply: () -> Void
@@ -24,6 +25,13 @@ struct TelegramMessageContextView: View {
         return message.reactions?[myId]
     }
 
+    private var repliedMessage: ChatMessage? {
+        if let replyToId = message.replyToId {
+            return allMessages.first(where: { $0.id == replyToId })
+        }
+        return nil
+    }
+
     // MARK: - Geometry & Placement Math
 
     private var reactionPillWidth: CGFloat { CGFloat(emojis.count) * 48 + 12 }
@@ -35,20 +43,41 @@ struct TelegramMessageContextView: View {
         return canEdit ? 148 : 98
     }
 
-    // X реакций — по центру бабла с clamp
+    private var topBound: CGFloat { safeAreaInsets.top + 16 }
+    private var bottomBound: CGFloat { screenSize.height - safeAreaInsets.bottom - 16 }
+
+    // Смещение всей группы вверх если бабл или меню выходят за нижнюю границу экрана
+    private var shiftUp: CGFloat {
+        let desiredMenuBottom = bubbleFrame.maxY + 10 + menuHeight
+        if desiredMenuBottom > bottomBound {
+            return min(desiredMenuBottom - bottomBound, bubbleFrame.minY - topBound - reactionPillHeight - 20)
+        }
+        return 0
+    }
+
+    private var bubbleCenterY: CGFloat {
+        bubbleFrame.midY - shiftUp
+    }
+
+    private var reactionBarY: CGFloat {
+        let desired = (bubbleFrame.minY - shiftUp) - 10 - (reactionPillHeight / 2)
+        return max(topBound + (reactionPillHeight / 2), desired)
+    }
+
+    private var menuY: CGFloat {
+        let spaceBelow = bottomBound - (bubbleFrame.maxY - shiftUp)
+        if spaceBelow >= menuHeight + 12 {
+            return (bubbleFrame.maxY - shiftUp) + 10 + (menuHeight / 2)
+        } else {
+            return reactionBarY - (reactionPillHeight / 2) - 10 - (menuHeight / 2)
+        }
+    }
+
     private var reactionBarX: CGFloat {
         let half = reactionPillWidth / 2
         return bubbleFrame.midX.clamped(to: half + 16 ... screenSize.width - half - 16)
     }
 
-    // Y реакций — строго над баблом
-    private var reactionBarY: CGFloat {
-        let desired = bubbleFrame.minY - 10 - (reactionPillHeight / 2)
-        let minY = safeAreaInsets.top + (reactionPillHeight / 2) + 8
-        return max(minY, desired)
-    }
-
-    // X меню — по правому краю для моих, по левому для чужих
     private var menuX: CGFloat {
         let half = menuWidth / 2
         if isFromMe {
@@ -60,21 +89,11 @@ struct TelegramMessageContextView: View {
         }
     }
 
-    // Y меню — под баблом (или над, если мало места снизу)
-    private var menuY: CGFloat {
-        let spaceBelow = screenSize.height - safeAreaInsets.bottom - bubbleFrame.maxY
-        if spaceBelow >= menuHeight + 16 {
-            return bubbleFrame.maxY + 10 + (menuHeight / 2)
-        } else {
-            return bubbleFrame.minY - 10 - (menuHeight / 2)
-        }
-    }
-
     // MARK: - Body
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            // 1. Затемнение экрана Telegram с размытием (закрывается при тапе)
+            // 1. Затемнение экрана Telegram (закрывается при тапе)
             Color.black
                 .opacity(appeared ? 0.45 : 0)
                 .ignoresSafeArea()
@@ -88,7 +107,16 @@ struct TelegramMessageContextView: View {
                 .opacity(appeared ? 1 : 0)
                 .animation(.spring(response: 0.30, dampingFraction: 0.72).delay(0.02), value: appeared)
 
-            // 3. Меню действий под баблом (Liquid Glass)
+            // 3. Копия ТОЛЬКО самого прямоугольника бабла сообщения (без Spacers/аватарки)
+            bubbleContentOnly
+                .frame(width: bubbleFrame.width, height: bubbleFrame.height)
+                .position(x: bubbleFrame.midX, y: bubbleCenterY)
+                .scaleEffect(appeared ? 1.04 : 1.0)
+                .shadow(color: .black.opacity(appeared ? 0.4 : 0), radius: 16, x: 0, y: 8)
+                .animation(.spring(response: 0.28, dampingFraction: 0.72), value: appeared)
+                .allowsHitTesting(false)
+
+            // 4. Меню действий под баблом (Liquid Glass)
             actionsMenu
                 .position(x: menuX, y: menuY)
                 .scaleEffect(
@@ -102,6 +130,59 @@ struct TelegramMessageContextView: View {
         .ignoresSafeArea()
         .onAppear {
             withAnimation { appeared = true }
+        }
+    }
+
+    // MARK: - Bubble Content Only (Без Spacers и внешних отступов)
+
+    @ViewBuilder
+    private var bubbleContentOnly: some View {
+        if message.type == .media, let media = message.media {
+            MediaMessageCardView(media: media, onOpenDetails: { _ in }, onPlayDirectly: { _ in })
+        } else {
+            VStack(alignment: .leading, spacing: 4) {
+                if let replied = repliedMessage {
+                    HStack(spacing: 8) {
+                        Capsule()
+                            .fill(isFromMe ? Color(UIColor.systemBackground) : Color.slooshAccent)
+                            .frame(width: 2)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Ответ")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(isFromMe ? Color(UIColor.systemBackground) : .slooshAccent)
+                            Text(replied.text ?? "Медиа")
+                                .font(.system(size: 13))
+                                .foregroundColor(isFromMe ? Color(UIColor.systemBackground).opacity(0.7) : .secondary)
+                                .lineLimit(1)
+                        }
+                    }
+                    .padding(.bottom, 2)
+                }
+
+                if let text = message.text, !text.isEmpty {
+                    Text(text)
+                        .font(.system(size: 16))
+                        .foregroundColor(isFromMe ? Color(UIColor.systemBackground) : .primary)
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(
+                Group {
+                    if isFromMe {
+                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            .fill(Color.primary)
+                    } else {
+                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            .fill(Color(UIColor.secondarySystemGroupedBackground))
+                    }
+                }
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .stroke(Color.primary.opacity(0.06), lineWidth: isFromMe ? 0 : 0.5)
+            )
         }
     }
 
@@ -222,6 +303,7 @@ final class ContextMenuCoordinator: ObservableObject {
         message: ChatMessage,
         isFromMe: Bool,
         bubbleFrame: CGRect,
+        allMessages: [ChatMessage],
         onDismiss: @escaping () -> Void,
         onReact: @escaping (String) -> Void,
         onReply: @escaping () -> Void,
@@ -256,6 +338,7 @@ final class ContextMenuCoordinator: ObservableObject {
             bubbleFrame: bubbleFrame,
             screenSize: screen.size,
             safeAreaInsets: swiftUISafe,
+            allMessages: allMessages,
             onDismiss: dismissAction,
             onReact: { emoji in onReact(emoji); dismissAction() },
             onReply:  { onReply();  dismissAction() },

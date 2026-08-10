@@ -565,6 +565,11 @@ struct PeakMessageBubbleView: View {
                 VStack(alignment: isFromMe ? .trailing : .leading, spacing: 3) {
                     ZStack(alignment: isFromMe ? .bottomTrailing : .bottomLeading) {
                         bubbleBody
+                            .background(
+                                WindowFrameCapture { frame in
+                                    self.selfFrame = frame
+                                }
+                            )
                             .onTapGesture(count: 2) {
                                 onReact("❤️", message)
                             }
@@ -573,11 +578,6 @@ struct PeakMessageBubbleView: View {
                             reactionsOverlay(msgReactions)
                         }
                     }
-                    .background(
-                        WindowFrameCapture { frame in
-                            self.selfFrame = frame
-                        }
-                    )
                     .padding(.bottom, (message.reactions?.isEmpty == false) ? 8 : 0)
 
                     if showMeta {
