@@ -16,9 +16,10 @@ public struct ChatDetailView: View {
     @State private var isShowingInfo: Bool = false
     @State private var pollTask: Task<Void, Never>? = nil
 
-    // Peak Messenger state variables for Reply & Edit
+    // Peak Messenger state variables for Reply, Edit & Focus
     @State private var replyingMessage: ChatMessage? = nil
     @State private var editingMessage: ChatMessage? = nil
+    @State private var focusedMessageId: String? = nil
 
     // UIKit-powered Telegram-style context menu coordinator
     @StateObject private var contextMenuCoordinator = ContextMenuCoordinator()
@@ -191,6 +192,7 @@ public struct ChatDetailView: View {
                             ForEach(messages) { message in
                                 let isFromMe = message.senderId == (AuthRepository.shared.currentUser?.id ?? "")
                                 let showMeta = shouldShowMeta(for: message)
+                                let isFocused = (focusedMessageId == message.id)
 
                                 PeakMessageBubbleView(
                                     message: message,
@@ -220,11 +222,18 @@ public struct ChatDetailView: View {
                                     },
                                     onLongPress: { msg, windowFrame in
                                         let isOwn = msg.senderId == (AuthRepository.shared.currentUser?.id ?? "")
+                                        withAnimation(.spring(response: 0.28, dampingFraction: 0.72)) {
+                                            focusedMessageId = msg.id
+                                        }
                                         contextMenuCoordinator.present(
                                             message: msg,
                                             isFromMe: isOwn,
                                             bubbleFrame: windowFrame,
-                                            allMessages: messages,
+                                            onDismiss: {
+                                                withAnimation(.spring(response: 0.22, dampingFraction: 0.8)) {
+                                                    focusedMessageId = nil
+                                                }
+                                            },
                                             onReact: { emoji in addReaction(emoji, to: msg) },
                                             onReply: {
                                                 replyingMessage = msg
@@ -239,6 +248,9 @@ public struct ChatDetailView: View {
                                         )
                                     }
                                 )
+                                .scaleEffect(isFocused ? 1.04 : 1.0)
+                                .zIndex(isFocused ? 999 : 0)
+                                .animation(.spring(response: 0.28, dampingFraction: 0.72), value: isFocused)
                                 .id(message.id)
                             }
                         }
