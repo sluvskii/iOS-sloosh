@@ -506,7 +506,7 @@ public struct ChatDetailView: View {
 
 // MARK: - Peak Message Bubble View (Adaptive Theme + Minute Grouping)
 
-private struct PeakMessageBubbleView: View {
+struct PeakMessageBubbleView: View {
     let message: ChatMessage
     let isFromMe: Bool
     let showMeta: Bool
