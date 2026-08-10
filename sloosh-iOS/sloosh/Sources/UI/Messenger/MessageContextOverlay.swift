@@ -1,18 +1,12 @@
 import SwiftUI
 import UIKit
 
+// MARK: - Authentic Telegram 1-in-1 Context Menu Overlay (UIKit + Liquid Glass)
 
-// MARK: - Основной оверлей (SwiftUI поверх UIKit window)
-
-/// Правильный Telegram-style оверлей:
-/// - Размытый backdrop на весь экран
-/// - Сообщение анимировано переносится на своё место
-/// - Реакции — горизонтальная пилюля СТРОГО над сообщением
-/// - Меню действий — СТРОГО под сообщением (или над, если нет места)
 struct TelegramMessageContextView: View {
     let message: ChatMessage
     let isFromMe: Bool
-    let bubbleFrame: CGRect              // фрейм бабла в глобальных (window) координатах
+    let bubbleFrame: CGRect              // фрейм бабла в точных window-координатах
     let screenSize: CGSize
     let safeAreaInsets: EdgeInsets
     let allMessages: [ChatMessage]
@@ -24,225 +18,236 @@ struct TelegramMessageContextView: View {
 
     @State private var appeared = false
 
+    private let emojis = ["❤️", "👍", "🔥", "😂", "😢", "👏"]
+
     private var myCurrentReaction: String? {
         guard let myId = AuthRepository.shared.currentUser?.id else { return nil }
         return message.reactions?[myId]
     }
 
-    private let emojis = ["❤️", "👍", "🔥", "😂", "😢", "👏"]
+    // MARK: - Geometry Measurements
 
-    // Реакции показываем ВСЕГДА над баблом, но если нет места — снизу
-    private var reactionBarY: CGFloat {
-        let reactionBarHeight: CGFloat = 52
-        let gap: CGFloat = 8
-        let topLimit = safeAreaInsets.top + 8
-        let idealY = bubbleFrame.minY - gap - reactionBarHeight / 2
+    private var reactionPillWidth: CGFloat { CGFloat(emojis.count) * 48 + 12 }
+    private var reactionPillHeight: CGFloat { 52 }
 
-        if idealY - reactionBarHeight / 2 < topLimit {
-            // Нет места над — показываем под сообщением
-            return bubbleFrame.maxY + gap + reactionBarHeight / 2
-        }
-        return max(topLimit + reactionBarHeight / 2, idealY)
+    private var menuWidth: CGFloat { 240 }
+    private var menuHeight: CGFloat {
+        let canEdit = isFromMe && message.type == .text
+        return canEdit ? 148 : 98
     }
 
-    // Реакции выровнены по краю бабла (как в Telegram)
+    // X реакций — строго по центру бабла с clamp у краев экрана
     private var reactionBarX: CGFloat {
-        let barWidth: CGFloat = 52 * CGFloat(emojis.count)
-        let margin: CGFloat = 16
+        let half = reactionPillWidth / 2
+        let ideal = isFromMe ? (bubbleFrame.maxX - half) : (bubbleFrame.minX + half)
+        return ideal.clamped(to: half + 16 ... screenSize.width - half - 16)
+    }
+
+    // Y реакций — строго над баблом
+    private var reactionBarY: CGFloat {
+        let desiredCenter = bubbleFrame.minY - 10 - reactionPillHeight / 2
+        let minY = safeAreaInsets.top + reactionPillHeight / 2 + 12
+        return max(desiredCenter, minY)
+    }
+
+    // X меню — по правой стороне для моих, по левой для чужих
+    private var menuX: CGFloat {
+        let half = menuWidth / 2
         if isFromMe {
-            // Исходящие — выровнять по правому краю
-            return min(screenSize.width - margin - barWidth / 2, max(barWidth / 2 + margin, bubbleFrame.maxX - barWidth / 2))
+            let ideal = bubbleFrame.maxX - half
+            return ideal.clamped(to: half + 16 ... screenSize.width - half - 16)
         } else {
-            // Входящие — выровнять по левому краю
-            return max(barWidth / 2 + margin, min(screenSize.width - margin - barWidth / 2, bubbleFrame.minX + barWidth / 2))
+            let ideal = bubbleFrame.minX + half
+            return ideal.clamped(to: half + 16 ... screenSize.width - half - 16)
         }
     }
 
-    private var menuWidth: CGFloat { min(250, screenSize.width - 32) }
-    private var menuItemCount: Int { (isFromMe && message.type == .text) ? 3 : 2 }
-    private var menuHeight: CGFloat { CGFloat(menuItemCount) * 50 + CGFloat(menuItemCount - 1) * 0.5 }
-
-    // Меню под баблом, если нет места — над
+    // Y меню — под баблом если помещается, иначе над
     private var menuY: CGFloat {
-        let gap: CGFloat = 12
-        let reactionBarUsed: CGFloat = 52 + 8  // высота плашки реакций + gap
-        let spaceBelow = screenSize.height - bubbleFrame.maxY - safeAreaInsets.bottom
-
-        if spaceBelow >= menuHeight + gap + 8 {
+        let gap: CGFloat = 10
+        let spaceBelow = screenSize.height - safeAreaInsets.bottom - bubbleFrame.maxY
+        if spaceBelow >= menuHeight + gap {
             return bubbleFrame.maxY + gap + menuHeight / 2
         } else {
-            return bubbleFrame.minY - gap - menuHeight / 2
+            return max(safeAreaInsets.top + 80, bubbleFrame.minY - gap - menuHeight / 2)
         }
     }
 
-    private var menuX: CGFloat {
-        let margin: CGFloat = 16
-        if isFromMe {
-            return min(screenSize.width - margin - menuWidth / 2, max(menuWidth / 2 + margin, bubbleFrame.maxX - menuWidth / 2))
-        } else {
-            return max(menuWidth / 2 + margin, min(screenSize.width - margin - menuWidth / 2, bubbleFrame.minX + menuWidth / 2))
-        }
-    }
+    // MARK: - Body
 
     var body: some View {
-        ZStack {
-            // 1. Backdrop — тёмный полупрозрачный фон, как в Telegram
+        ZStack(alignment: .topLeading) {
+            // 1. Нативное затемнение экрана Telegram (тап закрывает)
             Color.black
-                .opacity(appeared ? 0.4 : 0)
+                .opacity(appeared ? 0.45 : 0)
                 .ignoresSafeArea()
                 .onTapGesture { onDismiss() }
                 .animation(.easeOut(duration: 0.2), value: appeared)
 
-            // 2. Плашка реакций — горизонтальная пилюля НАД баблом
+            // 2. Горизонтальная плашка реакций над баблом (Liquid Glass)
             reactionPill
                 .position(x: reactionBarX, y: reactionBarY)
-                .scaleEffect(appeared ? 1 : 0.4)
+                .scaleEffect(appeared ? 1 : 0.4, anchor: .bottom)
                 .opacity(appeared ? 1 : 0)
-                .animation(.spring(response: 0.32, dampingFraction: 0.72).delay(0.05), value: appeared)
+                .animation(.spring(response: 0.30, dampingFraction: 0.72).delay(0.02), value: appeared)
 
-            // 3. Меню действий — вертикальный список ПОД баблом
+            // 3. Дубликат сообщения на его точной позиции в чате (выделение в фокус)
+            PeakMessageBubbleView(
+                message: message,
+                isFromMe: isFromMe,
+                showMeta: true,
+                allMessages: allMessages,
+                onOpenMovie: { _ in },
+                onPlayDirectly: { _ in },
+                onReply: { _ in },
+                onEdit: { _ in },
+                onDelete: { _ in },
+                onReact: { _, _ in },
+                onLongPress: { _, _ in }
+            )
+            .scaleEffect(appeared ? 1.03 : 1.0)
+            .shadow(color: .black.opacity(appeared ? 0.35 : 0), radius: 16, x: 0, y: 8)
+            .position(x: bubbleFrame.midX, y: bubbleFrame.midY)
+            .animation(.spring(response: 0.28, dampingFraction: 0.72), value: appeared)
+            .allowsHitTesting(false)
+
+            // 4. Меню действий под баблом (Liquid Glass)
             actionsMenu
                 .position(x: menuX, y: menuY)
-                .scaleEffect(appeared ? 1 : 0.5, anchor: isFromMe ? .topTrailing : .topLeading)
+                .scaleEffect(
+                    appeared ? 1 : 0.4,
+                    anchor: isFromMe ? .topTrailing : .topLeading
+                )
                 .opacity(appeared ? 1 : 0)
-                .animation(.spring(response: 0.3, dampingFraction: 0.72).delay(0.08), value: appeared)
+                .animation(.spring(response: 0.28, dampingFraction: 0.72).delay(0.04), value: appeared)
         }
+        .frame(width: screenSize.width, height: screenSize.height)
+        .ignoresSafeArea()
         .onAppear {
             withAnimation { appeared = true }
         }
     }
 
-    // MARK: - Reaction Pill
+    // MARK: - Reaction Pill (Liquid Glass)
 
     private var reactionPill: some View {
-        HStack(spacing: 0) {
-            ForEach(Array(emojis.enumerated()), id: \.offset) { idx, emoji in
-                let isSelected = (myCurrentReaction == emoji)
-                Button {
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    onReact(emoji)
-                } label: {
-                    ZStack {
-                        // Подсветка выбранной реакции
-                        if isSelected {
-                            Circle()
-                                .fill(Color.slooshAccent.opacity(0.25))
-                                .frame(width: 44, height: 44)
-                        }
-                        Text(emoji)
-                            .font(.system(size: 26))
-                            .scaleEffect(isSelected ? 1.1 : 1.0)
-                    }
-                    .frame(width: 48, height: 48)
-                }
-                .buttonStyle(EmojiPressStyle())
+        HStack(spacing: 2) {
+            ForEach(Array(emojis.enumerated()), id: \.offset) { _, emoji in
+                reactionButton(emoji: emoji)
             }
         }
-        .padding(.horizontal, 4)
-        .background(
-            Capsule()
-                .fill(.regularMaterial)
-                .shadow(color: .black.opacity(0.18), radius: 16, x: 0, y: 8)
-        )
-        .overlay(
-            Capsule()
-                .stroke(Color.white.opacity(0.12), lineWidth: 0.5)
-        )
+        .padding(.horizontal, 6)
+        .padding(.vertical, 4)
+        .glassEffect(.regular.interactive(), in: Capsule())
+        .shadow(color: .black.opacity(0.25), radius: 12, x: 0, y: 6)
     }
 
-    // MARK: - Actions Menu
+    private func reactionButton(emoji: String) -> some View {
+        let isSelected = myCurrentReaction == emoji
+        return Button {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            onReact(emoji)
+        } label: {
+            ZStack {
+                if isSelected {
+                    Circle()
+                        .fill(Color.slooshAccent.opacity(0.32))
+                        .frame(width: 40, height: 40)
+                }
+                Text(emoji)
+                    .font(.system(size: 24))
+                    .scaleEffect(isSelected ? 1.15 : 1.0)
+            }
+            .frame(width: 44, height: 44)
+        }
+        .buttonStyle(EmojiPressStyle())
+    }
+
+    // MARK: - Actions Menu (Liquid Glass)
 
     private var actionsMenu: some View {
         VStack(spacing: 0) {
-            MenuActionRow(
+            menuRow(
                 title: "Ответить",
-                systemImage: "arrowshape.turn.up.left",
-                color: .primary
-            ) { onReply() }
+                icon: "arrowshape.turn.up.left.fill",
+                color: .primary,
+                action: onReply
+            )
 
             if isFromMe && message.type == .text {
-                Divider()
-                    .background(Color.white.opacity(0.1))
-                MenuActionRow(
+                Divider().padding(.horizontal, 12)
+                menuRow(
                     title: "Редактировать",
-                    systemImage: "pencil",
-                    color: .primary
-                ) { onEdit() }
+                    icon: "pencil",
+                    color: .primary,
+                    action: onEdit
+                )
             }
 
-            Divider()
-                .background(Color.white.opacity(0.1))
+            Divider().padding(.horizontal, 12)
 
-            MenuActionRow(
-                title: "Удалить",
-                systemImage: "trash",
-                color: .red
-            ) { onDelete() }
+            menuRow(
+                title: "Удалить у всех",
+                icon: "trash.fill",
+                color: .red,
+                action: onDelete
+            )
         }
         .frame(width: menuWidth)
-        .background(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .fill(.regularMaterial)
-                .shadow(color: .black.opacity(0.2), radius: 20, x: 0, y: 10)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
-                .stroke(Color.white.opacity(0.1), lineWidth: 0.5)
-        )
-        .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .shadow(color: .black.opacity(0.25), radius: 14, x: 0, y: 7)
     }
-}
 
-// MARK: - Supporting Views
-
-private struct MenuActionRow: View {
-    let title: String
-    let systemImage: String
-    let color: Color
-    let action: () -> Void
-
-    var body: some View {
+    private func menuRow(title: String, icon: String, color: Color, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            HStack {
+            HStack(spacing: 12) {
                 Text(title)
-                    .font(.system(size: 17, weight: .regular))
+                    .font(.system(size: 16, weight: .semibold))
                     .foregroundColor(color)
                 Spacer()
-                Image(systemName: systemImage)
-                    .font(.system(size: 17, weight: .regular))
+                Image(systemName: icon)
+                    .font(.system(size: 16, weight: .semibold))
                     .foregroundColor(color)
             }
             .padding(.horizontal, 16)
-            .frame(height: 50)
+            .padding(.vertical, 12)
             .contentShape(Rectangle())
         }
         .buttonStyle(MenuRowPressStyle())
     }
 }
 
+// MARK: - Button Styles
+
 private struct EmojiPressStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed ? 0.78 : 1.0)
-            .animation(.spring(response: 0.2, dampingFraction: 0.6), value: configuration.isPressed)
+            .scaleEffect(configuration.isPressed ? 0.82 : 1.0)
+            .animation(.spring(response: 0.18, dampingFraction: 0.6), value: configuration.isPressed)
     }
 }
 
 private struct MenuRowPressStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .background(configuration.isPressed ? Color.primary.opacity(0.08) : Color.clear)
-            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
+            .background(configuration.isPressed ? Color.white.opacity(0.12) : Color.clear)
+            .animation(.easeInOut(duration: 0.1), value: configuration.isPressed)
     }
 }
 
-// MARK: - ContextOverlayCoordinator (UIKit presenter)
+// MARK: - Helpers
 
-/// Показывает Telegram-style оверлей поверх всего (в window) через UIKit
+private extension Comparable {
+    func clamped(to range: ClosedRange<Self>) -> Self {
+        min(max(self, range.lowerBound), range.upperBound)
+    }
+}
+
+// MARK: - ContextMenuCoordinator (UIKit presenter)
+
 @MainActor
 final class ContextMenuCoordinator: ObservableObject {
     private var overlayWindow: UIWindow?
-    private var overlayVC: UIViewController?
 
     func present(
         message: ChatMessage,
@@ -258,68 +263,57 @@ final class ContextMenuCoordinator: ObservableObject {
             .compactMap({ $0 as? UIWindowScene })
             .first(where: { $0.activationState == .foregroundActive }) else { return }
 
-        let screenSize = windowScene.screen.bounds.size
-        let safeAreaInsets = windowScene.windows.first?.safeAreaInsets ?? .zero
-        let swiftUISafeInsets = EdgeInsets(
-            top: safeAreaInsets.top,
-            leading: safeAreaInsets.left,
-            bottom: safeAreaInsets.bottom,
-            trailing: safeAreaInsets.right
+        dismiss(animated: false)
+
+        let screen = windowScene.screen.bounds
+        let safeInsets = windowScene.windows.first?.safeAreaInsets ?? .zero
+        let swiftUISafe = EdgeInsets(
+            top: safeInsets.top,
+            leading: safeInsets.left,
+            bottom: safeInsets.bottom,
+            trailing: safeInsets.right
         )
 
         let dismissAction: () -> Void = { [weak self] in
-            Task { @MainActor in
-                self?.dismiss(animated: true)
-            }
+            Task { @MainActor in self?.dismiss(animated: true) }
         }
 
-        let overlay = TelegramMessageContextView(
+        let rootView = TelegramMessageContextView(
             message: message,
             isFromMe: isFromMe,
             bubbleFrame: bubbleFrame,
-            screenSize: screenSize,
-            safeAreaInsets: swiftUISafeInsets,
+            screenSize: screen.size,
+            safeAreaInsets: swiftUISafe,
             allMessages: allMessages,
             onDismiss: dismissAction,
-            onReact: { emoji in
-                onReact(emoji)
-                dismissAction()
-            },
-            onReply: {
-                onReply()
-                dismissAction()
-            },
-            onEdit: {
-                onEdit()
-                dismissAction()
-            },
-            onDelete: {
-                onDelete()
-                dismissAction()
-            }
+            onReact: { emoji in onReact(emoji); dismissAction() },
+            onReply:  { onReply();  dismissAction() },
+            onEdit:   { onEdit();   dismissAction() },
+            onDelete: { onDelete(); dismissAction() }
         )
 
-        let vc = UIHostingController(rootView: overlay)
+        let vc = UIHostingController(rootView: rootView)
         vc.view.backgroundColor = .clear
 
         let window = UIWindow(windowScene: windowScene)
         window.windowLevel = .alert + 1
         window.backgroundColor = .clear
         window.rootViewController = vc
+        window.frame = screen
         window.isHidden = false
 
         self.overlayWindow = window
-        self.overlayVC = vc
     }
 
     func dismiss(animated: Bool) {
-        let w = overlayWindow
-        UIView.animate(withDuration: animated ? 0.18 : 0, animations: {
-            w?.alpha = 0
-        }, completion: { _ in
-            w?.isHidden = true
-        })
-        self.overlayWindow = nil
-        self.overlayVC = nil
+        guard let w = overlayWindow else { return }
+        overlayWindow = nil
+        if animated {
+            UIView.animate(withDuration: 0.18, animations: { w.alpha = 0 }) { _ in
+                w.isHidden = true
+            }
+        } else {
+            w.isHidden = true
+        }
     }
 }

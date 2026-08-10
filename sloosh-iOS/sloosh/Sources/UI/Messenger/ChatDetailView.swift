@@ -561,6 +561,11 @@ private struct PeakMessageBubbleView: View {
                             reactionsOverlay(msgReactions)
                         }
                     }
+                    .background(
+                        WindowFrameCapture { frame in
+                            self.selfFrame = frame
+                        }
+                    )
                     .padding(.bottom, (message.reactions?.isEmpty == false) ? 8 : 0)
 
                     if showMeta {
@@ -596,11 +601,6 @@ private struct PeakMessageBubbleView: View {
             .padding(.horizontal, 12)
             .padding(.vertical, showMeta ? 3 : 1)
         }
-        .background(
-            WindowFrameCapture { frame in
-                self.selfFrame = frame
-            }
-        )
     }
 
     @ViewBuilder
