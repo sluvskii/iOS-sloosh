@@ -357,6 +357,12 @@ class PlayerViewModel: ObservableObject {
     }
 
     private func beginLoad(iframeUrl: String?, kpId: Int?, season: Int?, episode: Int?, selectedVoiceover: String?, directStreamUrl: String? = nil, voices: [String] = [], subtitles: [PlaybackSubtitle] = []) {
+        // Отменяем незаконченные задачи предыдущего эпизода
+        resolveTask?.cancel()
+        resolveTask = nil
+        resolver?.cancel()
+        resolver = nil
+
         self.currentKpId = kpId
         self.currentSeason = season
         self.currentEpisode = episode
@@ -365,6 +371,10 @@ class PlayerViewModel: ObservableObject {
         self.targetDirectStreamUrl = directStreamUrl
         self.isAdvancingToNextEpisode = false
         self.hasRetriedPlayback = false
+        // ВАЖНО: сбрасываем currentTime и currentDuration при смене эпизода,
+        // чтобы reloadPlayback не перемотал новый эпизод к позиции старого.
+        self.currentTime = 0
+        self.currentDuration = 0
         // Сохраняем iframeUrl — нужен для переключения озвучки внутри плеера
         if let iframeUrl, !iframeUrl.isEmpty {
             self.currentIframeUrl = iframeUrl
@@ -1269,10 +1279,41 @@ class PlayerViewModel: ObservableObject {
             return
         }
 
+        // Ждём .readyToPlay перед seek к сохранённой позиции.
+        // Это предотвращает гонку с applyInitialQuality → reloadPlayback,
+        // которая читает self.currentTime и могла перемотать к позиции ПРЕДЫДУЩЕЙ серии.
         let savedPosition = PlaybackProgressStore.shared.load(mediaId: mediaId)
-        if savedPosition > 0 {
-            player.seek(to: CMTime(seconds: savedPosition, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
-            currentTime = savedPosition
+        if savedPosition > 1 {
+            // Подождём готовности item перед seek
+            if let item = player.currentItem, item.status == .readyToPlay {
+                player.seek(to: CMTime(seconds: savedPosition, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
+                currentTime = savedPosition
+            } else {
+                // item ещё не готов — ждём через KVO
+                let capturedMediaId = mediaId
+                let capturedSavedPosition = savedPosition
+                var seekObservation: NSKeyValueObservation?
+                seekObservation = player.currentItem?.observe(\.status, options: [.new]) { [weak self, weak player] item, _ in
+                    guard item.status == .readyToPlay else { return }
+                    seekObservation?.invalidate()
+                    seekObservation = nil
+                    Task { @MainActor [weak self, weak player] in
+                        guard let self, let player else { return }
+                        // Убеждаемся что mediaId не изменился (пользователь не переключил серию снова)
+                        let currentMediaId: String
+                        if let kpId = self.currentKpId {
+                            if let s = self.currentSeason, let e = self.currentEpisode {
+                                currentMediaId = "kp_\(kpId)_s\(s)_e\(e)"
+                            } else {
+                                currentMediaId = "kp_\(kpId)"
+                            }
+                        } else { return }
+                        guard currentMediaId == capturedMediaId else { return }
+                        player.seek(to: CMTime(seconds: capturedSavedPosition, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
+                        self.currentTime = capturedSavedPosition
+                    }
+                }
+            }
         }
 
         timeObserver = player.addPeriodicTimeObserver(
@@ -1502,12 +1543,33 @@ class PlayerViewModel: ObservableObject {
         guard autoplayNextEpisodeEnabled,
               !isAdvancingToNextEpisode,
               hasNextEpisode else {
+            // Если нет следующей серии — отмечаем текущую как просмотренную
+            if let kpId = currentKpId {
+                let mediaId: String
+                if let season = currentSeason, let episode = currentEpisode {
+                    mediaId = "kp_\(kpId)_s\(season)_e\(episode)"
+                } else {
+                    mediaId = "kp_\(kpId)"
+                }
+                PlaybackProgressStore.shared.markAsWatched(mediaId: mediaId)
+            }
             return
         }
 
         isAdvancingToNextEpisode = true
         defer { isAdvancingToNextEpisode = false }
-        
+
+        // Отмечаем текущую серию как просмотренную
+        if let kpId = currentKpId {
+            let mediaId: String
+            if let season = currentSeason, let episode = currentEpisode {
+                mediaId = "kp_\(kpId)_s\(season)_e\(episode)"
+            } else {
+                mediaId = "kp_\(kpId)"
+            }
+            PlaybackProgressStore.shared.markAsWatched(mediaId: mediaId)
+        }
+
         playNextEpisode()
     }
 
@@ -1522,8 +1584,12 @@ class PlayerViewModel: ObservableObject {
     }
 
     private func playEpisode(_ episode: (season: Int, episode: Int, translation: AllohaTranslation)) {
-        currentSeason = episode.season
-        currentEpisode = episode.episode
+        // 1. Сохраняем прогресс ТЕКУЩЕГО эпизода ДО обновления currentSeason/currentEpisode
+        saveCurrentProgress()
+
+        // 2. Сбрасываем флаг загрузки — beginLoad не имеет собственной защиты от повторного вызова
+        hasStartedLoading = false
+
         _currentTranslationName = episode.translation.name
         targetVoiceover = episode.translation.name
 
