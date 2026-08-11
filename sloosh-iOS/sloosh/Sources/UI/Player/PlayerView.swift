@@ -363,6 +363,18 @@ class PlayerViewModel: ObservableObject {
         resolver?.cancel()
         resolver = nil
 
+        // КРИТИЧНО: удаляем старый timeObserver ДО сброса currentTime.
+        // Задачи (Task), уже поставленные в очередь старым observer'ом, содержат
+        // self.currentTime = <конец старого эпизода> и могут выполниться ПОСЛЕ
+        // того как мы установим currentTime = 0, перезаписав его неверным значением.
+        // Удаление observer'а здесь не отменяет уже отправленные Task-и, но сам
+        // observer больше не создаст новых; а все уже отправленные Task-и проверяют
+        // capturedItem и выходят досрочно (см. startTrackingProgress).
+        if let observer = timeObserver, let player = player {
+            player.removeTimeObserver(observer)
+            timeObserver = nil
+        }
+
         self.currentKpId = kpId
         self.currentSeason = season
         self.currentEpisode = episode
@@ -1316,13 +1328,22 @@ class PlayerViewModel: ObservableObject {
             }
         }
 
+        // Захватываем ссылку на текущий AVPlayerItem.
+        // Все асинхронные Task-и в observer'е проверяют, что player.currentItem
+        // по-прежнему тот же самый, прежде чем обновлять self.currentTime.
+        // Это исключает перезапись currentTime задачами от предыдущего эпизода.
+        let capturedItem = player.currentItem
+
         timeObserver = player.addPeriodicTimeObserver(
             forInterval: CMTime(seconds: 0.5, preferredTimescale: 600),
             queue: .main
         ) { [weak self, weak player] time in
             guard let self, let player else { return }
-            Task { @MainActor [weak self] in
-                guard let self else { return }
+            Task { @MainActor [weak self, weak player] in
+                guard let self, let player else { return }
+                // Защита от гонки: если player уже переключился на другой эпизод,
+                // не обновляем currentTime и не сохраняем прогресс для старого item.
+                guard player.currentItem === capturedItem else { return }
                 if self.isUserSeeking { return }
                 let t = time.seconds
                 self.currentTime = t.isFinite && !t.isNaN ? t : 0
