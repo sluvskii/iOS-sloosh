@@ -14,6 +14,7 @@ class HlsProxyServer {
     private var voices: [String] = []
     private var subtitles: [PlaybackSubtitle] = []
     private var mediaId: String = ""
+    private var preferredVoiceName: String? = nil
     private var currentMasterUrl: URL?
     
     var port: NWEndpoint.Port = 8181
@@ -53,12 +54,13 @@ class HlsProxyServer {
         }
     }
     
-    func start(headers: [String: String], voices: [String] = [], subtitles: [PlaybackSubtitle] = [], mediaId: String = "") {
+    func start(headers: [String: String], voices: [String] = [], subtitles: [PlaybackSubtitle] = [], mediaId: String = "", preferredVoiceName: String? = nil) {
         let isAlreadyRunning = stateLock.withLock {
             self.headers = headers
             self.voices = voices
             self.subtitles = subtitles
             self.mediaId = mediaId
+            self.preferredVoiceName = preferredVoiceName
             // Блокируем повторный запуск если listener уже есть (пусть даже ещё не .ready)
             // или уже .ready. Это предотвращает двойное создание на одном порту.
             return self.isListenerAlive || self.listener != nil
@@ -320,11 +322,13 @@ class HlsProxyServer {
                     let finalUrl = httpResponse.url ?? realUrl
                     let rewritten: String
                     if content.contains("#EXT-X-STREAM-INF") {
+                        let (voices, preferred) = stateLock.withLock { (self.voices, self.preferredVoiceName) }
                         let playlistRewritten = PlaybackHlsRewriter.rewrite(
                             master: content,
-                            voices: currentVoices,
+                            voices: voices,
                             subtitles: currentSubtitles,
-                            mediaId: currentMediaId
+                            mediaId: currentMediaId,
+                            preferredVoiceName: preferred
                         )
                         
                         AppDiagnostics.shared.log("HlsProxyServer: rewritten master playlist:\n\(playlistRewritten)")

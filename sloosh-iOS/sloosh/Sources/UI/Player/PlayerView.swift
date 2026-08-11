@@ -1094,7 +1094,13 @@ class PlayerViewModel: ObservableObject {
                 mediaId = "unknown"
             }
 
-            HlsProxyServer.shared.start(headers: headers, voices: voices, subtitles: subtitles, mediaId: mediaId)
+            HlsProxyServer.shared.start(
+                headers: headers,
+                voices: voices,
+                subtitles: subtitles,
+                mediaId: mediaId,
+                preferredVoiceName: targetVoiceover ?? _currentTranslationName
+            )
             // currentPlaybackSourceURL — прокси URL (127.0.0.1); для перезапуска используем originalStreamURL
             currentPlaybackSourceURL = proxyUrl
             asset = AVURLAsset(url: proxyUrl)
@@ -1883,6 +1889,20 @@ class PlayerViewModel: ObservableObject {
             persistVoiceoverSelection(name)
             logDebug("selectAudioTrackInPlayer: selected by index \(targetIndex), option='\(options[targetIndex].displayName)'")
             return
+        }
+
+        // Финальный fallback: если имя не нашлось (напр. "AlexFilm" vs "Russian 1"),
+        // ищем позицию имени в availableVoiceovers и выбираем дорожку по тому же индексу.
+        // Это сохраняет выбор озвучки при переключении серий, даже если Alloha вернул
+        // иные технические имена дорожек ("Russian 1", "English 7") вместо читаемых.
+        if options.count > 1 {
+            if let voiceIndex = availableVoiceovers.firstIndex(where: { allohaTranslationNamesMatch($0, name) }),
+               voiceIndex < options.count {
+                item.select(options[voiceIndex], in: group)
+                persistVoiceoverSelection(name)
+                logDebug("selectAudioTrackInPlayer: selected by availableVoiceovers index \(voiceIndex), option='\(options[voiceIndex].displayName)'")
+                return
+            }
         }
         logDebug("selectAudioTrackInPlayer: failed to match any track for '\(name)'")
     }
