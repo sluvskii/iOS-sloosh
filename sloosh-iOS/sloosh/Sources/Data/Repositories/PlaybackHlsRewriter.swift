@@ -7,7 +7,8 @@ class PlaybackHlsRewriter {
         subtitles: [PlaybackSubtitle] = [],
         mediaId: String,
         rewriteVariantUris: Bool = false,
-        stripExistingSubtitles: Bool = false
+        stripExistingSubtitles: Bool = false,
+        preferredVoiceName: String? = nil
     ) -> String {
         guard !master.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return master
@@ -35,7 +36,7 @@ class PlaybackHlsRewriter {
             if stripExistingSubtitles && isSubtitleMediaLine(line) {
                 continue
             }
-            output.append(rewriteMediaLine(line, voices: voices))
+            output.append(rewriteMediaLine(line, voices: voices, preferredVoiceName: preferredVoiceName))
         }
         
         if !subtitles.isEmpty {
@@ -163,7 +164,7 @@ class PlaybackHlsRewriter {
         return result
     }
     
-    private static func rewriteMediaLine(_ line: String, voices: [String]) -> String {
+    private static func rewriteMediaLine(_ line: String, voices: [String], preferredVoiceName: String? = nil) -> String {
         guard line.hasPrefix("#EXT-X-MEDIA") else { return line }
         guard line.contains("TYPE=AUDIO") else { return line }
         
@@ -196,6 +197,14 @@ class PlaybackHlsRewriter {
         
         var output = addOrReplaceAttribute(line, key: "NAME", value: voiceName)
         output = addOrReplaceAttribute(output, key: "LANGUAGE", value: normalizedLang)
+        
+        // Если установлена предпочтительная озвучка — выставляем DEFAULT=YES для соответствующей дорожки.
+        // Это iOS выберет нужную дорожку СРАЗУ, ещё до вызова selectAudioTrackInPlayer.
+        if let preferred = preferredVoiceName {
+            let isPreferred = allohaTranslationNamesMatch(voiceName, preferred)
+            output = addOrReplaceAttribute(output, key: "DEFAULT", value: isPreferred ? "YES" : "NO")
+            output = addOrReplaceAttribute(output, key: "AUTOSELECT", value: isPreferred ? "YES" : "NO")
+        }
         
         return output
     }
