@@ -117,7 +117,9 @@ public final class PlaybackProgressStore: ObservableObject {
         )
     }
 
-    private func mutateRecord(mediaId: String, mutate: @escaping (inout PlaybackProgressRecord) -> Void) {
+    private var lastDiskSaveDate: Date = .distantPast
+
+    private func mutateRecord(mediaId: String, forceDiskSave: Bool = false, mutate: @escaping (inout PlaybackProgressRecord) -> Void) {
         let activeUserId = currentUserId
         var record = getRecord(mediaId: mediaId) ?? createDefaultRecord(mediaId: mediaId)
         mutate(&record)
@@ -142,11 +144,15 @@ public final class PlaybackProgressStore: ObservableObject {
             )
             context.insert(newModel)
         }
-        try? context.save()
 
-        // Push progress to Cloud if authenticated (throttled to at most once per 60 seconds during active playback)
-        scheduleCloudProgressPush()
+        let now = Date()
+        if forceDiskSave || now.timeIntervalSince(lastDiskSaveDate) >= 15.0 {
+            lastDiskSaveDate = now
+            try? context.save()
+            scheduleCloudProgressPush()
+        }
     }
+
 
     private var lastCloudProgressPushDate: Date?
 
@@ -197,9 +203,9 @@ public final class PlaybackProgressStore: ObservableObject {
         )
     }
 
-    public func save(mediaId: String, positionSec: Double, durationSec: Double? = nil) {
+    public func save(mediaId: String, positionSec: Double, durationSec: Double? = nil, forceDiskSave: Bool = false) {
         guard !mediaId.isEmpty, positionSec.isFinite, positionSec >= 0 else { return }
-        mutateRecord(mediaId: mediaId) { record in
+        mutateRecord(mediaId: mediaId, forceDiskSave: forceDiskSave) { record in
             record.positionSec = positionSec
             if let dur = durationSec, dur > 0, dur.isFinite {
                 record.durationSec = dur
@@ -236,17 +242,18 @@ public final class PlaybackProgressStore: ObservableObject {
 
     public func markAsWatched(mediaId: String) {
         guard !mediaId.isEmpty else { return }
-        mutateRecord(mediaId: mediaId) { record in
+        mutateRecord(mediaId: mediaId, forceDiskSave: true) { record in
             record.watched = true
         }
     }
 
     public func setWatched(mediaId: String, watched: Bool) {
         guard !mediaId.isEmpty else { return }
-        mutateRecord(mediaId: mediaId) { record in
+        mutateRecord(mediaId: mediaId, forceDiskSave: true) { record in
             record.watched = watched
         }
     }
+
 
     public func loadUpdatedAtMs(mediaId: String) -> Int {
         guard !mediaId.isEmpty else { return 0 }

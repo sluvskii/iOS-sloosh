@@ -60,11 +60,14 @@ class HlsProxyServer {
             self.voices = voices
             self.subtitles = subtitles
             self.mediaId = mediaId
-            self.preferredVoiceName = preferredVoiceName
+            if let preferredVoiceName, !preferredVoiceName.isEmpty {
+                self.preferredVoiceName = preferredVoiceName
+            }
             // Блокируем повторный запуск если listener уже есть (пусть даже ещё не .ready)
             // или уже .ready. Это предотвращает двойное создание на одном порту.
             return self.isListenerAlive || self.listener != nil
         }
+
         
         if isAlreadyRunning { return }
         
