@@ -809,9 +809,11 @@ class PlayerViewModel: ObservableObject {
         PlaybackProgressStore.shared.save(
             mediaId: mediaId,
             positionSec: pos,
-            durationSec: duration?.isFinite == true && duration?.isNaN == false ? duration : nil
+            durationSec: duration?.isFinite == true && duration?.isNaN == false ? duration : nil,
+            forceDiskSave: true
         )
     }
+
     
     func changeQuality(to key: String) {
         logDebug("changeQuality: called with key='\(key)'")
@@ -1600,6 +1602,9 @@ class PlayerViewModel: ObservableObject {
         playNextEpisode()
     }
 
+    private var isEpisodeSwitching = false
+    private var lastEpisodeSwitchTimestamp: Date = .distantPast
+
     func playNextEpisode() {
         guard let nextEpisode = nextEpisodeCandidate() else { return }
         playEpisode(nextEpisode)
@@ -1611,6 +1616,13 @@ class PlayerViewModel: ObservableObject {
     }
 
     private func playEpisode(_ episode: (season: Int, episode: Int, translation: AllohaTranslation)) {
+        let now = Date()
+        guard now.timeIntervalSince(lastEpisodeSwitchTimestamp) > 0.6 else {
+            logDebug("playEpisode: debounced rapid episode switch attempt")
+            return
+        }
+        lastEpisodeSwitchTimestamp = now
+
         // 1. Сохраняем прогресс ТЕКУЩЕГО эпизода ДО обновления currentSeason/currentEpisode
         saveCurrentProgress()
 
@@ -1632,6 +1644,7 @@ class PlayerViewModel: ObservableObject {
             selectedVoiceover: episode.translation.name
         )
     }
+
 
     private func nextEpisodeCandidate() -> (season: Int, episode: Int, translation: AllohaTranslation)? {
         guard let seriesResult, seriesResult.isSerial,
