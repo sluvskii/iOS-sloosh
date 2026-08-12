@@ -10,6 +10,7 @@ struct ShareToFriendSheet: View {
     @State private var customMessage: String = ""
     @State private var isSending: Bool = false
     @State private var showSystemShareSheet: Bool = false
+    @FocusState private var isInputFocused: Bool
 
     init(movie: MediaDetailsDto) {
         self.movie = movie
@@ -18,15 +19,21 @@ struct ShareToFriendSheet: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 14) {
-                // Ряд 1: Лента друзей
+                // Ряд 1: Горизонтальная лента друзей
                 friendsHorizontalSection
 
                 Divider()
                     .padding(.horizontal, 16)
                     .opacity(0.12)
 
-                // Ряд 2: Ввод сообщения и главная фирменная кнопка "Отправить"
-                sendMessageSection
+                // Ряд 2: Динамический блок (когда никто не выбран -> Скопировать ссылку, когда выбран -> Поле ввода и Кнопка Отправить)
+                if selectedUsers.isEmpty {
+                    unselectedStateBottomView
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                } else {
+                    selectedStateSendMessageView
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
             }
             .padding(.top, 4)
             .padding(.bottom, 12)
@@ -51,14 +58,24 @@ struct ShareToFriendSheet: View {
                     .tint(.white)
                 }
 
-                // Справа: Кнопка Системный Шеринг (без текста, белая)
+                // Справа: Иконки Быстрый Копировать + Системный Шеринг
                 ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        showSystemShareSheet = true
-                    } label: {
-                        Image(systemName: "square.and.arrow.up")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(.white)
+                    HStack(spacing: 14) {
+                        Button {
+                            copyMovieLink()
+                        } label: {
+                            Image(systemName: "doc.on.doc")
+                                .font(.system(size: 15, weight: .medium))
+                                .foregroundStyle(.white)
+                        }
+
+                        Button {
+                            showSystemShareSheet = true
+                        } label: {
+                            Image(systemName: "square.and.arrow.up")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(.white)
+                        }
                     }
                     .tint(.white)
                 }
@@ -72,7 +89,7 @@ struct ShareToFriendSheet: View {
                 }
             }
         }
-        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: selectedUsers)
+        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: selectedUsers)
         .preferredColorScheme(.dark)
     }
 
@@ -103,7 +120,7 @@ struct ShareToFriendSheet: View {
                             VStack(spacing: 6) {
                                 ZStack(alignment: .bottomTrailing) {
                                     UserAvatarView(user: friend, size: 56)
-                                        .scaleEffect(isSelected ? 1.05 : 1.0)
+                                        .scaleEffect(isSelected ? 1.06 : 1.0)
 
                                     if isSelected {
                                         Image(systemName: "checkmark.circle.fill")
@@ -131,13 +148,58 @@ struct ShareToFriendSheet: View {
         .frame(height: 84)
     }
 
-    private var sendMessageSection: some View {
+    // Состояние когда НИКТО не выбран
+    private var unselectedStateBottomView: some View {
         VStack(spacing: 12) {
-            // Капсульное парящее поле ввода сообщения (как на экране авторизации)
-            HStack(spacing: 8) {
-                TextField("Напишите сообщение...", text: $customMessage)
+            Text("Выберите друга из списка выше, чтобы отправить фильм в чат")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(.tertiary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 24)
+
+            Button {
+                copyMovieLink()
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "doc.on.doc.fill")
+                        .font(.system(size: 14, weight: .semibold))
+                    Text("Скопировать ссылку на фильм")
+                        .font(.system(size: 15, weight: .semibold))
+                }
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .frame(height: 48)
+                .background(
+                    Capsule()
+                        .fill(Color(uiColor: .tertiarySystemFill))
+                )
+            }
+            .buttonStyle(ScaleButtonStyle())
+            .padding(.horizontal, 16)
+        }
+        .padding(.top, 4)
+    }
+
+    // Состояние когда ВЫБРАН хотя бы один друг
+    private var selectedStateSendMessageView: some View {
+        VStack(spacing: 12) {
+            // Капсульное парящее поле ввода с мини-превью фильма
+            HStack(spacing: 10) {
+                // Мини-значок фильма
+                ZStack {
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(Color.white.opacity(0.12))
+                        .frame(width: 24, height: 24)
+
+                    Image(systemName: "film")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundStyle(Color.slooshAccent)
+                }
+
+                TextField("Добавить сообщение к фильму...", text: $customMessage)
                     .font(.system(size: 15, weight: .medium))
                     .foregroundStyle(.primary)
+                    .focused($isInputFocused)
 
                 if !customMessage.isEmpty {
                     Button {
@@ -148,12 +210,12 @@ struct ShareToFriendSheet: View {
                     }
                 }
             }
-            .padding(.horizontal, 18)
+            .padding(.horizontal, 16)
             .frame(height: 48)
             .glassEffect(.regular.interactive(), in: Capsule())
             .padding(.horizontal, 16)
 
-            // Главная акцентная капсульная кнопка "Отправить" в стиле Sloosh (высота 50pt, slooshAccent)
+            // Главная акцентная кнопка "Отправить"
             Button {
                 sendToSelectedFriends()
             } label: {
@@ -165,7 +227,7 @@ struct ShareToFriendSheet: View {
                     } else {
                         Image(systemName: "paperplane.fill")
                             .font(.system(size: 16, weight: .bold))
-                        Text(selectedUsers.count > 1 ? "Отправить (\(selectedUsers.count))" : "Отправить")
+                        Text(selectedUsers.count > 1 ? "Отправить друзьям (\(selectedUsers.count))" : "Отправить в Sloosh")
                             .font(.system(size: 16, weight: .bold))
                     }
                 }
@@ -176,8 +238,7 @@ struct ShareToFriendSheet: View {
                 .clipShape(Capsule())
             }
             .buttonStyle(ScaleButtonStyle())
-            .disabled(isSending || selectedUsers.isEmpty)
-            .opacity(selectedUsers.isEmpty ? 0.5 : 1.0)
+            .disabled(isSending)
             .padding(.horizontal, 16)
         }
     }
@@ -198,6 +259,21 @@ struct ShareToFriendSheet: View {
     private var movieShareUrl: URL? {
         let idStr = movie.id ?? String(movie.ids?.kp ?? 0)
         return URL(string: "https://sloosh.app/movie/\(idStr)")
+    }
+
+    private func copyMovieLink() {
+        let generator = UIImpactFeedbackGenerator(style: .medium)
+        generator.impactOccurred()
+
+        if let url = movieShareUrl {
+            UIPasteboard.general.string = url.absoluteString
+            ToastManager.shared.show(
+                title: "Ссылка скопирована! 🔗",
+                subtitle: movie.title ?? "Фильм",
+                icon: "doc.on.doc.fill"
+            )
+            dismiss()
+        }
     }
 
     private func sendToSelectedFriends() {
