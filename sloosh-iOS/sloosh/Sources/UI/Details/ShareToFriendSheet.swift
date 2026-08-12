@@ -25,14 +25,8 @@ struct ShareToFriendSheet: View {
                     .padding(.horizontal, 16)
                     .opacity(0.12)
 
-                // Ряд 2: Ввод сообщения при выборе друга ИЛИ Нативные системные быстрые действия
-                if !selectedUsers.isEmpty {
-                    sendMessageSection
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                } else {
-                    quickActionsSection
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
-                }
+                // Ряд 2: Ввод сообщения и главная фирменная кнопка "Отправить"
+                sendMessageSection
             }
             .padding(.top, 4)
             .padding(.bottom, 12)
@@ -45,12 +39,25 @@ struct ShareToFriendSheet: View {
                 }
             }
             .toolbar {
+                // Слева: Кнопка Закрыть
                 ToolbarItem(placement: .cancellationAction) {
                     Button {
                         dismiss()
                     } label: {
                         Image(systemName: "xmark")
                             .font(.system(size: 15, weight: .bold))
+                            .foregroundStyle(.white)
+                    }
+                    .tint(.white)
+                }
+
+                // Справа: Кнопка Системный Шеринг (без текста, белая)
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        showSystemShareSheet = true
+                    } label: {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.system(size: 16, weight: .semibold))
                             .foregroundStyle(.white)
                     }
                     .tint(.white)
@@ -101,7 +108,7 @@ struct ShareToFriendSheet: View {
                                     if isSelected {
                                         Image(systemName: "checkmark.circle.fill")
                                             .font(.system(size: 18, weight: .bold))
-                                            .foregroundStyle(.white, Color.blue)
+                                            .foregroundStyle(.black, Color.slooshAccent)
                                             .background(Circle().fill(Color.white))
                                             .offset(x: 2, y: 2)
                                     }
@@ -124,70 +131,13 @@ struct ShareToFriendSheet: View {
         .frame(height: 84)
     }
 
-    private var quickActionsSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("Поделиться")
-                .font(.caption)
-                .fontWeight(.semibold)
-                .foregroundStyle(.tertiary)
-                .padding(.horizontal, 16)
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 20) {
-                    quickActionButton(
-                        title: "Скопировать",
-                        icon: "doc.on.doc.fill",
-                        color: Color.blue
-                    ) {
-                        copyMovieLink()
-                    }
-
-                    quickActionButton(
-                        title: "Еще...",
-                        icon: "square.and.arrow.up.fill",
-                        color: Color.purple
-                    ) {
-                        showSystemShareSheet = true
-                    }
-                }
-                .padding(.horizontal, 16)
-            }
-        }
-    }
-
-    private func quickActionButton(title: String, icon: String, color: Color, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            VStack(spacing: 6) {
-                ZStack {
-                    Circle()
-                        .fill(Color(uiColor: .tertiarySystemFill))
-                        .frame(width: 52, height: 52)
-
-                    Image(systemName: icon)
-                        .font(.system(size: 20, weight: .semibold))
-                        .foregroundStyle(color)
-                }
-
-                Text(title)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-            }
-        }
-        .buttonStyle(.plain)
-    }
-
     private var sendMessageSection: some View {
         VStack(spacing: 12) {
+            // Капсульное парящее поле ввода сообщения (как на экране авторизации)
             HStack(spacing: 8) {
                 TextField("Напишите сообщение...", text: $customMessage)
-                    .font(.callout)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(Color(uiColor: .tertiarySystemFill))
-                    )
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(.primary)
 
                 if !customMessage.isEmpty {
                     Button {
@@ -198,8 +148,12 @@ struct ShareToFriendSheet: View {
                     }
                 }
             }
+            .padding(.horizontal, 18)
+            .frame(height: 48)
+            .glassEffect(.regular.interactive(), in: Capsule())
             .padding(.horizontal, 16)
 
+            // Главная акцентная капсульная кнопка "Отправить" в стиле Sloosh (высота 50pt, slooshAccent)
             Button {
                 sendToSelectedFriends()
             } label: {
@@ -207,25 +161,23 @@ struct ShareToFriendSheet: View {
                     if isSending {
                         ProgressView()
                             .controlSize(.small)
-                            .tint(.white)
+                            .tint(.black)
                     } else {
                         Image(systemName: "paperplane.fill")
-                            .font(.system(size: 15, weight: .bold))
+                            .font(.system(size: 16, weight: .bold))
                         Text(selectedUsers.count > 1 ? "Отправить (\(selectedUsers.count))" : "Отправить")
-                            .font(.callout)
-                            .fontWeight(.bold)
+                            .font(.system(size: 16, weight: .bold))
                     }
                 }
-                .foregroundStyle(.white)
+                .foregroundStyle(.black)
                 .frame(maxWidth: .infinity)
-                .frame(height: 46)
-                .background(
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                        .fill(Color.blue)
-                )
+                .frame(height: 50)
+                .background(Color.slooshAccent)
+                .clipShape(Capsule())
             }
-            .buttonStyle(.plain)
-            .disabled(isSending)
+            .buttonStyle(ScaleButtonStyle())
+            .disabled(isSending || selectedUsers.isEmpty)
+            .opacity(selectedUsers.isEmpty ? 0.5 : 1.0)
             .padding(.horizontal, 16)
         }
     }
@@ -246,21 +198,6 @@ struct ShareToFriendSheet: View {
     private var movieShareUrl: URL? {
         let idStr = movie.id ?? String(movie.ids?.kp ?? 0)
         return URL(string: "https://sloosh.app/movie/\(idStr)")
-    }
-
-    private func copyMovieLink() {
-        let generator = UIImpactFeedbackGenerator(style: .medium)
-        generator.impactOccurred()
-
-        if let url = movieShareUrl {
-            UIPasteboard.general.string = url.absoluteString
-            ToastManager.shared.show(
-                title: "Ссылка скопирована! 🔗",
-                subtitle: movie.title ?? "Фильм",
-                icon: "doc.on.doc.fill"
-            )
-            dismiss()
-        }
     }
 
     private func sendToSelectedFriends() {
@@ -299,6 +236,16 @@ struct ShareToFriendSheet: View {
             )
             dismiss()
         }
+    }
+}
+
+// MARK: - Scale Button Style
+
+private struct ScaleButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.97 : 1.0)
+            .animation(.easeOut(duration: 0.15), value: configuration.isPressed)
     }
 }
 
