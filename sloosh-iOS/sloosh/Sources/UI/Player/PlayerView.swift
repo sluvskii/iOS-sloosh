@@ -740,14 +740,36 @@ class PlayerViewModel: ObservableObject {
     func switchVoiceover(to name: String, at index: Int? = nil) {
         logDebug("switchVoiceover: switching to '\(name)' at index \(index ?? -1)")
         
-        // 1. Ищем новый iframeUrl для нужной озвучки из Alloha DTO
+        // 1. Быстрое переключение через resolvedAudioVariants (прямые HLS ссылки от Alloha)
+        var targetStreamUrl: String?
+        if !resolvedAudioVariants.isEmpty {
+            if let idx = index, idx < resolvedAudioVariants.count {
+                targetStreamUrl = resolvedAudioVariants[idx]["url"] as? String
+            } else if let variant = resolvedAudioVariants.first(where: {
+                let vTitle = ($0["title"] as? String) ?? ""
+                return allohaTranslationNamesMatch(vTitle, name)
+            }) {
+                targetStreamUrl = variant["url"] as? String
+            }
+        }
+        
+        if let streamUrlString = targetStreamUrl, let streamUrl = URL(string: streamUrlString) {
+            logDebug("switchVoiceover: instant reload from resolvedAudioVariant url=\(streamUrlString)")
+            _currentTranslationName = name
+            targetVoiceover = name
+            persistVoiceoverSelection(name)
+            reloadPlayback(to: streamUrl, preferredPeakBitRate: player?.currentItem?.preferredPeakBitRate)
+            return
+        }
+        
+        // 2. Ищем iframeUrl для нужной озвучки из Alloha DTO (для фильмов/сериалов с отдельным iframeUrl)
         var targetIframeUrl: String?
         
         if isMovie {
             if let movie = seriesResult?.movie {
                 if let idx = index, idx < movie.translations.count {
                     targetIframeUrl = movie.translations[idx].iframeUrl
-                } else if let translation = movie.translations.first(where: { allohaTranslationNamesMatch($0.name, name, exactOnly: true) }) {
+                } else if let translation = movie.translations.first(where: { allohaTranslationNamesMatch($0.name, name) }) {
                     targetIframeUrl = translation.iframeUrl
                 }
             }
@@ -757,7 +779,7 @@ class PlayerViewModel: ObservableObject {
                let epObj = seasonObj.episodes.first(where: { $0.episode == episode }) {
                 if let idx = index, idx < epObj.translations.count {
                     targetIframeUrl = epObj.translations[idx].iframeUrl
-                } else if let translation = epObj.translations.first(where: { allohaTranslationNamesMatch($0.name, name, exactOnly: true) }) {
+                } else if let translation = epObj.translations.first(where: { allohaTranslationNamesMatch($0.name, name) }) {
                     targetIframeUrl = translation.iframeUrl
                 }
             }
@@ -783,25 +805,32 @@ class PlayerViewModel: ObservableObject {
             return
         }
         
-        // 2. Если отдельного iframeUrl нет, проигрыватель пробует нативно выбрать дорожку в HLS (если дорожки мульти-аудио)
+        // 3. Если отдельного HLS/iframe не было, пробуем переключить нативную HLS аудиотрек-дорожку
         if let player = player,
            let item = player.currentItem,
            let group = item.asset.mediaSelectionGroup(forMediaCharacteristic: .audible) {
             let options = group.options
             logDebug("switchVoiceover: native tracks available: \(options.map { $0.displayName })")
-            if let option = options.first(where: { allohaTranslationNamesMatch($0.displayName, name, exactOnly: true) }) ??
-                            options.first(where: { allohaTranslationNamesMatch($0.displayName, name, exactOnly: false) }) {
+            if let idx = index, idx < options.count {
+                _currentTranslationName = name
+                targetVoiceover = name
+                persistVoiceoverSelection(name)
+                item.select(options[idx], in: group)
+                logDebug("switchVoiceover: switched native track by index \(idx) to '\(options[idx].displayName)'")
+                return
+            } else if let option = options.first(where: { allohaTranslationNamesMatch($0.displayName, name) }) {
                 _currentTranslationName = name
                 targetVoiceover = name
                 persistVoiceoverSelection(name)
                 item.select(option, in: group)
-                logDebug("switchVoiceover: switched audio natively to '\(option.displayName)'")
+                logDebug("switchVoiceover: switched native track by name to '\(option.displayName)'")
                 return
             }
         }
 
         logDebug("switchVoiceover error: failed to find translation iframeUrl or native track for '\(name)'")
     }
+
 
     /// Сохраняет текущую позицию воспроизведения. Вызывается и по таймеру, и при сворачивании приложения.
     private func saveCurrentProgress() {
@@ -1770,13 +1799,13 @@ class PlayerViewModel: ObservableObject {
             self.outroRange = nil
         }
 
-        // Заполняем список доступных озвучек из audioVariants
+        // Заполняем список доступных озвучек и варианты стримов из audioVariants
+        self.resolvedAudioVariants = audioVariants
         let voices = resolvedVoiceovers(from: resolved)
         if !voices.isEmpty {
-            if self.isMovie || self.availableVoiceovers.isEmpty {
-                self.availableVoiceovers = voices
-            }
+            self.availableVoiceovers = voices
         }
+
 
         let qualityVariants = (resolved["qualityVariants"] as? [[String: Any]]) ?? []
 
