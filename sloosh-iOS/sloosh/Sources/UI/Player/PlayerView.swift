@@ -1629,8 +1629,17 @@ class PlayerViewModel: ObservableObject {
         // 2. Сбрасываем флаг загрузки — beginLoad не имеет собственной защиты от повторного вызова
         hasStartedLoading = false
 
-        _currentTranslationName = episode.translation.name
-        targetVoiceover = episode.translation.name
+        // Проверяем, совпадает ли озвучка переключаемого эпизода с желаемой пользователем озвучкой.
+        // Записываем _currentTranslationName и targetVoiceover ТОЛЬКО если это прямое или сохраненное совпадение.
+        let preferredName = targetVoiceover ?? _currentTranslationName ?? (currentKpId.flatMap { PlaybackProgressStore.shared.loadLastVoiceover(kpId: $0, source: "alloha") })
+        if let preferredName, allohaTranslationNamesMatch(episode.translation.name, preferredName) {
+            _currentTranslationName = episode.translation.name
+            targetVoiceover = episode.translation.name
+            persistVoiceoverSelection(episode.translation.name)
+        } else if _currentTranslationName == nil {
+            _currentTranslationName = episode.translation.name
+            targetVoiceover = episode.translation.name
+        }
 
         if let kpId = currentKpId {
             PlaybackProgressStore.shared.saveLastPlayed(kpId: kpId, season: episode.season, episode: episode.episode)
@@ -1696,17 +1705,29 @@ class PlayerViewModel: ObservableObject {
 
     private func preferredTranslation(in episode: AllohaEpisode) -> AllohaTranslation? {
         if let name = _currentTranslationName,
-           let exactMatch = episode.translations.first(where: { allohaTranslationNamesMatch($0.name, name) }) {
-            return exactMatch
+           let match = episode.translations.first(where: { allohaTranslationNamesMatch($0.name, name) }) {
+            return match
         }
 
         if let targetVoiceover,
-           let voiceMatch = episode.translations.first(where: { allohaTranslationNamesMatch($0.name, targetVoiceover) }) {
-            return voiceMatch
+           let match = episode.translations.first(where: { allohaTranslationNamesMatch($0.name, targetVoiceover) }) {
+            return match
+        }
+
+        if let kpId = currentKpId,
+           let saved = PlaybackProgressStore.shared.loadLastVoiceover(kpId: kpId, source: "alloha"),
+           let match = episode.translations.first(where: { allohaTranslationNamesMatch($0.name, saved) }) {
+            return match
+        }
+
+        if let globalSaved = UserDefaults.standard.string(forKey: "alloha_last_translation_name"),
+           let match = episode.translations.first(where: { allohaTranslationNamesMatch($0.name, globalSaved) }) {
+            return match
         }
 
         return episode.translations.first
     }
+
 
     private func applyResolvedAllohaStream(_ resolved: [String: Any]) {
         var resolvedUrlString = (resolved["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
