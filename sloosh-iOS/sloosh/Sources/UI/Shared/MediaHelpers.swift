@@ -65,8 +65,9 @@ func cleanTranslationName(_ rawName: String) -> String {
     let languageMappings: [(prefix: String, replacement: String)] = [
         ("Russian", "🇷🇺 Русский"),
         ("Русский", "🇷🇺 Русский"),
-        ("English", "🇬🇧 Английский"),
-        ("Английский", "🇬🇧 Английский"),
+        ("English", "🇺🇸 Английский"),
+        ("Английский", "🇺🇸 Английский"),
+
         ("Ukrainian", "🇺🇦 Украинский"),
         ("Украинский", "🇺🇦 Украинский"),
         ("Kazakh", "🇰🇿 Казахский"),
