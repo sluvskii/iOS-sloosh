@@ -12,6 +12,7 @@ struct VoiceoverPickerSheet: View {
             ForEach(Array(vm.availableVoiceovers.enumerated()), id: \.offset) { idx, name in
                 popoverRow(
                     label: displayTranslationName(name, at: idx, in: vm.availableVoiceovers),
+                    rawVoiceoverName: name,
                     isSelected: vm.currentTranslationName == name
                 ) {
                     vm.switchVoiceover(to: name, at: idx)
@@ -19,6 +20,7 @@ struct VoiceoverPickerSheet: View {
                 }
             }
         }
+
     }
 }
 
@@ -120,20 +122,33 @@ private struct PopoverContainer<Content: View>: View {
 }
 
 @ViewBuilder
-private func popoverRow(label: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
+private func popoverRow(label: String, rawVoiceoverName: String? = nil, isSelected: Bool, action: @escaping () -> Void) -> some View {
     Button(action: action) {
         Text(label)
-            .font(.system(size: 15, weight: isSelected ? .semibold : .medium))
-            .foregroundStyle(isSelected ? .black : .white)
+            .font(.system(size: 15, weight: isSelected ? .bold : .medium))
+            .foregroundStyle(isSelected ? .white : .white.opacity(0.9))
             .lineLimit(1)
             .truncationMode(.tail)
             .padding(.vertical, 12)
             .padding(.horizontal, 16)
             .frame(maxWidth: .infinity)
             .background(
-                Capsule()
-                    .fill(isSelected ? Color.white : Color.white.opacity(0.15))
+                Group {
+                    if let rawName = rawVoiceoverName {
+                        Capsule()
+                            .fill(flagCapsuleGradient(for: rawName, isSelected: isSelected))
+                    } else {
+                        Capsule()
+                            .fill(isSelected ? Color.white : Color.white.opacity(0.15))
+                    }
+                }
             )
+            .overlay(
+                Capsule()
+                    .stroke(isSelected ? Color.white.opacity(0.6) : Color.white.opacity(0.1), lineWidth: isSelected ? 1.5 : 0.5)
+            )
+            .shadow(color: isSelected ? Color.black.opacity(0.3) : Color.clear, radius: 4, y: 2)
     }
     .buttonStyle(.plain)
 }
+

@@ -2,6 +2,7 @@ import SwiftUI
 
 struct WatchSelectorChip: View {
     let title: String
+    var rawVoiceoverName: String? = nil
     let isSelected: Bool
     let isAvailable: Bool
     let action: () -> Void
@@ -17,16 +18,34 @@ struct WatchSelectorChip: View {
                 .padding(.horizontal, 14)
                 .padding(.vertical, 8)
                 .foregroundStyle(
-                    isSelected 
-                        ? (colorScheme == .dark ? Color.black : Color.white) 
-                        : (isAvailable ? Color.primary : Color.secondary)
+                    rawVoiceoverName != nil
+                        ? Color.white
+                        : (isSelected 
+                            ? (colorScheme == .dark ? Color.black : Color.white) 
+                            : (isAvailable ? Color.primary : Color.secondary))
                 )
                 .background(
+                    Group {
+                        if let rawName = rawVoiceoverName {
+                            Capsule()
+                                .fill(flagCapsuleGradient(for: rawName, isSelected: isSelected))
+                        } else {
+                            Capsule()
+                                .fill(
+                                    isSelected
+                                        ? (colorScheme == .dark ? Color.white : Color.primary)
+                                        : (isAvailable ? Color(UIColor.secondarySystemFill) : Color(UIColor.tertiarySystemFill))
+                                )
+                        }
+                    }
+                )
+                .overlay(
                     Capsule()
-                        .fill(
-                            isSelected
-                                ? (colorScheme == .dark ? Color.white : Color.primary)
-                                : (isAvailable ? Color(UIColor.secondarySystemFill) : Color(UIColor.tertiarySystemFill))
+                        .stroke(
+                            rawVoiceoverName != nil
+                                ? (isSelected ? Color.white.opacity(0.6) : Color.white.opacity(0.15))
+                                : Color.clear,
+                            lineWidth: isSelected ? 1.5 : 0.5
                         )
                 )
         }
@@ -34,6 +53,7 @@ struct WatchSelectorChip: View {
         .opacity(isAvailable ? 1.0 : 0.5)
     }
 }
+
 
 struct ChipButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
