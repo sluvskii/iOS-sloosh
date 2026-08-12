@@ -54,11 +54,13 @@ struct ShareToFriendSheet: View {
                         dismiss()
                     } label: {
                         Image(systemName: "xmark")
-                            .font(.system(size: 16, weight: .medium))
-                            .foregroundStyle(.secondary)
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundStyle(.white)
                     }
+                    .tint(.white)
                 }
             }
+
             .task {
                 await repo.fetchConversations()
             }
@@ -115,6 +117,7 @@ struct ShareToFriendSheet: View {
                 if sendingToUserId == friend.id {
                     ProgressView()
                         .controlSize(.small)
+                        .tint(.white)
                         .frame(width: 32, height: 32)
                 } else if sentUserIds.contains(friend.id) {
                     HStack(spacing: 4) {
@@ -123,10 +126,10 @@ struct ShareToFriendSheet: View {
                         Text("Отправлено")
                             .font(.system(size: 13, weight: .semibold))
                     }
-                    .foregroundStyle(.secondary)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(Capsule().fill(Color.white.opacity(0.1)))
+                    .foregroundStyle(.white.opacity(0.6))
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 7)
+                    .background(Capsule().fill(Color.white.opacity(0.12)))
                 } else {
                     HStack(spacing: 6) {
                         Image(systemName: "paperplane.fill")
@@ -134,14 +137,15 @@ struct ShareToFriendSheet: View {
                         Text("Отправить")
                             .font(.system(size: 13, weight: .semibold))
                     }
-                    .foregroundStyle(.black)
+                    .foregroundStyle(.white)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 7)
-                    .background(Capsule().fill(Color.white))
+                    .background(Capsule().fill(Color.blue))
                 }
             }
             .buttonStyle(.plain)
             .disabled(sendingToUserId != nil || sentUserIds.contains(friend.id))
+
         }
         .padding(.vertical, 4)
     }
