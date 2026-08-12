@@ -302,11 +302,13 @@ struct SourceSelectionView: View {
                     ForEach(Array(allTranslations.enumerated()), id: \.offset) { idx, tName in
                         WatchSelectorChip(
                             title: displayTranslationName(tName, at: idx, in: allTranslations),
+                            iconName: translationIconName(tName),
                             isSelected: selectedTranslationName == tName,
                             isAvailable: isTranslationAvailable(tName)
                         ) {
                             selectTranslation(tName)
                         }
+
                     }
                 }
             }
