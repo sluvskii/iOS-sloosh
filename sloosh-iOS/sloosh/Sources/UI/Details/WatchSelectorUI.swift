@@ -1,8 +1,28 @@
 import SwiftUI
 
+/// Графический круглый диск в стиле Liquid Glass с флагом внутри
+struct CountryFlagBadgeView: View {
+    let flag: String
+    
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(Color.white.opacity(0.18))
+                .overlay(
+                    Circle()
+                        .stroke(Color.white.opacity(0.3), lineWidth: 0.8)
+                )
+            Text(flag)
+                .font(.system(size: 11))
+        }
+        .frame(width: 22, height: 22)
+    }
+}
+
 struct WatchSelectorChip: View {
     let title: String
     var iconName: String? = nil
+    var flagEmoji: String? = nil
     let isSelected: Bool
     let isAvailable: Bool
     let action: () -> Void
@@ -11,8 +31,10 @@ struct WatchSelectorChip: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 6) {
-                if let iconName {
+            HStack(spacing: 8) {
+                if let flagEmoji {
+                    CountryFlagBadgeView(flag: flagEmoji)
+                } else if let iconName {
                     Image(systemName: iconName)
                         .font(.system(size: 13, weight: isSelected ? .bold : .semibold))
                         .foregroundStyle(
@@ -28,6 +50,7 @@ struct WatchSelectorChip: View {
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
+
             .foregroundStyle(
                 isSelected 
                     ? (colorScheme == .dark ? Color.black : Color.white) 

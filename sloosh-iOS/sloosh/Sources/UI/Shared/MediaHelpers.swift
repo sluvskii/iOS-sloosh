@@ -105,6 +105,37 @@ func cleanTranslationName(_ rawName: String) -> String {
     return baseTitle
 }
 
+/// Возвращает эмодзи флага страны для создания круглого графического бейджа
+func countryFlagEmoji(for rawName: String) -> String? {
+    let lower = rawName.lowercased()
+    if lower.contains("russian") || lower.contains("русский") || lower.contains("rus") {
+        return "🇷🇺"
+    } else if lower.contains("english") || lower.contains("английский") || lower.contains("eng") || lower.contains("orig") {
+        return "🇺🇸"
+    } else if lower.contains("ukrainian") || lower.contains("украинский") || lower.contains("ukr") {
+        return "🇺🇦"
+    } else if lower.contains("kazakh") || lower.contains("казахский") || lower.contains("kaz") {
+        return "🇰🇿"
+    } else if lower.contains("georgian") || lower.contains("грузинский") || lower.contains("geo") {
+        return "🇬🇪"
+    } else if lower.contains("spanish") || lower.contains("испанский") || lower.contains("spa") {
+        return "🇪🇸"
+    } else if lower.contains("german") || lower.contains("немецкий") || lower.contains("ger") {
+        return "🇩🇪"
+    } else if lower.contains("french") || lower.contains("французский") || lower.contains("fre") {
+        return "🇫🇷"
+    } else if lower.contains("italian") || lower.contains("итальянский") || lower.contains("ita") {
+        return "🇮🇹"
+    } else if lower.contains("japanese") || lower.contains("японский") || lower.contains("jap") {
+        return "🇯🇵"
+    } else if lower.contains("korean") || lower.contains("корейский") || lower.contains("kor") {
+        return "🇰🇷"
+    } else if lower.contains("chinese") || lower.contains("китайский") || lower.contains("chi") {
+        return "🇨🇳"
+    }
+    return nil
+}
+
 /// Возвращает нативное векторное имя SF Symbol иконки для типа озвучки
 func translationIconName(_ rawName: String) -> String {
     let lower = rawName.lowercased()
@@ -119,6 +150,7 @@ func translationIconName(_ rawName: String) -> String {
     }
     return "film.stack"
 }
+
 
 
 
