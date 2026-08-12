@@ -16,13 +16,6 @@ struct ShareToFriendSheet: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                // Парящая стеклянная карточка делящегося фильма
-                floatingMediaCard
-                    .padding(.horizontal, 16)
-                    .padding(.top, 12)
-                    .padding(.bottom, 8)
-
-                // Список друзей / результатов поиска
                 let displayList = searchQuery.isEmpty ? repo.conversations.map { $0.peerUser } : repo.searchResults
 
                 if displayList.isEmpty {
@@ -56,17 +49,14 @@ struct ShareToFriendSheet: View {
                 }
             }
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .topBarLeading) {
                     Button {
                         dismiss()
                     } label: {
                         Image(systemName: "xmark")
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundStyle(.white.opacity(0.9))
-                            .frame(width: 30, height: 30)
-                            .background(Circle().fill(Color.white.opacity(0.12)))
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundStyle(.secondary)
                     }
-                    .buttonStyle(.plain)
                 }
             }
             .task {
@@ -77,60 +67,6 @@ struct ShareToFriendSheet: View {
     }
 
     // MARK: - Subviews
-
-    private var floatingMediaCard: some View {
-        HStack(spacing: 14) {
-            if let posterUrl = movie.displayPosterUrl, !posterUrl.isEmpty {
-                AsyncCachedImage(urlString: posterUrl) {
-                    Rectangle().fill(Color.white.opacity(0.08))
-                } content: { image in
-                    Image(uiImage: image)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                }
-                .frame(width: 48, height: 68)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .shadow(color: .black.opacity(0.35), radius: 6, x: 0, y: 3)
-            }
-
-            VStack(alignment: .leading, spacing: 5) {
-                Text(movie.title ?? movie.originalTitle ?? "Фильм")
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundStyle(.primary)
-                    .lineLimit(1)
-
-                HStack(spacing: 6) {
-                    if let rating = movie.ratings?.kp, rating > 0 {
-                        Text(String(format: "%.1f", rating))
-                            .font(.system(size: 11, weight: .heavy))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2.5)
-                            .background(Color.rating(rating))
-                            .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
-                    }
-
-                    if let year = movie.year {
-                        Text(year.description)
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(.secondary)
-                    }
-
-                    if let genres = movie.genres, let firstGenre = genres.first, !firstGenre.isEmpty {
-                        Text("•  \(firstGenre)")
-                            .font(.system(size: 13))
-                            .foregroundStyle(.tertiary)
-                            .lineLimit(1)
-                    }
-
-                }
-            }
-
-            Spacer()
-        }
-        .padding(12)
-        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-    }
 
     @ViewBuilder
     private var emptyStateView: some View {
@@ -156,7 +92,6 @@ struct ShareToFriendSheet: View {
 
     private func friendRow(_ friend: SlooshUser) -> some View {
         HStack(spacing: 14) {
-            // Настоящая аватарка пользователя с фолбэком на инициалы
             UserAvatarView(user: friend, size: 44)
 
             VStack(alignment: .leading, spacing: 2) {
