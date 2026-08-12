@@ -107,13 +107,12 @@ func allohaTranslationNamesMatch(_ lhs: String?, _ rhs: String?, exactOnly: Bool
         return true
     }
     
-    // Instead of raw contains, which causes "rudub".contains("dub") to be true,
-    // we split into words and check for significant word overlap.
-    let leftWords = Set(left.components(separatedBy: " ").filter { $0.count > 2 })
-    let rightWords = Set(right.components(separatedBy: " ").filter { $0.count > 2 })
+    // Check for significant word overlap (e.g. "AlexFilm" vs "AlexFilm Studio")
+    let leftWords = Set(left.components(separatedBy: CharacterSet.alphanumerics.inverted).filter { $0.count > 2 })
+    let rightWords = Set(right.components(separatedBy: CharacterSet.alphanumerics.inverted).filter { $0.count > 2 })
     
     if !leftWords.isEmpty && !rightWords.isEmpty {
-        if leftWords.isSubset(of: rightWords) || rightWords.isSubset(of: leftWords) {
+        if leftWords == rightWords || leftWords.isSubset(of: rightWords) || rightWords.isSubset(of: leftWords) {
             return true
         }
     } else if left.contains(right) || right.contains(left) {
@@ -130,21 +129,9 @@ func allohaTranslationNamesMatch(_ lhs: String?, _ rhs: String?, exactOnly: Bool
         return true
     }
     
-    if exactOnly {
-        return false
-    }
-    
-    let isRussianOrDub: (String) -> Bool = { name in
-        let n = name.lowercased()
-        return n.contains("russian") || n.contains("русский") || n.contains("rus") || n == "ru" || n.contains("дубляж") || n.contains("dub")
-    }
-    
-    if isRussianOrDub(left) && isRussianOrDub(right) {
-        return true
-    }
-    
     return false
 }
+
 
 // MARK: - Selective SSL Delegate
 // Bypasses certificate validation only for Alloha CDN hosts that use self-signed certs.
