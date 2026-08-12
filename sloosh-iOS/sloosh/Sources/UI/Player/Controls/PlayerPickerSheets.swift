@@ -12,6 +12,7 @@ struct VoiceoverPickerSheet: View {
             ForEach(Array(vm.availableVoiceovers.enumerated()), id: \.offset) { idx, name in
                 popoverRow(
                     label: displayTranslationName(name, at: idx, in: vm.availableVoiceovers),
+                    iconName: translationIconName(name),
                     isSelected: vm.currentTranslationName == name
                 ) {
                     vm.switchVoiceover(to: name, at: idx)
@@ -20,6 +21,7 @@ struct VoiceoverPickerSheet: View {
             }
         }
     }
+
 }
 
 // MARK: Качество
@@ -120,20 +122,28 @@ private struct PopoverContainer<Content: View>: View {
 }
 
 @ViewBuilder
-private func popoverRow(label: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
+private func popoverRow(label: String, iconName: String? = nil, isSelected: Bool, action: @escaping () -> Void) -> some View {
     Button(action: action) {
-        Text(label)
-            .font(.system(size: 15, weight: isSelected ? .semibold : .medium))
-            .foregroundStyle(isSelected ? .black : .white)
-            .lineLimit(1)
-            .truncationMode(.tail)
-            .padding(.vertical, 12)
-            .padding(.horizontal, 16)
-            .frame(maxWidth: .infinity)
-            .background(
-                Capsule()
-                    .fill(isSelected ? Color.white : Color.white.opacity(0.15))
-            )
+        HStack(spacing: 10) {
+            if let iconName {
+                Image(systemName: iconName)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(isSelected ? .black : Color.slooshAccent)
+            }
+            Text(label)
+                .font(.system(size: 15, weight: isSelected ? .semibold : .medium))
+                .foregroundStyle(isSelected ? .black : .white)
+                .lineLimit(1)
+                .truncationMode(.tail)
+        }
+        .padding(.vertical, 12)
+        .padding(.horizontal, 16)
+        .frame(maxWidth: .infinity)
+        .background(
+            Capsule()
+                .fill(isSelected ? Color.white : Color.white.opacity(0.15))
+        )
     }
     .buttonStyle(.plain)
 }
+

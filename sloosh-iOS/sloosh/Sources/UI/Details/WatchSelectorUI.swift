@@ -2,6 +2,7 @@ import SwiftUI
 
 struct WatchSelectorChip: View {
     let title: String
+    var iconName: String? = nil
     let isSelected: Bool
     let isAvailable: Bool
     let action: () -> Void
@@ -10,30 +11,42 @@ struct WatchSelectorChip: View {
 
     var body: some View {
         Button(action: action) {
-            Text(title)
-                .font(.system(size: 14, weight: isSelected ? .bold : .medium))
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-                .foregroundStyle(
-                    isSelected 
-                        ? (colorScheme == .dark ? Color.black : Color.white) 
-                        : (isAvailable ? Color.primary : Color.secondary)
-                )
-                .background(
-                    Capsule()
-                        .fill(
-                            isSelected
-                                ? (colorScheme == .dark ? Color.white : Color.primary)
-                                : (isAvailable ? Color(UIColor.secondarySystemFill) : Color(UIColor.tertiarySystemFill))
+            HStack(spacing: 6) {
+                if let iconName {
+                    Image(systemName: iconName)
+                        .font(.system(size: 13, weight: isSelected ? .bold : .semibold))
+                        .foregroundStyle(
+                            isSelected 
+                                ? (colorScheme == .dark ? Color.black : Color.white) 
+                                : Color.slooshAccent
                         )
-                )
+                }
+                Text(title)
+                    .font(.system(size: 14, weight: isSelected ? .bold : .medium))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .foregroundStyle(
+                isSelected 
+                    ? (colorScheme == .dark ? Color.black : Color.white) 
+                    : (isAvailable ? Color.primary : Color.secondary)
+            )
+            .background(
+                Capsule()
+                    .fill(
+                        isSelected
+                            ? (colorScheme == .dark ? Color.white : Color.primary)
+                            : (isAvailable ? Color(UIColor.secondarySystemFill) : Color(UIColor.tertiarySystemFill))
+                    )
+            )
         }
         .buttonStyle(ChipButtonStyle())
         .opacity(isAvailable ? 1.0 : 0.5)
     }
 }
+
 
 struct ChipButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
