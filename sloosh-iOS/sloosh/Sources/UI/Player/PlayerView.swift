@@ -690,9 +690,18 @@ class PlayerViewModel: ObservableObject {
     func seek(by seconds: Double) {
         guard let player else { return }
         let current = player.currentTime().seconds
-        let target = max(0, min(currentDuration, current + seconds))
+        let validCurrent = (current.isFinite && !current.isNaN && current >= 0) ? current : currentTime
+        let target: Double
+        if currentDuration > 0 {
+            target = max(0, min(currentDuration, validCurrent + seconds))
+        } else if let dur = player.currentItem?.duration.seconds, dur.isFinite, dur > 0 {
+            target = max(0, min(dur, validCurrent + seconds))
+        } else {
+            target = max(0, validCurrent + seconds)
+        }
         seek(to: target)
     }
+
 
     func seek(to seconds: Double) {
         guard let player else { return }
@@ -1336,69 +1345,60 @@ class PlayerViewModel: ObservableObject {
             }
         }
 
-        // Захватываем ссылку на текущий AVPlayerItem.
-        // Все асинхронные Task-и в observer'е проверяют, что player.currentItem
-        // по-прежнему тот же самый, прежде чем обновлять self.currentTime.
-        // Это исключает перезапись currentTime задачами от предыдущего эпизода.
-        let capturedItem = player.currentItem
-
         timeObserver = player.addPeriodicTimeObserver(
             forInterval: CMTime(seconds: 0.5, preferredTimescale: 600),
             queue: .main
         ) { [weak self, weak player] time in
             guard let self, let player else { return }
-            Task { @MainActor [weak self, weak player] in
-                guard let self, let player else { return }
-                // Защита от гонки: если player уже переключился на другой эпизод,
-                // не обновляем currentTime и не сохраняем прогресс для старого item.
-                guard player.currentItem === capturedItem else { return }
-                if self.isUserSeeking { return }
-                let t = time.seconds
-                self.currentTime = t.isFinite && !t.isNaN ? t : 0
-                let d = player.currentItem?.duration.seconds ?? 0
-                if d.isFinite && !d.isNaN && d > 0 {
-                    self.currentDuration = d
-                }
-                
-                if let intro = self.introRange, intro.contains(self.currentTime) {
-                    if !self.showSkipIntro {
-                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                            self.showSkipIntro = true
-                        }
-                    }
-                } else {
-                    if self.showSkipIntro {
-                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                            self.showSkipIntro = false
-                        }
+            if self.isUserSeeking { return }
+            let t = player.currentTime().seconds
+            if t.isFinite && !t.isNaN && t >= 0 {
+                self.currentTime = t
+            }
+            let d = player.currentItem?.duration.seconds ?? 0
+            if d.isFinite && !d.isNaN && d > 0 {
+                self.currentDuration = d
+            }
+            
+            if let intro = self.introRange, intro.contains(self.currentTime) {
+                if !self.showSkipIntro {
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                        self.showSkipIntro = true
                     }
                 }
-                
-                if let outro = self.outroRange, outro.contains(self.currentTime) {
-                    if !self.showSkipOutro {
-                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                            self.showSkipOutro = true
-                        }
+            } else {
+                if self.showSkipIntro {
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                        self.showSkipIntro = false
                     }
-                } else {
-                    if self.showSkipOutro {
-                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                            self.showSkipOutro = false
-                        }
-                    }
-                }
-                
-                // Сохраняем прогресс каждые 5 секунд (только если позиция > 1 секунды, чтобы избежать сброса в ноль)
-                if Int(t) % 5 == 0 && t > 1 {
-                    let dur = self.currentDuration > 0 ? self.currentDuration : nil
-                    PlaybackProgressStore.shared.save(
-                        mediaId: mediaId,
-                        positionSec: t,
-                        durationSec: dur
-                    )
                 }
             }
+            
+            if let outro = self.outroRange, outro.contains(self.currentTime) {
+                if !self.showSkipOutro {
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                        self.showSkipOutro = true
+                    }
+                }
+            } else {
+                if self.showSkipOutro {
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                        self.showSkipOutro = false
+                    }
+                }
+            }
+            
+            // Сохраняем прогресс каждые 5 секунд (только если позиция > 1 секунды, чтобы избежать сброса в ноль)
+            if Int(t) % 5 == 0 && t > 1 {
+                let dur = self.currentDuration > 0 ? self.currentDuration : nil
+                PlaybackProgressStore.shared.save(
+                    mediaId: mediaId,
+                    positionSec: t,
+                    durationSec: dur
+                )
+            }
         }
+
 
 
         setupRemoteCommands()

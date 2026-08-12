@@ -325,14 +325,13 @@ class HlsProxyServer {
                     let finalUrl = httpResponse.url ?? realUrl
                     let rewritten: String
                     if content.contains("#EXT-X-STREAM-INF") {
-                        let (voices, preferred) = stateLock.withLock { (self.voices, self.preferredVoiceName) }
                         let playlistRewritten = PlaybackHlsRewriter.rewrite(
                             master: content,
-                            voices: voices,
+                            voices: currentVoices,
                             subtitles: currentSubtitles,
-                            mediaId: currentMediaId,
-                            preferredVoiceName: preferred
+                            mediaId: currentMediaId
                         )
+
                         
                         AppDiagnostics.shared.log("HlsProxyServer: rewritten master playlist:\n\(playlistRewritten)")
                         
