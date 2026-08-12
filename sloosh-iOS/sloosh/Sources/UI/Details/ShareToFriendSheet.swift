@@ -116,12 +116,13 @@ struct ShareToFriendSheet: View {
                             .foregroundStyle(.secondary)
                     }
 
-                    if let genres = movie.genres, let firstGenre = genres.first?.name {
+                    if let genres = movie.genres, let firstGenre = genres.first, !firstGenre.isEmpty {
                         Text("•  \(firstGenre)")
                             .font(.system(size: 13))
                             .foregroundStyle(.tertiary)
                             .lineLimit(1)
                     }
+
                 }
             }
 
