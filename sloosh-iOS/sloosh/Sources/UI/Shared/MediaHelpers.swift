@@ -41,13 +41,18 @@ func cleanTranslationName(_ rawName: String) -> String {
     var name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !name.isEmpty else { return "По умолчанию" }
     
-    // 1. Убираем только громоздкие сцен-теги релиза (например X-MenTheLastStand2006INTERNAL2160pWEB-DLHDR10DV...)
+    // 1. Убираем громоздкие сцен-теги релиза
     if let regex = try? NSRegularExpression(pattern: "(?i)[a-z0-9._-]{3,}(?:2160p|1080p|720p|480p|internal|web-dl|web-dlrip|bdrip|bluray|hdr10|hdr|dv|hevc|x264|x265|spacehd\\d*)[a-z0-9._-]*", options: []) {
         let range = NSRange(location: 0, length: name.utf16.count)
         name = regex.stringByReplacingMatches(in: name, options: [], range: range, withTemplate: "").trimmingCharacters(in: .whitespacesAndNewlines)
     }
     
-    // 2. Если название пустое после очистки
+    // 2. Очищаем лишние разделители и трубы |
+    name = name
+        .replacingOccurrences(of: "|", with: " ")
+        .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+    
     if name.isEmpty {
         name = rawName.components(separatedBy: " ").first ?? rawName
     }
@@ -71,7 +76,15 @@ func cleanTranslationName(_ rawName: String) -> String {
     var baseTitle = name
     for (lang, ru) in languageMappings {
         if name.hasPrefix(lang) {
-            let remainder = name.dropFirst(lang.count).trimmingCharacters(in: .whitespacesAndNewlines)
+            var remainder = name.dropFirst(lang.count).trimmingCharacters(in: .whitespacesAndNewlines)
+            remainder = remainder
+                .replacingOccurrences(of: "|", with: "")
+                .replacingOccurrences(of: "(", with: "")
+                .replacingOccurrences(of: ")", with: "")
+                .replacingOccurrences(of: "[", with: "")
+                .replacingOccurrences(of: "]", with: "")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            
             if remainder.isEmpty {
                 baseTitle = ru
             } else {
@@ -81,8 +94,17 @@ func cleanTranslationName(_ rawName: String) -> String {
         }
     }
     
+    // Финальная зачистка оставшихся двойных скобок или пустых символов внутри скобок
+    baseTitle = baseTitle
+        .replacingOccurrences(of: "(\\s*)", with: "")
+        .replacingOccurrences(of: "( ", with: "(")
+        .replacingOccurrences(of: " )", with: ")")
+        .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+    
     return baseTitle
 }
+
 
 /// Возвращает уникальное понятное название для озвучки с учётом её индекса в общем списке
 func displayTranslationName(_ rawName: String, at indexInAll: Int, in allRawNames: [String]) -> String {

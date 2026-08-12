@@ -82,7 +82,9 @@ func normalizedAllohaTranslationName(_ raw: String?) -> String {
         .replacingOccurrences(of: "]", with: " ")
         .replacingOccurrences(of: "(", with: " ")
         .replacingOccurrences(of: ")", with: " ")
+        .replacingOccurrences(of: "|", with: " ")
         .trimmingCharacters(in: .whitespacesAndNewlines)
+
 
     while value.hasPrefix("-") || value.hasPrefix(",") {
         value = String(value.dropFirst()).trimmingCharacters(in: .whitespaces)
