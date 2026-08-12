@@ -61,44 +61,42 @@ func cleanTranslationName(_ rawName: String) -> String {
         name = rawName.components(separatedBy: " ").first ?? rawName
     }
     
-    // 3. Перевод известных языковых префиксов на красивый русский язык
-    let languageMappings: [(prefix: String, replacement: String)] = [
-        ("Russian", "Русский"),
-        ("Русский", "Русский"),
-        ("English", "Английский"),
-        ("Английский", "Английский"),
-        ("Ukrainian", "Украинский"),
-        ("Украинский", "Украинский"),
-        ("Kazakh", "Казахский"),
-        ("Казахский", "Казахский"),
-        ("Georgian", "Грузинский"),
-        ("Грузинский", "Грузинский"),
-        ("Spanish", "Испанский"),
-        ("Испанский", "Испанский"),
-        ("German", "Немецкий"),
-        ("Немецкий", "Немецкий"),
-        ("French", "Французский"),
-        ("Французский", "Французский"),
-        ("Italian", "Итальянский"),
-        ("Итальянский", "Итальянский"),
-        ("Japanese", "Японский"),
-        ("Японский", "Японский"),
-        ("Korean", "Корейский"),
-        ("Корейский", "Корейский"),
-        ("Chinese", "Китайский"),
-        ("Китайский", "Китайский")
+    // 3. Лаконичное форматирование: замена названия языка эмодзи флагом страны
+    let languageMappings: [(prefix: String, flag: String, defaultName: String)] = [
+        ("Russian", "🇷🇺", "Русский"),
+        ("Русский", "🇷🇺", "Русский"),
+        ("English", "🇺🇸", "Английский"),
+        ("Английский", "🇺🇸", "Английский"),
+        ("Ukrainian", "🇺🇦", "Украинский"),
+        ("Украинский", "🇺🇦", "Украинский"),
+        ("Kazakh", "🇰🇿", "Казахский"),
+        ("Казахский", "🇰🇿", "Казахский"),
+        ("Georgian", "🇬🇪", "Грузинский"),
+        ("Грузинский", "🇬🇪", "Грузинский"),
+        ("Spanish", "🇪🇸", "Испанский"),
+        ("Испанский", "🇪🇸", "Испанский"),
+        ("German", "🇩🇪", "Немецкий"),
+        ("Немецкий", "🇩🇪", "Немецкий"),
+        ("French", "🇫🇷", "Французский"),
+        ("Французский", "🇫🇷", "Французский"),
+        ("Italian", "🇮🇹", "Итальянский"),
+        ("Итальянский", "🇮🇹", "Итальянский"),
+        ("Japanese", "🇯🇵", "Японский"),
+        ("Японский", "🇯🇵", "Японский"),
+        ("Korean", "🇰🇷", "Корейский"),
+        ("Корейский", "🇰🇷", "Корейский"),
+        ("Chinese", "🇨🇳", "Китайский"),
+        ("Китайский", "🇨🇳", "Китайский")
     ]
 
-
-    
     var baseTitle = name
-    for (lang, ru) in languageMappings {
+    for (lang, flag, defaultName) in languageMappings {
         if name.hasPrefix(lang) {
             let remainder = name.dropFirst(lang.count).trimmingCharacters(in: .whitespacesAndNewlines)
             if remainder.isEmpty {
-                baseTitle = ru
+                baseTitle = "\(flag) \(defaultName)"
             } else {
-                baseTitle = "\(ru) | \(remainder)"
+                baseTitle = "\(flag) \(remainder)"
             }
             break
         }
@@ -132,170 +130,3 @@ func displayTranslationName(_ rawName: String, at indexInAll: Int, in allRawName
     
     return cleaned
 }
-
-// MARK: - Liquid Glass Flag Capsule Gradients
-
-/// Возвращает фирменный градиент флага страны для фона капсулы кнопки выбора озвучки
-func flagCapsuleGradient(for rawName: String, isSelected: Bool) -> LinearGradient {
-    let lower = rawName.lowercased()
-    
-    // 🇷🇺 Россия (Белый - Синий - Красный)
-    if lower.contains("russian") || lower.contains("русский") || lower.contains("рус") {
-        if isSelected {
-            return LinearGradient(
-                colors: [
-                    Color(red: 0.95, green: 0.95, blue: 1.0).opacity(0.85),
-                    Color(red: 0.15, green: 0.35, blue: 0.85).opacity(0.9),
-                    Color(red: 0.85, green: 0.15, blue: 0.2).opacity(0.85)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        } else {
-            return LinearGradient(
-                colors: [
-                    Color(red: 0.95, green: 0.95, blue: 1.0).opacity(0.12),
-                    Color(red: 0.15, green: 0.35, blue: 0.85).opacity(0.18),
-                    Color(red: 0.85, green: 0.15, blue: 0.2).opacity(0.15)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        }
-    }
-    
-    // 🇺🇸 США / Английский (Темно-синий - Красный)
-    if lower.contains("english") || lower.contains("английский") || lower.contains("eng") || lower.contains("original") || lower.contains("оригинал") {
-        if isSelected {
-            return LinearGradient(
-                colors: [
-                    Color(red: 0.08, green: 0.2, blue: 0.65).opacity(0.9),
-                    Color(red: 0.8, green: 0.12, blue: 0.25).opacity(0.85)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        } else {
-            return LinearGradient(
-                colors: [
-                    Color(red: 0.08, green: 0.2, blue: 0.65).opacity(0.2),
-                    Color(red: 0.8, green: 0.12, blue: 0.25).opacity(0.18)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        }
-    }
-    
-    // 🇺🇦 Украина (Синий - Желтый)
-    if lower.contains("ukrainian") || lower.contains("украинский") || lower.contains("укр") {
-        if isSelected {
-            return LinearGradient(
-                colors: [
-                    Color(red: 0.0, green: 0.45, blue: 0.85).opacity(0.9),
-                    Color(red: 0.95, green: 0.8, blue: 0.1).opacity(0.85)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        } else {
-            return LinearGradient(
-                colors: [
-                    Color(red: 0.0, green: 0.45, blue: 0.85).opacity(0.2),
-                    Color(red: 0.95, green: 0.8, blue: 0.1).opacity(0.18)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        }
-    }
-    
-    // 🇯🇵 Япония (Белый - Красный)
-    if lower.contains("japanese") || lower.contains("японский") || lower.contains("аниме") {
-        if isSelected {
-            return LinearGradient(
-                colors: [
-                    Color.white.opacity(0.85),
-                    Color(red: 0.85, green: 0.1, blue: 0.2).opacity(0.9)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        } else {
-            return LinearGradient(
-                colors: [
-                    Color.white.opacity(0.15),
-                    Color(red: 0.85, green: 0.1, blue: 0.2).opacity(0.2)
-                ],
-                startPoint: .topLeading,
-                endPoint: .bottomTrailing
-            )
-        }
-    }
-    
-    // 🇫🇷 Франция (Синий - Белый - Красный)
-    if lower.contains("french") || lower.contains("французский") {
-        if isSelected {
-            return LinearGradient(
-                colors: [
-                    Color(red: 0.0, green: 0.2, blue: 0.7).opacity(0.9),
-                    Color.white.opacity(0.8),
-                    Color(red: 0.9, green: 0.1, blue: 0.2).opacity(0.85)
-                ],
-                startPoint: .leading,
-                endPoint: .trailing
-            )
-        } else {
-            return LinearGradient(
-                colors: [
-                    Color(red: 0.0, green: 0.2, blue: 0.7).opacity(0.2),
-                    Color.white.opacity(0.12),
-                    Color(red: 0.9, green: 0.1, blue: 0.2).opacity(0.18)
-                ],
-                startPoint: .leading,
-                endPoint: .trailing
-            )
-        }
-    }
-
-    // 🇩🇪 Германия (Черный - Красный - Золотой)
-    if lower.contains("german") || lower.contains("немецкий") {
-        if isSelected {
-            return LinearGradient(
-                colors: [
-                    Color.black.opacity(0.85),
-                    Color(red: 0.85, green: 0.1, blue: 0.15).opacity(0.85),
-                    Color(red: 0.95, green: 0.75, blue: 0.1).opacity(0.85)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        } else {
-            return LinearGradient(
-                colors: [
-                    Color.black.opacity(0.3),
-                    Color(red: 0.85, green: 0.1, blue: 0.15).opacity(0.18),
-                    Color(red: 0.95, green: 0.75, blue: 0.1).opacity(0.18)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        }
-    }
-
-    // По умолчанию для остальных (Sloosh Accent)
-    if isSelected {
-        return LinearGradient(
-            colors: [Color.white, Color.white.opacity(0.9)],
-            startPoint: .top,
-            endPoint: .bottom
-        )
-    } else {
-        return LinearGradient(
-            colors: [Color.white.opacity(0.15), Color.white.opacity(0.1)],
-            startPoint: .top,
-            endPoint: .bottom
-        )
-    }
-}
-
