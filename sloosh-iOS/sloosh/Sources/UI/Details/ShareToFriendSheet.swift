@@ -6,7 +6,6 @@ struct ShareToFriendSheet: View {
 
     @StateObject private var repo = MessengerRepository.shared
     @State private var searchQuery: String = ""
-    @State private var isSearchActive: Bool = false
     @State private var selectedUsers: [SlooshUser] = []
     @State private var customMessage: String = ""
     @State private var isSending: Bool = false
@@ -17,110 +16,60 @@ struct ShareToFriendSheet: View {
     }
 
     var body: some View {
-        VStack(spacing: 16) {
-            // Шапка шторки: Поиск | Заголовок | Закрыть
-            headerView
+        NavigationStack {
+            VStack(spacing: 14) {
+                // Ряд 1: Лента друзей
+                friendsHorizontalSection
 
-            // Разворачиваемое поле поиска
-            if isSearchActive {
-                searchBarView
-                    .transition(.move(edge: .top).combined(with: .opacity))
+                Divider()
+                    .padding(.horizontal, 16)
+                    .opacity(0.12)
+
+                // Ряд 2: Ввод сообщения при выборе друга ИЛИ Нативные системные быстрые действия
+                if !selectedUsers.isEmpty {
+                    sendMessageSection
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                } else {
+                    quickActionsSection
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
             }
-
-            // Ряд 1: Горизонтальная лента друзей
-            friendsHorizontalSection
-
-            Divider()
-                .opacity(0.15)
-                .padding(.horizontal, 16)
-
-            // Нижний блок: Ввод сообщения + кнопка "Отправить" при выборе друга, ИЛИ Быстрые системные действия
-            if !selectedUsers.isEmpty {
-                sendMessageSection
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
-            } else {
-                quickActionsSection
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+            .padding(.top, 4)
+            .padding(.bottom, 12)
+            .navigationTitle("Отправить")
+            .navigationBarTitleDisplayMode(.inline)
+            .searchable(text: $searchQuery, placement: .navigationBarDrawer(displayMode: .always), prompt: "Поиск")
+            .onChange(of: searchQuery) { _, newValue in
+                Task {
+                    await repo.searchUsers(query: newValue)
+                }
+            }
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundStyle(.white)
+                    }
+                    .tint(.white)
+                }
+            }
+            .task {
+                await repo.fetchConversations()
+            }
+            .sheet(isPresented: $showSystemShareSheet) {
+                if let shareUrl = movieShareUrl {
+                    ShareSheet(items: [shareUrl, movie.title ?? "Фильм"])
+                }
             }
         }
-        .padding(.vertical, 14)
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: selectedUsers)
-        .animation(.easeInOut(duration: 0.2), value: isSearchActive)
-        .task {
-            await repo.fetchConversations()
-        }
-        .sheet(isPresented: $showSystemShareSheet) {
-            if let shareUrl = movieShareUrl {
-                ShareSheet(items: [shareUrl, movie.title ?? "Фильм"])
-            }
-        }
-
         .preferredColorScheme(.dark)
     }
 
     // MARK: - Subviews
-
-    private var headerView: some View {
-        HStack {
-            // Кнопка поиска
-            Button {
-                withAnimation {
-                    isSearchActive.toggle()
-                }
-            } label: {
-                Image(systemName: isSearchActive ? "magnifyingglass.circle.fill" : "magnifyingglass")
-                    .font(.system(size: 18, weight: .medium))
-                    .foregroundStyle(isSearchActive ? Color.slooshAccent : .white)
-                    .frame(width: 32, height: 32)
-            }
-
-            Spacer()
-
-            Text("Отправить")
-                .font(.system(size: 17, weight: .bold))
-                .foregroundStyle(.white)
-
-            Spacer()
-
-            // Крестик закрытия
-            Button {
-                dismiss()
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 15, weight: .bold))
-                    .foregroundStyle(.white.opacity(0.8))
-                    .frame(width: 32, height: 32)
-            }
-        }
-        .padding(.horizontal, 16)
-    }
-
-    private var searchBarView: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .foregroundStyle(.secondary)
-
-            TextField("Поиск по нику или email...", text: $searchQuery)
-                .onChange(of: searchQuery) { _, newValue in
-                    Task {
-                        await repo.searchUsers(query: newValue)
-                    }
-                }
-
-            if !searchQuery.isEmpty {
-                Button {
-                    searchQuery = ""
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(.secondary)
-                }
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 8)
-        .background(Capsule().fill(Color.white.opacity(0.1)))
-        .padding(.horizontal, 16)
-    }
 
     private var friendsHorizontalSection: some View {
         let displayList = searchQuery.isEmpty ? repo.conversations.map { $0.peerUser } : repo.searchResults
@@ -128,19 +77,19 @@ struct ShareToFriendSheet: View {
         return ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 16) {
                 if displayList.isEmpty {
-                    VStack(spacing: 4) {
+                    VStack(spacing: 6) {
                         Image(systemName: "person.2")
-                            .font(.system(size: 24))
+                            .font(.title2)
                             .foregroundStyle(.tertiary)
                         Text(searchQuery.isEmpty ? "Нет диалогов" : "Не найдено")
-                            .font(.system(size: 12))
+                            .font(.caption)
                             .foregroundStyle(.secondary)
                     }
-                    .frame(width: 100, height: 75)
+                    .frame(width: 100, height: 80)
                 } else {
                     ForEach(displayList) { friend in
                         let isSelected = selectedUsers.contains(where: { $0.id == friend.id })
-                        
+
                         Button {
                             toggleUserSelection(friend)
                         } label: {
@@ -148,7 +97,7 @@ struct ShareToFriendSheet: View {
                                 ZStack(alignment: .bottomTrailing) {
                                     UserAvatarView(user: friend, size: 56)
                                         .scaleEffect(isSelected ? 1.05 : 1.0)
-                                    
+
                                     if isSelected {
                                         Image(systemName: "checkmark.circle.fill")
                                             .font(.system(size: 18, weight: .bold))
@@ -159,8 +108,9 @@ struct ShareToFriendSheet: View {
                                 }
 
                                 Text(friend.displayTitle)
-                                    .font(.system(size: 12, weight: isSelected ? .bold : .medium))
-                                    .foregroundStyle(isSelected ? .white : .secondary)
+                                    .font(.caption)
+                                    .fontWeight(isSelected ? .bold : .medium)
+                                    .foregroundStyle(isSelected ? .primary : .secondary)
                                     .lineLimit(1)
                                     .frame(width: 68)
                             }
@@ -171,19 +121,19 @@ struct ShareToFriendSheet: View {
             }
             .padding(.horizontal, 16)
         }
-        .frame(height: 82)
+        .frame(height: 84)
     }
 
     private var quickActionsSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Поделиться в других приложениях")
-                .font(.system(size: 12, weight: .semibold))
+            Text("Поделиться")
+                .font(.caption)
+                .fontWeight(.semibold)
                 .foregroundStyle(.tertiary)
                 .padding(.horizontal, 16)
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 20) {
-                    // Скопировать ссылку
                     quickActionButton(
                         title: "Скопировать",
                         icon: "doc.on.doc.fill",
@@ -192,7 +142,6 @@ struct ShareToFriendSheet: View {
                         copyMovieLink()
                     }
 
-                    // Системный шеринг
                     quickActionButton(
                         title: "Еще...",
                         icon: "square.and.arrow.up.fill",
@@ -211,7 +160,7 @@ struct ShareToFriendSheet: View {
             VStack(spacing: 6) {
                 ZStack {
                     Circle()
-                        .fill(color.opacity(0.2))
+                        .fill(Color(uiColor: .tertiarySystemFill))
                         .frame(width: 52, height: 52)
 
                     Image(systemName: icon)
@@ -220,7 +169,7 @@ struct ShareToFriendSheet: View {
                 }
 
                 Text(title)
-                    .font(.system(size: 12, weight: .medium))
+                    .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
@@ -230,13 +179,15 @@ struct ShareToFriendSheet: View {
 
     private var sendMessageSection: some View {
         VStack(spacing: 12) {
-            // Поле ввода сообщения
             HStack(spacing: 8) {
                 TextField("Напишите сообщение...", text: $customMessage)
-                    .font(.system(size: 15))
+                    .font(.callout)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
-                    .background(Capsule().fill(Color.white.opacity(0.1)))
+                    .background(
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                            .fill(Color(uiColor: .tertiarySystemFill))
+                    )
 
                 if !customMessage.isEmpty {
                     Button {
@@ -249,7 +200,6 @@ struct ShareToFriendSheet: View {
             }
             .padding(.horizontal, 16)
 
-            // Кнопка Отправить
             Button {
                 sendToSelectedFriends()
             } label: {
@@ -262,13 +212,17 @@ struct ShareToFriendSheet: View {
                         Image(systemName: "paperplane.fill")
                             .font(.system(size: 15, weight: .bold))
                         Text(selectedUsers.count > 1 ? "Отправить (\(selectedUsers.count))" : "Отправить")
-                            .font(.system(size: 16, weight: .bold))
+                            .font(.callout)
+                            .fontWeight(.bold)
                     }
                 }
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
                 .frame(height: 46)
-                .background(Capsule().fill(Color.blue))
+                .background(
+                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        .fill(Color.blue)
+                )
             }
             .buttonStyle(.plain)
             .disabled(isSending)
@@ -331,10 +285,7 @@ struct ShareToFriendSheet: View {
 
         Task {
             for friend in targets {
-                // 1. Отправляем карточку фильма
                 _ = await repo.sendMessage(toPeerUser: friend, mediaPayload: mediaPayload)
-                
-                // 2. Если пользователь ввел сообщение, отправляем его вдогонку
                 if !textComment.isEmpty {
                     _ = await repo.sendMessage(toPeerUser: friend, text: textComment)
                 }
