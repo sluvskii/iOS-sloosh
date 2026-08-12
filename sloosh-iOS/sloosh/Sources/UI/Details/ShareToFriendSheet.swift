@@ -34,8 +34,9 @@ struct ShareToFriendSheet: View {
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             }
-            .padding(.top, 8)
-            .padding(.bottom, 16)
+            .padding(.top, 2)
+            .padding(.bottom, 8)
+
             .navigationTitle("Отправить")
             .navigationBarTitleDisplayMode(.inline)
             .searchable(text: $searchQuery, placement: .navigationBarDrawer(displayMode: .always), prompt: "Поиск")
