@@ -13,6 +13,7 @@ struct VoiceoverPickerSheet: View {
                 popoverRow(
                     label: displayTranslationName(name, at: idx, in: vm.availableVoiceovers),
                     iconName: translationIconName(name),
+                    flagEmoji: countryFlagEmoji(for: name),
                     isSelected: vm.currentTranslationName == name
                 ) {
                     vm.switchVoiceover(to: name, at: idx)
@@ -21,6 +22,7 @@ struct VoiceoverPickerSheet: View {
             }
         }
     }
+
 
 }
 
@@ -122,10 +124,12 @@ private struct PopoverContainer<Content: View>: View {
 }
 
 @ViewBuilder
-private func popoverRow(label: String, iconName: String? = nil, isSelected: Bool, action: @escaping () -> Void) -> some View {
+private func popoverRow(label: String, iconName: String? = nil, flagEmoji: String? = nil, isSelected: Bool, action: @escaping () -> Void) -> some View {
     Button(action: action) {
         HStack(spacing: 10) {
-            if let iconName {
+            if let flagEmoji {
+                CountryFlagBadgeView(flag: flagEmoji)
+            } else if let iconName {
                 Image(systemName: iconName)
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(isSelected ? .black : Color.slooshAccent)
@@ -146,4 +150,5 @@ private func popoverRow(label: String, iconName: String? = nil, isSelected: Bool
     }
     .buttonStyle(.plain)
 }
+
 
