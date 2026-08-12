@@ -61,42 +61,42 @@ func cleanTranslationName(_ rawName: String) -> String {
         name = rawName.components(separatedBy: " ").first ?? rawName
     }
     
-    // 3. Чистое лаконичное название озвучки
-    let languageMappings: [(prefix: String, defaultName: String)] = [
-        ("Russian", "Русский"),
-        ("Русский", "Русский"),
-        ("English", "Original"),
-        ("Английский", "Original"),
-        ("Ukrainian", "Украинский"),
-        ("Украинский", "Украинский"),
-        ("Kazakh", "Казахский"),
-        ("Казахский", "Казахский"),
-        ("Georgian", "Грузинский"),
-        ("Грузинский", "Грузинский"),
-        ("Spanish", "Испанский"),
-        ("Испанский", "Испанский"),
-        ("German", "Немецкий"),
-        ("Немецкий", "Немецкий"),
-        ("French", "Французский"),
-        ("Французский", "Французский"),
-        ("Italian", "Итальянский"),
-        ("Итальянский", "Итальянский"),
-        ("Japanese", "Японский"),
-        ("Японский", "Японский"),
-        ("Korean", "Корейский"),
-        ("Корейский", "Корейский"),
-        ("Chinese", "Китайский"),
-        ("Китайский", "Китайский")
+    // 3. Лаконичное форматирование: замена названия языка эмодзи флагом страны
+    let languageMappings: [(prefix: String, flag: String, defaultName: String)] = [
+        ("Russian", "🇷🇺", "Русский"),
+        ("Русский", "🇷🇺", "Русский"),
+        ("English", "🇺🇸", "Английский"),
+        ("Английский", "🇺🇸", "Английский"),
+        ("Ukrainian", "🇺🇦", "Украинский"),
+        ("Украинский", "🇺🇦", "Украинский"),
+        ("Kazakh", "🇰🇿", "Казахский"),
+        ("Казахский", "🇰🇿", "Казахский"),
+        ("Georgian", "🇬🇪", "Грузинский"),
+        ("Грузинский", "🇬🇪", "Грузинский"),
+        ("Spanish", "🇪🇸", "Испанский"),
+        ("Испанский", "🇪🇸", "Испанский"),
+        ("German", "🇩🇪", "Немецкий"),
+        ("Немецкий", "🇩🇪", "Немецкий"),
+        ("French", "🇫🇷", "Французский"),
+        ("Французский", "🇫🇷", "Французский"),
+        ("Italian", "🇮🇹", "Итальянский"),
+        ("Итальянский", "🇮🇹", "Итальянский"),
+        ("Japanese", "🇯🇵", "Японский"),
+        ("Японский", "🇯🇵", "Японский"),
+        ("Korean", "🇰🇷", "Корейский"),
+        ("Корейский", "🇰🇷", "Корейский"),
+        ("Chinese", "🇨🇳", "Китайский"),
+        ("Китайский", "🇨🇳", "Китайский")
     ]
 
     var baseTitle = name
-    for (lang, defaultName) in languageMappings {
+    for (lang, flag, defaultName) in languageMappings {
         if name.hasPrefix(lang) {
             let remainder = name.dropFirst(lang.count).trimmingCharacters(in: .whitespacesAndNewlines)
             if remainder.isEmpty {
-                baseTitle = defaultName
+                baseTitle = "\(flag) \(defaultName)"
             } else {
-                baseTitle = remainder
+                baseTitle = "\(flag) \(remainder)"
             }
             break
         }
@@ -104,54 +104,6 @@ func cleanTranslationName(_ rawName: String) -> String {
     
     return baseTitle
 }
-
-/// Возвращает эмодзи флага страны для создания круглого графического бейджа
-func countryFlagEmoji(for rawName: String) -> String? {
-    let lower = rawName.lowercased()
-    if lower.contains("russian") || lower.contains("русский") || lower.contains("rus") {
-        return "🇷🇺"
-    } else if lower.contains("english") || lower.contains("английский") || lower.contains("eng") || lower.contains("orig") {
-        return "🇺🇸"
-    } else if lower.contains("ukrainian") || lower.contains("украинский") || lower.contains("ukr") {
-        return "🇺🇦"
-    } else if lower.contains("kazakh") || lower.contains("казахский") || lower.contains("kaz") {
-        return "🇰🇿"
-    } else if lower.contains("georgian") || lower.contains("грузинский") || lower.contains("geo") {
-        return "🇬🇪"
-    } else if lower.contains("spanish") || lower.contains("испанский") || lower.contains("spa") {
-        return "🇪🇸"
-    } else if lower.contains("german") || lower.contains("немецкий") || lower.contains("ger") {
-        return "🇩🇪"
-    } else if lower.contains("french") || lower.contains("французский") || lower.contains("fre") {
-        return "🇫🇷"
-    } else if lower.contains("italian") || lower.contains("итальянский") || lower.contains("ita") {
-        return "🇮🇹"
-    } else if lower.contains("japanese") || lower.contains("японский") || lower.contains("jap") {
-        return "🇯🇵"
-    } else if lower.contains("korean") || lower.contains("корейский") || lower.contains("kor") {
-        return "🇰🇷"
-    } else if lower.contains("chinese") || lower.contains("китайский") || lower.contains("chi") {
-        return "🇨🇳"
-    }
-    return nil
-}
-
-/// Возвращает нативное векторное имя SF Symbol иконки для типа озвучки
-func translationIconName(_ rawName: String) -> String {
-    let lower = rawName.lowercased()
-    if lower.contains("дубл") || lower.contains("dub") {
-        return "mic.fill"
-    } else if lower.contains("ориг") || lower.contains("orig") || lower.contains("eng") || lower.contains("англ") {
-        return "globe"
-    } else if lower.contains("многогол") || lower.contains("проф") || lower.contains("mvo") || lower.contains("dvo") {
-        return "headphones"
-    } else if lower.contains("автор") || lower.contains("одногол") || lower.contains("avo") {
-        return "person.wave.2.fill"
-    }
-    return "film.stack"
-}
-
-
 
 
 

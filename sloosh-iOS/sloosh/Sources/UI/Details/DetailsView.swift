@@ -188,20 +188,32 @@ struct DetailsView: View {
                         
                         Spacer()
                         
-                        TelegramGlassIconButton(
-                            systemName: viewModel.isFavorite ? "heart.fill" : "heart"
-                        ) {
-                            let generator = UIImpactFeedbackGenerator(style: .light)
-                            generator.prepare()
-                            generator.impactOccurred()
-                            favoriteBounce.toggle()
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.5, blendDuration: 0.5)) {
-                                viewModel.toggleFavorite()
+                        HStack(spacing: 8) {
+                            TelegramGlassIconButton(
+                                systemName: viewModel.isFavorite ? "heart.fill" : "heart"
+                            ) {
+                                let generator = UIImpactFeedbackGenerator(style: .light)
+                                generator.prepare()
+                                generator.impactOccurred()
+                                favoriteBounce.toggle()
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.5, blendDuration: 0.5)) {
+                                    viewModel.toggleFavorite()
+                                }
                             }
+                            .disabled(viewModel.details == nil)
+                            .accessibilityLabel(viewModel.isFavorite ? "Убрать из избранного" : "Добавить в избранное")
+
+                            TelegramGlassIconButton(systemName: "square.and.arrow.up") {
+                                let generator = UIImpactFeedbackGenerator(style: .medium)
+                                generator.prepare()
+                                generator.impactOccurred()
+                                showShareToFriendSheet = true
+                            }
+                            .disabled(viewModel.details == nil)
+                            .accessibilityLabel("Поделиться фильмом")
                         }
-                        .disabled(viewModel.details == nil)
-                        .accessibilityLabel(viewModel.isFavorite ? "Убрать из избранного" : "Добавить в избранное")
                     }
+
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, 8)
@@ -346,8 +358,15 @@ struct DetailsView: View {
         } message: {
             Text("Вы действительно хотите удалить этот фильм из памяти устройства?")
         }
+        .sheet(isPresented: $showShareToFriendSheet) {
+            if let details = viewModel.details {
+                ShareToFriendSheet(movie: details)
+            }
+        }
         .preferredColorScheme(.dark)
     }
+
+
 
     private func handlePlayAction(details: MediaDetailsDto) {
         let generator = UIImpactFeedbackGenerator(style: .medium)
@@ -396,28 +415,9 @@ struct DetailsView: View {
             playButton(for: details)
                 .tooltip(text: "Нажмите для выбора перевода", isVisible: $showTooltip, isTailTop: false)
             downloadButton(for: details)
-            shareToFriendButton(for: details)
         }
     }
 
-    private func shareToFriendButton(for details: MediaDetailsDto) -> some View {
-        Button(action: {
-            let generator = UIImpactFeedbackGenerator(style: .medium)
-            generator.prepare()
-            generator.impactOccurred()
-            showShareToFriendSheet = true
-        }) {
-            Image(systemName: "paperplane.fill")
-                .font(.system(size: 20, weight: .semibold))
-                .foregroundColor(.primary)
-                .frame(width: 50, height: 50)
-        }
-        .buttonStyle(GlassDownloadButtonStyle())
-        .contentShape(Capsule())
-        .sheet(isPresented: $showShareToFriendSheet) {
-            ShareToFriendSheet(movie: details)
-        }
-    }
 
     private func playButton(for details: MediaDetailsDto) -> some View {
         Button(action: {
