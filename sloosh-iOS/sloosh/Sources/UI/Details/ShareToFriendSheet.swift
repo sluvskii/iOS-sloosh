@@ -17,13 +17,12 @@ struct ShareToFriendSheet: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 16) {
+            VStack(spacing: 12) {
+                // Поисковая панель
+                searchBar
+
                 // Ряд 1: Лента друзей
                 friendsHorizontalSection
-
-                Divider()
-                    .padding(.horizontal, 16)
-                    .opacity(0.12)
 
                 // Ряд 2: Ввод сообщения при выборе друга ИЛИ Чистая карточка фильма
                 if !selectedUsers.isEmpty {
@@ -35,17 +34,9 @@ struct ShareToFriendSheet: View {
                 }
             }
             .padding(.top, 4)
-            .padding(.bottom, 16)
-
-
+            .padding(.bottom, 12)
             .navigationTitle("Отправить")
             .navigationBarTitleDisplayMode(.inline)
-            .searchable(text: $searchQuery, placement: .navigationBarDrawer(displayMode: .always), prompt: "Поиск")
-            .onChange(of: searchQuery) { _, newValue in
-                Task {
-                    await repo.searchUsers(query: newValue)
-                }
-            }
             .toolbar {
                 // Слева: Кнопка Закрыть
                 ToolbarItem(placement: .cancellationAction) {
@@ -85,6 +76,39 @@ struct ShareToFriendSheet: View {
     }
 
     // MARK: - Subviews
+
+    private var searchBar: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .foregroundStyle(.secondary)
+                .font(.system(size: 15))
+
+            TextField("Поиск", text: $searchQuery)
+                .font(.system(size: 15))
+                .foregroundStyle(.primary)
+                .onChange(of: searchQuery) { _, newValue in
+                    Task {
+                        await repo.searchUsers(query: newValue)
+                    }
+                }
+
+            if !searchQuery.isEmpty {
+                Button {
+                    searchQuery = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+            }
+        }
+        .padding(.horizontal, 12)
+        .frame(height: 38)
+        .background(
+            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .fill(Color(uiColor: .tertiarySystemFill))
+        )
+        .padding(.horizontal, 16)
+    }
 
     private var friendsHorizontalSection: some View {
         let displayList = searchQuery.isEmpty ? repo.conversations.map { $0.peerUser } : repo.searchResults
