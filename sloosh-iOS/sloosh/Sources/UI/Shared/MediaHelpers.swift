@@ -47,8 +47,12 @@ func cleanTranslationName(_ rawName: String) -> String {
         name = regex.stringByReplacingMatches(in: name, options: [], range: range, withTemplate: "").trimmingCharacters(in: .whitespacesAndNewlines)
     }
     
-    // 2. Очищаем лишние разделители и трубы |
+    // 2. Нормализуем скобки и трубы в чистые пробелы для аккуратного разбора
     name = name
+        .replacingOccurrences(of: "(", with: " ")
+        .replacingOccurrences(of: ")", with: " ")
+        .replacingOccurrences(of: "[", with: " ")
+        .replacingOccurrences(of: "]", with: " ")
         .replacingOccurrences(of: "|", with: " ")
         .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
         .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -76,34 +80,19 @@ func cleanTranslationName(_ rawName: String) -> String {
     var baseTitle = name
     for (lang, ru) in languageMappings {
         if name.hasPrefix(lang) {
-            var remainder = name.dropFirst(lang.count).trimmingCharacters(in: .whitespacesAndNewlines)
-            remainder = remainder
-                .replacingOccurrences(of: "|", with: "")
-                .replacingOccurrences(of: "(", with: "")
-                .replacingOccurrences(of: ")", with: "")
-                .replacingOccurrences(of: "[", with: "")
-                .replacingOccurrences(of: "]", with: "")
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-            
+            let remainder = name.dropFirst(lang.count).trimmingCharacters(in: .whitespacesAndNewlines)
             if remainder.isEmpty {
                 baseTitle = ru
             } else {
-                baseTitle = "\(ru) (\(remainder))"
+                baseTitle = "\(ru) | \(remainder)"
             }
             break
         }
     }
     
-    // Финальная зачистка оставшихся двойных скобок или пустых символов внутри скобок
-    baseTitle = baseTitle
-        .replacingOccurrences(of: "(\\s*)", with: "")
-        .replacingOccurrences(of: "( ", with: "(")
-        .replacingOccurrences(of: " )", with: ")")
-        .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
-        .trimmingCharacters(in: .whitespacesAndNewlines)
-    
     return baseTitle
 }
+
 
 
 /// Возвращает уникальное понятное название для озвучки с учётом её индекса в общем списке
