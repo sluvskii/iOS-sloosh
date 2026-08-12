@@ -51,9 +51,10 @@ struct ShareToFriendSheet: View {
         }
         .sheet(isPresented: $showSystemShareSheet) {
             if let shareUrl = movieShareUrl {
-                ShareSheet(activityItems: [shareUrl, movie.title ?? "Фильм"])
+                ShareSheet(items: [shareUrl, movie.title ?? "Фильм"])
             }
         }
+
         .preferredColorScheme(.dark)
     }
 
