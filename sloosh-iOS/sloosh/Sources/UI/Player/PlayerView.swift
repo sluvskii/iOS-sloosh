@@ -551,6 +551,50 @@ class PlayerViewModel: ObservableObject {
         }
     }
     
+    private func restoreOrApplyQuality() {
+        let activeKey = currentQualityKey
+        let prefRaw = UserDefaults.standard.string(forKey: "preferredVideoQuality") ?? VideoQualityPreference.ask.rawValue
+        let globalPref = VideoQualityPreference(rawValue: prefRaw) ?? .ask
+        let targetQuality = self.targetQualityPreference ?? globalPref
+        
+        let targetKey = activeKey ?? targetQuality.rawValue
+        
+        if targetKey != "Авто" && targetKey != VideoQualityPreference.auto.rawValue && targetKey != VideoQualityPreference.ask.rawValue {
+            if let exact = availableQualities.first(where: { $0.key.hasPrefix(targetKey) }) {
+                logDebug("restoreOrApplyQuality: restored quality to '\(exact.key)'")
+                currentQualityKey = exact.key
+                let bitrate = resolvedBitrate(for: exact)
+                player?.currentItem?.preferredPeakBitRate = bitrate
+                return
+            }
+            
+            let prefVal = Int(targetKey.replacingOccurrences(of: "p", with: "")) ?? 0
+            if prefVal > 0 {
+                var closest: String?
+                var minDiff = Int.max
+                for q in availableQualities {
+                    let val = Int(q.key.replacingOccurrences(of: "p", with: "")) ?? 0
+                    if val > 0 {
+                        let diff = abs(val - prefVal)
+                        if diff < minDiff {
+                            minDiff = diff
+                            closest = q.key
+                        }
+                    }
+                }
+                if let closestKey = closest, let opt = availableQualities.first(where: { $0.key == closestKey }) {
+                    logDebug("restoreOrApplyQuality: restored closest quality to '\(closestKey)' for '\(targetKey)'")
+                    currentQualityKey = closestKey
+                    let bitrate = resolvedBitrate(for: opt)
+                    player?.currentItem?.preferredPeakBitRate = bitrate
+                    return
+                }
+            }
+        }
+        
+        applyInitialQuality()
+    }
+
     private func applyInitialQuality() {
         let prefRaw = UserDefaults.standard.string(forKey: "preferredVideoQuality") ?? VideoQualityPreference.ask.rawValue
         let globalPref = VideoQualityPreference(rawValue: prefRaw) ?? .ask
@@ -593,6 +637,7 @@ class PlayerViewModel: ObservableObject {
             changeQuality(to: closestKey)
         }
     }
+
     
     private func startParsing(iframeUrl: String, voices: [String] = [], subtitles: [PlaybackSubtitle] = []) {
         resolveTask?.cancel()
@@ -758,9 +803,16 @@ class PlayerViewModel: ObservableObject {
             _currentTranslationName = name
             targetVoiceover = name
             persistVoiceoverSelection(name)
-            reloadPlayback(to: streamUrl, preferredPeakBitRate: player?.currentItem?.preferredPeakBitRate)
+            let activeBitrate: Double? = {
+                if let currentKey = currentQualityKey, let opt = availableQualities.first(where: { $0.key == currentKey }), !opt.isAuto {
+                    return resolvedBitrate(for: opt)
+                }
+                return player?.currentItem?.preferredPeakBitRate
+            }()
+            reloadPlayback(to: streamUrl, preferredPeakBitRate: activeBitrate)
             return
         }
+
         
         // 2. Ищем iframeUrl для нужной озвучки из Alloha DTO (для фильмов/сериалов с отдельным iframeUrl)
         var targetIframeUrl: String?
@@ -1814,9 +1866,10 @@ class PlayerViewModel: ObservableObject {
             qualityVariants: qualityVariants,
             audioVariants: audioVariants
         )
-        currentQualityKey = "Авто"
+        restoreOrApplyQuality()
         playVideo(url: resolvedUrl, headers: headers, voices: voices, subtitles: resolvedSubtitles)
         NotificationCenter.default.post(name: NSNotification.Name("QualitiesUpdated"), object: nil)
+
 
         applyInitialQuality()
 
