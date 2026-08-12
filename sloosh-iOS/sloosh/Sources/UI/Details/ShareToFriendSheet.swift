@@ -17,7 +17,7 @@ struct ShareToFriendSheet: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 14) {
+            VStack(spacing: 16) {
                 // Ряд 1: Лента друзей
                 friendsHorizontalSection
 
@@ -25,7 +25,7 @@ struct ShareToFriendSheet: View {
                     .padding(.horizontal, 16)
                     .opacity(0.12)
 
-                // Ряд 2: Ввод сообщения при выборе друга ИЛИ Красивая плашка фильма
+                // Ряд 2: Ввод сообщения при выборе друга ИЛИ Чистая карточка фильма
                 if !selectedUsers.isEmpty {
                     sendMessageSection
                         .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -34,8 +34,8 @@ struct ShareToFriendSheet: View {
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
             }
-            .padding(.top, 4)
-            .padding(.bottom, 12)
+            .padding(.top, 8)
+            .padding(.bottom, 16)
             .navigationTitle("Отправить")
             .navigationBarTitleDisplayMode(.inline)
             .searchable(text: $searchQuery, placement: .navigationBarDrawer(displayMode: .always), prompt: "Поиск")
@@ -147,14 +147,14 @@ struct ShareToFriendSheet: View {
                         .resizable()
                         .aspectRatio(contentMode: .fill)
                 }
-                .frame(width: 46, height: 66)
+                .frame(width: 48, height: 68)
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                 .shadow(color: .black.opacity(0.35), radius: 5, x: 0, y: 2)
             }
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 6) {
                 Text(movie.title ?? movie.originalTitle ?? "Фильм")
-                    .font(.system(size: 15, weight: .bold))
+                    .font(.system(size: 16, weight: .bold))
                     .foregroundStyle(.primary)
                     .lineLimit(1)
 
@@ -163,8 +163,8 @@ struct ShareToFriendSheet: View {
                         Text(String(format: "%.1f", rating))
                             .font(.system(size: 11, weight: .heavy))
                             .foregroundStyle(.white)
-                            .padding(.horizontal, 5)
-                            .padding(.vertical, 2)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2.5)
                             .background(Color.rating(rating))
                             .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
                     }
@@ -182,23 +182,18 @@ struct ShareToFriendSheet: View {
                             .lineLimit(1)
                     }
                 }
-
-                Text("Выберите друга для отправки")
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                    .padding(.top, 2)
             }
 
             Spacer()
         }
-        .padding(12)
+        .padding(14)
         .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         .padding(.horizontal, 16)
     }
 
     private var sendMessageSection: some View {
         VStack(spacing: 12) {
-            // Капсульное парящее поле ввода сообщения (как на экране авторизации)
+            // Капсульное парящее поле ввода сообщения
             HStack(spacing: 8) {
                 TextField("Напишите сообщение...", text: $customMessage)
                     .font(.system(size: 15, weight: .medium))
@@ -218,7 +213,7 @@ struct ShareToFriendSheet: View {
             .glassEffect(.regular.interactive(), in: Capsule())
             .padding(.horizontal, 16)
 
-            // Главная акцентная капсульная кнопка "Отправить" в стиле Sloosh (высота 50pt, slooshAccent)
+            // Главная акцентная капсульная кнопка "Отправить"
             Button {
                 sendToSelectedFriends()
             } label: {
