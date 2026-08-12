@@ -302,7 +302,6 @@ struct SourceSelectionView: View {
                     ForEach(Array(allTranslations.enumerated()), id: \.offset) { idx, tName in
                         WatchSelectorChip(
                             title: displayTranslationName(tName, at: idx, in: allTranslations),
-                            rawVoiceoverName: tName,
                             isSelected: selectedTranslationName == tName,
                             isAvailable: isTranslationAvailable(tName)
                         ) {
@@ -310,7 +309,6 @@ struct SourceSelectionView: View {
                         }
                     }
                 }
-
             }
         }
     }
