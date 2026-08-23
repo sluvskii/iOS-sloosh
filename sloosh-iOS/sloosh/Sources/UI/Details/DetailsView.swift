@@ -42,27 +42,30 @@ struct RemoteLogoView: View {
     let url: URL?
     let fallbackTitle: String
     var alignment: Alignment = .center
+    var isTopBar: Bool = false
     
     var body: some View {
         AsyncCachedImage(url: url) {
             Text(fallbackTitle)
-                .font(.system(size: 34, weight: .heavy))
+                .font(.system(size: isTopBar ? 17 : 34, weight: isTopBar ? .bold : .heavy))
+                .lineLimit(1)
                 .multilineTextAlignment(alignment == .leading ? .leading : .center)
-                .padding(.horizontal, alignment == .center ? 16 : 0)
+                .padding(.horizontal, alignment == .center ? (isTopBar ? 0 : 16) : 0)
                 .shimmer()
                 .frame(maxWidth: .infinity, alignment: alignment)
         } content: { image in
             Image(uiImage: image)
                 .resizable()
                 .aspectRatio(contentMode: .fit)
-                .frame(maxWidth: 280, maxHeight: 110, alignment: alignment)
-                .padding(.horizontal, alignment == .center ? 16 : 0)
-                .shadow(color: .black.opacity(0.3), radius: 8, x: 0, y: 4)
+                .frame(maxWidth: isTopBar ? nil : 280, maxHeight: isTopBar ? 32 : 110, alignment: alignment)
+                .padding(.horizontal, alignment == .center ? (isTopBar ? 0 : 16) : 0)
+                .shadow(color: .black.opacity(isTopBar ? 0.0 : 0.3), radius: 8, x: 0, y: 4)
         } fallback: {
             Text(fallbackTitle)
-                .font(.system(size: 34, weight: .heavy))
+                .font(.system(size: isTopBar ? 17 : 34, weight: isTopBar ? .bold : .heavy))
+                .lineLimit(1)
                 .multilineTextAlignment(alignment == .leading ? .leading : .center)
-                .padding(.horizontal, alignment == .center ? 16 : 0)
+                .padding(.horizontal, alignment == .center ? (isTopBar ? 0 : 16) : 0)
                 .frame(maxWidth: .infinity, alignment: alignment)
         }
     }
@@ -174,10 +177,11 @@ struct DetailsView: View {
                         RemoteLogoView(
                             url: URL(string: details.displayLogoUrl ?? ""),
                             fallbackTitle: details.title ?? details.originalTitle ?? "Без названия",
-                            alignment: .center
+                            alignment: .center,
+                            isTopBar: true
                         )
                         .frame(height: 32)
-                        .padding(.horizontal, 72)
+                        .padding(.horizontal, 116)
                         .transition(.blurFadeScale)
                     }
                     
