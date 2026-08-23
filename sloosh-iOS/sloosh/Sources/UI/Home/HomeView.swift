@@ -52,7 +52,6 @@ struct HomeView: View {
     @Namespace private var navigationTransition
     @State private var isFilterCollapsed = false
     @State private var scrollOffsets: [HomeCategory: CGFloat] = [:]
-    @State private var pendingPlayerConfig: PlayerConfig? = nil
 
     private var blurOpacity: Double {
         let offset = scrollOffsets[viewModel.selectedCategory] ?? 0
@@ -142,38 +141,11 @@ struct HomeView: View {
                     navigationTransitionNamespace: nil
                 )
             }
-            .sheet(item: $viewModel.directPlaybackMovie, onDismiss: {
-                if let pending = pendingPlayerConfig {
-                    pendingPlayerConfig = nil
-                    DispatchQueue.main.async {
-                        viewModel.playerConfig = pending
-                    }
-                }
-            }) { movie in
+            .sheet(item: $viewModel.directPlaybackMovie) { movie in
                 HomeDirectPlayWrapper(
                     movieId: movie.id,
                     fallbackTitle: movie.title ?? movie.name ?? movie.originalTitle ?? "",
                     initialKpId: movie.externalIds?.kp
-                ) { config in
-                    pendingPlayerConfig = config
-                    viewModel.directPlaybackMovie = nil
-                }
-            }
-            .fullScreenCover(item: $viewModel.playerConfig, onDismiss: {
-                viewModel.playerConfig = nil
-            }) { config in
-                PlayerView(
-                    iframeUrl: config.iframeUrl,
-                    fallbackTitle: config.title,
-                    kpId: config.kpId,
-                    season: config.season,
-                    episode: config.episode,
-                    selectedVoiceover: config.voiceover,
-                    directStreamUrl: config.streamUrl,
-                    voices: config.voices,
-                    subtitles: config.subtitles,
-                    initialQuality: config.quality,
-                    seriesResult: config.seriesResult
                 )
             }
         }
@@ -736,7 +708,6 @@ class HomeViewModel: ObservableObject {
     @Published var isLoadingMore: [HomeCacheKey: Bool] = [:]
     
     @Published var directPlaybackMovie: MediaDto? = nil
-    @Published var playerConfig: PlayerConfig? = nil
 
     private var cachedCursors: [HomeCacheKey: InfiniteCursor] = [:]
     private var cachedCanLoadMore: [HomeCacheKey: Bool] = [:]
