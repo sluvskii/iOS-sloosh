@@ -30,8 +30,6 @@ struct ProfileView: View {
     @AppStorage("cardDensity") private var cardDensity: CardDensity = .regular
     @State private var scrollOffsets: [FavoriteCategory: CGFloat] = [:]
     @State private var directPlaybackMovie: MediaDto?
-    @State private var pendingPlayerConfig: PlayerConfig?
-    @State private var playerConfig: PlayerConfig?
     
     private var columns: [GridItem] {
         let spacing: CGFloat = cardDensity == .compact ? 8 : 16
@@ -187,38 +185,11 @@ struct ProfileView: View {
                 .fullScreenCover(isPresented: $showAuthSheet) {
                     AuthView()
                 }
-                .sheet(item: $directPlaybackMovie, onDismiss: {
-                    if let pending = pendingPlayerConfig {
-                        pendingPlayerConfig = nil
-                        DispatchQueue.main.async {
-                            playerConfig = pending
-                        }
-                    }
-                }) { movie in
+                .sheet(item: $directPlaybackMovie) { movie in
                     HomeDirectPlayWrapper(
                         movieId: movie.id,
                         fallbackTitle: movie.title ?? movie.name ?? movie.originalTitle ?? "",
                         initialKpId: movie.externalIds?.kp
-                    ) { config in
-                        pendingPlayerConfig = config
-                        directPlaybackMovie = nil
-                    }
-                }
-                .fullScreenCover(item: $playerConfig, onDismiss: {
-                    playerConfig = nil
-                }) { config in
-                    PlayerView(
-                        iframeUrl: config.iframeUrl,
-                        fallbackTitle: config.title,
-                        kpId: config.kpId,
-                        season: config.season,
-                        episode: config.episode,
-                        selectedVoiceover: config.voiceover,
-                        directStreamUrl: config.streamUrl,
-                        voices: config.voices,
-                        subtitles: config.subtitles,
-                        initialQuality: config.quality,
-                        seriesResult: config.seriesResult
                     )
                 }
             }

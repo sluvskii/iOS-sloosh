@@ -361,11 +361,10 @@ struct DetailsView: View {
         .sheet(isPresented: $showShareToFriendSheet) {
             if let details = viewModel.details {
                 ShareToFriendSheet(movie: details)
-                    .presentationDetents([.height(305)])
+                    .presentationDetents([.height(335)])
                     .presentationDragIndicator(.visible)
             }
         }
-
 
 
 
