@@ -143,25 +143,31 @@ struct ShareToFriendSheet: View {
                         Button {
                             toggleUserSelection(friend)
                         } label: {
-                            VStack(spacing: 6) {
+                            VStack(spacing: 5) {
                                 ZStack(alignment: .bottomTrailing) {
-                                    UserAvatarView(user: friend, size: 54)
-                                        .scaleEffect(isSelected ? 1.05 : 1.0)
+                                    UserAvatarView(user: friend, size: 52)
 
                                     if isSelected {
-                                        Image(systemName: "checkmark.circle.fill")
-                                            .font(.system(size: 18, weight: .bold))
-                                            .foregroundStyle(.black, Color.slooshAccent)
-                                            .background(Circle().fill(Color.white))
-                                            .offset(x: 2, y: 2)
+                                        ZStack {
+                                            Circle()
+                                                .fill(Color.slooshAccent.opacity(0.85))
+                                                .frame(width: 20, height: 20)
+                                                .glassEffect(.regular.interactive(), in: Circle())
+
+                                            Image(systemName: "checkmark")
+                                                .font(.system(size: 10, weight: .bold))
+                                                .foregroundStyle(.black)
+                                        }
+                                        .offset(x: 2, y: 2)
+                                        .transition(.scale(scale: 0.5).combined(with: .opacity))
                                     }
                                 }
 
                                 Text(friend.displayTitle)
-                                    .font(.system(size: 11, weight: isSelected ? .bold : .medium))
-                                    .foregroundStyle(isSelected ? .primary : .secondary)
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundStyle(.secondary)
                                     .lineLimit(1)
-                                    .frame(width: 66)
+                                    .frame(width: 64)
                             }
                         }
                         .buttonStyle(.plain)
@@ -170,7 +176,7 @@ struct ShareToFriendSheet: View {
             }
             .padding(.horizontal, 16)
         }
-        .frame(height: 84)
+        .frame(height: 80)
         .padding(.horizontal, -16)
     }
 
@@ -285,10 +291,12 @@ struct ShareToFriendSheet: View {
         let generator = UIImpactFeedbackGenerator(style: .light)
         generator.impactOccurred()
 
-        if let index = selectedUsers.firstIndex(where: { $0.id == friend.id }) {
-            selectedUsers.remove(at: index)
-        } else {
-            selectedUsers.append(friend)
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.7)) {
+            if let index = selectedUsers.firstIndex(where: { $0.id == friend.id }) {
+                selectedUsers.remove(at: index)
+            } else {
+                selectedUsers.append(friend)
+            }
         }
     }
 
