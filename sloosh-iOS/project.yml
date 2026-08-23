@@ -1,6 +1,7 @@
 name: sloosh
 options:
   bundleIdPrefix: com
+  xcodeVersion: "15.4"
 targets:
   sloosh:
     type: application
