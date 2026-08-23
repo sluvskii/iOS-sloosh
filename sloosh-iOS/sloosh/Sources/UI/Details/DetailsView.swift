@@ -188,7 +188,7 @@ struct DetailsView: View {
                         
                         Spacer()
                         
-                        HStack(spacing: 0) {
+                        HStack(spacing: 6) {
                             Button {
                                 let generator = UIImpactFeedbackGenerator(style: .light)
                                 generator.prepare()
@@ -224,6 +224,7 @@ struct DetailsView: View {
                             .disabled(viewModel.details == nil)
                             .accessibilityLabel("Поделиться фильмом")
                         }
+                        .padding(.horizontal, 4)
                         .frame(height: 44)
                         .glassEffect(.regular.interactive(), in: .capsule)
                     }
