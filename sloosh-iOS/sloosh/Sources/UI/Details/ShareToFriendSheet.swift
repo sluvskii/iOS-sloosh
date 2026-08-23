@@ -10,106 +10,91 @@ struct ShareToFriendSheet: View {
     @State private var customMessage: String = ""
     @State private var isSending: Bool = false
     @State private var showSystemShareSheet: Bool = false
-    @FocusState private var isSearchFocused: Bool
-    @FocusState private var isMessageFocused: Bool
 
     init(movie: MediaDetailsDto) {
         self.movie = movie
     }
 
     var body: some View {
-        VStack(spacing: 0) {
-            // 1. Верхняя панель (Закрыть | Заголовок | Системный шеринг)
-            headerView
-                .padding(.horizontal, 16)
-                .padding(.top, 16)
-                .padding(.bottom, 12)
+        NavigationStack {
+            VStack(spacing: 14) {
+                // 1. Парящая строка поиска Liquid Glass
+                floatingSearchBar
 
-            // 2. Летающий поисковик с Liquid Glass
-            floatingSearchBar
-                .padding(.horizontal, 16)
-                .padding(.bottom, 14)
+                // 2. Горизонтальная лента друзей
+                friendsHorizontalSection
 
-            // 3. Горизонтальная лента друзей
-            friendsHorizontalSection
-                .padding(.bottom, 14)
+                // 3. Адаптивная нижняя секция: Карточка фильма ИЛИ ввод сообщения с кнопкой отправки
+                if !selectedUsers.isEmpty {
+                    sendMessageSection
+                        .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .bottom)))
+                } else {
+                    moviePreviewCard
+                        .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .bottom)))
+                }
 
-            // 4. Тонкий акцентный разделитель
-            Divider()
-                .padding(.horizontal, 16)
-                .opacity(0.12)
-                .padding(.bottom, 14)
+                Spacer(minLength: 0)
+            }
+            .padding(.top, 8)
+            .padding(.bottom, 12)
+            .navigationTitle("Отправить")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                // Слева: Кнопка Закрыть
+                ToolbarItem(placement: .cancellationAction) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(.white)
+                    }
+                    .tint(.white)
+                    .accessibilityLabel("Закрыть")
+                }
 
-            // 5. Динамическая нижняя секция (Превью фильма ИЛИ Ввод сообщения + Отправить)
-            bottomDynamicSection
-                .padding(.horizontal, 16)
-                .padding(.bottom, 16)
-        }
-        .task {
-            await repo.fetchConversations()
-        }
-        .sheet(isPresented: $showSystemShareSheet) {
-            if let shareUrl = movieShareUrl {
-                ShareSheet(items: [shareUrl, movie.title ?? movie.originalTitle ?? "Фильм"])
+                // Справа: Кнопка Системный Шеринг
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        showSystemShareSheet = true
+                    } label: {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(.white)
+                    }
+                    .tint(.white)
+                    .accessibilityLabel("Поделиться ссылкой")
+                }
+            }
+            .task {
+                await repo.fetchConversations()
+            }
+            .sheet(isPresented: $showSystemShareSheet) {
+                if let shareUrl = movieShareUrl {
+                    ShareSheet(items: [shareUrl, movie.title ?? movie.originalTitle ?? "Фильм"])
+                }
             }
         }
+        .presentationBackground { Color.clear.glassEffect(in: .rect) }
+        .presentationDragIndicator(.visible)
+        .presentationDetents([.fraction(0.48), .large])
         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: selectedUsers)
-        .animation(.spring(response: 0.3, dampingFraction: 0.85), value: searchQuery)
         .preferredColorScheme(.dark)
     }
 
-    // MARK: - Subviews
-
-    private var headerView: some View {
-        HStack(alignment: .center) {
-            // Кнопка Закрыть
-            Button {
-                dismiss()
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 32, height: 32)
-                    .glassEffect(.regular.interactive(), in: Circle())
-            }
-            .buttonStyle(.plain)
-
-            Spacer()
-
-            Text("Отправить")
-                .font(.system(size: 17, weight: .bold))
-                .foregroundStyle(.primary)
-
-            Spacer()
-
-            // Кнопка Системного шеринга
-            Button {
-                let generator = UIImpactFeedbackGenerator(style: .medium)
-                generator.impactOccurred()
-                showSystemShareSheet = true
-            } label: {
-                Image(systemName: "square.and.arrow.up")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 32, height: 32)
-                    .glassEffect(.regular.interactive(), in: Circle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel("Поделиться через другие приложения")
-        }
-    }
+    // MARK: - Floating Search Bar
 
     private var floatingSearchBar: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 15, weight: .medium))
+                .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(.secondary)
 
             TextField("Поиск друзей...", text: $searchQuery)
-                .font(.system(size: 15, weight: .medium))
+                .font(.system(size: 15))
                 .foregroundStyle(.primary)
-                .focused($isSearchFocused)
-                .submitLabel(.search)
+                .autocorrectionDisabled()
+                .textInputAutocapitalization(.never)
                 .onChange(of: searchQuery) { _, newValue in
                     Task {
                         await repo.searchUsers(query: newValue)
@@ -119,19 +104,24 @@ struct ShareToFriendSheet: View {
             if !searchQuery.isEmpty {
                 Button {
                     searchQuery = ""
+                    Task {
+                        await repo.searchUsers(query: "")
+                    }
                 } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 15, weight: .medium))
+                        .font(.system(size: 14))
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
-                .transition(.scale.combined(with: .opacity))
             }
         }
         .padding(.horizontal, 14)
         .frame(height: 42)
         .glassEffect(.regular.interactive(), in: Capsule())
+        .padding(.horizontal, 16)
     }
+
+    // MARK: - Friends Horizontal Section
 
     private var friendsHorizontalSection: some View {
         let displayList = searchQuery.isEmpty ? repo.conversations.map { $0.peerUser } : repo.searchResults
@@ -140,7 +130,7 @@ struct ShareToFriendSheet: View {
             HStack(spacing: 14) {
                 if displayList.isEmpty {
                     VStack(spacing: 6) {
-                        Image(systemName: searchQuery.isEmpty ? "person.2.fill" : "magnifyingglass")
+                        Image(systemName: "person.2")
                             .font(.system(size: 22))
                             .foregroundStyle(.tertiary)
                         Text(searchQuery.isEmpty ? "Нет диалогов" : "Не найдено")
@@ -148,8 +138,8 @@ struct ShareToFriendSheet: View {
                             .foregroundStyle(.secondary)
                     }
                     .frame(maxWidth: .infinity)
-                    .frame(height: 84)
-                    .padding(.horizontal, 32)
+                    .frame(height: 80)
+                    .padding(.horizontal, 24)
                 } else {
                     ForEach(displayList) { friend in
                         let isSelected = selectedUsers.contains(where: { $0.id == friend.id })
@@ -159,7 +149,7 @@ struct ShareToFriendSheet: View {
                         } label: {
                             VStack(spacing: 6) {
                                 ZStack(alignment: .bottomTrailing) {
-                                    UserAvatarView(user: friend, size: 56)
+                                    UserAvatarView(user: friend, size: 54)
                                         .scaleEffect(isSelected ? 1.05 : 1.0)
 
                                     if isSelected {
@@ -168,7 +158,6 @@ struct ShareToFriendSheet: View {
                                             .foregroundStyle(.black, Color.slooshAccent)
                                             .background(Circle().fill(Color.white))
                                             .offset(x: 2, y: 2)
-                                            .transition(.scale.combined(with: .opacity))
                                     }
                                 }
 
@@ -176,7 +165,7 @@ struct ShareToFriendSheet: View {
                                     .font(.system(size: 11, weight: isSelected ? .bold : .medium))
                                     .foregroundStyle(isSelected ? .primary : .secondary)
                                     .lineLimit(1)
-                                    .frame(width: 64)
+                                    .frame(width: 66)
                             }
                         }
                         .buttonStyle(.plain)
@@ -185,68 +174,13 @@ struct ShareToFriendSheet: View {
             }
             .padding(.horizontal, 16)
         }
-        .frame(height: 86)
+        .frame(height: 84)
     }
 
-    @ViewBuilder
-    private var bottomDynamicSection: some View {
-        if !selectedUsers.isEmpty {
-            VStack(spacing: 10) {
-                // Поле ввода комментария
-                HStack(spacing: 8) {
-                    TextField("Добавить сообщение...", text: $customMessage)
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(.primary)
-                        .focused($isMessageFocused)
-
-                    if !customMessage.isEmpty {
-                        Button {
-                            customMessage = ""
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .foregroundStyle(.secondary)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(.horizontal, 16)
-                .frame(height: 46)
-                .glassEffect(.regular.interactive(), in: Capsule())
-
-                // Кнопка "Отправить"
-                Button {
-                    sendToSelectedFriends()
-                } label: {
-                    HStack(spacing: 8) {
-                        if isSending {
-                            ProgressView()
-                                .controlSize(.small)
-                                .tint(.black)
-                        } else {
-                            Image(systemName: "paperplane.fill")
-                                .font(.system(size: 15, weight: .bold))
-                            Text(selectedUsers.count > 1 ? "Отправить (\(selectedUsers.count))" : "Отправить")
-                                .font(.system(size: 16, weight: .bold))
-                        }
-                    }
-                    .foregroundStyle(.black)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 48)
-                    .background(Color.slooshAccent)
-                    .clipShape(Capsule())
-                }
-                .buttonStyle(ScaleButtonStyle())
-                .disabled(isSending)
-            }
-            .transition(.move(edge: .bottom).combined(with: .opacity))
-        } else {
-            moviePreviewCard
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-        }
-    }
+    // MARK: - Movie Preview Card
 
     private var moviePreviewCard: some View {
-        HStack(spacing: 14) {
+        HStack(spacing: 12) {
             if let posterUrl = movie.displayPosterUrl, !posterUrl.isEmpty {
                 AsyncCachedImage(urlString: posterUrl) {
                     Rectangle().fill(Color.white.opacity(0.08))
@@ -257,7 +191,7 @@ struct ShareToFriendSheet: View {
                 }
                 .frame(width: 44, height: 62)
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                .shadow(color: .black.opacity(0.35), radius: 5, x: 0, y: 2)
+                .shadow(color: .black.opacity(0.35), radius: 4, x: 0, y: 2)
             }
 
             VStack(alignment: .leading, spacing: 5) {
@@ -272,20 +206,20 @@ struct ShareToFriendSheet: View {
                             .font(.system(size: 11, weight: .heavy))
                             .foregroundStyle(.white)
                             .padding(.horizontal, 6)
-                            .padding(.vertical, 2.5)
+                            .padding(.vertical, 2)
                             .background(Color.rating(rating))
                             .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
                     }
 
                     if let year = movie.year {
                         Text(year.description)
-                            .font(.system(size: 13, weight: .medium))
+                            .font(.system(size: 12, weight: .medium))
                             .foregroundStyle(.secondary)
                     }
 
                     if let genres = movie.genres, let firstGenre = genres.first, !firstGenre.isEmpty {
                         Text("•  \(firstGenre)")
-                            .font(.system(size: 13))
+                            .font(.system(size: 12))
                             .foregroundStyle(.tertiary)
                             .lineLimit(1)
                     }
@@ -293,14 +227,64 @@ struct ShareToFriendSheet: View {
             }
 
             Spacer()
-
-            Text("Выберите друга")
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(.secondary)
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .padding(12)
+        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .padding(.horizontal, 16)
+    }
+
+    // MARK: - Send Message Section
+
+    private var sendMessageSection: some View {
+        VStack(spacing: 10) {
+            // Капсульное парящее поле ввода сообщения
+            HStack(spacing: 8) {
+                TextField("Напишите сообщение...", text: $customMessage)
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundStyle(.primary)
+
+                if !customMessage.isEmpty {
+                    Button {
+                        customMessage = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 16)
+            .frame(height: 44)
+            .glassEffect(.regular.interactive(), in: Capsule())
+            .padding(.horizontal, 16)
+
+            // Главная акцентная капсульная кнопка "Отправить"
+            Button {
+                sendToSelectedFriends()
+            } label: {
+                HStack(spacing: 8) {
+                    if isSending {
+                        ProgressView()
+                            .controlSize(.small)
+                            .tint(.black)
+                    } else {
+                        Image(systemName: "paperplane.fill")
+                            .font(.system(size: 15, weight: .bold))
+                        Text(selectedUsers.count > 1 ? "Отправить (\(selectedUsers.count))" : "Отправить")
+                            .font(.system(size: 15, weight: .bold))
+                    }
+                }
+                .foregroundStyle(.black)
+                .frame(maxWidth: .infinity)
+                .frame(height: 46)
+                .background(Color.slooshAccent)
+                .clipShape(Capsule())
+            }
+            .buttonStyle(ScaleButtonStyle())
+            .disabled(isSending || selectedUsers.isEmpty)
+            .opacity(selectedUsers.isEmpty ? 0.5 : 1.0)
+            .padding(.horizontal, 16)
+        }
     }
 
     // MARK: - Actions
