@@ -199,18 +199,14 @@ struct DetailsView: View {
                                 }
                             } label: {
                                 Image(systemName: viewModel.isFavorite ? "heart.fill" : "heart")
-                                    .font(.system(size: 19, weight: .medium))
-                                    .foregroundStyle(viewModel.isFavorite ? Color.red : Color.primary)
+                                    .font(.system(size: 21, weight: .medium))
+                                    .foregroundStyle(.white)
                                     .frame(width: 44, height: 44)
                                     .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
                             .disabled(viewModel.details == nil)
                             .accessibilityLabel(viewModel.isFavorite ? "Убрать из избранного" : "Добавить в избранное")
-
-                            Divider()
-                                .frame(height: 18)
-                                .opacity(0.3)
 
                             Button {
                                 let generator = UIImpactFeedbackGenerator(style: .medium)
@@ -219,8 +215,8 @@ struct DetailsView: View {
                                 showShareToFriendSheet = true
                             } label: {
                                 Image(systemName: "square.and.arrow.up")
-                                    .font(.system(size: 18, weight: .medium))
-                                    .foregroundStyle(Color.primary)
+                                    .font(.system(size: 20, weight: .medium))
+                                    .foregroundStyle(.white)
                                     .frame(width: 44, height: 44)
                                     .contentShape(Rectangle())
                             }
