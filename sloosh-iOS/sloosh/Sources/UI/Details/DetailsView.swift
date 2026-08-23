@@ -361,9 +361,6 @@ struct DetailsView: View {
         .sheet(isPresented: $showShareToFriendSheet) {
             if let details = viewModel.details {
                 ShareToFriendSheet(movie: details)
-                    .presentationDetents([.height(375), .large])
-                    .presentationDragIndicator(.visible)
-                    .presentationBackground { Color.clear.glassEffect(in: .rect) }
             }
         }
 
