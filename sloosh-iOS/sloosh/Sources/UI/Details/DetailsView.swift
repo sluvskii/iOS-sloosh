@@ -188,10 +188,8 @@ struct DetailsView: View {
                         
                         Spacer()
                         
-                        HStack(spacing: 8) {
-                            TelegramGlassIconButton(
-                                systemName: viewModel.isFavorite ? "heart.fill" : "heart"
-                            ) {
+                        HStack(spacing: 0) {
+                            Button {
                                 let generator = UIImpactFeedbackGenerator(style: .light)
                                 generator.prepare()
                                 generator.impactOccurred()
@@ -199,19 +197,39 @@ struct DetailsView: View {
                                 withAnimation(.spring(response: 0.3, dampingFraction: 0.5, blendDuration: 0.5)) {
                                     viewModel.toggleFavorite()
                                 }
+                            } label: {
+                                Image(systemName: viewModel.isFavorite ? "heart.fill" : "heart")
+                                    .font(.system(size: 19, weight: .medium))
+                                    .foregroundStyle(viewModel.isFavorite ? Color.red : Color.primary)
+                                    .frame(width: 44, height: 44)
+                                    .contentShape(Rectangle())
                             }
+                            .buttonStyle(.plain)
                             .disabled(viewModel.details == nil)
                             .accessibilityLabel(viewModel.isFavorite ? "Убрать из избранного" : "Добавить в избранное")
 
-                            TelegramGlassIconButton(systemName: "square.and.arrow.up") {
+                            Divider()
+                                .frame(height: 18)
+                                .opacity(0.3)
+
+                            Button {
                                 let generator = UIImpactFeedbackGenerator(style: .medium)
                                 generator.prepare()
                                 generator.impactOccurred()
                                 showShareToFriendSheet = true
+                            } label: {
+                                Image(systemName: "square.and.arrow.up")
+                                    .font(.system(size: 18, weight: .medium))
+                                    .foregroundStyle(Color.primary)
+                                    .frame(width: 44, height: 44)
+                                    .contentShape(Rectangle())
                             }
+                            .buttonStyle(.plain)
                             .disabled(viewModel.details == nil)
                             .accessibilityLabel("Поделиться фильмом")
                         }
+                        .frame(height: 44)
+                        .glassEffect(.regular.interactive(), in: .capsule)
                     }
 
                 }
