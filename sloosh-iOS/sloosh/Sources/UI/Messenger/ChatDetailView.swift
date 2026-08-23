@@ -10,6 +10,8 @@ public struct ChatDetailView: View {
 
     @State private var selectedMovieIdForDetails: String? = nil
     @State private var selectedMediaForDirectPlay: MediaCardPayload? = nil
+    @State private var pendingPlayerConfig: PlayerConfig? = nil
+    @State private var activePlayerConfig: PlayerConfig? = nil
     @State private var isShowingInfo: Bool = false
     @State private var pollTask: Task<Void, Never>? = nil
 
@@ -88,8 +90,35 @@ public struct ChatDetailView: View {
         .navigationDestination(item: $selectedMovieIdForDetails) { movieId in
             DetailsView(movieId: movieId, navigationTransitionID: nil, navigationTransitionNamespace: nil)
         }
-        .sheet(item: $selectedMediaForDirectPlay) { media in
-            HomeDirectPlayWrapper(movieId: media.mediaId, fallbackTitle: media.title)
+        .sheet(item: $selectedMediaForDirectPlay, onDismiss: {
+            if let pending = pendingPlayerConfig {
+                pendingPlayerConfig = nil
+                DispatchQueue.main.async {
+                    activePlayerConfig = pending
+                }
+            }
+        }) { media in
+            HomeDirectPlayWrapper(movieId: media.mediaId, fallbackTitle: media.title) { config in
+                pendingPlayerConfig = config
+                selectedMediaForDirectPlay = nil
+            }
+        }
+        .fullScreenCover(item: $activePlayerConfig, onDismiss: {
+            activePlayerConfig = nil
+        }) { config in
+            PlayerView(
+                iframeUrl: config.iframeUrl,
+                fallbackTitle: config.title,
+                kpId: config.kpId,
+                season: config.season,
+                episode: config.episode,
+                selectedVoiceover: config.voiceover,
+                directStreamUrl: config.streamUrl,
+                voices: config.voices,
+                subtitles: config.subtitles,
+                initialQuality: config.quality,
+                seriesResult: config.seriesResult
+            )
         }
         .task {
             let chatId = repo.getOrCreateChatId(peerUserId: peerUser.id)
