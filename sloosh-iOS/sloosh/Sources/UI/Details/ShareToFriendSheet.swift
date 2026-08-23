@@ -123,7 +123,7 @@ struct ShareToFriendSheet: View {
         let displayList = searchQuery.isEmpty ? repo.conversations.map { $0.peerUser } : repo.searchResults
 
         return ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 16) {
+            HStack(spacing: 12) {
                 if displayList.isEmpty {
                     VStack(spacing: 4) {
                         Image(systemName: "person.2")
@@ -146,6 +146,10 @@ struct ShareToFriendSheet: View {
                             VStack(spacing: 5) {
                                 ZStack(alignment: .bottomTrailing) {
                                     UserAvatarView(user: friend, size: 52)
+                                        .overlay(
+                                            Circle()
+                                                .fill(Color.black.opacity(isSelected ? 0.35 : 0.0))
+                                        )
 
                                     if isSelected {
                                         ZStack {
@@ -167,7 +171,7 @@ struct ShareToFriendSheet: View {
                                     .font(.system(size: 11, weight: .medium))
                                     .foregroundStyle(.secondary)
                                     .lineLimit(1)
-                                    .frame(width: 64)
+                                    .frame(width: 58)
                             }
                         }
                         .buttonStyle(.plain)
