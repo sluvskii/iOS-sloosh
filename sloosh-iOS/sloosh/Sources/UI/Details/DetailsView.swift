@@ -1109,9 +1109,14 @@ private struct DetailsPrimaryMetadataRow: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            if let rating = details.ratings?.kp, rating > 0 {
-                Label(String(format: "%.1f", rating), systemImage: "star.fill")
-                    .foregroundColor(.rating(rating))
+            if let rating = details.ratings?.kp ?? details.ratings?.imdb ?? details.ratings?.tmdb, rating > 0 {
+                Text(String(format: "%.1f", rating))
+                    .font(.system(size: 12, weight: .heavy))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 3)
+                    .background(Color.rating(rating))
+                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
             }
 
             if let year = details.year, year > 0 {
