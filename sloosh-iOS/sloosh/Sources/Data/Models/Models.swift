@@ -86,6 +86,36 @@ struct MediaDto: Codable, Identifiable {
         case originalId = "id"
         case title, originalTitle, year, rating, ratings, posterUrl, description, type, genres, externalIds, name, poster_path
     }
+
+    init(
+        originalId: AnyCodableValue? = nil,
+        title: String? = nil,
+        originalTitle: String? = nil,
+        year: AnyCodableValue? = nil,
+        rating: Double? = nil,
+        ratings: RatingsV2Dto? = nil,
+        posterUrl: String? = nil,
+        description: String? = nil,
+        type: String? = nil,
+        genres: [GenreDto]? = nil,
+        externalIds: ExternalIdsDto? = nil,
+        name: String? = nil,
+        poster_path: String? = nil
+    ) {
+        self.originalId = originalId
+        self.title = title
+        self.originalTitle = originalTitle
+        self.year = year
+        self.rating = rating
+        self.ratings = ratings
+        self.posterUrl = posterUrl
+        self.description = description
+        self.type = type
+        self.genres = genres
+        self.externalIds = externalIds
+        self.name = name
+        self.poster_path = poster_path
+    }
     
     // Identifiable requirement helper
     var identifier: String {
