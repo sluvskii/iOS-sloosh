@@ -176,14 +176,6 @@ struct HomeView: View {
                     seriesResult: config.seriesResult
                 )
             }
-            .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("SlooshOpenGenreHome"))) { notification in
-                if let genre = notification.userInfo?["genre"] as? String {
-                    viewModel.searchFilters = SearchFilters(genres: genre)
-                    Task {
-                        await viewModel.applyCurrentSelection(force: true)
-                    }
-                }
-            }
         }
     }
 }
