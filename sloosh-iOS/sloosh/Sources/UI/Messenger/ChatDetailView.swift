@@ -166,7 +166,7 @@ public struct ChatDetailView: View {
             Button {
                 isShowingInfo = true
             } label: {
-                PeakAvatarView(user: peerUser, size: 34, showOnline: true)
+                SlooshAvatarView(user: peerUser, size: 34, showOnline: true)
             }
             .buttonStyle(PeakPressButtonStyle())
         }
@@ -719,67 +719,53 @@ public struct ChatInfoView: View {
                 VStack(spacing: 24) {
                     // Header Section (Avatar + Username)
                     VStack(spacing: 12) {
-                        PeakAvatarView(user: peerUser, size: 100, showOnline: true)
-                            .padding(4)
-                            .glassEffect(.regular.interactive(), in: Circle())
+                        SlooshAvatarView(user: peerUser, size: 100, showOnline: true)
 
                         VStack(spacing: 4) {
                             Text(peerUser.displayTitle)
                                 .font(.system(size: 24, weight: .bold))
                                 .foregroundColor(.primary)
 
+                            if !peerUser.displayTag.isEmpty {
+                                Text(peerUser.displayTag)
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundColor(Color.slooshAccent)
+                            }
+
                             Text(peerUser.isOnline == true ? "в сети" : "был(а) недавно")
-                                .font(.system(size: 15))
+                                .font(.system(size: 14))
                                 .foregroundColor(peerUser.isOnline == true ? .slooshAccent : .secondary)
+                                .padding(.top, 2)
                         }
                     }
                     .padding(.top, 24)
 
-                    // Info Section
-                    VStack(spacing: 0) {
-                        if !peerUser.email.isEmpty {
+                    // Info Section (Privacy-Safe Handle / Status)
+                    if !peerUser.displayTag.isEmpty {
+                        VStack(spacing: 0) {
                             HStack(spacing: 14) {
-                                Image(systemName: "envelope.fill")
+                                Image(systemName: "at")
                                     .frame(width: 22)
-                                    .foregroundColor(.secondary)
+                                    .foregroundColor(Color.slooshAccent)
                                 VStack(alignment: .leading, spacing: 2) {
-                                    Text("Email")
+                                    Text("Тег пользователя")
                                         .font(.system(size: 12))
                                         .foregroundColor(.secondary)
-                                    Text(peerUser.email)
-                                        .font(.system(size: 16))
+                                    Text(peerUser.displayTag)
+                                        .font(.system(size: 16, weight: .semibold))
                                         .foregroundColor(.primary)
                                 }
                                 Spacer()
                             }
                             .padding(.horizontal, 16)
-                            .padding(.vertical, 12)
-
-                            PeakDivider().padding(.leading, 52)
+                            .padding(.vertical, 14)
                         }
-
-                        HStack(spacing: 14) {
-                            Image(systemName: "person.fill")
-                                .frame(width: 22)
-                                .foregroundColor(.secondary)
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("ID пользователя")
-                                    .font(.system(size: 12))
-                                    .foregroundColor(.secondary)
-                                Text(peerUser.id)
-                                    .font(.system(size: 14, design: .monospaced))
-                                    .foregroundColor(.primary)
-                            }
-                            Spacer()
-                        }
+                        .background(
+                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                .fill(Color(UIColor.secondarySystemGroupedBackground))
+                        )
                         .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
                     }
-                    .background(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .fill(Color(UIColor.secondarySystemGroupedBackground))
-                    )
-                    .padding(.horizontal, 16)
 
                     // Actions Section
                     VStack(spacing: 0) {

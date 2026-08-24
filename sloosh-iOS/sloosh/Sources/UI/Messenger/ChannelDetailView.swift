@@ -227,8 +227,7 @@ public struct ChannelDetailView: View {
         } label: {
             VStack(spacing: 2) {
                 HStack(spacing: 6) {
-                    Text(channel.displayAvatarEmoji)
-                        .font(.system(size: 16))
+                    SlooshAvatarView(channel: channel, size: 24)
                     Text(channel.name)
                         .font(.system(size: 16, weight: .bold))
                         .foregroundColor(.primary)
@@ -247,13 +246,7 @@ public struct ChannelDetailView: View {
 
     private var emptyStateView: some View {
         VStack(spacing: 12) {
-            Circle()
-                .fill(channel.displayAccentColor.opacity(0.15))
-                .frame(width: 80, height: 80)
-                .overlay(
-                    Text(channel.displayAvatarEmoji)
-                        .font(.system(size: 40))
-                )
+            SlooshAvatarView(channel: channel, size: 72)
 
             Text("В канале пока нет публикаций")
                 .font(.system(size: 17, weight: .semibold))

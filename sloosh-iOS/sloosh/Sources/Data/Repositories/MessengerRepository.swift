@@ -14,6 +14,7 @@ public final class MessengerRepository: ObservableObject {
 
     private let databaseBaseURL = "https://sloosh-77434-default-rtdb.firebaseio.com"
     private let knownUsersKey = "sloosh_messenger_known_users"
+
     private init() {
         self.conversations = loadConversationsFromDisk()
         self.subscribedChannels = loadSubscribedChannelsFromDisk()
@@ -123,25 +124,156 @@ public final class MessengerRepository: ObservableObject {
         return URL(string: urlString)
     }
 
-    // MARK: - User Registration & Search
+    // MARK: - Tag Management & Availability
+
+    public func checkChannelTagAvailability(tag: String) async -> (isAvailable: Bool, message: String) {
+        let clean = TagValidator.sanitize(tag)
+        let validation = TagValidator.validate(clean)
+        guard validation.isValid else {
+            return (false, validation.message)
+        }
+
+        guard let url = await makeURL(path: "channelTags/\(clean)") else {
+            return (false, "Ошибка сети")
+        }
+
+        do {
+            let (data, response) = try await URLSession.shared.data(from: url)
+            guard let httpResp = response as? HTTPURLResponse, (200...299).contains(httpResp.statusCode) else {
+                return (false, "Ошибка сервера при проверке тега")
+            }
+            if data.isEmpty || String(data: data, encoding: .utf8) == "null" {
+                return (true, "Тег свободен")
+            } else {
+                return (false, "Тег @\(clean) уже занят")
+            }
+        } catch {
+            return (false, "Ошибка проверки тега")
+        }
+    }
+
+    public func checkUserTagAvailability(tag: String) async -> (isAvailable: Bool, message: String) {
+        let clean = TagValidator.sanitize(tag)
+        let currentUserId = AuthRepository.shared.currentUser?.id ?? ""
+        let validation = TagValidator.validate(clean)
+        guard validation.isValid else {
+            return (false, validation.message)
+        }
+
+        guard let url = await makeURL(path: "userTags/\(clean)") else {
+            return (false, "Ошибка сети")
+        }
+
+        do {
+            let (data, response) = try await URLSession.shared.data(from: url)
+            guard let httpResp = response as? HTTPURLResponse, (200...299).contains(httpResp.statusCode) else {
+                return (false, "Ошибка сервера при проверке тега")
+            }
+            if data.isEmpty || String(data: data, encoding: .utf8) == "null" {
+                return (true, "Тег свободен")
+            }
+            let occupantId = (try? JSONDecoder().decode(String.self, from: data)) ?? ""
+            if occupantId == currentUserId {
+                return (true, "Это ваш текущий тег")
+            }
+            return (false, "Тег @\(clean) уже занят")
+        } catch {
+            return (false, "Ошибка проверки тега")
+        }
+    }
+
+    public func claimChannelTag(_ tag: String, channelId: String) async {
+        let clean = TagValidator.sanitize(tag)
+        guard !clean.isEmpty, let url = await makeURL(path: "channelTags/\(clean)") else { return }
+        var req = URLRequest(url: url)
+        req.httpMethod = "PUT"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try? JSONEncoder().encode(channelId)
+        _ = try? await URLSession.shared.data(for: req)
+    }
+
+    public func releaseChannelTag(_ tag: String) async {
+        let clean = TagValidator.sanitize(tag)
+        guard !clean.isEmpty, let url = await makeURL(path: "channelTags/\(clean)") else { return }
+        var req = URLRequest(url: url)
+        req.httpMethod = "DELETE"
+        _ = try? await URLSession.shared.data(for: req)
+    }
+
+    public func claimUserTag(_ tag: String, userId: String) async {
+        let clean = TagValidator.sanitize(tag)
+        guard !clean.isEmpty, let url = await makeURL(path: "userTags/\(clean)") else { return }
+        var req = URLRequest(url: url)
+        req.httpMethod = "PUT"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.httpBody = try? JSONEncoder().encode(userId)
+        _ = try? await URLSession.shared.data(for: req)
+    }
+
+    public func releaseUserTag(_ tag: String) async {
+        let clean = TagValidator.sanitize(tag)
+        guard !clean.isEmpty, let url = await makeURL(path: "userTags/\(clean)") else { return }
+        var req = URLRequest(url: url)
+        req.httpMethod = "DELETE"
+        _ = try? await URLSession.shared.data(for: req)
+    }
+
+    public func lookupChannelByTag(_ tag: String) async -> ChannelModel? {
+        let clean = TagValidator.sanitize(tag)
+        guard !clean.isEmpty,
+              let tagUrl = await makeURL(path: "channelTags/\(clean)"),
+              let (data, resp) = try? await URLSession.shared.data(from: tagUrl),
+              let httpResp = resp as? HTTPURLResponse, (200...299).contains(httpResp.statusCode),
+              let channelId = try? JSONDecoder().decode(String.self, from: data),
+              !channelId.isEmpty else { return nil }
+
+        guard let chUrl = await makeURL(path: "channels/\(channelId)"),
+              let (chData, chResp) = try? await URLSession.shared.data(from: chUrl),
+              let httpChResp = chResp as? HTTPURLResponse, (200...299).contains(httpChResp.statusCode) else { return nil }
+
+        return try? JSONDecoder().decode(ChannelModel.self, from: chData)
+    }
+
+    public func lookupUserByTag(_ tag: String) async -> SlooshUser? {
+        let clean = TagValidator.sanitize(tag)
+        guard !clean.isEmpty,
+              let tagUrl = await makeURL(path: "userTags/\(clean)"),
+              let (data, resp) = try? await URLSession.shared.data(from: tagUrl),
+              let httpResp = resp as? HTTPURLResponse, (200...299).contains(httpResp.statusCode),
+              let userId = try? JSONDecoder().decode(String.self, from: data),
+              !userId.isEmpty else { return nil }
+
+        guard let userUrl = await makeURL(path: "user_profiles/\(userId)"),
+              let (userData, userResp) = try? await URLSession.shared.data(from: userUrl),
+              let httpUserResp = userResp as? HTTPURLResponse, (200...299).contains(httpUserResp.statusCode) else { return nil }
+
+        return try? JSONDecoder().decode(SlooshUser.self, from: userData)
+    }
+
+    // MARK: - User Registration & Sanitized Sync
 
     public func syncCurrentUserProfile() async {
         guard let user = AuthRepository.shared.currentUser, !user.isAnonymous else { return }
-        
+
+        // Sanitize: do NOT include email or private auth fields
         let slooshUser = SlooshUser(
             id: user.id,
             displayName: user.displayTitle,
-            email: user.email ?? "",
+            tag: user.tag,
             avatarUrl: user.photoURL,
             isOnline: true
         )
 
-        // Сохраняем локально на устройстве
+        // Save locally on device
         saveLocalKnownUser(slooshUser)
-        
+
+        if let tag = user.tag, !tag.isEmpty {
+            await claimUserTag(tag, userId: user.id)
+        }
+
         guard let body = try? JSONEncoder().encode(slooshUser) else { return }
 
-        // 1. Сохраняем в публичный каталог профилей /user_profiles/{uid}.json
+        // 1. Save to public directory /user_profiles/{uid}.json (Sanitized, NO EMAIL!)
         if let url1 = await makeURL(path: "user_profiles/\(user.id)") {
             var req = URLRequest(url: url1)
             req.httpMethod = "PUT"
@@ -158,7 +290,7 @@ public final class MessengerRepository: ObservableObject {
             }
         }
 
-        // 2. Сохраняем профиль под ветку пользователя /users/{uid}/profile.json
+        // 2. Save under user branch /users/{uid}/profile.json
         if let url2 = await makeURL(path: "users/\(user.id)/profile") {
             var req = URLRequest(url: url2)
             req.httpMethod = "PUT"
@@ -177,7 +309,7 @@ public final class MessengerRepository: ObservableObject {
     }
 
     public func searchUsers(query: String) async -> [SlooshUser] {
-        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             self.searchResults = []
             return []
@@ -186,18 +318,28 @@ public final class MessengerRepository: ObservableObject {
         isLoading = true
         defer { isLoading = false }
 
-        // Гарантируем синхронизацию профиля текущего пользователя в Firebase
         await syncCurrentUserProfile()
 
         var allUsersMap: [String: SlooshUser] = [:]
 
-        // 1. Загружаем локально сохранённых пользователей с этого устройства
+        // Check if query is an exact @tag query
+        let isTagQuery = trimmed.hasPrefix("@")
+        let cleanTag = TagValidator.sanitize(trimmed)
+
+        if isTagQuery && !cleanTag.isEmpty {
+            if let directUser = await lookupUserByTag(cleanTag) {
+                allUsersMap[directUser.id] = directUser
+                saveLocalKnownUser(directUser)
+            }
+        }
+
+        // 1. Local cached users
         let localUsers = getLocalKnownUsers()
         for (uId, user) in localUsers {
             allUsersMap[uId] = user
         }
 
-        // 2. Загружаем профили из /user_profiles.json
+        // 2. Load profiles from /user_profiles.json
         if let profiles = await fetchUsersFromNode("user_profiles") {
             for p in profiles {
                 allUsersMap[p.id] = p
@@ -205,7 +347,7 @@ public final class MessengerRepository: ObservableObject {
             }
         }
 
-        // 3. Загружаем профили из /users.json (fallback)
+        // 3. Fallback /users.json
         if let users = await fetchUsersFromNode("users") {
             for u in users {
                 if allUsersMap[u.id] == nil {
@@ -216,11 +358,12 @@ public final class MessengerRepository: ObservableObject {
         }
 
         let currentUserId = AuthRepository.shared.currentUser?.id ?? ""
+        let filterLower = cleanTag.lowercased()
+
         let matched = allUsersMap.values.filter { slooshUser in
-            let nameMatch = slooshUser.displayName.lowercased().contains(trimmed)
-            let emailMatch = slooshUser.email.lowercased().contains(trimmed)
-            let idMatch = slooshUser.id.lowercased().contains(trimmed)
-            return nameMatch || emailMatch || idMatch
+            let nameMatch = slooshUser.displayName.lowercased().contains(filterLower)
+            let tagMatch = slooshUser.tag?.lowercased().contains(filterLower) == true
+            return nameMatch || tagMatch
         }
 
         let results = matched.map { user -> SlooshUser in
@@ -228,7 +371,7 @@ public final class MessengerRepository: ObservableObject {
                 return SlooshUser(
                     id: user.id,
                     displayName: "\(user.displayName) (Вы)",
-                    email: user.email,
+                    tag: user.tag,
                     avatarUrl: user.avatarUrl,
                     isOnline: user.isOnline
                 )
@@ -243,7 +386,6 @@ public final class MessengerRepository: ObservableObject {
         }
 
         self.searchResults = finalArray
-        AppDiagnostics.shared.log("MessengerRepository: searchUsers('\(trimmed)') matched \(finalArray.count) users (total in DB/local: \(allUsersMap.count))")
         return finalArray
     }
 
@@ -252,20 +394,7 @@ public final class MessengerRepository: ObservableObject {
 
         do {
             let (data, response) = try await URLSession.shared.data(from: url)
-            guard let httpResp = response as? HTTPURLResponse else {
-                return nil
-            }
-
-            if !(200...299).contains(httpResp.statusCode) {
-                let errBody = String(data: data, encoding: .utf8) ?? ""
-                AppDiagnostics.shared.log("MessengerRepository fetchUsersFromNode '\(nodeName)' HTTP \(httpResp.statusCode): \(errBody)")
-                if httpResp.statusCode == 401 || httpResp.statusCode == 403 {
-                    ToastManager.shared.show(
-                        title: "Доступ Firebase ограничен (\(httpResp.statusCode))",
-                        subtitle: "Проверьте правила Realtime Database",
-                        icon: "lock.shield.fill"
-                    )
-                }
+            guard let httpResp = response as? HTTPURLResponse, (200...299).contains(httpResp.statusCode) else {
                 return nil
             }
 
@@ -280,7 +409,7 @@ public final class MessengerRepository: ObservableObject {
             var results: [SlooshUser] = []
             for (key, val) in jsonObject {
                 guard let dict = val as? [String: Any] else { continue }
-                
+
                 let sourceDict: [String: Any]
                 if let profileDict = dict["profile"] as? [String: Any] {
                     sourceDict = profileDict
@@ -292,15 +421,15 @@ public final class MessengerRepository: ObservableObject {
                 let displayName = (sourceDict["displayName"] as? String)
                     ?? (sourceDict["name"] as? String)
                     ?? ""
-                let email = (sourceDict["email"] as? String) ?? ""
+                let tag = sourceDict["tag"] as? String
                 let avatarUrl = sourceDict["avatarUrl"] as? String
                 let isOnline = sourceDict["isOnline"] as? Bool ?? true
 
-                if !displayName.isEmpty || !email.isEmpty {
+                if !displayName.isEmpty || tag != nil {
                     let user = SlooshUser(
                         id: id,
                         displayName: displayName,
-                        email: email,
+                        tag: tag,
                         avatarUrl: avatarUrl,
                         isOnline: isOnline
                     )
@@ -309,7 +438,6 @@ public final class MessengerRepository: ObservableObject {
             }
             return results
         } catch {
-            AppDiagnostics.shared.log("MessengerRepository fetchUsersFromNode error: \(error.localizedDescription)")
             return nil
         }
     }
@@ -322,14 +450,12 @@ public final class MessengerRepository: ObservableObject {
             return
         }
 
-        // 1. Показываем мгновенно из дискового кэша, если текущий список пуст
         if self.conversations.isEmpty {
             self.conversations = loadConversationsFromDisk()
         }
 
         guard let url = await makeURL(path: "user_chats/\(currentUser.id)") else { return }
 
-        // Если есть локальные чаты, не вешаем полноэкранный spinner
         if self.conversations.isEmpty {
             isLoading = true
         }
@@ -361,7 +487,6 @@ public final class MessengerRepository: ObservableObject {
                 let currentUserId = AuthRepository.shared.currentUser?.id ?? ""
                 let hasUnreadIncoming = cachedMsgs.contains(where: { $0.senderId != currentUserId && $0.isRead != true })
 
-                // Если в локальном кэше нет непрочитанных входящих, принудительно обнуляем unreadCount
                 let finalUnread = hasUnreadIncoming ? (raw.unreadCount ?? 0) : 0
 
                 return ChatConversation(
@@ -389,7 +514,7 @@ public final class MessengerRepository: ObservableObject {
 
     public func fetchMessages(chatId: String) async -> [ChatMessage] {
         guard !chatId.isEmpty else { return [] }
-        
+
         let localCached = loadMessagesFromDisk(chatId: chatId)
 
         guard let url = await makeURL(path: "chats/\(chatId)/messages") else { return localCached }
@@ -419,11 +544,9 @@ public final class MessengerRepository: ObservableObject {
     public func markMessagesAsRead(chatId: String, peerUserId: String, messages: [ChatMessage]) async {
         guard let currentUserId = AuthRepository.shared.currentUser?.id else { return }
 
-        // Ищем непрочитанные входящие сообщения
         let unreadIncoming = messages.filter { $0.senderId == peerUserId && $0.isRead != true }
         guard !unreadIncoming.isEmpty else { return }
 
-        // Обновляем локальный кэш прочитанности
         var updatedList = messages
         for msg in unreadIncoming {
             if let idx = updatedList.firstIndex(where: { $0.id == msg.id }) {
@@ -442,7 +565,6 @@ public final class MessengerRepository: ObservableObject {
                 )
                 updatedList[idx] = readMsg
 
-                // Отправляем статус isRead в Firebase
                 Task {
                     if let msgUrl = await makeURL(path: "chats/\(chatId)/messages/\(msg.id)") {
                         var req = URLRequest(url: msgUrl)
@@ -456,7 +578,6 @@ public final class MessengerRepository: ObservableObject {
         }
         saveMessagesToDisk(updatedList, chatId: chatId)
 
-        // Обнуляем unreadCount для текущего пользователя в user_chats
         if let currentConvIdx = conversations.firstIndex(where: { $0.chatId == chatId }) {
             let old = conversations[currentConvIdx]
             let updatedConv = ChatConversation(
@@ -484,10 +605,10 @@ public final class MessengerRepository: ObservableObject {
         message: ChatMessage
     ) async -> Bool {
         guard let currentUser = AuthRepository.shared.currentUser, !currentUser.isAnonymous else { return false }
-        
+
         let chatId = getOrCreateChatId(peerUserId: peerUser.id)
 
-        // 1. Оптимистичное локальное обновление (0мс задержки для отправителя)
+        // 1. Optimistic local update
         var currentMessages = loadMessagesFromDisk(chatId: chatId)
         if let idx = currentMessages.firstIndex(where: { $0.id == message.id }) {
             currentMessages[idx] = message
@@ -520,7 +641,7 @@ public final class MessengerRepository: ObservableObject {
         self.conversations = convs
         saveConversationsToDisk(convs)
 
-        // 2. Фоновая отправка в Firebase в отдельном Task без ожидания
+        // 2. Background REST
         Task {
             _ = await postMessageToFirebase(chatId: chatId, message: message, peerUser: peerUser)
         }
@@ -535,7 +656,7 @@ public final class MessengerRepository: ObservableObject {
     ) async -> Bool {
         guard let currentUser = AuthRepository.shared.currentUser, !currentUser.isAnonymous else { return false }
         let messageType: MessageType = (mediaPayload != nil) ? .media : .text
-        
+
         let message = ChatMessage(
             senderId: currentUser.id,
             receiverId: peerUser.id,
@@ -560,7 +681,7 @@ public final class MessengerRepository: ObservableObject {
             request.httpMethod = "PUT"
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
             request.httpBody = try JSONEncoder().encode(message)
-            
+
             let (_, response) = try await URLSession.shared.data(for: request)
             guard let httpResp = response as? HTTPURLResponse, (200...299).contains(httpResp.statusCode) else {
                 return false
@@ -574,19 +695,23 @@ public final class MessengerRepository: ObservableObject {
                     previewText = message.text ?? ""
                 }
 
-                // Update user_chats for sender
-                let senderEntry = [
+                // Update user_chats for sender (Sanitized, NO EMAIL!)
+                var peerDict: [String: Any] = [
+                    "id": peerUser.id,
+                    "displayName": peerUser.displayName,
+                    "avatarUrl": peerUser.avatarUrl ?? ""
+                ]
+                if let tag = peerUser.tag {
+                    peerDict["tag"] = tag
+                }
+
+                let senderEntry: [String: Any] = [
                     "chatId": chatId,
-                    "peerUser": [
-                        "id": peerUser.id,
-                        "displayName": peerUser.displayName,
-                        "email": peerUser.email,
-                        "avatarUrl": peerUser.avatarUrl ?? ""
-                    ] as [String: Any],
+                    "peerUser": peerDict,
                     "lastMessageText": previewText,
                     "unreadCount": 0,
                     "updatedAtMs": message.timestampMs
-                ] as [String: Any]
+                ]
 
                 if let senderUrl = await makeURL(path: "user_chats/\(currentUser.id)/\(chatId)") {
                     var req = URLRequest(url: senderUrl)
@@ -596,25 +721,23 @@ public final class MessengerRepository: ObservableObject {
                     _ = try? await URLSession.shared.data(for: req)
                 }
 
-                // Update user_chats for receiver
-                let currentSlooshUser = SlooshUser(
-                    id: currentUser.id,
-                    displayName: currentUser.displayTitle,
-                    email: currentUser.email ?? "",
-                    avatarUrl: currentUser.photoURL
-                )
-                let receiverEntry = [
+                // Update user_chats for receiver (Sanitized, NO EMAIL!)
+                var currentDict: [String: Any] = [
+                    "id": currentUser.id,
+                    "displayName": currentUser.displayTitle,
+                    "avatarUrl": currentUser.photoURL ?? ""
+                ]
+                if let tag = currentUser.tag {
+                    currentDict["tag"] = tag
+                }
+
+                let receiverEntry: [String: Any] = [
                     "chatId": chatId,
-                    "peerUser": [
-                        "id": currentSlooshUser.id,
-                        "displayName": currentSlooshUser.displayName,
-                        "email": currentSlooshUser.email,
-                        "avatarUrl": currentSlooshUser.avatarUrl ?? ""
-                    ] as [String: Any],
+                    "peerUser": currentDict,
                     "lastMessageText": previewText,
                     "unreadCount": 1,
                     "updatedAtMs": message.timestampMs
-                ] as [String: Any]
+                ]
 
                 if let receiverUrl = await makeURL(path: "user_chats/\(peerUser.id)/\(chatId)") {
                     var req = URLRequest(url: receiverUrl)
@@ -632,7 +755,7 @@ public final class MessengerRepository: ObservableObject {
         }
     }
 
-    // MARK: - Message Deletion (Physical Delete from Firebase & Local Disk)
+    // MARK: - Message Deletion
 
     public func deleteMessage(
         chatId: String,
@@ -641,12 +764,10 @@ public final class MessengerRepository: ObservableObject {
     ) async {
         guard let currentUser = AuthRepository.shared.currentUser, !currentUser.isAnonymous else { return }
 
-        // 1. Оптимистичное локальное удаление с диска
         var currentMessages = loadMessagesFromDisk(chatId: chatId)
         currentMessages.removeAll(where: { $0.id == messageId })
         saveMessagesToDisk(currentMessages, chatId: chatId)
 
-        // 2. Обновление previewText в user_chats
         let lastMsg = currentMessages.last
         let previewText: String
         if let media = lastMsg?.media {
@@ -670,14 +791,12 @@ public final class MessengerRepository: ObservableObject {
         self.conversations = convs
         saveConversationsToDisk(convs)
 
-        // 3. Физическое удаление в Firebase Realtime Database
         if let msgUrl = await makeURL(path: "chats/\(chatId)/messages/\(messageId)") {
             var req = URLRequest(url: msgUrl)
             req.httpMethod = "DELETE"
             _ = try? await URLSession.shared.data(for: req)
         }
 
-        // 4. Обновление user_chats для обоих участников
         if let senderUrl = await makeURL(path: "user_chats/\(currentUser.id)/\(chatId)/lastMessageText") {
             var req = URLRequest(url: senderUrl)
             req.httpMethod = "PUT"
@@ -700,12 +819,21 @@ public final class MessengerRepository: ObservableObject {
     public func createChannel(
         name: String,
         description: String = "",
-        avatarEmoji: String? = "📢",
+        tag: String,
+        avatarUrl: String? = nil,
         accentColorHex: String? = "#FF9F0A"
     ) async -> ChannelModel? {
         guard let currentUser = AuthRepository.shared.currentUser, !currentUser.isAnonymous else {
             return nil
         }
+
+        let cleanTag = TagValidator.sanitize(tag)
+        let validation = TagValidator.validate(cleanTag)
+        guard validation.isValid else { return nil }
+
+        // Check availability
+        let check = await checkChannelTagAvailability(tag: cleanTag)
+        guard check.isAvailable else { return nil }
 
         let now = Int64(Date().timeIntervalSince1970 * 1000)
         let channelId = "ch_\(now)_\(UUID().uuidString.prefix(6).lowercased())"
@@ -713,10 +841,11 @@ public final class MessengerRepository: ObservableObject {
 
         let channel = ChannelModel(
             id: channelId,
+            tag: cleanTag,
             name: name.trimmingCharacters(in: .whitespacesAndNewlines),
             description: description.trimmingCharacters(in: .whitespacesAndNewlines),
-            avatarEmoji: avatarEmoji,
-            avatarUrl: nil,
+            avatarEmoji: nil,
+            avatarUrl: avatarUrl,
             accentColorHex: accentColorHex,
             ownerId: currentUser.id,
             ownerName: creatorName,
@@ -735,8 +864,11 @@ public final class MessengerRepository: ObservableObject {
         self.subscribedChannels = currentSubscribed
         saveSubscribedChannelsToDisk(currentSubscribed)
 
-        // 2. Firebase REST Calls
-        // 2a. PUT /channels/{channelId}.json
+        // 2. Claim tag index
+        await claimChannelTag(cleanTag, channelId: channelId)
+
+        // 3. Firebase REST Calls
+        // 3a. PUT /channels/{channelId}.json
         if let channelUrl = await makeURL(path: "channels/\(channelId)") {
             var req = URLRequest(url: channelUrl)
             req.httpMethod = "PUT"
@@ -749,7 +881,7 @@ public final class MessengerRepository: ObservableObject {
             }
         }
 
-        // 2b. PUT /user_channel_subscriptions/{userId}/{channelId}.json
+        // 3b. PUT /user_channel_subscriptions/{userId}/{channelId}.json
         let subscription = ChannelSubscription(
             channelId: channelId,
             channel: channel,
@@ -764,7 +896,7 @@ public final class MessengerRepository: ObservableObject {
             _ = try? await URLSession.shared.data(for: req)
         }
 
-        // 2c. PUT /channel_subscribers/{channelId}/{userId}.json
+        // 3c. PUT /channel_subscribers/{channelId}/{userId}.json
         if let subscriberUrl = await makeURL(path: "channel_subscribers/\(channelId)/\(currentUser.id)") {
             var req = URLRequest(url: subscriberUrl)
             req.httpMethod = "PUT"
@@ -777,9 +909,14 @@ public final class MessengerRepository: ObservableObject {
         return channel
     }
 
-    public func updateChannelMetadata(channel: ChannelModel) async -> Bool {
+    public func updateChannelMetadata(channel: ChannelModel, oldTag: String? = nil) async -> Bool {
         var updated = channel
         updated.updatedAtMs = Int64(Date().timeIntervalSince1970 * 1000)
+
+        if let old = oldTag, !old.isEmpty && old != updated.tag {
+            await releaseChannelTag(old)
+            await claimChannelTag(updated.tag, channelId: updated.id)
+        }
 
         // 1. Optimistic update
         var subs = self.subscribedChannels
@@ -822,7 +959,10 @@ public final class MessengerRepository: ObservableObject {
             return false
         }
 
-        // 1. Remove from local published collections and disk caches
+        let existingTag = subscribedChannels.first(where: { $0.id == channelId })?.tag
+            ?? publicChannels.first(where: { $0.id == channelId })?.tag
+
+        // 1. Remove from local collections and disk caches
         self.subscribedChannels.removeAll(where: { $0.id == channelId })
         saveSubscribedChannelsToDisk(self.subscribedChannels)
 
@@ -833,6 +973,10 @@ public final class MessengerRepository: ObservableObject {
 
         // 2. REST deletions
         Task {
+            if let tag = existingTag, !tag.isEmpty {
+                await releaseChannelTag(tag)
+            }
+
             // DELETE /channels/{channelId}.json
             if let channelUrl = await makeURL(path: "channels/\(channelId)") {
                 var req = URLRequest(url: channelUrl)
@@ -899,7 +1043,6 @@ public final class MessengerRepository: ObservableObject {
             let subDict = try JSONDecoder().decode([String: ChannelSubscription].self, from: data)
             var channelsList: [ChannelModel] = []
 
-            // Also refresh latest channel metadata from /channels.json if available
             if let allChannelsUrl = await makeURL(path: "channels") {
                 if let (channelsData, resp2) = try? await URLSession.shared.data(from: allChannelsUrl),
                    let httpResp2 = resp2 as? HTTPURLResponse, (200...299).contains(httpResp2.statusCode),
@@ -931,14 +1074,24 @@ public final class MessengerRepository: ObservableObject {
             self.publicChannels = loadPublicChannelsFromDisk()
         }
 
+        let trimmed = query?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        var directMatch: ChannelModel? = nil
+
+        if trimmed.hasPrefix("@") {
+            let clean = TagValidator.sanitize(trimmed)
+            if !clean.isEmpty {
+                directMatch = await lookupChannelByTag(clean)
+            }
+        }
+
         guard let url = await makeURL(path: "channels") else {
-            return filterChannels(self.publicChannels, query: query)
+            return filterChannels(self.publicChannels, query: query, directMatch: directMatch)
         }
 
         do {
             let (data, response) = try await URLSession.shared.data(from: url)
             guard let httpResp = response as? HTTPURLResponse, (200...299).contains(httpResp.statusCode) else {
-                return filterChannels(self.publicChannels, query: query)
+                return filterChannels(self.publicChannels, query: query, directMatch: directMatch)
             }
 
             if data.isEmpty || String(data: data, encoding: .utf8) == "null" {
@@ -946,7 +1099,7 @@ public final class MessengerRepository: ObservableObject {
                     self.publicChannels = []
                     savePublicChannelsToDisk([])
                 }
-                return []
+                return filterChannels([], query: query, directMatch: directMatch)
             }
 
             let dict = try JSONDecoder().decode([String: ChannelModel].self, from: data)
@@ -955,19 +1108,28 @@ public final class MessengerRepository: ObservableObject {
             self.publicChannels = allPublic
             savePublicChannelsToDisk(allPublic)
 
-            return filterChannels(allPublic, query: query)
+            return filterChannels(allPublic, query: query, directMatch: directMatch)
         } catch {
             AppDiagnostics.shared.log("MessengerRepository fetchPublicChannels error: \(error.localizedDescription)")
-            return filterChannels(self.publicChannels, query: query)
+            return filterChannels(self.publicChannels, query: query, directMatch: directMatch)
         }
     }
 
-    private func filterChannels(_ list: [ChannelModel], query: String?) -> [ChannelModel] {
-        guard let query = query?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(), !query.isEmpty else {
-            return list
+    private func filterChannels(_ list: [ChannelModel], query: String?, directMatch: ChannelModel?) -> [ChannelModel] {
+        var results = list
+        if let direct = directMatch, !results.contains(where: { $0.id == direct.id }) {
+            results.insert(direct, at: 0)
         }
-        return list.filter {
-            $0.name.lowercased().contains(query) || $0.description.lowercased().contains(query)
+
+        guard let query = query?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(), !query.isEmpty else {
+            return results
+        }
+
+        let cleanQuery = TagValidator.sanitize(query)
+        return results.filter { ch in
+            ch.name.lowercased().contains(cleanQuery) ||
+            ch.tag.lowercased().contains(cleanQuery) ||
+            ch.description.lowercased().contains(query)
         }
     }
 
@@ -990,7 +1152,6 @@ public final class MessengerRepository: ObservableObject {
         self.subscribedChannels = subs
         saveSubscribedChannelsToDisk(subs)
 
-        // Update in publicChannels if present
         var pubs = self.publicChannels
         if let pIdx = pubs.firstIndex(where: { $0.id == channel.id }) {
             pubs[pIdx] = updatedChannel
@@ -1139,7 +1300,6 @@ public final class MessengerRepository: ObservableObject {
             viewsCount: 1
         )
 
-        // 1. Optimistically append to local posts disk cache
         var currentPosts = loadChannelPostsFromDisk(channelId: channelId)
         if isPinned {
             for i in 0..<currentPosts.count {
@@ -1151,7 +1311,6 @@ public final class MessengerRepository: ObservableObject {
         currentPosts.append(post)
         saveChannelPostsToDisk(currentPosts, channelId: channelId)
 
-        // 2. Determine preview text
         let previewText: String
         if let media = mediaPayload {
             previewText = "🎬 \(media.title)"
@@ -1159,7 +1318,6 @@ public final class MessengerRepository: ObservableObject {
             previewText = text ?? ""
         }
 
-        // 3. Update Channel in subscribedChannels and publicChannels
         var subs = self.subscribedChannels
         if let idx = subs.firstIndex(where: { $0.id == channelId }) {
             subs[idx].lastPostText = previewText
@@ -1184,9 +1342,7 @@ public final class MessengerRepository: ObservableObject {
             savePublicChannelsToDisk(pubs)
         }
 
-        // 4. Background REST upload
         Task {
-            // 4a. PUT /channel_posts/{channelId}/{postId}.json
             if let postUrl = await makeURL(path: "channel_posts/\(channelId)/\(postId)") {
                 var req = URLRequest(url: postUrl)
                 req.httpMethod = "PUT"
@@ -1195,7 +1351,6 @@ public final class MessengerRepository: ObservableObject {
                 _ = try? await URLSession.shared.data(for: req)
             }
 
-            // 4b. Update channel last post info
             if let lastTextUrl = await makeURL(path: "channels/\(channelId)/lastPostText") {
                 var req = URLRequest(url: lastTextUrl)
                 req.httpMethod = "PUT"
@@ -1448,4 +1603,3 @@ public final class MessengerRepository: ObservableObject {
         }
     }
 }
-

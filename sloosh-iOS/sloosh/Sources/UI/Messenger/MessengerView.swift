@@ -33,14 +33,16 @@ public struct MessengerView: View {
             items += repo.conversations.map { MessengerFeedItem.directChat($0) }
             items += repo.subscribedChannels.map { MessengerFeedItem.channel($0) }
         } else {
-            let query = searchQuery.lowercased()
+            let query = searchQuery.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+            let cleanQuery = TagValidator.sanitize(query)
             let filteredChats = repo.conversations.filter {
                 $0.peerUser.displayTitle.localizedCaseInsensitiveContains(query) ||
-                $0.peerUser.email.localizedCaseInsensitiveContains(query) ||
+                $0.peerUser.displayTag.localizedCaseInsensitiveContains(cleanQuery) ||
                 $0.lastMessageText.localizedCaseInsensitiveContains(query)
             }
             let filteredSubs = repo.subscribedChannels.filter {
                 $0.name.localizedCaseInsensitiveContains(query) ||
+                $0.tag.localizedCaseInsensitiveContains(cleanQuery) ||
                 $0.description.localizedCaseInsensitiveContains(query) ||
                 ($0.lastPostText?.localizedCaseInsensitiveContains(query) == true)
             }
@@ -468,31 +470,7 @@ public struct PeakChannelRow: View {
 
     public var body: some View {
         HStack(spacing: 14) {
-            // Channel Avatar with Megaphone Badge
-            ZStack(alignment: .bottomTrailing) {
-                Circle()
-                    .fill(channel.displayAccentColor.opacity(0.22))
-                    .frame(width: 56, height: 56)
-                    .overlay(
-                        Text(channel.displayAvatarEmoji)
-                            .font(.system(size: 28))
-                    )
-
-                Circle()
-                    .fill(Color(UIColor.systemBackground))
-                    .frame(width: 20, height: 20)
-                    .overlay(
-                        Circle()
-                            .fill(Color.slooshAccent)
-                            .frame(width: 17, height: 17)
-                            .overlay(
-                                Image(systemName: "megaphone.fill")
-                                    .font(.system(size: 9, weight: .bold))
-                                    .foregroundColor(.black)
-                            )
-                    )
-                    .offset(x: 2, y: 2)
-            }
+            SlooshAvatarView(channel: channel, size: 56)
 
             // Content
             VStack(alignment: .leading, spacing: 5) {
@@ -584,30 +562,7 @@ public struct PublicChannelSearchRow: View {
 
     public var body: some View {
         HStack(spacing: 14) {
-            ZStack(alignment: .bottomTrailing) {
-                Circle()
-                    .fill(channel.displayAccentColor.opacity(0.22))
-                    .frame(width: 56, height: 56)
-                    .overlay(
-                        Text(channel.displayAvatarEmoji)
-                            .font(.system(size: 28))
-                    )
-
-                Circle()
-                    .fill(Color(UIColor.systemBackground))
-                    .frame(width: 20, height: 20)
-                    .overlay(
-                        Circle()
-                            .fill(Color.slooshAccent)
-                            .frame(width: 17, height: 17)
-                            .overlay(
-                                Image(systemName: "megaphone.fill")
-                                    .font(.system(size: 9, weight: .bold))
-                                    .foregroundColor(.black)
-                            )
-                    )
-                    .offset(x: 2, y: 2)
-            }
+            SlooshAvatarView(channel: channel, size: 56)
 
             VStack(alignment: .leading, spacing: 4) {
                 Text(channel.name)
@@ -615,9 +570,19 @@ public struct PublicChannelSearchRow: View {
                     .foregroundColor(.primary)
                     .lineLimit(1)
 
-                Text(channel.formattedSubscriberCount)
-                    .font(.system(size: 13))
-                    .foregroundColor(.secondary)
+                HStack(spacing: 6) {
+                    Text(channel.displayTag)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(Color.slooshAccent)
+
+                    Text("•")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+
+                    Text(channel.formattedSubscriberCount)
+                        .font(.system(size: 13))
+                        .foregroundColor(.secondary)
+                }
             }
 
             Spacer()
@@ -666,8 +631,7 @@ private struct PeakChatRow: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            // Avatar with Online dot
-            PeakAvatarView(user: chat.peerUser, size: 56, showOnline: true)
+            SlooshAvatarView(user: chat.peerUser, size: 56, showOnline: true)
 
             // Content
             VStack(alignment: .leading, spacing: 5) {
@@ -739,15 +703,19 @@ private struct PeakUserSearchRow: View {
 
     var body: some View {
         HStack(spacing: 14) {
-            PeakAvatarView(user: user, size: 56, showOnline: true)
+            SlooshAvatarView(user: user, size: 56, showOnline: true)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(user.displayTitle)
                     .font(.system(size: 17, weight: .semibold))
                     .foregroundColor(.primary)
 
-                if !user.email.isEmpty {
-                    Text(user.email)
+                if !user.displayTag.isEmpty {
+                    Text(user.displayTag)
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundColor(Color.slooshAccent)
+                } else {
+                    Text("Пользователь Sloosh")
                         .font(.system(size: 14))
                         .foregroundColor(.secondary)
                 }
@@ -779,44 +747,7 @@ public struct PeakAvatarView: View {
     }
 
     public var body: some View {
-        ZStack(alignment: .bottomTrailing) {
-            if let avatarUrl = user.avatarUrl, URL(string: avatarUrl) != nil {
-                AsyncCachedImage(urlString: avatarUrl) {
-                    fallbackAvatar
-                } content: { image in
-                    Image(uiImage: image)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(width: size, height: size)
-                        .clipShape(Circle())
-                }
-            } else {
-                fallbackAvatar
-            }
-
-            if showOnline && (user.isOnline == true) {
-                Circle()
-                    .fill(Color(UIColor.systemBackground))
-                    .frame(width: size * 0.28 + 2, height: size * 0.28 + 2)
-                    .overlay(
-                        Circle()
-                            .fill(Color.green)
-                            .frame(width: size * 0.28, height: size * 0.28)
-                    )
-                    .offset(x: 1, y: 1)
-            }
-        }
-    }
-
-    private var fallbackAvatar: some View {
-        Circle()
-            .fill(Color.slooshAccent.opacity(0.35))
-            .frame(width: size, height: size)
-            .overlay(
-                Text(String(user.displayTitle.prefix(1)).uppercased())
-                    .font(.system(size: size * 0.36, weight: .semibold))
-                    .foregroundColor(.primary)
-            )
+        SlooshAvatarView(user: user, size: size, showOnline: showOnline)
     }
 }
 

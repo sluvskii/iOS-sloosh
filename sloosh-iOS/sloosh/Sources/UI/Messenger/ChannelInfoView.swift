@@ -1,4 +1,5 @@
 import SwiftUI
+import PhotosUI
 
 public struct ChannelInfoView: View {
     public let initialChannel: ChannelModel
@@ -52,10 +53,6 @@ public struct ChannelInfoView: View {
         return unique
     }
 
-    private var shareURL: URL {
-        URL(string: "https://sloosh.app/channel/\(channel.id)") ?? URL(string: "https://sloosh.app")!
-    }
-
     public var body: some View {
         ZStack {
             Color(UIColor.systemGroupedBackground).ignoresSafeArea()
@@ -66,9 +63,11 @@ public struct ChannelInfoView: View {
                     headerProfileSection
                         .padding(.top, 16)
 
-                    // Quick Action Buttons
-                    quickActionButtonsSection
-                        .padding(.horizontal, 16)
+                    // Quick Action Button (Non-Owners Subscribe/Unsubscribe)
+                    if !isOwner {
+                        quickActionButtonsSection
+                            .padding(.horizontal, 16)
+                    }
 
                     // Description Section
                     if !channel.description.isEmpty {
@@ -85,7 +84,7 @@ public struct ChannelInfoView: View {
                         sharedMediaSection
                     }
 
-                    // Channel Settings & Management Section
+                    // Channel Settings Section (Notifications)
                     settingsSection
 
                     // Destructive Actions (Owner Delete / Subscriber Leave)
@@ -99,7 +98,7 @@ public struct ChannelInfoView: View {
         .toolbar {
             if isOwner {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("Изм.") {
+                    Button("Изменить") {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         showEditSheet = true
                     }
@@ -187,47 +186,7 @@ public struct ChannelInfoView: View {
 
     private var headerProfileSection: some View {
         VStack(spacing: 14) {
-            // Avatar with Liquid Glow & Ring
-            ZStack(alignment: .bottomTrailing) {
-                Circle()
-                    .fill(
-                        RadialGradient(
-                            colors: [
-                                channel.displayAccentColor.opacity(0.35),
-                                channel.displayAccentColor.opacity(0.08)
-                            ],
-                            center: .center,
-                            startRadius: 20,
-                            endRadius: 55
-                        )
-                    )
-                    .frame(width: 104, height: 104)
-                    .overlay(
-                        Circle()
-                            .stroke(channel.displayAccentColor.opacity(0.7), lineWidth: 2.5)
-                    )
-                    .overlay(
-                        Text(channel.displayAvatarEmoji)
-                            .font(.system(size: 52))
-                    )
-                    .shadow(color: channel.displayAccentColor.opacity(0.3), radius: 16, x: 0, y: 6)
-
-                // Channel Megaphone Badge
-                Circle()
-                    .fill(Color(UIColor.systemBackground))
-                    .frame(width: 30, height: 30)
-                    .overlay(
-                        Circle()
-                            .fill(Color.slooshAccent)
-                            .frame(width: 26, height: 26)
-                            .overlay(
-                                Image(systemName: "megaphone.fill")
-                                    .font(.system(size: 11, weight: .bold))
-                                    .foregroundColor(.black)
-                            )
-                    )
-                    .offset(x: 2, y: 2)
-            }
+            SlooshAvatarView(channel: channel, size: 104)
 
             // Channel Title & Subscriber Count
             VStack(spacing: 6) {
@@ -237,9 +196,19 @@ public struct ChannelInfoView: View {
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 24)
 
-                Text(channel.formattedSubscriberCount)
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundColor(.secondary)
+                HStack(spacing: 6) {
+                    Text(channel.displayTag)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(Color.slooshAccent)
+
+                    Text("•")
+                        .font(.system(size: 13))
+                        .foregroundColor(.secondary)
+
+                    Text(channel.formattedSubscriberCount)
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundColor(.secondary)
+                }
 
                 // Owner Badge
                 HStack(spacing: 6) {
@@ -264,81 +233,32 @@ public struct ChannelInfoView: View {
     // MARK: - Quick Action Buttons
 
     private var quickActionButtonsSection: some View {
-        HStack(spacing: 12) {
-            // Share Link Button
-            ShareLink(
-                item: shareURL,
-                subject: Text(channel.name),
-                message: Text("Присоединяйся к каналу «\(channel.name)» в Sloosh!")
-            ) {
-                HStack(spacing: 8) {
-                    Image(systemName: "square.and.arrow.up")
-                        .font(.system(size: 14, weight: .bold))
-                    Text("Поделиться")
-                        .font(.system(size: 14, weight: .bold))
+        Button {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            Task {
+                if isSubscribed {
+                    showUnsubscribeConfirm = true
+                } else {
+                    _ = await repo.subscribeToChannel(channel: channel)
                 }
-                .foregroundColor(.primary)
-                .frame(maxWidth: .infinity)
-                .frame(height: 44)
-                .background(
-                    Capsule()
-                        .fill(Color.white.opacity(0.08))
-                )
-                .glassEffect(.regular.interactive(), in: Capsule())
             }
-            .buttonStyle(PeakPressButtonStyle())
-
-            // Primary Subscription / Edit Button
-            if isOwner {
-                Button {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    showEditSheet = true
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "pencil")
-                            .font(.system(size: 14, weight: .bold))
-                        Text("Настройки")
-                            .font(.system(size: 14, weight: .bold))
-                    }
-                    .foregroundColor(.black)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 44)
-                    .background(
-                        Capsule()
-                            .fill(Color.slooshAccent)
-                    )
-                    .glassEffect(in: Capsule())
-                }
-                .buttonStyle(PeakPressButtonStyle())
-            } else {
-                Button {
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    Task {
-                        if isSubscribed {
-                            showUnsubscribeConfirm = true
-                        } else {
-                            _ = await repo.subscribeToChannel(channel: channel)
-                        }
-                    }
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: isSubscribed ? "checkmark.circle.fill" : "plus.circle.fill")
-                            .font(.system(size: 14, weight: .bold))
-                        Text(isSubscribed ? "Подписан" : "Подписаться")
-                            .font(.system(size: 14, weight: .bold))
-                    }
-                    .foregroundColor(isSubscribed ? .primary : .black)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 44)
-                    .background(
-                        Capsule()
-                            .fill(isSubscribed ? Color.white.opacity(0.08) : Color.slooshAccent)
-                    )
-                    .glassEffect(in: Capsule())
-                }
-                .buttonStyle(PeakPressButtonStyle())
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: isSubscribed ? "checkmark.circle.fill" : "plus.circle.fill")
+                    .font(.system(size: 15, weight: .bold))
+                Text(isSubscribed ? "Подписан" : "Подписаться")
+                    .font(.system(size: 15, weight: .bold))
             }
+            .foregroundColor(isSubscribed ? .primary : .black)
+            .frame(maxWidth: .infinity)
+            .frame(height: 48)
+            .background(
+                Capsule()
+                    .fill(isSubscribed ? Color.white.opacity(0.08) : Color.slooshAccent)
+            )
+            .glassEffect(in: Capsule())
         }
+        .buttonStyle(PeakPressButtonStyle())
     }
 
     // MARK: - Description Section
@@ -580,39 +500,6 @@ public struct ChannelInfoView: View {
                     .tint(Color.slooshAccent)
                 }
                 .padding(16)
-
-                Divider()
-                    .padding(.leading, 48)
-
-                // Channel Link / ID Row
-                HStack {
-                    Label {
-                        Text("Ссылка на канал")
-                            .font(.system(size: 16))
-                            .foregroundColor(.primary)
-                    } icon: {
-                        Image(systemName: "link")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundColor(Color.slooshAccent)
-                    }
-
-                    Spacer()
-
-                    Text("sloosh.app/\(channel.id.prefix(10))")
-                        .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(.secondary)
-
-                    Image(systemName: "doc.on.doc")
-                        .font(.system(size: 13))
-                        .foregroundColor(.secondary)
-                }
-                .padding(16)
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    UIPasteboard.general.string = "https://sloosh.app/channel/\(channel.id)"
-                    ToastManager.shared.show(title: "Ссылка скопирована", icon: "doc.on.doc.fill")
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                }
             }
             .background(
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
@@ -704,13 +591,18 @@ public struct EditChannelSheet: View {
     public let onSaved: (ChannelModel) -> Void
 
     @State private var channelName: String
+    @State private var channelTag: String
     @State private var channelDescription: String
-    @State private var selectedEmoji: String
+    @State private var avatarDataString: String?
+    @State private var selectedPhotoItem: PhotosPickerItem? = nil
     @State private var selectedColorHex: String
+
+    @State private var isCheckingTag: Bool = false
+    @State private var tagStatusMessage: String? = nil
+    @State private var isTagAvailable: Bool = true
     @State private var isSaving: Bool = false
     @State private var errorMessage: String? = nil
 
-    private let emojiPresets = ["📢", "🎬", "🍿", "🚀", "🔥", "👑", "⚡️", "⭐️", "🎧", "🏆", "💎", "🔮", "🌙", "🌊", "🎮", "👾"]
     private let colorPresets = [
         "#FF9F0A", // Orange
         "#FF453A", // Red
@@ -726,8 +618,9 @@ public struct EditChannelSheet: View {
         self.channel = channel
         self.onSaved = onSaved
         self._channelName = State(initialValue: channel.name)
+        self._channelTag = State(initialValue: channel.tag)
         self._channelDescription = State(initialValue: channel.description)
-        self._selectedEmoji = State(initialValue: channel.displayAvatarEmoji)
+        self._avatarDataString = State(initialValue: channel.avatarUrl)
         self._selectedColorHex = State(initialValue: channel.accentColorHex ?? "#FF9F0A")
     }
 
@@ -738,8 +631,16 @@ public struct EditChannelSheet: View {
         return .slooshAccent
     }
 
+    private var cleanTag: String {
+        TagValidator.sanitize(channelTag)
+    }
+
     private var isFormValid: Bool {
-        !channelName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !isSaving
+        guard !channelName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, !isSaving else { return false }
+        if cleanTag != channel.tag {
+            return isTagAvailable && !cleanTag.isEmpty
+        }
+        return true
     }
 
     public var body: some View {
@@ -752,9 +653,6 @@ public struct EditChannelSheet: View {
 
                     // Form Fields
                     formFieldsSection
-
-                    // Emoji Preset Selector
-                    emojiPickerSection
 
                     // Color Palette Selector
                     colorPickerSection
@@ -795,45 +693,65 @@ public struct EditChannelSheet: View {
 
     private var avatarPreviewSection: some View {
         VStack(spacing: 12) {
-            ZStack(alignment: .bottomTrailing) {
-                Circle()
-                    .fill(selectedColor.opacity(0.25))
-                    .frame(width: 96, height: 96)
-                    .overlay(
-                        Circle()
-                            .stroke(selectedColor.opacity(0.7), lineWidth: 2)
+            PhotosPicker(selection: $selectedPhotoItem, matching: .images, photoLibrary: .shared()) {
+                ZStack(alignment: .bottomTrailing) {
+                    SlooshAvatarView(
+                        avatarSource: avatarDataString,
+                        fallbackText: channelName.isEmpty ? (cleanTag.isEmpty ? "S" : cleanTag) : channelName,
+                        size: 96,
+                        accentColor: selectedColor,
+                        isChannel: true
                     )
-                    .overlay(
-                        Text(selectedEmoji)
-                            .font(.system(size: 48))
-                    )
-                    .shadow(color: selectedColor.opacity(0.3), radius: 12, x: 0, y: 4)
 
-                Circle()
-                    .fill(Color(UIColor.systemBackground))
-                    .frame(width: 28, height: 28)
-                    .overlay(
-                        Circle()
-                            .fill(Color.slooshAccent)
-                            .frame(width: 24, height: 24)
-                            .overlay(
-                                Image(systemName: "megaphone.fill")
-                                    .font(.system(size: 11, weight: .bold))
-                                    .foregroundColor(.black)
-                            )
-                    )
-                    .offset(x: 2, y: 2)
+                    // Camera / Edit Photo Badge
+                    Circle()
+                        .fill(Color(UIColor.systemBackground))
+                        .frame(width: 32, height: 32)
+                        .overlay(
+                            Circle()
+                                .fill(Color.slooshAccent)
+                                .frame(width: 28, height: 28)
+                                .overlay(
+                                    Image(systemName: "camera.fill")
+                                        .font(.system(size: 12, weight: .bold))
+                                        .foregroundColor(.black)
+                                )
+                        )
+                        .offset(x: 2, y: 2)
+                }
+            }
+            .buttonStyle(.plain)
+            .onChange(of: selectedPhotoItem) { _, newItem in
+                guard let newItem else { return }
+                Task {
+                    if let data = try? await newItem.loadTransferable(type: Data.self),
+                       let image = UIImage(data: data) {
+                        if let compressedBase64 = AvatarImageProcessor.processAvatar(image: image) {
+                            await MainActor.run {
+                                self.avatarDataString = compressedBase64
+                            }
+                        }
+                    }
+                }
             }
 
-            Text(channelName.isEmpty ? "Название канала" : channelName)
-                .font(.system(size: 19, weight: .bold))
-                .foregroundColor(channelName.isEmpty ? .secondary : .primary)
-                .lineLimit(1)
+            if avatarDataString != nil {
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    self.avatarDataString = nil
+                    self.selectedPhotoItem = nil
+                } label: {
+                    Text("Удалить фото")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(.red)
+                }
+            }
         }
     }
 
     private var formFieldsSection: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 16) {
+            // Name Field
             VStack(alignment: .leading, spacing: 6) {
                 Text("НАЗВАНИЕ")
                     .font(.system(size: 12, weight: .bold))
@@ -854,14 +772,66 @@ public struct EditChannelSheet: View {
                     )
             }
 
+            // Tag Field
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text("ТЕГ КАНАЛА")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(.secondary)
+                    Spacer()
+                    if isCheckingTag {
+                        ProgressView()
+                            .scaleEffect(0.7)
+                    }
+                }
+                .padding(.leading, 4)
+
+                HStack(spacing: 4) {
+                    Text("@")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(.secondary)
+
+                    TextField("cinema_club", text: $channelTag)
+                        .font(.system(size: 16))
+                        .autocorrectionDisabled()
+                        .textInputAutocapitalization(.never)
+                        .onChange(of: channelTag) { _, newValue in
+                            checkTagRealtime(newValue)
+                        }
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .background(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color.primary.opacity(0.06))
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(
+                            !cleanTag.isEmpty && !isTagAvailable && cleanTag != channel.tag
+                                ? Color.red.opacity(0.5)
+                                : Color.primary.opacity(0.1),
+                            lineWidth: 1
+                        )
+                )
+
+                if let msg = tagStatusMessage, !cleanTag.isEmpty {
+                    Text(msg)
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(isTagAvailable ? .secondary : .red)
+                        .padding(.leading, 4)
+                }
+            }
+
+            // Description Field
             VStack(alignment: .leading, spacing: 6) {
                 Text("ОПИСАНИЕ")
                     .font(.system(size: 12, weight: .bold))
                     .foregroundColor(.secondary)
                     .padding(.leading, 4)
 
-                TextField("Описание канала", text: $channelDescription, axis: .vertical)
-                    .lineLimit(2...5)
+                TextField("Описание", text: $channelDescription, axis: .vertical)
+                    .lineLimit(2...4)
                     .font(.system(size: 15))
                     .padding(.horizontal, 14)
                     .padding(.vertical, 12)
@@ -873,45 +843,6 @@ public struct EditChannelSheet: View {
                         RoundedRectangle(cornerRadius: 12, style: .continuous)
                             .stroke(Color.primary.opacity(0.1), lineWidth: 1)
                     )
-            }
-        }
-    }
-
-    private var emojiPickerSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("ИКОНКА КАНАЛА")
-                .font(.system(size: 12, weight: .bold))
-                .foregroundColor(.secondary)
-                .padding(.leading, 4)
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 12) {
-                    ForEach(emojiPresets, id: \.self) { emoji in
-                        Button {
-                            selectedEmoji = emoji
-                            let feedback = UISelectionFeedbackGenerator()
-                            feedback.selectionChanged()
-                        } label: {
-                            ZStack {
-                                Circle()
-                                    .fill(selectedEmoji == emoji ? selectedColor.opacity(0.25) : Color.primary.opacity(0.06))
-                                    .frame(width: 48, height: 48)
-
-                                Text(emoji)
-                                    .font(.system(size: 24))
-
-                                if selectedEmoji == emoji {
-                                    Circle()
-                                        .stroke(selectedColor, lineWidth: 2)
-                                        .frame(width: 48, height: 48)
-                                }
-                            }
-                        }
-                        .buttonStyle(PeakPressButtonStyle())
-                    }
-                }
-                .padding(.horizontal, 2)
-                .padding(.vertical, 4)
             }
         }
     }
@@ -936,7 +867,6 @@ public struct EditChannelSheet: View {
                                 Circle()
                                     .fill(color)
                                     .frame(width: 40, height: 40)
-                                    .shadow(color: color.opacity(selectedColorHex == hex ? 0.5 : 0.0), radius: 6, x: 0, y: 2)
 
                                 if selectedColorHex == hex {
                                     Circle()
@@ -960,16 +890,16 @@ public struct EditChannelSheet: View {
 
     private var saveButton: some View {
         Button {
-            saveChangesAction()
+            saveChannelAction()
         } label: {
             HStack(spacing: 8) {
                 if isSaving {
                     ProgressView()
                         .tint(.black)
                 } else {
-                    Image(systemName: "checkmark.circle.fill")
+                    Image(systemName: "checkmark")
                         .font(.system(size: 16, weight: .bold))
-                    Text("Сохранить изменения")
+                    Text("Сохранить")
                         .font(.system(size: 17, weight: .bold))
                 }
             }
@@ -986,30 +916,65 @@ public struct EditChannelSheet: View {
         .buttonStyle(PeakPressButtonStyle())
     }
 
-    private func saveChangesAction() {
+    private func checkTagRealtime(_ rawTag: String) {
+        let clean = TagValidator.sanitize(rawTag)
+        guard !clean.isEmpty else {
+            tagStatusMessage = nil
+            isTagAvailable = false
+            return
+        }
+
+        if clean == channel.tag {
+            tagStatusMessage = "Текущий тег канала"
+            isTagAvailable = true
+            return
+        }
+
+        let validation = TagValidator.validate(clean)
+        guard validation.isValid else {
+            tagStatusMessage = validation.message
+            isTagAvailable = false
+            return
+        }
+
+        isCheckingTag = true
+        Task {
+            let result = await repo.checkChannelTagAvailability(tag: clean)
+            await MainActor.run {
+                self.isCheckingTag = false
+                self.isTagAvailable = result.isAvailable
+                self.tagStatusMessage = result.message
+            }
+        }
+    }
+
+    private func saveChannelAction() {
         guard isFormValid else { return }
         isSaving = true
         errorMessage = nil
 
         var updated = channel
+        let oldTag = channel.tag
         updated.name = channelName.trimmingCharacters(in: .whitespacesAndNewlines)
+        updated.tag = cleanTag
         updated.description = channelDescription.trimmingCharacters(in: .whitespacesAndNewlines)
-        updated.avatarEmoji = selectedEmoji
+        updated.avatarUrl = avatarDataString
         updated.accentColorHex = selectedColorHex
 
         Task {
-            let success = await repo.updateChannelMetadata(channel: updated)
-            if success {
-                let generator = UINotificationFeedbackGenerator()
-                generator.notificationOccurred(.success)
-                isSaving = false
-                onSaved(updated)
-                dismiss()
-            } else {
-                let generator = UINotificationFeedbackGenerator()
-                generator.notificationOccurred(.error)
-                isSaving = false
-                errorMessage = "Не удалось сохранить изменения. Повторите попытку."
+            let success = await repo.updateChannelMetadata(channel: updated, oldTag: oldTag != updated.tag ? oldTag : nil)
+            await MainActor.run {
+                self.isSaving = false
+                if success {
+                    let generator = UINotificationFeedbackGenerator()
+                    generator.notificationOccurred(.success)
+                    dismiss()
+                    onSaved(updated)
+                } else {
+                    let generator = UINotificationFeedbackGenerator()
+                    generator.notificationOccurred(.error)
+                    self.errorMessage = "Не удалось сохранить изменения."
+                }
             }
         }
     }

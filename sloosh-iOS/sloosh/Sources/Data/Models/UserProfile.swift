@@ -1,9 +1,10 @@
 import Foundation
 
-public struct UserProfile: Codable, Identifiable, Equatable {
+public struct UserProfile: Codable, Identifiable, Sendable, Equatable {
     public let id: String
     public let email: String?
     public let displayName: String?
+    public let tag: String?
     public let photoURL: String?
     public let isAnonymous: Bool
     public let provider: String // "email", "google", "anonymous"
@@ -15,6 +16,7 @@ public struct UserProfile: Codable, Identifiable, Equatable {
         id: String,
         email: String? = nil,
         displayName: String? = nil,
+        tag: String? = nil,
         photoURL: String? = nil,
         isAnonymous: Bool = true,
         provider: String = "anonymous",
@@ -25,6 +27,7 @@ public struct UserProfile: Codable, Identifiable, Equatable {
         self.id = id
         self.email = email
         self.displayName = displayName
+        self.tag = tag
         self.photoURL = photoURL
         self.isAnonymous = isAnonymous
         self.provider = provider
@@ -40,31 +43,42 @@ public struct UserProfile: Codable, Identifiable, Equatable {
         if let displayName = displayName, !displayName.isEmpty {
             return displayName
         }
+        if let tag = tag, !tag.isEmpty {
+            return "@\(tag)"
+        }
         if let email = email, !email.isEmpty {
             return email.components(separatedBy: "@").first ?? email
         }
         return "Пользователь sloosh"
     }
 
+    public var displayTag: String {
+        if let tag = tag, !tag.isEmpty {
+            return "@\(tag)"
+        }
+        return ""
+    }
+
     public var displaySubtitle: String {
         if isAnonymous {
-            return "Войдите для синхронизации Избранного"
+            return "Войдите для синхронизации"
         }
-        return email ?? "Аккаунт sloosh"
+        if let tag = tag, !tag.isEmpty {
+            return "@\(tag)"
+        }
+        return "Аккаунт sloosh"
     }
 
     public var avatarInitials: String {
         if isAnonymous { return "👤" }
         if let name = displayName, !name.isEmpty {
-            let parts = name.split(separator: " ")
-            if parts.count >= 2 {
-                return "\(parts[0].prefix(1))\(parts[1].prefix(1))".uppercased()
-            }
-            return String(name.prefix(2)).uppercased()
+            let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+            return String(trimmed.prefix(1)).uppercased()
         }
-        if let email = email, !email.isEmpty {
-            return String(email.prefix(2)).uppercased()
+        if let tag = tag, !tag.isEmpty {
+            let clean = tag.trimmingCharacters(in: .whitespacesAndNewlines)
+            return String(clean.prefix(1)).uppercased()
         }
-        return "SL"
+        return "S"
     }
 }

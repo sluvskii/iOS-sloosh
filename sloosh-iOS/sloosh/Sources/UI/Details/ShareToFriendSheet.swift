@@ -365,38 +365,6 @@ private struct UserAvatarView: View {
     let size: CGFloat
 
     var body: some View {
-        if let avatarUrl = user.avatarUrl, let url = URL(string: avatarUrl), !avatarUrl.isEmpty {
-            AsyncCachedImage(url: url) {
-                fallbackAvatar
-            } content: { image in
-                Image(uiImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .frame(width: size, height: size)
-                    .clipShape(Circle())
-            } fallback: {
-                fallbackAvatar
-            }
-        } else {
-            fallbackAvatar
-        }
-    }
-
-    private var fallbackAvatar: some View {
-        ZStack {
-            Circle()
-                .fill(
-                    LinearGradient(
-                        colors: [Color.blue.opacity(0.6), Color.purple.opacity(0.6)],
-                        startPoint: .topLeading,
-                        endPoint: .bottomTrailing
-                    )
-                )
-                .frame(width: size, height: size)
-
-            Text(String(user.displayTitle.prefix(1)).uppercased())
-                .font(.system(size: size * 0.4, weight: .bold))
-                .foregroundStyle(.white)
-        }
+        SlooshAvatarView(user: user, size: size, showOnline: true)
     }
 }
