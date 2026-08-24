@@ -176,6 +176,14 @@ struct HomeView: View {
                     seriesResult: config.seriesResult
                 )
             }
+            .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("SlooshOpenGenreHome"))) { notification in
+                if let genre = notification.userInfo?["genre"] as? String {
+                    viewModel.searchFilters = SearchFilters(genres: genre)
+                    Task {
+                        await viewModel.applyCurrentSelection(force: true)
+                    }
+                }
+            }
         }
     }
 }
@@ -721,7 +729,6 @@ enum FeedPhase: Equatable {
 struct InfiniteCursor: Equatable {
     var phase: FeedPhase
     var page: Int
-    var year: Int
 }
 
 @MainActor
@@ -759,12 +766,10 @@ class HomeViewModel: ObservableObject {
     }
     
     private func initialCursor(for key: HomeCacheKey) -> InfiniteCursor {
-        let currentYear = Calendar.current.component(.year, from: Date())
         if key.searchFilters.isEmpty {
-            return InfiniteCursor(phase: .original, page: 1, year: currentYear)
+            return InfiniteCursor(phase: .original, page: 1)
         } else {
-            let startYear = key.searchFilters.yearTo ?? currentYear
-            return InfiniteCursor(phase: .searchFallback, page: 1, year: startYear)
+            return InfiniteCursor(phase: .searchFallback, page: 1)
         }
     }
 
@@ -772,17 +777,9 @@ class HomeViewModel: ObservableObject {
         if cursor.phase == .original {
             cursor.phase = .searchFallback
             cursor.page = 1
-            cursor.year = Calendar.current.component(.year, from: Date())
             return true
         } else {
-            let nextYear = cursor.year - 1
-            let minYear = key.searchFilters.yearFrom ?? 1950
-            if nextYear < minYear {
-                return false
-            }
-            cursor.year = nextYear
-            cursor.page = 1
-            return true
+            return false
         }
     }
 
@@ -876,9 +873,6 @@ class HomeViewModel: ObservableObject {
             }
         } else {
             var mergedFilters = searchFilters
-            
-            mergedFilters.yearFrom = cursor.year
-            mergedFilters.yearTo = cursor.year
             
             if mergedFilters.order == nil {
                 mergedFilters.order = filter == .popular ? "NUM_VOTE" : "RATING"
