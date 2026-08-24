@@ -73,6 +73,7 @@ struct MediaDto: Codable, Identifiable {
     let originalTitle: String?
     let year: AnyCodableValue?
     let rating: Double?
+    let ratings: RatingsV2Dto?
     let posterUrl: String?
     let description: String?
     let type: String?
@@ -83,7 +84,7 @@ struct MediaDto: Codable, Identifiable {
     
     enum CodingKeys: String, CodingKey {
         case originalId = "id"
-        case title, originalTitle, year, rating, posterUrl, description, type, genres, externalIds, name, poster_path
+        case title, originalTitle, year, rating, ratings, posterUrl, description, type, genres, externalIds, name, poster_path
     }
     
     // Identifiable requirement helper
