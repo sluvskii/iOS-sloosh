@@ -24,12 +24,16 @@ struct RemoteBackdropView: View {
         }
         .mask(
             LinearGradient(
-                gradient: Gradient(colors: [
-                    .black,
-                    .black.opacity(0.8),
-                    .black.opacity(0.4),
-                    .black.opacity(0.1),
-                    .clear
+                gradient: Gradient(stops: [
+                    .init(color: .clear, location: 0.0),
+                    .init(color: .black.opacity(0.3), location: 0.07),
+                    .init(color: .black.opacity(0.85), location: 0.16),
+                    .init(color: .black, location: 0.25),
+                    .init(color: .black, location: 0.65),
+                    .init(color: .black.opacity(0.85), location: 0.78),
+                    .init(color: .black.opacity(0.4), location: 0.88),
+                    .init(color: .black.opacity(0.1), location: 0.95),
+                    .init(color: .clear, location: 1.0)
                 ]),
                 startPoint: .top,
                 endPoint: .bottom
@@ -904,12 +908,16 @@ private struct DetailsSkeletonView: View {
                 .shimmer()
                 .mask(
                     LinearGradient(
-                        gradient: Gradient(colors: [
-                            .black,
-                            .black.opacity(0.8),
-                            .black.opacity(0.4),
-                            .black.opacity(0.1),
-                            .clear
+                        gradient: Gradient(stops: [
+                            .init(color: .clear, location: 0.0),
+                            .init(color: .black.opacity(0.3), location: 0.07),
+                            .init(color: .black.opacity(0.85), location: 0.16),
+                            .init(color: .black, location: 0.25),
+                            .init(color: .black, location: 0.65),
+                            .init(color: .black.opacity(0.85), location: 0.78),
+                            .init(color: .black.opacity(0.4), location: 0.88),
+                            .init(color: .black.opacity(0.1), location: 0.95),
+                            .init(color: .clear, location: 1.0)
                         ]),
                         startPoint: .top,
                         endPoint: .bottom
