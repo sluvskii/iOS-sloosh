@@ -26,13 +26,8 @@ struct RemoteBackdropView: View {
             LinearGradient(
                 gradient: Gradient(stops: [
                     .init(color: .clear, location: 0.0),
-                    .init(color: .black.opacity(0.15), location: 0.08),
-                    .init(color: .black.opacity(0.6), location: 0.18),
-                    .init(color: .black, location: 0.30),
-                    .init(color: .black, location: 0.55),
-                    .init(color: .black.opacity(0.8), location: 0.68),
-                    .init(color: .black.opacity(0.4), location: 0.80),
-                    .init(color: .black.opacity(0.1), location: 0.92),
+                    .init(color: .black, location: 0.18),
+                    .init(color: .black, location: 0.65),
                     .init(color: .clear, location: 1.0)
                 ]),
                 startPoint: .top,
@@ -619,8 +614,8 @@ struct DetailsView: View {
                         .transition(.opacity)
                 } else if let details = viewModel.details {
                     // Stretchy Backdrop
-                    let baseHeight: CGFloat = 380
-                    let topInset: CGFloat = 90
+                    let baseHeight: CGFloat = 400
+                    let topInset: CGFloat = 48
                     
                     GeometryReader { geometry in
                         let minY = geometry.frame(in: .global).minY
@@ -899,8 +894,8 @@ private struct DetailsSkeletonView: View {
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     
     var body: some View {
-        let baseHeight: CGFloat = verticalSizeClass == .compact ? 280 : 380
-        let topInset: CGFloat = verticalSizeClass == .compact ? 0 : 90
+        let baseHeight: CGFloat = verticalSizeClass == .compact ? 280 : 400
+        let topInset: CGFloat = verticalSizeClass == .compact ? 0 : 48
         
         VStack(spacing: 0) {
             // Backdrop
@@ -913,13 +908,8 @@ private struct DetailsSkeletonView: View {
                     LinearGradient(
                         gradient: Gradient(stops: [
                             .init(color: .clear, location: 0.0),
-                            .init(color: .black.opacity(0.15), location: 0.08),
-                            .init(color: .black.opacity(0.6), location: 0.18),
-                            .init(color: .black, location: 0.30),
-                            .init(color: .black, location: 0.55),
-                            .init(color: .black.opacity(0.8), location: 0.68),
-                            .init(color: .black.opacity(0.4), location: 0.80),
-                            .init(color: .black.opacity(0.1), location: 0.92),
+                            .init(color: .black, location: 0.18),
+                            .init(color: .black, location: 0.65),
                             .init(color: .clear, location: 1.0)
                         ]),
                         startPoint: .top,
