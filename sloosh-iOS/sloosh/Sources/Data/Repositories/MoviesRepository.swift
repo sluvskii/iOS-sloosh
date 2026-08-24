@@ -23,7 +23,9 @@ class MoviesRepository: ObservableObject {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            self?.clearMemoryCache()
+            Task { @MainActor in
+                self?.clearMemoryCache()
+            }
         }
     }
 
@@ -231,10 +233,19 @@ class MoviesRepository: ObservableObject {
             }
             
             // Фильтр по году
-            if let minYear = filters.yearFrom, let year = item.year {
+            let parsedYear: Int? = {
+                guard let y = item.year else { return nil }
+                switch y {
+                case .int(let val): return val
+                case .string(let str): return Int(str)
+                case .double(let dbl): return Int(dbl)
+                }
+            }()
+            
+            if let minYear = filters.yearFrom, let year = parsedYear {
                 if year < minYear { return false }
             }
-            if let maxYear = filters.yearTo, let year = item.year {
+            if let maxYear = filters.yearTo, let year = parsedYear {
                 if year > maxYear { return false }
             }
             
