@@ -44,7 +44,7 @@
 | 1 | M1: Data Layer & Firebase RTDB | Channel models, DTOs, Firebase REST methods in `MessengerRepository`, local disk caching | none | DONE |
 | 2 | M2: Creation Flow & Discovery | Top Action Menu, `CreateChannelSheet`, `PeakChannelRow` in `MessengerView`, Channel Search | M1 | DONE |
 | 3 | M3: Channel Feed, Roles, Media & Reactions | `ChannelDetailView`, broadcasting bar, `PinnedPostBar`, `MovieSelectorSheet`, `ChannelMediaCardView`, reactions | M1, M2 | DONE |
-| 4 | M4: Channel Info, Management & Verification | `ChannelInfoView`, author settings, full verification, audit, git commit and push | M1, M2, M3 | IN_PROGRESS |
+| 4 | M4: Channel Info, Management & Verification | `ChannelInfoView`, author settings, full verification, audit, git commit and push | M1, M2, M3 | DONE |
 
 ## Interface Contracts
 ### Data Layer ↔ UI Views
