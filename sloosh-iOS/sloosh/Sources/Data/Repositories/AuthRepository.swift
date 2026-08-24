@@ -4,8 +4,6 @@ import Combine
 import UIKit
 
 // MARK: - Firebase Auth Repository via Identity Toolkit REST API
-// Используем прямые HTTP-запросы к Firebase Identity Toolkit вместо Firebase iOS SDK,
-// так как SDK не подключён через SPM в проекте.
 
 @MainActor
 public final class AuthRepository: ObservableObject {
@@ -34,6 +32,36 @@ public final class AuthRepository: ObservableObject {
 
     public var isAnonymous: Bool {
         currentUser?.isAnonymous ?? true
+    }
+
+    private init() {
+        loadStoredUser()
+    }
+
+    public func clearError() {
+        lastError = nil
+    }
+
+    private func loadStoredUser() {
+        if let data = UserDefaults.standard.data(forKey: userDefaultsKey),
+           let user = try? JSONDecoder().decode(UserProfile.self, from: data) {
+            self.currentUser = user
+        } else {
+            let guest = UserProfile(
+                id: "guest_\(UUID().uuidString.prefix(8))",
+                isAnonymous: true,
+                provider: "anonymous"
+            )
+            self.currentUser = guest
+            saveUser(guest)
+        }
+    }
+
+    private func saveUser(_ user: UserProfile) {
+        self.currentUser = user
+        if let data = try? JSONEncoder().encode(user) {
+            UserDefaults.standard.set(data, forKey: userDefaultsKey)
+        }
     }
 
     // MARK: - Google Sign-In (ASWebAuthenticationSession + PKCE + Firebase signInWithIdp)
@@ -74,6 +102,7 @@ public final class AuthRepository: ObservableObject {
                 id: result.localId,
                 email: result.email,
                 displayName: displayName,
+                tag: nil,
                 photoURL: result.photoURL,
                 isAnonymous: false,
                 provider: "google",
@@ -107,38 +136,7 @@ public final class AuthRepository: ObservableObject {
         }
     }
 
-    private init() {
-        loadStoredUser()
-    }
-
-    public func clearError() {
-        lastError = nil
-    }
-
-    private func loadStoredUser() {
-        if let data = UserDefaults.standard.data(forKey: userDefaultsKey),
-           let user = try? JSONDecoder().decode(UserProfile.self, from: data) {
-            self.currentUser = user
-        } else {
-            let guest = UserProfile(
-                id: "guest_\(UUID().uuidString.prefix(8))",
-                isAnonymous: true,
-                provider: "anonymous"
-            )
-            self.currentUser = guest
-            saveUser(guest)
-        }
-    }
-
-    private func saveUser(_ user: UserProfile) {
-        self.currentUser = user
-        if let data = try? JSONEncoder().encode(user) {
-            UserDefaults.standard.set(data, forKey: userDefaultsKey)
-        }
-    }
-
     // MARK: - Регистрация (Firebase accounts:signUp)
-    // Создаёт реального пользователя в вашем Firebase проекте
 
     public func signUp(email: String, password: String, displayName: String? = nil) async -> Bool {
         isLoading = true
@@ -205,6 +203,8 @@ public final class AuthRepository: ObservableObject {
                 id: localId,
                 email: cleanEmail,
                 displayName: finalName ?? cleanEmail.components(separatedBy: "@").first?.capitalized,
+                tag: nil,
+                photoURL: nil,
                 isAnonymous: false,
                 provider: "email",
                 idToken: idToken,
@@ -297,6 +297,8 @@ public final class AuthRepository: ObservableObject {
                 id: localId,
                 email: cleanEmail,
                 displayName: displayName,
+                tag: nil,
+                photoURL: nil,
                 isAnonymous: false,
                 provider: "email",
                 idToken: idToken,
@@ -326,7 +328,6 @@ public final class AuthRepository: ObservableObject {
     }
 
     // MARK: - Сброс пароля (Firebase accounts:sendOobCode)
-    // Firebase отправляет письмо со ссылкой для сброса пароля (не код!)
 
     public func resetPassword(email: String) async -> Bool {
         isLoading = true
@@ -385,6 +386,72 @@ public final class AuthRepository: ObservableObject {
             }
             return false
         }
+    }
+
+    // MARK: - Обновление профиля пользователя
+
+    public func updateUserProfile(displayName: String?, tag: String?, photoURL: String?) async -> (success: Bool, message: String) {
+        guard let user = currentUser, !user.isAnonymous else {
+            return (false, "Требуется авторизация")
+        }
+
+        let newName = displayName?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty
+        let oldTag = user.tag
+        let rawTag = tag?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let newTag = TagValidator.sanitize(rawTag)
+
+        // 1. Validate Tag if changed
+        if !newTag.isEmpty && newTag != oldTag {
+            let validation = TagValidator.validate(newTag)
+            guard validation.isValid else {
+                return (false, validation.message)
+            }
+
+            let check = await MessengerRepository.shared.checkUserTagAvailability(tag: newTag)
+            guard check.isAvailable else {
+                return (false, check.message)
+            }
+
+            // Release old tag if existed
+            if let old = oldTag, !old.isEmpty && old != newTag {
+                await MessengerRepository.shared.releaseUserTag(old)
+            }
+
+            // Claim new tag
+            await MessengerRepository.shared.claimUserTag(newTag, userId: user.id)
+        } else if newTag.isEmpty && oldTag != nil && !oldTag!.isEmpty {
+            // User cleared tag
+            await MessengerRepository.shared.releaseUserTag(oldTag!)
+        }
+
+        // 2. Update Firebase Auth display name if token exists
+        if let idToken = await ensureFreshToken(), let name = newName, name != user.displayName {
+            await updateDisplayName(idToken: idToken, name: name)
+        }
+
+        // 3. Update local user profile state
+        let finalTag = newTag.isEmpty ? nil : newTag
+        let finalPhoto = photoURL?.nilIfEmpty ?? user.photoURL
+
+        let updatedUser = UserProfile(
+            id: user.id,
+            email: user.email,
+            displayName: newName ?? user.displayName,
+            tag: finalTag,
+            photoURL: finalPhoto,
+            isAnonymous: false,
+            provider: user.provider,
+            idToken: user.idToken,
+            refreshToken: user.refreshToken,
+            createdAt: user.createdAt
+        )
+
+        saveUser(updatedUser)
+
+        // 4. Synchronize sanitized profile to Firebase Realtime Database
+        await MessengerRepository.shared.syncCurrentUserProfile()
+
+        return (true, "Профиль успешно обновлен")
     }
 
     // MARK: - Выход из аккаунта
@@ -458,6 +525,7 @@ public final class AuthRepository: ObservableObject {
                 id: user.id,
                 email: user.email,
                 displayName: user.displayName,
+                tag: user.tag,
                 photoURL: user.photoURL,
                 isAnonymous: user.isAnonymous,
                 provider: user.provider,

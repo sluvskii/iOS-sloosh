@@ -1,72 +1,50 @@
 import SwiftUI
 import PhotosUI
 
-public struct CreateChannelSheet: View {
+public struct EditProfileSheet: View {
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var authRepo = AuthRepository.shared
-    @ObservedObject private var repo = MessengerRepository.shared
+    @ObservedObject private var messengerRepo = MessengerRepository.shared
 
-    public let onCreated: (ChannelModel) -> Void
-
-    @State private var channelName: String = ""
-    @State private var channelTag: String = ""
-    @State private var channelDescription: String = ""
+    @State private var displayName: String = ""
+    @State private var tag: String = ""
     @State private var avatarDataString: String? = nil
     @State private var selectedPhotoItem: PhotosPickerItem? = nil
-    @State private var selectedColorHex: String = "#FF9F0A"
 
     @State private var isCheckingTag: Bool = false
     @State private var tagStatusMessage: String? = nil
-    @State private var isTagAvailable: Bool = false
-    @State private var isCreating: Bool = false
+    @State private var isTagAvailable: Bool = true
+    @State private var isSaving: Bool = false
     @State private var errorMessage: String? = nil
 
-    private let colorPresets = [
-        "#FF9F0A", // Orange
-        "#FF453A", // Red
-        "#30D158", // Green
-        "#0A84FF", // Blue
-        "#BF5AF2", // Purple
-        "#64D2FF", // Cyan
-        "#FFD60A", // Yellow
-        "#B2FF00"  // Sloosh Neon
-    ]
+    public init() {}
 
-    public init(onCreated: @escaping (ChannelModel) -> Void) {
-        self.onCreated = onCreated
+    private var currentTagClean: String {
+        TagValidator.sanitize(authRepo.currentUser?.tag ?? "")
     }
 
-    private var selectedColor: Color {
-        if let uiColor = UIColor(hex: selectedColorHex) {
-            return Color(uiColor)
-        }
-        return .slooshAccent
-    }
-
-    private var cleanTag: String {
-        TagValidator.sanitize(channelTag)
+    private var inputTagClean: String {
+        TagValidator.sanitize(tag)
     }
 
     private var isFormValid: Bool {
-        !channelName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty &&
-        isTagAvailable &&
-        !cleanTag.isEmpty &&
-        !isCreating
+        guard !isSaving else { return false }
+        if !inputTagClean.isEmpty && inputTagClean != currentTagClean {
+            return isTagAvailable && TagValidator.validate(inputTagClean).isValid
+        }
+        return true
     }
 
     public var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 24) {
-                    // Avatar & Visual Identity Preview
-                    avatarPreviewSection
+                    // Avatar Picker Section
+                    avatarPickerSection
                         .padding(.top, 16)
 
-                    // Form Fields Section
+                    // Profile Details Form
                     formFieldsSection
-
-                    // Color Palette Selector
-                    colorPickerSection
 
                     if let error = errorMessage {
                         Text(error)
@@ -76,15 +54,15 @@ public struct CreateChannelSheet: View {
                             .padding(.horizontal, 16)
                     }
 
-                    // Create Button
-                    createButton
+                    // Save Button
+                    saveButton
                         .padding(.top, 8)
                         .padding(.bottom, 24)
                 }
                 .padding(.horizontal, 20)
             }
             .scrollContentBackground(.hidden)
-            .navigationTitle("Новый канал")
+            .navigationTitle("Редактировать профиль")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -100,23 +78,28 @@ public struct CreateChannelSheet: View {
         .presentationBackground {
             Color.clear.glassEffect(in: .rect)
         }
+        .onAppear {
+            let user = authRepo.currentUser
+            self.displayName = user?.displayName ?? ""
+            self.tag = user?.tag ?? ""
+            self.avatarDataString = user?.photoURL
+        }
     }
 
     // MARK: - Subviews
 
-    private var avatarPreviewSection: some View {
+    private var avatarPickerSection: some View {
         VStack(spacing: 12) {
             PhotosPicker(selection: $selectedPhotoItem, matching: .images, photoLibrary: .shared()) {
                 ZStack(alignment: .bottomTrailing) {
                     SlooshAvatarView(
                         avatarSource: avatarDataString,
-                        fallbackText: channelName.isEmpty ? (cleanTag.isEmpty ? "S" : cleanTag) : channelName,
+                        fallbackText: displayName.isEmpty ? (tag.isEmpty ? "S" : tag) : displayName,
                         size: 96,
-                        accentColor: selectedColor,
-                        isChannel: true
+                        accentColor: Color.slooshAccent
                     )
 
-                    // Camera / Add Photo Badge
+                    // Camera Badge
                     Circle()
                         .fill(Color(UIColor.systemBackground))
                         .frame(width: 32, height: 32)
@@ -148,19 +131,6 @@ public struct CreateChannelSheet: View {
                 }
             }
 
-            VStack(spacing: 4) {
-                Text(channelName.isEmpty ? "Название канала" : channelName)
-                    .font(.system(size: 19, weight: .bold))
-                    .foregroundColor(channelName.isEmpty ? .secondary : .primary)
-                    .lineLimit(1)
-
-                if !cleanTag.isEmpty {
-                    Text("@\(cleanTag)")
-                        .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(Color.slooshAccent)
-                }
-            }
-
             if avatarDataString != nil {
                 Button {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
@@ -176,15 +146,15 @@ public struct CreateChannelSheet: View {
     }
 
     private var formFieldsSection: some View {
-        VStack(spacing: 16) {
-            // Name Field
+        VStack(spacing: 18) {
+            // Display Name
             VStack(alignment: .leading, spacing: 6) {
-                Text("НАЗВАНИЕ")
+                Text("ИМЯ")
                     .font(.system(size: 12, weight: .bold))
                     .foregroundColor(.secondary)
                     .padding(.leading, 4)
 
-                TextField("Например: КиноКлуб Sloosh", text: $channelName)
+                TextField("Ваше имя", text: $displayName)
                     .font(.system(size: 16))
                     .padding(.horizontal, 14)
                     .padding(.vertical, 12)
@@ -198,10 +168,10 @@ public struct CreateChannelSheet: View {
                     )
             }
 
-            // Channel Tag Field
+            // Tag Handle
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
-                    Text("ТЕГ КАНАЛА")
+                    Text("УНИКАЛЬНЫЙ ТЕГ")
                         .font(.system(size: 12, weight: .bold))
                         .foregroundColor(.secondary)
                     Spacer()
@@ -217,11 +187,11 @@ public struct CreateChannelSheet: View {
                         .font(.system(size: 16, weight: .bold))
                         .foregroundColor(.secondary)
 
-                    TextField("cinema_club", text: $channelTag)
+                    TextField("username", text: $tag)
                         .font(.system(size: 16))
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
-                        .onChange(of: channelTag) { _, newValue in
+                        .onChange(of: tag) { _, newValue in
                             checkTagRealtime(newValue)
                         }
                 }
@@ -234,98 +204,35 @@ public struct CreateChannelSheet: View {
                 .overlay(
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .stroke(
-                            !cleanTag.isEmpty && !isTagAvailable
+                            !inputTagClean.isEmpty && !isTagAvailable
                                 ? Color.red.opacity(0.5)
                                 : Color.primary.opacity(0.1),
                             lineWidth: 1
                         )
                 )
 
-                if let msg = tagStatusMessage, !cleanTag.isEmpty {
+                if let msg = tagStatusMessage, !inputTagClean.isEmpty {
                     Text(msg)
                         .font(.system(size: 12, weight: .medium))
                         .foregroundColor(isTagAvailable ? .secondary : .red)
                         .padding(.leading, 4)
                 }
             }
-
-            // Description Field
-            VStack(alignment: .leading, spacing: 6) {
-                Text("ОПИСАНИЕ")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundColor(.secondary)
-                    .padding(.leading, 4)
-
-                TextField("О чём этот канал? (необязательно)", text: $channelDescription, axis: .vertical)
-                    .lineLimit(2...4)
-                    .font(.system(size: 15))
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 12)
-                    .background(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .fill(Color.primary.opacity(0.06))
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
-                            .stroke(Color.primary.opacity(0.1), lineWidth: 1)
-                    )
-            }
         }
     }
 
-    private var colorPickerSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("АКЦЕНТНЫЙ ЦВЕТ")
-                .font(.system(size: 12, weight: .bold))
-                .foregroundColor(.secondary)
-                .padding(.leading, 4)
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 12) {
-                    ForEach(colorPresets, id: \.self) { hex in
-                        let color = UIColor(hex: hex).map { Color($0) } ?? .slooshAccent
-                        Button {
-                            selectedColorHex = hex
-                            let feedback = UISelectionFeedbackGenerator()
-                            feedback.selectionChanged()
-                        } label: {
-                            ZStack {
-                                Circle()
-                                    .fill(color)
-                                    .frame(width: 40, height: 40)
-
-                                if selectedColorHex == hex {
-                                    Circle()
-                                        .stroke(Color.white, lineWidth: 3)
-                                        .frame(width: 40, height: 40)
-
-                                    Image(systemName: "checkmark")
-                                        .font(.system(size: 14, weight: .black))
-                                        .foregroundColor(.white)
-                                }
-                            }
-                        }
-                        .buttonStyle(PeakPressButtonStyle())
-                    }
-                }
-                .padding(.horizontal, 2)
-                .padding(.vertical, 4)
-            }
-        }
-    }
-
-    private var createButton: some View {
+    private var saveButton: some View {
         Button {
-            createChannelAction()
+            saveProfileAction()
         } label: {
             HStack(spacing: 8) {
-                if isCreating {
+                if isSaving {
                     ProgressView()
                         .tint(.black)
                 } else {
-                    Image(systemName: "sparkles")
+                    Image(systemName: "checkmark")
                         .font(.system(size: 16, weight: .bold))
-                    Text("Создать канал")
+                    Text("Сохранить")
                         .font(.system(size: 17, weight: .bold))
                 }
             }
@@ -348,7 +255,13 @@ public struct CreateChannelSheet: View {
         let clean = TagValidator.sanitize(rawTag)
         guard !clean.isEmpty else {
             tagStatusMessage = nil
-            isTagAvailable = false
+            isTagAvailable = true
+            return
+        }
+
+        if clean == currentTagClean {
+            tagStatusMessage = "Ваш текущий тег"
+            isTagAvailable = true
             return
         }
 
@@ -361,7 +274,7 @@ public struct CreateChannelSheet: View {
 
         isCheckingTag = true
         Task {
-            let result = await repo.checkChannelTagAvailability(tag: clean)
+            let result = await messengerRepo.checkUserTagAvailability(tag: clean)
             await MainActor.run {
                 self.isCheckingTag = false
                 self.isTagAvailable = result.isAvailable
@@ -370,35 +283,34 @@ public struct CreateChannelSheet: View {
         }
     }
 
-    private func createChannelAction() {
+    private func saveProfileAction() {
         guard isFormValid else { return }
-        isCreating = true
+        isSaving = true
         errorMessage = nil
 
-        let name = channelName.trimmingCharacters(in: .whitespacesAndNewlines)
-        let desc = channelDescription.trimmingCharacters(in: .whitespacesAndNewlines)
-        let tag = cleanTag
-        let avatar = avatarDataString
-        let hex = selectedColorHex
+        let nameToSave = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        let tagToSave = inputTagClean
+        let photoToSave = avatarDataString
 
         Task {
-            if let created = await repo.createChannel(
-                name: name,
-                description: desc,
-                tag: tag,
-                avatarUrl: avatar,
-                accentColorHex: hex
-            ) {
-                let generator = UINotificationFeedbackGenerator()
-                generator.notificationOccurred(.success)
-                isCreating = false
-                dismiss()
-                onCreated(created)
-            } else {
-                let generator = UINotificationFeedbackGenerator()
-                generator.notificationOccurred(.error)
-                isCreating = false
-                errorMessage = "Не удалось создать канал. Проверьте интернет-соединение или уникальность тега."
+            let res = await authRepo.updateUserProfile(
+                displayName: nameToSave.isEmpty ? nil : nameToSave,
+                tag: tagToSave.isEmpty ? nil : tagToSave,
+                photoURL: photoToSave
+            )
+
+            await MainActor.run {
+                self.isSaving = false
+                if res.success {
+                    let generator = UINotificationFeedbackGenerator()
+                    generator.notificationOccurred(.success)
+                    ToastManager.shared.show(title: "Профиль обновлен", icon: "checkmark.circle.fill")
+                    dismiss()
+                } else {
+                    let generator = UINotificationFeedbackGenerator()
+                    generator.notificationOccurred(.error)
+                    self.errorMessage = res.message
+                }
             }
         }
     }

@@ -2,12 +2,45 @@ import Foundation
 import UIKit
 import SwiftUI
 
-public enum MessageType: String, Codable, Hashable {
+// MARK: - Tag Validation Helper
+
+public enum TagValidator {
+    public static func sanitize(_ rawTag: String) -> String {
+        var clean = rawTag.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        while clean.hasPrefix("@") {
+            clean.removeFirst()
+        }
+        return clean.filter { $0.isLetter || $0.isNumber || $0 == "_" }
+    }
+
+    public static func validate(_ tag: String) -> (isValid: Bool, message: String) {
+        let clean = sanitize(tag)
+        if clean.count < 3 {
+            return (false, "Тег должен содержать минимум 3 символа")
+        }
+        if clean.count > 30 {
+            return (false, "Тег не должен превышать 30 символов")
+        }
+        let pattern = "^[a-z0-9_]{3,30}$"
+        guard clean.range(of: pattern, options: .regularExpression) != nil else {
+            return (false, "Разрешены только латинские буквы, цифры и символ _")
+        }
+        let reserved: Set<String> = ["sloosh", "admin", "support", "official", "channel", "user", "help"]
+        if reserved.contains(clean) {
+            return (false, "Этот тег зарезервирован системой")
+        }
+        return (true, "Формат тега корректен")
+    }
+}
+
+// MARK: - Message Types & Media Payload
+
+public enum MessageType: String, Codable, Sendable, Hashable {
     case text
     case media
 }
 
-public struct MediaCardPayload: Identifiable, Codable, Equatable, Hashable {
+public struct MediaCardPayload: Identifiable, Codable, Sendable, Equatable, Hashable {
     public var id: String { mediaId }
     public let mediaId: String
     public let type: String
@@ -33,31 +66,51 @@ public struct MediaCardPayload: Identifiable, Codable, Equatable, Hashable {
     }
 }
 
-public struct SlooshUser: Identifiable, Codable, Equatable, Hashable {
+// MARK: - Sloosh User Model (Privacy Sanitized)
+
+public struct SlooshUser: Identifiable, Codable, Sendable, Equatable, Hashable {
     public let id: String
     public let displayName: String
-    public let email: String
+    public let tag: String?
     public let avatarUrl: String?
     public let isOnline: Bool?
 
     enum CodingKeys: String, CodingKey {
         case id
         case displayName
-        case email
+        case tag
         case avatarUrl
         case isOnline
+        case email // Decoded for backward compatibility only
     }
 
     public var displayTitle: String {
         if !displayName.isEmpty { return displayName }
-        if !email.isEmpty { return email.components(separatedBy: "@").first ?? email }
+        if let tag = tag, !tag.isEmpty { return "@\(tag)" }
         return "Пользователь Sloosh"
     }
 
-    public init(id: String, displayName: String, email: String, avatarUrl: String? = nil, isOnline: Bool? = true) {
+    public var displayTag: String {
+        if let tag = tag, !tag.isEmpty { return "@\(tag)" }
+        return ""
+    }
+
+    public var avatarInitials: String {
+        let name = displayName.isEmpty ? (tag ?? "S") : displayName
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return String(trimmed.prefix(1)).uppercased()
+    }
+
+    public init(
+        id: String,
+        displayName: String,
+        tag: String? = nil,
+        avatarUrl: String? = nil,
+        isOnline: Bool? = true
+    ) {
         self.id = id
         self.displayName = displayName
-        self.email = email
+        self.tag = tag
         self.avatarUrl = avatarUrl
         self.isOnline = isOnline
     }
@@ -66,13 +119,24 @@ public struct SlooshUser: Identifiable, Codable, Equatable, Hashable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.id = (try? container.decodeIfPresent(String.self, forKey: .id)) ?? ""
         self.displayName = (try? container.decodeIfPresent(String.self, forKey: .displayName)) ?? ""
-        self.email = (try? container.decodeIfPresent(String.self, forKey: .email)) ?? ""
+        self.tag = try? container.decodeIfPresent(String.self, forKey: .tag)
         self.avatarUrl = try? container.decodeIfPresent(String.self, forKey: .avatarUrl)
         self.isOnline = try? container.decodeIfPresent(Bool.self, forKey: .isOnline)
     }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(id, forKey: .id)
+        try container.encode(displayName, forKey: .displayName)
+        try container.encodeIfPresent(tag, forKey: .tag)
+        try container.encodeIfPresent(avatarUrl, forKey: .avatarUrl)
+        try container.encodeIfPresent(isOnline, forKey: .isOnline)
+    }
 }
 
-public struct ChatMessage: Identifiable, Codable, Equatable, Hashable {
+// MARK: - Chat Message Model
+
+public struct ChatMessage: Identifiable, Codable, Sendable, Equatable, Hashable {
     public let id: String
     public let senderId: String
     public let receiverId: String
@@ -112,7 +176,9 @@ public struct ChatMessage: Identifiable, Codable, Equatable, Hashable {
     }
 }
 
-public struct ChatConversation: Identifiable, Codable, Equatable, Hashable {
+// MARK: - Chat Conversation Model
+
+public struct ChatConversation: Identifiable, Codable, Sendable, Equatable, Hashable {
     public var id: String { chatId }
     public let chatId: String
     public let peerUser: SlooshUser
@@ -120,7 +186,13 @@ public struct ChatConversation: Identifiable, Codable, Equatable, Hashable {
     public let unreadCount: Int
     public let updatedAtMs: Int64
 
-    public init(chatId: String, peerUser: SlooshUser, lastMessageText: String, unreadCount: Int = 0, updatedAtMs: Int64 = Int64(Date().timeIntervalSince1970 * 1000)) {
+    public init(
+        chatId: String,
+        peerUser: SlooshUser,
+        lastMessageText: String,
+        unreadCount: Int = 0,
+        updatedAtMs: Int64 = Int64(Date().timeIntervalSince1970 * 1000)
+    ) {
         self.chatId = chatId
         self.peerUser = peerUser
         self.lastMessageText = lastMessageText
@@ -131,8 +203,9 @@ public struct ChatConversation: Identifiable, Codable, Equatable, Hashable {
 
 // MARK: - Channel Model
 
-public struct ChannelModel: Identifiable, Codable, Equatable, Hashable {
+public struct ChannelModel: Identifiable, Codable, Sendable, Equatable, Hashable {
     public let id: String
+    public var tag: String
     public var name: String
     public var description: String
     public var avatarEmoji: String?
@@ -150,6 +223,7 @@ public struct ChannelModel: Identifiable, Codable, Equatable, Hashable {
 
     enum CodingKeys: String, CodingKey {
         case id
+        case tag
         case name
         case description
         case avatarEmoji
@@ -168,9 +242,10 @@ public struct ChannelModel: Identifiable, Codable, Equatable, Hashable {
 
     public init(
         id: String = "ch_\(Int64(Date().timeIntervalSince1970 * 1000))_\(UUID().uuidString.prefix(6).lowercased())",
+        tag: String,
         name: String,
         description: String = "",
-        avatarEmoji: String? = "📢",
+        avatarEmoji: String? = nil,
         avatarUrl: String? = nil,
         accentColorHex: String? = "#FF9F0A",
         ownerId: String,
@@ -184,6 +259,8 @@ public struct ChannelModel: Identifiable, Codable, Equatable, Hashable {
         lastPostTimestampMs: Int64? = nil
     ) {
         self.id = id
+        let clean = TagValidator.sanitize(tag)
+        self.tag = clean.isEmpty ? "channel_\(id.prefix(6))" : clean
         self.name = name
         self.description = description
         self.avatarEmoji = avatarEmoji
@@ -202,7 +279,16 @@ public struct ChannelModel: Identifiable, Codable, Equatable, Hashable {
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
-        self.id = (try? container.decodeIfPresent(String.self, forKey: .id)) ?? ""
+        let decodedId = (try? container.decodeIfPresent(String.self, forKey: .id)) ?? ""
+        self.id = decodedId
+
+        let decodedTag = try? container.decodeIfPresent(String.self, forKey: .tag)
+        if let t = decodedTag, !t.isEmpty {
+            self.tag = TagValidator.sanitize(t)
+        } else {
+            self.tag = "channel_\(decodedId.prefix(6))"
+        }
+
         self.name = (try? container.decodeIfPresent(String.self, forKey: .name)) ?? ""
         self.description = (try? container.decodeIfPresent(String.self, forKey: .description)) ?? ""
         self.avatarEmoji = try? container.decodeIfPresent(String.self, forKey: .avatarEmoji)
@@ -217,6 +303,19 @@ public struct ChannelModel: Identifiable, Codable, Equatable, Hashable {
         self.isPublic = (try? container.decodeIfPresent(Bool.self, forKey: .isPublic)) ?? true
         self.lastPostText = try? container.decodeIfPresent(String.self, forKey: .lastPostText)
         self.lastPostTimestampMs = try? container.decodeIfPresent(Int64.self, forKey: .lastPostTimestampMs)
+    }
+
+    public var displayTag: String {
+        "@\(tag)"
+    }
+
+    public var formattedTag: String {
+        "@\(tag)"
+    }
+
+    public var avatarInitials: String {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return String(trimmed.prefix(1)).uppercased()
     }
 
     public var displayAvatarEmoji: String {
@@ -249,7 +348,7 @@ public struct ChannelModel: Identifiable, Codable, Equatable, Hashable {
 
 // MARK: - Channel Post Model
 
-public struct ChannelPost: Identifiable, Codable, Equatable, Hashable {
+public struct ChannelPost: Identifiable, Codable, Sendable, Equatable, Hashable {
     public let id: String
     public let channelId: String
     public let authorId: String
@@ -312,7 +411,6 @@ public struct ChannelPost: Identifiable, Codable, Equatable, Hashable {
         self.viewsCount = try? container.decodeIfPresent(Int.self, forKey: .viewsCount)
     }
 
-    /// Aggregates reactions into distinct emojis with total count and current user reaction flag
     public func reactionSummary(currentUserId: String) -> [(emoji: String, count: Int, isMine: Bool)] {
         guard let reactions = reactions, !reactions.isEmpty else { return [] }
         var counts: [String: Int] = [:]
@@ -333,7 +431,7 @@ public struct ChannelPost: Identifiable, Codable, Equatable, Hashable {
 
 // MARK: - Channel User Subscription
 
-public struct ChannelSubscription: Codable, Equatable, Hashable {
+public struct ChannelSubscription: Codable, Sendable, Equatable, Hashable {
     public let channelId: String
     public var channel: ChannelModel?
     public let subscribedAtMs: Int64
@@ -369,7 +467,7 @@ public struct ChannelSubscription: Codable, Equatable, Hashable {
 
 // MARK: - Unified Messenger Feed Item
 
-public enum MessengerFeedItem: Identifiable, Hashable {
+public enum MessengerFeedItem: Identifiable, Sendable, Hashable {
     case directChat(ChatConversation)
     case channel(ChannelModel)
 
@@ -391,5 +489,3 @@ public enum MessengerFeedItem: Identifiable, Hashable {
         }
     }
 }
-
-

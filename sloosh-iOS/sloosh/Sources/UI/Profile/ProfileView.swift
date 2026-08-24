@@ -11,9 +11,9 @@ enum FavoriteCategory: String, CaseIterable {
     var filterType: String? {
         switch self {
         case .all: return nil
-        case .movies: return "movie" // Здесь нужна дополнительная фильтрация, чтобы исключить мультфильмы, если сервер отдает их как type "movie"
-        case .tvShows: return "tv"   // Аналогично для сериалов
-        case .cartoons: return "cartoon" // Заглушка, позже реализуем правильный фильтр мультфильмов
+        case .movies: return "movie"
+        case .tvShows: return "tv"
+        case .cartoons: return "cartoon"
         }
     }
 }
@@ -26,6 +26,8 @@ struct ProfileView: View {
     @SceneStorage("profileShowsDownloads") private var showsDownloads = false
     @State private var showAuthSheet = false
     @State private var showSignOutAlert = false
+    @State private var showAccountOptions = false
+    @State private var showEditProfileSheet = false
     @Namespace private var navigationTransition
     @AppStorage("cardDensity") private var cardDensity: CardDensity = .regular
     @State private var scrollOffsets: [FavoriteCategory: CGFloat] = [:]
@@ -109,126 +111,133 @@ struct ProfileView: View {
                 }
             ))
             .toolbar(.hidden, for: .navigationBar)
-                .safeAreaInset(edge: .top, spacing: 0) {
-                    VStack(spacing: 8) {
-                        // Шапка: аватар/войти слева, "Профиль" по центру, шестерня справа
-                        ZStack {
-                            Text(authRepo.isAuthenticated ? (authRepo.currentUser?.displayTitle ?? "Профиль") : "Профиль")
-                                .font(.system(size: 18, weight: .semibold))
-                                .foregroundStyle(.primary)
-                                .lineLimit(1)
-                                .truncationMode(.tail)
-                                .padding(.horizontal, 64)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                VStack(spacing: 8) {
+                    // Header Bar
+                    ZStack {
+                        Text(authRepo.isAuthenticated ? (authRepo.currentUser?.displayTag.isEmpty == false ? authRepo.currentUser!.displayTag : authRepo.currentUser?.displayTitle ?? "Профиль") : "Профиль")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(.primary)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
+                            .padding(.horizontal, 64)
 
-                            HStack {
-                                // Левая кнопка: аватар (если вошёл) или "Войти"
-                                Button {
-                                    if authRepo.isAuthenticated {
-                                        showSignOutAlert = true
-                                    } else {
-                                        showAuthSheet = true
-                                    }
-                                } label: {
-                                    ProfileAvatarButton(user: authRepo.currentUser)
+                        HStack {
+                            // Left Avatar / Sign-In Button
+                            Button {
+                                if authRepo.isAuthenticated {
+                                    showAccountOptions = true
+                                } else {
+                                    showAuthSheet = true
                                 }
-                                .buttonStyle(.plain)
-                                .confirmationDialog(
-                                    "Выйти из аккаунта?",
-                                    isPresented: $showSignOutAlert,
-                                    titleVisibility: .visible
-                                ) {
-                                    Button("Выйти из аккаунта", role: .destructive) {
-                                        authRepo.signOut()
-                                    }
-                                    Button("Отмена", role: .cancel) {}
-                                } message: {
-                                    if let email = authRepo.currentUser?.email, !email.isEmpty {
-                                        Text("Вы действительно хотите выйти из аккаунта \(email)?")
-                                    } else if let name = authRepo.currentUser?.displayName, !name.isEmpty {
-                                        Text("Вы действительно хотите выйти из аккаунта \(name)?")
-                                    } else {
-                                        Text("Вы действительно хотите выйти из своего аккаунта?")
-                                    }
+                            } label: {
+                                ProfileAvatarButton(user: authRepo.currentUser)
+                            }
+                            .buttonStyle(.plain)
+                            .confirmationDialog(
+                                "Управление профилем",
+                                isPresented: $showAccountOptions,
+                                titleVisibility: .visible
+                            ) {
+                                Button("Редактировать профиль") {
+                                    showEditProfileSheet = true
+                                }
+                                Button("Выйти из аккаунта", role: .destructive) {
+                                    showSignOutAlert = true
+                                }
+                                Button("Отмена", role: .cancel) {}
+                            }
+                            .confirmationDialog(
+                                "Выйти из аккаунта?",
+                                isPresented: $showSignOutAlert,
+                                titleVisibility: .visible
+                            ) {
+                                Button("Выйти из аккаунта", role: .destructive) {
+                                    authRepo.signOut()
+                                }
+                                Button("Отмена", role: .cancel) {}
+                            } message: {
+                                Text("Вы действительно хотите выйти из своего аккаунта?")
+                            }
+
+                            Spacer()
+
+                            HStack(spacing: 8) {
+                                TelegramGlassIconButton(systemName: "arrow.down.circle.fill") {
+                                    showsDownloads = true
                                 }
 
-                                Spacer()
-
-                                HStack(spacing: 8) {
-                                    TelegramGlassIconButton(systemName: "arrow.down.circle.fill") {
-                                        showsDownloads = true
-                                    }
-
-                                    TelegramGlassIconButton(systemName: "gearshape.fill") {
-                                        showsSettings = true
-                                    }
+                                TelegramGlassIconButton(systemName: "gearshape.fill") {
+                                    showsSettings = true
                                 }
                             }
                         }
-                        .padding(.horizontal, 16)
+                    }
+                    .padding(.horizontal, 16)
 
-                        // Табы категорий
-                        ProfileCategoryTextTabs(
-                            selectedCategory: $selectedCategory,
-                            categoryCounts: categoryCounts
-                        )
-                        .padding(.bottom, 2)
-                    }
-                    .background(
-                        VariableBlurView(tintOpacity: 1.0)
-                            .padding(.bottom, -60)
-                            .ignoresSafeArea(edges: .top)
-                            .opacity(blurOpacity)
-                            .animation(.easeInOut(duration: 0.2), value: blurOpacity)
+                    // Category Tabs
+                    ProfileCategoryTextTabs(
+                        selectedCategory: $selectedCategory,
+                        categoryCounts: categoryCounts
                     )
+                    .padding(.bottom, 2)
                 }
-                .navigationDestination(isPresented: $showsSettings) {
-                    SettingsView()
-                }
-                .fullScreenCover(isPresented: $showAuthSheet) {
-                    AuthView()
-                }
-                .sheet(item: $directPlaybackMovie, onDismiss: {
-                    if let pending = pendingPlayerConfig {
-                        pendingPlayerConfig = nil
-                        DispatchQueue.main.async {
-                            playerConfig = pending
-                        }
+                .background(
+                    VariableBlurView(tintOpacity: 1.0)
+                        .padding(.bottom, -60)
+                        .ignoresSafeArea(edges: .top)
+                        .opacity(blurOpacity)
+                        .animation(.easeInOut(duration: 0.2), value: blurOpacity)
+                )
+            }
+            .navigationDestination(isPresented: $showsSettings) {
+                SettingsView()
+            }
+            .fullScreenCover(isPresented: $showAuthSheet) {
+                AuthView()
+            }
+            .sheet(isPresented: $showEditProfileSheet) {
+                EditProfileSheet()
+            }
+            .sheet(item: $directPlaybackMovie, onDismiss: {
+                if let pending = pendingPlayerConfig {
+                    pendingPlayerConfig = nil
+                    DispatchQueue.main.async {
+                        playerConfig = pending
                     }
-                }) { movie in
-                    HomeDirectPlayWrapper(
-                        movieId: movie.id,
-                        fallbackTitle: movie.title ?? movie.name ?? movie.originalTitle ?? "",
-                        initialKpId: movie.externalIds?.kp
-                    ) { config in
-                        pendingPlayerConfig = config
-                        directPlaybackMovie = nil
-                    }
                 }
-                .fullScreenCover(item: $playerConfig, onDismiss: {
-                    playerConfig = nil
-                }) { config in
-                    PlayerView(
-                        iframeUrl: config.iframeUrl,
-                        fallbackTitle: config.title,
-                        kpId: config.kpId,
-                        season: config.season,
-                        episode: config.episode,
-                        selectedVoiceover: config.voiceover,
-                        directStreamUrl: config.streamUrl,
-                        voices: config.voices,
-                        subtitles: config.subtitles,
-                        initialQuality: config.quality,
-                        seriesResult: config.seriesResult
-                    )
+            }) { movie in
+                HomeDirectPlayWrapper(
+                    movieId: movie.id,
+                    fallbackTitle: movie.title ?? movie.name ?? movie.originalTitle ?? "",
+                    initialKpId: movie.externalIds?.kp
+                ) { config in
+                    pendingPlayerConfig = config
+                    directPlaybackMovie = nil
                 }
             }
+            .fullScreenCover(item: $playerConfig, onDismiss: {
+                playerConfig = nil
+            }) { config in
+                PlayerView(
+                    iframeUrl: config.iframeUrl,
+                    fallbackTitle: config.title,
+                    kpId: config.kpId,
+                    season: config.season,
+                    episode: config.episode,
+                    selectedVoiceover: config.voiceover,
+                    directStreamUrl: config.streamUrl,
+                    voices: config.voices,
+                    subtitles: config.subtitles,
+                    initialQuality: config.quality,
+                    seriesResult: config.seriesResult
+                )
+            }
         }
-
-    // MARK: - Аватар / кнопка входа в шапке
-
+    }
 }
 
-/// Аватар пользователя (фото с Google / инициалы / кнопка «Войти»)
+/// Avatar button in Profile Header
 private struct ProfileAvatarButton: View {
     let user: UserProfile?
 
@@ -240,49 +249,14 @@ private struct ProfileAvatarButton: View {
     var body: some View {
         Group {
             if isAuthenticated {
-                authenticatedAvatar
+                SlooshAvatarView(userProfile: user, size: 38)
+                    .glassEffect(.regular.interactive(), in: Circle())
             } else {
                 signInButton
             }
         }
     }
 
-    // Аватар вошедшего пользователя
-    private var authenticatedAvatar: some View {
-        ZStack {
-            if let photoURLString = user?.photoURL,
-               let photoURL = URL(string: photoURLString) {
-                // Реальное фото из Google аккаунта
-                AsyncImage(url: photoURL) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .scaledToFill()
-                    case .failure, .empty:
-                        initialsText
-                    @unknown default:
-                        initialsText
-                    }
-                }
-                .frame(width: 32, height: 32)
-                .clipShape(Circle())
-            } else {
-                initialsText
-            }
-        }
-        .frame(width: 44, height: 44)
-        .glassEffect(.regular.interactive(), in: .circle)
-    }
-
-    // Инициалы как fallback
-    private var initialsText: some View {
-        Text(user?.avatarInitials ?? "SL")
-            .font(.system(size: 14, weight: .bold))
-            .foregroundStyle(Color.slooshAccent)
-    }
-
-    // Кнопка входа для неавторизованных
     private var signInButton: some View {
         Text("Войти")
             .font(.system(size: 15, weight: .semibold))
@@ -292,7 +266,6 @@ private struct ProfileAvatarButton: View {
             .glassEffect(.regular.interactive(), in: Capsule())
     }
 }
-
 
 struct ProfileCategoryContentView: View {
     let category: FavoriteCategory
@@ -306,11 +279,8 @@ struct ProfileCategoryContentView: View {
 
     var body: some View {
         ScrollView {
-            // Invisible anchor to fix layout alignment
             Color.clear.frame(height: 0).id("profile-scroll-top-\(category.rawValue)")
             VStack(spacing: 20) {
-                // В будущем здесь будет шапка профиля (аватарка, ник пользователя)
-                
                 if favoritesRepo.favorites.isEmpty {
                     ProfileEmptyState(
                         icon: "heart.slash",
@@ -390,7 +360,6 @@ private struct ProfileTabScaleButtonStyle: ButtonStyle {
             .animation(.spring(response: 0.25, dampingFraction: 0.75), value: configuration.isPressed)
     }
 }
-
 
 private struct ProfileCategoryTextTabs: View {
     @Binding var selectedCategory: FavoriteCategory

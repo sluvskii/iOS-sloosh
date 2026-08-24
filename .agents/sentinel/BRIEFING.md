@@ -1,33 +1,37 @@
-# BRIEFING — 2026-08-25T00:53:37+05:00
+# BRIEFING — 2026-08-25T01:42:00Z
 
 ## Mission
-Coordinate implementation and independent verification of Telegram-style Channels in Sloosh Messenger.
+Refactor and polish Sloosh Channels and Messenger system: compressed image avatars, unique @tags, privacy, Liquid Glass capsule design system, clean screens and Firebase sync.
 
 ## 🔒 My Identity
 - Archetype: sentinel
 - Working directory: W:\iOS-sloosh\.agents\sentinel
-- Orchestrator: b5cbba17-2ada-46eb-ab78-1b615867c4f8
-- Victory Auditor: dd32f3ff-dff0-4905-9996-39b5d1a0ad93
+- Orchestrator: 194c1341-0b2c-40d7-b36d-ba453f8de835
+- Victory Auditor: [to be spawned on victory claim]
 
 ## 🔒 Key Constraints
 - No technical decisions — relay only
 - Victory Audit is MANDATORY before reporting completion
-- Must adhere strictly to iOS 26+ Liquid Glass style (.glassEffect()), forbidding .ultraThinMaterial
-- Zero leaks of internal provider names (Alloha, Collaps, neomovies) in UI copy
-- All git commits must be made and pushed per workflow rules
+- Preferred language: Russian
+- Target platform: iOS 26+ first, Liquid Glass (.glassEffect), forbidden .ultraThinMaterial
+- Push to GitHub upon completion and verify CI
 
 ## User Context
-- **Last user request**: Implement Telegram-style Channels in Sloosh built-in Messenger (broadcast channel creation, posting with movie cards, pinned messages, reactions, public discovery).
-- **Pending clarifications**: none
-- **Delivered results**: none
+- **Last user request**: Refactor and polish the Sloosh Channels and Messenger system (unique @tags, real compressed image avatars, Liquid Glass capsules, clean UI, Firebase validation and privacy).
+- **Pending clarifications**: [none]
+- **Delivered results**: [none]
 
 ## Project Status
-- **Phase**: complete
+- **Phase**: in progress
+- **Route**: General (teamwork_preview_orchestrator)
+- **Crons**:
+  - Progress reporting: 49a7eb01-de80-461c-859d-7004772ca265/task-11 (`*/8 * * * *`)
+  - Liveness check: 49a7eb01-de80-461c-859d-7004772ca265/task-13 (`*/10 * * * *`)
 
 ## Victory Audit Status
-- **Triggered**: yes
-- **Verdict**: VICTORY CONFIRMED
+- **Triggered**: no
+- **Verdict**: pending
 - **Retry count**: 0
 
 ## Artifact Index
-- W:\iOS-sloosh\.agents\ORIGINAL_REQUEST.md — Authoritative record of user requirements
+- W:\iOS-sloosh\.agents\ORIGINAL_REQUEST.md — Authoritative user request
