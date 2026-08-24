@@ -1,56 +1,37 @@
-import SwiftUI
+﻿import SwiftUI
 import PhotosUI
 
 public struct ChannelInfoView: View {
-    public let initialChannel: ChannelModel
+    public let channel: ChannelModel
 
     @ObservedObject private var authRepo = AuthRepository.shared
     @ObservedObject private var repo = MessengerRepository.shared
     @Environment(\.dismiss) private var dismiss
 
-    @State private var channel: ChannelModel
-    @State private var posts: [ChannelPost] = []
+    @State private var currentChannel: ChannelModel
+    @State private var isMuted: Bool = false
     @State private var showEditSheet: Bool = false
     @State private var showDeleteConfirm: Bool = false
-    @State private var showUnsubscribeConfirm: Bool = false
-    @State private var isMuted: Bool = false
-
-    @State private var selectedMovieIdForDetails: String? = nil
-    @State private var selectedMediaForDirectPlay: MediaCardPayload? = nil
-    @State private var pendingPlayerConfig: PlayerConfig? = nil
-    @State private var activePlayerConfig: PlayerConfig? = nil
+    @State private var showLeaveConfirm: Bool = false
+    @State private var isActionLoading: Bool = false
 
     public init(channel: ChannelModel) {
-        self.initialChannel = channel
-        self._channel = State(initialValue: channel)
+        self.channel = channel
+        self._currentChannel = State(initialValue: channel)
     }
 
     private var isOwner: Bool {
         guard let currentUserId = authRepo.currentUser?.id else { return false }
-        return channel.ownerId == currentUserId
+        return currentChannel.ownerId == currentUserId
     }
 
     private var isSubscribed: Bool {
-        repo.isSubscribed(channelId: channel.id)
+        repo.isSubscribed(channelId: currentChannel.id)
     }
 
-    private var pinnedPost: ChannelPost? {
-        if let pinnedId = channel.pinnedPostId, let found = posts.first(where: { $0.id == pinnedId }) {
-            return found
-        }
-        return posts.first(where: { $0.isPinned })
-    }
-
-    private var sharedMediaList: [MediaCardPayload] {
-        var unique: [MediaCardPayload] = []
-        var seenIds = Set<String>()
-        for post in posts {
-            if let media = post.media, !seenIds.contains(media.mediaId) {
-                seenIds.insert(media.mediaId)
-                unique.append(media)
-            }
-        }
-        return unique
+    private var subscriberCountText: String {
+        let count = currentChannel.subscriberCount
+        return "\(count) \(declensionSubscribers(count))"
     }
 
     public var body: some View {
@@ -59,560 +40,298 @@ public struct ChannelInfoView: View {
 
             ScrollView {
                 VStack(spacing: 24) {
-                    // Channel Visual Identity Header
-                    headerProfileSection
-                        .padding(.top, 16)
+                    // Header Section (Avatar + Title + Tag + Subscribers)
+                    headerSection
+                        .padding(.top, 24)
 
-                    // Quick Action Button (Non-Owners Subscribe/Unsubscribe)
-                    if !isOwner {
-                        quickActionButtonsSection
-                            .padding(.horizontal, 16)
-                    }
+                    // Description & Tag Card
+                    infoCardSection
 
-                    // Description Section
-                    if !channel.description.isEmpty {
-                        descriptionSection
-                    }
-
-                    // Pinned Post Preview (if available)
-                    if let pinned = pinnedPost {
-                        pinnedPostSection(pinned)
-                    }
-
-                    // Shared Media & Movies Preview (if available)
-                    if !sharedMediaList.isEmpty {
-                        sharedMediaSection
-                    }
-
-                    // Channel Settings Section (Notifications)
-                    settingsSection
-
-                    // Destructive Actions (Owner Delete / Subscriber Leave)
-                    destructiveActionsSection
+                    // Actions Section
+                    actionsSection
                 }
-                .padding(.bottom, 48)
+                .padding(.bottom, 32)
             }
         }
         .navigationTitle("Информация")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if isOwner {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button("Изменить") {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button {
                         showEditSheet = true
+                    } label: {
+                        Text("Изменить")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(Color.slooshAccent)
                     }
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(Color.slooshAccent)
                 }
             }
         }
         .sheet(isPresented: $showEditSheet) {
-            EditChannelSheet(channel: channel) { updatedChannel in
-                self.channel = updatedChannel
+            EditChannelSheet(channel: currentChannel) { updated in
+                self.currentChannel = updated
             }
         }
-        .navigationDestination(item: $selectedMovieIdForDetails) { movieId in
-            DetailsView(movieId: movieId, navigationTransitionID: nil, navigationTransitionNamespace: nil)
-        }
-        .sheet(item: $selectedMediaForDirectPlay, onDismiss: {
-            if let pending = pendingPlayerConfig {
-                pendingPlayerConfig = nil
-                DispatchQueue.main.async {
-                    activePlayerConfig = pending
-                }
+        .confirmationDialog(
+            "Удалить канал «\(currentChannel.name)»?",
+            isPresented: $showDeleteConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Удалить канал", role: .destructive) {
+                deleteChannelAction()
             }
-        }) { media in
-            HomeDirectPlayWrapper(movieId: media.mediaId, fallbackTitle: media.title) { config in
-                pendingPlayerConfig = config
-                selectedMediaForDirectPlay = nil
-            }
-        }
-        .fullScreenCover(item: $activePlayerConfig, onDismiss: {
-            activePlayerConfig = nil
-        }) { config in
-            PlayerView(
-                iframeUrl: config.iframeUrl,
-                fallbackTitle: config.title,
-                kpId: config.kpId,
-                season: config.season,
-                episode: config.episode,
-                selectedVoiceover: config.voiceover,
-                directStreamUrl: config.streamUrl,
-                voices: config.voices,
-                subtitles: config.subtitles,
-                initialQuality: config.quality,
-                seriesResult: config.seriesResult
-            )
-        }
-        .alert("Удалить канал?", isPresented: $showDeleteConfirm) {
             Button("Отмена", role: .cancel) {}
-            Button("Удалить", role: .destructive) {
-                UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
-                Task {
-                    _ = await repo.deleteChannel(channelId: channel.id)
-                    dismiss()
-                }
-            }
         } message: {
-            Text("Канал «\(channel.name)» и все его публикации будут безвозвратно удалены для всех пользователей.")
+            Text("Все посты и подписчики канала будут удалены без возможности восстановления.")
         }
-        .alert("Отписаться от канала?", isPresented: $showUnsubscribeConfirm) {
+        .confirmationDialog(
+            "Покинуть канал «\(currentChannel.name)»?",
+            isPresented: $showLeaveConfirm,
+            titleVisibility: .visible
+        ) {
+            Button("Покинуть канал", role: .destructive) {
+                leaveChannelAction()
+            }
             Button("Отмена", role: .cancel) {}
-            Button("Отписаться", role: .destructive) {
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                Task {
-                    _ = await repo.unsubscribeFromChannel(channelId: channel.id)
-                    dismiss()
-                }
-            }
-        } message: {
-            Text("Вы больше не будете получать обновления и публикации из канала «\(channel.name)».")
-        }
-        .task {
-            self.isMuted = repo.isChannelMuted(channelId: channel.id)
-            let cached = repo.loadChannelPostsFromDisk(channelId: channel.id)
-            if !cached.isEmpty {
-                self.posts = cached
-            }
-            let fetched = await repo.fetchChannelPosts(channelId: channel.id)
-            if !fetched.isEmpty {
-                self.posts = fetched
-            }
         }
     }
 
-    // MARK: - Header Profile Section
+    // MARK: - Header Section
 
-    private var headerProfileSection: some View {
-        VStack(spacing: 14) {
-            SlooshAvatarView(channel: channel, size: 104)
+    private var headerSection: some View {
+        VStack(spacing: 12) {
+            SlooshAvatarView(
+                avatarSource: currentChannel.avatarUrl,
+                fallbackText: currentChannel.name,
+                size: 100,
+                isChannel: true
+            )
 
-            // Channel Title & Subscriber Count
-            VStack(spacing: 6) {
-                Text(channel.name)
+            VStack(spacing: 4) {
+                Text(currentChannel.name)
                     .font(.system(size: 24, weight: .bold))
                     .foregroundColor(.primary)
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, 20)
 
-                HStack(spacing: 6) {
-                    Text(channel.displayTag)
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundColor(Color.slooshAccent)
-
-                    Text("•")
-                        .font(.system(size: 13))
-                        .foregroundColor(.secondary)
-
-                    Text(channel.formattedSubscriberCount)
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundColor(.secondary)
-                }
-
-                // Owner Badge
-                HStack(spacing: 6) {
-                    Image(systemName: isOwner ? "crown.fill" : "person.badge.shield.checkmark.fill")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundColor(Color.slooshAccent)
-                    Text("Создатель: \(channel.ownerName)")
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(Color.slooshAccent)
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 5)
-                .background(
-                    Capsule()
-                        .fill(Color.slooshAccent.opacity(0.12))
-                )
-                .padding(.top, 2)
-            }
-        }
-    }
-
-    // MARK: - Quick Action Buttons
-
-    private var quickActionButtonsSection: some View {
-        Button {
-            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-            Task {
-                if isSubscribed {
-                    showUnsubscribeConfirm = true
-                } else {
-                    _ = await repo.subscribeToChannel(channel: channel)
-                }
-            }
-        } label: {
-            HStack(spacing: 8) {
-                Image(systemName: isSubscribed ? "checkmark.circle.fill" : "plus.circle.fill")
-                    .font(.system(size: 15, weight: .bold))
-                Text(isSubscribed ? "Подписан" : "Подписаться")
-                    .font(.system(size: 15, weight: .bold))
-            }
-            .foregroundColor(isSubscribed ? .primary : .black)
-            .frame(maxWidth: .infinity)
-            .frame(height: 48)
-            .background(
-                Capsule()
-                    .fill(isSubscribed ? Color.white.opacity(0.08) : Color.slooshAccent)
-            )
-            .glassEffect(in: Capsule())
-        }
-        .buttonStyle(PeakPressButtonStyle())
-    }
-
-    // MARK: - Description Section
-
-    private var descriptionSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("ОПИСАНИЕ")
-                .font(.system(size: 12, weight: .bold))
-                .foregroundColor(.secondary)
-                .padding(.horizontal, 20)
-
-            VStack(alignment: .leading, spacing: 8) {
-                Text(channel.description)
-                    .font(.system(size: 15))
-                    .foregroundColor(.primary)
-                    .lineSpacing(4)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(16)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(Color.white.opacity(0.06))
-            )
-            .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .padding(.horizontal, 16)
-        }
-    }
-
-    // MARK: - Pinned Post Section
-
-    private func pinnedPostSection(_ pinned: ChannelPost) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("ЗАКРЕПЛЕННЫЙ ПОСТ")
-                .font(.system(size: 12, weight: .bold))
-                .foregroundColor(.secondary)
-                .padding(.horizontal, 20)
-
-            VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 8) {
-                    Image(systemName: "pin.fill")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundColor(Color.slooshAccent)
-
-                    Text("Закреплено автором")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundColor(Color.slooshAccent)
-
-                    Spacer(minLength: 0)
-
-                    Text(formatTimestamp(pinned.timestampMs))
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary)
-                }
-
-                if let text = pinned.text, !text.isEmpty {
-                    Text(text)
-                        .font(.system(size: 14))
-                        .foregroundColor(.primary)
-                        .lineLimit(3)
-                }
-
-                if let media = pinned.media {
-                    Button {
-                        selectedMovieIdForDetails = media.mediaId
-                    } label: {
-                        HStack(spacing: 10) {
-                            if let posterUrl = media.posterUrl, !posterUrl.isEmpty {
-                                AsyncCachedImage(urlString: posterUrl) {
-                                    Rectangle().fill(Color.white.opacity(0.08))
-                                } content: { img in
-                                    Image(uiImage: img)
-                                        .resizable()
-                                        .aspectRatio(contentMode: .fill)
-                                }
-                                .frame(width: 44, height: 62)
-                                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-                            }
-
-                            VStack(alignment: .leading, spacing: 3) {
-                                Text(media.title)
-                                    .font(.system(size: 14, weight: .semibold))
-                                    .foregroundColor(.white)
-                                    .lineLimit(1)
-
-                                HStack(spacing: 6) {
-                                    if let year = media.year {
-                                        Text(year)
-                                            .font(.system(size: 11))
-                                            .foregroundColor(.secondary)
-                                    }
-                                    if let rating = media.rating, rating > 0 {
-                                        Text(String(format: "★ %.1f", rating))
-                                            .font(.system(size: 11, weight: .heavy))
-                                            .foregroundColor(Color.slooshAccent)
-                                    }
-                                }
-                            }
-
-                            Spacer(minLength: 0)
-
-                            Image(systemName: "chevron.right")
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundColor(.secondary)
-                        }
-                        .padding(8)
-                        .background(
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .fill(Color.white.opacity(0.05))
-                        )
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .padding(16)
-            .background(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(Color.white.opacity(0.06))
-            )
-            .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .padding(.horizontal, 16)
-        }
-    }
-
-    // MARK: - Shared Media Section
-
-    private var sharedMediaSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("МЕДИАФАЙЛЫ КАНАЛА")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundColor(.secondary)
-
-                Spacer()
-
-                Text("\(sharedMediaList.count)")
-                    .font(.system(size: 12, weight: .bold))
+                Text(currentChannel.displayTag)
+                    .font(.system(size: 15, weight: .semibold))
                     .foregroundColor(Color.slooshAccent)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 2)
-                    .background(
-                        Capsule()
-                            .fill(Color.slooshAccent.opacity(0.15))
-                    )
+
+                Text(subscriberCountText)
+                    .font(.system(size: 14))
+                    .foregroundColor(.secondary)
+                    .padding(.top, 2)
             }
-            .padding(.horizontal, 20)
+        }
+    }
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(spacing: 12) {
-                    ForEach(sharedMediaList) { media in
-                        Button {
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            selectedMovieIdForDetails = media.mediaId
-                        } label: {
-                            VStack(alignment: .leading, spacing: 6) {
-                                ZStack(alignment: .topLeading) {
-                                    if let posterUrl = media.posterUrl, !posterUrl.isEmpty {
-                                        AsyncCachedImage(urlString: posterUrl) {
-                                            Rectangle()
-                                                .fill(Color.white.opacity(0.08))
-                                                .aspectRatio(2/3, contentMode: .fill)
-                                        } content: { image in
-                                            Image(uiImage: image)
-                                                .resizable()
-                                                .aspectRatio(2/3, contentMode: .fill)
-                                        }
-                                        .frame(width: 100, height: 150)
-                                        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                                    } else {
-                                        Rectangle()
-                                            .fill(Color.white.opacity(0.08))
-                                            .frame(width: 100, height: 150)
-                                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                                    }
+    // MARK: - Info Card
 
-                                    if let rating = media.rating, rating > 0 {
-                                        Text(String(format: "%.1f", rating))
-                                            .font(.system(size: 10, weight: .heavy))
-                                            .foregroundColor(.white)
-                                            .padding(.horizontal, 4)
-                                            .padding(.vertical, 2)
-                                            .background(Color.rating(rating))
-                                            .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
-                                            .padding(4)
-                                    }
-                                }
+    private var infoCardSection: some View {
+        VStack(spacing: 0) {
+            // Tag row
+            HStack(spacing: 14) {
+                Image(systemName: "at")
+                    .frame(width: 22)
+                    .foregroundColor(Color.slooshAccent)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Тег канала")
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+                    Text(currentChannel.displayTag)
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(.primary)
+                }
+                Spacer()
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 14)
 
-                                Text(media.title)
-                                    .font(.system(size: 12, weight: .semibold))
-                                    .foregroundColor(.primary)
-                                    .lineLimit(1)
-                                    .frame(width: 100, alignment: .leading)
-                            }
-                        }
-                        .buttonStyle(PeakPressButtonStyle())
+            // Description row (if present)
+            if !currentChannel.description.isEmpty {
+                Divider()
+                    .padding(.leading, 52)
+
+                HStack(alignment: .top, spacing: 14) {
+                    Image(systemName: "text.alignleft")
+                        .frame(width: 22)
+                        .foregroundColor(Color.slooshAccent)
+                        .padding(.top, 2)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Описание")
+                            .font(.system(size: 12))
+                            .foregroundColor(.secondary)
+                        Text(currentChannel.description)
+                            .font(.system(size: 15))
+                            .foregroundColor(.primary)
                     }
+                    Spacer()
                 }
                 .padding(.horizontal, 16)
-                .padding(.vertical, 4)
+                .padding(.vertical, 14)
             }
         }
-    }
-
-    // MARK: - Settings Section
-
-    private var settingsSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("НАСТРОЙКИ")
-                .font(.system(size: 12, weight: .bold))
-                .foregroundColor(.secondary)
-                .padding(.horizontal, 20)
-
-            VStack(spacing: 1) {
-                // Notifications Switch
-                HStack {
-                    Label {
-                        Text("Уведомления")
-                            .font(.system(size: 16))
-                            .foregroundColor(.primary)
-                    } icon: {
-                        Image(systemName: isMuted ? "bell.slash.fill" : "bell.fill")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundColor(isMuted ? .secondary : Color.slooshAccent)
-                    }
-
-                    Spacer()
-
-                    Toggle("", isOn: Binding(
-                        get: { !isMuted },
-                        set: { enableNotifications in
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            isMuted = !enableNotifications
-                            Task {
-                                await repo.setChannelMuted(channelId: channel.id, isMuted: isMuted)
-                            }
-                        }
-                    ))
-                    .labelsHidden()
-                    .tint(Color.slooshAccent)
-                }
-                .padding(16)
-            }
-            .background(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(Color.white.opacity(0.06))
-            )
-            .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-            .padding(.horizontal, 16)
-        }
-    }
-
-    // MARK: - Destructive Actions Section
-
-    private var destructiveActionsSection: some View {
-        VStack(spacing: 12) {
-            if isOwner {
-                Button(role: .destructive) {
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    showDeleteConfirm = true
-                } label: {
-                    HStack {
-                        Label {
-                            Text("Удалить канал")
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundColor(.red)
-                        } icon: {
-                            Image(systemName: "trash.fill")
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundColor(.red)
-                        }
-
-                        Spacer()
-                    }
-                    .padding(16)
-                    .background(
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            .fill(Color.white.opacity(0.06))
-                    )
-                    .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                }
-                .buttonStyle(.plain)
-            } else if isSubscribed {
-                Button(role: .destructive) {
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    showUnsubscribeConfirm = true
-                } label: {
-                    HStack {
-                        Label {
-                            Text("Покинуть канал")
-                                .font(.system(size: 16, weight: .semibold))
-                                .foregroundColor(.red)
-                        } icon: {
-                            Image(systemName: "rectangle.portrait.and.arrow.right.fill")
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundColor(.red)
-                        }
-
-                        Spacer()
-                    }
-                    .padding(16)
-                    .background(
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            .fill(Color.white.opacity(0.06))
-                    )
-                    .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                }
-                .buttonStyle(.plain)
-            }
-        }
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color(UIColor.secondarySystemGroupedBackground))
+        )
         .padding(.horizontal, 16)
     }
 
-    private func formatTimestamp(_ timestampMs: Int64) -> String {
-        let date = Date(timeIntervalSince1970: TimeInterval(timestampMs) / 1000)
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "ru_RU")
-        formatter.dateStyle = .short
-        formatter.timeStyle = .short
-        return formatter.string(from: date)
+    // MARK: - Actions Section
+
+    private var actionsSection: some View {
+        VStack(spacing: 0) {
+            if isOwner {
+                Button {
+                    showDeleteConfirm = true
+                } label: {
+                    HStack(spacing: 14) {
+                        Image(systemName: "trash.fill")
+                            .frame(width: 22)
+                            .foregroundColor(.red)
+                        Text("Удалить канал")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundColor(.red)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 14)
+                }
+                .buttonStyle(PeakPressButtonStyle())
+            } else if isSubscribed {
+                Button {
+                    toggleMuteAction()
+                } label: {
+                    HStack(spacing: 14) {
+                        Image(systemName: isMuted ? "bell.fill" : "bell.slash.fill")
+                            .frame(width: 22)
+                            .foregroundColor(.primary)
+                        Text(isMuted ? "Включить звук" : "Без звука")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundColor(.primary)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 14)
+                }
+                .buttonStyle(PeakPressButtonStyle())
+
+                Divider()
+                    .padding(.leading, 52)
+
+                Button {
+                    showLeaveConfirm = true
+                } label: {
+                    HStack(spacing: 14) {
+                        Image(systemName: "rectangle.portrait.and.arrow.right")
+                            .frame(width: 22)
+                            .foregroundColor(.red)
+                        Text("Покинуть канал")
+                            .font(.system(size: 16, weight: .medium))
+                            .foregroundColor(.red)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 14)
+                }
+                .buttonStyle(PeakPressButtonStyle())
+            } else {
+                Button {
+                    subscribeAction()
+                } label: {
+                    HStack(spacing: 14) {
+                        Image(systemName: "megaphone.fill")
+                            .frame(width: 22)
+                            .foregroundColor(Color.slooshAccent)
+                        Text("Подписаться на канал")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(Color.slooshAccent)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 14)
+                }
+                .buttonStyle(PeakPressButtonStyle())
+            }
+        }
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color(UIColor.secondarySystemGroupedBackground))
+        )
+        .padding(.horizontal, 16)
+    }
+
+    // MARK: - Actions
+
+    private func deleteChannelAction() {
+        isActionLoading = true
+        Task {
+            _ = await repo.deleteChannel(channelId: currentChannel.id)
+            await MainActor.run {
+                isActionLoading = false
+                dismiss()
+            }
+        }
+    }
+
+    private func leaveChannelAction() {
+        Task {
+            _ = await repo.unsubscribeFromChannel(channelId: currentChannel.id)
+            await MainActor.run {
+                dismiss()
+            }
+        }
+    }
+
+    private func subscribeAction() {
+        Task {
+            _ = await repo.subscribeToChannel(channelId: currentChannel.id)
+        }
+    }
+
+    private func toggleMuteAction() {
+        isMuted.toggle()
+    }
+
+    private func declensionSubscribers(_ count: Int) -> String {
+        let remainder10 = count % 10
+        let remainder100 = count % 100
+        if remainder100 >= 11 && remainder100 <= 19 {
+            return "подписчиков"
+        }
+        if remainder10 == 1 {
+            return "подписчик"
+        }
+        if remainder10 >= 2 && remainder10 <= 4 {
+            return "подписчика"
+        }
+        return "подписчиков"
     }
 }
 
-// MARK: - Edit Channel Sheet (Author / Owner Profile Management)
+// MARK: - Edit Channel Sheet
 
 public struct EditChannelSheet: View {
-    @Environment(\.dismiss) private var dismiss
-    @ObservedObject private var repo = MessengerRepository.shared
-
     public let channel: ChannelModel
     public let onSaved: (ChannelModel) -> Void
+
+    @Environment(\.dismiss) private var dismiss
+    @ObservedObject private var repo = MessengerRepository.shared
 
     @State private var channelName: String
     @State private var channelTag: String
     @State private var channelDescription: String
     @State private var avatarDataString: String?
     @State private var selectedPhotoItem: PhotosPickerItem? = nil
-    @State private var selectedColorHex: String
 
     @State private var isCheckingTag: Bool = false
     @State private var tagStatusMessage: String? = nil
     @State private var isTagAvailable: Bool = true
     @State private var isSaving: Bool = false
     @State private var errorMessage: String? = nil
-
-    private let colorPresets = [
-        "#FF9F0A", // Orange
-        "#FF453A", // Red
-        "#30D158", // Green
-        "#0A84FF", // Blue
-        "#BF5AF2", // Purple
-        "#64D2FF", // Cyan
-        "#FFD60A", // Yellow
-        "#B2FF00"  // Sloosh Neon
-    ]
 
     public init(channel: ChannelModel, onSaved: @escaping (ChannelModel) -> Void) {
         self.channel = channel
@@ -621,14 +340,6 @@ public struct EditChannelSheet: View {
         self._channelTag = State(initialValue: channel.tag)
         self._channelDescription = State(initialValue: channel.description)
         self._avatarDataString = State(initialValue: channel.avatarUrl)
-        self._selectedColorHex = State(initialValue: channel.accentColorHex ?? "#FF9F0A")
-    }
-
-    private var selectedColor: Color {
-        if let uiColor = UIColor(hex: selectedColorHex) {
-            return Color(uiColor)
-        }
-        return .slooshAccent
     }
 
     private var cleanTag: String {
@@ -647,15 +358,12 @@ public struct EditChannelSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 24) {
-                    // Avatar & Visual Preview
-                    avatarPreviewSection
+                    // Avatar & Photo Picker
+                    avatarSection
                         .padding(.top, 16)
 
                     // Form Fields
-                    formFieldsSection
-
-                    // Color Palette Selector
-                    colorPickerSection
+                    formFields
 
                     if let error = errorMessage {
                         Text(error)
@@ -673,7 +381,7 @@ public struct EditChannelSheet: View {
                 .padding(.horizontal, 20)
             }
             .scrollContentBackground(.hidden)
-            .navigationTitle("Редактирование")
+            .navigationTitle("Настройки канала")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -691,19 +399,17 @@ public struct EditChannelSheet: View {
         }
     }
 
-    private var avatarPreviewSection: some View {
+    private var avatarSection: some View {
         VStack(spacing: 12) {
             PhotosPicker(selection: $selectedPhotoItem, matching: .images, photoLibrary: .shared()) {
                 ZStack(alignment: .bottomTrailing) {
                     SlooshAvatarView(
                         avatarSource: avatarDataString,
-                        fallbackText: channelName.isEmpty ? (cleanTag.isEmpty ? "S" : cleanTag) : channelName,
+                        fallbackText: channelName.isEmpty ? "S" : channelName,
                         size: 96,
-                        accentColor: selectedColor,
                         isChannel: true
                     )
 
-                    // Camera / Edit Photo Badge
                     Circle()
                         .fill(Color(UIColor.systemBackground))
                         .frame(width: 32, height: 32)
@@ -749,7 +455,7 @@ public struct EditChannelSheet: View {
         }
     }
 
-    private var formFieldsSection: some View {
+    private var formFields: some View {
         VStack(spacing: 16) {
             // Name Field
             VStack(alignment: .leading, spacing: 6) {
@@ -808,7 +514,7 @@ public struct EditChannelSheet: View {
                 .overlay(
                     RoundedRectangle(cornerRadius: 12, style: .continuous)
                         .stroke(
-                            !cleanTag.isEmpty && !isTagAvailable && cleanTag != channel.tag
+                            !cleanTag.isEmpty && !isTagAvailable
                                 ? Color.red.opacity(0.5)
                                 : Color.primary.opacity(0.1),
                             lineWidth: 1
@@ -843,47 +549,6 @@ public struct EditChannelSheet: View {
                         RoundedRectangle(cornerRadius: 12, style: .continuous)
                             .stroke(Color.primary.opacity(0.1), lineWidth: 1)
                     )
-            }
-        }
-    }
-
-    private var colorPickerSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("АКЦЕНТНЫЙ ЦВЕТ")
-                .font(.system(size: 12, weight: .bold))
-                .foregroundColor(.secondary)
-                .padding(.leading, 4)
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 12) {
-                    ForEach(colorPresets, id: \.self) { hex in
-                        let color = UIColor(hex: hex).map { Color($0) } ?? .slooshAccent
-                        Button {
-                            selectedColorHex = hex
-                            let feedback = UISelectionFeedbackGenerator()
-                            feedback.selectionChanged()
-                        } label: {
-                            ZStack {
-                                Circle()
-                                    .fill(color)
-                                    .frame(width: 40, height: 40)
-
-                                if selectedColorHex == hex {
-                                    Circle()
-                                        .stroke(Color.white, lineWidth: 3)
-                                        .frame(width: 40, height: 40)
-
-                                    Image(systemName: "checkmark")
-                                        .font(.system(size: 14, weight: .black))
-                                        .foregroundColor(.white)
-                                }
-                            }
-                        }
-                        .buttonStyle(PeakPressButtonStyle())
-                    }
-                }
-                .padding(.horizontal, 2)
-                .padding(.vertical, 4)
             }
         }
     }
@@ -939,7 +604,7 @@ public struct EditChannelSheet: View {
 
         isCheckingTag = true
         Task {
-            let result = await repo.checkChannelTagAvailability(tag: clean)
+            let result = await repo.checkChannelTagAvailability(tag: clean, excludingChannelId: channel.id)
             await MainActor.run {
                 self.isCheckingTag = false
                 self.isTagAvailable = result.isAvailable
@@ -959,7 +624,6 @@ public struct EditChannelSheet: View {
         updated.tag = cleanTag
         updated.description = channelDescription.trimmingCharacters(in: .whitespacesAndNewlines)
         updated.avatarUrl = avatarDataString
-        updated.accentColorHex = selectedColorHex
 
         Task {
             let success = await repo.updateChannelMetadata(channel: updated, oldTag: oldTag != updated.tag ? oldTag : nil)
