@@ -6,19 +6,48 @@ public struct MessengerView: View {
 
     @State private var searchQuery: String = ""
     @State private var selectedPeerUser: SlooshUser? = nil
+    @State private var selectedChannel: ChannelModel? = nil
     @State private var showAuthSheet: Bool = false
+    @State private var showCreateChannelSheet: Bool = false
+
+    // Chat deletion state
     @State private var peerToDelete: SlooshUser? = nil
-    @State private var showDeleteConfirm: Bool = false
+    @State private var showDeleteChatConfirm: Bool = false
+
+    // Channel action state (Unsubscribe or Delete)
+    @State private var channelToAction: ChannelModel? = nil
+    @State private var showChannelActionConfirm: Bool = false
+
+    // Search state
+    @State private var searchedPublicChannels: [ChannelModel] = []
 
     public init() {}
 
-    private var filteredConversations: [ChatConversation] {
-        if searchQuery.isEmpty { return repo.conversations }
-        return repo.conversations.filter {
-            $0.peerUser.displayTitle.localizedCaseInsensitiveContains(searchQuery) ||
-            $0.peerUser.email.localizedCaseInsensitiveContains(searchQuery) ||
-            $0.lastMessageText.localizedCaseInsensitiveContains(searchQuery)
+    private var currentUserId: String {
+        authRepo.currentUser?.id ?? ""
+    }
+
+    private var unifiedFeedItems: [MessengerFeedItem] {
+        var items: [MessengerFeedItem] = []
+        if searchQuery.isEmpty {
+            items += repo.conversations.map { MessengerFeedItem.directChat($0) }
+            items += repo.subscribedChannels.map { MessengerFeedItem.channel($0) }
+        } else {
+            let query = searchQuery.lowercased()
+            let filteredChats = repo.conversations.filter {
+                $0.peerUser.displayTitle.localizedCaseInsensitiveContains(query) ||
+                $0.peerUser.email.localizedCaseInsensitiveContains(query) ||
+                $0.lastMessageText.localizedCaseInsensitiveContains(query)
+            }
+            let filteredSubs = repo.subscribedChannels.filter {
+                $0.name.localizedCaseInsensitiveContains(query) ||
+                $0.description.localizedCaseInsensitiveContains(query) ||
+                ($0.lastPostText?.localizedCaseInsensitiveContains(query) == true)
+            }
+            items += filteredChats.map { MessengerFeedItem.directChat($0) }
+            items += filteredSubs.map { MessengerFeedItem.channel($0) }
         }
+        return items.sorted { $0.timestampMs > $1.timestampMs }
     }
 
     public var body: some View {
@@ -28,34 +57,47 @@ public struct MessengerView: View {
 
                 if !authRepo.isAuthenticated {
                     guestView
-                } else if repo.isLoading && repo.conversations.isEmpty {
+                } else if repo.isLoading && repo.conversations.isEmpty && repo.subscribedChannels.isEmpty {
                     skeletonList
-                } else if repo.conversations.isEmpty && searchQuery.isEmpty {
+                } else if repo.conversations.isEmpty && repo.subscribedChannels.isEmpty && searchQuery.isEmpty {
                     emptyState
                 } else {
-                    chatList
+                    feedList
                 }
             }
             .navigationTitle("Чаты")
             .navigationBarTitleDisplayMode(.large)
-            .searchable(text: $searchQuery, prompt: "Поиск")
+            .searchable(text: $searchQuery, prompt: "Поиск чатов и каналов")
             .onChange(of: searchQuery) { _, newValue in
-                if !newValue.isEmpty {
+                let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty {
                     Task {
-                        await repo.searchUsers(query: newValue)
+                        await repo.searchUsers(query: trimmed)
+                        let channels = await repo.fetchPublicChannels(query: trimmed)
+                        self.searchedPublicChannels = channels
                     }
+                } else {
+                    self.searchedPublicChannels = []
                 }
             }
             .toolbar { toolbarContent }
             .navigationDestination(item: $selectedPeerUser) { peer in
                 ChatDetailView(peerUser: peer)
             }
+            .navigationDestination(item: $selectedChannel) { channel in
+                ChannelDetailView(channel: channel)
+            }
+            .sheet(isPresented: $showCreateChannelSheet) {
+                CreateChannelSheet { newChannel in
+                    selectedChannel = newChannel
+                }
+            }
             .fullScreenCover(isPresented: $showAuthSheet) {
                 AuthView()
             }
             .confirmationDialog(
                 "Удалить чат с \(peerToDelete?.displayTitle ?? "")?",
-                isPresented: $showDeleteConfirm,
+                isPresented: $showDeleteChatConfirm,
                 titleVisibility: .visible
             ) {
                 Button("Удалить чат", role: .destructive) {
@@ -67,26 +109,102 @@ public struct MessengerView: View {
             } message: {
                 Text("История сообщений будет удалена.")
             }
+            .confirmationDialog(
+                channelActionTitle,
+                isPresented: $showChannelActionConfirm,
+                titleVisibility: .visible
+            ) {
+                if let channel = channelToAction {
+                    let isOwner = (channel.ownerId == currentUserId)
+                    if isOwner {
+                        Button("Удалить канал", role: .destructive) {
+                            Task {
+                                _ = await repo.deleteChannel(channelId: channel.id)
+                            }
+                        }
+                    } else {
+                        Button("Отписаться от канала", role: .destructive) {
+                            Task {
+                                _ = await repo.unsubscribeFromChannel(channelId: channel.id)
+                            }
+                        }
+                    }
+                }
+                Button("Отмена", role: .cancel) {}
+            } message: {
+                Text(channelActionMessage)
+            }
             .task {
                 if authRepo.isAuthenticated {
                     await repo.syncCurrentUserProfile()
                     await repo.fetchConversations()
+                    _ = await repo.fetchSubscribedChannels()
                 }
             }
             .refreshable {
                 if authRepo.isAuthenticated {
                     await repo.fetchConversations()
+                    _ = await repo.fetchSubscribedChannels()
                 }
             }
         }
     }
 
-    // MARK: - Subviews (Peak Messenger Style)
+    private var channelActionTitle: String {
+        guard let channel = channelToAction else { return "" }
+        if channel.ownerId == currentUserId {
+            return "Удалить канал «\(channel.name)»?"
+        } else {
+            return "Отписаться от «\(channel.name)»?"
+        }
+    }
 
-    private var chatList: some View {
+    private var channelActionMessage: String {
+        guard let channel = channelToAction else { return "" }
+        if channel.ownerId == currentUserId {
+            return "Канал и все публикации будут удалены без возможности восстановления."
+        } else {
+            return "Вы перестанете получать обновления из этого канала."
+        }
+    }
+
+    // MARK: - Feed List & Search Sections
+
+    private var feedList: some View {
         ScrollView {
             LazyVStack(spacing: 0) {
-                // Если есть активный поиск и есть найденные пользователи, не входящие в текущие диалоги
+                // 1. Поиск: Публичные каналы
+                if !searchQuery.isEmpty && !searchedPublicChannels.isEmpty {
+                    Section {
+                        ForEach(searchedPublicChannels) { channel in
+                            PublicChannelSearchRow(
+                                channel: channel,
+                                isSubscribed: repo.isSubscribed(channelId: channel.id),
+                                onToggleSubscribe: {
+                                    toggleChannelSubscription(channel: channel)
+                                },
+                                onSelect: {
+                                    selectedChannel = channel
+                                }
+                            )
+
+                            PeakDivider()
+                                .padding(.leading, 86)
+                        }
+                    } header: {
+                        HStack {
+                            Text("КАНАЛЫ")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundColor(.secondary)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.top, 10)
+                        .padding(.bottom, 4)
+                    }
+                }
+
+                // 2. Поиск: Пользователи
                 if !searchQuery.isEmpty && !repo.searchResults.isEmpty {
                     Section {
                         ForEach(repo.searchResults) { user in
@@ -113,38 +231,114 @@ public struct MessengerView: View {
                     }
                 }
 
-                ForEach(filteredConversations) { chat in
-                    Button {
-                        selectedPeerUser = chat.peerUser
-                    } label: {
-                        PeakChatRow(chat: chat, onDelete: {
-                            peerToDelete = chat.peerUser
-                            showDeleteConfirm = true
-                        })
+                // 3. Основной объединённый список диалогов и каналов
+                if !searchQuery.isEmpty && (!repo.searchResults.isEmpty || !searchedPublicChannels.isEmpty) && !unifiedFeedItems.isEmpty {
+                    HStack {
+                        Text("ЧАТЫ И ПОДПИСКИ")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundColor(.secondary)
+                        Spacer()
                     }
-                    .buttonStyle(PeakPressButtonStyle())
+                    .padding(.horizontal, 16)
+                    .padding(.top, 14)
+                    .padding(.bottom, 4)
+                }
 
-                    PeakDivider()
-                        .padding(.leading, 86)
+                ForEach(unifiedFeedItems) { item in
+                    switch item {
+                    case .directChat(let chat):
+                        Button {
+                            selectedPeerUser = chat.peerUser
+                        } label: {
+                            PeakChatRow(chat: chat, onDelete: {
+                                peerToDelete = chat.peerUser
+                                showDeleteChatConfirm = true
+                            })
+                        }
+                        .buttonStyle(PeakPressButtonStyle())
+
+                        PeakDivider()
+                            .padding(.leading, 86)
+
+                    case .channel(let channel):
+                        Button {
+                            selectedChannel = channel
+                        } label: {
+                            PeakChannelRow(
+                                channel: channel,
+                                isOwner: channel.ownerId == currentUserId,
+                                onAction: {
+                                    channelToAction = channel
+                                    showChannelActionConfirm = true
+                                }
+                            )
+                        }
+                        .buttonStyle(PeakPressButtonStyle())
+
+                        PeakDivider()
+                            .padding(.leading, 86)
+                    }
                 }
             }
         }
         .scrollContentBackground(.hidden)
     }
 
+    private func toggleChannelSubscription(channel: ChannelModel) {
+        let generator = UIImpactFeedbackGenerator(style: .medium)
+        generator.impactOccurred()
+        Task {
+            if repo.isSubscribed(channelId: channel.id) {
+                _ = await repo.unsubscribeFromChannel(channelId: channel.id)
+            } else {
+                _ = await repo.subscribeToChannel(channel: channel)
+            }
+        }
+    }
+
     private var emptyState: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "bubble.left.and.bubble.right")
-                .font(.system(size: 48, weight: .thin))
-                .foregroundColor(.secondary)
-            Text("Пока нет чатов")
+        VStack(spacing: 16) {
+            ZStack(alignment: .bottomTrailing) {
+                Image(systemName: "bubble.left.and.bubble.right")
+                    .font(.system(size: 48, weight: .thin))
+                    .foregroundColor(.secondary)
+
+                Image(systemName: "megaphone.fill")
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundColor(Color.slooshAccent)
+                    .offset(x: 6, y: 6)
+            }
+
+            Text("Пока нет чатов и каналов")
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundColor(.secondary)
-            Text("Введи имя или email друга в поиске выше, чтобы начать общение!")
+
+            Text("Найдите друзей или интересные каналы через поиск, или создайте свой первый канал!")
                 .font(.system(size: 14))
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 36)
+
+            Button {
+                showCreateChannelSheet = true
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "megaphone.fill")
+                        .font(.system(size: 15, weight: .bold))
+                    Text("Создать канал")
+                        .font(.system(size: 15, weight: .bold))
+                }
+                .foregroundColor(.black)
+                .padding(.horizontal, 20)
+                .padding(.vertical, 11)
+                .background(
+                    Capsule()
+                        .fill(Color.slooshAccent)
+                )
+                .glassEffect(in: Capsule())
+            }
+            .buttonStyle(PeakPressButtonStyle())
+            .padding(.top, 8)
         }
     }
 
@@ -194,11 +388,11 @@ public struct MessengerView: View {
                 )
 
             VStack(spacing: 8) {
-                Text("Чаты Sloosh")
+                Text("Чаты и Каналы Sloosh")
                     .font(.system(size: 24, weight: .bold))
                     .foregroundColor(.primary)
 
-                Text("Войдите в аккаунт, чтобы общаться с друзьями и делиться любимыми фильмами!")
+                Text("Войдите в аккаунт, чтобы общаться с друзьями, читать авторские каналы и делиться фильмами!")
                     .font(.system(size: 15))
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
@@ -230,8 +424,17 @@ public struct MessengerView: View {
     private var toolbarContent: some ToolbarContent {
         if authRepo.isAuthenticated {
             ToolbarItem(placement: .navigationBarTrailing) {
-                Button {
-                    searchQuery = ""
+                Menu {
+                    Button {
+                        showCreateChannelSheet = true
+                    } label: {
+                        Label("Создать канал", systemImage: "megaphone.fill")
+                    }
+
+                    Button {} label: {
+                        Label("Создать беседу (Скоро)", systemImage: "person.2.fill")
+                    }
+                    .disabled(true)
                 } label: {
                     Image(systemName: "square.and.pencil")
                         .font(.system(size: 18, weight: .bold))
@@ -246,6 +449,211 @@ public struct MessengerView: View {
         generator.impactOccurred()
         Task {
             await repo.fetchConversations()
+        }
+    }
+}
+
+// MARK: - Peak Channel Row View
+
+public struct PeakChannelRow: View {
+    public let channel: ChannelModel
+    public let isOwner: Bool
+    public let onAction: () -> Void
+
+    public init(channel: ChannelModel, isOwner: Bool, onAction: @escaping () -> Void) {
+        self.channel = channel
+        self.isOwner = isOwner
+        self.onAction = onAction
+    }
+
+    public var body: some View {
+        HStack(spacing: 14) {
+            // Channel Avatar with Megaphone Badge
+            ZStack(alignment: .bottomTrailing) {
+                Circle()
+                    .fill(channel.displayAccentColor.opacity(0.22))
+                    .frame(width: 56, height: 56)
+                    .overlay(
+                        Text(channel.displayAvatarEmoji)
+                            .font(.system(size: 28))
+                    )
+
+                Circle()
+                    .fill(Color(UIColor.systemBackground))
+                    .frame(width: 20, height: 20)
+                    .overlay(
+                        Circle()
+                            .fill(Color.slooshAccent)
+                            .frame(width: 17, height: 17)
+                            .overlay(
+                                Image(systemName: "megaphone.fill")
+                                    .font(.system(size: 9, weight: .bold))
+                                    .foregroundColor(.black)
+                            )
+                    )
+                    .offset(x: 2, y: 2)
+            }
+
+            // Content
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(alignment: .firstTextBaseline) {
+                    HStack(spacing: 6) {
+                        Text(channel.name)
+                            .font(.system(size: 17, weight: .bold))
+                            .foregroundColor(.primary)
+                            .lineLimit(1)
+
+                        if isOwner {
+                            Image(systemName: "crown.fill")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(Color.slooshAccent)
+                        }
+                    }
+
+                    Spacer()
+
+                    Text(formatTime(ms: channel.lastPostTimestampMs ?? channel.updatedAtMs))
+                        .font(.system(size: 13))
+                        .foregroundColor(.secondary)
+                }
+
+                HStack(alignment: .bottom) {
+                    Text(channel.lastPostText ?? (channel.description.isEmpty ? "Канал создан" : channel.description))
+                        .font(.system(size: 15))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
+
+                    Spacer()
+                }
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .contentShape(Rectangle())
+        .contextMenu {
+            if isOwner {
+                Button(role: .destructive) {
+                    onAction()
+                } label: {
+                    Label("Удалить канал", systemImage: "trash")
+                }
+            } else {
+                Button(role: .destructive) {
+                    onAction()
+                } label: {
+                    Label("Отписаться", systemImage: "arrow.uturn.backward")
+                }
+            }
+        }
+    }
+
+    private func formatTime(ms: Int64) -> String {
+        let date = Date(timeIntervalSince1970: TimeInterval(ms) / 1000.0)
+        let calendar = Calendar.current
+        if calendar.isDateInToday(date) {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "HH:mm"
+            return formatter.string(from: date)
+        } else {
+            let formatter = DateFormatter()
+            formatter.dateFormat = "dd.MM"
+            return formatter.string(from: date)
+        }
+    }
+}
+
+// MARK: - Public Channel Search Row
+
+public struct PublicChannelSearchRow: View {
+    public let channel: ChannelModel
+    public let isSubscribed: Bool
+    public let onToggleSubscribe: () -> Void
+    public let onSelect: () -> Void
+
+    public init(
+        channel: ChannelModel,
+        isSubscribed: Bool,
+        onToggleSubscribe: @escaping () -> Void,
+        onSelect: @escaping () -> Void
+    ) {
+        self.channel = channel
+        self.isSubscribed = isSubscribed
+        self.onToggleSubscribe = onToggleSubscribe
+        self.onSelect = onSelect
+    }
+
+    public var body: some View {
+        HStack(spacing: 14) {
+            ZStack(alignment: .bottomTrailing) {
+                Circle()
+                    .fill(channel.displayAccentColor.opacity(0.22))
+                    .frame(width: 56, height: 56)
+                    .overlay(
+                        Text(channel.displayAvatarEmoji)
+                            .font(.system(size: 28))
+                    )
+
+                Circle()
+                    .fill(Color(UIColor.systemBackground))
+                    .frame(width: 20, height: 20)
+                    .overlay(
+                        Circle()
+                            .fill(Color.slooshAccent)
+                            .frame(width: 17, height: 17)
+                            .overlay(
+                                Image(systemName: "megaphone.fill")
+                                    .font(.system(size: 9, weight: .bold))
+                                    .foregroundColor(.black)
+                            )
+                    )
+                    .offset(x: 2, y: 2)
+            }
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(channel.name)
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundColor(.primary)
+                    .lineLimit(1)
+
+                Text(channel.formattedSubscriberCount)
+                    .font(.system(size: 13))
+                    .foregroundColor(.secondary)
+            }
+
+            Spacer()
+
+            Button {
+                onToggleSubscribe()
+            } label: {
+                HStack(spacing: 4) {
+                    if isSubscribed {
+                        Image(systemName: "checkmark")
+                            .font(.system(size: 11, weight: .bold))
+                        Text("Подписан")
+                            .font(.system(size: 13, weight: .semibold))
+                    } else {
+                        Image(systemName: "plus")
+                            .font(.system(size: 11, weight: .bold))
+                        Text("Подписаться")
+                            .font(.system(size: 13, weight: .bold))
+                    }
+                }
+                .foregroundColor(isSubscribed ? .secondary : .black)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .background(
+                    Capsule()
+                        .fill(isSubscribed ? Color.primary.opacity(0.08) : Color.slooshAccent)
+                )
+                .glassEffect(in: Capsule())
+            }
+            .buttonStyle(PeakPressButtonStyle())
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            onSelect()
         }
     }
 }
