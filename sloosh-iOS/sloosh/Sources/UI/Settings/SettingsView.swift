@@ -8,6 +8,7 @@ struct SettingsView: View {
     @AppStorage("cardDensity") private var cardDensity: CardDensity = .regular
     @AppStorage("posterQuality") private var posterQuality: PosterQuality = .high
     @AppStorage("appTheme") private var appTheme: AppTheme = .system
+    @AppStorage("showOriginalTitle") private var showOriginalTitle = true
     @State private var tabBarShowsLabelsDraft = false
     @State private var applyTabBarLabelsTask: Task<Void, Never>?
     @State private var scrollOffset: CGFloat = 0
@@ -121,6 +122,19 @@ struct SettingsView: View {
                         ForEach(PosterQuality.allCases) { quality in
                             Text(quality.title).tag(quality)
                         }
+                    }
+                }
+
+                // Показывать оригинальное название
+                Toggle(isOn: $showOriginalTitle) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "character.textbox")
+                            .foregroundStyle(Color.slooshAccent)
+                            .font(.system(size: 18))
+                            .frame(width: 24)
+                        
+                        Text("Оригинальное название")
+                            .font(.body)
                     }
                 }
             }

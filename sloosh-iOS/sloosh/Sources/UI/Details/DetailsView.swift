@@ -109,6 +109,7 @@ struct DetailsView: View {
     @State private var dominantPosterColor: UIColor? = nil
 
     @AppStorage("hasSeenSourceSelectionTooltip") private var hasSeenSourceSelectionTooltip = false
+    @AppStorage("showOriginalTitle") private var showOriginalTitle = true
     @State private var showTooltip = false
 
     private var detailsBaseBackgroundColor: UIColor {
@@ -703,7 +704,7 @@ struct DetailsView: View {
                             }
                         )
 
-                        if let originalTitle = details.originalTitle, !originalTitle.isEmpty, originalTitle != details.title {
+                        if showOriginalTitle, let originalTitle = details.originalTitle, !originalTitle.isEmpty, originalTitle != details.title {
                             Text(originalTitle)
                                 .font(.system(size: 16, weight: .medium))
                                 .foregroundColor(.secondary)
@@ -815,7 +816,7 @@ struct DetailsView: View {
                                     }
                                 )
 
-                                if let originalTitle = details.originalTitle, !originalTitle.isEmpty, originalTitle != details.title {
+                                if showOriginalTitle, let originalTitle = details.originalTitle, !originalTitle.isEmpty, originalTitle != details.title {
                                     Text(originalTitle)
                                         .font(.system(size: 16, weight: .medium))
                                         .foregroundColor(.secondary)
