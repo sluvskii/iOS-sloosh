@@ -1179,7 +1179,7 @@ private struct DetailsInfoSection: View {
                                 generator.prepare()
                                 generator.impactOccurred()
                                 NotificationCenter.default.post(
-                                    name: NSNotification.Name("SlooshOpenGenreSearch"),
+                                    name: NSNotification.Name("SlooshOpenGenreHome"),
                                     object: nil,
                                     userInfo: ["genre": genre]
                                 )
