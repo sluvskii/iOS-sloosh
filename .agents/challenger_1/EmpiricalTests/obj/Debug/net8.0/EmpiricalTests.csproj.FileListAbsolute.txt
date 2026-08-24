@@ -1,0 +1,15 @@
+W:\iOS-sloosh\.agents\challenger_1\EmpiricalTests\bin\Debug\net8.0\EmpiricalTests.exe
+W:\iOS-sloosh\.agents\challenger_1\EmpiricalTests\bin\Debug\net8.0\EmpiricalTests.deps.json
+W:\iOS-sloosh\.agents\challenger_1\EmpiricalTests\bin\Debug\net8.0\EmpiricalTests.runtimeconfig.json
+W:\iOS-sloosh\.agents\challenger_1\EmpiricalTests\bin\Debug\net8.0\EmpiricalTests.dll
+W:\iOS-sloosh\.agents\challenger_1\EmpiricalTests\bin\Debug\net8.0\EmpiricalTests.pdb
+W:\iOS-sloosh\.agents\challenger_1\EmpiricalTests\obj\Debug\net8.0\EmpiricalTests.GeneratedMSBuildEditorConfig.editorconfig
+W:\iOS-sloosh\.agents\challenger_1\EmpiricalTests\obj\Debug\net8.0\EmpiricalTests.AssemblyInfoInputs.cache
+W:\iOS-sloosh\.agents\challenger_1\EmpiricalTests\obj\Debug\net8.0\EmpiricalTests.AssemblyInfo.cs
+W:\iOS-sloosh\.agents\challenger_1\EmpiricalTests\obj\Debug\net8.0\EmpiricalTests.csproj.CoreCompileInputs.cache
+W:\iOS-sloosh\.agents\challenger_1\EmpiricalTests\obj\Debug\net8.0\EmpiricalTests.sourcelink.json
+W:\iOS-sloosh\.agents\challenger_1\EmpiricalTests\obj\Debug\net8.0\EmpiricalTests.dll
+W:\iOS-sloosh\.agents\challenger_1\EmpiricalTests\obj\Debug\net8.0\refint\EmpiricalTests.dll
+W:\iOS-sloosh\.agents\challenger_1\EmpiricalTests\obj\Debug\net8.0\EmpiricalTests.pdb
+W:\iOS-sloosh\.agents\challenger_1\EmpiricalTests\obj\Debug\net8.0\EmpiricalTests.genruntimeconfig.cache
+W:\iOS-sloosh\.agents\challenger_1\EmpiricalTests\obj\Debug\net8.0\ref\EmpiricalTests.dll
