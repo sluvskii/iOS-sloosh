@@ -1,4 +1,4 @@
-import SwiftUI
+﻿import SwiftUI
 
 public struct ChannelDetailView: View {
     public let channel: ChannelModel
@@ -7,6 +7,7 @@ public struct ChannelDetailView: View {
     @ObservedObject private var repo = MessengerRepository.shared
     @Environment(\.dismiss) private var dismiss
 
+    @State private var currentChannel: ChannelModel
     @State private var posts: [ChannelPost] = []
     @State private var inputText: String = ""
     @State private var attachedMedia: MediaCardPayload? = nil
@@ -14,6 +15,7 @@ public struct ChannelDetailView: View {
     @State private var showMovieSelector: Bool = false
     @State private var isShowingInfo: Bool = false
     @State private var isMuted: Bool = false
+    @State private var isSending: Bool = false
 
     @State private var selectedMovieIdForDetails: String? = nil
     @State private var selectedMediaForDirectPlay: MediaCardPayload? = nil
@@ -24,17 +26,20 @@ public struct ChannelDetailView: View {
     @State private var showDeletePostAlert: Bool = false
     @State private var pollTask: Task<Void, Never>? = nil
 
+    @FocusState private var isInputFocused: Bool
+
     public init(channel: ChannelModel) {
         self.channel = channel
+        self._currentChannel = State(initialValue: channel)
     }
 
     private var isOwner: Bool {
         guard let currentUserId = authRepo.currentUser?.id else { return false }
-        return channel.ownerId == currentUserId
+        return currentChannel.ownerId == currentUserId
     }
 
     private var isSubscribed: Bool {
-        repo.isSubscribed(channelId: channel.id)
+        repo.isSubscribed(channelId: currentChannel.id)
     }
 
     private var currentUserId: String {
@@ -42,10 +47,18 @@ public struct ChannelDetailView: View {
     }
 
     private var pinnedPost: ChannelPost? {
-        if let pinnedId = channel.pinnedPostId, let found = posts.first(where: { $0.id == pinnedId }) {
+        if let pinnedId = currentChannel.pinnedPostId, let found = posts.first(where: { $0.id == pinnedId }) {
             return found
         }
         return posts.first(where: { $0.isPinned })
+    }
+
+    private var isMultilineInput: Bool {
+        inputText.contains("\n") || inputText.count > 32
+    }
+
+    private var hasTextToSending: Bool {
+        !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || attachedMedia != nil
     }
 
     public var body: some View {
@@ -53,30 +66,28 @@ public struct ChannelDetailView: View {
             Color(UIColor.systemGroupedBackground).ignoresSafeArea()
 
             VStack(spacing: 0) {
-                // Posts Feed with ScrollViewReader
+                // Pinned Post Floating Bar
+                if let pinned = pinnedPost {
+                    PinnedPostBar(
+                        post: pinned,
+                        onTap: { postId in
+                            // Scroll to pinned post
+                        },
+                        onUnpin: isOwner ? {
+                            Task {
+                                _ = await repo.togglePinChannelPost(channelId: currentChannel.id, postId: pinned.id, isPinned: false)
+                                await loadPosts()
+                            }
+                        } : nil
+                    )
+                    .padding(.horizontal, 16)
+                    .padding(.top, 4)
+                }
+
+                // Posts Feed
                 ScrollViewReader { proxy in
                     ScrollView {
-                        LazyVStack(spacing: 12) {
-                            // Pinned Post Floating Bar
-                            if let pinned = pinnedPost {
-                                PinnedPostBar(
-                                    post: pinned,
-                                    onTap: { postId in
-                                        withAnimation(.easeInOut(duration: 0.3)) {
-                                            proxy.scrollTo(postId, anchor: .center)
-                                        }
-                                    },
-                                    onUnpin: isOwner ? {
-                                        Task {
-                                            _ = await repo.togglePinChannelPost(channelId: channel.id, postId: pinned.id, isPinned: false)
-                                            await loadPosts()
-                                        }
-                                    } : nil
-                                )
-                                .padding(.horizontal, 16)
-                                .padding(.top, 8)
-                            }
-
+                        LazyVStack(spacing: 8) {
                             if posts.isEmpty {
                                 emptyStateView
                                     .padding(.top, 60)
@@ -109,12 +120,9 @@ public struct ChannelDetailView: View {
                                     .id(post.id)
                                 }
                             }
-
-                            // Bottom spacing so content is never hidden behind floating bars
-                            Spacer()
-                                .frame(height: isOwner ? 100 : 90)
                         }
                         .padding(.top, 8)
+                        .padding(.bottom, 12)
                     }
                     .scrollDismissesKeyboard(.interactively)
                     .onChange(of: posts.count) { _, _ in
@@ -126,7 +134,7 @@ public struct ChannelDetailView: View {
                     }
                 }
 
-                // Bottom Control / Composer Overlay
+                // Bottom Control Bar
                 if isOwner {
                     authorBroadcastingBar
                 } else {
@@ -137,31 +145,47 @@ public struct ChannelDetailView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .principal) {
-                channelHeaderTitle
-            }
-
-            ToolbarItem(placement: .topBarTrailing) {
                 Button {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     isShowingInfo = true
                 } label: {
-                    Image(systemName: "info.circle")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundColor(.primary)
+                    VStack(spacing: 1) {
+                        Text(currentChannel.name)
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundColor(.primary)
+                            .lineLimit(1)
+                        Text(currentChannel.displayTag)
+                            .font(.system(size: 12))
+                            .foregroundColor(.secondary)
+                    }
                 }
+                .buttonStyle(.plain)
+            }
+
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button {
+                    isShowingInfo = true
+                } label: {
+                    SlooshAvatarView(
+                        avatarSource: currentChannel.avatarUrl,
+                        fallbackText: currentChannel.name,
+                        size: 34,
+                        isChannel: true
+                    )
+                }
+                .buttonStyle(PeakPressButtonStyle())
             }
         }
         .toolbarVisibility(.hidden, for: .tabBar)
-        .sheet(isPresented: $showMovieSelector) {
-            MovieSelectorSheet { payload in
-                self.attachedMedia = payload
-            }
-        }
         .navigationDestination(isPresented: $isShowingInfo) {
-            ChannelInfoView(channel: channel)
+            ChannelInfoView(channel: currentChannel)
         }
         .navigationDestination(item: $selectedMovieIdForDetails) { movieId in
             DetailsView(movieId: movieId, navigationTransitionID: nil, navigationTransitionNamespace: nil)
+        }
+        .sheet(isPresented: $showMovieSelector) {
+            MovieSelectorSheet { selected in
+                self.attachedMedia = selected
+            }
         }
         .sheet(item: $selectedMediaForDirectPlay, onDismiss: {
             if let pending = pendingPlayerConfig {
@@ -193,20 +217,20 @@ public struct ChannelDetailView: View {
                 seriesResult: config.seriesResult
             )
         }
-        .alert("Удалить публикацию?", isPresented: $showDeletePostAlert) {
-            Button("Отмена", role: .cancel) {
-                postToDelete = nil
-            }
+        .confirmationDialog(
+            "Удалить пост?",
+            isPresented: $showDeletePostAlert,
+            titleVisibility: .visible
+        ) {
             Button("Удалить", role: .destructive) {
-                if let post = postToDelete {
-                    deletePost(post)
+                if let p = postToDelete {
+                    deletePostAction(p)
                 }
             }
-        } message: {
-            Text("Публикация будет удалена из канала для всех подписчиков.")
+            Button("Отмена", role: .cancel) {}
         }
         .task {
-            let cached = repo.loadChannelPostsFromDisk(channelId: channel.id)
+            let cached = repo.loadChannelPostsFromDisk(channelId: currentChannel.id)
             if !cached.isEmpty {
                 self.posts = cached
             }
@@ -218,199 +242,115 @@ public struct ChannelDetailView: View {
         }
     }
 
-    // MARK: - Toolbar Header
-
-    private var channelHeaderTitle: some View {
-        Button {
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            isShowingInfo = true
-        } label: {
-            VStack(spacing: 2) {
-                HStack(spacing: 6) {
-                    SlooshAvatarView(channel: channel, size: 24)
-                    Text(channel.name)
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundColor(.primary)
-                        .lineLimit(1)
-                }
-
-                Text(channel.formattedSubscriberCount)
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.secondary)
-            }
-        }
-        .buttonStyle(.plain)
-    }
-
-    // MARK: - Empty State
-
-    private var emptyStateView: some View {
-        VStack(spacing: 12) {
-            SlooshAvatarView(channel: channel, size: 72)
-
-            Text("В канале пока нет публикаций")
-                .font(.system(size: 17, weight: .semibold))
-                .foregroundColor(.primary)
-
-            Text(isOwner ? "Опубликуйте первую запись или прикрепите фильм для ваших подписчиков." : "Автор канала скоро опубликует новые материалы.")
-                .font(.system(size: 14))
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 40)
-        }
-        .frame(maxWidth: .infinity)
-    }
-
-    // MARK: - Author Broadcasting Bar
+    // MARK: - Author Broadcasting Bar (matches ChatDetailView style)
 
     private var authorBroadcastingBar: some View {
-        VStack(spacing: 6) {
-            // Editing post banner
-            if let editing = editingPost {
-                HStack(spacing: 8) {
-                    Image(systemName: "pencil")
-                        .font(.system(size: 12, weight: .bold))
+        VStack(spacing: 0) {
+            // Attached movie preview pill
+            if let media = attachedMedia {
+                HStack {
+                    Image(systemName: "film.fill")
                         .foregroundColor(Color.slooshAccent)
+                        .font(.system(size: 13))
+                    Text(media.title)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(.primary)
+                        .lineLimit(1)
+                    Spacer()
+                    Button {
+                        attachedMedia = nil
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundColor(.secondary)
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(Color(UIColor.secondarySystemGroupedBackground))
+            }
 
+            // Edit post banner
+            if let editing = editingPost {
+                HStack {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Редактирование публикации")
-                            .font(.system(size: 11, weight: .bold))
+                        Text("Редактирование поста")
+                            .font(.system(size: 12, weight: .bold))
                             .foregroundColor(Color.slooshAccent)
-                        Text(editing.text ?? (editing.media?.title ?? "Медиа"))
-                            .font(.system(size: 12))
+                        Text(editing.text ?? "Медиа пост")
+                            .font(.system(size: 13))
                             .foregroundColor(.secondary)
                             .lineLimit(1)
                     }
-
-                    Spacer(minLength: 0)
-
+                    Spacer()
                     Button {
                         cancelEditing()
                     } label: {
                         Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 15))
                             .foregroundColor(.secondary)
                     }
-                    .buttonStyle(.plain)
                 }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 6)
-                .background(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(Color.white.opacity(0.06))
-                )
-                .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+                .background(Color(UIColor.secondarySystemGroupedBackground))
             }
 
-            // Attached Media Preview Chip
-            if let media = attachedMedia {
-                HStack(spacing: 10) {
-                    Image(systemName: "film.fill")
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundColor(Color.slooshAccent)
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(media.title)
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundColor(.primary)
-                            .lineLimit(1)
-
-                        HStack(spacing: 6) {
-                            if let year = media.year {
-                                Text(year)
-                                    .font(.system(size: 11))
-                                    .foregroundColor(.secondary)
-                            }
-                            if let rating = media.rating, rating > 0 {
-                                Text(String(format: "★ %.1f", rating))
-                                    .font(.system(size: 11, weight: .heavy))
-                                    .foregroundColor(Color.slooshAccent)
-                            }
-                        }
-                    }
-
-                    Spacer(minLength: 0)
-
-                    Button {
-                        withAnimation {
-                            self.attachedMedia = nil
-                        }
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 16))
-                            .foregroundColor(.secondary)
-                    }
-                    .buttonStyle(.plain)
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .background(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .fill(Color.white.opacity(0.06))
-                )
-                .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .padding(.horizontal, 16)
-            }
-
-            // Main Composing Input
-            HStack(spacing: 8) {
+            // Input Bar
+            HStack(alignment: .bottom, spacing: 8) {
                 // Attach Movie Button
                 Button {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     showMovieSelector = true
                 } label: {
-                    Image(systemName: attachedMedia == nil ? "film.badge.plus" : "film.stack.fill")
-                        .font(.system(size: 18, weight: .medium))
-                        .foregroundColor(attachedMedia == nil ? .secondary : Color.slooshAccent)
-                        .frame(width: 36, height: 36)
-                        .background(
+                    ZStack {
+                        Circle()
+                            .fill(attachedMedia != nil ? Color.slooshAccent : Color.primary.opacity(0.08))
+                            .frame(width: 40, height: 40)
+
+                        Image(systemName: "film.fill")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(attachedMedia != nil ? .black : .primary)
+                    }
+                    .glassEffect(.regular.interactive(), in: Circle())
+                }
+                .buttonStyle(OpaquePressButtonStyle())
+
+                // Floating Glass Text Field
+                HStack(alignment: .bottom, spacing: 8) {
+                    TextField("Опубликовать пост...", text: $inputText, axis: .vertical)
+                        .font(.system(size: 16))
+                        .foregroundColor(.primary)
+                        .lineLimit(1...6)
+                        .focused($isInputFocused)
+                        .padding(.vertical, 10)
+                        .padding(.horizontal, 16)
+                        .frame(minHeight: 40)
+                }
+                .glassEffect(
+                    .regular.interactive(),
+                    in: RoundedRectangle(cornerRadius: isMultilineInput ? 18 : 22, style: .continuous)
+                )
+
+                // Send Button
+                if hasTextToSending {
+                    Button {
+                        publishPostAction()
+                    } label: {
+                        ZStack {
                             Circle()
-                                .fill(Color.white.opacity(0.06))
-                        )
+                                .fill(Color.slooshAccent)
+                                .frame(width: 40, height: 40)
+
+                            Image(systemName: "arrow.up")
+                                .font(.system(size: 17, weight: .bold))
+                                .foregroundColor(.black)
+                        }
                         .glassEffect(.regular.interactive(), in: Circle())
+                    }
+                    .buttonStyle(OpaquePressButtonStyle())
+                    .disabled(isSending)
                 }
-                .buttonStyle(.plain)
-
-                // Text Input Field
-                TextField("Транслировать в канал...", text: $inputText, axis: .vertical)
-                    .font(.system(size: 15))
-                    .foregroundColor(.primary)
-                    .lineLimit(1...5)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 9)
-                    .background(
-                        Capsule()
-                            .fill(Color.white.opacity(0.06))
-                    )
-                    .glassEffect(.regular.interactive(), in: Capsule())
-
-                // Send / Save Button
-                let canSend = !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || attachedMedia != nil
-                Button {
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    submitPost()
-                } label: {
-                    Image(systemName: editingPost != nil ? "checkmark" : "arrow.up")
-                        .font(.system(size: 15, weight: .black))
-                        .foregroundColor(canSend ? .black : .secondary)
-                        .frame(width: 36, height: 36)
-                        .background(
-                            Circle()
-                                .fill(canSend ? Color.slooshAccent : Color.white.opacity(0.08))
-                        )
-                        .glassEffect(in: Circle())
-                }
-                .buttonStyle(.plain)
-                .disabled(!canSend)
             }
-            .padding(.horizontal, 16)
+            .padding(.horizontal, 14)
             .padding(.vertical, 8)
-            .background(
-                Rectangle()
-                    .fill(Color(UIColor.systemGroupedBackground).opacity(0.85))
-            )
-            .glassEffect(.regular.interactive(), in: Rectangle())
         }
     }
 
@@ -418,68 +358,78 @@ public struct ChannelDetailView: View {
 
     private var subscriberActionBar: some View {
         HStack(spacing: 12) {
-            // Subscribe / Unsubscribe Button
-            Button {
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                Task {
-                    if isSubscribed {
-                        _ = await repo.unsubscribeFromChannel(channelId: channel.id)
-                    } else {
-                        _ = await repo.subscribeToChannel(channel: channel)
+            if isSubscribed {
+                Button {
+                    toggleMuteAction()
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: isMuted ? "bell.fill" : "bell.slash.fill")
+                            .font(.system(size: 15, weight: .semibold))
+                        Text(isMuted ? "Включить звук" : "Без звука")
+                            .font(.system(size: 15, weight: .semibold))
                     }
-                }
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: isSubscribed ? "checkmark.circle.fill" : "plus.circle.fill")
-                        .font(.system(size: 16, weight: .bold))
-                    Text(isSubscribed ? "Вы подписаны" : "Подписаться")
-                        .font(.system(size: 15, weight: .bold))
-                }
-                .foregroundColor(isSubscribed ? .primary : .black)
-                .frame(maxWidth: .infinity)
-                .frame(height: 44)
-                .background(
-                    Capsule()
-                        .fill(isSubscribed ? Color.white.opacity(0.08) : Color.slooshAccent)
-                )
-                .glassEffect(in: Capsule())
-            }
-            .buttonStyle(.plain)
-
-            // Mute / Unmute Toggle Button
-            Button {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                withAnimation {
-                    isMuted.toggle()
-                }
-            } label: {
-                Image(systemName: isMuted ? "bell.slash.fill" : "bell.fill")
-                    .font(.system(size: 16, weight: .bold))
-                    .foregroundColor(isMuted ? .secondary : Color.slooshAccent)
-                    .frame(width: 44, height: 44)
+                    .foregroundColor(.primary)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 44)
                     .background(
-                        Circle()
-                            .fill(Color.white.opacity(0.08))
+                        Capsule()
+                            .fill(Color(UIColor.secondarySystemGroupedBackground))
                     )
-                    .glassEffect(.regular.interactive(), in: Circle())
+                    .glassEffect(in: Capsule())
+                }
+                .buttonStyle(PeakPressButtonStyle())
+            } else {
+                Button {
+                    subscribeAction()
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "megaphone.fill")
+                            .font(.system(size: 15, weight: .bold))
+                        Text("Подписаться")
+                            .font(.system(size: 16, weight: .bold))
+                    }
+                    .foregroundColor(.black)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 46)
+                    .background(
+                        Capsule()
+                            .fill(Color.slooshAccent)
+                    )
+                    .glassEffect(in: Capsule())
+                }
+                .buttonStyle(PeakPressButtonStyle())
             }
-            .buttonStyle(.plain)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .background(
-            Rectangle()
-                .fill(Color(UIColor.systemGroupedBackground).opacity(0.85))
-        )
-        .glassEffect(.regular.interactive(), in: Rectangle())
+        .padding(.horizontal, 20)
+        .padding(.vertical, 8)
     }
 
-    // MARK: - Post Actions & Logic
+    // MARK: - Empty State
+
+    private var emptyStateView: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "megaphone")
+                .font(.system(size: 48))
+                .foregroundColor(Color.slooshAccent)
+
+            Text("Пока нет постов")
+                .font(.system(size: 20, weight: .bold))
+                .foregroundColor(.primary)
+
+            Text(isOwner ? "Опубликуйте ваш первый пост или прикрепите фильм для подписчиков!" : "Автор канала скоро опубликует первые новости!")
+                .font(.system(size: 14))
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+        }
+    }
+
+    // MARK: - Actions
 
     private func loadPosts() async {
-        let fetched = await repo.fetchChannelPosts(channelId: channel.id)
-        if !fetched.isEmpty || posts.isEmpty {
-            self.posts = fetched
+        let list = await repo.fetchChannelPosts(channelId: currentChannel.id)
+        if !list.isEmpty {
+            self.posts = list.sorted(by: { $0.timestampMs < $1.timestampMs })
         }
     }
 
@@ -487,89 +437,106 @@ public struct ChannelDetailView: View {
         pollTask?.cancel()
         pollTask = Task {
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 4_000_000_000)
+                try? await Task.sleep(nanoseconds: 2_500_000_000)
                 if Task.isCancelled { break }
-                let updated = await repo.fetchChannelPosts(channelId: channel.id)
-                if !Task.isCancelled && !updated.isEmpty {
-                    self.posts = updated
+                let list = await repo.fetchChannelPosts(channelId: currentChannel.id)
+                let sorted = list.sorted(by: { $0.timestampMs < $1.timestampMs })
+                if sorted != self.posts {
+                    await MainActor.run {
+                        self.posts = sorted
+                    }
                 }
             }
         }
     }
 
-    private func submitPost() {
-        let trimmed = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
-        let media = attachedMedia
+    private func publishPostAction() {
+        let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !text.isEmpty || attachedMedia != nil else { return }
+
+        isSending = true
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
 
         if let editing = editingPost {
-            // Edit existing post
             Task {
-                _ = await repo.editChannelPost(
-                    channelId: channel.id,
-                    postId: editing.id,
-                    newText: trimmed.isEmpty ? nil : trimmed,
-                    mediaPayload: media
-                )
-                cancelEditing()
+                _ = await repo.editChannelPost(channelId: currentChannel.id, postId: editing.id, newText: text)
+                await MainActor.run {
+                    self.isSending = false
+                    self.inputText = ""
+                    self.attachedMedia = nil
+                    self.editingPost = nil
+                }
                 await loadPosts()
             }
         } else {
-            // Publish new post
+            let media = attachedMedia
+            let postText = text.isEmpty ? nil : text
             Task {
                 _ = await repo.publishChannelPost(
-                    channelId: channel.id,
-                    text: trimmed.isEmpty ? nil : trimmed,
-                    mediaPayload: media,
-                    isPinned: false
+                    channelId: currentChannel.id,
+                    text: postText,
+                    media: media
                 )
-                inputText = ""
-                attachedMedia = nil
+                await MainActor.run {
+                    self.isSending = false
+                    self.inputText = ""
+                    self.attachedMedia = nil
+                }
                 await loadPosts()
             }
         }
     }
 
     private func startEditing(post: ChannelPost) {
-        self.editingPost = post
-        self.inputText = post.text ?? ""
-        self.attachedMedia = post.media
+        editingPost = post
+        inputText = post.text ?? ""
+        attachedMedia = post.media
+        isInputFocused = true
     }
 
     private func cancelEditing() {
-        self.editingPost = nil
-        self.inputText = ""
-        self.attachedMedia = nil
+        editingPost = nil
+        inputText = ""
+        attachedMedia = nil
     }
 
     private func togglePin(post: ChannelPost) {
-        let newPinState = !post.isPinned
         Task {
-            _ = await repo.togglePinChannelPost(
-                channelId: channel.id,
-                postId: post.id,
-                isPinned: newPinState
-            )
+            _ = await repo.togglePinChannelPost(channelId: currentChannel.id, postId: post.id, isPinned: !post.isPinned)
+            await loadPosts()
+        }
+    }
+
+    private func deletePostAction(_ post: ChannelPost) {
+        Task {
+            _ = await repo.deleteChannelPost(channelId: currentChannel.id, postId: post.id)
             await loadPosts()
         }
     }
 
     private func toggleReaction(emoji: String, on post: ChannelPost) {
         Task {
-            _ = await repo.toggleChannelPostReaction(
-                channelId: channel.id,
-                postId: post.id,
-                emoji: emoji
-            )
+            _ = await repo.toggleChannelPostReaction(channelId: currentChannel.id, postId: post.id, emoji: emoji)
             await loadPosts()
         }
     }
 
-    private func deletePost(_ post: ChannelPost) {
+    private func subscribeAction() {
         Task {
-            _ = await repo.deleteChannelPost(channelId: channel.id, postId: post.id)
-            postToDelete = nil
-            await loadPosts()
+            _ = await repo.subscribeToChannel(channelId: currentChannel.id)
         }
+    }
+
+    private func toggleMuteAction() {
+        isMuted.toggle()
     }
 }
 
+private struct OpaquePressButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.92 : 1.0)
+            .opacity(1.0)
+            .animation(.spring(response: 0.22, dampingFraction: 0.68), value: configuration.isPressed)
+    }
+}

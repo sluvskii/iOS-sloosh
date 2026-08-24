@@ -1,4 +1,4 @@
-import SwiftUI
+﻿import SwiftUI
 
 public struct ChannelPostRowView: View {
     public let post: ChannelPost
@@ -12,7 +12,7 @@ public struct ChannelPostRowView: View {
     public var onTogglePin: (() -> Void)? = nil
     public var onDeletePost: (() -> Void)? = nil
 
-    private let availableEmojis: [String] = ["🔥", "❤️", "🍿", "🎬", "👏", "😱", "⚡️", "⭐️"]
+    private let availableEmojis: [String] = ["❤️", "👍", "🔥", "😂", "🍿", "👏"]
 
     public init(
         post: ChannelPost,
@@ -37,10 +37,10 @@ public struct ChannelPostRowView: View {
     }
 
     public var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            // Main Post Bubble
-            VStack(alignment: .leading, spacing: 10) {
-                // Pinned indicator badge if post is pinned
+        VStack(alignment: .leading, spacing: 6) {
+            // Main Post Bubble Container (matches chat bubble style)
+            VStack(alignment: .leading, spacing: 8) {
+                // Pinned indicator badge
                 if post.isPinned {
                     HStack(spacing: 5) {
                         Image(systemName: "pin.fill")
@@ -52,6 +52,15 @@ public struct ChannelPostRowView: View {
                     .padding(.bottom, 2)
                 }
 
+                // Attached Media Card (if any)
+                if let media = post.media {
+                    MediaMessageCardView(
+                        media: media,
+                        onOpenDetails: onOpenDetails,
+                        onPlayDirectly: onPlayDirectly
+                    )
+                }
+
                 // Post Text
                 if let text = post.text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     Text(text)
@@ -61,18 +70,8 @@ public struct ChannelPostRowView: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
-                // Attached Media Card (if any)
-                if let media = post.media {
-                    ChannelMediaCardView(
-                        media: media,
-                        onOpenDetails: onOpenDetails,
-                        onPlayDirectly: onPlayDirectly
-                    )
-                }
-
-                // Footer Metadata: views, edited state, timestamp
+                // Footer Metadata: views, edited, time
                 HStack(spacing: 8) {
-                    // Views Count
                     HStack(spacing: 4) {
                         Image(systemName: "eye.fill")
                             .font(.system(size: 10))
@@ -98,14 +97,18 @@ public struct ChannelPostRowView: View {
             .padding(14)
             .background(
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(Color.white.opacity(0.06))
+                    .fill(Color(UIColor.secondarySystemGroupedBackground))
             )
             .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .onTapGesture(count: 2) {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                onToggleReaction?("❤️")
+            }
             .contextMenu {
                 contextMenuContent
             }
 
-            // Reactions Bar
+            // Reactions Bar (Liquid Glass Capsules)
             reactionsBar
         }
         .padding(.horizontal, 16)
@@ -119,57 +122,30 @@ public struct ChannelPostRowView: View {
 
         return ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
-                // Existing Reaction Pills
-                ForEach(summaries, id: \.emoji) { item in
+                ForEach(summaries) { summary in
                     Button {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        onToggleReaction?(item.emoji)
+                        onToggleReaction?(summary.emoji)
                     } label: {
                         HStack(spacing: 4) {
-                            Text(item.emoji)
+                            Text(summary.emoji)
                                 .font(.system(size: 13))
-                            Text("\(item.count)")
+                            Text("\(summary.count)")
                                 .font(.system(size: 12, weight: .bold))
-                                .foregroundColor(item.isMine ? Color.slooshAccent : .secondary)
+                                .foregroundColor(summary.hasReacted ? Color.slooshAccent : .primary)
                         }
                         .padding(.horizontal, 10)
                         .padding(.vertical, 5)
                         .background(
                             Capsule()
-                                .fill(item.isMine ? Color.slooshAccent.opacity(0.22) : Color.white.opacity(0.06))
+                                .fill(summary.hasReacted ? Color.slooshAccent.opacity(0.18) : Color.primary.opacity(0.06))
                         )
-                        .overlay(
-                            Capsule()
-                                .stroke(item.isMine ? Color.slooshAccent.opacity(0.6) : Color.clear, lineWidth: 1)
-                        )
-                        .glassEffect(.regular.interactive(), in: Capsule())
+                        .glassEffect(in: Capsule())
                     }
-                    .buttonStyle(.plain)
-                }
-
-                // Plus (+) Reaction Picker Button
-                Menu {
-                    ForEach(availableEmojis, id: \.self) { emoji in
-                        Button {
-                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                            onToggleReaction?(emoji)
-                        } label: {
-                            Text(emoji)
-                        }
-                    }
-                } label: {
-                    Image(systemName: "plus")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundColor(.secondary)
-                        .frame(width: 28, height: 28)
-                        .background(
-                            Circle()
-                                .fill(Color.white.opacity(0.06))
-                        )
-                        .glassEffect(.regular.interactive(), in: Circle())
+                    .buttonStyle(PeakPressButtonStyle())
                 }
             }
-            .padding(.horizontal, 2)
+            .padding(.horizontal, 4)
             .padding(.vertical, 2)
         }
     }
@@ -178,11 +154,10 @@ public struct ChannelPostRowView: View {
 
     @ViewBuilder
     private var contextMenuContent: some View {
-        // Quick reactions
+        // Emoji quick reactions
         Menu {
             ForEach(availableEmojis, id: \.self) { emoji in
                 Button {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     onToggleReaction?(emoji)
                 } label: {
                     Text(emoji)
@@ -192,76 +167,50 @@ public struct ChannelPostRowView: View {
             Label("Реакция", systemImage: "face.smiling")
         }
 
-        // Copy text
         if let text = post.text, !text.isEmpty {
             Button {
                 UIPasteboard.general.string = text
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
             } label: {
                 Label("Скопировать текст", systemImage: "doc.on.doc")
-            }
-        }
-
-        // Share
-        let shareText = post.media != nil ? "\(post.text ?? "") \(post.media!.title)" : (post.text ?? "")
-        if !shareText.isEmpty {
-            ShareLink(item: shareText) {
-                Label("Поделиться", systemImage: "square.and.arrow.up")
             }
         }
 
         if isAuthor {
             Divider()
 
-            // Pin / Unpin
             Button {
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                 onTogglePin?()
             } label: {
-                Label(
-                    post.isPinned ? "Открепить" : "Закрепить",
-                    systemImage: post.isPinned ? "pin.slash" : "pin"
-                )
+                Label(post.isPinned ? "Открепить" : "Закрепить", systemImage: "pin")
             }
 
-            // Edit
             Button {
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                 onEditPost?()
             } label: {
                 Label("Редактировать", systemImage: "pencil")
             }
 
-            // Delete
             Button(role: .destructive) {
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                 onDeletePost?()
             } label: {
-                Label("Удалить", systemImage: "trash")
+                Label("Удалить пост", systemImage: "trash")
             }
         }
     }
 
-    // MARK: - Formatting Helpers
-
-    private func formatViews(_ views: Int) -> String {
-        if views >= 1_000_000 {
-            return String(format: "%.1fM", Double(views) / 1_000_000.0)
-        } else if views >= 1_000 {
-            return String(format: "%.1fK", Double(views) / 1_000.0)
+    private func formatViews(_ count: Int) -> String {
+        if count >= 1_000_000 {
+            return String(format: "%.1fM", Double(count) / 1_000_000.0)
+        } else if count >= 1_000 {
+            return String(format: "%.1fK", Double(count) / 1_000.0)
         }
-        return "\(views)"
+        return "\(count)"
     }
 
     private func formatTimestamp(_ ms: Int64) -> String {
         let date = Date(timeIntervalSince1970: TimeInterval(ms) / 1000.0)
-        let calendar = Calendar.current
         let formatter = DateFormatter()
-        if calendar.isDateInToday(date) {
-            formatter.dateFormat = "HH:mm"
-        } else {
-            formatter.dateFormat = "d MMM, HH:mm"
-        }
+        formatter.dateFormat = "HH:mm"
         return formatter.string(from: date)
     }
 }

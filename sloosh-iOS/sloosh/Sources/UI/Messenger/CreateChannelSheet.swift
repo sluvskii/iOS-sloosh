@@ -1,4 +1,4 @@
-import SwiftUI
+﻿import SwiftUI
 import PhotosUI
 
 public struct CreateChannelSheet: View {
@@ -13,7 +13,6 @@ public struct CreateChannelSheet: View {
     @State private var channelDescription: String = ""
     @State private var avatarDataString: String? = nil
     @State private var selectedPhotoItem: PhotosPickerItem? = nil
-    @State private var selectedColorHex: String = "#FF9F0A"
 
     @State private var isCheckingTag: Bool = false
     @State private var tagStatusMessage: String? = nil
@@ -21,26 +20,8 @@ public struct CreateChannelSheet: View {
     @State private var isCreating: Bool = false
     @State private var errorMessage: String? = nil
 
-    private let colorPresets = [
-        "#FF9F0A", // Orange
-        "#FF453A", // Red
-        "#30D158", // Green
-        "#0A84FF", // Blue
-        "#BF5AF2", // Purple
-        "#64D2FF", // Cyan
-        "#FFD60A", // Yellow
-        "#B2FF00"  // Sloosh Neon
-    ]
-
     public init(onCreated: @escaping (ChannelModel) -> Void) {
         self.onCreated = onCreated
-    }
-
-    private var selectedColor: Color {
-        if let uiColor = UIColor(hex: selectedColorHex) {
-            return Color(uiColor)
-        }
-        return .slooshAccent
     }
 
     private var cleanTag: String {
@@ -58,15 +39,12 @@ public struct CreateChannelSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: 24) {
-                    // Avatar & Visual Identity Preview
+                    // Avatar Section with Photo Picker
                     avatarPreviewSection
                         .padding(.top, 16)
 
                     // Form Fields Section
                     formFieldsSection
-
-                    // Color Palette Selector
-                    colorPickerSection
 
                     if let error = errorMessage {
                         Text(error)
@@ -76,7 +54,7 @@ public struct CreateChannelSheet: View {
                             .padding(.horizontal, 16)
                     }
 
-                    // Create Button
+                    // Create Button (Liquid Glass Capsule)
                     createButton
                         .padding(.top, 8)
                         .padding(.bottom, 24)
@@ -112,7 +90,6 @@ public struct CreateChannelSheet: View {
                         avatarSource: avatarDataString,
                         fallbackText: channelName.isEmpty ? (cleanTag.isEmpty ? "S" : cleanTag) : channelName,
                         size: 96,
-                        accentColor: selectedColor,
                         isChannel: true
                     )
 
@@ -273,47 +250,6 @@ public struct CreateChannelSheet: View {
         }
     }
 
-    private var colorPickerSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("АКЦЕНТНЫЙ ЦВЕТ")
-                .font(.system(size: 12, weight: .bold))
-                .foregroundColor(.secondary)
-                .padding(.leading, 4)
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 12) {
-                    ForEach(colorPresets, id: \.self) { hex in
-                        let color = UIColor(hex: hex).map { Color($0) } ?? .slooshAccent
-                        Button {
-                            selectedColorHex = hex
-                            let feedback = UISelectionFeedbackGenerator()
-                            feedback.selectionChanged()
-                        } label: {
-                            ZStack {
-                                Circle()
-                                    .fill(color)
-                                    .frame(width: 40, height: 40)
-
-                                if selectedColorHex == hex {
-                                    Circle()
-                                        .stroke(Color.white, lineWidth: 3)
-                                        .frame(width: 40, height: 40)
-
-                                    Image(systemName: "checkmark")
-                                        .font(.system(size: 14, weight: .black))
-                                        .foregroundColor(.white)
-                                }
-                            }
-                        }
-                        .buttonStyle(PeakPressButtonStyle())
-                    }
-                }
-                .padding(.horizontal, 2)
-                .padding(.vertical, 4)
-            }
-        }
-    }
-
     private var createButton: some View {
         Button {
             createChannelAction()
@@ -379,26 +315,28 @@ public struct CreateChannelSheet: View {
         let desc = channelDescription.trimmingCharacters(in: .whitespacesAndNewlines)
         let tag = cleanTag
         let avatar = avatarDataString
-        let hex = selectedColorHex
 
         Task {
-            if let created = await repo.createChannel(
+            if let newChannel = await repo.createChannel(
                 name: name,
                 description: desc,
                 tag: tag,
-                avatarUrl: avatar,
-                accentColorHex: hex
+                avatarUrl: avatar
             ) {
-                let generator = UINotificationFeedbackGenerator()
-                generator.notificationOccurred(.success)
-                isCreating = false
-                dismiss()
-                onCreated(created)
+                await MainActor.run {
+                    self.isCreating = false
+                    let generator = UINotificationFeedbackGenerator()
+                    generator.notificationOccurred(.success)
+                    dismiss()
+                    onCreated(newChannel)
+                }
             } else {
-                let generator = UINotificationFeedbackGenerator()
-                generator.notificationOccurred(.error)
-                isCreating = false
-                errorMessage = "Не удалось создать канал. Проверьте интернет-соединение или уникальность тега."
+                await MainActor.run {
+                    self.isCreating = false
+                    let generator = UINotificationFeedbackGenerator()
+                    generator.notificationOccurred(.error)
+                    self.errorMessage = "Не удалось создать канал. Проверьте соединение с сетью."
+                }
             }
         }
     }

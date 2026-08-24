@@ -25,10 +25,6 @@ public enum TagValidator {
         guard clean.range(of: pattern, options: .regularExpression) != nil else {
             return (false, "Разрешены только латинские буквы, цифры и символ _")
         }
-        let reserved: Set<String> = ["sloosh", "admin", "support", "official", "channel", "user", "help"]
-        if reserved.contains(clean) {
-            return (false, "Этот тег зарезервирован системой")
-        }
         return (true, "Формат тега корректен")
     }
 }

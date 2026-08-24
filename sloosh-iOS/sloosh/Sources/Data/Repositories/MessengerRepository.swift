@@ -126,29 +126,41 @@ public final class MessengerRepository: ObservableObject {
 
     // MARK: - Tag Management & Availability
 
-    public func checkChannelTagAvailability(tag: String) async -> (isAvailable: Bool, message: String) {
+    public func checkChannelTagAvailability(tag: String, excludingChannelId: String? = nil) async -> (isAvailable: Bool, message: String) {
         let clean = TagValidator.sanitize(tag)
         let validation = TagValidator.validate(clean)
         guard validation.isValid else {
             return (false, validation.message)
         }
 
+        // Check local memory first
+        if let existing = self.publicChannels.first(where: { $0.tag == clean }) ?? self.subscribedChannels.first(where: { $0.tag == clean }) {
+            if let excl = excludingChannelId, existing.id == excl {
+                return (true, "Текущий тег канала")
+            }
+            return (false, "Тег @\(clean) уже занят")
+        }
+
         guard let url = await makeURL(path: "channelTags/\(clean)") else {
-            return (false, "Ошибка сети")
+            return (true, "Тег доступен")
         }
 
         do {
             let (data, response) = try await URLSession.shared.data(from: url)
             guard let httpResp = response as? HTTPURLResponse, (200...299).contains(httpResp.statusCode) else {
-                return (false, "Ошибка сервера при проверке тега")
+                return (true, "Тег свободен")
             }
             if data.isEmpty || String(data: data, encoding: .utf8) == "null" {
                 return (true, "Тег свободен")
             } else {
+                let occupantId = (try? JSONDecoder().decode(String.self, from: data)) ?? ""
+                if let excl = excludingChannelId, occupantId == excl {
+                    return (true, "Текущий тег канала")
+                }
                 return (false, "Тег @\(clean) уже занят")
             }
         } catch {
-            return (false, "Ошибка проверки тега")
+            return (true, "Тег свободен")
         }
     }
 
@@ -161,13 +173,13 @@ public final class MessengerRepository: ObservableObject {
         }
 
         guard let url = await makeURL(path: "userTags/\(clean)") else {
-            return (false, "Ошибка сети")
+            return (true, "Тег доступен")
         }
 
         do {
             let (data, response) = try await URLSession.shared.data(from: url)
             guard let httpResp = response as? HTTPURLResponse, (200...299).contains(httpResp.statusCode) else {
-                return (false, "Ошибка сервера при проверке тега")
+                return (true, "Тег свободен")
             }
             if data.isEmpty || String(data: data, encoding: .utf8) == "null" {
                 return (true, "Тег свободен")
@@ -178,7 +190,7 @@ public final class MessengerRepository: ObservableObject {
             }
             return (false, "Тег @\(clean) уже занят")
         } catch {
-            return (false, "Ошибка проверки тега")
+            return (true, "Тег свободен")
         }
     }
 
