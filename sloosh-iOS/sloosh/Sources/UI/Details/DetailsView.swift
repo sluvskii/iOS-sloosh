@@ -26,21 +26,13 @@ struct RemoteBackdropView: View {
             LinearGradient(
                 gradient: Gradient(stops: [
                     .init(color: .clear, location: 0.0),
-                    .init(color: .black.opacity(0.02), location: 0.05),
-                    .init(color: .black.opacity(0.08), location: 0.12),
-                    .init(color: .black.opacity(0.20), location: 0.20),
-                    .init(color: .black.opacity(0.40), location: 0.28),
-                    .init(color: .black.opacity(0.65), location: 0.36),
-                    .init(color: .black.opacity(0.85), location: 0.44),
-                    .init(color: .black.opacity(0.96), location: 0.50),
-                    .init(color: .black, location: 0.54),
-                    .init(color: .black.opacity(0.96), location: 0.60),
-                    .init(color: .black.opacity(0.85), location: 0.68),
-                    .init(color: .black.opacity(0.65), location: 0.76),
-                    .init(color: .black.opacity(0.40), location: 0.83),
-                    .init(color: .black.opacity(0.20), location: 0.90),
-                    .init(color: .black.opacity(0.08), location: 0.95),
-                    .init(color: .black.opacity(0.02), location: 0.98),
+                    .init(color: .black.opacity(0.3), location: 0.07),
+                    .init(color: .black.opacity(0.85), location: 0.16),
+                    .init(color: .black, location: 0.25),
+                    .init(color: .black, location: 0.65),
+                    .init(color: .black.opacity(0.85), location: 0.78),
+                    .init(color: .black.opacity(0.4), location: 0.88),
+                    .init(color: .black.opacity(0.1), location: 0.95),
                     .init(color: .clear, location: 1.0)
                 ]),
                 startPoint: .top,
@@ -627,8 +619,7 @@ struct DetailsView: View {
                         .transition(.opacity)
                 } else if let details = viewModel.details {
                     // Stretchy Backdrop
-                    let baseHeight: CGFloat = 400
-                    let topInset: CGFloat = 48
+                    let baseHeight: CGFloat = 410
                     
                     GeometryReader { geometry in
                         let minY = geometry.frame(in: .global).minY
@@ -642,9 +633,9 @@ struct DetailsView: View {
                             width: geometry.size.width,
                             height: height
                         )
-                        .offset(y: offset + topInset)
+                        .offset(y: offset)
                     }
-                    .frame(height: baseHeight + topInset)
+                    .frame(height: baseHeight)
                     .contextMenu {
                         Button {
                             Task { await saveImage(from: details.displayBackdropUrl, label: "обложка") }
@@ -744,7 +735,7 @@ struct DetailsView: View {
                             .padding(.bottom, 20)
                         }
                     }
-                    .offset(y: -40)
+                    .offset(y: -30)
                     .transition(.opacity)
                 } else {
                     Text("Не удалось загрузить данные.")
@@ -907,35 +898,25 @@ private struct DetailsSkeletonView: View {
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     
     var body: some View {
-        let baseHeight: CGFloat = verticalSizeClass == .compact ? 280 : 400
-        let topInset: CGFloat = verticalSizeClass == .compact ? 0 : 48
+        let baseHeight: CGFloat = verticalSizeClass == .compact ? 280 : 410
         
         VStack(spacing: 0) {
             // Backdrop
             Rectangle()
                 .fill(Color.gray.opacity(0.2))
                 .frame(height: baseHeight)
-                .padding(.top, topInset)
                 .shimmer()
                 .mask(
                     LinearGradient(
                         gradient: Gradient(stops: [
                             .init(color: .clear, location: 0.0),
-                            .init(color: .black.opacity(0.02), location: 0.05),
-                            .init(color: .black.opacity(0.08), location: 0.12),
-                            .init(color: .black.opacity(0.20), location: 0.20),
-                            .init(color: .black.opacity(0.40), location: 0.28),
-                            .init(color: .black.opacity(0.65), location: 0.36),
-                            .init(color: .black.opacity(0.85), location: 0.44),
-                            .init(color: .black.opacity(0.96), location: 0.50),
-                            .init(color: .black, location: 0.54),
-                            .init(color: .black.opacity(0.96), location: 0.60),
-                            .init(color: .black.opacity(0.85), location: 0.68),
-                            .init(color: .black.opacity(0.65), location: 0.76),
-                            .init(color: .black.opacity(0.40), location: 0.83),
-                            .init(color: .black.opacity(0.20), location: 0.90),
-                            .init(color: .black.opacity(0.08), location: 0.95),
-                            .init(color: .black.opacity(0.02), location: 0.98),
+                            .init(color: .black.opacity(0.3), location: 0.07),
+                            .init(color: .black.opacity(0.85), location: 0.16),
+                            .init(color: .black, location: 0.25),
+                            .init(color: .black, location: 0.65),
+                            .init(color: .black.opacity(0.85), location: 0.78),
+                            .init(color: .black.opacity(0.4), location: 0.88),
+                            .init(color: .black.opacity(0.1), location: 0.95),
                             .init(color: .clear, location: 1.0)
                         ]),
                         startPoint: .top,
@@ -1023,7 +1004,7 @@ private struct DetailsSkeletonView: View {
             }
             .frame(maxWidth: verticalSizeClass == .compact ? 550 : .infinity)
             .frame(maxWidth: .infinity, alignment: .center)
-            .offset(y: verticalSizeClass == .compact ? -35 : -40)
+            .offset(y: verticalSizeClass == .compact ? -50 : -30)
         }
     }
 }
