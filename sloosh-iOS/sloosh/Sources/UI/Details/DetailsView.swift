@@ -2160,12 +2160,12 @@ class DetailsViewModel: ObservableObject {
 struct GlassPlayButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .foregroundStyle(.black)
+            .foregroundStyle(.white)
             .background(
                 Capsule()
-                    .fill(.white.opacity(0.85))
+                    .fill(.white.opacity(0.15))
             )
-            .glassEffect(in: Capsule())
+            .glassEffect(.regular.interactive(), in: Capsule())
             .scaleEffect(configuration.isPressed ? 0.94 : 1.0)
             .animation(.spring(response: 0.25, dampingFraction: 0.6), value: configuration.isPressed)
     }
