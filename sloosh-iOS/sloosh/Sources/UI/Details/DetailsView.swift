@@ -620,7 +620,7 @@ struct DetailsView: View {
                         .transition(.opacity)
                 } else if let details = viewModel.details {
                     // Stretchy Backdrop
-                    let baseHeight: CGFloat = 410
+                    let baseHeight: CGFloat = 365
                     
                     GeometryReader { geometry in
                         let minY = geometry.frame(in: .global).minY
@@ -736,7 +736,7 @@ struct DetailsView: View {
                             .padding(.bottom, 20)
                         }
                     }
-                    .offset(y: -30)
+                    .offset(y: -25)
                     .transition(.opacity)
                 } else {
                     Text("Не удалось загрузить данные.")
@@ -899,7 +899,7 @@ private struct DetailsSkeletonView: View {
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     
     var body: some View {
-        let baseHeight: CGFloat = verticalSizeClass == .compact ? 280 : 410
+        let baseHeight: CGFloat = verticalSizeClass == .compact ? 280 : 365
         
         VStack(spacing: 0) {
             // Backdrop
@@ -1006,7 +1006,7 @@ private struct DetailsSkeletonView: View {
             }
             .frame(maxWidth: verticalSizeClass == .compact ? 550 : .infinity)
             .frame(maxWidth: .infinity, alignment: .center)
-            .offset(y: verticalSizeClass == .compact ? -50 : -30)
+            .offset(y: verticalSizeClass == .compact ? -50 : -25)
         }
     }
 }
