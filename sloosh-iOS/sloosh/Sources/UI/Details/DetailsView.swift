@@ -619,7 +619,8 @@ struct DetailsView: View {
                         .transition(.opacity)
                 } else if let details = viewModel.details {
                     // Stretchy Backdrop
-                    let baseHeight: CGFloat = 410
+                    let baseHeight: CGFloat = 380
+                    let topInset: CGFloat = 56
                     
                     GeometryReader { geometry in
                         let minY = geometry.frame(in: .global).minY
@@ -633,9 +634,9 @@ struct DetailsView: View {
                             width: geometry.size.width,
                             height: height
                         )
-                        .offset(y: offset)
+                        .offset(y: offset + topInset)
                     }
-                    .frame(height: baseHeight)
+                    .frame(height: baseHeight + topInset)
                     .contextMenu {
                         Button {
                             Task { await saveImage(from: details.displayBackdropUrl, label: "обложка") }
@@ -898,13 +899,15 @@ private struct DetailsSkeletonView: View {
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     
     var body: some View {
-        let baseHeight: CGFloat = verticalSizeClass == .compact ? 280 : 410
+        let baseHeight: CGFloat = verticalSizeClass == .compact ? 280 : 380
+        let topInset: CGFloat = verticalSizeClass == .compact ? 0 : 56
         
         VStack(spacing: 0) {
             // Backdrop
             Rectangle()
                 .fill(Color.gray.opacity(0.2))
                 .frame(height: baseHeight)
+                .padding(.top, topInset)
                 .shimmer()
                 .mask(
                     LinearGradient(
