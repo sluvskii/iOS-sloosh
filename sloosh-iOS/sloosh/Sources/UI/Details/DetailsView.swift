@@ -124,6 +124,27 @@ struct DetailsView: View {
         }
     }
 
+    private var playButtonAccentColor: Color {
+        if let dominant = dominantBackdropColor ?? dominantPosterColor {
+            var hue: CGFloat = 0
+            var saturation: CGFloat = 0
+            var brightness: CGFloat = 0
+            var alpha: CGFloat = 0
+            if dominant.getHue(&hue, saturation: &saturation, brightness: &brightness, alpha: &alpha) {
+                let vibrantColor = UIColor(
+                    hue: hue,
+                    saturation: min(max(saturation * 1.35, 0.6), 0.95),
+                    brightness: min(max(brightness * 1.45, 0.65), 0.95),
+                    alpha: 1.0
+                )
+                return Color(vibrantColor)
+            }
+            return Color(dominant)
+        } else {
+            return Color.white.opacity(0.18)
+        }
+    }
+
     private func fetchAverageColor(from url: URL?) async -> UIColor? {
         guard let url else { return nil }
         return await Task.detached(priority: .userInitiated) {
@@ -454,7 +475,7 @@ struct DetailsView: View {
             .frame(height: 50)
             .padding(.horizontal, 24)
         }
-        .buttonStyle(GlassPlayButtonStyle())
+        .buttonStyle(GlassPlayButtonStyle(accentColor: playButtonAccentColor))
         .matchedTransitionSource(id: "playBtn", in: transition) { source in
             source
                 .background(.clear)
@@ -2158,14 +2179,17 @@ class DetailsViewModel: ObservableObject {
 }
 
 struct GlassPlayButtonStyle: ButtonStyle {
+    var accentColor: Color = .white.opacity(0.18)
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .foregroundStyle(.white)
             .background(
                 Capsule()
-                    .fill(.white.opacity(0.15))
+                    .fill(accentColor.opacity(0.75))
             )
             .glassEffect(.regular.interactive(), in: Capsule())
+            .shadow(color: accentColor.opacity(0.35), radius: 12, x: 0, y: 4)
             .scaleEffect(configuration.isPressed ? 0.94 : 1.0)
             .animation(.spring(response: 0.25, dampingFraction: 0.6), value: configuration.isPressed)
     }
