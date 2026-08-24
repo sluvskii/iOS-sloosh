@@ -104,9 +104,6 @@ struct ContentView: View {
             .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("SlooshIntentContinueWatching"))) { notification in
                 selectedTab = .continueWatching
             }
-            .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("SlooshOpenGenreHome"))) { _ in
-                selectedTab = .home
-            }
             .onChange(of: deepLinkManager.targetMovieId) { _, newValue in
                 if newValue != nil {
                     selectedTab = .home

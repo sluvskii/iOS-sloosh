@@ -1174,17 +1174,7 @@ private struct DetailsInfoSection: View {
 
                     FlowLayout(spacing: 8) {
                         ForEach(genres, id: \.self) { genre in
-                            Button {
-                                let generator = UIImpactFeedbackGenerator(style: .light)
-                                generator.prepare()
-                                generator.impactOccurred()
-                                NotificationCenter.default.post(
-                                    name: NSNotification.Name("SlooshOpenGenreHome"),
-                                    object: nil,
-                                    userInfo: ["genre": genre]
-                                )
-                                dismiss()
-                            } label: {
+                            NavigationLink(destination: GenreCatalogView(genre: genre)) {
                                 HStack(spacing: 6) {
                                     Text(genre)
                                         .font(.system(size: 14, weight: .semibold))
