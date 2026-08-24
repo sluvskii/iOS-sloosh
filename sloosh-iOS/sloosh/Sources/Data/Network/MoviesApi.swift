@@ -133,19 +133,44 @@ class MoviesApi {
         return try await performRequest(endpoint: "api/v1/tv/\(id)/season/\(season)/episode/\(episode)")
     }
     
-    func searchMovies(query: String, page: Int = 1, filters: SearchFilters? = nil) async throws -> ApiEnvelope<MediaResponse> {
+    func searchMovies(query: String, page: Int = 1) async throws -> ApiEnvelope<MediaResponse> {
         var queryItems = [
             URLQueryItem(name: "page", value: String(page))
         ]
         
-        if !query.trimmingCharacters(in: .whitespaces).isEmpty {
-            queryItems.append(URLQueryItem(name: "query", value: query))
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !trimmed.isEmpty {
+            queryItems.append(URLQueryItem(name: "query", value: trimmed))
         }
         
-        // v1/search использует Kinopoisk Full-Text Search:
-        // - правильно обрабатывает е/ё
+        // v1/search использует Kinopoisk Full-Text Fuzzy Search:
+        // - правильно обрабатывает опечатки, е/ё, транслит
         // - даёт корректный порядок результатов по релевантности
-        // v2/search оптимизирован для каталога с фильтрами, не для поиска по ключевому слову
         return try await performRequest(endpoint: "api/v1/search", queryItems: queryItems)
+    }
+
+    func discoverMovies(filters: SearchFilters, page: Int = 1) async throws -> ApiEnvelope<MediaResponse> {
+        var queryItems = [
+            URLQueryItem(name: "page", value: String(page))
+        ]
+        
+        if let type = filters.type, !type.isEmpty {
+            queryItems.append(URLQueryItem(name: "type", value: type))
+        }
+        
+        if let order = filters.order, !order.isEmpty {
+            queryItems.append(URLQueryItem(name: "order", value: order))
+        }
+        
+        if let genres = filters.genres, !genres.isEmpty {
+            queryItems.append(URLQueryItem(name: "genres", value: genres.lowercased()))
+        }
+        
+        if let countries = filters.countries, !countries.isEmpty {
+            queryItems.append(URLQueryItem(name: "countries", value: countries))
+        }
+        
+        // api/v2/search — серверный движок каталога с поддержкой параметров фильтров
+        return try await performRequest(endpoint: "api/v2/search", queryItems: queryItems)
     }
 }

@@ -17,12 +17,12 @@ struct SearchView: View {
     var body: some View {
         NavigationStack {
             Group {
-                if viewModel.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                if viewModel.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && viewModel.filters.isEmpty {
                     if viewModel.history.isEmpty {
                         SearchEmptyState(
                             icon: "magnifyingglass",
                             title: "Начните поиск",
-                            subtitle: "Ищите фильмы и сериалы по названию"
+                            subtitle: "Ищите фильмы и сериалы по названию или фильтрам"
                         )
                     } else {
                         List {
@@ -87,6 +87,10 @@ struct SearchView: View {
                     )
                 } else {
                     ScrollView {
+                        if !viewModel.filters.isEmpty {
+                            ActiveFiltersBar(filters: $viewModel.filters)
+                        }
+
                         let spacing: CGFloat = cardDensity == .compact ? 8 : 16
                         let padding: CGFloat = cardDensity == .compact ? 12 : 16
                         LazyVGrid(columns: columns, spacing: spacing) {
@@ -128,6 +132,12 @@ struct SearchView: View {
                     .refreshable {
                         await viewModel.performSearch(reset: true)
                     }
+                }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("SlooshOpenGenreSearch"))) { notification in
+                if let genre = notification.userInfo?["genre"] as? String {
+                    viewModel.searchQuery = ""
+                    viewModel.filters = SearchFilters(genres: genre)
                 }
             }
             .navigationTitle("Поиск")
@@ -183,8 +193,93 @@ struct SearchView: View {
             }
             .sheet(isPresented: $showFilters) {
                 SearchFilterSheet(filters: $viewModel.filters)
-            }
         }
+    }
+}
+
+struct ActiveFiltersBar: View {
+    @Binding var filters: SearchFilters
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                if let genre = filters.genres, !genre.isEmpty {
+                    FilterBadgeChip(title: genre.capitalized, icon: "tag.fill") {
+                        filters.genres = nil
+                    }
+                }
+
+                if let type = filters.type {
+                    let title = type == "FILM" ? "Фильмы" : (type == "TV_SERIES" ? "Сериалы" : "Мульты")
+                    FilterBadgeChip(title: title, icon: "film") {
+                        filters.type = nil
+                    }
+                }
+
+                if let rating = filters.ratingFrom {
+                    FilterBadgeChip(title: "от \(String(format: "%.1f", rating)) ★", icon: "star.fill") {
+                        filters.ratingFrom = nil
+                    }
+                }
+
+                if let year = filters.yearFrom {
+                    FilterBadgeChip(title: "с \(year) г.", icon: "calendar") {
+                        filters.yearFrom = nil
+                    }
+                }
+
+                if let country = filters.countries, !country.isEmpty {
+                    FilterBadgeChip(title: country, icon: "globe") {
+                        filters.countries = nil
+                    }
+                }
+
+                Button {
+                    withAnimation {
+                        filters = SearchFilters()
+                    }
+                } label: {
+                    Text("Сбросить всё")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(.secondary)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 6)
+                        .glassEffect(in: Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 4)
+        }
+    }
+}
+
+struct FilterBadgeChip: View {
+    let title: String
+    let icon: String
+    let onRemove: () -> Void
+
+    var body: some View {
+        HStack(spacing: 5) {
+            Image(systemName: icon)
+                .font(.system(size: 11, weight: .bold))
+                .foregroundColor(Color.slooshAccent)
+
+            Text(title)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundColor(.primary)
+
+            Button(action: onRemove) {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 13))
+                    .foregroundColor(.secondary)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(.leading, 10)
+        .padding(.trailing, 8)
+        .padding(.vertical, 6)
+        .glassEffect(.regular.interactive(), in: Capsule())
     }
 }
 
@@ -286,7 +381,7 @@ class SearchViewModel: ObservableObject {
         searchTask?.cancel()
 
         let trimmedQuery = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedQuery.isEmpty else {
+        guard !trimmedQuery.isEmpty || !filters.isEmpty else {
             results = []
             error = nil
             isLoading = false
@@ -331,7 +426,7 @@ class SearchViewModel: ObservableObject {
                         results.append(contentsOf: uniqueItems)
                     }
 
-                    if saveHistory && !newResults.isEmpty && page == 1 {
+                    if saveHistory && !trimmedQuery.isEmpty && !newResults.isEmpty && page == 1 {
                         updateHistory(with: trimmedQuery)
                     }
                 }

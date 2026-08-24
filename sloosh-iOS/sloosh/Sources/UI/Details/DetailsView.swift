@@ -1153,6 +1153,7 @@ private struct DetailsPrimaryMetadataRow: View {
 private struct DetailsInfoSection: View {
     let details: MediaDetailsDto
     let backgroundColor: Color
+    @Environment(\.dismiss) private var dismiss
     @State private var isDescriptionExpanded = false
     @State private var canExpand = false
     @State private var fullHeight: CGFloat = 0
@@ -1173,11 +1174,27 @@ private struct DetailsInfoSection: View {
 
                     FlowLayout(spacing: 8) {
                         ForEach(genres, id: \.self) { genre in
-                            Text(genre)
-                                .font(.system(size: 14, weight: .semibold))
+                            Button {
+                                let generator = UIImpactFeedbackGenerator(style: .light)
+                                generator.prepare()
+                                generator.impactOccurred()
+                                NotificationCenter.default.post(
+                                    name: NSNotification.Name("SlooshOpenGenreSearch"),
+                                    object: nil,
+                                    userInfo: ["genre": genre]
+                                )
+                                dismiss()
+                            } label: {
+                                HStack(spacing: 6) {
+                                    Text(genre)
+                                        .font(.system(size: 14, weight: .semibold))
+                                        .foregroundColor(.primary)
+                                }
                                 .padding(.horizontal, 14)
                                 .padding(.vertical, 8)
-                                .glassEffect(in: Capsule())
+                                .glassEffect(.regular.interactive(), in: Capsule())
+                            }
+                            .buttonStyle(.plain)
                         }
                     }
                 }

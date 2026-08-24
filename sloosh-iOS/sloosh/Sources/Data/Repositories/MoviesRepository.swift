@@ -156,11 +156,99 @@ class MoviesRepository: ObservableObject {
     }
 
     func searchMoviesResponse(query: String, page: Int = 1, filters: SearchFilters = SearchFilters()) async throws -> MediaResponse {
-        let response = try await MoviesApi.shared.searchMovies(query: query, page: page, filters: filters)
-        guard let data = response.data else {
+        let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        
+        if !trimmedQuery.isEmpty {
+            // Режим 1: Поиск по названию (v1 Kinopoisk Fuzzy Search)
+            let response = try await MoviesApi.shared.searchMovies(query: trimmedQuery, page: page)
+            guard let data = response.data else {
+                return MediaResponse(page: page, results: [], pages: 1, total: 0, total_pages: 1, total_results: 0)
+            }
+            
+            // Если заданы фильтры, мягко фильтруем результаты поиска на клиенте
+            guard !filters.isEmpty, let rawResults = data.results else {
+                return data
+            }
+            
+            let filteredResults = applyFilters(rawResults, filters: filters)
+            return MediaResponse(
+                page: data.page,
+                results: filteredResults,
+                pages: data.pages,
+                total: filteredResults.count,
+                total_pages: data.total_pages,
+                total_results: data.total_results
+            )
+        } else if !filters.isEmpty {
+            // Режим 2: Просмотр каталога по фильтрам (v2 Discover/Filter Engine)
+            let response = try await MoviesApi.shared.discoverMovies(filters: filters, page: page)
+            guard let data = response.data else {
+                return MediaResponse(page: page, results: [], pages: 1, total: 0, total_pages: 1, total_results: 0)
+            }
+            
+            // Дополнительная клиентская фильтрация (например, по точному порогу рейтинга или года)
+            if let rawResults = data.results {
+                let filteredResults = applyFilters(rawResults, filters: filters)
+                return MediaResponse(
+                    page: data.page,
+                    results: filteredResults,
+                    pages: data.pages,
+                    total: data.total,
+                    total_pages: data.total_pages,
+                    total_results: data.total_results
+                )
+            }
+            return data
+        } else {
             return MediaResponse(page: page, results: [], pages: 1, total: 0, total_pages: 1, total_results: 0)
         }
-        return data
+    }
+
+    private func applyFilters(_ items: [MediaDto], filters: SearchFilters) -> [MediaDto] {
+        return items.filter { item in
+            // Фильтр по типу
+            if let type = filters.type {
+                switch type {
+                case "FILM":
+                    if item.type != "movie" || isCartoon(item) { return false }
+                case "TV_SERIES":
+                    if item.type != "tv" || isCartoon(item) { return false }
+                case "CARTOON":
+                    if !isCartoon(item) { return false }
+                default:
+                    break
+                }
+            }
+            
+            // Фильтр по рейтингу
+            if let minRating = filters.ratingFrom {
+                let rating = item.rating ?? item.ratings?.kp ?? item.ratings?.imdb ?? 0.0
+                if rating < minRating { return false }
+            }
+            if let maxRating = filters.ratingTo {
+                let rating = item.rating ?? item.ratings?.kp ?? item.ratings?.imdb ?? 0.0
+                if rating > maxRating { return false }
+            }
+            
+            // Фильтр по году
+            if let minYear = filters.yearFrom, let year = item.year {
+                if year < minYear { return false }
+            }
+            if let maxYear = filters.yearTo, let year = item.year {
+                if year > maxYear { return false }
+            }
+            
+            // Фильтр по жанру
+            if let targetGenre = filters.genres?.lowercased().trimmingCharacters(in: .whitespacesAndNewlines), !targetGenre.isEmpty {
+                let itemGenres = item.genres?.compactMap { genreDto -> String? in
+                    return genreDto.name?.lowercased() ?? genreDto.id?.lowercased()
+                } ?? []
+                let matches = itemGenres.contains { $0.contains(targetGenre) }
+                if !matches { return false }
+            }
+            
+            return true
+        }
     }
 }
 
