@@ -26,13 +26,17 @@ struct RemoteBackdropView: View {
             LinearGradient(
                 gradient: Gradient(stops: [
                     .init(color: .clear, location: 0.0),
-                    .init(color: .black.opacity(0.3), location: 0.07),
-                    .init(color: .black.opacity(0.85), location: 0.16),
-                    .init(color: .black, location: 0.25),
-                    .init(color: .black, location: 0.65),
-                    .init(color: .black.opacity(0.85), location: 0.78),
-                    .init(color: .black.opacity(0.4), location: 0.88),
-                    .init(color: .black.opacity(0.1), location: 0.95),
+                    .init(color: .clear, location: 0.06),
+                    .init(color: .black.opacity(0.08), location: 0.14),
+                    .init(color: .black.opacity(0.25), location: 0.22),
+                    .init(color: .black.opacity(0.55), location: 0.32),
+                    .init(color: .black.opacity(0.85), location: 0.42),
+                    .init(color: .black, location: 0.50),
+                    .init(color: .black, location: 0.60),
+                    .init(color: .black.opacity(0.85), location: 0.72),
+                    .init(color: .black.opacity(0.55), location: 0.82),
+                    .init(color: .black.opacity(0.25), location: 0.90),
+                    .init(color: .black.opacity(0.08), location: 0.96),
                     .init(color: .clear, location: 1.0)
                 ]),
                 startPoint: .top,
@@ -619,8 +623,7 @@ struct DetailsView: View {
                         .transition(.opacity)
                 } else if let details = viewModel.details {
                     // Stretchy Backdrop
-                    let baseHeight: CGFloat = 380
-                    let topInset: CGFloat = 56
+                    let baseHeight: CGFloat = 430
                     
                     GeometryReader { geometry in
                         let minY = geometry.frame(in: .global).minY
@@ -634,9 +637,9 @@ struct DetailsView: View {
                             width: geometry.size.width,
                             height: height
                         )
-                        .offset(y: offset + topInset)
+                        .offset(y: offset)
                     }
-                    .frame(height: baseHeight + topInset)
+                    .frame(height: baseHeight)
                     .contextMenu {
                         Button {
                             Task { await saveImage(from: details.displayBackdropUrl, label: "обложка") }
@@ -899,27 +902,29 @@ private struct DetailsSkeletonView: View {
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     
     var body: some View {
-        let baseHeight: CGFloat = verticalSizeClass == .compact ? 280 : 380
-        let topInset: CGFloat = verticalSizeClass == .compact ? 0 : 56
+        let baseHeight: CGFloat = verticalSizeClass == .compact ? 280 : 430
         
         VStack(spacing: 0) {
             // Backdrop
             Rectangle()
                 .fill(Color.gray.opacity(0.2))
                 .frame(height: baseHeight)
-                .padding(.top, topInset)
                 .shimmer()
                 .mask(
                     LinearGradient(
                         gradient: Gradient(stops: [
                             .init(color: .clear, location: 0.0),
-                            .init(color: .black.opacity(0.3), location: 0.07),
-                            .init(color: .black.opacity(0.85), location: 0.16),
-                            .init(color: .black, location: 0.25),
-                            .init(color: .black, location: 0.65),
-                            .init(color: .black.opacity(0.85), location: 0.78),
-                            .init(color: .black.opacity(0.4), location: 0.88),
-                            .init(color: .black.opacity(0.1), location: 0.95),
+                            .init(color: .clear, location: 0.06),
+                            .init(color: .black.opacity(0.08), location: 0.14),
+                            .init(color: .black.opacity(0.25), location: 0.22),
+                            .init(color: .black.opacity(0.55), location: 0.32),
+                            .init(color: .black.opacity(0.85), location: 0.42),
+                            .init(color: .black, location: 0.50),
+                            .init(color: .black, location: 0.60),
+                            .init(color: .black.opacity(0.85), location: 0.72),
+                            .init(color: .black.opacity(0.55), location: 0.82),
+                            .init(color: .black.opacity(0.25), location: 0.90),
+                            .init(color: .black.opacity(0.08), location: 0.96),
                             .init(color: .clear, location: 1.0)
                         ]),
                         startPoint: .top,
