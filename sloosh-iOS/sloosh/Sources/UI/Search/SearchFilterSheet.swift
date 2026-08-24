@@ -39,6 +39,20 @@ struct SearchFilterSheet: View {
                     .pickerStyle(.menu)
                 }
 
+                Section(header: Text("Жанр")) {
+                    Picker("Жанр", selection: $filters.genres) {
+                        Text("Любой").tag(String?.none)
+                        ForEach([
+                            "боевик", "комедия", "драма", "фантастика", "триллер",
+                            "ужасы", "детектив", "мелодрама", "приключения", "фэнтези",
+                            "мультфильм", "криминал", "семейный", "документальный", "аниме", "военный", "история"
+                        ], id: \.self) { genre in
+                            Text(genre.capitalized).tag(String?.some(genre))
+                        }
+                    }
+                    .pickerStyle(.menu)
+                }
+
                 Section(header: Text("Страна")) {
                     Picker("Страна", selection: $filters.countries) {
                         Text("Любая").tag(String?.none)
