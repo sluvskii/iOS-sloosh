@@ -619,8 +619,8 @@ struct DetailsView: View {
                         .transition(.opacity)
                 } else if let details = viewModel.details {
                     // Stretchy Backdrop
-                    let baseHeight: CGFloat = 430
-                    let topInset: CGFloat = 24
+                    let baseHeight: CGFloat = 380
+                    let topInset: CGFloat = 90
                     
                     GeometryReader { geometry in
                         let minY = geometry.frame(in: .global).minY
@@ -899,8 +899,8 @@ private struct DetailsSkeletonView: View {
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     
     var body: some View {
-        let baseHeight: CGFloat = verticalSizeClass == .compact ? 280 : 430
-        let topInset: CGFloat = verticalSizeClass == .compact ? 0 : 24
+        let baseHeight: CGFloat = verticalSizeClass == .compact ? 280 : 380
+        let topInset: CGFloat = verticalSizeClass == .compact ? 0 : 90
         
         VStack(spacing: 0) {
             // Backdrop
