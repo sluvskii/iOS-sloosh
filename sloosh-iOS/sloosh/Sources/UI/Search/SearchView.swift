@@ -193,6 +193,7 @@ struct SearchView: View {
             }
             .sheet(isPresented: $showFilters) {
                 SearchFilterSheet(filters: $viewModel.filters)
+            }
         }
     }
 }
