@@ -62,9 +62,9 @@ struct AboutView: View {
                     let success = AuthRepository.shared.activateAdminModeWithPasscode(enteredPasscode)
                     enteredPasscode = ""
                     if success {
-                        ToastManager.shared.show("Права администратора успешно активированы! 🛡️")
+                        ToastManager.shared.show(title: "Режим администратора активен", subtitle: "Доступ к панели управления открыт 🛡️", icon: "checkmark.shield.fill", iconColor: Color.slooshAccent)
                     } else {
-                        ToastManager.shared.show("Неверный мастер-ключ")
+                        ToastManager.shared.show(title: "Неверный мастер-ключ", icon: "xmark.circle.fill", iconColor: .red)
                     }
                 }
                 Button("Отмена", role: .cancel) {
