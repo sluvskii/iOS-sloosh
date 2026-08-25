@@ -106,9 +106,14 @@ struct slooshApp: App {
                 .onChange(of: scenePhase) { _, newPhase in
                     if newPhase == .background {
                         AppDiagnostics.shared.markGracefulExit()
+                        UserPresenceService.shared.setOffline()
                     } else if newPhase == .active {
                         AppDiagnostics.shared.markRunning()
+                        UserPresenceService.shared.startHeartbeat()
                     }
+                }
+                .task {
+                    UserPresenceService.shared.startHeartbeat()
                 }
         }
     }
