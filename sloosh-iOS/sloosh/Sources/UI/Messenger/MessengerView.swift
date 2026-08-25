@@ -45,8 +45,7 @@ public struct MessengerView: View {
             let filteredSubs = repo.subscribedChannels.filter {
                 $0.name.localizedCaseInsensitiveContains(query) ||
                 $0.tag.localizedCaseInsensitiveContains(cleanQuery) ||
-                $0.description.localizedCaseInsensitiveContains(query) ||
-                ($0.lastPostText?.localizedCaseInsensitiveContains(query) == true)
+                (!cleanQuery.isEmpty && TagValidator.sanitize($0.name).localizedCaseInsensitiveContains(cleanQuery))
             }
             items += filteredChats.map { MessengerFeedItem.directChat($0) }
             items += filteredSubs.map { MessengerFeedItem.channel($0) }
@@ -81,13 +80,13 @@ public struct MessengerView: View {
                     return
                 }
 
-                // 1. Instant local search on existing cached channels
+                // 1. Instant local search on existing cached channels (strictly by name or tag)
                 let cleanTrimmed = TagValidator.sanitize(trimmed)
                 let localMatching = (repo.publicChannels + repo.subscribedChannels).filter { ch in
                     ch.name.localizedCaseInsensitiveContains(trimmed) ||
                     ch.tag.localizedCaseInsensitiveContains(trimmed) ||
                     (!cleanTrimmed.isEmpty && ch.tag.localizedCaseInsensitiveContains(cleanTrimmed)) ||
-                    ch.description.localizedCaseInsensitiveContains(trimmed)
+                    (!cleanTrimmed.isEmpty && TagValidator.sanitize(ch.name).localizedCaseInsensitiveContains(cleanTrimmed))
                 }
                 if !localMatching.isEmpty {
                     self.searchedPublicChannels = localMatching
