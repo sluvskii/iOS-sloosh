@@ -37,6 +37,8 @@
     </array>
     <key>NSPhotoLibraryAddUsageDescription</key>
     <string>Sloosh сохранит постер или логотип фильма в вашу Медиатеку.</string>
+    <key>NSFaceIDUsageDescription</key>
+    <string>Используется для защиты входа в панель управления Sloosh.</string>
 </dict>
 </plist>
 
