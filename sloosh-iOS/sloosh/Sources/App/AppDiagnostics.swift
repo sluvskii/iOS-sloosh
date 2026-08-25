@@ -104,11 +104,28 @@ class AppDiagnostics: ObservableObject {
         }
     }
     
-    /// Очистить обычные логи (если разрослись)
-    func clearNormalLogs() {
-        ioQueue.async { [weak self] in
-            guard let self = self else { return }
-            try? FileManager.default.removeItem(at: self.logsFileURL)
+    /// Получить последние строки логов для админ-панели
+    public var recentLogs: [String] {
+        var result: [String] = []
+
+        if FileManager.default.fileExists(atPath: crashFileURL.path),
+           let crashContent = try? String(contentsOf: crashFileURL, encoding: .utf8) {
+            let lines = crashContent.components(separatedBy: .newlines).filter { !$0.isEmpty }
+            result.append(contentsOf: lines.prefix(15))
         }
+
+        if FileManager.default.fileExists(atPath: logsFileURL.path),
+           let logsContent = try? String(contentsOf: logsFileURL, encoding: .utf8) {
+            let lines = logsContent.components(separatedBy: .newlines).filter { !$0.isEmpty }
+            result.append(contentsOf: lines.suffix(30).reversed())
+        }
+
+        return result
+    }
+
+    /// Очистить все логи (краши и диагностику)
+    public func clearLogs() {
+        clearCrashLog()
+        clearNormalLogs()
     }
 }

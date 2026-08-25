@@ -37,7 +37,7 @@ public final class AuthRepository: ObservableObject {
     public var isAdmin: Bool {
         guard let user = currentUser, !user.isAnonymous else { return false }
         let tag = (user.tag ?? "").lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-        let name = user.displayName.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        let name = (user.displayName ?? "").lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
         let email = (user.email ?? "").lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
 
         // Known admin handles and developer emails
