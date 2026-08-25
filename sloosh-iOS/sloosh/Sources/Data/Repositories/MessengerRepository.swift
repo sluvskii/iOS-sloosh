@@ -230,36 +230,125 @@ public final class MessengerRepository: ObservableObject {
         _ = try? await URLSession.shared.data(for: req)
     }
 
+    // MARK: - Safe Channel Parsing & Tag Lookups
+
+    public func decodeChannelModel(from data: Data, fallbackId: String? = nil) -> ChannelModel? {
+        if var model = try? JSONDecoder().decode(ChannelModel.self, from: data) {
+            if model.id.isEmpty, let fid = fallbackId { model.id = fid }
+            return model
+        }
+        guard let dict = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return nil }
+        return parseChannelDict(dict, fallbackId: fallbackId)
+    }
+
+    public func parseChannelDict(_ dict: [String: Any], fallbackId: String? = nil) -> ChannelModel? {
+        let id = (dict["id"] as? String) ?? fallbackId ?? ""
+        guard !id.isEmpty else { return nil }
+        let rawTag = (dict["tag"] as? String) ?? ""
+        let tag = rawTag.isEmpty ? "channel_\(id.prefix(6))" : TagValidator.sanitize(rawTag)
+        let name = (dict["name"] as? String) ?? ""
+        let description = (dict["description"] as? String) ?? ""
+        let avatarEmoji = dict["avatarEmoji"] as? String
+        let avatarUrl = dict["avatarUrl"] as? String
+        let accentColorHex = dict["accentColorHex"] as? String
+        let ownerId = (dict["ownerId"] as? String) ?? ""
+        let ownerName = (dict["ownerName"] as? String) ?? ""
+        let createdAtMs = (dict["createdAtMs"] as? NSNumber)?.int64Value ?? Int64(Date().timeIntervalSince1970 * 1000)
+        let updatedAtMs = (dict["updatedAtMs"] as? NSNumber)?.int64Value ?? createdAtMs
+        let subscriberCount = (dict["subscriberCount"] as? NSNumber)?.intValue ?? 1
+        let pinnedPostId = dict["pinnedPostId"] as? String
+        let isPublic = (dict["isPublic"] as? Bool) ?? true
+        let lastPostText = dict["lastPostText"] as? String
+        let lastPostTimestampMs = (dict["lastPostTimestampMs"] as? NSNumber)?.int64Value
+
+        return ChannelModel(
+            id: id,
+            tag: tag,
+            name: name,
+            description: description,
+            avatarEmoji: avatarEmoji,
+            avatarUrl: avatarUrl,
+            accentColorHex: accentColorHex,
+            ownerId: ownerId,
+            ownerName: ownerName,
+            createdAtMs: createdAtMs,
+            updatedAtMs: updatedAtMs,
+            subscriberCount: subscriberCount,
+            pinnedPostId: pinnedPostId,
+            isPublic: isPublic,
+            lastPostText: lastPostText,
+            lastPostTimestampMs: lastPostTimestampMs
+        )
+    }
+
     public func lookupChannelByTag(_ tag: String) async -> ChannelModel? {
         let clean = TagValidator.sanitize(tag)
-        guard !clean.isEmpty,
-              let tagUrl = await makeURL(path: "channelTags/\(clean)"),
-              let (data, resp) = try? await URLSession.shared.data(from: tagUrl),
-              let httpResp = resp as? HTTPURLResponse, (200...299).contains(httpResp.statusCode),
-              let channelId = try? JSONDecoder().decode(String.self, from: data),
-              !channelId.isEmpty else { return nil }
+        guard !clean.isEmpty else { return nil }
 
-        guard let chUrl = await makeURL(path: "channels/\(channelId)"),
-              let (chData, chResp) = try? await URLSession.shared.data(from: chUrl),
-              let httpChResp = chResp as? HTTPURLResponse, (200...299).contains(httpChResp.statusCode) else { return nil }
+        // 1. Direct tag index lookup
+        if let tagUrl = await makeURL(path: "channelTags/\(clean)"),
+           let (data, resp) = try? await URLSession.shared.data(from: tagUrl),
+           let httpResp = resp as? HTTPURLResponse, (200...299).contains(httpResp.statusCode) {
+            let rawString = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let raw = rawString, raw != "null" && !raw.isEmpty {
+                let channelId = (try? JSONDecoder().decode(String.self, from: data)) ??
+                    raw.trimmingCharacters(in: CharacterSet(charactersIn: "\" \n\r\t"))
+                if !channelId.isEmpty,
+                   let chUrl = await makeURL(path: "channels/\(channelId)"),
+                   let (chData, chResp) = try? await URLSession.shared.data(from: chUrl),
+                   let httpChResp = chResp as? HTTPURLResponse, (200...299).contains(httpChResp.statusCode),
+                   let model = decodeChannelModel(from: chData, fallbackId: channelId) {
+                    return model
+                }
+            }
+        }
 
-        return try? JSONDecoder().decode(ChannelModel.self, from: chData)
+        // 2. Direct channel id lookup if tag equals id
+        if let chUrl = await makeURL(path: "channels/\(clean)"),
+           let (chData, chResp) = try? await URLSession.shared.data(from: chUrl),
+           let httpChResp = chResp as? HTTPURLResponse, (200...299).contains(httpChResp.statusCode),
+           let model = decodeChannelModel(from: chData, fallbackId: clean) {
+            return model
+        }
+
+        // 3. Search in local pools
+        if let found = self.publicChannels.first(where: { $0.tag.lowercased() == clean.lowercased() }) {
+            return found
+        }
+        if let found = self.subscribedChannels.first(where: { $0.tag.lowercased() == clean.lowercased() }) {
+            return found
+        }
+
+        return nil
     }
 
     public func lookupUserByTag(_ tag: String) async -> SlooshUser? {
         let clean = TagValidator.sanitize(tag)
-        guard !clean.isEmpty,
-              let tagUrl = await makeURL(path: "userTags/\(clean)"),
-              let (data, resp) = try? await URLSession.shared.data(from: tagUrl),
-              let httpResp = resp as? HTTPURLResponse, (200...299).contains(httpResp.statusCode),
-              let userId = try? JSONDecoder().decode(String.self, from: data),
-              !userId.isEmpty else { return nil }
+        guard !clean.isEmpty else { return nil }
 
-        guard let userUrl = await makeURL(path: "user_profiles/\(userId)"),
-              let (userData, userResp) = try? await URLSession.shared.data(from: userUrl),
-              let httpUserResp = userResp as? HTTPURLResponse, (200...299).contains(httpUserResp.statusCode) else { return nil }
+        if let tagUrl = await makeURL(path: "userTags/\(clean)"),
+           let (data, resp) = try? await URLSession.shared.data(from: tagUrl),
+           let httpResp = resp as? HTTPURLResponse, (200...299).contains(httpResp.statusCode) {
+            let rawString = String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let raw = rawString, raw != "null" && !raw.isEmpty {
+                let userId = (try? JSONDecoder().decode(String.self, from: data)) ??
+                    raw.trimmingCharacters(in: CharacterSet(charactersIn: "\" \n\r\t"))
+                if !userId.isEmpty {
+                    if let user = getLocalKnownUsers()[userId] {
+                        return user
+                    }
+                    if let pUrl = await makeURL(path: "user_profiles/\(userId)"),
+                       let (pData, pResp) = try? await URLSession.shared.data(from: pUrl),
+                       let httpPResp = pResp as? HTTPURLResponse, (200...299).contains(httpPResp.statusCode),
+                       let user = try? JSONDecoder().decode(SlooshUser.self, from: pData) {
+                        saveLocalKnownUser(user)
+                        return user
+                    }
+                }
+            }
+        }
 
-        return try? JSONDecoder().decode(SlooshUser.self, from: userData)
+        return nil
     }
 
     // MARK: - User Registration & Sanitized Sync
@@ -1114,28 +1203,29 @@ public final class MessengerRepository: ObservableObject {
         }
 
         guard let url = await makeURL(path: "channels") else {
-            return filterChannels(Array(combinedPool.values), query: query, directMatch: directMatch)
+            let fallbackList = Array(combinedPool.values).sorted { $0.subscriberCount > $1.subscriberCount }
+            return filterChannels(fallbackList, query: query, directMatch: directMatch)
         }
 
         do {
             let (data, response) = try await URLSession.shared.data(from: url)
             guard let httpResp = response as? HTTPURLResponse, (200...299).contains(httpResp.statusCode) else {
-                return filterChannels(Array(combinedPool.values), query: query, directMatch: directMatch)
+                let fallbackList = Array(combinedPool.values).sorted { $0.subscriberCount > $1.subscriberCount }
+                return filterChannels(fallbackList, query: query, directMatch: directMatch)
             }
 
             if !data.isEmpty && String(data: data, encoding: .utf8) != "null" {
-                if let dict = try? JSONDecoder().decode([String: ChannelModel].self, from: data) {
-                    for (chId, model) in dict {
-                        var m = model
-                        if m.id.isEmpty { m.id = chId }
-                        combinedPool[m.id] = m
+                if let rawDict = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
+                    for (chId, val) in rawDict {
+                        if let channelDict = val as? [String: Any],
+                           let model = parseChannelDict(channelDict, fallbackId: chId) {
+                            combinedPool[model.id] = model
+                        }
                     }
-                } else if let rawDict = try? JSONSerialization.jsonObject(with: data) as? [String: [String: Any]] {
-                    for (chId, rawChannel) in rawDict {
-                        if let channelData = try? JSONSerialization.data(withJSONObject: rawChannel),
-                           var channelModel = try? JSONDecoder().decode(ChannelModel.self, from: channelData) {
-                            if channelModel.id.isEmpty { channelModel.id = chId }
-                            combinedPool[channelModel.id] = channelModel
+                } else if let rawArray = (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]] {
+                    for channelDict in rawArray {
+                        if let model = parseChannelDict(channelDict) {
+                            combinedPool[model.id] = model
                         }
                     }
                 }
@@ -1148,7 +1238,8 @@ public final class MessengerRepository: ObservableObject {
             return filterChannels(allPublic, query: query, directMatch: directMatch)
         } catch {
             AppDiagnostics.shared.log("MessengerRepository fetchPublicChannels error: \(error.localizedDescription)")
-            return filterChannels(Array(combinedPool.values), query: query, directMatch: directMatch)
+            let fallbackList = Array(combinedPool.values).sorted { $0.subscriberCount > $1.subscriberCount }
+            return filterChannels(fallbackList, query: query, directMatch: directMatch)
         }
     }
 
