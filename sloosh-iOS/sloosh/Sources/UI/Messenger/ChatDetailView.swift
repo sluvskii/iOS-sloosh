@@ -628,6 +628,7 @@ private struct PeakMessageBubbleView: View {
 
                     if let msgReactions = message.reactions, !msgReactions.isEmpty {
                         reactionsOverlay(msgReactions)
+                            .transition(.scale(scale: 0.01, anchor: isFromMe ? .bottomTrailing : .bottomLeading).combined(with: .opacity))
                     }
                 }
                 .padding(.bottom, (message.reactions?.isEmpty == false) ? 8 : 0)
@@ -692,32 +693,22 @@ private struct PeakMessageBubbleView: View {
                                 .lineLimit(1)
                         }
                     }
-                    .padding(.bottom, 2)
+                    .padding(.horizontal, 4)
+                    .padding(.top, 2)
                 }
 
                 // Text content
-                if let text = message.text, !text.isEmpty {
+                if let text = message.text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     Text(text)
                         .font(.system(size: 16))
-                        .foregroundColor(isFromMe ? Color(UIColor.systemBackground) : .primary)
+                        .foregroundColor(isFromMe ? .white : .primary)
                 }
             }
             .padding(.horizontal, 14)
-            .padding(.vertical, 10)
+            .padding(.vertical, 9)
             .background(
-                Group {
-                    if isFromMe {
-                        RoundedRectangle(cornerRadius: 20, style: .continuous)
-                            .fill(Color.primary)
-                    } else {
-                        RoundedRectangle(cornerRadius: 20, style: .continuous)
-                            .fill(Color(UIColor.secondarySystemGroupedBackground))
-                    }
-                }
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .stroke(Color.primary.opacity(0.06), lineWidth: isFromMe ? 0 : 0.5)
+                RoundedRectangle(cornerRadius: 19, style: .continuous)
+                    .fill(isFromMe ? Color.slooshAccent : Color(UIColor.secondarySystemGroupedBackground))
             )
             .contextMenu {
                 Button {
@@ -739,11 +730,11 @@ private struct PeakMessageBubbleView: View {
                         UIPasteboard.general.string = text
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     } label: {
-                        Label("Скопировать текст", systemImage: "doc.on.doc")
+                        Label("Скопировать", systemImage: "doc.on.doc")
                     }
                 }
 
-                if isFromMe && message.type == .text {
+                if isFromMe {
                     Button {
                         onEdit(message)
                     } label: {
@@ -754,7 +745,7 @@ private struct PeakMessageBubbleView: View {
                 Button(role: .destructive) {
                     onDelete(message)
                 } label: {
-                    Label(isFromMe ? "Удалить у всех" : "Удалить", systemImage: "trash")
+                    Label("Удалить у всех", systemImage: "trash")
                 }
             }
         }
@@ -812,14 +803,10 @@ private struct PeakMessageBubbleView: View {
                                 lineWidth: 0.8
                             )
                     )
-                    .shadow(
-                        color: isMyReaction ? Color.slooshAccent.opacity(0.35) : Color.black.opacity(0.1),
-                        radius: isMyReaction ? 4 : 2,
-                        x: 0,
-                        y: 1
-                    )
+                    .shadow(color: Color.black.opacity(0.08), radius: 2, x: 0, y: 1)
                 }
                 .buttonStyle(PeakPressButtonStyle())
+                .transition(.scale(scale: 0.01, anchor: .center).combined(with: .opacity))
             }
         }
         .offset(y: 10)
