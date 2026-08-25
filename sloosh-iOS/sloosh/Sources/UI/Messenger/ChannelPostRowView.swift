@@ -160,30 +160,34 @@ public struct ChannelPostRowView: View {
         let grouped = Dictionary(grouping: reactionsDict.values, by: { $0 })
         HStack(spacing: 4) {
             ForEach(grouped.map { ($0.key, $0.value.count) }, id: \.0) { emoji, count in
+                let isMyReaction = (reactionsDict[currentUserId] == emoji)
                 Button {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     onToggleReaction?(emoji)
                 } label: {
-                    HStack(spacing: 2) {
+                    HStack(spacing: 3) {
                         Text(emoji)
-                            .font(.system(size: 11))
+                            .font(.system(size: 12))
                         if count > 1 {
                             Text("\(count)")
                                 .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(.primary)
+                                .foregroundColor(isMyReaction ? Color.slooshAccent : .primary)
                         }
                     }
-                    .padding(.horizontal, 6)
+                    .padding(.horizontal, 7)
                     .padding(.vertical, 3)
                     .background(
-                        (reactionsDict[currentUserId] == emoji) ? Color.slooshAccent.opacity(0.2) : Color(UIColor.secondarySystemGroupedBackground)
+                        Color(UIColor.secondarySystemGroupedBackground)
                     )
                     .clipShape(Capsule())
                     .overlay(
                         Capsule()
-                            .stroke((reactionsDict[currentUserId] == emoji) ? Color.slooshAccent.opacity(0.4) : Color.primary.opacity(0.06), lineWidth: 0.5)
+                            .stroke(
+                                isMyReaction ? Color.slooshAccent : Color(UIColor.separator).opacity(0.6),
+                                lineWidth: isMyReaction ? 1.5 : 0.8
+                            )
                     )
-                    .shadow(color: .black.opacity(0.1), radius: 1)
+                    .shadow(color: Color.black.opacity(0.12), radius: 2, x: 0, y: 1)
                 }
                 .buttonStyle(PeakPressButtonStyle())
             }

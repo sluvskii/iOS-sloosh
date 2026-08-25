@@ -374,14 +374,32 @@ public struct ChatDetailView: View {
         let sortedRemote = remoteList.sorted(by: { $0.timestampMs < $1.timestampMs })
         let now = Int64(Date().timeIntervalSince1970 * 1000)
         let currentUserId = AuthRepository.shared.currentUser?.id ?? ""
-        // Сохраняем свежие оптимистичные сообщения, отправленные пользователем за последние 15 секунд
+
+        // 1. Сохраняем свежие оптимистичные сообщения
         let pendingOptimistic = self.messages.filter { local in
             local.senderId == currentUserId &&
             (now - local.timestampMs) < 15_000 &&
             !remoteList.contains(where: { $0.id == local.id })
         }
 
-        var merged = remoteList
+        // 2. Умное слияние реакций: сохраняем локальные реакции текущего пользователя, пока сервер обновляется
+        var mergedRemote: [ChatMessage] = []
+        for remoteMsg in sortedRemote {
+            var msg = remoteMsg
+            if let localMsg = self.messages.first(where: { $0.id == remoteMsg.id }) {
+                if let localReactions = localMsg.reactions, let myEmoji = localReactions[currentUserId] {
+                    var dict = remoteMsg.reactions ?? [:]
+                    dict[currentUserId] = myEmoji
+                    msg.reactions = dict
+                } else if let localReactions = localMsg.reactions, localReactions[currentUserId] == nil, var dict = remoteMsg.reactions {
+                    dict.removeValue(forKey: currentUserId)
+                    msg.reactions = dict.isEmpty ? nil : dict
+                }
+            }
+            mergedRemote.append(msg)
+        }
+
+        var merged = mergedRemote
         merged.append(contentsOf: pendingOptimistic)
         let sortedMerged = merged.sorted(by: { $0.timestampMs < $1.timestampMs })
 
@@ -518,6 +536,7 @@ public struct ChatDetailView: View {
         repo.saveMessagesToDisk(self.messages, chatId: chatId)
 
         Task {
+            _ = await repo.toggleChatMessageReaction(chatId: chatId, messageId: msg.id, emoji: emoji)
             _ = await repo.postMessageToFirebase(chatId: chatId, message: updatedMsg)
         }
     }
@@ -765,29 +784,33 @@ private struct PeakMessageBubbleView: View {
         let currentUserId = AuthRepository.shared.currentUser?.id ?? ""
         HStack(spacing: 4) {
             ForEach(grouped.map { ($0.key, $0.value.count) }, id: \.0) { emoji, count in
+                let isMyReaction = (reactionsDict[currentUserId] == emoji)
                 Button {
                     onReact(emoji, message)
                 } label: {
-                    HStack(spacing: 2) {
+                    HStack(spacing: 3) {
                         Text(emoji)
-                            .font(.system(size: 11))
+                            .font(.system(size: 12))
                         if count > 1 {
                             Text("\(count)")
                                 .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(isFromMe ? Color(UIColor.systemBackground) : .primary)
+                                .foregroundColor(isMyReaction ? Color.slooshAccent : .primary)
                         }
                     }
-                    .padding(.horizontal, 6)
+                    .padding(.horizontal, 7)
                     .padding(.vertical, 3)
                     .background(
-                        (reactionsDict[currentUserId] == emoji) ? Color.slooshAccent.opacity(isFromMe ? 0.35 : 0.2) : (isFromMe ? Color.primary.opacity(0.18) : Color(UIColor.secondarySystemGroupedBackground))
+                        Color(UIColor.secondarySystemGroupedBackground)
                     )
                     .clipShape(Capsule())
                     .overlay(
                         Capsule()
-                            .stroke((reactionsDict[currentUserId] == emoji) ? Color.slooshAccent.opacity(0.5) : Color.primary.opacity(0.06), lineWidth: 0.5)
+                            .stroke(
+                                isMyReaction ? Color.slooshAccent : Color(UIColor.separator).opacity(0.6),
+                                lineWidth: isMyReaction ? 1.5 : 0.8
+                            )
                     )
-                    .shadow(color: .black.opacity(0.08), radius: 1)
+                    .shadow(color: Color.black.opacity(0.12), radius: 2, x: 0, y: 1)
                 }
                 .buttonStyle(PeakPressButtonStyle())
             }
