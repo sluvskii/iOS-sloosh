@@ -137,13 +137,13 @@ public struct ChatMessage: Identifiable, Codable, Sendable, Equatable, Hashable 
     public let senderId: String
     public let receiverId: String
     public let type: MessageType
-    public let text: String?
-    public let media: MediaCardPayload?
+    public var text: String?
+    public var media: MediaCardPayload?
     public let timestampMs: Int64
     public let replyToId: String?
-    public let reactions: [String: String]?
-    public let isEdited: Bool?
-    public let isRead: Bool?
+    public var reactions: [String: String]?
+    public var isEdited: Bool?
+    public var isRead: Bool?
 
     public init(
         id: String = UUID().uuidString,

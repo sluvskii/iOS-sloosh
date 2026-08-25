@@ -2159,28 +2159,77 @@ public final class MessengerRepository: ObservableObject {
         return true
     }
 
+    // MARK: - Channel Post Views & Reactions
+
+    private var viewedPostsInSession: Set<String> = []
+
+    public func recordChannelPostView(channelId: String, postId: String) {
+        guard !channelId.isEmpty && !postId.isEmpty else { return }
+        let sessionKey = "\(channelId)_\(postId)"
+        guard !viewedPostsInSession.contains(sessionKey) else { return }
+        viewedPostsInSession.insert(sessionKey)
+
+        var currentPosts = loadChannelPostsFromDisk(channelId: channelId)
+        if let idx = currentPosts.firstIndex(where: { $0.id == postId }) {
+            let current = currentPosts[idx].viewsCount ?? 1
+            let newCount = current + 1
+            currentPosts[idx].viewsCount = newCount
+            saveChannelPostsToDisk(currentPosts, channelId: channelId)
+
+            Task {
+                let paths = [
+                    "channel_posts/\(channelId)/\(postId)/viewsCount",
+                    "channels/\(channelId)/posts/\(postId)/viewsCount",
+                    "public_channels/\(channelId)/posts/\(postId)/viewsCount"
+                ]
+                for p in paths {
+                    if let url = await makeURL(path: p) {
+                        var req = URLRequest(url: url)
+                        req.httpMethod = "PUT"
+                        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                        req.httpBody = "\(newCount)".data(using: .utf8)
+                        _ = try? await URLSession.shared.data(for: req)
+                    }
+                }
+            }
+        }
+    }
+
     public func toggleChannelPostReaction(channelId: String, postId: String, emoji: String) async -> Bool {
         guard let currentUser = AuthRepository.shared.currentUser, !currentUser.isAnonymous else {
             return false
         }
 
         var currentPosts = loadChannelPostsFromDisk(channelId: channelId)
-        guard let idx = currentPosts.firstIndex(where: { $0.id == postId }) else { return false }
-
-        var reactions = currentPosts[idx].reactions ?? [:]
-        let isRemoving = (reactions[currentUser.id] == emoji)
-
-        if isRemoving {
-            reactions.removeValue(forKey: currentUser.id)
-        } else {
-            reactions[currentUser.id] = emoji
+        var targetIndex = currentPosts.firstIndex(where: { $0.id == postId })
+        if targetIndex == nil {
+            currentPosts = await fetchChannelPosts(channelId: channelId)
+            targetIndex = currentPosts.firstIndex(where: { $0.id == postId })
         }
 
-        currentPosts[idx].reactions = reactions.isEmpty ? nil : reactions
-        saveChannelPostsToDisk(currentPosts, channelId: channelId)
+        var isRemoving = false
+        if let idx = targetIndex {
+            var reactions = currentPosts[idx].reactions ?? [:]
+            isRemoving = (reactions[currentUser.id] == emoji)
 
-        Task {
-            if let reactionUrl = await makeURL(path: "channel_posts/\(channelId)/\(postId)/reactions/\(currentUser.id)") {
+            if isRemoving {
+                reactions.removeValue(forKey: currentUser.id)
+            } else {
+                reactions[currentUser.id] = emoji
+            }
+
+            currentPosts[idx].reactions = reactions.isEmpty ? nil : reactions
+            saveChannelPostsToDisk(currentPosts, channelId: channelId)
+        }
+
+        let paths = [
+            "channel_posts/\(channelId)/\(postId)/reactions/\(currentUser.id)",
+            "channels/\(channelId)/posts/\(postId)/reactions/\(currentUser.id)",
+            "public_channels/\(channelId)/posts/\(postId)/reactions/\(currentUser.id)"
+        ]
+
+        for p in paths {
+            if let reactionUrl = await makeURL(path: p) {
                 var req = URLRequest(url: reactionUrl)
                 if isRemoving {
                     req.httpMethod = "DELETE"

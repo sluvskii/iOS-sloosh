@@ -388,6 +388,30 @@ public struct ChatDetailView: View {
         let generator = UIImpactFeedbackGenerator(style: .medium)
         generator.impactOccurred()
 
+        // Handle editing an existing message
+        if let editing = editingMessage {
+            editingMessage = nil
+            messageText = ""
+            isSending = false
+
+            let chatId = repo.getOrCreateChatId(peerUserId: peerUser.id)
+            var updatedMsg = editing
+            updatedMsg.text = trimmed
+            updatedMsg.isEdited = true
+
+            if let idx = self.messages.firstIndex(where: { $0.id == editing.id }) {
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
+                    self.messages[idx] = updatedMsg
+                }
+            }
+
+            Task {
+                _ = await repo.postMessageToFirebase(chatId: chatId, message: updatedMsg, peerUser: peerUser)
+                await loadMessages()
+            }
+            return
+        }
+
         let replyId = replyingMessage?.id
         let currentUserId = AuthRepository.shared.currentUser?.id ?? ""
 
@@ -632,6 +656,15 @@ private struct PeakMessageBubbleView: View {
                     Label("Ответить", systemImage: "arrowshape.turn.up.left")
                 }
 
+                if let text = message.text, !text.isEmpty {
+                    Button {
+                        UIPasteboard.general.string = text
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    } label: {
+                        Label("Скопировать текст", systemImage: "doc.on.doc")
+                    }
+                }
+
                 if isFromMe && message.type == .text {
                     Button {
                         onEdit(message)
@@ -643,7 +676,7 @@ private struct PeakMessageBubbleView: View {
                 Button(role: .destructive) {
                     onDelete(message)
                 } label: {
-                    Label("Удалить у всех", systemImage: "trash")
+                    Label(isFromMe ? "Удалить у всех" : "Удалить", systemImage: "trash")
                 }
             }
         }
