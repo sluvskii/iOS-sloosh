@@ -15,36 +15,73 @@ public final class MessengerRepository: ObservableObject {
     private let databaseBaseURL = "https://sloosh-77434-default-rtdb.firebaseio.com"
     private let knownUsersKey = "sloosh_messenger_known_users"
 
+    private var cancellables = Set<AnyCancellable>()
+    private var lastKnownUserId: String? = nil
+
     private init() {
-        self.conversations = loadConversationsFromDisk()
-        self.subscribedChannels = loadSubscribedChannelsFromDisk()
+        let currentId = AuthRepository.shared.currentUser?.id ?? "guest"
+        self.lastKnownUserId = currentId
+        self.conversations = loadConversationsFromDisk(userId: currentId)
+        self.subscribedChannels = loadSubscribedChannelsFromDisk(userId: currentId)
         self.publicChannels = loadPublicChannelsFromDisk()
+
+        // Subscribe to user account changes in AuthRepository
+        AuthRepository.shared.$currentUser
+            .receive(on: RunLoop.main)
+            .sink { [weak self] newUser in
+                self?.handleUserChanged(newUser: newUser)
+            }
+            .store(in: &cancellables)
     }
 
-    // MARK: - Disk Persistence (Instant Cold Start)
+    public func handleUserChanged(newUser: UserProfile?) {
+        let newId = newUser?.id ?? "guest"
+        guard newId != lastKnownUserId else { return }
+        lastKnownUserId = newId
 
-    public func saveConversationsToDisk(_ list: [ChatConversation]) {
-        if let data = try? JSONEncoder().encode(list) {
-            UserDefaults.standard.set(data, forKey: "sloosh_messenger_conversations_v1")
+        // Clear in-memory user-specific state & reload scoped data
+        self.conversations = loadConversationsFromDisk(userId: newId)
+        self.subscribedChannels = loadSubscribedChannelsFromDisk(userId: newId)
+        self.searchResults = []
+
+        if let user = newUser, !user.isAnonymous {
+            Task {
+                await self.syncCurrentUserProfile()
+                await self.fetchConversations()
+                _ = await self.fetchSubscribedChannels()
+                _ = await self.fetchPublicChannels()
+            }
         }
     }
 
-    public func loadConversationsFromDisk() -> [ChatConversation] {
-        guard let data = UserDefaults.standard.data(forKey: "sloosh_messenger_conversations_v1"),
+    // MARK: - Disk Persistence (User-Scoped Instant Cold Start)
+
+    public func saveConversationsToDisk(_ list: [ChatConversation], userId: String? = nil) {
+        let uid = userId ?? AuthRepository.shared.currentUser?.id ?? "guest"
+        if let data = try? JSONEncoder().encode(list) {
+            UserDefaults.standard.set(data, forKey: "sloosh_messenger_conversations_v2_\(uid)")
+        }
+    }
+
+    public func loadConversationsFromDisk(userId: String? = nil) -> [ChatConversation] {
+        let uid = userId ?? AuthRepository.shared.currentUser?.id ?? "guest"
+        guard let data = UserDefaults.standard.data(forKey: "sloosh_messenger_conversations_v2_\(uid)"),
               let list = try? JSONDecoder().decode([ChatConversation].self, from: data) else {
             return []
         }
         return list.sorted { $0.updatedAtMs > $1.updatedAtMs }
     }
 
-    public func saveSubscribedChannelsToDisk(_ list: [ChannelModel]) {
+    public func saveSubscribedChannelsToDisk(_ list: [ChannelModel], userId: String? = nil) {
+        let uid = userId ?? AuthRepository.shared.currentUser?.id ?? "guest"
         if let data = try? JSONEncoder().encode(list) {
-            UserDefaults.standard.set(data, forKey: "sloosh_messenger_subscribed_channels_v1")
+            UserDefaults.standard.set(data, forKey: "sloosh_messenger_subscribed_channels_v2_\(uid)")
         }
     }
 
-    public func loadSubscribedChannelsFromDisk() -> [ChannelModel] {
-        guard let data = UserDefaults.standard.data(forKey: "sloosh_messenger_subscribed_channels_v1"),
+    public func loadSubscribedChannelsFromDisk(userId: String? = nil) -> [ChannelModel] {
+        let uid = userId ?? AuthRepository.shared.currentUser?.id ?? "guest"
+        guard let data = UserDefaults.standard.data(forKey: "sloosh_messenger_subscribed_channels_v2_\(uid)"),
               let list = try? JSONDecoder().decode([ChannelModel].self, from: data) else {
             return []
         }
@@ -53,12 +90,12 @@ public final class MessengerRepository: ObservableObject {
 
     public func savePublicChannelsToDisk(_ list: [ChannelModel]) {
         if let data = try? JSONEncoder().encode(list) {
-            UserDefaults.standard.set(data, forKey: "sloosh_messenger_public_channels_v1")
+            UserDefaults.standard.set(data, forKey: "sloosh_messenger_public_channels_v2")
         }
     }
 
     public func loadPublicChannelsFromDisk() -> [ChannelModel] {
-        guard let data = UserDefaults.standard.data(forKey: "sloosh_messenger_public_channels_v1"),
+        guard let data = UserDefaults.standard.data(forKey: "sloosh_messenger_public_channels_v2"),
               let list = try? JSONDecoder().decode([ChannelModel].self, from: data) else {
             return []
         }
@@ -66,14 +103,14 @@ public final class MessengerRepository: ObservableObject {
     }
 
     public func saveChannelPostsToDisk(_ posts: [ChannelPost], channelId: String) {
-        let key = "sloosh_channel_posts_v1_\(channelId)"
+        let key = "sloosh_channel_posts_v2_\(channelId)"
         if let data = try? JSONEncoder().encode(posts) {
             UserDefaults.standard.set(data, forKey: key)
         }
     }
 
     public func loadChannelPostsFromDisk(channelId: String) -> [ChannelPost] {
-        let key = "sloosh_channel_posts_v1_\(channelId)"
+        let key = "sloosh_channel_posts_v2_\(channelId)"
         guard let data = UserDefaults.standard.data(forKey: key),
               let list = try? JSONDecoder().decode([ChannelPost].self, from: data) else {
             return []
@@ -81,15 +118,17 @@ public final class MessengerRepository: ObservableObject {
         return list.sorted { $0.timestampMs < $1.timestampMs }
     }
 
-    public func saveMessagesToDisk(_ messages: [ChatMessage], chatId: String) {
-        let key = "sloosh_messenger_messages_v1_\(chatId)"
+    public func saveMessagesToDisk(_ messages: [ChatMessage], chatId: String, userId: String? = nil) {
+        let uid = userId ?? AuthRepository.shared.currentUser?.id ?? "guest"
+        let key = "sloosh_messenger_messages_v2_\(uid)_\(chatId)"
         if let data = try? JSONEncoder().encode(messages) {
             UserDefaults.standard.set(data, forKey: key)
         }
     }
 
-    public func loadMessagesFromDisk(chatId: String) -> [ChatMessage] {
-        let key = "sloosh_messenger_messages_v1_\(chatId)"
+    public func loadMessagesFromDisk(chatId: String, userId: String? = nil) -> [ChatMessage] {
+        let uid = userId ?? AuthRepository.shared.currentUser?.id ?? "guest"
+        let key = "sloosh_messenger_messages_v2_\(uid)_\(chatId)"
         guard let data = UserDefaults.standard.data(forKey: key),
               let list = try? JSONDecoder().decode([ChatMessage].self, from: data) else {
             return []
