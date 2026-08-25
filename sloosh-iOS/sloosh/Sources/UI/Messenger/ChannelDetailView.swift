@@ -606,9 +606,11 @@ public struct ChannelDetailView: View {
         var updatedPost = post
         updatedPost.reactions = newReactions.isEmpty ? nil : newReactions
 
-        // МГНОВЕННОЕ обновление на UI за 0 миллисекунд
+        // МГНОВЕННОЕ обновление на UI за 0 миллисекунд с плавной анимацией
         if let idx = self.posts.firstIndex(where: { $0.id == post.id }) {
-            self.posts[idx] = updatedPost
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.72)) {
+                self.posts[idx] = updatedPost
+            }
         }
 
         repo.saveChannelPostsToDisk(self.posts, channelId: currentChannel.id)
