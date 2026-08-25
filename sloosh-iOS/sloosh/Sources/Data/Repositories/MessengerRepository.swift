@@ -512,6 +512,47 @@ public final class MessengerRepository: ObservableObject {
             if !cleanName.isEmpty && cleanName != clean && cleanName.count >= 3 {
                 await claimChannelTag(cleanName, channelId: channel.id)
             }
+
+            // 6. Push all local channel posts to Firebase
+            let posts = loadChannelPostsFromDisk(channelId: channel.id)
+            for post in posts {
+                let postData = try? JSONEncoder().encode(post)
+                if let url = await makeURL(path: "channel_posts/\(channel.id)/\(post.id)") {
+                    var req = URLRequest(url: url)
+                    req.httpMethod = "PUT"
+                    req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                    req.httpBody = postData
+                    _ = try? await URLSession.shared.data(for: req)
+                }
+                if let url = await makeURL(path: "channels/\(channel.id)/posts/\(post.id)") {
+                    var req = URLRequest(url: url)
+                    req.httpMethod = "PUT"
+                    req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                    req.httpBody = postData
+                    _ = try? await URLSession.shared.data(for: req)
+                }
+                if let url = await makeURL(path: "public_channels/\(channel.id)/posts/\(post.id)") {
+                    var req = URLRequest(url: url)
+                    req.httpMethod = "PUT"
+                    req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                    req.httpBody = postData
+                    _ = try? await URLSession.shared.data(for: req)
+                }
+                if let url = await makeURL(path: "users/\(currentUser.id)/channel_posts/\(channel.id)/\(post.id)") {
+                    var req = URLRequest(url: url)
+                    req.httpMethod = "PUT"
+                    req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                    req.httpBody = postData
+                    _ = try? await URLSession.shared.data(for: req)
+                }
+                if let url = await makeURL(path: "users/\(currentUser.id)/channels/\(channel.id)/posts/\(post.id)") {
+                    var req = URLRequest(url: url)
+                    req.httpMethod = "PUT"
+                    req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                    req.httpBody = postData
+                    _ = try? await URLSession.shared.data(for: req)
+                }
+            }
         }
     }
 
@@ -1477,10 +1518,7 @@ public final class MessengerRepository: ObservableObject {
             ch.name.localizedCaseInsensitiveContains(queryLower) ||
             ch.tag.localizedCaseInsensitiveContains(queryLower) ||
             (!cleanTag.isEmpty && ch.tag.localizedCaseInsensitiveContains(cleanTag)) ||
-            (!cleanTag.isEmpty && TagValidator.sanitize(ch.name).localizedCaseInsensitiveContains(cleanTag)) ||
-            ch.description.localizedCaseInsensitiveContains(queryLower) ||
-            ch.ownerName.localizedCaseInsensitiveContains(queryLower) ||
-            (ch.lastPostText?.localizedCaseInsensitiveContains(queryLower) == true)
+            (!cleanTag.isEmpty && TagValidator.sanitize(ch.name).localizedCaseInsensitiveContains(cleanTag))
         }
     }
 
@@ -1595,35 +1633,145 @@ public final class MessengerRepository: ObservableObject {
         return true
     }
 
-    // MARK: - Channel Posts & Reactions
+    // MARK: - Safe Channel Post Parsing & Multi-Path Storage
+
+    public func decodeChannelPost(from data: Data, fallbackId: String? = nil) -> ChannelPost? {
+        if var model = try? JSONDecoder().decode(ChannelPost.self, from: data) {
+            return model
+        }
+        guard let dict = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return nil }
+        return parseChannelPostDict(dict, fallbackId: fallbackId)
+    }
+
+    public func parseChannelPostDict(_ dict: [String: Any], fallbackId: String? = nil) -> ChannelPost? {
+        let id = (dict["id"] as? String) ?? fallbackId ?? ""
+        guard !id.isEmpty else { return nil }
+        let channelId = (dict["channelId"] as? String) ?? ""
+        let authorId = (dict["authorId"] as? String) ?? ""
+        let text = dict["text"] as? String
+
+        var mediaPayload: MediaCardPayload? = nil
+        if let mediaDict = dict["media"] as? [String: Any],
+           let mediaData = try? JSONSerialization.data(withJSONObject: mediaDict) {
+            mediaPayload = try? JSONDecoder().decode(MediaCardPayload.self, from: mediaData)
+        }
+
+        var reactions: [String: String]? = nil
+        if let reactDict = dict["reactions"] as? [String: Any] {
+            var map: [String: String] = [:]
+            for (k, v) in reactDict {
+                if let emojiStr = v as? String {
+                    map[k] = emojiStr
+                }
+            }
+            if !map.isEmpty { reactions = map }
+        }
+
+        let timestampMs = (dict["timestampMs"] as? NSNumber)?.int64Value ?? Int64(Date().timeIntervalSince1970 * 1000)
+        let isPinned = (dict["isPinned"] as? Bool) ?? false
+        let isEdited = dict["isEdited"] as? Bool
+        let viewsCount = (dict["viewsCount"] as? NSNumber)?.intValue
+
+        return ChannelPost(
+            id: id,
+            channelId: channelId,
+            authorId: authorId,
+            text: text,
+            media: mediaPayload,
+            reactions: reactions,
+            timestampMs: timestampMs,
+            isPinned: isPinned,
+            isEdited: isEdited,
+            viewsCount: viewsCount
+        )
+    }
 
     public func fetchChannelPosts(channelId: String) async -> [ChannelPost] {
         guard !channelId.isEmpty else { return [] }
         let cached = loadChannelPostsFromDisk(channelId: channelId)
-
-        guard let url = await makeURL(path: "channel_posts/\(channelId)") else {
-            return cached
+        var combinedMap: [String: ChannelPost] = [:]
+        for p in cached {
+            combinedMap[p.id] = p
         }
 
-        do {
-            let (data, response) = try await URLSession.shared.data(from: url)
-            guard let httpResp = response as? HTTPURLResponse, (200...299).contains(httpResp.statusCode) else {
-                return cached
+        // 1. Fetch from /channel_posts/{channelId}.json
+        if let url1 = await makeURL(path: "channel_posts/\(channelId)"),
+           let (data1, resp1) = try? await URLSession.shared.data(from: url1),
+           let http1 = resp1 as? HTTPURLResponse, (200...299).contains(http1.statusCode),
+           !data1.isEmpty && String(data: data1, encoding: .utf8) != "null" {
+            if let rawDict = (try? JSONSerialization.jsonObject(with: data1)) as? [String: Any] {
+                for (pId, val) in rawDict {
+                    if let postDict = val as? [String: Any],
+                       let post = parseChannelPostDict(postDict, fallbackId: pId) {
+                        combinedMap[post.id] = post
+                    }
+                }
+            } else if let rawArray = (try? JSONSerialization.jsonObject(with: data1)) as? [[String: Any]] {
+                for postDict in rawArray {
+                    if let post = parseChannelPostDict(postDict) {
+                        combinedMap[post.id] = post
+                    }
+                }
             }
-
-            if data.isEmpty || String(data: data, encoding: .utf8) == "null" {
-                saveChannelPostsToDisk([], channelId: channelId)
-                return []
-            }
-
-            let postsDict = try JSONDecoder().decode([String: ChannelPost].self, from: data)
-            let list = Array(postsDict.values).sorted(by: { $0.timestampMs < $1.timestampMs })
-            saveChannelPostsToDisk(list, channelId: channelId)
-            return list
-        } catch {
-            AppDiagnostics.shared.log("MessengerRepository fetchChannelPosts error: \(error.localizedDescription)")
-            return cached
         }
+
+        // 2. Fetch from /channels/{channelId}/posts.json
+        if let url2 = await makeURL(path: "channels/\(channelId)/posts"),
+           let (data2, resp2) = try? await URLSession.shared.data(from: url2),
+           let http2 = resp2 as? HTTPURLResponse, (200...299).contains(http2.statusCode),
+           !data2.isEmpty && String(data: data2, encoding: .utf8) != "null" {
+            if let rawDict = (try? JSONSerialization.jsonObject(with: data2)) as? [String: Any] {
+                for (pId, val) in rawDict {
+                    if let postDict = val as? [String: Any],
+                       let post = parseChannelPostDict(postDict, fallbackId: pId) {
+                        combinedMap[post.id] = post
+                    }
+                }
+            } else if let rawArray = (try? JSONSerialization.jsonObject(with: data2)) as? [[String: Any]] {
+                for postDict in rawArray {
+                    if let post = parseChannelPostDict(postDict) {
+                        combinedMap[post.id] = post
+                    }
+                }
+            }
+        }
+
+        // 3. Fetch from /public_channels/{channelId}/posts.json
+        if let url3 = await makeURL(path: "public_channels/\(channelId)/posts"),
+           let (data3, resp3) = try? await URLSession.shared.data(from: url3),
+           let http3 = resp3 as? HTTPURLResponse, (200...299).contains(http3.statusCode),
+           !data3.isEmpty && String(data: data3, encoding: .utf8) != "null" {
+            if let rawDict = (try? JSONSerialization.jsonObject(with: data3)) as? [String: Any] {
+                for (pId, val) in rawDict {
+                    if let postDict = val as? [String: Any],
+                       let post = parseChannelPostDict(postDict, fallbackId: pId) {
+                        combinedMap[post.id] = post
+                    }
+                }
+            }
+        }
+
+        // 4. Fetch from channel owner user node if available
+        let ownerId = self.publicChannels.first(where: { $0.id == channelId })?.ownerId ??
+            self.subscribedChannels.first(where: { $0.id == channelId })?.ownerId
+        if let owner = ownerId, !owner.isEmpty {
+            if let url4 = await makeURL(path: "users/\(owner)/channel_posts/\(channelId)"),
+               let (data4, resp4) = try? await URLSession.shared.data(from: url4),
+               let http4 = resp4 as? HTTPURLResponse, (200...299).contains(http4.statusCode),
+               !data4.isEmpty && String(data: data4, encoding: .utf8) != "null",
+               let rawDict = (try? JSONSerialization.jsonObject(with: data4)) as? [String: Any] {
+                for (pId, val) in rawDict {
+                    if let postDict = val as? [String: Any],
+                       let post = parseChannelPostDict(postDict, fallbackId: pId) {
+                        combinedMap[post.id] = post
+                    }
+                }
+            }
+        }
+
+        let sorted = Array(combinedMap.values).sorted(by: { $0.timestampMs < $1.timestampMs })
+        saveChannelPostsToDisk(sorted, channelId: channelId)
+        return sorted
     }
 
     public func publishChannelPost(
@@ -1693,15 +1841,55 @@ public final class MessengerRepository: ObservableObject {
             savePublicChannelsToDisk(pubs)
         }
 
+        let postData = try? JSONEncoder().encode(post)
+
         Task {
+            // 1. PUT /channel_posts/{channelId}/{postId}.json
             if let postUrl = await makeURL(path: "channel_posts/\(channelId)/\(postId)") {
                 var req = URLRequest(url: postUrl)
                 req.httpMethod = "PUT"
                 req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-                req.httpBody = try? JSONEncoder().encode(post)
+                req.httpBody = postData
                 _ = try? await URLSession.shared.data(for: req)
             }
 
+            // 2. PUT /channels/{channelId}/posts/{postId}.json
+            if let chPostUrl = await makeURL(path: "channels/\(channelId)/posts/\(postId)") {
+                var req = URLRequest(url: chPostUrl)
+                req.httpMethod = "PUT"
+                req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                req.httpBody = postData
+                _ = try? await URLSession.shared.data(for: req)
+            }
+
+            // 3. PUT /public_channels/{channelId}/posts/{postId}.json
+            if let pubPostUrl = await makeURL(path: "public_channels/\(channelId)/posts/\(postId)") {
+                var req = URLRequest(url: pubPostUrl)
+                req.httpMethod = "PUT"
+                req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                req.httpBody = postData
+                _ = try? await URLSession.shared.data(for: req)
+            }
+
+            // 4. PUT /users/{uid}/channel_posts/{channelId}/{postId}.json
+            if let userPostUrl = await makeURL(path: "users/\(currentUser.id)/channel_posts/\(channelId)/\(postId)") {
+                var req = URLRequest(url: userPostUrl)
+                req.httpMethod = "PUT"
+                req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                req.httpBody = postData
+                _ = try? await URLSession.shared.data(for: req)
+            }
+
+            // 5. PUT /users/{uid}/channels/{channelId}/posts/{postId}.json
+            if let userChPostUrl = await makeURL(path: "users/\(currentUser.id)/channels/\(channelId)/posts/\(postId)") {
+                var req = URLRequest(url: userChPostUrl)
+                req.httpMethod = "PUT"
+                req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                req.httpBody = postData
+                _ = try? await URLSession.shared.data(for: req)
+            }
+
+            // Update preview text and timestamp
             if let lastTextUrl = await makeURL(path: "channels/\(channelId)/lastPostText") {
                 var req = URLRequest(url: lastTextUrl)
                 req.httpMethod = "PUT"
