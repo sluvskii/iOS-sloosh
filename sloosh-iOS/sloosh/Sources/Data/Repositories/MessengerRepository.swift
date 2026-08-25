@@ -1127,14 +1127,19 @@ public final class MessengerRepository: ObservableObject {
 
     // MARK: - Message Deletion
 
+    @MainActor
+    public func removeConversationLocally(chatId: String) {
+        self.conversations.removeAll(where: { $0.chatId == chatId })
+        saveConversationsToDisk(self.conversations)
+    }
+
+    @MainActor
     public func deleteChat(chatId: String, peerUserId: String, deleteForEveryone: Bool = true) async -> Bool {
         guard let currentUserId = AuthRepository.shared.currentUser?.id, !currentUserId.isEmpty else { return false }
 
         // 1. Удаляем из памяти и локального диска
-        var convs = self.conversations
-        convs.removeAll(where: { $0.chatId == chatId })
-        self.conversations = convs
-        saveConversationsToDisk(convs)
+        self.conversations.removeAll(where: { $0.chatId == chatId })
+        saveConversationsToDisk(self.conversations)
 
         // 2. Очищаем локальные сообщения
         saveMessagesToDisk([], chatId: chatId)
@@ -1795,7 +1800,7 @@ public final class MessengerRepository: ObservableObject {
     // MARK: - Safe Channel Post Parsing & Multi-Path Storage
 
     public func decodeChannelPost(from data: Data, fallbackId: String? = nil) -> ChannelPost? {
-        if var model = try? JSONDecoder().decode(ChannelPost.self, from: data) {
+        if let model = try? JSONDecoder().decode(ChannelPost.self, from: data) {
             return model
         }
         guard let dict = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { return nil }
