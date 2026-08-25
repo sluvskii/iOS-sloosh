@@ -292,7 +292,7 @@ public final class AdminRepository: ObservableObject {
                     tag: localUser.tag,
                     avatarUrl: localUser.avatarUrl,
                     email: nil,
-                    isOnline: localUser.isOnline,
+                    isOnline: localUser.isOnline ?? false,
                     isBanned: false,
                     createdAtMs: Int64(Date().timeIntervalSince1970 * 1000),
                     channelsCount: 0
