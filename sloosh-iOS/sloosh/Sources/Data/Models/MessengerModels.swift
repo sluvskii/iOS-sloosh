@@ -278,14 +278,21 @@ public struct ChannelModel: Identifiable, Codable, Sendable, Equatable, Hashable
         let decodedId = (try? container.decodeIfPresent(String.self, forKey: .id)) ?? ""
         self.id = decodedId
 
+        let decodedName = (try? container.decodeIfPresent(String.self, forKey: .name)) ?? ""
+        self.name = decodedName
+
         let decodedTag = try? container.decodeIfPresent(String.self, forKey: .tag)
         if let t = decodedTag, !t.isEmpty {
             self.tag = TagValidator.sanitize(t)
         } else {
-            self.tag = "channel_\(decodedId.prefix(6))"
+            let nameTag = TagValidator.sanitize(decodedName)
+            if nameTag.count >= 3 {
+                self.tag = nameTag
+            } else {
+                self.tag = "channel_\(decodedId.prefix(6))"
+            }
         }
 
-        self.name = (try? container.decodeIfPresent(String.self, forKey: .name)) ?? ""
         self.description = (try? container.decodeIfPresent(String.self, forKey: .description)) ?? ""
         self.avatarEmoji = try? container.decodeIfPresent(String.self, forKey: .avatarEmoji)
         self.avatarUrl = try? container.decodeIfPresent(String.self, forKey: .avatarUrl)

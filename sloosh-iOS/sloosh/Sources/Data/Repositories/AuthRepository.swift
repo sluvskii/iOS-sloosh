@@ -57,7 +57,7 @@ public final class AuthRepository: ObservableObject {
         }
     }
 
-    private func saveUser(_ user: UserProfile) {
+    public func saveUser(_ user: UserProfile) {
         self.currentUser = user
         if let data = try? JSONEncoder().encode(user) {
             UserDefaults.standard.set(data, forKey: userDefaultsKey)
