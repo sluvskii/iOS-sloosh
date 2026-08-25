@@ -1,4 +1,4 @@
-﻿import SwiftUI
+import SwiftUI
 
 public struct ChannelDetailView: View {
     public let channel: ChannelModel
@@ -370,11 +370,7 @@ public struct ChannelDetailView: View {
                     }
                     .foregroundColor(.primary)
                     .frame(maxWidth: .infinity)
-                    .frame(height: 44)
-                    .background(
-                        Capsule()
-                            .fill(Color(UIColor.secondarySystemGroupedBackground))
-                    )
+                    .frame(height: 46)
                     .glassEffect(in: Capsule())
                 }
                 .buttonStyle(PeakPressButtonStyle())
