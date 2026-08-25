@@ -145,7 +145,7 @@ public struct ChannelDetailView: View {
                             .font(.system(size: 16, weight: .bold))
                             .foregroundColor(.primary)
                             .lineLimit(1)
-                        Text(currentChannel.displayTag)
+                        Text(currentChannel.formattedSubscriberCount)
                             .font(.system(size: 12))
                             .foregroundColor(.secondary)
                     }
@@ -161,7 +161,7 @@ public struct ChannelDetailView: View {
                         avatarSource: currentChannel.avatarUrl,
                         fallbackText: currentChannel.name,
                         size: 34,
-                        isChannel: true
+                        isChannel: false
                     )
                 }
                 .buttonStyle(PeakPressButtonStyle())
@@ -238,71 +238,77 @@ public struct ChannelDetailView: View {
 
     private var postsFeed: some View {
         ScrollViewReader { proxy in
-            ScrollView {
-                VStack(spacing: 0) {
-                    // Pinned Post Floating Bar
-                    if let pinned = pinnedPost {
-                        PinnedPostBar(
-                            post: pinned,
-                            onTap: { postId in
-                                withAnimation {
-                                    proxy.scrollTo(postId, anchor: .center)
-                                }
-                            },
-                            onUnpin: isOwner ? {
-                                Task {
-                                    _ = await repo.togglePinChannelPost(channelId: currentChannel.id, postId: pinned.id, isPinned: false)
-                                    await loadPosts()
-                                }
-                            } : nil
-                        )
-                        .padding(.horizontal, 16)
-                        .padding(.top, 4)
-                    }
-
-                    if posts.isEmpty {
-                        emptyStateView
-                            .padding(.top, 60)
-                    } else {
-                        LazyVStack(spacing: 8) {
-                            ForEach(posts) { post in
-                                ChannelPostRowView(
-                                    post: post,
-                                    isAuthor: isOwner,
-                                    currentUserId: currentUserId,
-                                    onOpenDetails: { movieId in
-                                        selectedMovieIdForDetails = movieId
-                                    },
-                                    onPlayDirectly: { media in
-                                        selectedMediaForDirectPlay = media
-                                    },
-                                    onToggleReaction: { emoji in
-                                        toggleReaction(emoji: emoji, on: post)
-                                    },
-                                    onEditPost: {
-                                        startEditing(post: post)
-                                    },
-                                    onTogglePin: {
-                                        togglePin(post: post)
-                                    },
-                                    onDeletePost: {
-                                        postToDelete = post
-                                        showDeletePostAlert = true
+            GeometryReader { geometry in
+                ScrollView {
+                    VStack(spacing: 0) {
+                        // Pinned Post Floating Bar
+                        if let pinned = pinnedPost {
+                            PinnedPostBar(
+                                post: pinned,
+                                onTap: { postId in
+                                    withAnimation {
+                                        proxy.scrollTo(postId, anchor: .center)
                                     }
-                                )
-                                .id(post.id)
-                            }
+                                },
+                                onUnpin: isOwner ? {
+                                    Task {
+                                        _ = await repo.togglePinChannelPost(channelId: currentChannel.id, postId: pinned.id, isPinned: false)
+                                        await loadPosts()
+                                    }
+                                } : nil
+                            )
+                            .padding(.horizontal, 16)
+                            .padding(.top, 4)
                         }
-                        .padding(.top, 8)
-                        .padding(.bottom, 16)
+
+                        if posts.isEmpty {
+                            emptyStateView
+                                .frame(minHeight: max(200, geometry.size.height - 120))
+                        } else {
+                            Spacer(minLength: 0)
+
+                            LazyVStack(spacing: 8) {
+                                ForEach(posts) { post in
+                                    ChannelPostRowView(
+                                        post: post,
+                                        isAuthor: isOwner,
+                                        currentUserId: currentUserId,
+                                        onOpenDetails: { movieId in
+                                            selectedMovieIdForDetails = movieId
+                                        },
+                                        onPlayDirectly: { media in
+                                            selectedMediaForDirectPlay = media
+                                        },
+                                        onToggleReaction: { emoji in
+                                            toggleReaction(emoji: emoji, on: post)
+                                        },
+                                        onEditPost: {
+                                            startEditing(post: post)
+                                        },
+                                        onTogglePin: {
+                                            togglePin(post: post)
+                                        },
+                                        onDeletePost: {
+                                            postToDelete = post
+                                            showDeletePostAlert = true
+                                        }
+                                    )
+                                    .id(post.id)
+                                }
+                            }
+                            .padding(.top, 8)
+                            .padding(.bottom, 16)
+                        }
                     }
+                    .frame(minHeight: geometry.size.height)
                 }
-            }
-            .scrollDismissesKeyboard(.interactively)
-            .onChange(of: posts.count) { _, _ in
-                if let lastPost = posts.last {
-                    withAnimation {
-                        proxy.scrollTo(lastPost.id, anchor: .bottom)
+                .scrollDismissesKeyboard(.interactively)
+                .defaultScrollAnchor(.bottom)
+                .onChange(of: posts.count) { _, _ in
+                    if let lastPost = posts.last {
+                        withAnimation {
+                            proxy.scrollTo(lastPost.id, anchor: .bottom)
+                        }
                     }
                 }
             }
@@ -403,20 +409,16 @@ public struct ChannelDetailView: View {
                 Button {
                     subscribeAction()
                 } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "megaphone.fill")
-                            .font(.system(size: 15, weight: .bold))
-                        Text("Подписаться")
-                            .font(.system(size: 16, weight: .bold))
-                    }
-                    .foregroundColor(.black)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 48)
-                    .background(
-                        Capsule()
-                            .fill(Color.slooshAccent)
-                    )
-                    .glassEffect(in: Capsule())
+                    Text("Подписаться")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(.black)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 48)
+                        .background(
+                            Capsule()
+                                .fill(Color.slooshAccent)
+                        )
+                        .glassEffect(in: Capsule())
                 }
                 .buttonStyle(PeakPressButtonStyle())
             }
@@ -429,8 +431,8 @@ public struct ChannelDetailView: View {
 
     private var emptyStateView: some View {
         VStack(spacing: 12) {
-            Image(systemName: "megaphone")
-                .font(.system(size: 48))
+            Image(systemName: "bubble.left.and.bubble.right.fill")
+                .font(.system(size: 44))
                 .foregroundColor(Color.slooshAccent)
 
             Text("Пока нет постов")
