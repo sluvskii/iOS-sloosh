@@ -831,6 +831,14 @@ public final class MessengerRepository: ObservableObject {
 
             self.conversations = list
             saveConversationsToDisk(list)
+
+            for item in list {
+                UserPresenceService.shared.updateCache(
+                    userId: item.peerUser.id,
+                    isOnline: item.peerUser.isCurrentlyOnline,
+                    lastSeenMs: item.peerUser.lastSeenMs
+                )
+            }
         } catch {
             AppDiagnostics.shared.log("MessengerRepository fetchConversations error: \(error.localizedDescription)")
         }

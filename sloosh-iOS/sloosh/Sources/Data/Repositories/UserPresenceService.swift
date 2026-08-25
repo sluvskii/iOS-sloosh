@@ -72,11 +72,24 @@ public final class UserPresenceService: ObservableObject {
 
     private var heartbeatTimer: Timer?
     private var typingDebounceTask: Task<Void, Never>?
+    @Published private(set) var presenceCache: [String: (isOnline: Bool, lastSeenMs: Int64?)] = [:]
 
     private init() {}
 
     private func makeURL(path: String) async -> URL? {
         await MessengerRepository.shared.makeURL(path: path)
+    }
+
+    public func getCachedPresence(userId: String) -> (isOnline: Bool, lastSeenMs: Int64?)? {
+        if let cached = presenceCache[userId] {
+            let trulyOnline = PresenceFormatter.isOnline(isOnlineFlag: cached.isOnline, lastSeenMs: cached.lastSeenMs)
+            return (trulyOnline, cached.lastSeenMs)
+        }
+        return nil
+    }
+
+    public func updateCache(userId: String, isOnline: Bool, lastSeenMs: Int64?) {
+        presenceCache[userId] = (isOnline, lastSeenMs)
     }
 
     // MARK: - Heartbeat & Online Lifecycle
@@ -85,10 +98,10 @@ public final class UserPresenceService: ObservableObject {
         stopHeartbeat()
         setOnline()
 
-        // Пинг каждые 45 секунд
-        heartbeatTimer = Timer.scheduledTimer(withTimeInterval: 45.0, repeats: true) { [weak self] _ in
+        // Пинг каждые 30 секунд
+        heartbeatTimer = Timer.scheduledTimer(withTimeInterval: 30.0, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
-                self?.sendHeartbeat()
+                self?.sendHeartbeat(isOnline: true)
             }
         }
     }
@@ -111,6 +124,8 @@ public final class UserPresenceService: ObservableObject {
         guard let currentUser = AuthRepository.shared.currentUser, !currentUser.isAnonymous else { return }
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
 
+        updateCache(userId: currentUser.id, isOnline: isOnline, lastSeenMs: nowMs)
+
         Task {
             let presenceDict: [String: Any] = [
                 "isOnline": isOnline,
@@ -119,7 +134,7 @@ public final class UserPresenceService: ObservableObject {
 
             guard let jsonData = try? JSONSerialization.data(withJSONObject: presenceDict) else { return }
 
-            // 1. Update /user_profiles/{uid}
+            // 1. Update /user_profiles/{uid}/presence
             if let url = await makeURL(path: "user_profiles/\(currentUser.id)/presence") {
                 var req = URLRequest(url: url)
                 req.httpMethod = "PUT"
@@ -128,7 +143,7 @@ public final class UserPresenceService: ObservableObject {
                 _ = try? await URLSession.shared.data(for: req)
             }
 
-            // Also update top-level isOnline & lastSeenMs under /user_profiles/{uid}
+            // Also update top-level /user_profiles/{uid}/isOnline & lastSeenMs
             if let url2 = await makeURL(path: "user_profiles/\(currentUser.id)/isOnline") {
                 var req = URLRequest(url: url2)
                 req.httpMethod = "PUT"
@@ -156,22 +171,54 @@ public final class UserPresenceService: ObservableObject {
     // MARK: - Live User Presence Query
 
     public func fetchUserPresence(userId: String) async -> (isOnline: Bool, lastSeenMs: Int64?) {
-        guard let url = await makeURL(path: "user_profiles/\(userId)") else {
-            return (false, nil)
+        // 1. Check user_profiles/{userId}
+        if let url = await makeURL(path: "user_profiles/\(userId)"),
+           let (data, response) = try? await URLSession.shared.data(from: url),
+           let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
+           !data.isEmpty, String(data: data, encoding: .utf8) != "null",
+           let dict = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
+            
+            let isOnline = (dict["isOnline"] as? Bool) ?? (dict["presence"] as? [String: Any])?["isOnline"] as? Bool ?? false
+            let lastSeen = parseTimestamp(dict["lastSeenMs"]) ?? parseTimestamp((dict["presence"] as? [String: Any])?["lastSeenMs"])
+
+            let trulyOnline = PresenceFormatter.isOnline(isOnlineFlag: isOnline, lastSeenMs: lastSeen)
+            updateCache(userId: userId, isOnline: trulyOnline, lastSeenMs: lastSeen)
+            return (trulyOnline, lastSeen)
         }
 
-        guard let (data, response) = try? await URLSession.shared.data(from: url),
-              let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
-              !data.isEmpty, String(data: data, encoding: .utf8) != "null",
-              let dict = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
-            return (false, nil)
+        // 2. Fallback check users/{userId}/presence
+        if let url2 = await makeURL(path: "users/\(userId)/presence"),
+           let (data, response) = try? await URLSession.shared.data(from: url2),
+           let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
+           !data.isEmpty, String(data: data, encoding: .utf8) != "null",
+           let dict = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
+
+            let isOnline = dict["isOnline"] as? Bool ?? false
+            let lastSeen = parseTimestamp(dict["lastSeenMs"])
+
+            let trulyOnline = PresenceFormatter.isOnline(isOnlineFlag: isOnline, lastSeenMs: lastSeen)
+            updateCache(userId: userId, isOnline: trulyOnline, lastSeenMs: lastSeen)
+            return (trulyOnline, lastSeen)
         }
 
-        let isOnline = (dict["isOnline"] as? Bool) ?? (dict["presence"] as? [String: Any])?["isOnline"] as? Bool ?? false
-        let lastSeen = (dict["lastSeenMs"] as? NSNumber)?.int64Value ?? ((dict["presence"] as? [String: Any])?["lastSeenMs"] as? NSNumber)?.int64Value
+        if let cached = presenceCache[userId] {
+            let trulyOnline = PresenceFormatter.isOnline(isOnlineFlag: cached.isOnline, lastSeenMs: cached.lastSeenMs)
+            return (trulyOnline, cached.lastSeenMs)
+        }
 
-        let trulyOnline = PresenceFormatter.isOnline(isOnlineFlag: isOnline, lastSeenMs: lastSeen)
-        return (trulyOnline, lastSeen)
+        return (false, nil)
+    }
+
+    private func parseTimestamp(_ val: Any?) -> Int64? {
+        guard let val = val else { return nil }
+        if let num = val as? NSNumber { return num.int64Value }
+        if let intVal = val as? Int64 { return intVal }
+        if let intVal = val as? Int { return Int64(intVal) }
+        if let dbl = val as? Double { return Int64(dbl) }
+        if let str = val as? String, let parsed = Int64(str.trimmingCharacters(in: .whitespacesAndNewlines)) {
+            return parsed
+        }
+        return nil
     }
 
     // MARK: - Typing Indicator
