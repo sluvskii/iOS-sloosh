@@ -372,19 +372,26 @@ public struct ChatDetailView: View {
 
     private func syncMessages(remoteList: [ChatMessage]) async {
         let sortedRemote = remoteList.sorted(by: { $0.timestampMs < $1.timestampMs })
-        
-        // 1. Если пришедший список полностью идентичен текущему UI — ранний выход (0 сбросов меню)
-        guard sortedRemote != self.messages else { return }
+        let now = Int64(Date().timeIntervalSince1970 * 1000)
+        let currentUserId = AuthRepository.shared.currentUser?.id ?? ""
+        // Сохраняем свежие оптимистичные сообщения, отправленные пользователем за последние 15 секунд
+        let pendingOptimistic = self.messages.filter { local in
+            local.senderId == currentUserId &&
+            (now - local.timestampMs) < 15_000 &&
+            !remoteList.contains(where: { $0.id == local.id })
+        }
 
-        // 2. Если изменился лишь статус/реакции в существующих сообщениях (без добавлений/удалений)
-        let isContentOnlyUpdate = (sortedRemote.count == self.messages.count) &&
-            zip(sortedRemote, self.messages).allSatisfy { $0.id == $1.id }
+        var merged = remoteList
+        merged.append(contentsOf: pendingOptimistic)
+        let sortedMerged = merged.sorted(by: { $0.timestampMs < $1.timestampMs })
 
-        // 2. Обновляем список сообщений мгновенно и нативно (без искусственных скачущих анимаций баблов)
-        self.messages = sortedRemote
+        guard sortedMerged != self.messages else { return }
+
+        // Обновляем список сообщений мгновенно и нативно
+        self.messages = sortedMerged
 
         let chatId = repo.getOrCreateChatId(peerUserId: peerUser.id)
-        await repo.markMessagesAsRead(chatId: chatId, peerUserId: peerUser.id, messages: sortedRemote)
+        await repo.markMessagesAsRead(chatId: chatId, peerUserId: peerUser.id, messages: sortedMerged)
     }
 
     private func loadMessages() async {
@@ -442,14 +449,11 @@ public struct ChatDetailView: View {
             updatedMsg.isEdited = true
 
             if let idx = self.messages.firstIndex(where: { $0.id == editing.id }) {
-                withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
-                    self.messages[idx] = updatedMsg
-                }
+                self.messages[idx] = updatedMsg
             }
 
             Task {
                 _ = await repo.postMessageToFirebase(chatId: chatId, message: updatedMsg, peerUser: peerUser)
-                await loadMessages()
             }
             return
         }
