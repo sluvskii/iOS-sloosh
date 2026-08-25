@@ -82,9 +82,11 @@ public struct MessengerView: View {
                 }
 
                 // 1. Instant local search on existing cached channels
-                let localMatching = repo.publicChannels.filter { ch in
+                let cleanTrimmed = TagValidator.sanitize(trimmed)
+                let localMatching = (repo.publicChannels + repo.subscribedChannels).filter { ch in
                     ch.name.localizedCaseInsensitiveContains(trimmed) ||
                     ch.tag.localizedCaseInsensitiveContains(trimmed) ||
+                    (!cleanTrimmed.isEmpty && ch.tag.localizedCaseInsensitiveContains(cleanTrimmed)) ||
                     ch.description.localizedCaseInsensitiveContains(trimmed)
                 }
                 if !localMatching.isEmpty {

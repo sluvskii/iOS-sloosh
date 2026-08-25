@@ -351,7 +351,7 @@ public final class MessengerRepository: ObservableObject {
         return nil
     }
 
-    // MARK: - User Registration & Sanitized Sync
+    // MARK: - User Registration, Sanitized Sync & Channel Propagation
 
     public func syncCurrentUserProfile() async {
         guard let user = AuthRepository.shared.currentUser, !user.isAnonymous else { return }
@@ -380,15 +380,7 @@ public final class MessengerRepository: ObservableObject {
             req.httpMethod = "PUT"
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
             req.httpBody = body
-            do {
-                let (data, response) = try await URLSession.shared.data(for: req)
-                if let httpResp = response as? HTTPURLResponse, !(200...299).contains(httpResp.statusCode) {
-                    let errStr = String(data: data, encoding: .utf8) ?? ""
-                    AppDiagnostics.shared.log("MessengerRepository: sync user_profiles HTTP \(httpResp.statusCode): \(errStr)")
-                }
-            } catch {
-                AppDiagnostics.shared.log("MessengerRepository: sync user_profiles error: \(error.localizedDescription)")
-            }
+            _ = try? await URLSession.shared.data(for: req)
         }
 
         // 2. Save under user branch /users/{uid}/profile.json
@@ -397,14 +389,65 @@ public final class MessengerRepository: ObservableObject {
             req.httpMethod = "PUT"
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
             req.httpBody = body
-            do {
-                let (data, response) = try await URLSession.shared.data(for: req)
-                if let httpResp = response as? HTTPURLResponse, !(200...299).contains(httpResp.statusCode) {
-                    let errStr = String(data: data, encoding: .utf8) ?? ""
-                    AppDiagnostics.shared.log("MessengerRepository: sync users/profile HTTP \(httpResp.statusCode): \(errStr)")
-                }
-            } catch {
-                AppDiagnostics.shared.log("MessengerRepository: sync users/profile error: \(error.localizedDescription)")
+            _ = try? await URLSession.shared.data(for: req)
+        }
+
+        // 3. Save under public_users/{uid}.json
+        if let url3 = await makeURL(path: "public_users/\(user.id)") {
+            var req = URLRequest(url: url3)
+            req.httpMethod = "PUT"
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            req.httpBody = body
+            _ = try? await URLSession.shared.data(for: req)
+        }
+
+        // 4. Also push all owned channels to Firebase to ensure they exist on the server
+        await syncOwnedChannelsToFirebase()
+    }
+
+    public func syncOwnedChannelsToFirebase() async {
+        guard let currentUser = AuthRepository.shared.currentUser, !currentUser.isAnonymous else { return }
+
+        let myChannels = (self.subscribedChannels + self.publicChannels).filter { $0.ownerId == currentUser.id }
+        var uniqueMap: [String: ChannelModel] = [:]
+        for ch in myChannels {
+            uniqueMap[ch.id] = ch
+        }
+
+        for (_, channel) in uniqueMap {
+            let encodedData = try? JSONEncoder().encode(channel)
+
+            // 1. Root /channels/{id}
+            if let url = await makeURL(path: "channels/\(channel.id)") {
+                var req = URLRequest(url: url)
+                req.httpMethod = "PUT"
+                req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                req.httpBody = encodedData
+                _ = try? await URLSession.shared.data(for: req)
+            }
+
+            // 2. /public_channels/{id}
+            if let url = await makeURL(path: "public_channels/\(channel.id)") {
+                var req = URLRequest(url: url)
+                req.httpMethod = "PUT"
+                req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                req.httpBody = encodedData
+                _ = try? await URLSession.shared.data(for: req)
+            }
+
+            // 3. /users/{uid}/channels/{id}
+            if let url = await makeURL(path: "users/\(currentUser.id)/channels/\(channel.id)") {
+                var req = URLRequest(url: url)
+                req.httpMethod = "PUT"
+                req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                req.httpBody = encodedData
+                _ = try? await URLSession.shared.data(for: req)
+            }
+
+            // 4. Claim tag
+            let clean = TagValidator.sanitize(channel.tag)
+            if !clean.isEmpty {
+                await claimChannelTag(clean, channelId: channel.id)
             }
         }
     }
@@ -423,24 +466,22 @@ public final class MessengerRepository: ObservableObject {
 
         var allUsersMap: [String: SlooshUser] = [:]
 
-        // Check if query is an exact @tag query
-        let isTagQuery = trimmed.hasPrefix("@")
+        // 1. Direct tag lookup (ALWAYS check if cleanTag is valid)
         let cleanTag = TagValidator.sanitize(trimmed)
-
-        if isTagQuery && !cleanTag.isEmpty {
+        if !cleanTag.isEmpty {
             if let directUser = await lookupUserByTag(cleanTag) {
                 allUsersMap[directUser.id] = directUser
                 saveLocalKnownUser(directUser)
             }
         }
 
-        // 1. Local cached users
+        // 2. Local cached users
         let localUsers = getLocalKnownUsers()
         for (uId, user) in localUsers {
             allUsersMap[uId] = user
         }
 
-        // 2. Load profiles from /user_profiles.json
+        // 3. Load profiles from /user_profiles.json
         if let profiles = await fetchUsersFromNode("user_profiles") {
             for p in profiles {
                 allUsersMap[p.id] = p
@@ -448,12 +489,38 @@ public final class MessengerRepository: ObservableObject {
             }
         }
 
-        // 3. Fallback /users.json
+        // 4. Load from /public_users.json
+        if let pubUsers = await fetchUsersFromNode("public_users") {
+            for u in pubUsers {
+                if allUsersMap[u.id] == nil {
+                    allUsersMap[u.id] = u
+                    saveLocalKnownUser(u)
+                }
+            }
+        }
+
+        // 5. Fallback /users.json
         if let users = await fetchUsersFromNode("users") {
             for u in users {
                 if allUsersMap[u.id] == nil {
                     allUsersMap[u.id] = u
                     saveLocalKnownUser(u)
+                }
+            }
+        }
+
+        // 6. Direct userTags query
+        if let url = await makeURL(path: "userTags"),
+           let (data, response) = try? await URLSession.shared.data(from: url),
+           let httpResp = response as? HTTPURLResponse, (200...299).contains(httpResp.statusCode),
+           !data.isEmpty && String(data: data, encoding: .utf8) != "null",
+           let tagsDict = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
+            for (tKey, uVal) in tagsDict {
+                let uId = (uVal as? String) ?? "\(uVal)"
+                if !uId.isEmpty && uId != "null" && allUsersMap[uId] == nil {
+                    if let user = await lookupUserByTag(tKey) {
+                        allUsersMap[user.id] = user
+                    }
                 }
             }
         }
@@ -1302,6 +1369,22 @@ public final class MessengerRepository: ObservableObject {
                            let model = parseChannelDict(chanDict, fallbackId: chId) {
                             combinedPool[model.id] = model
                         }
+                    }
+                }
+            }
+        }
+
+        // 4. Fetch from /channelTags.json to resolve all indexed channels
+        if let url = await makeURL(path: "channelTags"),
+           let (data, response) = try? await URLSession.shared.data(from: url),
+           let httpResp = response as? HTTPURLResponse, (200...299).contains(httpResp.statusCode),
+           !data.isEmpty && String(data: data, encoding: .utf8) != "null",
+           let tagsDict = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
+            for (tagKey, val) in tagsDict {
+                let chanId = (val as? String) ?? "\(val)"
+                if !chanId.isEmpty && chanId != "null" && combinedPool[chanId] == nil {
+                    if let direct = await lookupChannelByTag(tagKey) {
+                        combinedPool[direct.id] = direct
                     }
                 }
             }
