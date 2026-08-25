@@ -244,9 +244,19 @@ public final class MessengerRepository: ObservableObject {
     public func parseChannelDict(_ dict: [String: Any], fallbackId: String? = nil) -> ChannelModel? {
         let id = (dict["id"] as? String) ?? fallbackId ?? ""
         guard !id.isEmpty else { return nil }
-        let rawTag = (dict["tag"] as? String) ?? ""
-        let tag = rawTag.isEmpty ? "channel_\(id.prefix(6))" : TagValidator.sanitize(rawTag)
         let name = (dict["name"] as? String) ?? ""
+        let rawTag = (dict["tag"] as? String) ?? ""
+        let tag: String
+        if !rawTag.isEmpty {
+            tag = TagValidator.sanitize(rawTag)
+        } else {
+            let nameTag = TagValidator.sanitize(name)
+            if nameTag.count >= 3 {
+                tag = nameTag
+            } else {
+                tag = "channel_\(id.prefix(6))"
+            }
+        }
         let description = (dict["description"] as? String) ?? ""
         let avatarEmoji = dict["avatarEmoji"] as? String
         let avatarUrl = dict["avatarUrl"] as? String
@@ -311,11 +321,19 @@ public final class MessengerRepository: ObservableObject {
             return model
         }
 
-        // 3. Search in local pools
-        if let found = self.publicChannels.first(where: { $0.tag.lowercased() == clean.lowercased() }) {
+        // 3. Search in local pools by tag OR by name
+        if let found = self.publicChannels.first(where: {
+            $0.tag.lowercased() == clean.lowercased() ||
+            TagValidator.sanitize($0.name).lowercased() == clean.lowercased() ||
+            $0.name.localizedCaseInsensitiveContains(clean)
+        }) {
             return found
         }
-        if let found = self.subscribedChannels.first(where: { $0.tag.lowercased() == clean.lowercased() }) {
+        if let found = self.subscribedChannels.first(where: {
+            $0.tag.lowercased() == clean.lowercased() ||
+            TagValidator.sanitize($0.name).lowercased() == clean.lowercased() ||
+            $0.name.localizedCaseInsensitiveContains(clean)
+        }) {
             return found
         }
 
@@ -356,11 +374,33 @@ public final class MessengerRepository: ObservableObject {
     public func syncCurrentUserProfile() async {
         guard let user = AuthRepository.shared.currentUser, !user.isAnonymous else { return }
 
+        // Auto-assign user tag from display title if tag is empty
+        var effectiveTag = user.tag
+        if effectiveTag == nil || effectiveTag?.isEmpty == true {
+            let candidate = TagValidator.sanitize(user.displayTitle)
+            if candidate.count >= 3 {
+                effectiveTag = candidate
+                let updatedUser = UserProfile(
+                    id: user.id,
+                    email: user.email,
+                    displayName: user.displayName,
+                    tag: candidate,
+                    photoURL: user.photoURL,
+                    isAnonymous: user.isAnonymous,
+                    provider: user.provider,
+                    idToken: user.idToken,
+                    refreshToken: user.refreshToken,
+                    createdAt: user.createdAt
+                )
+                AuthRepository.shared.saveUser(updatedUser)
+            }
+        }
+
         // Sanitize: do NOT include email or private auth fields
         let slooshUser = SlooshUser(
             id: user.id,
             displayName: user.displayTitle,
-            tag: user.tag,
+            tag: effectiveTag,
             avatarUrl: user.photoURL,
             isOnline: true
         )
@@ -368,7 +408,7 @@ public final class MessengerRepository: ObservableObject {
         // Save locally on device
         saveLocalKnownUser(slooshUser)
 
-        if let tag = user.tag, !tag.isEmpty {
+        if let tag = effectiveTag, !tag.isEmpty {
             await claimUserTag(tag, userId: user.id)
         }
 
@@ -411,8 +451,25 @@ public final class MessengerRepository: ObservableObject {
         let myChannels = (self.subscribedChannels + self.publicChannels).filter { $0.ownerId == currentUser.id }
         var uniqueMap: [String: ChannelModel] = [:]
         for ch in myChannels {
-            uniqueMap[ch.id] = ch
+            var mutable = ch
+            // Auto-migrate synthetic tags to clean name tag if available
+            if mutable.tag.hasPrefix("channel_") || mutable.tag.isEmpty {
+                let nameTag = TagValidator.sanitize(mutable.name)
+                if nameTag.count >= 3 {
+                    mutable.tag = nameTag
+                }
+            }
+            uniqueMap[mutable.id] = mutable
         }
+
+        // Save updated channels locally
+        let updatedSubs = self.subscribedChannels.map { uniqueMap[$0.id] ?? $0 }
+        self.subscribedChannels = updatedSubs
+        saveSubscribedChannelsToDisk(updatedSubs)
+
+        let updatedPubs = self.publicChannels.map { uniqueMap[$0.id] ?? $0 }
+        self.publicChannels = updatedPubs
+        savePublicChannelsToDisk(updatedPubs)
 
         for (_, channel) in uniqueMap {
             let encodedData = try? JSONEncoder().encode(channel)
@@ -444,10 +501,16 @@ public final class MessengerRepository: ObservableObject {
                 _ = try? await URLSession.shared.data(for: req)
             }
 
-            // 4. Claim tag
+            // 4. Claim tag in /channelTags
             let clean = TagValidator.sanitize(channel.tag)
             if !clean.isEmpty {
                 await claimChannelTag(clean, channelId: channel.id)
+            }
+
+            // 5. Also claim name tag if different and valid
+            let cleanName = TagValidator.sanitize(channel.name)
+            if !cleanName.isEmpty && cleanName != clean && cleanName.count >= 3 {
+                await claimChannelTag(cleanName, channelId: channel.id)
             }
         }
     }
@@ -1414,7 +1477,9 @@ public final class MessengerRepository: ObservableObject {
             ch.name.localizedCaseInsensitiveContains(queryLower) ||
             ch.tag.localizedCaseInsensitiveContains(queryLower) ||
             (!cleanTag.isEmpty && ch.tag.localizedCaseInsensitiveContains(cleanTag)) ||
+            (!cleanTag.isEmpty && TagValidator.sanitize(ch.name).localizedCaseInsensitiveContains(cleanTag)) ||
             ch.description.localizedCaseInsensitiveContains(queryLower) ||
+            ch.ownerName.localizedCaseInsensitiveContains(queryLower) ||
             (ch.lastPostText?.localizedCaseInsensitiveContains(queryLower) == true)
         }
     }
