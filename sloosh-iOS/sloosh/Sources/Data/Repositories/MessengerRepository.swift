@@ -977,20 +977,36 @@ public final class MessengerRepository: ObservableObject {
         await claimChannelTag(cleanTag, channelId: channelId)
 
         // 3. Firebase REST Calls
+        let encodedData = try? JSONEncoder().encode(channel)
+
         // 3a. PUT /channels/{channelId}.json
         if let channelUrl = await makeURL(path: "channels/\(channelId)") {
             var req = URLRequest(url: channelUrl)
             req.httpMethod = "PUT"
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            req.httpBody = try? JSONEncoder().encode(channel)
-            do {
-                _ = try await URLSession.shared.data(for: req)
-            } catch {
-                AppDiagnostics.shared.log("MessengerRepository createChannel error: \(error.localizedDescription)")
-            }
+            req.httpBody = encodedData
+            _ = try? await URLSession.shared.data(for: req)
         }
 
-        // 3b. PUT /user_channel_subscriptions/{userId}/{channelId}.json
+        // 3b. PUT /public_channels/{channelId}.json
+        if let pubUrl = await makeURL(path: "public_channels/\(channelId)") {
+            var req = URLRequest(url: pubUrl)
+            req.httpMethod = "PUT"
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            req.httpBody = encodedData
+            _ = try? await URLSession.shared.data(for: req)
+        }
+
+        // 3c. PUT /users/{userId}/channels/{channelId}.json (Guaranteed write permission)
+        if let userChanUrl = await makeURL(path: "users/\(currentUser.id)/channels/\(channelId)") {
+            var req = URLRequest(url: userChanUrl)
+            req.httpMethod = "PUT"
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            req.httpBody = encodedData
+            _ = try? await URLSession.shared.data(for: req)
+        }
+
+        // 3d. PUT /user_channel_subscriptions/{userId}/{channelId}.json
         let subscription = ChannelSubscription(
             channelId: channelId,
             channel: channel,
@@ -1005,7 +1021,7 @@ public final class MessengerRepository: ObservableObject {
             _ = try? await URLSession.shared.data(for: req)
         }
 
-        // 3c. PUT /channel_subscribers/{channelId}/{userId}.json
+        // 3e. PUT /channel_subscribers/{channelId}/{userId}.json
         if let subscriberUrl = await makeURL(path: "channel_subscribers/\(channelId)/\(currentUser.id)") {
             var req = URLRequest(url: subscriberUrl)
             req.httpMethod = "PUT"
@@ -1042,21 +1058,41 @@ public final class MessengerRepository: ObservableObject {
             savePublicChannelsToDisk(pubs)
         }
 
+        let updatedData = try? JSONEncoder().encode(updated)
+
         // 2. PUT /channels/{channelId}.json
         if let channelUrl = await makeURL(path: "channels/\(channel.id)") {
             var req = URLRequest(url: channelUrl)
             req.httpMethod = "PUT"
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            req.httpBody = try? JSONEncoder().encode(updated)
+            req.httpBody = updatedData
             _ = try? await URLSession.shared.data(for: req)
         }
 
-        // 3. PUT /user_channel_subscriptions/{ownerId}/{channelId}/channel.json
+        // 3. PUT /public_channels/{channelId}.json
+        if let pubUrl = await makeURL(path: "public_channels/\(channel.id)") {
+            var req = URLRequest(url: pubUrl)
+            req.httpMethod = "PUT"
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            req.httpBody = updatedData
+            _ = try? await URLSession.shared.data(for: req)
+        }
+
+        // 4. PUT /users/{ownerId}/channels/{channelId}.json
+        if let userChanUrl = await makeURL(path: "users/\(channel.ownerId)/channels/\(channel.id)") {
+            var req = URLRequest(url: userChanUrl)
+            req.httpMethod = "PUT"
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            req.httpBody = updatedData
+            _ = try? await URLSession.shared.data(for: req)
+        }
+
+        // 5. PUT /user_channel_subscriptions/{ownerId}/{channelId}/channel.json
         if let subUrl = await makeURL(path: "user_channel_subscriptions/\(channel.ownerId)/\(channel.id)/channel") {
             var req = URLRequest(url: subUrl)
             req.httpMethod = "PUT"
             req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            req.httpBody = try? JSONEncoder().encode(updated)
+            req.httpBody = updatedData
             _ = try? await URLSession.shared.data(for: req)
         }
 
@@ -1089,6 +1125,20 @@ public final class MessengerRepository: ObservableObject {
             // DELETE /channels/{channelId}.json
             if let channelUrl = await makeURL(path: "channels/\(channelId)") {
                 var req = URLRequest(url: channelUrl)
+                req.httpMethod = "DELETE"
+                _ = try? await URLSession.shared.data(for: req)
+            }
+
+            // DELETE /public_channels/{channelId}.json
+            if let pubUrl = await makeURL(path: "public_channels/\(channelId)") {
+                var req = URLRequest(url: pubUrl)
+                req.httpMethod = "DELETE"
+                _ = try? await URLSession.shared.data(for: req)
+            }
+
+            // DELETE /users/{userId}/channels/{channelId}.json
+            if let userChanUrl = await makeURL(path: "users/\(currentUser.id)/channels/\(channelId)") {
+                var req = URLRequest(url: userChanUrl)
                 req.httpMethod = "DELETE"
                 _ = try? await URLSession.shared.data(for: req)
             }
@@ -1202,45 +1252,66 @@ public final class MessengerRepository: ObservableObject {
             combinedPool[direct.id] = direct
         }
 
-        guard let url = await makeURL(path: "channels") else {
-            let fallbackList = Array(combinedPool.values).sorted { $0.subscriberCount > $1.subscriberCount }
-            return filterChannels(fallbackList, query: query, directMatch: directMatch)
+        // 1. Fetch from /channels.json
+        if let url = await makeURL(path: "channels"),
+           let (data, response) = try? await URLSession.shared.data(from: url),
+           let httpResp = response as? HTTPURLResponse, (200...299).contains(httpResp.statusCode),
+           !data.isEmpty && String(data: data, encoding: .utf8) != "null" {
+            if let rawDict = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
+                for (chId, val) in rawDict {
+                    if let channelDict = val as? [String: Any],
+                       let model = parseChannelDict(channelDict, fallbackId: chId) {
+                        combinedPool[model.id] = model
+                    }
+                }
+            } else if let rawArray = (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]] {
+                for channelDict in rawArray {
+                    if let model = parseChannelDict(channelDict) {
+                        combinedPool[model.id] = model
+                    }
+                }
+            }
         }
 
-        do {
-            let (data, response) = try await URLSession.shared.data(from: url)
-            guard let httpResp = response as? HTTPURLResponse, (200...299).contains(httpResp.statusCode) else {
-                let fallbackList = Array(combinedPool.values).sorted { $0.subscriberCount > $1.subscriberCount }
-                return filterChannels(fallbackList, query: query, directMatch: directMatch)
-            }
-
-            if !data.isEmpty && String(data: data, encoding: .utf8) != "null" {
-                if let rawDict = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
-                    for (chId, val) in rawDict {
-                        if let channelDict = val as? [String: Any],
-                           let model = parseChannelDict(channelDict, fallbackId: chId) {
-                            combinedPool[model.id] = model
-                        }
+        // 2. Fetch from /public_channels.json
+        if let url = await makeURL(path: "public_channels"),
+           let (data, response) = try? await URLSession.shared.data(from: url),
+           let httpResp = response as? HTTPURLResponse, (200...299).contains(httpResp.statusCode),
+           !data.isEmpty && String(data: data, encoding: .utf8) != "null" {
+            if let rawDict = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
+                for (chId, val) in rawDict {
+                    if let channelDict = val as? [String: Any],
+                       let model = parseChannelDict(channelDict, fallbackId: chId) {
+                        combinedPool[model.id] = model
                     }
-                } else if let rawArray = (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]] {
-                    for channelDict in rawArray {
-                        if let model = parseChannelDict(channelDict) {
+                }
+            }
+        }
+
+        // 3. Scan all users in /users.json to discover channels created by any user
+        if let url = await makeURL(path: "users"),
+           let (data, response) = try? await URLSession.shared.data(from: url),
+           let httpResp = response as? HTTPURLResponse, (200...299).contains(httpResp.statusCode),
+           !data.isEmpty && String(data: data, encoding: .utf8) != "null",
+           let usersDict = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
+            for (_, userVal) in usersDict {
+                guard let userObj = userVal as? [String: Any] else { continue }
+                if let userChannels = userObj["channels"] as? [String: Any] {
+                    for (chId, chanVal) in userChannels {
+                        if let chanDict = chanVal as? [String: Any],
+                           let model = parseChannelDict(chanDict, fallbackId: chId) {
                             combinedPool[model.id] = model
                         }
                     }
                 }
             }
-
-            let allPublic = Array(combinedPool.values).sorted { $0.subscriberCount > $1.subscriberCount }
-            self.publicChannels = allPublic
-            savePublicChannelsToDisk(allPublic)
-
-            return filterChannels(allPublic, query: query, directMatch: directMatch)
-        } catch {
-            AppDiagnostics.shared.log("MessengerRepository fetchPublicChannels error: \(error.localizedDescription)")
-            let fallbackList = Array(combinedPool.values).sorted { $0.subscriberCount > $1.subscriberCount }
-            return filterChannels(fallbackList, query: query, directMatch: directMatch)
         }
+
+        let allPublic = Array(combinedPool.values).sorted { $0.subscriberCount > $1.subscriberCount }
+        self.publicChannels = allPublic
+        savePublicChannelsToDisk(allPublic)
+
+        return filterChannels(allPublic, query: query, directMatch: directMatch)
     }
 
     private func filterChannels(_ list: [ChannelModel], query: String?, directMatch: ChannelModel?) -> [ChannelModel] {
