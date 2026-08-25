@@ -65,11 +65,17 @@ public final class MessengerRepository: ObservableObject {
 
     public func loadConversationsFromDisk(userId: String? = nil) -> [ChatConversation] {
         let uid = userId ?? AuthRepository.shared.currentUser?.id ?? "guest"
-        guard let data = UserDefaults.standard.data(forKey: "sloosh_messenger_conversations_v2_\(uid)"),
-              let list = try? JSONDecoder().decode([ChatConversation].self, from: data) else {
-            return []
+        if let data = UserDefaults.standard.data(forKey: "sloosh_messenger_conversations_v2_\(uid)"),
+           let list = try? JSONDecoder().decode([ChatConversation].self, from: data) {
+            return list.sorted { $0.updatedAtMs > $1.updatedAtMs }
         }
-        return list.sorted { $0.updatedAtMs > $1.updatedAtMs }
+        // Fallback migration from v1
+        if let data1 = UserDefaults.standard.data(forKey: "sloosh_messenger_conversations_v1"),
+           let list1 = try? JSONDecoder().decode([ChatConversation].self, from: data1), !list1.isEmpty {
+            saveConversationsToDisk(list1, userId: uid)
+            return list1.sorted { $0.updatedAtMs > $1.updatedAtMs }
+        }
+        return []
     }
 
     public func saveSubscribedChannelsToDisk(_ list: [ChannelModel], userId: String? = nil) {
@@ -81,11 +87,20 @@ public final class MessengerRepository: ObservableObject {
 
     public func loadSubscribedChannelsFromDisk(userId: String? = nil) -> [ChannelModel] {
         let uid = userId ?? AuthRepository.shared.currentUser?.id ?? "guest"
-        guard let data = UserDefaults.standard.data(forKey: "sloosh_messenger_subscribed_channels_v2_\(uid)"),
-              let list = try? JSONDecoder().decode([ChannelModel].self, from: data) else {
-            return []
+        if let data = UserDefaults.standard.data(forKey: "sloosh_messenger_subscribed_channels_v2_\(uid)"),
+           let list = try? JSONDecoder().decode([ChannelModel].self, from: data) {
+            return list.sorted { ($0.lastPostTimestampMs ?? $0.updatedAtMs) > ($1.lastPostTimestampMs ?? $1.updatedAtMs) }
         }
-        return list.sorted { ($0.lastPostTimestampMs ?? $0.updatedAtMs) > ($1.lastPostTimestampMs ?? $1.updatedAtMs) }
+        // Fallback migration from v1
+        if let data1 = UserDefaults.standard.data(forKey: "sloosh_messenger_subscribed_channels_v1"),
+           let list1 = try? JSONDecoder().decode([ChannelModel].self, from: data1), !list1.isEmpty {
+            let userChannels = list1.filter { $0.ownerId == uid || uid == "guest" }
+            if !userChannels.isEmpty {
+                saveSubscribedChannelsToDisk(userChannels, userId: uid)
+                return userChannels.sorted { ($0.lastPostTimestampMs ?? $0.updatedAtMs) > ($1.lastPostTimestampMs ?? $1.updatedAtMs) }
+            }
+        }
+        return []
     }
 
     public func savePublicChannelsToDisk(_ list: [ChannelModel]) {
@@ -1390,52 +1405,71 @@ public final class MessengerRepository: ObservableObject {
         }
 
         if self.subscribedChannels.isEmpty {
-            self.subscribedChannels = loadSubscribedChannelsFromDisk()
+            self.subscribedChannels = loadSubscribedChannelsFromDisk(userId: currentUser.id)
         }
 
-        guard let url = await makeURL(path: "user_channel_subscriptions/\(currentUser.id)") else {
-            return self.subscribedChannels
+        var combinedMap: [String: ChannelModel] = [:]
+        // Pre-fill with cached channels owned by this user
+        for ch in self.subscribedChannels where ch.ownerId == currentUser.id {
+            combinedMap[ch.id] = ch
         }
 
-        do {
-            let (data, response) = try await URLSession.shared.data(from: url)
-            guard let httpResp = response as? HTTPURLResponse, (200...299).contains(httpResp.statusCode) else {
-                return self.subscribedChannels
-            }
-
-            if data.isEmpty || String(data: data, encoding: .utf8) == "null" {
-                self.subscribedChannels = []
-                saveSubscribedChannelsToDisk([])
-                return []
-            }
-
-            let subDict = try JSONDecoder().decode([String: ChannelSubscription].self, from: data)
-            var channelsList: [ChannelModel] = []
-
-            if let allChannelsUrl = await makeURL(path: "channels") {
-                if let (channelsData, resp2) = try? await URLSession.shared.data(from: allChannelsUrl),
-                   let httpResp2 = resp2 as? HTTPURLResponse, (200...299).contains(httpResp2.statusCode),
-                   !channelsData.isEmpty, String(data: channelsData, encoding: .utf8) != "null",
-                   let allDict = try? JSONDecoder().decode([String: ChannelModel].self, from: channelsData) {
-                    
-                    channelsList = subDict.compactMap { (chId, sub) -> ChannelModel? in
-                        return allDict[chId] ?? sub.channel
+        // 1. Fetch user subscriptions from /user_channel_subscriptions/{userId}.json
+        if let subUrl = await makeURL(path: "user_channel_subscriptions/\(currentUser.id)"),
+           let (data, response) = try? await URLSession.shared.data(from: subUrl),
+           let httpResp = response as? HTTPURLResponse, (200...299).contains(httpResp.statusCode),
+           !data.isEmpty && String(data: data, encoding: .utf8) != "null",
+           let subDict = try? JSONDecoder().decode([String: ChannelSubscription].self, from: data) {
+            for (chId, sub) in subDict {
+                if let ch = sub.channel {
+                    combinedMap[ch.id] = ch
+                } else if !chId.isEmpty {
+                    if let direct = await lookupChannelByTag(chId) {
+                        combinedMap[direct.id] = direct
                     }
-                } else {
-                    channelsList = subDict.compactMap { $0.value.channel }
                 }
-            } else {
-                channelsList = subDict.compactMap { $0.value.channel }
             }
-
-            let sorted = channelsList.sorted { ($0.lastPostTimestampMs ?? $0.updatedAtMs) > ($1.lastPostTimestampMs ?? $1.updatedAtMs) }
-            self.subscribedChannels = sorted
-            saveSubscribedChannelsToDisk(sorted)
-            return sorted
-        } catch {
-            AppDiagnostics.shared.log("MessengerRepository fetchSubscribedChannels error: \(error.localizedDescription)")
-            return self.subscribedChannels
         }
+
+        // 2. Fetch owned channels from /users/{userId}/channels.json
+        if let ownedUrl = await makeURL(path: "users/\(currentUser.id)/channels"),
+           let (ownedData, ownedResp) = try? await URLSession.shared.data(from: ownedUrl),
+           let httpOwnedResp = ownedResp as? HTTPURLResponse, (200...299).contains(httpOwnedResp.statusCode),
+           !ownedData.isEmpty && String(data: ownedData, encoding: .utf8) != "null" {
+            if let ownedDict = try? JSONDecoder().decode([String: ChannelModel].self, from: ownedData) {
+                for (_, ch) in ownedDict {
+                    combinedMap[ch.id] = ch
+                }
+            } else if let rawDict = (try? JSONSerialization.jsonObject(with: ownedData)) as? [String: Any] {
+                for (chId, val) in rawDict {
+                    if let chDict = val as? [String: Any],
+                       let ch = parseChannelDict(chDict, fallbackId: chId) {
+                        combinedMap[ch.id] = ch
+                    }
+                }
+            }
+        }
+
+        // 3. Fetch from /channels.json and find any channels owned by this user
+        if let allChannelsUrl = await makeURL(path: "channels"),
+           let (channelsData, resp2) = try? await URLSession.shared.data(from: allChannelsUrl),
+           let httpResp2 = resp2 as? HTTPURLResponse, (200...299).contains(httpResp2.statusCode),
+           !channelsData.isEmpty && String(data: channelsData, encoding: .utf8) != "null",
+           let rawDict = (try? JSONSerialization.jsonObject(with: channelsData)) as? [String: Any] {
+            for (chId, val) in rawDict {
+                if let chDict = val as? [String: Any],
+                   let ch = parseChannelDict(chDict, fallbackId: chId) {
+                    if ch.ownerId == currentUser.id || combinedMap[ch.id] != nil {
+                        combinedMap[ch.id] = ch
+                    }
+                }
+            }
+        }
+
+        let sorted = Array(combinedMap.values).sorted { ($0.lastPostTimestampMs ?? $0.updatedAtMs) > ($1.lastPostTimestampMs ?? $1.updatedAtMs) }
+        self.subscribedChannels = sorted
+        saveSubscribedChannelsToDisk(sorted, userId: currentUser.id)
+        return sorted
     }
 
     public func fetchPublicChannels(query: String? = nil) async -> [ChannelModel] {
