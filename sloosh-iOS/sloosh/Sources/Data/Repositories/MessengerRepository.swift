@@ -169,7 +169,7 @@ public final class MessengerRepository: ObservableObject {
         return dict
     }
 
-    private func makeURL(path: String) async -> URL? {
+    public func makeURL(path: String) async -> URL? {
         let safePath = path.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? path
         var urlString = "\(databaseBaseURL)/\(safePath).json"
         if let token = await AuthRepository.shared.ensureFreshToken(), !token.isEmpty {
