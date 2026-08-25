@@ -1,5 +1,4 @@
 import SwiftUI
-import LocalAuthentication
 
 // MARK: - Admin Dashboard View (iOS 26+ Liquid Glass)
 
@@ -37,11 +36,10 @@ public struct AdminDashboardView: View {
     public var body: some View {
         NavigationStack {
             ZStack {
-                Color(UIColor.systemGroupedBackground).ignoresSafeArea()
+                Color(UIColor.systemBackground).ignoresSafeArea()
 
                 VStack(spacing: 0) {
                     tabSelector
-                        .padding(.horizontal, 16)
                         .padding(.top, 8)
                         .padding(.bottom, 12)
 
@@ -66,13 +64,19 @@ public struct AdminDashboardView: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         Task {
                             await repo.fetchOverviewStats()
                         }
                     } label: {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundColor(.primary)
+                        if repo.isLoading {
+                            ProgressView()
+                                .scaleEffect(0.8)
+                        } else {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundColor(.primary)
+                        }
                     }
                 }
 
@@ -84,39 +88,60 @@ public struct AdminDashboardView: View {
                     .foregroundColor(Color.slooshAccent)
                 }
             }
+            .sheet(item: $selectedUserForDetails) { user in
+                AdminUserDetailSheet(user: user)
+            }
             .task {
                 await repo.fetchOverviewStats()
             }
         }
     }
 
-    // MARK: - Tab Selector
+    // MARK: - Scrollable Liquid Glass Tab Selector
 
     private var tabSelector: some View {
-        HStack(spacing: 6) {
-            ForEach(AdminTab.allCases) { tab in
-                Button {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                        selectedTab = tab
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(AdminTab.allCases) { tab in
+                    let isSelected = selectedTab == tab
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
+                            selectedTab = tab
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: tab.icon)
+                                .font(.system(size: 13, weight: .semibold))
+
+                            Text(tab.rawValue)
+                                .font(.system(size: 14, weight: isSelected ? .bold : .medium))
+                                .lineLimit(1)
+                                .fixedSize(horizontal: true, vertical: false)
+
+                            if tab == .users && repo.users.count > 0 {
+                                Text("\(repo.users.count)")
+                                    .font(.system(size: 11, weight: .bold))
+                                    .foregroundColor(isSelected ? .black.opacity(0.8) : .secondary)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
+                                    .background(isSelected ? Color.black.opacity(0.12) : Color.primary.opacity(0.08))
+                                    .clipShape(Capsule())
+                            }
+                        }
+                        .foregroundColor(isSelected ? .black : .primary)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 9)
+                        .background(
+                            Capsule()
+                                .fill(isSelected ? Color.slooshAccent : Color.clear)
+                        )
+                        .glassEffect(in: Capsule())
                     }
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: tab.icon)
-                            .font(.system(size: 13, weight: .semibold))
-                        Text(tab.rawValue)
-                            .font(.system(size: 14, weight: .semibold))
-                    }
-                    .foregroundColor(selectedTab == tab ? .black : .primary)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .background(
-                        Capsule()
-                            .fill(selectedTab == tab ? Color.slooshAccent : Color.clear)
-                    )
-                    .glassEffect(in: Capsule())
+                    .buttonStyle(PeakPressButtonStyle())
                 }
-                .buttonStyle(PeakPressButtonStyle())
             }
+            .padding(.horizontal, 16)
         }
     }
 
@@ -138,7 +163,7 @@ public struct AdminDashboardView: View {
                     statCard(
                         title: "Каналы",
                         value: "\(repo.stats.totalChannels)",
-                        subtitle: "Публичные и закрытые",
+                        subtitle: "Публичные и авторские",
                         icon: "megaphone.fill",
                         color: .orange
                     )
@@ -163,12 +188,10 @@ public struct AdminDashboardView: View {
                 // Top Channels Section
                 if !repo.stats.topChannels.isEmpty {
                     VStack(alignment: .leading, spacing: 12) {
-                        HStack {
-                            Text("Топ каналов по подписчикам")
-                                .font(.system(size: 17, weight: .bold))
-                                .foregroundColor(.primary)
-                            Spacer()
-                        }
+                        Text("Топ каналов по аудитории")
+                            .font(.system(size: 17, weight: .bold))
+                            .foregroundColor(.primary)
+                            .padding(.horizontal, 4)
 
                         VStack(spacing: 0) {
                             ForEach(Array(repo.stats.topChannels.enumerated()), id: \.element.id) { index, channel in
@@ -178,7 +201,7 @@ public struct AdminDashboardView: View {
                                         .foregroundColor(index == 0 ? Color.slooshAccent : .secondary)
                                         .frame(width: 24)
 
-                                    SlooshAvatarView(channel: channel, size: 40)
+                                    SlooshAvatarView(channel: channel, size: 42)
 
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(channel.name)
@@ -197,7 +220,7 @@ public struct AdminDashboardView: View {
                                         .foregroundColor(.secondary)
                                 }
                                 .padding(.horizontal, 14)
-                                .padding(.vertical, 10)
+                                .padding(.vertical, 12)
 
                                 if index < repo.stats.topChannels.count - 1 {
                                     Divider()
@@ -205,10 +228,7 @@ public struct AdminDashboardView: View {
                                 }
                             }
                         }
-                        .background(
-                            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                .fill(Color(UIColor.secondarySystemGroupedBackground))
-                        )
+                        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
                     }
                 }
             }
@@ -224,7 +244,7 @@ public struct AdminDashboardView: View {
                 ZStack {
                     Circle()
                         .fill(color.opacity(0.16))
-                        .frame(width: 36, height: 36)
+                        .frame(width: 38, height: 38)
 
                     Image(systemName: icon)
                         .font(.system(size: 16, weight: .bold))
@@ -251,11 +271,7 @@ public struct AdminDashboardView: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color(UIColor.secondarySystemGroupedBackground))
-        )
-        .glassEffect(in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 
     // MARK: - Tab 2: Users Management
@@ -272,8 +288,8 @@ public struct AdminDashboardView: View {
     }
 
     private var usersTab: some View {
-        VStack(spacing: 8) {
-            // Search field
+        VStack(spacing: 10) {
+            // Floating Search field
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
                     .foregroundColor(.secondary)
@@ -290,20 +306,38 @@ public struct AdminDashboardView: View {
                     }
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .glassEffect(in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .glassEffect(in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             .padding(.horizontal, 16)
 
             // Users list
-            ScrollView {
-                LazyVStack(spacing: 8) {
-                    ForEach(filteredUsers) { user in
-                        userRow(user)
-                    }
+            if filteredUsers.isEmpty {
+                VStack(spacing: 12) {
+                    Image(systemName: "person.slash.fill")
+                        .font(.system(size: 36))
+                        .foregroundColor(.secondary)
+                    Text("Пользователи не найдены")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundColor(.secondary)
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(.top, 40)
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 8) {
+                        ForEach(filteredUsers) { user in
+                            userRow(user)
+                                .onTapGesture {
+                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                    selectedUserForDetails = user
+                                }
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 4)
+                    .padding(.bottom, 24)
+                }
             }
         }
     }
@@ -312,7 +346,7 @@ public struct AdminDashboardView: View {
         HStack(spacing: 12) {
             SlooshAvatarView(
                 avatarSource: user.avatarUrl,
-                fallbackText: user.displayName.isEmpty ? (user.tag ?? "S") : user.displayName,
+                fallbackText: user.displayTitle,
                 size: 46,
                 showOnline: true,
                 isOnline: user.isOnline
@@ -321,15 +355,15 @@ public struct AdminDashboardView: View {
             VStack(alignment: .leading, spacing: 3) {
                 HStack(spacing: 6) {
                     Text(user.displayTitle)
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.system(size: 15, weight: .semibold))
                         .foregroundColor(.primary)
                         .lineLimit(1)
 
                     if user.isBanned {
                         Text("БАН")
-                            .font(.system(size: 10, weight: .bold))
+                            .font(.system(size: 9, weight: .bold))
                             .foregroundColor(.white)
-                            .padding(.horizontal, 5)
+                            .padding(.horizontal, 6)
                             .padding(.vertical, 2)
                             .background(Color.red)
                             .clipShape(Capsule())
@@ -339,16 +373,16 @@ public struct AdminDashboardView: View {
                 HStack(spacing: 6) {
                     if !user.displayTag.isEmpty {
                         Text(user.displayTag)
-                            .font(.system(size: 13, weight: .medium))
+                            .font(.system(size: 12, weight: .medium))
                             .foregroundColor(Color.slooshAccent)
                     }
 
                     Text("•")
-                        .font(.system(size: 12))
+                        .font(.system(size: 11))
                         .foregroundColor(.secondary)
 
                     Text(user.isOnline ? "в сети" : "был недавно")
-                        .font(.system(size: 12))
+                        .font(.system(size: 11))
                         .foregroundColor(user.isOnline ? Color.slooshAccent : .secondary)
                 }
             }
@@ -359,6 +393,7 @@ public struct AdminDashboardView: View {
                 Button {
                     UIPasteboard.general.string = user.id
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    ToastManager.shared.show(title: "ID скопирован", icon: "doc.on.doc.fill", iconColor: Color.slooshAccent)
                 } label: {
                     Label("Скопировать ID", systemImage: "doc.on.doc")
                 }
@@ -367,9 +402,16 @@ public struct AdminDashboardView: View {
                     Button {
                         UIPasteboard.general.string = "@\(tag)"
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        ToastManager.shared.show(title: "Тег скопирован", icon: "at", iconColor: Color.slooshAccent)
                     } label: {
                         Label("Скопировать @тег", systemImage: "at")
                     }
+                }
+
+                Button {
+                    selectedUserForDetails = user
+                } label: {
+                    Label("Подробнее", systemImage: "info.circle")
                 }
 
                 Divider()
@@ -390,10 +432,7 @@ public struct AdminDashboardView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color(UIColor.secondarySystemGroupedBackground))
-        )
+        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 
     // MARK: - Tab 3: Channels Moderation
@@ -409,8 +448,8 @@ public struct AdminDashboardView: View {
     }
 
     private var channelsTab: some View {
-        VStack(spacing: 8) {
-            // Search field
+        VStack(spacing: 10) {
+            // Floating Search field
             HStack(spacing: 8) {
                 Image(systemName: "magnifyingglass")
                     .foregroundColor(.secondary)
@@ -427,20 +466,34 @@ public struct AdminDashboardView: View {
                     }
                 }
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .glassEffect(in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .glassEffect(in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             .padding(.horizontal, 16)
 
             // Channels list
-            ScrollView {
-                LazyVStack(spacing: 8) {
-                    ForEach(filteredChannels) { channel in
-                        channelRow(channel)
-                    }
+            if filteredChannels.isEmpty {
+                VStack(spacing: 12) {
+                    Image(systemName: "megaphone")
+                        .font(.system(size: 36))
+                        .foregroundColor(.secondary)
+                    Text("Каналы не найдены")
+                        .font(.system(size: 15, weight: .medium))
+                        .foregroundColor(.secondary)
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(.top, 40)
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 8) {
+                        ForEach(filteredChannels) { channel in
+                            channelRow(channel)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 4)
+                    .padding(.bottom, 24)
+                }
             }
         }
         .confirmationDialog(
@@ -465,17 +518,17 @@ public struct AdminDashboardView: View {
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(channel.name)
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.system(size: 15, weight: .semibold))
                     .foregroundColor(.primary)
                     .lineLimit(1)
 
                 HStack(spacing: 6) {
                     Text(channel.displayTag)
-                        .font(.system(size: 13, weight: .medium))
+                        .font(.system(size: 12, weight: .medium))
                         .foregroundColor(Color.slooshAccent)
 
                     Text("•")
-                        .font(.system(size: 12))
+                        .font(.system(size: 11))
                         .foregroundColor(.secondary)
 
                     Text(channel.formattedSubscriberCount)
@@ -492,16 +545,13 @@ public struct AdminDashboardView: View {
             } label: {
                 Image(systemName: "trash")
                     .font(.system(size: 14))
-                    .foregroundColor(.red.opacity(0.8))
+                    .foregroundColor(.red.opacity(0.85))
                     .padding(8)
             }
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                .fill(Color(UIColor.secondarySystemGroupedBackground))
-        )
+        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 
     // MARK: - Tab 4: Diagnostics & System Logs
@@ -515,7 +565,7 @@ public struct AdminDashboardView: View {
                         Text("Журнал диагностики")
                             .font(.system(size: 17, weight: .bold))
                             .foregroundColor(.primary)
-                        Text("Последние системные события и ошибки приложения")
+                        Text("Системные события и ошибки приложения")
                             .font(.system(size: 13))
                             .foregroundColor(.secondary)
                     }
@@ -544,6 +594,7 @@ public struct AdminDashboardView: View {
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 40)
+                    .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
                 } else {
                     VStack(spacing: 8) {
                         ForEach(Array(logs.enumerated()), id: \.offset) { _, log in
@@ -558,11 +609,8 @@ public struct AdminDashboardView: View {
                                     .foregroundColor(.primary)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                             }
-                            .padding(10)
-                            .background(
-                                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                    .fill(Color(UIColor.secondarySystemGroupedBackground))
-                            )
+                            .padding(12)
+                            .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
                         }
                     }
                 }
@@ -580,5 +628,141 @@ public struct AdminDashboardView: View {
             return String(format: "%.1fK", Double(count) / 1_000.0)
         }
         return "\(count)"
+    }
+}
+
+// MARK: - Admin User Detail Sheet
+
+private struct AdminUserDetailSheet: View {
+    let user: AdminUserItem
+    @Environment(\.dismiss) private var dismiss
+    @StateObject private var repo = AdminRepository.shared
+    @State private var isBannedState: Bool = false
+
+    init(user: AdminUserItem) {
+        self.user = user
+        _isBannedState = State(initialValue: user.isBanned)
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 20) {
+                    // Header Avatar & Name
+                    VStack(spacing: 10) {
+                        SlooshAvatarView(
+                            avatarSource: user.avatarUrl,
+                            fallbackText: user.displayTitle,
+                            size: 80,
+                            showOnline: true,
+                            isOnline: user.isOnline
+                        )
+
+                        VStack(spacing: 4) {
+                            Text(user.displayTitle)
+                                .font(.system(size: 22, weight: .bold))
+                                .foregroundColor(.primary)
+
+                            if !user.displayTag.isEmpty {
+                                Text(user.displayTag)
+                                    .font(.system(size: 15, weight: .medium))
+                                    .foregroundColor(Color.slooshAccent)
+                            }
+
+                            Text(user.isOnline ? "Сейчас в сети" : "Был в сети недавно")
+                                .font(.system(size: 13))
+                                .foregroundColor(user.isOnline ? Color.slooshAccent : .secondary)
+                        }
+                    }
+                    .padding(.top, 16)
+
+                    // Details Card
+                    VStack(spacing: 12) {
+                        detailRow(title: "User ID", value: user.id, canCopy: true)
+                        Divider()
+                        detailRow(title: "Тег", value: user.displayTag.isEmpty ? "Не указан" : user.displayTag, canCopy: !user.displayTag.isEmpty)
+                        if let email = user.email, !email.isEmpty {
+                            Divider()
+                            detailRow(title: "Email", value: email, canCopy: true)
+                        }
+                        Divider()
+                        detailRow(title: "Каналов создано", value: "\(user.channelsCount)", canCopy: false)
+                        Divider()
+                        detailRow(title: "Статус аккаунта", value: isBannedState ? "Заблокирован 🚫" : "Активен ✅", canCopy: false)
+                    }
+                    .padding(16)
+                    .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    .padding(.horizontal, 16)
+
+                    // Action Buttons
+                    VStack(spacing: 10) {
+                        Button {
+                            Task {
+                                let newBan = !isBannedState
+                                let success = await repo.toggleBanUser(userId: user.id, isBanned: newBan)
+                                if success {
+                                    isBannedState = newBan
+                                    ToastManager.shared.show(
+                                        title: newBan ? "Пользователь заблокирован" : "Пользователь разблокирован",
+                                        icon: newBan ? "nosign" : "checkmark.circle.fill",
+                                        iconColor: newBan ? .red : Color.slooshAccent
+                                    )
+                                }
+                            }
+                        } label: {
+                            HStack {
+                                Image(systemName: isBannedState ? "checkmark.circle.fill" : "nosign")
+                                Text(isBannedState ? "Разблокировать пользователя" : "Заблокировать (Бан)")
+                            }
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundColor(.white)
+                            .frame(maxWidth: .infinity)
+                            .frame(height: 50)
+                            .background(isBannedState ? Color.green : Color.red)
+                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                }
+                .padding(.bottom, 32)
+            }
+            .navigationTitle("Профиль пользователя")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    Button("Закрыть") {
+                        dismiss()
+                    }
+                    .foregroundColor(Color.slooshAccent)
+                }
+            }
+        }
+    }
+
+    private func detailRow(title: String, value: String, canCopy: Bool) -> some View {
+        HStack {
+            Text(title)
+                .font(.system(size: 14))
+                .foregroundColor(.secondary)
+
+            Spacer()
+
+            Text(value)
+                .font(.system(size: 14, weight: .semibold))
+                .foregroundColor(.primary)
+                .lineLimit(1)
+
+            if canCopy {
+                Button {
+                    UIPasteboard.general.string = value
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    ToastManager.shared.show(title: "Скопировано", icon: "doc.on.doc.fill", iconColor: Color.slooshAccent)
+                } label: {
+                    Image(systemName: "doc.on.doc")
+                        .font(.system(size: 12))
+                        .foregroundColor(Color.slooshAccent)
+                }
+            }
+        }
     }
 }
