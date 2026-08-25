@@ -35,24 +35,148 @@ public struct ChannelInfoView: View {
     }
 
     public var body: some View {
-        ZStack {
-            Color(UIColor.systemGroupedBackground).ignoresSafeArea()
+        List {
+            // Header Section: Avatar + Title + Subscribers
+            Section {
+                VStack(spacing: 12) {
+                    SlooshAvatarView(
+                        avatarSource: currentChannel.avatarUrl,
+                        fallbackText: currentChannel.name,
+                        size: 96,
+                        isChannel: false
+                    )
 
-            ScrollView {
-                VStack(spacing: 24) {
-                    // Header Section (Avatar + Title + Tag + Subscribers)
-                    headerSection
-                        .padding(.top, 24)
+                    VStack(spacing: 4) {
+                        Text(currentChannel.name)
+                            .font(.system(size: 22, weight: .bold))
+                            .foregroundColor(.primary)
+                            .multilineTextAlignment(.center)
 
-                    // Description & Tag Card
-                    infoCardSection
-
-                    // Actions Section
-                    actionsSection
+                        Text(subscriberCountText)
+                            .font(.system(size: 14))
+                            .foregroundColor(.secondary)
+                    }
                 }
-                .padding(.bottom, 32)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+                .listRowBackground(Color.clear)
+                .listRowInsets(EdgeInsets())
+            }
+
+            // Info Section: Tag & Description
+            Section {
+                // Tag row
+                HStack(spacing: 12) {
+                    Image(systemName: "at")
+                        .foregroundStyle(Color.slooshAccent)
+                        .font(.system(size: 18))
+                        .frame(width: 24)
+
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Тег канала")
+                            .font(.caption)
+                            .foregroundColor(.secondary)
+                        Text(currentChannel.displayTag)
+                            .font(.body)
+                            .foregroundColor(.primary)
+                    }
+                    Spacer()
+                }
+                .padding(.vertical, 4)
+
+                // Description row (if present)
+                if !currentChannel.description.isEmpty {
+                    HStack(alignment: .top, spacing: 12) {
+                        Image(systemName: "text.alignleft")
+                            .foregroundStyle(Color.slooshAccent)
+                            .font(.system(size: 18))
+                            .frame(width: 24)
+                            .padding(.top, 2)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Описание")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            Text(currentChannel.description)
+                                .font(.body)
+                                .foregroundColor(.primary)
+                        }
+                        Spacer()
+                    }
+                    .padding(.vertical, 4)
+                }
+            }
+
+            // Actions Section
+            Section {
+                if isOwner {
+                    Button(role: .destructive) {
+                        showDeleteConfirm = true
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "trash.fill")
+                                .foregroundStyle(Color.red)
+                                .font(.system(size: 18))
+                                .frame(width: 24)
+
+                            Text("Удалить канал")
+                                .font(.body)
+                                .foregroundColor(.red)
+                        }
+                        .padding(.vertical, 4)
+                    }
+                } else if isSubscribed {
+                    Button {
+                        toggleMuteAction()
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: isMuted ? "bell.slash.fill" : "bell.fill")
+                                .foregroundStyle(Color.slooshAccent)
+                                .font(.system(size: 18))
+                                .frame(width: 24)
+
+                            Text(isMuted ? "Включить звук" : "Без звука")
+                                .font(.body)
+                                .foregroundColor(.primary)
+                        }
+                        .padding(.vertical, 4)
+                    }
+
+                    Button(role: .destructive) {
+                        showLeaveConfirm = true
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "rectangle.portrait.and.arrow.right")
+                                .foregroundStyle(Color.red)
+                                .font(.system(size: 18))
+                                .frame(width: 24)
+
+                            Text("Покинуть канал")
+                                .font(.body)
+                                .foregroundColor(.red)
+                        }
+                        .padding(.vertical, 4)
+                    }
+                } else {
+                    Button {
+                        subscribeAction()
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "plus.circle.fill")
+                                .foregroundStyle(Color.slooshAccent)
+                                .font(.system(size: 18))
+                                .frame(width: 24)
+
+                            Text("Подписаться на канал")
+                                .font(.body.weight(.semibold))
+                                .foregroundColor(Color.slooshAccent)
+                        }
+                        .padding(.vertical, 4)
+                    }
+                }
             }
         }
+        .listStyle(.insetGrouped)
         .navigationTitle("Информация")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -95,213 +219,6 @@ public struct ChannelInfoView: View {
             }
             Button("Отмена", role: .cancel) {}
         }
-    }
-
-    // MARK: - Header Section
-
-    private var headerSection: some View {
-        VStack(spacing: 12) {
-            SlooshAvatarView(
-                avatarSource: currentChannel.avatarUrl,
-                fallbackText: currentChannel.name,
-                size: 100,
-                isChannel: false
-            )
-
-            VStack(spacing: 4) {
-                Text(currentChannel.name)
-                    .font(.system(size: 24, weight: .bold))
-                    .foregroundColor(.primary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 20)
-
-                Text(subscriberCountText)
-                    .font(.system(size: 14))
-                    .foregroundColor(.secondary)
-                    .padding(.top, 2)
-            }
-        }
-    }
-
-    // MARK: - Info Card
-
-    private var infoCardSection: some View {
-        VStack(spacing: 0) {
-            // Tag row
-            HStack(spacing: 14) {
-                ZStack {
-                    RoundedRectangle(cornerRadius: 9, style: .continuous)
-                        .fill(Color.slooshAccent.opacity(0.12))
-                        .frame(width: 32, height: 32)
-                    Image(systemName: "at")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundColor(Color.slooshAccent)
-                }
-
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Тег канала")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(.secondary)
-                    Text(currentChannel.displayTag)
-                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(.primary)
-                }
-                Spacer()
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 13)
-
-            // Description row (if present)
-            if !currentChannel.description.isEmpty {
-                Divider()
-                    .padding(.leading, 62)
-
-                HStack(alignment: .top, spacing: 14) {
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 9, style: .continuous)
-                            .fill(Color.slooshAccent.opacity(0.12))
-                            .frame(width: 32, height: 32)
-                        Image(systemName: "text.alignleft")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundColor(Color.slooshAccent)
-                    }
-                    .padding(.top, 1)
-
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Описание")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(.secondary)
-                        Text(currentChannel.description)
-                            .font(.system(size: 15))
-                            .foregroundColor(.primary)
-                    }
-                    Spacer()
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 13)
-            }
-        }
-        .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(Color(UIColor.secondarySystemGroupedBackground))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(Color.primary.opacity(0.04), lineWidth: 0.5)
-        )
-        .padding(.horizontal, 16)
-    }
-
-    // MARK: - Actions Section
-
-    private var actionsSection: some View {
-        VStack(spacing: 0) {
-            if isOwner {
-                Button {
-                    showDeleteConfirm = true
-                } label: {
-                    HStack(spacing: 14) {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 9, style: .continuous)
-                                .fill(Color.red.opacity(0.12))
-                                .frame(width: 32, height: 32)
-                            Image(systemName: "trash.fill")
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundColor(.red)
-                        }
-
-                        Text("Удалить канал")
-                            .font(.system(size: 16, weight: .medium))
-                            .foregroundColor(.red)
-                        Spacer()
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 13)
-                }
-                .buttonStyle(PeakPressButtonStyle())
-            } else if isSubscribed {
-                Button {
-                    toggleMuteAction()
-                } label: {
-                    HStack(spacing: 14) {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 9, style: .continuous)
-                                .fill(Color.primary.opacity(0.08))
-                                .frame(width: 32, height: 32)
-                            Image(systemName: isMuted ? "bell.fill" : "bell.slash.fill")
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundColor(.primary)
-                        }
-
-                        Text(isMuted ? "Включить звук" : "Без звука")
-                            .font(.system(size: 16, weight: .medium))
-                            .foregroundColor(.primary)
-                        Spacer()
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 13)
-                }
-                .buttonStyle(PeakPressButtonStyle())
-
-                Divider()
-                    .padding(.leading, 62)
-
-                Button {
-                    showLeaveConfirm = true
-                } label: {
-                    HStack(spacing: 14) {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 9, style: .continuous)
-                                .fill(Color.red.opacity(0.12))
-                                .frame(width: 32, height: 32)
-                            Image(systemName: "rectangle.portrait.and.arrow.right")
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundColor(.red)
-                        }
-
-                        Text("Покинуть канал")
-                            .font(.system(size: 16, weight: .medium))
-                            .foregroundColor(.red)
-                        Spacer()
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 13)
-                }
-                .buttonStyle(PeakPressButtonStyle())
-            } else {
-                Button {
-                    subscribeAction()
-                } label: {
-                    HStack(spacing: 14) {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 9, style: .continuous)
-                                .fill(Color.slooshAccent.opacity(0.15))
-                                .frame(width: 32, height: 32)
-                            Image(systemName: "plus")
-                                .font(.system(size: 16, weight: .bold))
-                                .foregroundColor(Color.slooshAccent)
-                        }
-
-                        Text("Подписаться на канал")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(Color.slooshAccent)
-                        Spacer()
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 13)
-                }
-                .buttonStyle(PeakPressButtonStyle())
-            }
-        }
-        .background(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(Color(UIColor.secondarySystemGroupedBackground))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(Color.primary.opacity(0.04), lineWidth: 0.5)
-        )
-        .padding(.horizontal, 16)
     }
 
     // MARK: - Actions
