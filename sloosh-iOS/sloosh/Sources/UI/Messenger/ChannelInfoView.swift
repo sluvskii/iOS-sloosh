@@ -105,7 +105,7 @@ public struct ChannelInfoView: View {
                 avatarSource: currentChannel.avatarUrl,
                 fallbackText: currentChannel.name,
                 size: 100,
-                isChannel: true
+                isChannel: false
             )
 
             VStack(spacing: 4) {
@@ -243,7 +243,7 @@ public struct ChannelInfoView: View {
                     subscribeAction()
                 } label: {
                     HStack(spacing: 14) {
-                        Image(systemName: "megaphone.fill")
+                        Image(systemName: "plus.circle.fill")
                             .frame(width: 22)
                             .foregroundColor(Color.slooshAccent)
                         Text("Подписаться на канал")
@@ -407,7 +407,7 @@ public struct EditChannelSheet: View {
                         avatarSource: avatarDataString,
                         fallbackText: channelName.isEmpty ? "S" : channelName,
                         size: 96,
-                        isChannel: true
+                        isChannel: false
                     )
 
                     Circle()
