@@ -447,10 +447,28 @@ public struct ChannelDetailView: View {
 
     // MARK: - Actions
 
+    private func syncPosts(remoteList: [ChannelPost]) {
+        let now = Int64(Date().timeIntervalSince1970 * 1000)
+        let currentUserId = AuthRepository.shared.currentUser?.id ?? ""
+        // Сохраняем свежие оптимистичные посты, опубликованные автором за последние 15 сек
+        let pendingOptimistic = self.posts.filter { local in
+            local.authorId == currentUserId &&
+            (now - local.timestampMs) < 15_000 &&
+            !remoteList.contains(where: { $0.id == local.id })
+        }
+
+        var merged = remoteList
+        merged.append(contentsOf: pendingOptimistic)
+        let sorted = merged.sorted(by: { $0.timestampMs < $1.timestampMs })
+        if sorted != self.posts {
+            self.posts = sorted
+        }
+    }
+
     private func loadPosts() async {
         let list = await repo.fetchChannelPosts(channelId: currentChannel.id)
         if !list.isEmpty {
-            self.posts = list.sorted(by: { $0.timestampMs < $1.timestampMs })
+            syncPosts(remoteList: list)
         }
     }
 
@@ -458,14 +476,11 @@ public struct ChannelDetailView: View {
         pollTask?.cancel()
         pollTask = Task {
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 2_500_000_000)
+                try? await Task.sleep(nanoseconds: 2_000_000_000)
                 if Task.isCancelled { break }
                 let list = await repo.fetchChannelPosts(channelId: currentChannel.id)
-                let sorted = list.sorted(by: { $0.timestampMs < $1.timestampMs })
-                if sorted != self.posts {
-                    await MainActor.run {
-                        self.posts = sorted
-                    }
+                await MainActor.run {
+                    self.syncPosts(remoteList: list)
                 }
             }
         }
@@ -475,40 +490,56 @@ public struct ChannelDetailView: View {
         let text = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty || attachedMedia != nil else { return }
 
-        isSending = true
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
 
         if let editing = editingPost {
+            var updated = editing
+            updated.text = text.isEmpty ? nil : text
+            updated.media = attachedMedia
+            updated.isEdited = true
+
+            if let idx = self.posts.firstIndex(where: { $0.id == editing.id }) {
+                self.posts[idx] = updated
+            }
+
+            self.inputText = ""
+            self.attachedMedia = nil
+            self.editingPost = nil
+            self.isSending = false
+
             Task {
                 _ = await repo.editChannelPost(
                     channelId: currentChannel.id,
-                    postId: editing.id,
+                    postId: updated.id,
                     newText: text,
-                    mediaPayload: attachedMedia
+                    mediaPayload: updated.media
                 )
-                await MainActor.run {
-                    self.isSending = false
-                    self.inputText = ""
-                    self.attachedMedia = nil
-                    self.editingPost = nil
-                }
-                await loadPosts()
             }
         } else {
-            let media = attachedMedia
-            let postText = text.isEmpty ? nil : text
+            guard let currentUser = AuthRepository.shared.currentUser, !currentUser.isAnonymous else { return }
+            let now = Int64(Date().timeIntervalSince1970 * 1000)
+            let postId = "post_\(now)_\(UUID().uuidString.prefix(6).lowercased())"
+            let optimisticPost = ChannelPost(
+                id: postId,
+                channelId: currentChannel.id,
+                authorId: currentUser.id,
+                text: text.isEmpty ? nil : text,
+                media: attachedMedia,
+                reactions: nil,
+                timestampMs: now,
+                isPinned: false,
+                isEdited: false,
+                viewsCount: 1
+            )
+
+            // Мгновенное добавление поста на экран за 0 миллисекунд
+            self.posts.append(optimisticPost)
+            self.inputText = ""
+            self.attachedMedia = nil
+            self.isSending = false
+
             Task {
-                _ = await repo.publishChannelPost(
-                    channelId: currentChannel.id,
-                    text: postText,
-                    mediaPayload: media
-                )
-                await MainActor.run {
-                    self.isSending = false
-                    self.inputText = ""
-                    self.attachedMedia = nil
-                }
-                await loadPosts()
+                _ = await repo.publishChannelPost(optimisticPost)
             }
         }
     }

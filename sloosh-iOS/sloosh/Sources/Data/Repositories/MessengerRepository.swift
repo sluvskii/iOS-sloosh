@@ -1859,56 +1859,37 @@ public final class MessengerRepository: ObservableObject {
         return sorted
     }
 
-    public func publishChannelPost(
-        channelId: String,
-        text: String? = nil,
-        mediaPayload: MediaCardPayload? = nil,
-        isPinned: Bool = false
-    ) async -> ChannelPost? {
-        guard let currentUser = AuthRepository.shared.currentUser, !currentUser.isAnonymous else {
-            return nil
-        }
-
-        let now = Int64(Date().timeIntervalSince1970 * 1000)
-        let postId = "post_\(now)_\(UUID().uuidString.prefix(6).lowercased())"
-        let post = ChannelPost(
-            id: postId,
-            channelId: channelId,
-            authorId: currentUser.id,
-            text: text,
-            media: mediaPayload,
-            reactions: nil,
-            timestampMs: now,
-            isPinned: isPinned,
-            isEdited: false,
-            viewsCount: 1
-        )
-
+    public func publishChannelPost(_ post: ChannelPost) async -> ChannelPost? {
+        let channelId = post.channelId
         var currentPosts = loadChannelPostsFromDisk(channelId: channelId)
-        if isPinned {
+        if post.isPinned {
             for i in 0..<currentPosts.count {
                 if currentPosts[i].isPinned {
                     currentPosts[i].isPinned = false
                 }
             }
         }
-        currentPosts.append(post)
+        if let idx = currentPosts.firstIndex(where: { $0.id == post.id }) {
+            currentPosts[idx] = post
+        } else {
+            currentPosts.append(post)
+        }
         saveChannelPostsToDisk(currentPosts, channelId: channelId)
 
         let previewText: String
-        if let media = mediaPayload {
+        if let media = post.media {
             previewText = "🎬 \(media.title)"
         } else {
-            previewText = text ?? ""
+            previewText = post.text ?? ""
         }
 
         var subs = self.subscribedChannels
         if let idx = subs.firstIndex(where: { $0.id == channelId }) {
             subs[idx].lastPostText = previewText
-            subs[idx].lastPostTimestampMs = now
-            subs[idx].updatedAtMs = now
-            if isPinned {
-                subs[idx].pinnedPostId = postId
+            subs[idx].lastPostTimestampMs = post.timestampMs
+            subs[idx].updatedAtMs = post.timestampMs
+            if post.isPinned {
+                subs[idx].pinnedPostId = post.id
             }
             self.subscribedChannels = subs
             saveSubscribedChannelsToDisk(subs)
@@ -1917,16 +1898,18 @@ public final class MessengerRepository: ObservableObject {
         var pubs = self.publicChannels
         if let pIdx = pubs.firstIndex(where: { $0.id == channelId }) {
             pubs[pIdx].lastPostText = previewText
-            pubs[pIdx].lastPostTimestampMs = now
-            pubs[pIdx].updatedAtMs = now
-            if isPinned {
-                pubs[pIdx].pinnedPostId = postId
+            pubs[pIdx].lastPostTimestampMs = post.timestampMs
+            pubs[pIdx].updatedAtMs = post.timestampMs
+            if post.isPinned {
+                pubs[pIdx].pinnedPostId = post.id
             }
             self.publicChannels = pubs
             savePublicChannelsToDisk(pubs)
         }
 
         let postData = try? JSONEncoder().encode(post)
+        let postId = post.id
+        let currentUserId = post.authorId
 
         Task {
             // 1. PUT /channel_posts/{channelId}/{postId}.json
@@ -1957,60 +1940,44 @@ public final class MessengerRepository: ObservableObject {
             }
 
             // 4. PUT /users/{uid}/channel_posts/{channelId}/{postId}.json
-            if let userPostUrl = await makeURL(path: "users/\(currentUser.id)/channel_posts/\(channelId)/\(postId)") {
+            if let userPostUrl = await makeURL(path: "users/\(currentUserId)/channel_posts/\(channelId)/\(postId)") {
                 var req = URLRequest(url: userPostUrl)
                 req.httpMethod = "PUT"
                 req.setValue("application/json", forHTTPHeaderField: "Content-Type")
                 req.httpBody = postData
                 _ = try? await URLSession.shared.data(for: req)
             }
-
-            // 5. PUT /users/{uid}/channels/{channelId}/posts/{postId}.json
-            if let userChPostUrl = await makeURL(path: "users/\(currentUser.id)/channels/\(channelId)/posts/\(postId)") {
-                var req = URLRequest(url: userChPostUrl)
-                req.httpMethod = "PUT"
-                req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-                req.httpBody = postData
-                _ = try? await URLSession.shared.data(for: req)
-            }
-
-            // Update preview text and timestamp
-            if let lastTextUrl = await makeURL(path: "channels/\(channelId)/lastPostText") {
-                var req = URLRequest(url: lastTextUrl)
-                req.httpMethod = "PUT"
-                req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-                req.httpBody = try? JSONEncoder().encode(previewText)
-                _ = try? await URLSession.shared.data(for: req)
-            }
-
-            if let lastTimeUrl = await makeURL(path: "channels/\(channelId)/lastPostTimestampMs") {
-                var req = URLRequest(url: lastTimeUrl)
-                req.httpMethod = "PUT"
-                req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-                req.httpBody = "\(now)".data(using: .utf8)
-                _ = try? await URLSession.shared.data(for: req)
-            }
-
-            if let updatedUrl = await makeURL(path: "channels/\(channelId)/updatedAtMs") {
-                var req = URLRequest(url: updatedUrl)
-                req.httpMethod = "PUT"
-                req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-                req.httpBody = "\(now)".data(using: .utf8)
-                _ = try? await URLSession.shared.data(for: req)
-            }
-
-            if isPinned {
-                if let pinUrl = await makeURL(path: "channels/\(channelId)/pinnedPostId") {
-                    var req = URLRequest(url: pinUrl)
-                    req.httpMethod = "PUT"
-                    req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-                    req.httpBody = try? JSONEncoder().encode(postId)
-                    _ = try? await URLSession.shared.data(for: req)
-                }
-            }
         }
 
         return post
+    }
+
+    public func publishChannelPost(
+        channelId: String,
+        text: String? = nil,
+        mediaPayload: MediaCardPayload? = nil,
+        isPinned: Bool = false
+    ) async -> ChannelPost? {
+        guard let currentUser = AuthRepository.shared.currentUser, !currentUser.isAnonymous else {
+            return nil
+        }
+
+        let now = Int64(Date().timeIntervalSince1970 * 1000)
+        let postId = "post_\(now)_\(UUID().uuidString.prefix(6).lowercased())"
+        let post = ChannelPost(
+            id: postId,
+            channelId: channelId,
+            authorId: currentUser.id,
+            text: text,
+            media: mediaPayload,
+            reactions: nil,
+            timestampMs: now,
+            isPinned: isPinned,
+            isEdited: false,
+            viewsCount: 1
+        )
+
+        return await publishChannelPost(post)
     }
 
     public func editChannelPost(
