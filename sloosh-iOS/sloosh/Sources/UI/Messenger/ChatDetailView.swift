@@ -486,26 +486,39 @@ public struct ChatDetailView: View {
 
     private func addReaction(_ emoji: String, to msg: ChatMessage) {
         guard let myId = AuthRepository.shared.currentUser?.id else { return }
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        Task {
-            var newReactions = msg.reactions ?? [:]
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+
+        var newReactions = msg.reactions ?? [:]
+        if newReactions[myId] == emoji {
+            newReactions.removeValue(forKey: myId)
+        } else {
             newReactions[myId] = emoji
-            let updatedMsg = ChatMessage(
-                id: msg.id,
-                senderId: msg.senderId,
-                receiverId: msg.receiverId,
-                type: msg.type,
-                text: msg.text,
-                media: msg.media,
-                timestampMs: msg.timestampMs,
-                replyToId: msg.replyToId,
-                reactions: newReactions,
-                isEdited: msg.isEdited,
-                isRead: msg.isRead
-            )
-            let chatId = repo.getOrCreateChatId(peerUserId: peerUser.id)
-            await repo.postMessageToFirebase(chatId: chatId, message: updatedMsg)
-            await loadMessages()
+        }
+
+        let updatedMsg = ChatMessage(
+            id: msg.id,
+            senderId: msg.senderId,
+            receiverId: msg.receiverId,
+            type: msg.type,
+            text: msg.text,
+            media: msg.media,
+            timestampMs: msg.timestampMs,
+            replyToId: msg.replyToId,
+            reactions: newReactions.isEmpty ? nil : newReactions,
+            isEdited: msg.isEdited,
+            isRead: msg.isRead
+        )
+
+        // МГНОВЕННОЕ обновление на UI за 0мс
+        if let idx = self.messages.firstIndex(where: { $0.id == msg.id }) {
+            self.messages[idx] = updatedMsg
+        }
+
+        let chatId = repo.getOrCreateChatId(peerUserId: peerUser.id)
+        repo.saveMessagesToDisk(self.messages, chatId: chatId)
+
+        Task {
+            _ = await repo.postMessageToFirebase(chatId: chatId, message: updatedMsg)
         }
     }
 
@@ -749,22 +762,34 @@ private struct PeakMessageBubbleView: View {
     @ViewBuilder
     private func reactionsOverlay(_ reactionsDict: [String: String]) -> some View {
         let grouped = Dictionary(grouping: reactionsDict.values, by: { $0 })
+        let currentUserId = AuthRepository.shared.currentUser?.id ?? ""
         HStack(spacing: 4) {
             ForEach(grouped.map { ($0.key, $0.value.count) }, id: \.0) { emoji, count in
-                HStack(spacing: 2) {
-                    Text(emoji)
-                        .font(.system(size: 11))
-                    if count > 1 {
-                        Text("\(count)")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(isFromMe ? Color(UIColor.systemBackground) : .primary)
+                Button {
+                    onReact(emoji, message)
+                } label: {
+                    HStack(spacing: 2) {
+                        Text(emoji)
+                            .font(.system(size: 11))
+                        if count > 1 {
+                            Text("\(count)")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(isFromMe ? Color(UIColor.systemBackground) : .primary)
+                        }
                     }
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(
+                        (reactionsDict[currentUserId] == emoji) ? Color.slooshAccent.opacity(isFromMe ? 0.35 : 0.2) : (isFromMe ? Color.primary.opacity(0.18) : Color(UIColor.secondarySystemGroupedBackground))
+                    )
+                    .clipShape(Capsule())
+                    .overlay(
+                        Capsule()
+                            .stroke((reactionsDict[currentUserId] == emoji) ? Color.slooshAccent.opacity(0.5) : Color.primary.opacity(0.06), lineWidth: 0.5)
+                    )
+                    .shadow(color: .black.opacity(0.08), radius: 1)
                 }
-                .padding(.horizontal, 6)
-                .padding(.vertical, 3)
-                .background(isFromMe ? Color.primary : Color(white: 0.18))
-                .clipShape(Capsule())
-                .shadow(color: .black.opacity(0.1), radius: 1)
+                .buttonStyle(PeakPressButtonStyle())
             }
         }
         .offset(y: 10)
