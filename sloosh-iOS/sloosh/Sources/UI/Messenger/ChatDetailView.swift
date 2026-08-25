@@ -856,7 +856,7 @@ public struct ChatInfoView: View {
 
             ScrollView {
                 VStack(spacing: 24) {
-                    // Header Section (Avatar + Username)
+                    // Header Section (Avatar + Username + Status)
                     VStack(spacing: 12) {
                         let isOnline = livePresence.isOnline
                         SlooshAvatarView(
@@ -872,12 +872,6 @@ public struct ChatInfoView: View {
                                 .font(.system(size: 24, weight: .bold))
                                 .foregroundColor(.primary)
 
-                            if !peerUser.displayTag.isEmpty {
-                                Text(peerUser.displayTag)
-                                    .font(.system(size: 15, weight: .semibold))
-                                    .foregroundColor(Color.slooshAccent)
-                            }
-
                             let statusText = PresenceFormatter.formatLastSeen(isOnlineFlag: isOnline, lastSeenMs: livePresence.lastSeenMs)
 
                             Text(statusText)
@@ -892,12 +886,18 @@ public struct ChatInfoView: View {
                     if !peerUser.displayTag.isEmpty {
                         VStack(spacing: 0) {
                             HStack(spacing: 14) {
-                                Image(systemName: "at")
-                                    .frame(width: 22)
-                                    .foregroundColor(Color.slooshAccent)
+                                ZStack {
+                                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                        .fill(Color.slooshAccent.opacity(0.12))
+                                        .frame(width: 32, height: 32)
+                                    Image(systemName: "at")
+                                        .font(.system(size: 15, weight: .semibold))
+                                        .foregroundColor(Color.slooshAccent)
+                                }
+
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text("Тег пользователя")
-                                        .font(.system(size: 12))
+                                        .font(.system(size: 12, weight: .medium))
                                         .foregroundColor(.secondary)
                                     Text(peerUser.displayTag)
                                         .font(.system(size: 16, weight: .semibold))
@@ -906,11 +906,15 @@ public struct ChatInfoView: View {
                                 Spacer()
                             }
                             .padding(.horizontal, 16)
-                            .padding(.vertical, 14)
+                            .padding(.vertical, 13)
                         }
                         .background(
-                            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                            RoundedRectangle(cornerRadius: 18, style: .continuous)
                                 .fill(Color(UIColor.secondarySystemGroupedBackground))
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                .stroke(Color.primary.opacity(0.04), lineWidth: 0.5)
                         )
                         .padding(.horizontal, 16)
                     }
@@ -921,22 +925,32 @@ public struct ChatInfoView: View {
                             showDeleteConfirm = true
                         } label: {
                             HStack(spacing: 14) {
-                                Image(systemName: "trash.fill")
-                                    .frame(width: 22)
-                                    .foregroundColor(.red)
+                                ZStack {
+                                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                        .fill(Color.red.opacity(0.12))
+                                        .frame(width: 32, height: 32)
+                                    Image(systemName: "trash.fill")
+                                        .font(.system(size: 15, weight: .semibold))
+                                        .foregroundColor(.red)
+                                }
+
                                 Text("Удалить чат")
                                     .font(.system(size: 16, weight: .medium))
                                     .foregroundColor(.red)
                                 Spacer()
                             }
                             .padding(.horizontal, 16)
-                            .padding(.vertical, 14)
+                            .padding(.vertical, 13)
                         }
                         .buttonStyle(PeakPressButtonStyle())
                     }
                     .background(
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
                             .fill(Color(UIColor.secondarySystemGroupedBackground))
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .stroke(Color.primary.opacity(0.04), lineWidth: 0.5)
                     )
                     .padding(.horizontal, 16)
                 }

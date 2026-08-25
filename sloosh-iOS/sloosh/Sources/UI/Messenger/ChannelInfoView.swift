@@ -61,7 +61,7 @@ public struct ChannelInfoView: View {
                     Button {
                         showEditSheet = true
                     } label: {
-                        Text("Изменить")
+                        Text("Изм.")
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundColor(Color.slooshAccent)
                     }
@@ -115,10 +115,6 @@ public struct ChannelInfoView: View {
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 20)
 
-                Text(currentChannel.displayTag)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(Color.slooshAccent)
-
                 Text(subscriberCountText)
                     .font(.system(size: 14))
                     .foregroundColor(.secondary)
@@ -133,12 +129,18 @@ public struct ChannelInfoView: View {
         VStack(spacing: 0) {
             // Tag row
             HStack(spacing: 14) {
-                Image(systemName: "at")
-                    .frame(width: 22)
-                    .foregroundColor(Color.slooshAccent)
+                ZStack {
+                    RoundedRectangle(cornerRadius: 9, style: .continuous)
+                        .fill(Color.slooshAccent.opacity(0.12))
+                        .frame(width: 32, height: 32)
+                    Image(systemName: "at")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(Color.slooshAccent)
+                }
+
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Тег канала")
-                        .font(.system(size: 12))
+                        .font(.system(size: 12, weight: .medium))
                         .foregroundColor(.secondary)
                     Text(currentChannel.displayTag)
                         .font(.system(size: 16, weight: .semibold))
@@ -147,21 +149,27 @@ public struct ChannelInfoView: View {
                 Spacer()
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 14)
+            .padding(.vertical, 13)
 
             // Description row (if present)
             if !currentChannel.description.isEmpty {
                 Divider()
-                    .padding(.leading, 52)
+                    .padding(.leading, 62)
 
                 HStack(alignment: .top, spacing: 14) {
-                    Image(systemName: "text.alignleft")
-                        .frame(width: 22)
-                        .foregroundColor(Color.slooshAccent)
-                        .padding(.top, 2)
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 9, style: .continuous)
+                            .fill(Color.slooshAccent.opacity(0.12))
+                            .frame(width: 32, height: 32)
+                        Image(systemName: "text.alignleft")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(Color.slooshAccent)
+                    }
+                    .padding(.top, 1)
+
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Описание")
-                            .font(.system(size: 12))
+                            .font(.system(size: 12, weight: .medium))
                             .foregroundColor(.secondary)
                         Text(currentChannel.description)
                             .font(.system(size: 15))
@@ -170,12 +178,16 @@ public struct ChannelInfoView: View {
                     Spacer()
                 }
                 .padding(.horizontal, 16)
-                .padding(.vertical, 14)
+                .padding(.vertical, 13)
             }
         }
         .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .fill(Color(UIColor.secondarySystemGroupedBackground))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(Color.primary.opacity(0.04), lineWidth: 0.5)
         )
         .padding(.horizontal, 16)
     }
@@ -189,16 +201,22 @@ public struct ChannelInfoView: View {
                     showDeleteConfirm = true
                 } label: {
                     HStack(spacing: 14) {
-                        Image(systemName: "trash.fill")
-                            .frame(width: 22)
-                            .foregroundColor(.red)
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                .fill(Color.red.opacity(0.12))
+                                .frame(width: 32, height: 32)
+                            Image(systemName: "trash.fill")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundColor(.red)
+                        }
+
                         Text("Удалить канал")
                             .font(.system(size: 16, weight: .medium))
                             .foregroundColor(.red)
                         Spacer()
                     }
                     .padding(.horizontal, 16)
-                    .padding(.vertical, 14)
+                    .padding(.vertical, 13)
                 }
                 .buttonStyle(PeakPressButtonStyle())
             } else if isSubscribed {
@@ -206,36 +224,48 @@ public struct ChannelInfoView: View {
                     toggleMuteAction()
                 } label: {
                     HStack(spacing: 14) {
-                        Image(systemName: isMuted ? "bell.fill" : "bell.slash.fill")
-                            .frame(width: 22)
-                            .foregroundColor(.primary)
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                .fill(Color.primary.opacity(0.08))
+                                .frame(width: 32, height: 32)
+                            Image(systemName: isMuted ? "bell.fill" : "bell.slash.fill")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundColor(.primary)
+                        }
+
                         Text(isMuted ? "Включить звук" : "Без звука")
                             .font(.system(size: 16, weight: .medium))
                             .foregroundColor(.primary)
                         Spacer()
                     }
                     .padding(.horizontal, 16)
-                    .padding(.vertical, 14)
+                    .padding(.vertical, 13)
                 }
                 .buttonStyle(PeakPressButtonStyle())
 
                 Divider()
-                    .padding(.leading, 52)
+                    .padding(.leading, 62)
 
                 Button {
                     showLeaveConfirm = true
                 } label: {
                     HStack(spacing: 14) {
-                        Image(systemName: "rectangle.portrait.and.arrow.right")
-                            .frame(width: 22)
-                            .foregroundColor(.red)
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                .fill(Color.red.opacity(0.12))
+                                .frame(width: 32, height: 32)
+                            Image(systemName: "rectangle.portrait.and.arrow.right")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundColor(.red)
+                        }
+
                         Text("Покинуть канал")
                             .font(.system(size: 16, weight: .medium))
                             .foregroundColor(.red)
                         Spacer()
                     }
                     .padding(.horizontal, 16)
-                    .padding(.vertical, 14)
+                    .padding(.vertical, 13)
                 }
                 .buttonStyle(PeakPressButtonStyle())
             } else {
@@ -243,23 +273,33 @@ public struct ChannelInfoView: View {
                     subscribeAction()
                 } label: {
                     HStack(spacing: 14) {
-                        Image(systemName: "plus.circle.fill")
-                            .frame(width: 22)
-                            .foregroundColor(Color.slooshAccent)
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 9, style: .continuous)
+                                .fill(Color.slooshAccent.opacity(0.15))
+                                .frame(width: 32, height: 32)
+                            Image(systemName: "plus")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundColor(Color.slooshAccent)
+                        }
+
                         Text("Подписаться на канал")
                             .font(.system(size: 16, weight: .semibold))
                             .foregroundColor(Color.slooshAccent)
                         Spacer()
                     }
                     .padding(.horizontal, 16)
-                    .padding(.vertical, 14)
+                    .padding(.vertical, 13)
                 }
                 .buttonStyle(PeakPressButtonStyle())
             }
         }
         .background(
-            RoundedRectangle(cornerRadius: 16, style: .continuous)
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .fill(Color(UIColor.secondarySystemGroupedBackground))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(Color.primary.opacity(0.04), lineWidth: 0.5)
         )
         .padding(.horizontal, 16)
     }
