@@ -60,6 +60,7 @@ public struct ChannelPostRowView: View {
 
                     if let postReactions = post.reactions, !postReactions.isEmpty {
                         reactionsOverlay(postReactions)
+                            .transition(.scale(scale: 0.01, anchor: .bottomLeading).combined(with: .opacity))
                     }
                 }
                 .padding(.bottom, (post.reactions?.isEmpty == false) ? 8 : 0)
@@ -187,14 +188,10 @@ public struct ChannelPostRowView: View {
                                 lineWidth: 0.8
                             )
                     )
-                    .shadow(
-                        color: isMyReaction ? Color.slooshAccent.opacity(0.35) : Color.black.opacity(0.1),
-                        radius: isMyReaction ? 4 : 2,
-                        x: 0,
-                        y: 1
-                    )
+                    .shadow(color: Color.black.opacity(0.08), radius: 2, x: 0, y: 1)
                 }
                 .buttonStyle(PeakPressButtonStyle())
+                .transition(.scale(scale: 0.01, anchor: .center).combined(with: .opacity))
             }
         }
         .offset(y: 10)
