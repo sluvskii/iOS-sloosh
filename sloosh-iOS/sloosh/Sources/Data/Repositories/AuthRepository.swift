@@ -34,6 +34,29 @@ public final class AuthRepository: ObservableObject {
         currentUser?.isAnonymous ?? true
     }
 
+    public var isAdmin: Bool {
+        guard let user = currentUser, !user.isAnonymous else { return false }
+        let tag = (user.tag ?? "").lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        let name = user.displayName.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        let email = (user.email ?? "").lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // Known admin handles and developer emails
+        let adminTags = ["sluvskii", "admin", "sloosh", "creator", "owner"]
+        if adminTags.contains(tag) || adminTags.contains(name) {
+            return true
+        }
+        if email.contains("sluvskii") || email.contains("sloosh") || email.contains("admin") {
+            return true
+        }
+
+        return UserDefaults.standard.bool(forKey: "sloosh_is_admin_\(user.id)")
+    }
+
+    public func setAdminStatus(userId: String, isAdmin: Bool) {
+        UserDefaults.standard.set(isAdmin, forKey: "sloosh_is_admin_\(userId)")
+        objectWillChange.send()
+    }
+
     private init() {
         loadStoredUser()
     }
