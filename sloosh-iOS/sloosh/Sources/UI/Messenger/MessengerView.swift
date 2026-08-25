@@ -76,7 +76,9 @@ public struct MessengerView: View {
                     Task {
                         await repo.searchUsers(query: trimmed)
                         let channels = await repo.fetchPublicChannels(query: trimmed)
-                        self.searchedPublicChannels = channels
+                        await MainActor.run {
+                            self.searchedPublicChannels = channels
+                        }
                     }
                 } else {
                     self.searchedPublicChannels = []
@@ -141,12 +143,14 @@ public struct MessengerView: View {
                     await repo.syncCurrentUserProfile()
                     await repo.fetchConversations()
                     _ = await repo.fetchSubscribedChannels()
+                    _ = await repo.fetchPublicChannels()
                 }
             }
             .refreshable {
                 if authRepo.isAuthenticated {
                     await repo.fetchConversations()
                     _ = await repo.fetchSubscribedChannels()
+                    _ = await repo.fetchPublicChannels()
                 }
             }
         }

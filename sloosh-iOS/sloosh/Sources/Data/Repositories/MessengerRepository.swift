@@ -370,11 +370,12 @@ public final class MessengerRepository: ObservableObject {
         }
 
         let currentUserId = AuthRepository.shared.currentUser?.id ?? ""
-        let filterLower = cleanTag.lowercased()
+        let queryLower = trimmed.lowercased()
 
         let matched = allUsersMap.values.filter { slooshUser in
-            let nameMatch = slooshUser.displayName.lowercased().contains(filterLower)
-            let tagMatch = slooshUser.tag?.lowercased().contains(filterLower) == true
+            let nameMatch = slooshUser.displayName.localizedCaseInsensitiveContains(queryLower)
+            let tagMatch = slooshUser.tag?.localizedCaseInsensitiveContains(queryLower) == true ||
+                (!cleanTag.isEmpty && slooshUser.tag?.localizedCaseInsensitiveContains(cleanTag) == true)
             return nameMatch || tagMatch
         }
 
@@ -870,11 +871,18 @@ public final class MessengerRepository: ObservableObject {
             lastPostTimestampMs: nil
         )
 
-        // 1. Optimistically insert into subscribedChannels & disk cache
+        // 1. Optimistically insert into subscribedChannels & publicChannels & disk cache
         var currentSubscribed = self.subscribedChannels
         currentSubscribed.insert(channel, at: 0)
         self.subscribedChannels = currentSubscribed
         saveSubscribedChannelsToDisk(currentSubscribed)
+
+        var currentPublic = self.publicChannels
+        if !currentPublic.contains(where: { $0.id == channel.id }) {
+            currentPublic.insert(channel, at: 0)
+            self.publicChannels = currentPublic
+            savePublicChannelsToDisk(currentPublic)
+        }
 
         // 2. Claim tag index
         await claimChannelTag(cleanTag, channelId: channelId)
@@ -1089,41 +1097,58 @@ public final class MessengerRepository: ObservableObject {
         let trimmed = query?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         var directMatch: ChannelModel? = nil
 
-        if trimmed.hasPrefix("@") {
-            let clean = TagValidator.sanitize(trimmed)
-            if !clean.isEmpty {
-                directMatch = await lookupChannelByTag(clean)
-            }
+        let cleanTag = TagValidator.sanitize(trimmed)
+        if !cleanTag.isEmpty {
+            directMatch = await lookupChannelByTag(cleanTag)
+        }
+
+        var combinedPool: [String: ChannelModel] = [:]
+        for ch in self.publicChannels {
+            combinedPool[ch.id] = ch
+        }
+        for ch in self.subscribedChannels {
+            combinedPool[ch.id] = ch
+        }
+        if let direct = directMatch {
+            combinedPool[direct.id] = direct
         }
 
         guard let url = await makeURL(path: "channels") else {
-            return filterChannels(self.publicChannels, query: query, directMatch: directMatch)
+            return filterChannels(Array(combinedPool.values), query: query, directMatch: directMatch)
         }
 
         do {
             let (data, response) = try await URLSession.shared.data(from: url)
             guard let httpResp = response as? HTTPURLResponse, (200...299).contains(httpResp.statusCode) else {
-                return filterChannels(self.publicChannels, query: query, directMatch: directMatch)
+                return filterChannels(Array(combinedPool.values), query: query, directMatch: directMatch)
             }
 
-            if data.isEmpty || String(data: data, encoding: .utf8) == "null" {
-                if query == nil || query?.isEmpty == true {
-                    self.publicChannels = []
-                    savePublicChannelsToDisk([])
+            if !data.isEmpty && String(data: data, encoding: .utf8) != "null" {
+                if let dict = try? JSONDecoder().decode([String: ChannelModel].self, from: data) {
+                    for (chId, model) in dict {
+                        var m = model
+                        if m.id.isEmpty { m.id = chId }
+                        combinedPool[m.id] = m
+                    }
+                } else if let rawDict = try? JSONSerialization.jsonObject(with: data) as? [String: [String: Any]] {
+                    for (chId, rawChannel) in rawDict {
+                        if let channelData = try? JSONSerialization.data(withJSONObject: rawChannel),
+                           var channelModel = try? JSONDecoder().decode(ChannelModel.self, from: channelData) {
+                            if channelModel.id.isEmpty { channelModel.id = chId }
+                            combinedPool[channelModel.id] = channelModel
+                        }
+                    }
                 }
-                return filterChannels([], query: query, directMatch: directMatch)
             }
 
-            let dict = try JSONDecoder().decode([String: ChannelModel].self, from: data)
-            let allPublic = dict.values.filter { $0.isPublic }.sorted { $0.subscriberCount > $1.subscriberCount }
-
+            let allPublic = Array(combinedPool.values).sorted { $0.subscriberCount > $1.subscriberCount }
             self.publicChannels = allPublic
             savePublicChannelsToDisk(allPublic)
 
             return filterChannels(allPublic, query: query, directMatch: directMatch)
         } catch {
             AppDiagnostics.shared.log("MessengerRepository fetchPublicChannels error: \(error.localizedDescription)")
-            return filterChannels(self.publicChannels, query: query, directMatch: directMatch)
+            return filterChannels(Array(combinedPool.values), query: query, directMatch: directMatch)
         }
     }
 
@@ -1133,15 +1158,19 @@ public final class MessengerRepository: ObservableObject {
             results.insert(direct, at: 0)
         }
 
-        guard let query = query?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased(), !query.isEmpty else {
+        guard let query = query?.trimmingCharacters(in: .whitespacesAndNewlines), !query.isEmpty else {
             return results
         }
 
-        let cleanQuery = TagValidator.sanitize(query)
+        let queryLower = query.lowercased()
+        let cleanTag = TagValidator.sanitize(query)
+
         return results.filter { ch in
-            ch.name.lowercased().contains(cleanQuery) ||
-            ch.tag.lowercased().contains(cleanQuery) ||
-            ch.description.lowercased().contains(query)
+            ch.name.localizedCaseInsensitiveContains(queryLower) ||
+            ch.tag.localizedCaseInsensitiveContains(queryLower) ||
+            (!cleanTag.isEmpty && ch.tag.localizedCaseInsensitiveContains(cleanTag)) ||
+            ch.description.localizedCaseInsensitiveContains(queryLower) ||
+            (ch.lastPostText?.localizedCaseInsensitiveContains(queryLower) == true)
         }
     }
 
