@@ -242,7 +242,7 @@ public struct ChannelDetailView: View {
         }
     }
 
-    // MARK: - Author Broadcasting Bar (matches ChatDetailView style)
+    // MARK: - Author Broadcasting Bar
 
     private var authorBroadcastingBar: some View {
         VStack(spacing: 0) {
@@ -459,7 +459,12 @@ public struct ChannelDetailView: View {
 
         if let editing = editingPost {
             Task {
-                _ = await repo.editChannelPost(channelId: currentChannel.id, postId: editing.id, newText: text)
+                _ = await repo.editChannelPost(
+                    channelId: currentChannel.id,
+                    postId: editing.id,
+                    newText: text,
+                    mediaPayload: attachedMedia
+                )
                 await MainActor.run {
                     self.isSending = false
                     self.inputText = ""
@@ -475,7 +480,7 @@ public struct ChannelDetailView: View {
                 _ = await repo.publishChannelPost(
                     channelId: currentChannel.id,
                     text: postText,
-                    media: media
+                    mediaPayload: media
                 )
                 await MainActor.run {
                     self.isSending = false
@@ -523,7 +528,7 @@ public struct ChannelDetailView: View {
 
     private func subscribeAction() {
         Task {
-            _ = await repo.subscribeToChannel(channelId: currentChannel.id)
+            _ = await repo.subscribeToChannel(channel: currentChannel)
         }
     }
 
