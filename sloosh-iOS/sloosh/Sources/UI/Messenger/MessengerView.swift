@@ -224,16 +224,12 @@ public struct MessengerView: View {
                 if !searchQuery.isEmpty && !searchedPublicChannels.isEmpty {
                     Section {
                         ForEach(searchedPublicChannels) { channel in
-                            PublicChannelSearchRow(
-                                channel: channel,
-                                isSubscribed: repo.isSubscribed(channelId: channel.id),
-                                onToggleSubscribe: {
-                                    toggleChannelSubscription(channel: channel)
-                                },
-                                onSelect: {
-                                    selectedChannel = channel
-                                }
-                            )
+                            Button {
+                                selectedChannel = channel
+                            } label: {
+                                PublicChannelSearchRow(channel: channel)
+                            }
+                            .buttonStyle(PeakPressButtonStyle())
 
                             PeakDivider()
                                 .padding(.leading, 86)
@@ -613,27 +609,16 @@ public struct PeakChannelRow: View {
 
 public struct PublicChannelSearchRow: View {
     public let channel: ChannelModel
-    public let isSubscribed: Bool
-    public let onToggleSubscribe: () -> Void
-    public let onSelect: () -> Void
 
-    public init(
-        channel: ChannelModel,
-        isSubscribed: Bool,
-        onToggleSubscribe: @escaping () -> Void,
-        onSelect: @escaping () -> Void
-    ) {
+    public init(channel: ChannelModel) {
         self.channel = channel
-        self.isSubscribed = isSubscribed
-        self.onToggleSubscribe = onToggleSubscribe
-        self.onSelect = onSelect
     }
 
     public var body: some View {
         HStack(spacing: 14) {
             SlooshAvatarView(channel: channel, size: 56)
 
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text(channel.name)
                     .font(.system(size: 17, weight: .semibold))
                     .foregroundColor(.primary)
@@ -641,7 +626,7 @@ public struct PublicChannelSearchRow: View {
 
                 HStack(spacing: 6) {
                     Text(channel.displayTag)
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.system(size: 14, weight: .medium))
                         .foregroundColor(Color.slooshAccent)
 
                     Text("•")
@@ -649,46 +634,20 @@ public struct PublicChannelSearchRow: View {
                         .foregroundColor(.secondary)
 
                     Text(channel.formattedSubscriberCount)
-                        .font(.system(size: 13))
+                        .font(.system(size: 14))
                         .foregroundColor(.secondary)
                 }
             }
 
             Spacer()
 
-            Button {
-                onToggleSubscribe()
-            } label: {
-                HStack(spacing: 4) {
-                    if isSubscribed {
-                        Image(systemName: "checkmark")
-                            .font(.system(size: 11, weight: .bold))
-                        Text("Подписан")
-                            .font(.system(size: 13, weight: .semibold))
-                    } else {
-                        Image(systemName: "plus")
-                            .font(.system(size: 11, weight: .bold))
-                        Text("Подписаться")
-                            .font(.system(size: 13, weight: .bold))
-                    }
-                }
-                .foregroundColor(isSubscribed ? .secondary : .black)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 7)
-                .background(
-                    Capsule()
-                        .fill(isSubscribed ? Color.primary.opacity(0.08) : Color.slooshAccent)
-                )
-                .glassEffect(in: Capsule())
-            }
-            .buttonStyle(PeakPressButtonStyle())
+            Image(systemName: "chevron.right")
+                .font(.system(size: 13, weight: .bold))
+                .foregroundColor(.secondary.opacity(0.5))
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .contentShape(Rectangle())
-        .onTapGesture {
-            onSelect()
-        }
     }
 }
 
