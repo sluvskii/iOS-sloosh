@@ -395,13 +395,9 @@ public struct MessengerView: View {
                     Text("Создать канал")
                         .font(.system(size: 15, weight: .bold))
                 }
-                .foregroundColor(.black)
+                .foregroundColor(.primary)
                 .padding(.horizontal, 20)
                 .padding(.vertical, 11)
-                .background(
-                    Capsule()
-                        .fill(Color.slooshAccent)
-                )
                 .glassEffect(in: Capsule())
             }
             .buttonStyle(PeakPressButtonStyle())

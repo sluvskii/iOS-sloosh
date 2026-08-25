@@ -42,23 +42,24 @@ public struct ChannelInfoView: View {
                     SlooshAvatarView(
                         avatarSource: currentChannel.avatarUrl,
                         fallbackText: currentChannel.name,
-                        size: 96,
+                        size: 104,
                         isChannel: false
                     )
 
                     VStack(spacing: 4) {
                         Text(currentChannel.name)
-                            .font(.system(size: 22, weight: .bold))
+                            .font(.system(size: 25, weight: .bold))
                             .foregroundColor(.primary)
                             .multilineTextAlignment(.center)
 
                         Text(subscriberCountText)
-                            .font(.system(size: 14))
+                            .font(.system(size: 15, weight: .medium))
                             .foregroundColor(.secondary)
                     }
                 }
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 8)
+                .padding(.top, 4)
+                .padding(.bottom, 6)
                 .listRowBackground(Color.clear)
                 .listRowInsets(EdgeInsets())
             }
@@ -163,13 +164,13 @@ public struct ChannelInfoView: View {
                     } label: {
                         HStack(spacing: 12) {
                             Image(systemName: "plus.circle.fill")
-                                .foregroundStyle(Color.slooshAccent)
+                                .foregroundStyle(Color.primary)
                                 .font(.system(size: 18))
                                 .frame(width: 24)
 
                             Text("Подписаться на канал")
                                 .font(.body.weight(.semibold))
-                                .foregroundColor(Color.slooshAccent)
+                                .foregroundColor(.primary)
                         }
                         .padding(.vertical, 4)
                     }
@@ -187,7 +188,7 @@ public struct ChannelInfoView: View {
                     } label: {
                         Text("Изм.")
                             .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(Color.slooshAccent)
+                            .foregroundColor(.primary)
                     }
                 }
             }
@@ -517,7 +518,6 @@ public struct EditChannelSheet: View {
             HStack(spacing: 8) {
                 if isSaving {
                     ProgressView()
-                        .tint(.black)
                 } else {
                     Image(systemName: "checkmark")
                         .font(.system(size: 16, weight: .bold))
@@ -525,13 +525,9 @@ public struct EditChannelSheet: View {
                         .font(.system(size: 17, weight: .bold))
                 }
             }
-            .foregroundColor(.black)
+            .foregroundColor(.primary)
             .frame(maxWidth: .infinity)
             .frame(height: 52)
-            .background(
-                Capsule()
-                    .fill(isFormValid ? Color.slooshAccent : Color.slooshAccent.opacity(0.4))
-            )
             .glassEffect(in: Capsule())
         }
         .disabled(!isFormValid)

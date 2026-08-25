@@ -859,25 +859,26 @@ public struct ChatInfoView: View {
                     SlooshAvatarView(
                         avatarSource: peerUser.avatarUrl,
                         fallbackText: peerUser.displayTitle,
-                        size: 96,
+                        size: 104,
                         showOnline: true,
                         isOnline: isOnline
                     )
 
                     VStack(spacing: 4) {
                         Text(peerUser.displayTitle)
-                            .font(.system(size: 22, weight: .bold))
+                            .font(.system(size: 25, weight: .bold))
                             .foregroundColor(.primary)
 
                         let statusText = PresenceFormatter.formatLastSeen(isOnlineFlag: isOnline, lastSeenMs: livePresence.lastSeenMs)
 
                         Text(statusText)
-                            .font(.system(size: 14, weight: isOnline ? .semibold : .regular))
+                            .font(.system(size: 15, weight: isOnline ? .semibold : .regular))
                             .foregroundColor(isOnline ? Color.slooshAccent : .secondary)
                     }
                 }
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 8)
+                .padding(.top, 4)
+                .padding(.bottom, 6)
                 .listRowBackground(Color.clear)
                 .listRowInsets(EdgeInsets())
             }
