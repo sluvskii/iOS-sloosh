@@ -15,9 +15,11 @@ public struct ChatDetailView: View {
     @State private var isShowingInfo: Bool = false
     @State private var pollTask: Task<Void, Never>? = nil
 
-    // Peak Messenger state variables for Reply & Edit
     @State private var replyingMessage: ChatMessage? = nil
     @State private var editingMessage: ChatMessage? = nil
+
+    @State private var isPeerTyping: Bool = false
+    @State private var livePresence: (isOnline: Bool, lastSeenMs: Int64?) = (false, nil)
 
     @FocusState private var isInputFocused: Bool
     @Environment(\.dismiss) private var dismiss
@@ -128,8 +130,21 @@ public struct ChatDetailView: View {
             }
             await loadMessages()
             startPolling()
+
+            let (online, lastSeen) = await UserPresenceService.shared.fetchUserPresence(userId: peerUser.id)
+            self.livePresence = (online, lastSeen)
+        }
+        .onChange(of: messageText) { _, newVal in
+            let chatId = repo.getOrCreateChatId(peerUserId: peerUser.id)
+            if !newVal.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                UserPresenceService.shared.sendTyping(chatId: chatId)
+            } else {
+                UserPresenceService.shared.clearTyping(chatId: chatId)
+            }
         }
         .onDisappear {
+            let chatId = repo.getOrCreateChatId(peerUserId: peerUser.id)
+            UserPresenceService.shared.clearTyping(chatId: chatId)
             pollTask?.cancel()
         }
     }
@@ -148,14 +163,22 @@ public struct ChatDetailView: View {
                         .foregroundColor(.primary)
                         .lineLimit(1)
 
-                    if peerUser.isOnline == true {
-                        Text("в сети")
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(.slooshAccent)
+                    if isPeerTyping {
+                        HStack(spacing: 4) {
+                            Text("печатает...")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundColor(Color.slooshAccent)
+                        }
+                        .transition(.opacity)
                     } else {
-                        Text("был(а) недавно")
-                            .font(.system(size: 12))
-                            .foregroundColor(.secondary)
+                        let online = livePresence.isOnline || (peerUser.isCurrentlyOnline && livePresence.lastSeenMs == nil)
+                        let lastSeen = livePresence.lastSeenMs ?? peerUser.lastSeenMs
+                        let statusText = PresenceFormatter.formatLastSeen(isOnlineFlag: online, lastSeenMs: lastSeen)
+
+                        Text(statusText)
+                            .font(.system(size: 12, weight: online ? .medium : .regular))
+                            .foregroundColor(online ? Color.slooshAccent : .secondary)
+                            .transition(.opacity)
                     }
                 }
             }
@@ -166,7 +189,14 @@ public struct ChatDetailView: View {
             Button {
                 isShowingInfo = true
             } label: {
-                SlooshAvatarView(user: peerUser, size: 34, showOnline: true)
+                let online = livePresence.isOnline || (peerUser.isCurrentlyOnline && livePresence.lastSeenMs == nil)
+                SlooshAvatarView(
+                    avatarSource: peerUser.avatarUrl,
+                    fallbackText: peerUser.displayTitle,
+                    size: 34,
+                    showOnline: true,
+                    isOnline: online
+                )
             }
             .buttonStyle(PeakPressButtonStyle())
         }
@@ -372,11 +402,26 @@ public struct ChatDetailView: View {
         pollTask?.cancel()
         pollTask = Task {
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 1_800_000_000)
+                try? await Task.sleep(nanoseconds: 1_600_000_000)
                 if Task.isCancelled { break }
                 let chatId = repo.getOrCreateChatId(peerUserId: peerUser.id)
-                let list = await repo.fetchMessages(chatId: chatId)
+
+                async let fetchMsg = repo.fetchMessages(chatId: chatId)
+                async let fetchPresence = UserPresenceService.shared.fetchUserPresence(userId: peerUser.id)
+                async let fetchTyping = UserPresenceService.shared.isPeerTyping(chatId: chatId, peerUserId: peerUser.id)
+
+                let (list, presence, typing) = await (fetchMsg, fetchPresence, fetchTyping)
+
+                if Task.isCancelled { break }
+
                 await syncMessages(remoteList: list)
+
+                await MainActor.run {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        self.livePresence = presence
+                        self.isPeerTyping = typing
+                    }
+                }
             }
         }
     }
@@ -384,6 +429,9 @@ public struct ChatDetailView: View {
     private func sendMessage() {
         let trimmed = messageText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
+
+        let chatId = repo.getOrCreateChatId(peerUserId: peerUser.id)
+        UserPresenceService.shared.clearTyping(chatId: chatId)
 
         let generator = UIImpactFeedbackGenerator(style: .medium)
         generator.impactOccurred()
@@ -394,7 +442,6 @@ public struct ChatDetailView: View {
             messageText = ""
             isSending = false
 
-            let chatId = repo.getOrCreateChatId(peerUserId: peerUser.id)
             var updatedMsg = editing
             updatedMsg.text = trimmed
             updatedMsg.isEdited = true
@@ -765,9 +812,9 @@ public struct ChatInfoView: View {
                                     .foregroundColor(Color.slooshAccent)
                             }
 
-                            Text(peerUser.isOnline == true ? "в сети" : "был(а) недавно")
+                            Text(peerUser.statusDescription)
                                 .font(.system(size: 14))
-                                .foregroundColor(peerUser.isOnline == true ? .slooshAccent : .secondary)
+                                .foregroundColor(peerUser.isCurrentlyOnline ? .slooshAccent : .secondary)
                                 .padding(.top, 2)
                         }
                     }

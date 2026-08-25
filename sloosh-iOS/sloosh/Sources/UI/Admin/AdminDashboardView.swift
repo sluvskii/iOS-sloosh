@@ -349,7 +349,7 @@ public struct AdminDashboardView: View {
                 fallbackText: user.displayTitle,
                 size: 46,
                 showOnline: true,
-                isOnline: user.isOnline
+                isOnline: user.isCurrentlyOnline
             )
 
             VStack(alignment: .leading, spacing: 3) {
@@ -381,9 +381,9 @@ public struct AdminDashboardView: View {
                         .font(.system(size: 11))
                         .foregroundColor(.secondary)
 
-                    Text(user.isOnline ? "в сети" : "был недавно")
+                    Text(user.statusDescription)
                         .font(.system(size: 11))
-                        .foregroundColor(user.isOnline ? Color.slooshAccent : .secondary)
+                        .foregroundColor(user.isCurrentlyOnline ? Color.slooshAccent : .secondary)
                 }
             }
 
@@ -655,7 +655,7 @@ private struct AdminUserDetailSheet: View {
                             fallbackText: user.displayTitle,
                             size: 80,
                             showOnline: true,
-                            isOnline: user.isOnline
+                            isOnline: user.isCurrentlyOnline
                         )
 
                         VStack(spacing: 4) {
@@ -669,9 +669,9 @@ private struct AdminUserDetailSheet: View {
                                     .foregroundColor(Color.slooshAccent)
                             }
 
-                            Text(user.isOnline ? "Сейчас в сети" : "Был в сети недавно")
+                            Text(user.statusDescription)
                                 .font(.system(size: 13))
-                                .foregroundColor(user.isOnline ? Color.slooshAccent : .secondary)
+                                .foregroundColor(user.isCurrentlyOnline ? Color.slooshAccent : .secondary)
                         }
                     }
                     .padding(.top, 16)
