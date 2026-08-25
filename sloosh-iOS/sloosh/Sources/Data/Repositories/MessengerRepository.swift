@@ -1094,6 +1094,37 @@ public final class MessengerRepository: ObservableObject {
         }
     }
 
+    public func toggleChatMessageReaction(chatId: String, messageId: String, emoji: String) async -> Bool {
+        guard let currentUser = AuthRepository.shared.currentUser, !currentUser.isAnonymous else { return false }
+        var currentMessages = loadMessagesFromDisk(chatId: chatId)
+        var isRemoving = false
+        if let idx = currentMessages.firstIndex(where: { $0.id == messageId }) {
+            var reactions = currentMessages[idx].reactions ?? [:]
+            isRemoving = (reactions[currentUser.id] == emoji)
+            if isRemoving {
+                reactions.removeValue(forKey: currentUser.id)
+            } else {
+                reactions[currentUser.id] = emoji
+            }
+            currentMessages[idx].reactions = reactions.isEmpty ? nil : reactions
+            saveMessagesToDisk(currentMessages, chatId: chatId)
+        }
+
+        if let reactionUrl = await makeURL(path: "chats/\(chatId)/messages/\(messageId)/reactions/\(currentUser.id)") {
+            var req = URLRequest(url: reactionUrl)
+            if isRemoving {
+                req.httpMethod = "DELETE"
+            } else {
+                req.httpMethod = "PUT"
+                req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                req.httpBody = try? JSONEncoder().encode(emoji)
+            }
+            _ = try? await URLSession.shared.data(for: req)
+        }
+
+        return true
+    }
+
     // MARK: - Message Deletion
 
     public func deleteMessage(

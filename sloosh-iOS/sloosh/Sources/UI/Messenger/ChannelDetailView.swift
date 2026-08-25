@@ -450,14 +450,32 @@ public struct ChannelDetailView: View {
     private func syncPosts(remoteList: [ChannelPost]) {
         let now = Int64(Date().timeIntervalSince1970 * 1000)
         let currentUserId = AuthRepository.shared.currentUser?.id ?? ""
-        // Сохраняем свежие оптимистичные посты, опубликованные автором за последние 15 сек
+
+        // 1. Сохраняем свежие оптимистичные посты
         let pendingOptimistic = self.posts.filter { local in
             local.authorId == currentUserId &&
             (now - local.timestampMs) < 15_000 &&
             !remoteList.contains(where: { $0.id == local.id })
         }
 
-        var merged = remoteList
+        // 2. Умное слияние реакций к постам: не затираем реакцию пользователя старыми ответами
+        var mergedRemote: [ChannelPost] = []
+        for remotePost in remoteList {
+            var post = remotePost
+            if let localPost = self.posts.first(where: { $0.id == remotePost.id }) {
+                if let localReactions = localPost.reactions, let myEmoji = localReactions[currentUserId] {
+                    var dict = remotePost.reactions ?? [:]
+                    dict[currentUserId] = myEmoji
+                    post.reactions = dict
+                } else if let localReactions = localPost.reactions, localReactions[currentUserId] == nil, var dict = remotePost.reactions {
+                    dict.removeValue(forKey: currentUserId)
+                    post.reactions = dict.isEmpty ? nil : dict
+                }
+            }
+            mergedRemote.append(post)
+        }
+
+        var merged = mergedRemote
         merged.append(contentsOf: pendingOptimistic)
         let sorted = merged.sorted(by: { $0.timestampMs < $1.timestampMs })
         if sorted != self.posts {
