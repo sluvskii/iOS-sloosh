@@ -42,9 +42,18 @@ public struct AdminUserItem: Identifiable, Sendable, Equatable {
     public var avatarUrl: String?
     public var email: String?
     public var isOnline: Bool
+    public var lastSeenMs: Int64?
     public var isBanned: Bool
     public var createdAtMs: Int64
     public var channelsCount: Int
+
+    public var isCurrentlyOnline: Bool {
+        PresenceFormatter.isOnline(isOnlineFlag: isOnline, lastSeenMs: lastSeenMs)
+    }
+
+    public var statusDescription: String {
+        PresenceFormatter.formatLastSeen(isOnlineFlag: isOnline, lastSeenMs: lastSeenMs)
+    }
 
     public var displayTitle: String {
         let cleanName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -73,6 +82,7 @@ public struct AdminUserItem: Identifiable, Sendable, Equatable {
         avatarUrl: String? = nil,
         email: String? = nil,
         isOnline: Bool = false,
+        lastSeenMs: Int64? = nil,
         isBanned: Bool = false,
         createdAtMs: Int64 = Int64(Date().timeIntervalSince1970 * 1000),
         channelsCount: Int = 0
@@ -83,6 +93,7 @@ public struct AdminUserItem: Identifiable, Sendable, Equatable {
         self.avatarUrl = avatarUrl
         self.email = email
         self.isOnline = isOnline
+        self.lastSeenMs = lastSeenMs
         self.isBanned = isBanned
         self.createdAtMs = createdAtMs
         self.channelsCount = channelsCount
@@ -118,7 +129,7 @@ public final class AdminRepository: ObservableObject {
 
         let (allUsers, allChannels, (postsCount, viewsCount, reactionsCount)) = await (fetchedUsers, fetchedChannels, postsStats)
 
-        let onlineCount = allUsers.filter { $0.isOnline }.count
+        let onlineCount = allUsers.filter { $0.isCurrentlyOnline }.count
         let sortedTop = allChannels.sorted { $0.subscriberCount > $1.subscriberCount }
         let top5 = Array(sortedTop.prefix(5))
 
@@ -153,7 +164,8 @@ public final class AdminRepository: ObservableObject {
                 let tag = dict["tag"] as? String
                 let avatar = dict["avatarUrl"] as? String ?? dict["photoUrl"] as? String ?? dict["photoURL"] as? String
                 let email = dict["email"] as? String
-                let isOnline = (dict["isOnline"] as? Bool) ?? false
+                let isOnline = (dict["isOnline"] as? Bool) ?? (dict["presence"] as? [String: Any])?["isOnline"] as? Bool ?? false
+                let lastSeen = (dict["lastSeenMs"] as? NSNumber)?.int64Value ?? ((dict["presence"] as? [String: Any])?["lastSeenMs"] as? NSNumber)?.int64Value
                 let isBanned = (dict["isBanned"] as? Bool) ?? false
                 let createdAt = (dict["createdAtMs"] as? NSNumber)?.int64Value ?? Int64(Date().timeIntervalSince1970 * 1000)
 
@@ -164,6 +176,7 @@ public final class AdminRepository: ObservableObject {
                     avatarUrl: avatar,
                     email: email,
                     isOnline: isOnline,
+                    lastSeenMs: lastSeen,
                     isBanned: isBanned,
                     createdAtMs: createdAt,
                     channelsCount: 0
@@ -182,12 +195,14 @@ public final class AdminRepository: ObservableObject {
                 let name = (dict["displayName"] as? String) ?? (dict["name"] as? String) ?? ""
                 let tag = dict["tag"] as? String
                 let avatar = dict["avatarUrl"] as? String ?? dict["photoUrl"] as? String ?? dict["photoURL"] as? String
-                let isOnline = (dict["isOnline"] as? Bool) ?? false
+                let isOnline = (dict["isOnline"] as? Bool) ?? (dict["presence"] as? [String: Any])?["isOnline"] as? Bool ?? false
+                let lastSeen = (dict["lastSeenMs"] as? NSNumber)?.int64Value ?? ((dict["presence"] as? [String: Any])?["lastSeenMs"] as? NSNumber)?.int64Value
 
                 if var existing = userMap[uid] {
                     if existing.displayName.isEmpty && !name.isEmpty { existing.displayName = name }
                     if (existing.tag == nil || existing.tag?.isEmpty == true) && tag != nil { existing.tag = tag }
                     if existing.avatarUrl == nil && avatar != nil { existing.avatarUrl = avatar }
+                    if existing.lastSeenMs == nil && lastSeen != nil { existing.lastSeenMs = lastSeen }
                     userMap[uid] = existing
                 } else {
                     userMap[uid] = AdminUserItem(
@@ -197,6 +212,7 @@ public final class AdminRepository: ObservableObject {
                         avatarUrl: avatar,
                         email: nil,
                         isOnline: isOnline,
+                        lastSeenMs: lastSeen,
                         isBanned: false,
                         createdAtMs: Int64(Date().timeIntervalSince1970 * 1000),
                         channelsCount: 0
@@ -218,7 +234,8 @@ public final class AdminRepository: ObservableObject {
                 let tag = (profileDict["tag"] as? String) ?? (userDict["tag"] as? String)
                 let avatar = (profileDict["avatarUrl"] as? String) ?? (profileDict["photoUrl"] as? String) ?? (profileDict["photoURL"] as? String) ?? (userDict["avatarUrl"] as? String)
                 let email = (profileDict["email"] as? String) ?? (userDict["email"] as? String)
-                let isOnline = (profileDict["isOnline"] as? Bool) ?? (userDict["isOnline"] as? Bool) ?? false
+                let isOnline = (profileDict["isOnline"] as? Bool) ?? (userDict["isOnline"] as? Bool) ?? (userDict["presence"] as? [String: Any])?["isOnline"] as? Bool ?? false
+                let lastSeen = (profileDict["lastSeenMs"] as? NSNumber)?.int64Value ?? (userDict["lastSeenMs"] as? NSNumber)?.int64Value ?? ((userDict["presence"] as? [String: Any])?["lastSeenMs"] as? NSNumber)?.int64Value
                 let isBanned = (userDict["isBanned"] as? Bool) ?? false
                 let createdAt = (userDict["createdAtMs"] as? NSNumber)?.int64Value ?? Int64(Date().timeIntervalSince1970 * 1000)
 
@@ -232,6 +249,7 @@ public final class AdminRepository: ObservableObject {
                     if (existing.tag == nil || existing.tag?.isEmpty == true) && tag != nil { existing.tag = tag }
                     if existing.avatarUrl == nil && avatar != nil { existing.avatarUrl = avatar }
                     if existing.email == nil && email != nil { existing.email = email }
+                    if existing.lastSeenMs == nil && lastSeen != nil { existing.lastSeenMs = lastSeen }
                     existing.channelsCount = max(existing.channelsCount, channelsCount)
                     existing.isBanned = isBanned
                     userMap[uid] = existing
@@ -243,6 +261,7 @@ public final class AdminRepository: ObservableObject {
                         avatarUrl: avatar,
                         email: email,
                         isOnline: isOnline,
+                        lastSeenMs: lastSeen,
                         isBanned: isBanned,
                         createdAtMs: createdAt,
                         channelsCount: channelsCount
@@ -284,6 +303,9 @@ public final class AdminRepository: ObservableObject {
                 if existing.avatarUrl == nil && localUser.avatarUrl != nil {
                     existing.avatarUrl = localUser.avatarUrl
                 }
+                if existing.lastSeenMs == nil && localUser.lastSeenMs != nil {
+                    existing.lastSeenMs = localUser.lastSeenMs
+                }
                 userMap[uid] = existing
             } else if !localUser.displayName.isEmpty || localUser.tag != nil {
                 userMap[uid] = AdminUserItem(
@@ -293,6 +315,7 @@ public final class AdminRepository: ObservableObject {
                     avatarUrl: localUser.avatarUrl,
                     email: nil,
                     isOnline: localUser.isOnline ?? false,
+                    lastSeenMs: localUser.lastSeenMs,
                     isBanned: false,
                     createdAtMs: Int64(Date().timeIntervalSince1970 * 1000),
                     channelsCount: 0
@@ -301,7 +324,7 @@ public final class AdminRepository: ObservableObject {
         }
 
         let sorted = Array(userMap.values).sorted {
-            if $0.isOnline != $1.isOnline { return $0.isOnline }
+            if $0.isCurrentlyOnline != $1.isCurrentlyOnline { return $0.isCurrentlyOnline }
             return $0.createdAtMs > $1.createdAtMs
         }
         self.users = sorted

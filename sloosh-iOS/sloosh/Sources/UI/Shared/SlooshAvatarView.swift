@@ -36,7 +36,7 @@ public struct SlooshAvatarView: View {
             accentColor: Color.slooshAccent,
             isChannel: false,
             showOnline: showOnline,
-            isOnline: user.isOnline ?? false
+            isOnline: user.isCurrentlyOnline
         )
     }
 

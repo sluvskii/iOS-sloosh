@@ -450,13 +450,14 @@ public final class MessengerRepository: ObservableObject {
             }
         }
 
-        // Sanitize: do NOT include email or private auth fields
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
         let slooshUser = SlooshUser(
             id: user.id,
             displayName: user.displayTitle,
             tag: effectiveTag,
             avatarUrl: user.photoURL,
-            isOnline: true
+            isOnline: true,
+            lastSeenMs: nowMs
         )
 
         // Save locally on device
@@ -700,7 +701,8 @@ public final class MessengerRepository: ObservableObject {
                     displayName: "\(user.displayName) (Вы)",
                     tag: user.tag,
                     avatarUrl: user.avatarUrl,
-                    isOnline: user.isOnline
+                    isOnline: user.isOnline,
+                    lastSeenMs: user.lastSeenMs
                 )
             }
             return user
@@ -750,7 +752,8 @@ public final class MessengerRepository: ObservableObject {
                     ?? ""
                 let tag = sourceDict["tag"] as? String
                 let avatarUrl = sourceDict["avatarUrl"] as? String
-                let isOnline = sourceDict["isOnline"] as? Bool ?? true
+                let isOnline = (sourceDict["isOnline"] as? Bool) ?? (sourceDict["presence"] as? [String: Any])?["isOnline"] as? Bool ?? false
+                let lastSeenMs = (sourceDict["lastSeenMs"] as? NSNumber)?.int64Value ?? ((sourceDict["presence"] as? [String: Any])?["lastSeenMs"] as? NSNumber)?.int64Value
 
                 if !displayName.isEmpty || tag != nil {
                     let user = SlooshUser(
@@ -758,7 +761,8 @@ public final class MessengerRepository: ObservableObject {
                         displayName: displayName,
                         tag: tag,
                         avatarUrl: avatarUrl,
-                        isOnline: isOnline
+                        isOnline: isOnline,
+                        lastSeenMs: lastSeenMs
                     )
                     results.append(user)
                 }

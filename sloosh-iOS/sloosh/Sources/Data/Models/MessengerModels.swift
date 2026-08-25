@@ -70,6 +70,7 @@ public struct SlooshUser: Identifiable, Codable, Sendable, Equatable, Hashable {
     public let tag: String?
     public let avatarUrl: String?
     public let isOnline: Bool?
+    public let lastSeenMs: Int64?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -77,17 +78,26 @@ public struct SlooshUser: Identifiable, Codable, Sendable, Equatable, Hashable {
         case tag
         case avatarUrl
         case isOnline
+        case lastSeenMs
         case email // Decoded for backward compatibility only
+    }
+
+    public var isCurrentlyOnline: Bool {
+        PresenceFormatter.isOnline(isOnlineFlag: isOnline, lastSeenMs: lastSeenMs)
+    }
+
+    public var statusDescription: String {
+        PresenceFormatter.formatLastSeen(isOnlineFlag: isOnline, lastSeenMs: lastSeenMs)
     }
 
     public var displayTitle: String {
         if !displayName.isEmpty { return displayName }
-        if let tag = tag, !tag.isEmpty { return "@\(tag)" }
+        if let tag = tag, !tag.isEmpty { return "@\(tag.replacingOccurrences(of: "@", with: ""))" }
         return "Пользователь Sloosh"
     }
 
     public var displayTag: String {
-        if let tag = tag, !tag.isEmpty { return "@\(tag)" }
+        if let tag = tag, !tag.isEmpty { return "@\(tag.replacingOccurrences(of: "@", with: ""))" }
         return ""
     }
 
@@ -102,13 +112,15 @@ public struct SlooshUser: Identifiable, Codable, Sendable, Equatable, Hashable {
         displayName: String,
         tag: String? = nil,
         avatarUrl: String? = nil,
-        isOnline: Bool? = true
+        isOnline: Bool? = false,
+        lastSeenMs: Int64? = nil
     ) {
         self.id = id
         self.displayName = displayName
         self.tag = tag
         self.avatarUrl = avatarUrl
         self.isOnline = isOnline
+        self.lastSeenMs = lastSeenMs
     }
 
     public init(from decoder: Decoder) throws {
@@ -118,6 +130,7 @@ public struct SlooshUser: Identifiable, Codable, Sendable, Equatable, Hashable {
         self.tag = try? container.decodeIfPresent(String.self, forKey: .tag)
         self.avatarUrl = try? container.decodeIfPresent(String.self, forKey: .avatarUrl)
         self.isOnline = try? container.decodeIfPresent(Bool.self, forKey: .isOnline)
+        self.lastSeenMs = try? container.decodeIfPresent(Int64.self, forKey: .lastSeenMs)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -127,6 +140,7 @@ public struct SlooshUser: Identifiable, Codable, Sendable, Equatable, Hashable {
         try container.encodeIfPresent(tag, forKey: .tag)
         try container.encodeIfPresent(avatarUrl, forKey: .avatarUrl)
         try container.encodeIfPresent(isOnline, forKey: .isOnline)
+        try container.encodeIfPresent(lastSeenMs, forKey: .lastSeenMs)
     }
 }
 
