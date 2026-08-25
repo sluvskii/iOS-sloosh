@@ -1,4 +1,4 @@
-﻿import SwiftUI
+import SwiftUI
 import PhotosUI
 
 public struct ChannelInfoView: View {
@@ -288,7 +288,7 @@ public struct ChannelInfoView: View {
 
     private func subscribeAction() {
         Task {
-            _ = await repo.subscribeToChannel(channelId: currentChannel.id)
+            _ = await repo.subscribeToChannel(channel: currentChannel)
         }
     }
 

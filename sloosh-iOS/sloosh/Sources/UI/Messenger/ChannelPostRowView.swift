@@ -1,4 +1,4 @@
-﻿import SwiftUI
+import SwiftUI
 
 public struct ChannelPostRowView: View {
     public let post: ChannelPost

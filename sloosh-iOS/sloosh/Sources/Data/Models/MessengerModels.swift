@@ -407,7 +407,7 @@ public struct ChannelPost: Identifiable, Codable, Sendable, Equatable, Hashable 
         self.viewsCount = try? container.decodeIfPresent(Int.self, forKey: .viewsCount)
     }
 
-    public func reactionSummary(currentUserId: String) -> [(emoji: String, count: Int, isMine: Bool)] {
+    public func reactionSummary(currentUserId: String) -> [ChannelReactionSummary] {
         guard let reactions = reactions, !reactions.isEmpty else { return [] }
         var counts: [String: Int] = [:]
         for (_, emoji) in reactions {
@@ -415,13 +415,27 @@ public struct ChannelPost: Identifiable, Codable, Sendable, Equatable, Hashable 
         }
         let myEmoji = reactions[currentUserId]
         return counts.map { (emoji, count) in
-            (emoji: emoji, count: count, isMine: myEmoji == emoji)
+            ChannelReactionSummary(emoji: emoji, count: count, isMine: myEmoji == emoji)
         }.sorted { first, second in
             if first.count != second.count {
                 return first.count > second.count
             }
             return first.emoji < second.emoji
         }
+    }
+}
+
+public struct ChannelReactionSummary: Identifiable, Sendable, Equatable, Hashable {
+    public var id: String { emoji }
+    public let emoji: String
+    public let count: Int
+    public let isMine: Bool
+    public var hasReacted: Bool { isMine }
+
+    public init(emoji: String, count: Int, isMine: Bool) {
+        self.emoji = emoji
+        self.count = count
+        self.isMine = isMine
     }
 }
 
