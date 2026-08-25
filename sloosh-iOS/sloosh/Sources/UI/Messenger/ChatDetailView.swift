@@ -527,9 +527,11 @@ public struct ChatDetailView: View {
             isRead: msg.isRead
         )
 
-        // МГНОВЕННОЕ обновление на UI за 0мс
+        // МГНОВЕННОЕ обновление на UI за 0мс с плавной нативной анимацией
         if let idx = self.messages.firstIndex(where: { $0.id == msg.id }) {
-            self.messages[idx] = updatedMsg
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.72)) {
+                self.messages[idx] = updatedMsg
+            }
         }
 
         let chatId = repo.getOrCreateChatId(peerUserId: peerUser.id)
@@ -790,33 +792,39 @@ private struct PeakMessageBubbleView: View {
                 } label: {
                     HStack(spacing: 3) {
                         Text(emoji)
-                            .font(.system(size: 12))
+                            .font(.system(size: 12.5))
                         if count > 1 {
                             Text("\(count)")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(isMyReaction ? Color.slooshAccent : .primary)
+                                .font(.system(size: 11.5, weight: .bold))
+                                .foregroundColor(isMyReaction ? .black : .primary)
                         }
                     }
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3.5)
                     .background(
-                        Color(UIColor.secondarySystemGroupedBackground)
+                        isMyReaction ? Color.slooshAccent : Color(UIColor.secondarySystemGroupedBackground)
                     )
                     .clipShape(Capsule())
                     .overlay(
                         Capsule()
                             .stroke(
-                                isMyReaction ? Color.slooshAccent : Color(UIColor.separator).opacity(0.6),
-                                lineWidth: isMyReaction ? 1.5 : 0.8
+                                isMyReaction ? Color.slooshAccent : Color(UIColor.separator).opacity(0.4),
+                                lineWidth: 0.8
                             )
                     )
-                    .shadow(color: Color.black.opacity(0.12), radius: 2, x: 0, y: 1)
+                    .shadow(
+                        color: isMyReaction ? Color.slooshAccent.opacity(0.35) : Color.black.opacity(0.1),
+                        radius: isMyReaction ? 4 : 2,
+                        x: 0,
+                        y: 1
+                    )
                 }
                 .buttonStyle(PeakPressButtonStyle())
             }
         }
         .offset(y: 10)
         .padding(.horizontal, 8)
+        .animation(.spring(response: 0.28, dampingFraction: 0.72), value: reactionsDict)
     }
 
     private func formatTime(ms: Int64) -> String {
