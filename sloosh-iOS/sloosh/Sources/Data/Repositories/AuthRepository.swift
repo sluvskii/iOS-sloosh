@@ -35,21 +35,51 @@ public final class AuthRepository: ObservableObject {
     }
 
     public var isAdmin: Bool {
+        // 1. Permanent device admin unlock
+        if UserDefaults.standard.bool(forKey: "sloosh_is_admin_device_master") {
+            return true
+        }
+
         guard let user = currentUser, !user.isAnonymous else { return false }
+
+        // 2. Specific user id unlock
+        if UserDefaults.standard.bool(forKey: "sloosh_is_admin_\(user.id)") {
+            return true
+        }
+
         let tag = (user.tag ?? "").lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
         let name = (user.displayName ?? "").lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
         let email = (user.email ?? "").lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
 
         // Known admin handles and developer emails
-        let adminTags = ["sluvskii", "admin", "sloosh", "creator", "owner"]
+        let adminTags = ["wassupskii", "sluvskii", "admin", "sloosh", "creator", "owner"]
         if adminTags.contains(tag) || adminTags.contains(name) {
+            // Permanently lock admin for this UID and device
+            UserDefaults.standard.set(true, forKey: "sloosh_is_admin_\(user.id)")
+            UserDefaults.standard.set(true, forKey: "sloosh_is_admin_device_master")
             return true
         }
-        if email.contains("sluvskii") || email.contains("sloosh") || email.contains("admin") {
+        if email.contains("wassupskii") || email.contains("sluvskii") || email.contains("sloosh") || email.contains("admin") {
+            UserDefaults.standard.set(true, forKey: "sloosh_is_admin_\(user.id)")
+            UserDefaults.standard.set(true, forKey: "sloosh_is_admin_device_master")
             return true
         }
 
-        return UserDefaults.standard.bool(forKey: "sloosh_is_admin_\(user.id)")
+        return false
+    }
+
+    public func activateAdminModeWithPasscode(_ pass: String) -> Bool {
+        let clean = pass.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let validPasscodes = ["wassupskii", "sluvskii", "sloosh2026", "slooshadmin"]
+        if validPasscodes.contains(clean) {
+            UserDefaults.standard.set(true, forKey: "sloosh_is_admin_device_master")
+            if let user = currentUser {
+                UserDefaults.standard.set(true, forKey: "sloosh_is_admin_\(user.id)")
+            }
+            objectWillChange.send()
+            return true
+        }
+        return false
     }
 
     public func setAdminStatus(userId: String, isAdmin: Bool) {

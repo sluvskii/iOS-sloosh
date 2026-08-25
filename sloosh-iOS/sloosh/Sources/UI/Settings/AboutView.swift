@@ -15,6 +15,10 @@ struct AboutView: View {
         return min(1.0, Double(progress))
     }
 
+    @State private var secretTapCount: Int = 0
+    @State private var showSecretPasscodeAlert: Bool = false
+    @State private var enteredPasscode: String = ""
+
     var body: some View {
         List {
             // Секция заголовка с логотипом
@@ -38,11 +42,36 @@ struct AboutView: View {
                     Text(appVersion)
                         .font(.footnote)
                         .foregroundColor(.secondary)
+                        .onTapGesture {
+                            secretTapCount += 1
+                            if secretTapCount >= 5 {
+                                secretTapCount = 0
+                                UIImpactFeedbackGenerator(style: .heavy).impactOccurred()
+                                showSecretPasscodeAlert = true
+                            }
+                        }
                     
                     Spacer(minLength: 8)
                 }
                 .frame(maxWidth: .infinity)
                 .listRowBackground(Color.clear)
+            }
+            .alert("Режим администратора", isPresented: $showSecretPasscodeAlert) {
+                SecureField("Мастер-ключ", text: $enteredPasscode)
+                Button("Активировать") {
+                    let success = AuthRepository.shared.activateAdminModeWithPasscode(enteredPasscode)
+                    enteredPasscode = ""
+                    if success {
+                        ToastManager.shared.show("Права администратора успешно активированы! 🛡️")
+                    } else {
+                        ToastManager.shared.show("Неверный мастер-ключ")
+                    }
+                }
+                Button("Отмена", role: .cancel) {
+                    enteredPasscode = ""
+                }
+            } message: {
+                Text("Введите мастер-ключ создателя для постоянной активации админ-панели на этом устройстве.")
             }
             
             // Секция ссылок сообщества
