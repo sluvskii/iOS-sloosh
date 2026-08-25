@@ -1,4 +1,4 @@
-﻿import SwiftUI
+import SwiftUI
 import PhotosUI
 
 public struct CreateChannelSheet: View {
@@ -257,7 +257,6 @@ public struct CreateChannelSheet: View {
             HStack(spacing: 8) {
                 if isCreating {
                     ProgressView()
-                        .tint(.black)
                 } else {
                     Image(systemName: "sparkles")
                         .font(.system(size: 16, weight: .bold))
@@ -265,13 +264,9 @@ public struct CreateChannelSheet: View {
                         .font(.system(size: 17, weight: .bold))
                 }
             }
-            .foregroundColor(.black)
+            .foregroundColor(.primary)
             .frame(maxWidth: .infinity)
             .frame(height: 52)
-            .background(
-                Capsule()
-                    .fill(isFormValid ? Color.slooshAccent : Color.slooshAccent.opacity(0.4))
-            )
             .glassEffect(in: Capsule())
         }
         .disabled(!isFormValid)
