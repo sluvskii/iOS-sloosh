@@ -1127,6 +1127,43 @@ public final class MessengerRepository: ObservableObject {
 
     // MARK: - Message Deletion
 
+    public func deleteChat(chatId: String, peerUserId: String, deleteForEveryone: Bool = true) async -> Bool {
+        guard let currentUserId = AuthRepository.shared.currentUser?.id, !currentUserId.isEmpty else { return false }
+
+        // 1. Удаляем из памяти и локального диска
+        var convs = self.conversations
+        convs.removeAll(where: { $0.chatId == chatId })
+        self.conversations = convs
+        saveConversationsToDisk(convs)
+
+        // 2. Очищаем локальные сообщения
+        saveMessagesToDisk([], chatId: chatId)
+
+        // 3. Удаляем чат у текущего пользователя в Firebase
+        if let myChatUrl = await makeURL(path: "user_chats/\(currentUserId)/\(chatId)") {
+            var req = URLRequest(url: myChatUrl)
+            req.httpMethod = "DELETE"
+            _ = try? await URLSession.shared.data(for: req)
+        }
+
+        // 4. Удаляем у собеседника и сами данные чата при удалении у всех
+        if deleteForEveryone {
+            if let peerChatUrl = await makeURL(path: "user_chats/\(peerUserId)/\(chatId)") {
+                var req = URLRequest(url: peerChatUrl)
+                req.httpMethod = "DELETE"
+                _ = try? await URLSession.shared.data(for: req)
+            }
+
+            if let chatDataUrl = await makeURL(path: "chats/\(chatId)") {
+                var req = URLRequest(url: chatDataUrl)
+                req.httpMethod = "DELETE"
+                _ = try? await URLSession.shared.data(for: req)
+            }
+        }
+
+        return true
+    }
+
     public func deleteMessage(
         chatId: String,
         messageId: String,
@@ -1137,6 +1174,18 @@ public final class MessengerRepository: ObservableObject {
         var currentMessages = loadMessagesFromDisk(chatId: chatId)
         currentMessages.removeAll(where: { $0.id == messageId })
         saveMessagesToDisk(currentMessages, chatId: chatId)
+
+        if let msgUrl = await makeURL(path: "chats/\(chatId)/messages/\(messageId)") {
+            var req = URLRequest(url: msgUrl)
+            req.httpMethod = "DELETE"
+            _ = try? await URLSession.shared.data(for: req)
+        }
+
+        // Если в чате не осталось сообщений — удаляем сам диалог полностью!
+        if currentMessages.isEmpty {
+            _ = await deleteChat(chatId: chatId, peerUserId: peerUser.id, deleteForEveryone: true)
+            return
+        }
 
         let lastMsg = currentMessages.last
         let previewText: String
@@ -1160,12 +1209,6 @@ public final class MessengerRepository: ObservableObject {
         }
         self.conversations = convs
         saveConversationsToDisk(convs)
-
-        if let msgUrl = await makeURL(path: "chats/\(chatId)/messages/\(messageId)") {
-            var req = URLRequest(url: msgUrl)
-            req.httpMethod = "DELETE"
-            _ = try? await URLSession.shared.data(for: req)
-        }
 
         if let senderUrl = await makeURL(path: "user_chats/\(currentUser.id)/\(chatId)/lastMessageText") {
             var req = URLRequest(url: senderUrl)

@@ -701,14 +701,25 @@ private struct PeakMessageBubbleView: View {
                 if let text = message.text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     Text(text)
                         .font(.system(size: 16))
-                        .foregroundColor(isFromMe ? .white : .primary)
+                        .foregroundColor(isFromMe ? Color(UIColor.systemBackground) : .primary)
                 }
             }
             .padding(.horizontal, 14)
-            .padding(.vertical, 9)
+            .padding(.vertical, 10)
             .background(
-                RoundedRectangle(cornerRadius: 19, style: .continuous)
-                    .fill(isFromMe ? Color.slooshAccent : Color(UIColor.secondarySystemGroupedBackground))
+                Group {
+                    if isFromMe {
+                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            .fill(Color.primary)
+                    } else {
+                        RoundedRectangle(cornerRadius: 20, style: .continuous)
+                            .fill(Color(UIColor.secondarySystemGroupedBackground))
+                    }
+                }
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .stroke(Color.primary.opacity(0.06), lineWidth: isFromMe ? 0 : 0.5)
             )
             .contextMenu {
                 Button {
@@ -960,11 +971,15 @@ public struct ChatInfoView: View {
             titleVisibility: .visible
         ) {
             Button("Удалить чат", role: .destructive) {
+                let chatId = repo.getOrCreateChatId(peerUserId: peerUser.id)
+                Task {
+                    _ = await repo.deleteChat(chatId: chatId, peerUserId: peerUser.id, deleteForEveryone: true)
+                }
                 dismiss()
             }
             Button("Отмена", role: .cancel) {}
         } message: {
-            Text("История сообщений будет удалена.")
+            Text("История сообщений и диалог будут удалены.")
         }
     }
 }

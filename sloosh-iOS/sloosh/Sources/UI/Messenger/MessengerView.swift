@@ -514,7 +514,14 @@ public struct MessengerView: View {
     private func deleteChat(peer: SlooshUser) {
         let generator = UIImpactFeedbackGenerator(style: .medium)
         generator.impactOccurred()
+        let chatId = repo.getOrCreateChatId(peerUserId: peer.id)
+
+        withAnimation(.easeInOut(duration: 0.22)) {
+            self.repo.conversations.removeAll(where: { $0.chatId == chatId })
+        }
+
         Task {
+            _ = await repo.deleteChat(chatId: chatId, peerUserId: peer.id, deleteForEveryone: true)
             await repo.fetchConversations()
         }
     }
