@@ -1,11 +1,10 @@
-﻿import SwiftUI
+import SwiftUI
 import UIKit
 
 public enum AppIconOption: String, CaseIterable, Identifiable {
     case `default` = "default"
+    case cyrillic = "AppIcon-Cyrillic"
     case glyph = "AppIcon-Glyph"
-    case dark = "AppIcon-Dark"
-    case neon = "AppIcon-Neon"
 
     public var id: String { rawValue }
 
@@ -13,12 +12,10 @@ public enum AppIconOption: String, CaseIterable, Identifiable {
         switch self {
         case .default:
             return "Основная"
+        case .cyrillic:
+            return "Кириллица"
         case .glyph:
             return "Символ"
-        case .dark:
-            return "Тёмная"
-        case .neon:
-            return "Неон"
         }
     }
 
@@ -26,12 +23,10 @@ public enum AppIconOption: String, CaseIterable, Identifiable {
         switch self {
         case .default:
             return "Типографика Sloosh на акцентном фоне"
+        case .cyrillic:
+            return "Типографика Слуш на русском"
         case .glyph:
             return "Классический символ Sloosh"
-        case .dark:
-            return "Глубокий матовый чёрный"
-        case .neon:
-            return "Кибер-зелёный неоновый стиль"
         }
     }
 
@@ -39,12 +34,10 @@ public enum AppIconOption: String, CaseIterable, Identifiable {
         switch self {
         case .default:
             return "AppIconPreview-Default"
+        case .cyrillic:
+            return "AppIconPreview-Cyrillic"
         case .glyph:
             return "AppIconPreview-Glyph"
-        case .dark:
-            return "AppIconPreview-Dark"
-        case .neon:
-            return "AppIconPreview-Neon"
         }
     }
 
