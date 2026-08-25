@@ -1,0 +1,85 @@
+﻿{
+  "rules": {
+    ".read": false,
+    ".write": false,
+
+    "users": {
+      "$uid": {
+        ".read": "auth != null",
+        ".write": "auth != null && auth.uid == $uid"
+      }
+    },
+
+    "user_profiles": {
+      ".read": "auth != null",
+      "$uid": {
+        ".write": "auth != null && auth.uid == $uid"
+      }
+    },
+
+    "userTags": {
+      ".read": "auth != null",
+      "$tag": {
+        ".write": "auth != null"
+      }
+    },
+
+    "channels": {
+      ".read": "auth != null",
+      "$channelId": {
+        ".write": "auth != null"
+      }
+    },
+
+    "public_channels": {
+      ".read": "auth != null",
+      "$channelId": {
+        ".write": "auth != null"
+      }
+    },
+
+    "channelTags": {
+      ".read": "auth != null",
+      "$tag": {
+        ".write": "auth != null"
+      }
+    },
+
+    "channel_posts": {
+      "$channelId": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      }
+    },
+
+    "channel_subscribers": {
+      "$channelId": {
+        ".read": "auth != null",
+        "$uid": {
+          ".write": "auth != null && auth.uid == $uid"
+        }
+      }
+    },
+
+    "user_channel_subscriptions": {
+      "$uid": {
+        ".read": "auth != null && auth.uid == $uid",
+        ".write": "auth != null && auth.uid == $uid"
+      }
+    },
+
+    "chats": {
+      "$chatId": {
+        ".read": "auth != null",
+        ".write": "auth != null"
+      }
+    },
+
+    "user_chats": {
+      "$uid": {
+        ".read": "auth != null && auth.uid == $uid",
+        ".write": "auth != null && auth.uid == $uid"
+      }
+    }
+  }
+}
