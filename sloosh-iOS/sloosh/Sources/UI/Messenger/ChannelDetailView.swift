@@ -61,86 +61,78 @@ public struct ChannelDetailView: View {
         !inputText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || attachedMedia != nil
     }
 
+    private var inputBarCornerRadius: CGFloat {
+        isMultilineInput ? 18 : 22
+    }
+
+    private var inputBarHorizontalPadding: CGFloat {
+        isInputFocused ? 6 : 24
+    }
+
+    private var inputBarVerticalPadding: CGFloat {
+        isInputFocused ? 8 : 2
+    }
+
     public var body: some View {
         ZStack {
+            // Native grouped background matching ChatDetailView
             Color(UIColor.systemGroupedBackground).ignoresSafeArea()
 
-            VStack(spacing: 0) {
-                // Pinned Post Floating Bar
-                if let pinned = pinnedPost {
-                    PinnedPostBar(
-                        post: pinned,
-                        onTap: { postId in
-                            // Scroll to pinned post
-                        },
-                        onUnpin: isOwner ? {
-                            Task {
-                                _ = await repo.togglePinChannelPost(channelId: currentChannel.id, postId: pinned.id, isPinned: false)
-                                await loadPosts()
-                            }
-                        } : nil
-                    )
-                    .padding(.horizontal, 16)
-                    .padding(.top, 4)
-                }
-
-                // Posts Feed
-                ScrollViewReader { proxy in
-                    ScrollView {
-                        LazyVStack(spacing: 8) {
-                            if posts.isEmpty {
-                                emptyStateView
-                                    .padding(.top, 60)
-                            } else {
-                                ForEach(posts) { post in
-                                    ChannelPostRowView(
-                                        post: post,
-                                        isAuthor: isOwner,
-                                        currentUserId: currentUserId,
-                                        onOpenDetails: { movieId in
-                                            selectedMovieIdForDetails = movieId
-                                        },
-                                        onPlayDirectly: { media in
-                                            selectedMediaForDirectPlay = media
-                                        },
-                                        onToggleReaction: { emoji in
-                                            toggleReaction(emoji: emoji, on: post)
-                                        },
-                                        onEditPost: {
-                                            startEditing(post: post)
-                                        },
-                                        onTogglePin: {
-                                            togglePin(post: post)
-                                        },
-                                        onDeletePost: {
-                                            postToDelete = post
-                                            showDeletePostAlert = true
-                                        }
-                                    )
-                                    .id(post.id)
+            postsFeed
+                .safeAreaInset(edge: .bottom) {
+                    VStack(spacing: 0) {
+                        // Attached Media Card Banner
+                        if let media = attachedMedia {
+                            HStack(spacing: 8) {
+                                Image(systemName: "film")
+                                    .foregroundColor(Color.slooshAccent)
+                                Text(media.title)
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .lineLimit(1)
+                                Spacer()
+                                Button {
+                                    attachedMedia = nil
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundColor(.secondary)
                                 }
                             }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .background(Color(UIColor.secondarySystemGroupedBackground))
                         }
-                        .padding(.top, 8)
-                        .padding(.bottom, 12)
-                    }
-                    .scrollDismissesKeyboard(.interactively)
-                    .onChange(of: posts.count) { _, _ in
-                        if let lastPost = posts.last {
-                            withAnimation {
-                                proxy.scrollTo(lastPost.id, anchor: .bottom)
+                        // Edit post banner
+                        else if let editing = editingPost {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text("Редактирование поста")
+                                        .font(.system(size: 12, weight: .bold))
+                                        .foregroundColor(Color.slooshAccent)
+                                    Text(editing.text ?? "Медиа пост")
+                                        .font(.system(size: 13))
+                                        .foregroundColor(.secondary)
+                                        .lineLimit(1)
+                                }
+                                Spacer()
+                                Button {
+                                    cancelEditing()
+                                } label: {
+                                    Image(systemName: "xmark.circle.fill")
+                                        .foregroundColor(.secondary)
+                                }
                             }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 8)
+                            .background(Color(UIColor.secondarySystemGroupedBackground))
+                        }
+
+                        if isOwner {
+                            authorBroadcastingBar
+                        } else {
+                            subscriberActionBar
                         }
                     }
                 }
-
-                // Bottom Control Bar
-                if isOwner {
-                    authorBroadcastingBar
-                } else {
-                    subscriberActionBar
-                }
-            }
         }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
@@ -242,116 +234,149 @@ public struct ChannelDetailView: View {
         }
     }
 
+    // MARK: - Posts Feed
+
+    private var postsFeed: some View {
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(spacing: 0) {
+                    // Pinned Post Floating Bar
+                    if let pinned = pinnedPost {
+                        PinnedPostBar(
+                            post: pinned,
+                            onTap: { postId in
+                                withAnimation {
+                                    proxy.scrollTo(postId, anchor: .center)
+                                }
+                            },
+                            onUnpin: isOwner ? {
+                                Task {
+                                    _ = await repo.togglePinChannelPost(channelId: currentChannel.id, postId: pinned.id, isPinned: false)
+                                    await loadPosts()
+                                }
+                            } : nil
+                        )
+                        .padding(.horizontal, 16)
+                        .padding(.top, 4)
+                    }
+
+                    if posts.isEmpty {
+                        emptyStateView
+                            .padding(.top, 60)
+                    } else {
+                        LazyVStack(spacing: 8) {
+                            ForEach(posts) { post in
+                                ChannelPostRowView(
+                                    post: post,
+                                    isAuthor: isOwner,
+                                    currentUserId: currentUserId,
+                                    onOpenDetails: { movieId in
+                                        selectedMovieIdForDetails = movieId
+                                    },
+                                    onPlayDirectly: { media in
+                                        selectedMediaForDirectPlay = media
+                                    },
+                                    onToggleReaction: { emoji in
+                                        toggleReaction(emoji: emoji, on: post)
+                                    },
+                                    onEditPost: {
+                                        startEditing(post: post)
+                                    },
+                                    onTogglePin: {
+                                        togglePin(post: post)
+                                    },
+                                    onDeletePost: {
+                                        postToDelete = post
+                                        showDeletePostAlert = true
+                                    }
+                                )
+                                .id(post.id)
+                            }
+                        }
+                        .padding(.top, 8)
+                        .padding(.bottom, 16)
+                    }
+                }
+            }
+            .scrollDismissesKeyboard(.interactively)
+            .onChange(of: posts.count) { _, _ in
+                if let lastPost = posts.last {
+                    withAnimation {
+                        proxy.scrollTo(lastPost.id, anchor: .bottom)
+                    }
+                }
+            }
+        }
+    }
+
     // MARK: - Author Broadcasting Bar
 
     private var authorBroadcastingBar: some View {
-        VStack(spacing: 0) {
-            // Attached movie preview pill
-            if let media = attachedMedia {
-                HStack {
+        HStack(alignment: .bottom, spacing: 8) {
+            // Attach Movie Button
+            Button {
+                showMovieSelector = true
+            } label: {
+                ZStack {
+                    Circle()
+                        .fill(attachedMedia != nil ? Color.slooshAccent : Color.primary.opacity(0.08))
+                        .frame(width: 40, height: 40)
+
                     Image(systemName: "film.fill")
-                        .foregroundColor(Color.slooshAccent)
-                        .font(.system(size: 13))
-                    Text(media.title)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(.primary)
-                        .lineLimit(1)
-                    Spacer()
-                    Button {
-                        attachedMedia = nil
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundColor(.secondary)
-                    }
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundColor(attachedMedia != nil ? .black : .primary)
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .background(Color(UIColor.secondarySystemGroupedBackground))
+                .glassEffect(.regular.interactive(), in: Circle())
             }
+            .buttonStyle(OpaquePressButtonStyle())
 
-            // Edit post banner
-            if let editing = editingPost {
-                HStack {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Редактирование поста")
-                            .font(.system(size: 12, weight: .bold))
-                            .foregroundColor(Color.slooshAccent)
-                        Text(editing.text ?? "Медиа пост")
-                            .font(.system(size: 13))
-                            .foregroundColor(.secondary)
-                            .lineLimit(1)
-                    }
-                    Spacer()
-                    Button {
-                        cancelEditing()
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundColor(.secondary)
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .background(Color(UIColor.secondarySystemGroupedBackground))
-            }
-
-            // Input Bar
+            // Floating Glass Text Field
             HStack(alignment: .bottom, spacing: 8) {
-                // Attach Movie Button
+                TextField("Опубликовать пост...", text: $inputText, axis: .vertical)
+                    .font(.system(size: 16))
+                    .foregroundColor(.primary)
+                    .lineLimit(1...6)
+                    .focused($isInputFocused)
+                    .padding(.vertical, 10)
+                    .padding(.horizontal, 16)
+                    .frame(minHeight: 40)
+            }
+            .glassEffect(
+                .regular.interactive(),
+                in: RoundedRectangle(cornerRadius: inputBarCornerRadius, style: .continuous)
+            )
+            .animation(.easeInOut(duration: 0.2), value: isMultilineInput)
+
+            // Send Button
+            if hasTextToSending {
                 Button {
-                    showMovieSelector = true
+                    publishPostAction()
                 } label: {
                     ZStack {
                         Circle()
-                            .fill(attachedMedia != nil ? Color.slooshAccent : Color.primary.opacity(0.08))
+                            .fill(Color.slooshAccent)
                             .frame(width: 40, height: 40)
 
-                        Image(systemName: "film.fill")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(attachedMedia != nil ? .black : .primary)
+                        Image(systemName: "arrow.up")
+                            .font(.system(size: 17, weight: .bold))
+                            .foregroundColor(.black)
                     }
                     .glassEffect(.regular.interactive(), in: Circle())
                 }
                 .buttonStyle(OpaquePressButtonStyle())
-
-                // Floating Glass Text Field
-                HStack(alignment: .bottom, spacing: 8) {
-                    TextField("Опубликовать пост...", text: $inputText, axis: .vertical)
-                        .font(.system(size: 16))
-                        .foregroundColor(.primary)
-                        .lineLimit(1...6)
-                        .focused($isInputFocused)
-                        .padding(.vertical, 10)
-                        .padding(.horizontal, 16)
-                        .frame(minHeight: 40)
-                }
-                .glassEffect(
-                    .regular.interactive(),
-                    in: RoundedRectangle(cornerRadius: isMultilineInput ? 18 : 22, style: .continuous)
+                .transition(
+                    .asymmetric(
+                        insertion: .scale(scale: 0.3).combined(with: .opacity).combined(with: .move(edge: .trailing)),
+                        removal: .scale(scale: 0.3).combined(with: .opacity).combined(with: .move(edge: .trailing))
+                    )
                 )
-
-                // Send Button
-                if hasTextToSending {
-                    Button {
-                        publishPostAction()
-                    } label: {
-                        ZStack {
-                            Circle()
-                                .fill(Color.slooshAccent)
-                                .frame(width: 40, height: 40)
-
-                            Image(systemName: "arrow.up")
-                                .font(.system(size: 17, weight: .bold))
-                                .foregroundColor(.black)
-                        }
-                        .glassEffect(.regular.interactive(), in: Circle())
-                    }
-                    .buttonStyle(OpaquePressButtonStyle())
-                    .disabled(isSending)
-                }
+                .disabled(isSending)
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
         }
+        .padding(.horizontal, inputBarHorizontalPadding)
+        .padding(.vertical, inputBarVerticalPadding)
+        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: isInputFocused)
+        .animation(.spring(response: 0.32, dampingFraction: 0.78), value: hasTextToSending)
     }
 
     // MARK: - Subscriber Action Bar
@@ -370,7 +395,7 @@ public struct ChannelDetailView: View {
                     }
                     .foregroundColor(.primary)
                     .frame(maxWidth: .infinity)
-                    .frame(height: 46)
+                    .frame(height: 48)
                     .glassEffect(in: Capsule())
                 }
                 .buttonStyle(PeakPressButtonStyle())
@@ -386,7 +411,7 @@ public struct ChannelDetailView: View {
                     }
                     .foregroundColor(.black)
                     .frame(maxWidth: .infinity)
-                    .frame(height: 46)
+                    .frame(height: 48)
                     .background(
                         Capsule()
                             .fill(Color.slooshAccent)
@@ -396,8 +421,8 @@ public struct ChannelDetailView: View {
                 .buttonStyle(PeakPressButtonStyle())
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 24)
+        .padding(.vertical, 6)
     }
 
     // MARK: - Empty State
