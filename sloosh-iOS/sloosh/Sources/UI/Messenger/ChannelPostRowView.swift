@@ -94,12 +94,16 @@ public struct ChannelPostRowView: View {
                 }
                 .padding(.top, 2)
             }
-            .padding(14)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
             .background(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
                     .fill(Color(UIColor.secondarySystemGroupedBackground))
             )
-            .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                    .stroke(Color.primary.opacity(0.06), lineWidth: 0.5)
+            )
             .onTapGesture(count: 2) {
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                 onToggleReaction?("❤️")
@@ -111,8 +115,8 @@ public struct ChannelPostRowView: View {
             // Reactions Bar (Liquid Glass Capsules)
             reactionsBar
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 4)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 3)
     }
 
     // MARK: - Reactions Bar
