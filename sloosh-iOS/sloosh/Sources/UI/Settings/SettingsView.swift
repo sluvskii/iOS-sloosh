@@ -97,6 +97,27 @@ struct SettingsView: View {
                         }
                     }
                 }
+
+                // Иконка приложения
+                NavigationLink {
+                    AppIconPickerView()
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "app.badge.fill")
+                            .foregroundStyle(Color.slooshAccent)
+                            .font(.system(size: 18))
+                            .frame(width: 24)
+
+                        Text("Иконка приложения")
+                            .font(.body)
+
+                        Spacer()
+
+                        Text(AppIconManager.shared.currentIcon.title)
+                            .font(.body)
+                            .foregroundColor(.secondary)
+                    }
+                }
                 
                 // Показывать названия вкладок
                 Toggle(isOn: $tabBarShowsLabelsDraft) {
@@ -301,6 +322,69 @@ struct PreviewMoviePosterCard: View {
             .clipped()
         }
         .frame(width: width, height: cardHeight, alignment: .top)
+    }
+}
+
+// MARK: - App Icon Picker Screen
+
+public struct AppIconPickerView: View {
+    @ObservedObject private var iconManager = AppIconManager.shared
+
+    public init() {}
+
+    public var body: some View {
+        List {
+            Section {
+                ForEach(AppIconOption.allCases) { option in
+                    Button {
+                        iconManager.selectIcon(option)
+                    } label: {
+                        HStack(spacing: 16) {
+                            Image(option.previewAsset)
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(width: 60, height: 60)
+                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                                        .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                                )
+                                .shadow(color: Color.black.opacity(0.12), radius: 4, x: 0, y: 2)
+
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(option.title)
+                                    .font(.system(size: 16, weight: .semibold))
+                                    .foregroundColor(.primary)
+
+                                Text(option.subtitle)
+                                    .font(.system(size: 13))
+                                    .foregroundColor(.secondary)
+                            }
+
+                            Spacer()
+
+                            if iconManager.currentIcon == option {
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 15, weight: .bold))
+                                    .foregroundColor(Color.slooshAccent)
+                            }
+                        }
+                        .padding(.vertical, 6)
+                    }
+                    .buttonStyle(.plain)
+                }
+            } header: {
+                Text("Стиль иконки")
+            } footer: {
+                Text("Выбранная иконка будет отображаться на домашнем экране вашего устройства.")
+            }
+        }
+        .listStyle(.insetGrouped)
+        .navigationTitle("Иконка приложения")
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            iconManager.refreshCurrentIcon()
+        }
     }
 }
 
