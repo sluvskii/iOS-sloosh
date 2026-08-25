@@ -407,16 +407,16 @@ public struct ChannelDetailView: View {
                 Button {
                     subscribeAction()
                 } label: {
-                    Text("Подписаться")
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundColor(.black)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 48)
-                        .background(
-                            Capsule()
-                                .fill(Color.slooshAccent)
-                        )
-                        .glassEffect(in: Capsule())
+                    HStack(spacing: 8) {
+                        Image(systemName: "plus")
+                            .font(.system(size: 15, weight: .bold))
+                        Text("Подписаться")
+                            .font(.system(size: 16, weight: .bold))
+                    }
+                    .foregroundColor(.primary)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 48)
+                    .glassEffect(in: Capsule())
                 }
                 .buttonStyle(PeakPressButtonStyle())
             }
