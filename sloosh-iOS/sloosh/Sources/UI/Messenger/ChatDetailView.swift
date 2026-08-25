@@ -851,111 +851,80 @@ public struct ChatInfoView: View {
     }
 
     public var body: some View {
-        ZStack {
-            Color(UIColor.systemGroupedBackground).ignoresSafeArea()
+        List {
+            // Header Section: Avatar + Name + Live Status
+            Section {
+                VStack(spacing: 12) {
+                    let isOnline = livePresence.isOnline
+                    SlooshAvatarView(
+                        avatarSource: peerUser.avatarUrl,
+                        fallbackText: peerUser.displayTitle,
+                        size: 96,
+                        showOnline: true,
+                        isOnline: isOnline
+                    )
 
-            ScrollView {
-                VStack(spacing: 24) {
-                    // Header Section (Avatar + Username + Status)
-                    VStack(spacing: 12) {
-                        let isOnline = livePresence.isOnline
-                        SlooshAvatarView(
-                            avatarSource: peerUser.avatarUrl,
-                            fallbackText: peerUser.displayTitle,
-                            size: 100,
-                            showOnline: true,
-                            isOnline: isOnline
-                        )
+                    VStack(spacing: 4) {
+                        Text(peerUser.displayTitle)
+                            .font(.system(size: 22, weight: .bold))
+                            .foregroundColor(.primary)
 
-                        VStack(spacing: 4) {
-                            Text(peerUser.displayTitle)
-                                .font(.system(size: 24, weight: .bold))
+                        let statusText = PresenceFormatter.formatLastSeen(isOnlineFlag: isOnline, lastSeenMs: livePresence.lastSeenMs)
+
+                        Text(statusText)
+                            .font(.system(size: 14, weight: isOnline ? .semibold : .regular))
+                            .foregroundColor(isOnline ? Color.slooshAccent : .secondary)
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+                .listRowBackground(Color.clear)
+                .listRowInsets(EdgeInsets())
+            }
+
+            // Info Section: Tag
+            if !peerUser.displayTag.isEmpty {
+                Section {
+                    HStack(spacing: 12) {
+                        Image(systemName: "at")
+                            .foregroundStyle(Color.slooshAccent)
+                            .font(.system(size: 18))
+                            .frame(width: 24)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Тег пользователя")
+                                .font(.caption)
+                                .foregroundColor(.secondary)
+                            Text(peerUser.displayTag)
+                                .font(.body)
                                 .foregroundColor(.primary)
-
-                            let statusText = PresenceFormatter.formatLastSeen(isOnlineFlag: isOnline, lastSeenMs: livePresence.lastSeenMs)
-
-                            Text(statusText)
-                                .font(.system(size: 14, weight: isOnline ? .semibold : .regular))
-                                .foregroundColor(isOnline ? Color.slooshAccent : .secondary)
-                                .padding(.top, 2)
                         }
+                        Spacer()
                     }
-                    .padding(.top, 24)
+                    .padding(.vertical, 4)
+                }
+            }
 
-                    // Info Section (Privacy-Safe Handle / Status)
-                    if !peerUser.displayTag.isEmpty {
-                        VStack(spacing: 0) {
-                            HStack(spacing: 14) {
-                                ZStack {
-                                    RoundedRectangle(cornerRadius: 9, style: .continuous)
-                                        .fill(Color.slooshAccent.opacity(0.12))
-                                        .frame(width: 32, height: 32)
-                                    Image(systemName: "at")
-                                        .font(.system(size: 15, weight: .semibold))
-                                        .foregroundColor(Color.slooshAccent)
-                                }
+            // Actions Section: Delete Chat
+            Section {
+                Button(role: .destructive) {
+                    showDeleteConfirm = true
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "trash.fill")
+                            .foregroundStyle(Color.red)
+                            .font(.system(size: 18))
+                            .frame(width: 24)
 
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("Тег пользователя")
-                                        .font(.system(size: 12, weight: .medium))
-                                        .foregroundColor(.secondary)
-                                    Text(peerUser.displayTag)
-                                        .font(.system(size: 16, weight: .semibold))
-                                        .foregroundColor(.primary)
-                                }
-                                Spacer()
-                            }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 13)
-                        }
-                        .background(
-                            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                .fill(Color(UIColor.secondarySystemGroupedBackground))
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                .stroke(Color.primary.opacity(0.04), lineWidth: 0.5)
-                        )
-                        .padding(.horizontal, 16)
+                        Text("Удалить чат")
+                            .font(.body)
+                            .foregroundColor(.red)
                     }
-
-                    // Actions Section
-                    VStack(spacing: 0) {
-                        Button {
-                            showDeleteConfirm = true
-                        } label: {
-                            HStack(spacing: 14) {
-                                ZStack {
-                                    RoundedRectangle(cornerRadius: 9, style: .continuous)
-                                        .fill(Color.red.opacity(0.12))
-                                        .frame(width: 32, height: 32)
-                                    Image(systemName: "trash.fill")
-                                        .font(.system(size: 15, weight: .semibold))
-                                        .foregroundColor(.red)
-                                }
-
-                                Text("Удалить чат")
-                                    .font(.system(size: 16, weight: .medium))
-                                    .foregroundColor(.red)
-                                Spacer()
-                            }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 13)
-                        }
-                        .buttonStyle(PeakPressButtonStyle())
-                    }
-                    .background(
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            .fill(Color(UIColor.secondarySystemGroupedBackground))
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 18, style: .continuous)
-                            .stroke(Color.primary.opacity(0.04), lineWidth: 0.5)
-                    )
-                    .padding(.horizontal, 16)
+                    .padding(.vertical, 4)
                 }
             }
         }
+        .listStyle(.insetGrouped)
         .navigationTitle("Информация")
         .navigationBarTitleDisplayMode(.inline)
         .task {
