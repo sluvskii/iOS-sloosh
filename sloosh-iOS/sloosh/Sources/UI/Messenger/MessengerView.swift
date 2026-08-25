@@ -20,6 +20,8 @@ public struct MessengerView: View {
 
     // Search state
     @State private var searchedPublicChannels: [ChannelModel] = []
+    @State private var isSearching: Bool = false
+    @State private var searchTask: Task<Void, Never>? = nil
 
     public init() {}
 
@@ -71,17 +73,40 @@ public struct MessengerView: View {
             .navigationBarTitleDisplayMode(.large)
             .searchable(text: $searchQuery, prompt: "Поиск чатов и каналов")
             .onChange(of: searchQuery) { _, newValue in
+                searchTask?.cancel()
                 let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
-                if !trimmed.isEmpty {
-                    Task {
-                        await repo.searchUsers(query: trimmed)
-                        let channels = await repo.fetchPublicChannels(query: trimmed)
-                        await MainActor.run {
-                            self.searchedPublicChannels = channels
-                        }
-                    }
-                } else {
+                if trimmed.isEmpty {
                     self.searchedPublicChannels = []
+                    self.isSearching = false
+                    return
+                }
+
+                // 1. Instant local search on existing cached channels
+                let localMatching = repo.publicChannels.filter { ch in
+                    ch.name.localizedCaseInsensitiveContains(trimmed) ||
+                    ch.tag.localizedCaseInsensitiveContains(trimmed) ||
+                    ch.description.localizedCaseInsensitiveContains(trimmed)
+                }
+                if !localMatching.isEmpty {
+                    self.searchedPublicChannels = localMatching
+                }
+
+                self.isSearching = true
+                searchTask = Task {
+                    // Small debounce
+                    try? await Task.sleep(nanoseconds: 180_000_000)
+                    if Task.isCancelled { return }
+
+                    async let usersTask = repo.searchUsers(query: trimmed)
+                    async let channelsTask = repo.fetchPublicChannels(query: trimmed)
+
+                    let (_, channels) = await (usersTask, channelsTask)
+                    if Task.isCancelled { return }
+
+                    await MainActor.run {
+                        self.searchedPublicChannels = channels
+                        self.isSearching = false
+                    }
                 }
             }
             .toolbar { toolbarContent }
@@ -179,6 +204,21 @@ public struct MessengerView: View {
     private var feedList: some View {
         ScrollView {
             LazyVStack(spacing: 0) {
+                // 0. Индикатор поиска
+                if isSearching {
+                    HStack(spacing: 10) {
+                        ProgressView()
+                            .controlSize(.small)
+                            .tint(Color.slooshAccent)
+                        Text("Поиск...")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(.secondary)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                }
+
                 // 1. Поиск: Публичные каналы
                 if !searchQuery.isEmpty && !searchedPublicChannels.isEmpty {
                     Section {
@@ -285,9 +325,33 @@ public struct MessengerView: View {
                             .padding(.leading, 86)
                     }
                 }
+
+                // 4. Пустой результат поиска
+                if !searchQuery.isEmpty && !isSearching && searchedPublicChannels.isEmpty && repo.searchResults.isEmpty && unifiedFeedItems.isEmpty {
+                    searchEmptyState
+                        .padding(.top, 60)
+                }
             }
         }
         .scrollContentBackground(.hidden)
+    }
+
+    private var searchEmptyState: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 44, weight: .light))
+                .foregroundColor(.secondary)
+
+            Text("Ничего не найдено")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundColor(.primary)
+
+            Text("По запросу «\(searchQuery)» не найдено ни одного канала или пользователя.")
+                .font(.system(size: 14))
+                .foregroundColor(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 40)
+        }
     }
 
     private func toggleChannelSubscription(channel: ChannelModel) {
