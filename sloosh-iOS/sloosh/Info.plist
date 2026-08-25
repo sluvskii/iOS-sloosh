@@ -48,29 +48,20 @@
         </dict>
         <key>CFBundleAlternateIcons</key>
         <dict>
+            <key>AppIcon-Cyrillic</key>
+            <dict>
+                <key>CFBundleIconFiles</key>
+                <array>
+                    <string>AppIcon-Cyrillic</string>
+                </array>
+                <key>UIPrerenderedIcon</key>
+                <false/>
+            </dict>
             <key>AppIcon-Glyph</key>
             <dict>
                 <key>CFBundleIconFiles</key>
                 <array>
                     <string>AppIcon-Glyph</string>
-                </array>
-                <key>UIPrerenderedIcon</key>
-                <false/>
-            </dict>
-            <key>AppIcon-Dark</key>
-            <dict>
-                <key>CFBundleIconFiles</key>
-                <array>
-                    <string>AppIcon-Dark</string>
-                </array>
-                <key>UIPrerenderedIcon</key>
-                <false/>
-            </dict>
-            <key>AppIcon-Neon</key>
-            <dict>
-                <key>CFBundleIconFiles</key>
-                <array>
-                    <string>AppIcon-Neon</string>
                 </array>
                 <key>UIPrerenderedIcon</key>
                 <false/>
