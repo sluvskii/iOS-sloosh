@@ -306,9 +306,7 @@ public struct ChannelDetailView: View {
                 .defaultScrollAnchor(.bottom)
                 .onChange(of: posts.count) { _, _ in
                     if let lastPost = posts.last {
-                        withAnimation {
-                            proxy.scrollTo(lastPost.id, anchor: .bottom)
-                        }
+                        proxy.scrollTo(lastPost.id, anchor: .bottom)
                     }
                 }
             }

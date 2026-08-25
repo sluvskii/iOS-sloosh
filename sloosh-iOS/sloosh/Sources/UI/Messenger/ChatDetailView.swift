@@ -261,17 +261,13 @@ public struct ChatDetailView: View {
                 .scrollDismissesKeyboard(.interactively)
                 .onChange(of: messages.count) { _, _ in
                     if let lastId = messages.last?.id {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                            proxy.scrollTo(lastId, anchor: .bottom)
-                        }
+                        proxy.scrollTo(lastId, anchor: .bottom)
                     }
                 }
                 .onChange(of: isInputFocused) { _, isFocused in
                     if isFocused, let lastId = messages.last?.id {
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                            withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
-                                proxy.scrollTo(lastId, anchor: .bottom)
-                            }
+                            proxy.scrollTo(lastId, anchor: .bottom)
                         }
                     }
                 }
@@ -384,15 +380,8 @@ public struct ChatDetailView: View {
         let isContentOnlyUpdate = (sortedRemote.count == self.messages.count) &&
             zip(sortedRemote, self.messages).allSatisfy { $0.id == $1.id }
 
-        if isContentOnlyUpdate {
-            // Обновляем данные без структурной инвалидации LazyVStack и без сброса .contextMenu
-            self.messages = sortedRemote
-        } else {
-            // Структурные изменения (новые/удаленные сообщения) анимируем плавно
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                self.messages = sortedRemote
-            }
-        }
+        // 2. Обновляем список сообщений мгновенно и нативно (без искусственных скачущих анимаций баблов)
+        self.messages = sortedRemote
 
         let chatId = repo.getOrCreateChatId(peerUserId: peerUser.id)
         await repo.markMessagesAsRead(chatId: chatId, peerUserId: peerUser.id, messages: sortedRemote)
@@ -483,10 +472,8 @@ public struct ChatDetailView: View {
         editingMessage = nil
         isSending = false
 
-        // Добавляем на UI мгновенно за 0мс без мигания
-        withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
-            self.messages.append(optimisticMessage)
-        }
+        // Добавляем на UI мгновенно за 0мс без мигания и скачков
+        self.messages.append(optimisticMessage)
 
         Task {
             _ = await repo.sendMessage(toPeerUser: peerUser, message: optimisticMessage)
