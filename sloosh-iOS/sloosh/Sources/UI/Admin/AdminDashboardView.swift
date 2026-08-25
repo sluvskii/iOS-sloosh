@@ -7,8 +7,6 @@ public struct AdminDashboardView: View {
     @StateObject private var repo = AdminRepository.shared
     @Environment(\.dismiss) private var dismiss
 
-    @State private var isAuthenticated: Bool = false
-    @State private var authError: String? = nil
     @State private var selectedTab: AdminTab = .overview
     @State private var userSearchQuery: String = ""
     @State private var channelSearchQuery: String = ""
@@ -41,46 +39,40 @@ public struct AdminDashboardView: View {
             ZStack {
                 Color(UIColor.systemGroupedBackground).ignoresSafeArea()
 
-                if !isAuthenticated {
-                    lockedView
-                } else {
-                    VStack(spacing: 0) {
-                        tabSelector
-                            .padding(.horizontal, 16)
-                            .padding(.top, 8)
-                            .padding(.bottom, 12)
+                VStack(spacing: 0) {
+                    tabSelector
+                        .padding(.horizontal, 16)
+                        .padding(.top, 8)
+                        .padding(.bottom, 12)
 
-                        TabView(selection: $selectedTab) {
-                            overviewTab
-                                .tag(AdminTab.overview)
+                    TabView(selection: $selectedTab) {
+                        overviewTab
+                            .tag(AdminTab.overview)
 
-                            usersTab
-                                .tag(AdminTab.users)
+                        usersTab
+                            .tag(AdminTab.users)
 
-                            channelsTab
-                                .tag(AdminTab.channels)
+                        channelsTab
+                            .tag(AdminTab.channels)
 
-                            diagnosticsTab
-                                .tag(AdminTab.diagnostics)
-                        }
-                        .tabViewStyle(.page(indexDisplayMode: .never))
+                        diagnosticsTab
+                            .tag(AdminTab.diagnostics)
                     }
+                    .tabViewStyle(.page(indexDisplayMode: .never))
                 }
             }
             .navigationTitle("Панель управления")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
-                    if isAuthenticated {
-                        Button {
-                            Task {
-                                await repo.fetchOverviewStats()
-                            }
-                        } label: {
-                            Image(systemName: "arrow.clockwise")
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundColor(.primary)
+                    Button {
+                        Task {
+                            await repo.fetchOverviewStats()
                         }
+                    } label: {
+                        Image(systemName: "arrow.clockwise")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundColor(.primary)
                     }
                 }
 
@@ -93,108 +85,7 @@ public struct AdminDashboardView: View {
                 }
             }
             .task {
-                authenticateWithBiometrics()
-            }
-        }
-    }
-
-    // MARK: - Biometric Security Lock Screen
-
-    private var lockedView: some View {
-        VStack(spacing: 20) {
-            Spacer()
-
-            ZStack {
-                Circle()
-                    .fill(Color.slooshAccent.opacity(0.15))
-                    .frame(width: 100, height: 100)
-
-                Image(systemName: "faceid")
-                    .font(.system(size: 48))
-                    .foregroundColor(Color.slooshAccent)
-            }
-            .glassEffect(.regular.interactive(), in: Circle())
-
-            VStack(spacing: 8) {
-                Text("Доступ ограничен")
-                    .font(.system(size: 22, weight: .bold))
-                    .foregroundColor(.primary)
-
-                Text("Для входа в панель администратора подтвердите личность через Face ID или код-пароль.")
-                    .font(.system(size: 14))
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 32)
-            }
-
-            if let error = authError {
-                Text(error)
-                    .font(.system(size: 13))
-                    .foregroundColor(.red)
-                    .padding(.horizontal, 24)
-            }
-
-            Button {
-                authenticateWithBiometrics()
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "lock.open.fill")
-                        .font(.system(size: 15, weight: .bold))
-                    Text("Разблокировать")
-                        .font(.system(size: 16, weight: .bold))
-                }
-                .foregroundColor(.black)
-                .frame(maxWidth: 240)
-                .frame(height: 48)
-                .background(
-                    Capsule()
-                        .fill(Color.slooshAccent)
-                )
-                .glassEffect(in: Capsule())
-            }
-            .buttonStyle(PeakPressButtonStyle())
-            .padding(.top, 12)
-
-            Spacer()
-        }
-    }
-
-    private func authenticateWithBiometrics() {
-        let context = LAContext()
-        var error: NSError?
-
-        if context.canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error) {
-            let reason = "Вход в панель администратора Sloosh"
-            context.evaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, localizedReason: reason) { success, evalError in
-                DispatchQueue.main.async {
-                    if success {
-                        self.isAuthenticated = true
-                        self.authError = nil
-                        Task {
-                            await self.repo.fetchOverviewStats()
-                        }
-                    } else {
-                        self.authError = evalError?.localizedDescription ?? "Не удалось пройти аутентификацию"
-                    }
-                }
-            }
-        } else if context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) {
-            // Fallback to passcode
-            context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "Вход в панель администратора") { success, _ in
-                DispatchQueue.main.async {
-                    if success {
-                        self.isAuthenticated = true
-                        Task {
-                            await self.repo.fetchOverviewStats()
-                        }
-                    }
-                }
-            }
-        } else {
-            // Biometrics not configured, allow access
-            self.isAuthenticated = true
-            Task {
-                await self.repo.fetchOverviewStats()
+                await repo.fetchOverviewStats()
             }
         }
     }
