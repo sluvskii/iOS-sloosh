@@ -200,7 +200,7 @@ public struct ChatConversation: Identifiable, Codable, Sendable, Equatable, Hash
 // MARK: - Channel Model
 
 public struct ChannelModel: Identifiable, Codable, Sendable, Equatable, Hashable {
-    public let id: String
+    public var id: String
     public var tag: String
     public var name: String
     public var description: String
