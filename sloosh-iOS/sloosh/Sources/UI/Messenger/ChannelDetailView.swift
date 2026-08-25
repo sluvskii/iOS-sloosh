@@ -565,16 +565,38 @@ public struct ChannelDetailView: View {
     }
 
     private func deletePostAction(_ post: ChannelPost) {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        self.posts.removeAll(where: { $0.id == post.id })
+        repo.saveChannelPostsToDisk(self.posts, channelId: currentChannel.id)
+
         Task {
             _ = await repo.deleteChannelPost(channelId: currentChannel.id, postId: post.id)
-            await loadPosts()
         }
     }
 
     private func toggleReaction(emoji: String, on post: ChannelPost) {
+        guard let myId = AuthRepository.shared.currentUser?.id else { return }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+
+        var newReactions = post.reactions ?? [:]
+        if newReactions[myId] == emoji {
+            newReactions.removeValue(forKey: myId)
+        } else {
+            newReactions[myId] = emoji
+        }
+
+        var updatedPost = post
+        updatedPost.reactions = newReactions.isEmpty ? nil : newReactions
+
+        // МГНОВЕННОЕ обновление на UI за 0 миллисекунд
+        if let idx = self.posts.firstIndex(where: { $0.id == post.id }) {
+            self.posts[idx] = updatedPost
+        }
+
+        repo.saveChannelPostsToDisk(self.posts, channelId: currentChannel.id)
+
         Task {
             _ = await repo.toggleChannelPostReaction(channelId: currentChannel.id, postId: post.id, emoji: emoji)
-            await loadPosts()
         }
     }
 
