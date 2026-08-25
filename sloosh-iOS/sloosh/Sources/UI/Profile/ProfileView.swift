@@ -28,6 +28,7 @@ struct ProfileView: View {
     @State private var showSignOutAlert = false
     @State private var showAccountOptions = false
     @State private var showEditProfileSheet = false
+    @State private var showAdminDashboard = false
     @Namespace private var navigationTransition
     @AppStorage("cardDensity") private var cardDensity: CardDensity = .regular
     @State private var scrollOffsets: [FavoriteCategory: CGFloat] = [:]
@@ -139,6 +140,11 @@ struct ProfileView: View {
                                 isPresented: $showAccountOptions,
                                 titleVisibility: .visible
                             ) {
+                                if authRepo.isAdmin {
+                                    Button("Панель управления 🛡️") {
+                                        showAdminDashboard = true
+                                    }
+                                }
                                 Button("Редактировать профиль") {
                                     showEditProfileSheet = true
                                 }
@@ -198,6 +204,9 @@ struct ProfileView: View {
             }
             .sheet(isPresented: $showEditProfileSheet) {
                 EditProfileSheet()
+            }
+            .sheet(isPresented: $showAdminDashboard) {
+                AdminDashboardView()
             }
             .sheet(item: $directPlaybackMovie, onDismiss: {
                 if let pending = pendingPlayerConfig {
