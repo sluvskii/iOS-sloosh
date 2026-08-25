@@ -141,7 +141,7 @@ struct ProfileView: View {
                                 titleVisibility: .visible
                             ) {
                                 if authRepo.isAdmin {
-                                    Button("Панель управления 🛡️") {
+                                    Button("Панель управления") {
                                         showAdminDashboard = true
                                     }
                                 }
