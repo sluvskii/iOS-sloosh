@@ -47,13 +47,22 @@ public struct AdminUserItem: Identifiable, Sendable, Equatable {
     public var channelsCount: Int
 
     public var displayTitle: String {
-        if !displayName.isEmpty { return displayName }
-        if let t = tag, !t.isEmpty { return "@\(t)" }
+        let cleanName = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !cleanName.isEmpty { return cleanName }
+        if let t = tag, !t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return "@\(t.replacingOccurrences(of: "@", with: ""))"
+        }
+        if let em = email, !em.isEmpty {
+            let part = em.components(separatedBy: "@").first ?? em
+            return part
+        }
         return "Пользователь \(id.prefix(6))"
     }
 
     public var displayTag: String {
-        if let t = tag, !t.isEmpty { return "@\(t)" }
+        if let t = tag, !t.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return "@\(t.replacingOccurrences(of: "@", with: ""))"
+        }
         return ""
     }
 
@@ -130,44 +139,171 @@ public final class AdminRepository: ObservableObject {
     // MARK: - Fetch All Users
 
     public func fetchAllUsers() async -> [AdminUserItem] {
-        guard let url = await makeURL(path: "users") else { return [] }
-        guard let (data, response) = try? await URLSession.shared.data(from: url),
-              let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
-              !data.isEmpty, String(data: data, encoding: .utf8) != "null",
-              let rawDict = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
-            return []
-        }
+        var userMap: [String: AdminUserItem] = [:]
 
-        var list: [AdminUserItem] = []
-        for (uid, val) in rawDict {
-            guard let userDict = val as? [String: Any] else { continue }
-            let name = (userDict["displayName"] as? String) ?? (userDict["name"] as? String) ?? ""
-            let tag = userDict["tag"] as? String
-            let avatar = userDict["avatarUrl"] as? String ?? userDict["photoURL"] as? String
-            let email = userDict["email"] as? String
-            let isOnline = (userDict["isOnline"] as? Bool) ?? false
-            let isBanned = (userDict["isBanned"] as? Bool) ?? false
-            let createdAt = (userDict["createdAtMs"] as? NSNumber)?.int64Value ?? Int64(Date().timeIntervalSince1970 * 1000)
+        // 1. First fetch all profiles from /user_profiles.json (Most up-to-date and formatted)
+        if let url = await makeURL(path: "user_profiles"),
+           let (data, response) = try? await URLSession.shared.data(from: url),
+           let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
+           !data.isEmpty, String(data: data, encoding: .utf8) != "null",
+           let rawDict = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
+            for (uid, val) in rawDict {
+                guard let dict = val as? [String: Any] else { continue }
+                let name = (dict["displayName"] as? String) ?? (dict["name"] as? String) ?? ""
+                let tag = dict["tag"] as? String
+                let avatar = dict["avatarUrl"] as? String ?? dict["photoUrl"] as? String ?? dict["photoURL"] as? String
+                let email = dict["email"] as? String
+                let isOnline = (dict["isOnline"] as? Bool) ?? false
+                let isBanned = (dict["isBanned"] as? Bool) ?? false
+                let createdAt = (dict["createdAtMs"] as? NSNumber)?.int64Value ?? Int64(Date().timeIntervalSince1970 * 1000)
 
-            var channelsCount = 0
-            if let userChannels = userDict["channels"] as? [String: Any] {
-                channelsCount = userChannels.count
+                userMap[uid] = AdminUserItem(
+                    id: uid,
+                    displayName: name,
+                    tag: tag,
+                    avatarUrl: avatar,
+                    email: email,
+                    isOnline: isOnline,
+                    isBanned: isBanned,
+                    createdAtMs: createdAt,
+                    channelsCount: 0
+                )
             }
-
-            list.append(AdminUserItem(
-                id: uid,
-                displayName: name,
-                tag: tag,
-                avatarUrl: avatar,
-                email: email,
-                isOnline: isOnline,
-                isBanned: isBanned,
-                createdAtMs: createdAt,
-                channelsCount: channelsCount
-            ))
         }
 
-        let sorted = list.sorted { $0.createdAtMs > $1.createdAtMs }
+        // 2. Fetch /public_users.json (To catch any public directory entries)
+        if let url = await makeURL(path: "public_users"),
+           let (data, response) = try? await URLSession.shared.data(from: url),
+           let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
+           !data.isEmpty, String(data: data, encoding: .utf8) != "null",
+           let rawDict = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
+            for (uid, val) in rawDict {
+                guard let dict = val as? [String: Any] else { continue }
+                let name = (dict["displayName"] as? String) ?? (dict["name"] as? String) ?? ""
+                let tag = dict["tag"] as? String
+                let avatar = dict["avatarUrl"] as? String ?? dict["photoUrl"] as? String ?? dict["photoURL"] as? String
+                let isOnline = (dict["isOnline"] as? Bool) ?? false
+
+                if var existing = userMap[uid] {
+                    if existing.displayName.isEmpty && !name.isEmpty { existing.displayName = name }
+                    if (existing.tag == nil || existing.tag?.isEmpty == true) && tag != nil { existing.tag = tag }
+                    if existing.avatarUrl == nil && avatar != nil { existing.avatarUrl = avatar }
+                    userMap[uid] = existing
+                } else {
+                    userMap[uid] = AdminUserItem(
+                        id: uid,
+                        displayName: name,
+                        tag: tag,
+                        avatarUrl: avatar,
+                        email: nil,
+                        isOnline: isOnline,
+                        isBanned: false,
+                        createdAtMs: Int64(Date().timeIntervalSince1970 * 1000),
+                        channelsCount: 0
+                    )
+                }
+            }
+        }
+
+        // 3. Fetch /users.json (Parse nested 'profile' and count channels)
+        if let url = await makeURL(path: "users"),
+           let (data, response) = try? await URLSession.shared.data(from: url),
+           let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
+           !data.isEmpty, String(data: data, encoding: .utf8) != "null",
+           let rawDict = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
+            for (uid, val) in rawDict {
+                guard let userDict = val as? [String: Any] else { continue }
+                let profileDict = (userDict["profile"] as? [String: Any]) ?? userDict
+                let name = (profileDict["displayName"] as? String) ?? (profileDict["name"] as? String) ?? (userDict["displayName"] as? String) ?? ""
+                let tag = (profileDict["tag"] as? String) ?? (userDict["tag"] as? String)
+                let avatar = (profileDict["avatarUrl"] as? String) ?? (profileDict["photoUrl"] as? String) ?? (profileDict["photoURL"] as? String) ?? (userDict["avatarUrl"] as? String)
+                let email = (profileDict["email"] as? String) ?? (userDict["email"] as? String)
+                let isOnline = (profileDict["isOnline"] as? Bool) ?? (userDict["isOnline"] as? Bool) ?? false
+                let isBanned = (userDict["isBanned"] as? Bool) ?? false
+                let createdAt = (userDict["createdAtMs"] as? NSNumber)?.int64Value ?? Int64(Date().timeIntervalSince1970 * 1000)
+
+                var channelsCount = 0
+                if let userChannels = userDict["channels"] as? [String: Any] {
+                    channelsCount = userChannels.count
+                }
+
+                if var existing = userMap[uid] {
+                    if existing.displayName.isEmpty && !name.isEmpty { existing.displayName = name }
+                    if (existing.tag == nil || existing.tag?.isEmpty == true) && tag != nil { existing.tag = tag }
+                    if existing.avatarUrl == nil && avatar != nil { existing.avatarUrl = avatar }
+                    if existing.email == nil && email != nil { existing.email = email }
+                    existing.channelsCount = max(existing.channelsCount, channelsCount)
+                    existing.isBanned = isBanned
+                    userMap[uid] = existing
+                } else {
+                    userMap[uid] = AdminUserItem(
+                        id: uid,
+                        displayName: name,
+                        tag: tag,
+                        avatarUrl: avatar,
+                        email: email,
+                        isOnline: isOnline,
+                        isBanned: isBanned,
+                        createdAtMs: createdAt,
+                        channelsCount: channelsCount
+                    )
+                }
+            }
+        }
+
+        // 4. Also check /userTags.json to attach any tags
+        if let url = await makeURL(path: "userTags"),
+           let (data, response) = try? await URLSession.shared.data(from: url),
+           let http = response as? HTTPURLResponse, (200...299).contains(http.statusCode),
+           !data.isEmpty, String(data: data, encoding: .utf8) != "null",
+           let tagsDict = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] {
+            for (tagKey, uidVal) in tagsDict {
+                let uid = (uidVal as? String) ?? "\(uidVal)"
+                if var user = userMap[uid] {
+                    if user.tag == nil || user.tag?.isEmpty == true {
+                        user.tag = tagKey
+                        if user.displayName.isEmpty {
+                            user.displayName = tagKey
+                        }
+                        userMap[uid] = user
+                    }
+                }
+            }
+        }
+
+        // 5. Merge local known users from MessengerRepository
+        let localKnown = MessengerRepository.shared.getLocalKnownUsers()
+        for (uid, localUser) in localKnown {
+            if var existing = userMap[uid] {
+                if existing.displayName.isEmpty && !localUser.displayName.isEmpty {
+                    existing.displayName = localUser.displayName
+                }
+                if (existing.tag == nil || existing.tag?.isEmpty == true) && localUser.tag != nil {
+                    existing.tag = localUser.tag
+                }
+                if existing.avatarUrl == nil && localUser.avatarUrl != nil {
+                    existing.avatarUrl = localUser.avatarUrl
+                }
+                userMap[uid] = existing
+            } else if !localUser.displayName.isEmpty || localUser.tag != nil {
+                userMap[uid] = AdminUserItem(
+                    id: uid,
+                    displayName: localUser.displayName,
+                    tag: localUser.tag,
+                    avatarUrl: localUser.avatarUrl,
+                    email: nil,
+                    isOnline: localUser.isOnline,
+                    isBanned: false,
+                    createdAtMs: Int64(Date().timeIntervalSince1970 * 1000),
+                    channelsCount: 0
+                )
+            }
+        }
+
+        let sorted = Array(userMap.values).sorted {
+            if $0.isOnline != $1.isOnline { return $0.isOnline }
+            return $0.createdAtMs > $1.createdAtMs
+        }
         self.users = sorted
         return sorted
     }
