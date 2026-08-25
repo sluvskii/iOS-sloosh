@@ -19,10 +19,16 @@ public struct ChatDetailView: View {
     @State private var editingMessage: ChatMessage? = nil
 
     @State private var isPeerTyping: Bool = false
-    @State private var livePresence: (isOnline: Bool, lastSeenMs: Int64?) = (false, nil)
+    @State private var livePresence: (isOnline: Bool, lastSeenMs: Int64?)
 
     @FocusState private var isInputFocused: Bool
     @Environment(\.dismiss) private var dismiss
+
+    public init(peerUser: SlooshUser) {
+        self.peerUser = peerUser
+        let cached = UserPresenceService.shared.getCachedPresence(userId: peerUser.id) ?? (peerUser.isCurrentlyOnline, peerUser.lastSeenMs)
+        _livePresence = State(initialValue: cached)
+    }
 
     public var body: some View {
         ZStack {
@@ -790,6 +796,14 @@ public struct ChatInfoView: View {
     @StateObject private var repo = MessengerRepository.shared
     @Environment(\.dismiss) private var dismiss
     @State private var showDeleteConfirm: Bool = false
+    @State private var livePresence: (isOnline: Bool, lastSeenMs: Int64?)
+    @State private var pollTask: Task<Void, Never>? = nil
+
+    public init(peerUser: SlooshUser) {
+        self.peerUser = peerUser
+        let cached = UserPresenceService.shared.getCachedPresence(userId: peerUser.id) ?? (peerUser.isCurrentlyOnline, peerUser.lastSeenMs)
+        _livePresence = State(initialValue: cached)
+    }
 
     public var body: some View {
         ZStack {
@@ -799,7 +813,14 @@ public struct ChatInfoView: View {
                 VStack(spacing: 24) {
                     // Header Section (Avatar + Username)
                     VStack(spacing: 12) {
-                        SlooshAvatarView(user: peerUser, size: 100, showOnline: true)
+                        let isOnline = livePresence.isOnline
+                        SlooshAvatarView(
+                            avatarSource: peerUser.avatarUrl,
+                            fallbackText: peerUser.displayTitle,
+                            size: 100,
+                            showOnline: true,
+                            isOnline: isOnline
+                        )
 
                         VStack(spacing: 4) {
                             Text(peerUser.displayTitle)
@@ -812,9 +833,11 @@ public struct ChatInfoView: View {
                                     .foregroundColor(Color.slooshAccent)
                             }
 
-                            Text(peerUser.statusDescription)
-                                .font(.system(size: 14))
-                                .foregroundColor(peerUser.isCurrentlyOnline ? .slooshAccent : .secondary)
+                            let statusText = PresenceFormatter.formatLastSeen(isOnlineFlag: isOnline, lastSeenMs: livePresence.lastSeenMs)
+
+                            Text(statusText)
+                                .font(.system(size: 14, weight: isOnline ? .semibold : .regular))
+                                .foregroundColor(isOnline ? Color.slooshAccent : .secondary)
                                 .padding(.top, 2)
                         }
                     }
@@ -876,6 +899,27 @@ public struct ChatInfoView: View {
         }
         .navigationTitle("Информация")
         .navigationBarTitleDisplayMode(.inline)
+        .task {
+            let presence = await UserPresenceService.shared.fetchUserPresence(userId: peerUser.id)
+            self.livePresence = presence
+
+            pollTask?.cancel()
+            pollTask = Task {
+                while !Task.isCancelled {
+                    try? await Task.sleep(nanoseconds: 2_000_000_000)
+                    if Task.isCancelled { break }
+                    let fresh = await UserPresenceService.shared.fetchUserPresence(userId: peerUser.id)
+                    await MainActor.run {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            self.livePresence = fresh
+                        }
+                    }
+                }
+            }
+        }
+        .onDisappear {
+            pollTask?.cancel()
+        }
         .confirmationDialog(
             "Удалить чат с \(peerUser.displayTitle)?",
             isPresented: $showDeleteConfirm,
