@@ -589,7 +589,7 @@ struct MoviePosterCard: View {
                     tintOpacity: 0.78,
                     style: .dark
                 )
-                .frame(height: 72)
+                .frame(height: 50)
                 .frame(maxWidth: .infinity, alignment: .bottom)
                 .allowsHitTesting(false)
                 
@@ -599,7 +599,7 @@ struct MoviePosterCard: View {
                         .font(.system(size: 13, weight: .bold))
                         .foregroundStyle(Color.white.opacity(0.95))
                         .blendMode(.plusLighter)
-                        .lineLimit(movie.displayTitle.contains(" ") ? 2 : 1)
+                        .lineLimit(1)
                         .tracking(-0.3)
                         .allowsTightening(true)
                         .multilineTextAlignment(.leading)
