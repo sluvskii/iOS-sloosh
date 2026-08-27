@@ -22,19 +22,6 @@ public enum AppIconOption: String, CaseIterable, Identifiable {
         }
     }
 
-    public var subtitle: String {
-        switch self {
-        case .default:
-            return "Латинская типографика на неоновом фоне"
-        case .cyrillic:
-            return "Лаконичная кириллическая типографика"
-        case .glyph:
-            return "Динамичный геометрический знак"
-        case .cinema:
-            return "Многослойный силуэт кинозала"
-        }
-    }
-
     public var previewAsset: String {
         switch self {
         case .default:
