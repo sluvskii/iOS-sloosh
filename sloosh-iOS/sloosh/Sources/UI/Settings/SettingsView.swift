@@ -331,6 +331,7 @@ public struct AppIconPickerView: View {
     @ObservedObject private var iconManager = AppIconManager.shared
     private let columns = [
         GridItem(.flexible(), spacing: 16),
+        GridItem(.flexible(), spacing: 16),
         GridItem(.flexible(), spacing: 16)
     ]
 
@@ -338,72 +339,60 @@ public struct AppIconPickerView: View {
 
     public var body: some View {
         ScrollView {
-            VStack(spacing: 20) {
-                LazyVGrid(columns: columns, spacing: 16) {
+            VStack(spacing: 24) {
+                LazyVGrid(columns: columns, spacing: 20) {
                     ForEach(AppIconOption.allCases) { option in
                         let isSelected = iconManager.currentIcon == option
 
                         Button {
                             iconManager.selectIcon(option)
                         } label: {
-                            VStack(spacing: 12) {
-                                ZStack(alignment: .topTrailing) {
-                                    Image(option.previewAsset)
-                                        .resizable()
-                                        .aspectRatio(contentMode: .fit)
-                                        .frame(width: 84, height: 84)
-                                        .clipShape(RoundedRectangle(cornerRadius: 19, style: .continuous))
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: 19, style: .continuous)
-                                                .stroke(isSelected ? Color.slooshAccent : Color.primary.opacity(0.1), lineWidth: isSelected ? 2 : 1)
-                                        )
-                                        .shadow(color: Color.black.opacity(isSelected ? 0.25 : 0.12), radius: isSelected ? 8 : 4, x: 0, y: isSelected ? 4 : 2)
-
-                                    if isSelected {
-                                        Image(systemName: "checkmark.circle.fill")
-                                            .font(.system(size: 22, weight: .bold))
-                                            .foregroundStyle(.white, Color.slooshAccent)
-                                            .background(Circle().fill(Color.black.opacity(0.2)))
-                                            .offset(x: 6, y: -6)
-                                            .transition(.scale.combined(with: .opacity))
-                                    }
-                                }
-                                .padding(.top, 6)
+                            VStack(spacing: 8) {
+                                Image(option.previewAsset)
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fit)
+                                    .frame(width: 68, height: 68)
+                                    .clipShape(RoundedRectangle(cornerRadius: 15.5, style: .continuous))
+                                    .overlay(
+                                        RoundedRectangle(cornerRadius: 15.5, style: .continuous)
+                                            .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                                    )
+                                    .shadow(color: Color.black.opacity(0.12), radius: 4, x: 0, y: 2)
 
                                 Text(option.title)
-                                    .font(.system(size: 15, weight: isSelected ? .semibold : .medium))
-                                    .foregroundColor(.primary)
+                                    .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
+                                    .foregroundColor(isSelected ? .primary : .secondary)
                                     .lineLimit(1)
+
+                                Circle()
+                                    .strokeBorder(isSelected ? Color.slooshAccent : Color.secondary.opacity(0.35), lineWidth: 2)
+                                    .background(Circle().fill(isSelected ? Color.slooshAccent : Color.clear))
+                                    .frame(width: 18, height: 18)
+                                    .overlay(
+                                        Circle()
+                                            .fill(Color.black)
+                                            .frame(width: 6, height: 6)
+                                            .opacity(isSelected ? 1 : 0)
+                                    )
                             }
                             .frame(maxWidth: .infinity)
-                            .padding(.vertical, 16)
-                            .padding(.horizontal, 8)
-                            .background(
-                                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                                    .fill(Color(uiColor: .secondarySystemGroupedBackground))
-                            )
-                            .glassEffect(in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                                    .stroke(isSelected ? Color.slooshAccent.opacity(0.8) : Color.clear, lineWidth: 1.5)
-                            )
-                            .scaleEffect(isSelected ? 1.02 : 1.0)
-                            .animation(.spring(response: 0.35, dampingFraction: 0.75), value: isSelected)
+                            .padding(.vertical, 8)
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                     }
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 16)
+                .padding(.horizontal, 20)
+                .padding(.top, 24)
 
                 Text("Выбранная иконка будет отображаться на домашнем экране вашего устройства.")
                     .font(.footnote)
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 28)
-                    .padding(.top, 4)
+                    .padding(.top, 8)
             }
-            .padding(.bottom, 24)
+            .padding(.bottom, 32)
         }
         .background(Color(uiColor: .systemGroupedBackground))
         .navigationTitle("Иконка приложения")
