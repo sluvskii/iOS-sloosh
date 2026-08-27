@@ -109,17 +109,50 @@ func allohaTranslationNamesMatch(_ lhs: String?, _ rhs: String?, exactOnly: Bool
         return true
     }
     
-    // Check for significant word overlap (e.g. "AlexFilm" vs "AlexFilm Studio")
+    if exactOnly {
+        return false
+    }
+    
+    // Studios that must NEVER cross-match with each other
+    let studios = [
+        "hdrezka", "rezka", "red head sound", "rhs", "lostfilm", "кубик", "kubik",
+        "tvshows", "alexfilm", "jaskier", "newstudio", "flarrow", "пифагор",
+        "невафильм", "force media", "coldfilm", "shadowcraft", "лостфильм", "ред хед саунд"
+    ]
+    
+    let leftStudios = studios.filter { left.contains($0) }
+    let rightStudios = studios.filter { right.contains($0) }
+    
+    // If both have recognized studio tags, they MUST share at least one studio tag
+    if !leftStudios.isEmpty && !rightStudios.isEmpty {
+        let common = Set(leftStudios).intersection(Set(rightStudios))
+        if common.isEmpty {
+            return false
+        }
+    }
+    
+    // Dubbed vs Multi-voice check: if one is specifically Dubbed and the other is Multi-voice / Two-voice, never match
+    let isDub: (String) -> Bool = { $0.contains("дубляж") || $0.contains("дублирован") }
+    let isMvo: (String) -> Bool = { $0.contains("многоголосый") || $0.contains("двухголосый") || $0.contains("закадровый") }
+    if (isDub(left) && isMvo(right)) || (isMvo(left) && isDub(right)) {
+        return false
+    }
+    
+    // Token-based matching with strict word boundary
     let leftWords = Set(left.components(separatedBy: CharacterSet.alphanumerics.inverted).filter { $0.count > 2 })
     let rightWords = Set(right.components(separatedBy: CharacterSet.alphanumerics.inverted).filter { $0.count > 2 })
     
     if !leftWords.isEmpty && !rightWords.isEmpty {
-        if leftWords == rightWords || leftWords.isSubset(of: rightWords) || rightWords.isSubset(of: leftWords) {
+        if leftWords == rightWords {
             return true
         }
-    } else if left.contains(right) || right.contains(left) {
-        // Fallback for very short names (like "en", "ru", "qtv")
-        return true
+        let intersection = leftWords.intersection(rightWords)
+        if intersection.count >= 2 {
+            return true
+        }
+        if intersection.count == 1, let word = intersection.first, studios.contains(word) {
+            return true
+        }
     }
     
     let isOriginalOrEnglish: (String) -> Bool = { name in
