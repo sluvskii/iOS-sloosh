@@ -140,7 +140,7 @@ class HlsProxyServer {
         stateLock.withLock {
             listener?.cancel()
             listener = nil
-            isListenerAlive = false
+            _isListenerAlive = false
             currentMasterUrl = nil
             self.voices = []
             self.subtitles = []

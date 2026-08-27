@@ -175,7 +175,7 @@ func allohaTranslationNamesMatch(_ lhs: String?, _ rhs: String?, exactOnly: Bool
 // MARK: - Selective SSL Delegate
 // Bypasses certificate validation only for Alloha CDN hosts that use self-signed certs.
 // This is intentionally narrow — all other hosts still go through default cert validation.
-class AllohaTrustedSessionDelegate: NSObject, URLSessionDelegate, URLSessionTaskDelegate, @unchecked Sendable {
+class AllohaTrustedSessionDelegate: NSObject, @preconcurrency URLSessionDelegate, @preconcurrency URLSessionTaskDelegate, @unchecked Sendable {
     
     private static let trustedHosts: Set<String> = [
         "alloha.tv", "alloh.tv",
@@ -185,7 +185,7 @@ class AllohaTrustedSessionDelegate: NSObject, URLSessionDelegate, URLSessionTask
         "videocdn.tv", "dhklxm.ru", "cdnhl.ru"
     ]
     
-    func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge, completionHandler: @escaping @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+    func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge, completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
         guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
               let serverTrust = challenge.protectionSpace.serverTrust else {
             completionHandler(.performDefaultHandling, nil)
