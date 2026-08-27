@@ -25,13 +25,13 @@ public enum AppIconOption: String, CaseIterable, Identifiable {
     public var subtitle: String {
         switch self {
         case .default:
-            return "Типографика Sloosh на акцентном фоне"
+            return "Латинская типографика на неоновом фоне"
         case .cyrillic:
-            return "Типографика Слуш на русском"
+            return "Лаконичная кириллическая типографика"
         case .glyph:
-            return "Классический символ Sloosh"
+            return "Динамичный геометрический знак"
         case .cinema:
-            return "Атмосфера кинозала и зрителей"
+            return "Многослойный силуэт кинозала"
         }
     }
 
