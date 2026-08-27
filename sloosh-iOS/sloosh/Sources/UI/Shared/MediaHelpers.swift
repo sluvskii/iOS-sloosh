@@ -68,36 +68,63 @@ func cleanTranslationName(_ rawName: String) -> String {
     
     let lower = name.lowercased()
     
-    // 3. Распознавание нерусских языков и назначение флагов
-    let nonRussianLanguages: [(keywords: [String], flag: String, defaultName: String)] = [
-        (["english", "английский", "original", "оригинал", "eng", "usa"], "🇺🇸", "Английский"),
-        (["ukrainian", "украинский", "укр", "ukr"], "🇺🇦", "Украинский"),
-        (["kazakh", "казахский", "каз", "kz"], "🇰🇿", "Казахский"),
-        (["georgian", "грузинский", "груз"], "🇬🇪", "Грузинский"),
-        (["japanese", "японский", "яп"], "🇯🇵", "Японский"),
-        (["korean", "корейский", "кор"], "🇰🇷", "Корейский"),
-        (["chinese", "китайский", "кит"], "🇨🇳", "Китайский"),
-        (["french", "французский", "фр"], "🇫🇷", "Французский"),
-        (["german", "немецкий", "нем"], "🇩🇪", "Немецкий"),
-        (["spanish", "испанский", "исп"], "🇪🇸", "Испанский"),
-        (["italian", "итальянский", "ит"], "🇮🇹", "Итальянский"),
-        (["turkish", "турецкий", "тур"], "🇹🇷", "Турецкий")
-    ]
-    
-    for item in nonRussianLanguages {
-        for kw in item.keywords {
-            if lower == kw || lower.hasPrefix(kw + " ") || lower.contains(" " + kw) {
-                if lower == kw || lower == "оригинал" || lower == "original" || lower == "english" || lower == "английский" {
-                    return "\(item.flag) \(item.defaultName)"
-                }
-                let cleanWithoutPrefix = name.replacingOccurrences(of: "(?i)^" + kw + "\\s*", with: "", options: .regularExpression).trimmingCharacters(in: .whitespacesAndNewlines)
-                let finalTitle = cleanWithoutPrefix.isEmpty ? item.defaultName : cleanWithoutPrefix
-                return "\(item.flag) \(finalTitle)"
-            }
-        }
+    // 3. Распознавание конкретных иностранных языков (включая оригиналы аниме, дорам и европейского кино)
+    if lower.contains("japanese") || lower.contains("япон") || lower == "jap" || lower == "яп" {
+        let clean = name.replacingOccurrences(of: "(?i)^(japanese|японский|яп|jap)\\s*", with: "", options: .regularExpression).trimmingCharacters(in: .whitespacesAndNewlines)
+        return clean.isEmpty ? "🇯🇵 Японский" : "🇯🇵 \(clean)"
+    }
+    if lower.contains("korean") || lower.contains("корей") || lower == "kor" || lower == "кор" {
+        let clean = name.replacingOccurrences(of: "(?i)^(korean|корейский|кор|kor)\\s*", with: "", options: .regularExpression).trimmingCharacters(in: .whitespacesAndNewlines)
+        return clean.isEmpty ? "🇰🇷 Корейский" : "🇰🇷 \(clean)"
+    }
+    if lower.contains("chinese") || lower.contains("китай") || lower == "chi" || lower == "кит" {
+        let clean = name.replacingOccurrences(of: "(?i)^(chinese|китайский|кит|chi)\\s*", with: "", options: .regularExpression).trimmingCharacters(in: .whitespacesAndNewlines)
+        return clean.isEmpty ? "🇨🇳 Китайский" : "🇨🇳 \(clean)"
+    }
+    if lower.contains("ukrainian") || lower.contains("украин") || lower == "укр" || lower == "ukr" {
+        let clean = name.replacingOccurrences(of: "(?i)^(ukrainian|украинский|укр|ukr)\\s*", with: "", options: .regularExpression).trimmingCharacters(in: .whitespacesAndNewlines)
+        return clean.isEmpty ? "🇺🇦 Украинский" : "🇺🇦 \(clean)"
+    }
+    if lower.contains("kazakh") || lower.contains("казах") || lower == "каз" || lower == "kz" {
+        let clean = name.replacingOccurrences(of: "(?i)^(kazakh|казахский|каз|kz)\\s*", with: "", options: .regularExpression).trimmingCharacters(in: .whitespacesAndNewlines)
+        return clean.isEmpty ? "🇰🇿 Казахский" : "🇰🇿 \(clean)"
+    }
+    if lower.contains("georgian") || lower.contains("грузин") || lower == "geo" {
+        let clean = name.replacingOccurrences(of: "(?i)^(georgian|грузинский|geo)\\s*", with: "", options: .regularExpression).trimmingCharacters(in: .whitespacesAndNewlines)
+        return clean.isEmpty ? "🇬🇪 Грузинский" : "🇬🇪 \(clean)"
+    }
+    if lower.contains("french") || lower.contains("француз") || lower == "fra" || lower == "фр" {
+        let clean = name.replacingOccurrences(of: "(?i)^(french|французский|фр|fra)\\s*", with: "", options: .regularExpression).trimmingCharacters(in: .whitespacesAndNewlines)
+        return clean.isEmpty ? "🇫🇷 Французский" : "🇫🇷 \(clean)"
+    }
+    if lower.contains("german") || lower.contains("немец") || lower == "ger" || lower == "нем" {
+        let clean = name.replacingOccurrences(of: "(?i)^(german|немецкий|нем|ger)\\s*", with: "", options: .regularExpression).trimmingCharacters(in: .whitespacesAndNewlines)
+        return clean.isEmpty ? "🇩🇪 Немецкий" : "🇩🇪 \(clean)"
+    }
+    if lower.contains("spanish") || lower.contains("испан") || lower == "spa" || lower == "исп" {
+        let clean = name.replacingOccurrences(of: "(?i)^(spanish|испанский|исп|spa)\\s*", with: "", options: .regularExpression).trimmingCharacters(in: .whitespacesAndNewlines)
+        return clean.isEmpty ? "🇪🇸 Испанский" : "🇪🇸 \(clean)"
+    }
+    if lower.contains("italian") || lower.contains("итальян") || lower == "ita" || lower == "ит" {
+        let clean = name.replacingOccurrences(of: "(?i)^(italian|итальянский|ит|ita)\\s*", with: "", options: .regularExpression).trimmingCharacters(in: .whitespacesAndNewlines)
+        return clean.isEmpty ? "🇮🇹 Итальянский" : "🇮🇹 \(clean)"
+    }
+    if lower.contains("turkish") || lower.contains("турец") || lower == "tur" || lower == "тур" {
+        let clean = name.replacingOccurrences(of: "(?i)^(turkish|турецкий|тур|tur)\\s*", with: "", options: .regularExpression).trimmingCharacters(in: .whitespacesAndNewlines)
+        return clean.isEmpty ? "🇹🇷 Турецкий" : "🇹🇷 \(clean)"
     }
     
-    // 4. Для всех русских озвучек (Дубляж, HDRezka, Red Head Sound, LostFilm, Многоголосый и т.д.) добавляем флаг РФ 🇷🇺
+    // 4. Английский / Оригинал (любые вариации Original, Оригинал, English, Английский, ENG, USA, UK)
+    if lower.contains("original") || lower.contains("оригинал") || lower.contains("english") || lower.contains("английск") || lower == "eng" || lower == "usa" || lower.hasPrefix("eng ") || lower.hasSuffix(" eng") || lower.contains(" eng ") {
+        if lower.contains("english") || lower.contains("английск") {
+            let clean = name.replacingOccurrences(of: "(?i)^(english|английский)\\s*", with: "", options: .regularExpression).trimmingCharacters(in: .whitespacesAndNewlines)
+            return clean.isEmpty ? "🇺🇸 Английский" : "🇺🇸 \(clean)"
+        }
+        let clean = name.replacingOccurrences(of: "(?i)^(original|оригинал|оригинальная дорожка|eng|usa)\\s*", with: "", options: .regularExpression).trimmingCharacters(in: .whitespacesAndNewlines)
+        return clean.isEmpty ? "🇺🇸 Оригинал" : "🇺🇸 \(clean)"
+    }
+    
+    // 5. Для всех русских озвучек и студий (Дубляж, HDRezka, Red Head Sound, AlexFilm, LostFilm, Кубик в Кубе, Многоголосый и т.д.)
     var cleanRus = name
     for rusPrefix in ["Russian", "Русский", "русский", "russian", "RU", "ru"] {
         if cleanRus.hasPrefix(rusPrefix) {
