@@ -329,57 +329,83 @@ struct PreviewMoviePosterCard: View {
 
 public struct AppIconPickerView: View {
     @ObservedObject private var iconManager = AppIconManager.shared
+    private let columns = [
+        GridItem(.flexible(), spacing: 16),
+        GridItem(.flexible(), spacing: 16)
+    ]
 
     public init() {}
 
     public var body: some View {
-        List {
-            Section {
-                ForEach(AppIconOption.allCases) { option in
-                    Button {
-                        iconManager.selectIcon(option)
-                    } label: {
-                        HStack(spacing: 16) {
-                            Image(option.previewAsset)
-                                .resizable()
-                                .aspectRatio(contentMode: .fit)
-                                .frame(width: 60, height: 60)
-                                .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 14, style: .continuous)
-                                        .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-                                )
-                                .shadow(color: Color.black.opacity(0.12), radius: 4, x: 0, y: 2)
+        ScrollView {
+            VStack(spacing: 20) {
+                LazyVGrid(columns: columns, spacing: 16) {
+                    ForEach(AppIconOption.allCases) { option in
+                        let isSelected = iconManager.currentIcon == option
 
-                            VStack(alignment: .leading, spacing: 3) {
+                        Button {
+                            iconManager.selectIcon(option)
+                        } label: {
+                            VStack(spacing: 12) {
+                                ZStack(alignment: .topTrailing) {
+                                    Image(option.previewAsset)
+                                        .resizable()
+                                        .aspectRatio(contentMode: .fit)
+                                        .frame(width: 84, height: 84)
+                                        .clipShape(RoundedRectangle(cornerRadius: 19, style: .continuous))
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 19, style: .continuous)
+                                                .stroke(isSelected ? Color.slooshAccent : Color.primary.opacity(0.1), lineWidth: isSelected ? 2 : 1)
+                                        )
+                                        .shadow(color: Color.black.opacity(isSelected ? 0.25 : 0.12), radius: isSelected ? 8 : 4, x: 0, y: isSelected ? 4 : 2)
+
+                                    if isSelected {
+                                        Image(systemName: "checkmark.circle.fill")
+                                            .font(.system(size: 22, weight: .bold))
+                                            .foregroundStyle(.white, Color.slooshAccent)
+                                            .background(Circle().fill(Color.black.opacity(0.2)))
+                                            .offset(x: 6, y: -6)
+                                            .transition(.scale.combined(with: .opacity))
+                                    }
+                                }
+                                .padding(.top, 6)
+
                                 Text(option.title)
-                                    .font(.system(size: 16, weight: .semibold))
+                                    .font(.system(size: 15, weight: isSelected ? .semibold : .medium))
                                     .foregroundColor(.primary)
-
-                                Text(option.subtitle)
-                                    .font(.system(size: 13))
-                                    .foregroundColor(.secondary)
+                                    .lineLimit(1)
                             }
-
-                            Spacer()
-
-                            if iconManager.currentIcon == option {
-                                Image(systemName: "checkmark")
-                                    .font(.system(size: 15, weight: .bold))
-                                    .foregroundColor(Color.slooshAccent)
-                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 16)
+                            .padding(.horizontal, 8)
+                            .background(
+                                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                    .fill(Color(uiColor: .secondarySystemGroupedBackground))
+                            )
+                            .glassEffect(in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                    .stroke(isSelected ? Color.slooshAccent.opacity(0.8) : Color.clear, lineWidth: 1.5)
+                            )
+                            .scaleEffect(isSelected ? 1.02 : 1.0)
+                            .animation(.spring(response: 0.35, dampingFraction: 0.75), value: isSelected)
                         }
-                        .padding(.vertical, 6)
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
-            } header: {
-                Text("Стиль иконки")
-            } footer: {
+                .padding(.horizontal, 16)
+                .padding(.top, 16)
+
                 Text("Выбранная иконка будет отображаться на домашнем экране вашего устройства.")
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 28)
+                    .padding(.top, 4)
             }
+            .padding(.bottom, 24)
         }
-        .listStyle(.insetGrouped)
+        .background(Color(uiColor: .systemGroupedBackground))
         .navigationTitle("Иконка приложения")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
