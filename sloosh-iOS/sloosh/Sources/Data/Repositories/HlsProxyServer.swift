@@ -56,10 +56,18 @@ class HlsProxyServer {
     
     func start(headers: [String: String], voices: [String] = [], subtitles: [PlaybackSubtitle] = [], mediaId: String = "", preferredVoiceName: String? = nil) {
         let isAlreadyRunning = stateLock.withLock {
-            self.headers = headers
-            self.voices = voices
-            self.subtitles = subtitles
-            self.mediaId = mediaId
+            if !headers.isEmpty {
+                self.headers = headers
+            }
+            if !voices.isEmpty {
+                self.voices = voices
+            }
+            if !subtitles.isEmpty {
+                self.subtitles = subtitles
+            }
+            if !mediaId.isEmpty {
+                self.mediaId = mediaId
+            }
             if let preferredVoiceName, !preferredVoiceName.isEmpty {
                 self.preferredVoiceName = preferredVoiceName
             }
@@ -67,7 +75,6 @@ class HlsProxyServer {
             // или уже .ready. Это предотвращает двойное создание на одном порту.
             return self.isListenerAlive || self.listener != nil
         }
-
         
         if isAlreadyRunning { return }
         
@@ -310,19 +317,45 @@ class HlsProxyServer {
         
         do {
             if isPlaylist {
-                let (data, response) = try await session.data(for: request)
-                guard !Task.isCancelled else { return }
-                guard let httpResponse = response as? HTTPURLResponse else {
+                var responseData: Data?
+                var httpResponse: HTTPURLResponse?
+
+                // Попробуем с ретраем до 3 раз при статусах 403 / 503 (кратковременный CDN handshake)
+                for attempt in 0..<3 {
+                    do {
+                        let (data, response) = try await session.data(for: request)
+                        if let resp = response as? HTTPURLResponse {
+                            httpResponse = resp
+                            responseData = data
+                            if resp.statusCode == 200 {
+                                break
+                            }
+                        }
+                    } catch {
+                        if attempt == 2 { throw error }
+                    }
+                    if attempt < 2 {
+                        try? await Task.sleep(nanoseconds: 200_000_000) // 200ms
+                    }
+                }
+
+                guard let httpResp = httpResponse, let data = responseData else {
                     AppDiagnostics.shared.log("HlsProxyServer fetchAndServe: invalid response for \(realUrl)")
                     self.send404(on: connection)
                     return
                 }
-                
-                let statusCode = httpResponse.statusCode
+
+                let statusCode = httpResp.statusCode
                 AppDiagnostics.shared.log("HlsProxyServer fetchAndServe: \(realUrl) returned \(statusCode)")
-                
-                if let content = String(data: data, encoding: .utf8) {
-                    let finalUrl = httpResponse.url ?? realUrl
+
+                guard statusCode == 200 else {
+                    guard !Task.isCancelled else { return }
+                    self.sendResponse(data: data, statusCode: statusCode, contentType: httpResp.mimeType ?? "text/plain", contentRange: nil, connection: connection)
+                    return
+                }
+
+                if let content = String(data: data, encoding: .utf8), content.contains("#EXT") {
+                    let finalUrl = httpResp.url ?? realUrl
                     let rewritten: String
                     if content.contains("#EXT-X-STREAM-INF") {
                         let playlistRewritten = PlaybackHlsRewriter.rewrite(
@@ -332,15 +365,13 @@ class HlsProxyServer {
                             mediaId: currentMediaId
                         )
 
-                        
                         AppDiagnostics.shared.log("HlsProxyServer: rewritten master playlist:\n\(playlistRewritten)")
-                        
                         rewritten = self.rewriteM3u8(content: playlistRewritten, baseUrl: finalUrl)
                     } else {
                         AppDiagnostics.shared.log("HlsProxyServer: playlist fallback:\n\(content)")
                         rewritten = self.rewriteM3u8(content: content, baseUrl: finalUrl)
                     }
-                    
+
                     let rewrittenData = rewritten.data(using: .utf8) ?? Data()
                     guard !Task.isCancelled else { return }
                     self.sendResponse(data: rewrittenData, statusCode: 200, contentType: "application/vnd.apple.mpegurl", contentRange: nil, connection: connection)
