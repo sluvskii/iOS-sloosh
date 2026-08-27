@@ -9,6 +9,7 @@ struct SettingsView: View {
     @AppStorage("posterQuality") private var posterQuality: PosterQuality = .high
     @AppStorage("appTheme") private var appTheme: AppTheme = .system
     @AppStorage("showOriginalTitle") private var showOriginalTitle = true
+    @ObservedObject private var iconManager = AppIconManager.shared
     @State private var tabBarShowsLabelsDraft = false
     @State private var applyTabBarLabelsTask: Task<Void, Never>?
     @State private var scrollOffset: CGFloat = 0
@@ -82,6 +83,46 @@ struct SettingsView: View {
                 }
                 .padding(.vertical, 4)
             }
+
+            Section("Иконка приложения") {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 18) {
+                        ForEach(AppIconOption.allCases) { option in
+                            let isSelected = iconManager.currentIcon == option
+                            Button {
+                                iconManager.selectIcon(option)
+                            } label: {
+                                VStack(spacing: 8) {
+                                    Image(option.previewAsset)
+                                        .resizable()
+                                        .aspectRatio(contentMode: .fit)
+                                        .frame(width: 60, height: 60)
+                                        .clipShape(RoundedRectangle(cornerRadius: 13.5, style: .continuous))
+                                        .overlay(
+                                            RoundedRectangle(cornerRadius: 13.5, style: .continuous)
+                                                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                                        )
+                                        .shadow(color: Color.black.opacity(0.12), radius: 3, x: 0, y: 2)
+                                        .padding(3.5)
+                                        .background(
+                                            RoundedRectangle(cornerRadius: 17, style: .continuous)
+                                                .strokeBorder(isSelected ? Color.slooshAccent : Color.clear, lineWidth: 2)
+                                        )
+
+                                    Text(option.title)
+                                        .font(.system(size: 12, weight: isSelected ? .semibold : .regular))
+                                        .foregroundColor(isSelected ? .primary : .secondary)
+                                        .lineLimit(1)
+                                }
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.vertical, 10)
+                    .padding(.horizontal, 16)
+                }
+                .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+            }
             
             Section("Интерфейс") {
                 // Тема
@@ -95,27 +136,6 @@ struct SettingsView: View {
                         ForEach(AppTheme.allCases) { theme in
                             Text(theme.title).tag(theme)
                         }
-                    }
-                }
-
-                // Иконка приложения
-                NavigationLink {
-                    AppIconPickerView()
-                } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: "app.badge.fill")
-                            .foregroundStyle(Color.slooshAccent)
-                            .font(.system(size: 18))
-                            .frame(width: 24)
-
-                        Text("Иконка приложения")
-                            .font(.body)
-
-                        Spacer()
-
-                        Text(AppIconManager.shared.currentIcon.title)
-                            .font(.body)
-                            .foregroundColor(.secondary)
                     }
                 }
                 
@@ -325,82 +345,6 @@ struct PreviewMoviePosterCard: View {
     }
 }
 
-// MARK: - App Icon Picker Screen
 
-public struct AppIconPickerView: View {
-    @ObservedObject private var iconManager = AppIconManager.shared
-    private let columns = [
-        GridItem(.flexible(), spacing: 16),
-        GridItem(.flexible(), spacing: 16),
-        GridItem(.flexible(), spacing: 16)
-    ]
-
-    public init() {}
-
-    public var body: some View {
-        ScrollView {
-            VStack(spacing: 24) {
-                LazyVGrid(columns: columns, spacing: 20) {
-                    ForEach(AppIconOption.allCases) { option in
-                        let isSelected = iconManager.currentIcon == option
-
-                        Button {
-                            iconManager.selectIcon(option)
-                        } label: {
-                            VStack(spacing: 8) {
-                                Image(option.previewAsset)
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fit)
-                                    .frame(width: 68, height: 68)
-                                    .clipShape(RoundedRectangle(cornerRadius: 15.5, style: .continuous))
-                                    .overlay(
-                                        RoundedRectangle(cornerRadius: 15.5, style: .continuous)
-                                            .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-                                    )
-                                    .shadow(color: Color.black.opacity(0.12), radius: 4, x: 0, y: 2)
-
-                                Text(option.title)
-                                    .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
-                                    .foregroundColor(isSelected ? .primary : .secondary)
-                                    .lineLimit(1)
-
-                                Circle()
-                                    .strokeBorder(isSelected ? Color.slooshAccent : Color.secondary.opacity(0.35), lineWidth: 2)
-                                    .background(Circle().fill(isSelected ? Color.slooshAccent : Color.clear))
-                                    .frame(width: 18, height: 18)
-                                    .overlay(
-                                        Circle()
-                                            .fill(Color.black)
-                                            .frame(width: 6, height: 6)
-                                            .opacity(isSelected ? 1 : 0)
-                                    )
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 8)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(.horizontal, 20)
-                .padding(.top, 24)
-
-                Text("Выбранная иконка будет отображаться на домашнем экране вашего устройства.")
-                    .font(.footnote)
-                    .foregroundColor(.secondary)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, 28)
-                    .padding(.top, 8)
-            }
-            .padding(.bottom, 32)
-        }
-        .background(Color(uiColor: .systemGroupedBackground))
-        .navigationTitle("Иконка приложения")
-        .navigationBarTitleDisplayMode(.inline)
-        .onAppear {
-            iconManager.refreshCurrentIcon()
-        }
-    }
-}
 
 
