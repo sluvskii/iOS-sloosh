@@ -294,37 +294,47 @@ final class AllohaRepository: @unchecked Sendable {
                           let eDict = eValue as? [String: Any] else { continue }
                     
                     var parsedTrans: [AllohaTranslation] = []
-                    if let transObj = eDict["translation"] as? [String: Any] {
+                    if let transObj = (eDict["translation"] ?? eDict["translations"]) as? [String: Any] {
                         for (tKey, tValue) in transObj {
                             guard let tDict = tValue as? [String: Any],
-                                  var iframe = tDict["iframe"] as? String, !iframe.isEmpty else { continue }
+                                  var iframe = (tDict["iframe"] as? String) ?? (eDict["iframe"] as? String), !iframe.isEmpty else { continue }
                             if iframe.hasPrefix("//") {
                                 iframe = "https:" + iframe
                             }
                             iframe = injectTranslationId(tKey, into: iframe)
-                            let transName = tDict["translation"] as? String ?? "Unknown"
+                            let transName = (tDict["translation"] as? String) ?? (tDict["name"] as? String) ?? "AlexFilm"
                             
                             let cleanTitle = normalizedAllohaTranslationName(transName)
                             let lower = cleanTitle.lowercased()
                             if !lower.contains("субтитр") && !lower.contains("subtitle") {
-                                parsedTrans.append(AllohaTranslation(id: tKey, name: cleanTitle, iframeUrl: iframe, streamUrl: nil))
+                                parsedTrans.append(AllohaTranslation(id: tKey, name: cleanTitle.isEmpty ? transName : cleanTitle, iframeUrl: iframe, streamUrl: nil))
                             }
                         }
-                    } else if let transArray = eDict["translation"] as? [[String: Any]] {
+                    } else if let transArray = (eDict["translation"] ?? eDict["translations"]) as? [[String: Any]] {
                         for (index, tDict) in transArray.enumerated() {
-                            guard var iframe = tDict["iframe"] as? String, !iframe.isEmpty else { continue }
+                            guard var iframe = (tDict["iframe"] as? String) ?? (eDict["iframe"] as? String), !iframe.isEmpty else { continue }
                             if iframe.hasPrefix("//") {
                                 iframe = "https:" + iframe
                             }
                             iframe = injectTranslationId(String(index), into: iframe)
-                            let transName = tDict["translation"] as? String ?? "Unknown"
+                            let transName = (tDict["translation"] as? String) ?? (tDict["name"] as? String) ?? "AlexFilm"
                             
                             let cleanTitle = normalizedAllohaTranslationName(transName)
                             let lower = cleanTitle.lowercased()
                             if !lower.contains("субтитр") && !lower.contains("subtitle") {
-                                parsedTrans.append(AllohaTranslation(id: String(index), name: cleanTitle, iframeUrl: iframe, streamUrl: nil))
+                                parsedTrans.append(AllohaTranslation(id: String(index), name: cleanTitle.isEmpty ? transName : cleanTitle, iframeUrl: iframe, streamUrl: nil))
                             }
                         }
+                    } else if let transStr = eDict["translation"] as? String {
+                        var iframe = eDict["iframe"] as? String ?? ""
+                        if iframe.hasPrefix("//") { iframe = "https:" + iframe }
+                        if !iframe.isEmpty {
+                            let cleanTitle = normalizedAllohaTranslationName(transStr)
+                            parsedTrans.append(AllohaTranslation(id: "default", name: cleanTitle.isEmpty ? transStr : cleanTitle, iframeUrl: iframe, streamUrl: nil))
+                        }
+                    } else if var iframe = eDict["iframe"] as? String, !iframe.isEmpty {
+                        if iframe.hasPrefix("//") { iframe = "https:" + iframe }
+                        parsedTrans.append(AllohaTranslation(id: "default", name: "AlexFilm", iframeUrl: iframe, streamUrl: nil))
                     }
                     
                     parsedTrans.sort { $0.name < $1.name }
