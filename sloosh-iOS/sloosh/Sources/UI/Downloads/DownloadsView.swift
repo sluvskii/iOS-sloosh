@@ -59,8 +59,8 @@ struct DownloadsView: View {
     @ObservedObject private var downloadManager = DownloadManager.shared
     @State private var selectedFilter = 0 // 0 = Все, 1 = Фильмы, 2 = Сериалы
     @State private var playerItem: DownloadItem? = nil
-    
     @State private var scrollOffset: CGFloat = 0
+    @Environment(\.dismiss) private var dismiss
     
     private var blurOpacity: Double {
         let progress = max(0, scrollOffset) / 30.0
@@ -81,63 +81,77 @@ struct DownloadsView: View {
     }
     
     var body: some View {
-        NavigationStack {
-            Group {
-                if downloadManager.downloads.isEmpty {
-                    emptyView
-                } else {
-                    List {
-                        ForEach(listItems) { item in
-                            Button {
-                                if item.status == .completed {
-                                    playerItem = item
-                                }
-                            } label: {
-                                DownloadRowView(item: item)
+        Group {
+            if downloadManager.downloads.isEmpty {
+                emptyView
+            } else {
+                List {
+                    ForEach(listItems) { item in
+                        Button {
+                            if item.status == .completed {
+                                playerItem = item
                             }
-                            .buttonStyle(DownloadCardScaleButtonStyle())
-                            .listRowBackground(Color.clear)
-                            .listRowSeparator(.hidden)
-                            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                        } label: {
+                            DownloadRowView(item: item)
                         }
-                    }
-                    .listStyle(.plain)
-                    .scrollIndicators(.hidden)
-                    .onScrollGeometryChange(for: CGFloat.self) { geometry in
-                        geometry.contentOffset.y + geometry.contentInsets.top
-                    } action: { oldOffset, newOffset in
-                        scrollOffset = newOffset
+                        .buttonStyle(DownloadCardScaleButtonStyle())
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
                     }
                 }
+                .listStyle(.plain)
+                .scrollIndicators(.hidden)
+                .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                    geometry.contentOffset.y + geometry.contentInsets.top
+                } action: { oldOffset, newOffset in
+                    scrollOffset = newOffset
+                }
             }
-            .safeAreaInset(edge: .top, spacing: 0) {
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            VStack(spacing: 8) {
+                ZStack {
+                    Text("Загрузки")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(.primary)
+
+                    HStack {
+                        TelegramGlassIconButton(systemName: "chevron.left") {
+                            dismiss()
+                        }
+                        Spacer()
+                    }
+                }
+                .padding(.horizontal, 16)
+
                 DownloadsCategoryTextTabs(selectedFilter: $selectedFilter)
-                    .padding(.top, 4)
                     .padding(.bottom, 2)
-                    .background(
-                        VariableBlurView(tintOpacity: 1.0)
-                            .padding(.bottom, -30)
-                            .ignoresSafeArea(edges: .top)
-                            .opacity(blurOpacity)
-                            .animation(.easeInOut(duration: 0.2), value: blurOpacity)
-                    )
             }
-            .navigationTitle("Загрузки")
-            .toolbar(.hidden, for: .navigationBar)
-            .background(Color(UIColor.systemBackground))
-            .fullScreenCover(item: $playerItem, onDismiss: {
-                playerItem = nil
-                AppDelegate.lockToPortrait()
-            }) { item in
-                PlayerView(
-                    fallbackTitle: item.title,
-                    kpId: item.kpId,
-                    season: item.season,
-                    episode: item.episode,
-                    selectedVoiceover: item.translationName,
-                    directStreamUrl: item.localPlayableUrl?.absoluteString
-                )
-            }
+            .background(
+                VariableBlurView(tintOpacity: 1.0)
+                    .padding(.bottom, -60)
+                    .ignoresSafeArea(edges: .top)
+                    .opacity(blurOpacity)
+                    .animation(.easeInOut(duration: 0.2), value: blurOpacity)
+            )
+        }
+        .navigationTitle("Загрузки")
+        .toolbar(.hidden, for: .navigationBar)
+        .background(Color(UIColor.systemBackground))
+        .fullWidthSwipeBack()
+        .fullScreenCover(item: $playerItem, onDismiss: {
+            playerItem = nil
+            AppDelegate.lockToPortrait()
+        }) { item in
+            PlayerView(
+                fallbackTitle: item.title,
+                kpId: item.kpId,
+                season: item.season,
+                episode: item.episode,
+                selectedVoiceover: item.translationName,
+                directStreamUrl: item.localPlayableUrl?.absoluteString
+            )
         }
     }
     
