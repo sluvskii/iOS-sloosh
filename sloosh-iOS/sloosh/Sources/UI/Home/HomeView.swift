@@ -596,7 +596,8 @@ struct MoviePosterCard: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text(movie.displayTitle)
                         .font(.system(size: 13, weight: .bold))
-                        .foregroundColor(.white)
+                        .foregroundStyle(Color.white.opacity(0.95))
+                        .blendMode(.plusLighter)
                         .lineLimit(movie.displayTitle.contains(" ") ? 2 : 1)
                         .tracking(-0.3)
                         .allowsTightening(true)
@@ -608,17 +609,20 @@ struct MoviePosterCard: View {
                     if let y = yearStr, let g = genreStr {
                         Text("\(y) • \(g)")
                             .font(.system(size: 10, weight: .semibold))
-                            .foregroundColor(.white.opacity(0.75))
+                            .foregroundStyle(Color.white.opacity(0.65))
+                            .blendMode(.plusLighter)
                             .lineLimit(1)
                     } else if let y = yearStr {
                         Text(y)
                             .font(.system(size: 10, weight: .semibold))
-                            .foregroundColor(.white.opacity(0.75))
+                            .foregroundStyle(Color.white.opacity(0.65))
+                            .blendMode(.plusLighter)
                             .lineLimit(1)
                     } else if let g = genreStr {
                         Text(g)
                             .font(.system(size: 10, weight: .semibold))
-                            .foregroundColor(.white.opacity(0.75))
+                            .foregroundStyle(Color.white.opacity(0.65))
+                            .blendMode(.plusLighter)
                             .lineLimit(1)
                     }
                 }
