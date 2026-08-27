@@ -86,6 +86,10 @@ func normalizedAllohaTranslationName(_ raw: String?) -> String {
         .trimmingCharacters(in: .whitespacesAndNewlines)
 
 
+    for flag in ["🇷🇺", "🇺🇸", "🇺🇦", "🇰🇿", "🇬🇪", "🇯🇵", "🇰🇷", "🇨🇳", "🇫🇷", "🇩🇪", "🇪🇸", "🇮🇹", "🇹🇷"] {
+        value = value.replacingOccurrences(of: flag, with: "")
+    }
+
     while value.hasPrefix("-") || value.hasPrefix(",") {
         value = String(value.dropFirst()).trimmingCharacters(in: .whitespaces)
     }
