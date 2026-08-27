@@ -196,6 +196,9 @@ struct ProfileView: View {
                         .animation(.easeInOut(duration: 0.2), value: blurOpacity)
                 )
             }
+            .navigationDestination(isPresented: $showsDownloads) {
+                DownloadsView()
+            }
             .navigationDestination(isPresented: $showsSettings) {
                 SettingsView()
             }
