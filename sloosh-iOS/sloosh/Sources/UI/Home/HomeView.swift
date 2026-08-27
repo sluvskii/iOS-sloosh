@@ -579,29 +579,24 @@ struct MoviePosterCard: View {
     }
 
     private var overlayBody: some View {
-        RemotePosterView(url: URL(string: movie.displayPosterUrl ?? ""), cornerRadius: 16) {
+        RemotePosterView(url: URL(string: movie.displayPosterUrl ?? ""), cornerRadius: 12) {
             ZStack(alignment: .bottomLeading) {
-                // Progressive blur at the bottom of the card
-                Rectangle()
-                    .glassEffect()
-                    .padding(.horizontal, -2)
-                    .padding(.bottom, -2)
-                    .mask(
-                        LinearGradient(
-                            stops: [
-                                .init(color: .clear, location: 0.3),
-                                .init(color: .black, location: 0.9)
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
+                // Soft dark gradient scrim at the bottom of the card for text legibility without blur
+                LinearGradient(
+                    stops: [
+                        .init(color: .clear, location: 0.35),
+                        .init(color: .black.opacity(0.82), location: 0.95)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .allowsHitTesting(false)
                 
                 // Metadata inside the poster
                 VStack(alignment: .leading, spacing: 1) {
                     Text(movie.displayTitle)
                         .font(.system(size: 13, weight: .bold))
-                        .foregroundColor(.primary)
+                        .foregroundColor(.white)
                         .lineLimit(movie.displayTitle.contains(" ") ? 2 : 1)
                         .tracking(-0.3)
                         .allowsTightening(true)
@@ -613,22 +608,22 @@ struct MoviePosterCard: View {
                     if let y = yearStr, let g = genreStr {
                         Text("\(y) • \(g)")
                             .font(.system(size: 10, weight: .semibold))
-                            .foregroundColor(.secondary)
+                            .foregroundColor(.white.opacity(0.75))
                             .lineLimit(1)
                     } else if let y = yearStr {
                         Text(y)
                             .font(.system(size: 10, weight: .semibold))
-                            .foregroundColor(.secondary)
+                            .foregroundColor(.white.opacity(0.75))
                             .lineLimit(1)
                     } else if let g = genreStr {
                         Text(g)
                             .font(.system(size: 10, weight: .semibold))
-                            .foregroundColor(.secondary)
+                            .foregroundColor(.white.opacity(0.75))
                             .lineLimit(1)
                     }
                 }
-                .padding(.horizontal, 10)
-                .padding(.bottom, 10)
+                .padding(.horizontal, 8)
+                .padding(.bottom, 8)
                 
                 // Rating overlay on top-left of the poster
                 if let rating = movie.rating, rating > 0 {
@@ -648,10 +643,9 @@ struct MoviePosterCard: View {
                     }
                 }
             }
-            .environment(\.colorScheme, .dark)
         }
         .aspectRatio(2/3, contentMode: .fit)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }
 
@@ -701,7 +695,7 @@ struct MoviePosterCardPlaceholder: View {
             Rectangle()
                 .fill(Color.gray.opacity(0.2))
                 .aspectRatio(2/3, contentMode: .fit)
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .shimmer()
         }
     }

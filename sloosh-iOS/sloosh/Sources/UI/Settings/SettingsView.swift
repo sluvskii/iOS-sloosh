@@ -304,7 +304,7 @@ struct PreviewMoviePosterCard: View {
     var body: some View {
         let cardHeight = style == .classic ? width * 1.5 + 34 : width * 1.5
         VStack(alignment: .leading, spacing: style == .classic ? 8 : 0) {
-            RoundedRectangle(cornerRadius: style == .overlay ? 16 : 12, style: .continuous)
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
                 .fill(Color.secondary.opacity(0.15))
                 .frame(width: width, height: width * 1.5)
                 .overlay(
@@ -321,7 +321,7 @@ struct PreviewMoviePosterCard: View {
                             .frame(height: 10)
                             .frame(width: width * 0.45)
                     }
-                    .padding(10)
+                    .padding(8)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .opacity(style == .overlay ? 1.0 : 0.0)
                 )
