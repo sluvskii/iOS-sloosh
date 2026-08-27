@@ -92,28 +92,30 @@ struct SettingsView: View {
                             Button {
                                 iconManager.selectIcon(option)
                             } label: {
-                                VStack(spacing: 8) {
+                                VStack(spacing: 4) {
                                     Image(option.previewAsset)
                                         .resizable()
                                         .aspectRatio(contentMode: .fit)
-                                        .frame(width: 60, height: 60)
-                                        .clipShape(RoundedRectangle(cornerRadius: 13.5, style: .continuous))
+                                        .frame(width: 58, height: 58)
+                                        .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
                                         .overlay(
-                                            RoundedRectangle(cornerRadius: 13.5, style: .continuous)
+                                            RoundedRectangle(cornerRadius: 13, style: .continuous)
                                                 .stroke(Color.primary.opacity(0.08), lineWidth: 1)
                                         )
                                         .shadow(color: Color.black.opacity(0.12), radius: 3, x: 0, y: 2)
-                                        .padding(3.5)
+                                        .padding(3)
                                         .background(
-                                            RoundedRectangle(cornerRadius: 17, style: .continuous)
+                                            RoundedRectangle(cornerRadius: 16, style: .continuous)
                                                 .strokeBorder(isSelected ? Color.slooshAccent : Color.clear, lineWidth: 2)
                                         )
+                                        .scaleEffect(isSelected ? 1.04 : 1.0)
 
                                     Text(option.title)
-                                        .font(.system(size: 12, weight: isSelected ? .semibold : .regular))
-                                        .foregroundColor(isSelected ? .primary : .secondary)
+                                        .font(.system(size: 12, weight: .medium))
+                                        .foregroundColor(isSelected ? Color.slooshAccent : Color.secondary)
                                         .lineLimit(1)
                                 }
+                                .animation(.spring(response: 0.35, dampingFraction: 0.72), value: isSelected)
                             }
                             .buttonStyle(.plain)
                         }
