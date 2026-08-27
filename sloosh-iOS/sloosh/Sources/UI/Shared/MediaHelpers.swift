@@ -36,10 +36,15 @@ func isCartoonByTitle(_ title: String?) -> Bool {
 
 // MARK: - Translation Name Sanitization
 
-/// Очищает и красиво форматирует названия озвучек (убирает тех. релиз-теги типа INTERNAL2160pWEB-DL, переводит языковые имена)
+/// Очищает и красиво форматирует названия озвучек (убирает тех. релиз-теги типа INTERNAL2160pWEB-DL, добавляет флаги стран)
 func cleanTranslationName(_ rawName: String) -> String {
     var name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !name.isEmpty else { return "По умолчанию" }
+    guard !name.isEmpty else { return "🇷🇺 По умолчанию" }
+    
+    // Если уже начинается с эмодзи-флага, возвращаем как есть
+    if name.unicodeScalars.first?.properties.isEmoji == true && name.count > 2 {
+        return name
+    }
     
     // 1. Убираем громоздкие сцен-теги релиза
     if let regex = try? NSRegularExpression(pattern: "(?i)[a-z0-9._-]{3,}(?:2160p|1080p|720p|480p|internal|web-dl|web-dlrip|bdrip|bluray|hdr10|hdr|dv|hevc|x264|x265|spacehd\\d*)[a-z0-9._-]*", options: []) {
@@ -61,48 +66,49 @@ func cleanTranslationName(_ rawName: String) -> String {
         name = rawName.components(separatedBy: " ").first ?? rawName
     }
     
-    // 3. Лаконичное форматирование: замена названия языка эмодзи флагом страны
-    let languageMappings: [(prefix: String, flag: String, defaultName: String)] = [
-        ("Russian", "🇷🇺", "Русский"),
-        ("Русский", "🇷🇺", "Русский"),
-        ("English", "🇺🇸", "Английский"),
-        ("Английский", "🇺🇸", "Английский"),
-        ("Ukrainian", "🇺🇦", "Украинский"),
-        ("Украинский", "🇺🇦", "Украинский"),
-        ("Kazakh", "🇰🇿", "Казахский"),
-        ("Казахский", "🇰🇿", "Казахский"),
-        ("Georgian", "🇬🇪", "Грузинский"),
-        ("Грузинский", "🇬🇪", "Грузинский"),
-        ("Spanish", "🇪🇸", "Испанский"),
-        ("Испанский", "🇪🇸", "Испанский"),
-        ("German", "🇩🇪", "Немецкий"),
-        ("Немецкий", "🇩🇪", "Немецкий"),
-        ("French", "🇫🇷", "Французский"),
-        ("Французский", "🇫🇷", "Французский"),
-        ("Italian", "🇮🇹", "Итальянский"),
-        ("Итальянский", "🇮🇹", "Итальянский"),
-        ("Japanese", "🇯🇵", "Японский"),
-        ("Японский", "🇯🇵", "Японский"),
-        ("Korean", "🇰🇷", "Корейский"),
-        ("Корейский", "🇰🇷", "Корейский"),
-        ("Chinese", "🇨🇳", "Китайский"),
-        ("Китайский", "🇨🇳", "Китайский")
+    let lower = name.lowercased()
+    
+    // 3. Распознавание нерусских языков и назначение флагов
+    let nonRussianLanguages: [(keywords: [String], flag: String, defaultName: String)] = [
+        (["english", "английский", "original", "оригинал", "eng", "usa"], "🇺🇸", "Английский"),
+        (["ukrainian", "украинский", "укр", "ukr"], "🇺🇦", "Украинский"),
+        (["kazakh", "казахский", "каз", "kz"], "🇰🇿", "Казахский"),
+        (["georgian", "грузинский", "груз"], "🇬🇪", "Грузинский"),
+        (["japanese", "японский", "яп"], "🇯🇵", "Японский"),
+        (["korean", "корейский", "кор"], "🇰🇷", "Корейский"),
+        (["chinese", "китайский", "кит"], "🇨🇳", "Китайский"),
+        (["french", "французский", "фр"], "🇫🇷", "Французский"),
+        (["german", "немецкий", "нем"], "🇩🇪", "Немецкий"),
+        (["spanish", "испанский", "исп"], "🇪🇸", "Испанский"),
+        (["italian", "итальянский", "ит"], "🇮🇹", "Итальянский"),
+        (["turkish", "турецкий", "тур"], "🇹🇷", "Турецкий")
     ]
-
-    var baseTitle = name
-    for (lang, flag, defaultName) in languageMappings {
-        if name.hasPrefix(lang) {
-            let remainder = name.dropFirst(lang.count).trimmingCharacters(in: .whitespacesAndNewlines)
-            if remainder.isEmpty {
-                baseTitle = "\(flag) \(defaultName)"
-            } else {
-                baseTitle = "\(flag) \(remainder)"
+    
+    for item in nonRussianLanguages {
+        for kw in item.keywords {
+            if lower == kw || lower.hasPrefix(kw + " ") || lower.contains(" " + kw) {
+                if lower == kw || lower == "оригинал" || lower == "original" || lower == "english" || lower == "английский" {
+                    return "\(item.flag) \(item.defaultName)"
+                }
+                let cleanWithoutPrefix = name.replacingOccurrences(of: "(?i)^" + kw + "\\s*", with: "", options: .regularExpression).trimmingCharacters(in: .whitespacesAndNewlines)
+                let finalTitle = cleanWithoutPrefix.isEmpty ? item.defaultName : cleanWithoutPrefix
+                return "\(item.flag) \(finalTitle)"
             }
-            break
         }
     }
     
-    return baseTitle
+    // 4. Для всех русских озвучек (Дубляж, HDRezka, Red Head Sound, LostFilm, Многоголосый и т.д.) добавляем флаг РФ 🇷🇺
+    var cleanRus = name
+    for rusPrefix in ["Russian", "Русский", "русский", "russian", "RU", "ru"] {
+        if cleanRus.hasPrefix(rusPrefix) {
+            cleanRus = cleanRus.dropFirst(rusPrefix.count).trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+    }
+    if cleanRus.isEmpty {
+        cleanRus = "Русский"
+    }
+    
+    return "🇷🇺 \(cleanRus)"
 }
 
 
