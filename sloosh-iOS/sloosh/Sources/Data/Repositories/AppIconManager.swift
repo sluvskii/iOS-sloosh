@@ -5,6 +5,7 @@ public enum AppIconOption: String, CaseIterable, Identifiable {
     case `default` = "default"
     case cyrillic = "AppIcon-Cyrillic"
     case glyph = "AppIcon-Glyph"
+    case cinema = "AppIcon-Cinema"
 
     public var id: String { rawValue }
 
@@ -16,6 +17,8 @@ public enum AppIconOption: String, CaseIterable, Identifiable {
             return "Кириллица"
         case .glyph:
             return "Символ"
+        case .cinema:
+            return "Кинотеатр"
         }
     }
 
@@ -27,6 +30,8 @@ public enum AppIconOption: String, CaseIterable, Identifiable {
             return "Типографика Слуш на русском"
         case .glyph:
             return "Классический символ Sloosh"
+        case .cinema:
+            return "Атмосфера кинозала и зрителей"
         }
     }
 
@@ -38,6 +43,8 @@ public enum AppIconOption: String, CaseIterable, Identifiable {
             return "AppIconPreview-Cyrillic"
         case .glyph:
             return "AppIconPreview-Glyph"
+        case .cinema:
+            return "AppIconPreview-Cinema"
         }
     }
 
