@@ -277,12 +277,27 @@ final class AllohaRuntimeResolver: NSObject, WKNavigationDelegate, WKScriptMessa
         guard !didFinish else { return }
         didFinish = true
 
+        var finalResult = result
+        var resHeaders = (result["headers"] as? [String: String]) ?? self.headers
+        if resHeaders["referer"] == nil || resHeaders["referer"]?.isEmpty == true {
+            if let base = self.baseURL {
+                resHeaders["referer"] = base.absoluteString
+                if let host = base.host, let scheme = base.scheme {
+                    resHeaders["origin"] = "\(scheme)://\(host)"
+                }
+            }
+        }
+        if resHeaders["user-agent"] == nil || resHeaders["user-agent"]?.isEmpty == true {
+            resHeaders["user-agent"] = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1"
+        }
+        finalResult["headers"] = resHeaders
+
         if let originalUrl = baseURL?.absoluteString {
-            Self.iframeCache[originalUrl] = (result: result, expiresAt: Date().addingTimeInterval(Self.cacheTtl))
+            Self.iframeCache[originalUrl] = (result: finalResult, expiresAt: Date().addingTimeInterval(Self.cacheTtl))
         }
 
         cleanup()
-        continuation?.resume(returning: result)
+        continuation?.resume(returning: finalResult)
         continuation = nil
     }
 

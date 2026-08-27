@@ -796,6 +796,7 @@ class PlayerViewModel: ObservableObject {
 
         _currentTranslationName = name
         targetVoiceover = name
+        targetDirectStreamUrl = nil
         persistVoiceoverSelection(name)
 
         // 1. Быстрое переключение через resolvedAudioVariants, если дорожка уже в памяти
@@ -950,7 +951,20 @@ class PlayerViewModel: ObservableObject {
             return
         }
 
-        // Вызываем reloadPlayback для мгновенного переключения качества с сохранением позиции
+        // Если текущий поток уже воспроизводит этот URL (или его проксированную версию),
+        // просто меняем preferredPeakBitRate на лету без перезагрузки AVPlayer!
+        if let currentItem = player?.currentItem,
+           let currentAsset = currentItem.asset as? AVURLAsset {
+            let targetProxied = proxiedPlaybackURL(for: quality.url)?.absoluteString ?? quality.url.absoluteString
+            let currentAssetUrl = currentAsset.url.absoluteString
+            if targetProxied == currentAssetUrl || quality.url.absoluteString == originalStreamURL?.absoluteString {
+                logDebug("changeQuality: in-place bitrate update to \(targetBitrate)")
+                currentItem.preferredPeakBitRate = targetBitrate
+                return
+            }
+        }
+
+        // Вызываем reloadPlayback только при реальной смене URL потока с сохранением позиции
         reloadPlayback(to: quality.url, preferredPeakBitRate: targetBitrate)
     }
 
@@ -958,6 +972,11 @@ class PlayerViewModel: ObservableObject {
         logDebug("reloadPlayback: called with sourceURL=\(sourceURL.absoluteString), preferredPeakBitRate=\(preferredPeakBitRate ?? -1)")
         let savedTime = self.currentTime
         let wasPlaying = player?.timeControlStatus == .playing || player?.timeControlStatus == .waitingToPlayAtSpecifiedRate
+
+        // Синхронизируем заголовки прокси перед перезагрузкой
+        if !currentHeaders.isEmpty {
+            HlsProxyServer.shared.updateHeaders(currentHeaders)
+        }
 
         // Обновляем originalStreamURL если пришёл не прокси-URL
         if !isLocalProxyUrl(sourceURL) {
@@ -1175,7 +1194,9 @@ class PlayerViewModel: ObservableObject {
             // Уже локальный URL — не проксируем
             logDebug("playVideo: local proxy URL directly played")
             currentPlaybackSourceURL = url.absoluteURL
-            HlsProxyServer.shared.start(headers: [:], voices: [], subtitles: [], mediaId: "local")
+            if !HlsProxyServer.shared.isListenerAlive {
+                HlsProxyServer.shared.start(headers: [:], voices: [], subtitles: [], mediaId: "local")
+            }
             asset = AVURLAsset(url: url)
         } else if url.isFileURL {
             logDebug("playVideo: file URL directly played")
@@ -1831,10 +1852,7 @@ class PlayerViewModel: ObservableObject {
         let audioVariants = (resolved["audioVariants"] as? [[String: Any]]) ?? []
         logDebug("applyResolvedAllohaStream: initial resolvedUrlString=\(resolvedUrlString), audioVariants count=\(audioVariants.count)")
 
-        if let directUrl = targetDirectStreamUrl, !directUrl.isEmpty {
-            logDebug("applyResolvedAllohaStream: using targetDirectStreamUrl=\(directUrl)")
-            resolvedUrlString = directUrl
-        } else if let targetVoice = targetVoiceover ?? _currentTranslationName, !targetVoice.isEmpty, !audioVariants.isEmpty {
+        if let targetVoice = targetVoiceover ?? _currentTranslationName, !targetVoice.isEmpty, !audioVariants.isEmpty {
             let exactMatch = audioVariants.first(where: {
                 let vTitle = ($0["title"] as? String) ?? ""
                 return allohaTranslationNamesMatch(vTitle, targetVoice, exactOnly: true)
@@ -1849,6 +1867,9 @@ class PlayerViewModel: ObservableObject {
             } else {
                 logDebug("applyResolvedAllohaStream: no audioVariant matched for '\(targetVoice)', using default resolved url")
             }
+        } else if let directUrl = targetDirectStreamUrl, !directUrl.isEmpty {
+            logDebug("applyResolvedAllohaStream: using targetDirectStreamUrl=\(directUrl)")
+            resolvedUrlString = directUrl
         }
 
         guard let resolvedUrl = URL(string: resolvedUrlString) else {
