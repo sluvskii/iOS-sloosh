@@ -299,7 +299,7 @@ class PlayerViewModel: ObservableObject {
     /// Оригинальный iframeUrl Alloha. Нужен для корректного переключения озвучки в плеере.
     private var currentIframeUrl: String?
     /// Все audioVariants из последнего resolve. Нужны для мгновенного переключения озвучки без re-resolve.
-    private var resolvedAudioVariants: [[String: Any]] = []
+    var resolvedAudioVariants: [[String: Any]] = []
 
     var targetQualityPreference: VideoQualityPreference?
     var seriesResult: AllohaApiResult?
@@ -1346,7 +1346,7 @@ class PlayerViewModel: ObservableObject {
                             self.reloadPlayback(to: url, preferredPeakBitRate: self.player?.currentItem?.preferredPeakBitRate)
                         }
                     } else {
-                        if let itemError = item.error as? URLError {
+                        if item.error is URLError {
                             self.error = "Нет подключения к интернету"
                         } else if let localized = item.error as? LocalizedError, let desc = localized.errorDescription {
                             self.error = desc
@@ -1410,17 +1410,12 @@ class PlayerViewModel: ObservableObject {
             return
         }
 
-        // Ждём .readyToPlay перед seek к сохранённой позиции.
-        // Это предотвращает гонку с applyInitialQuality → reloadPlayback,
-        // которая читает self.currentTime и могла перемотать к позиции ПРЕДЫДУЩЕЙ серии.
         let savedPosition = PlaybackProgressStore.shared.load(mediaId: mediaId)
         if savedPosition > 1 {
-            // Подождём готовности item перед seek
             if let item = player.currentItem, item.status == .readyToPlay {
                 player.seek(to: CMTime(seconds: savedPosition, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
                 currentTime = savedPosition
             } else {
-                // item ещё не готов — ждём через KVO
                 let capturedMediaId = mediaId
                 let capturedSavedPosition = savedPosition
                 var seekObservation: NSKeyValueObservation?
@@ -1430,7 +1425,6 @@ class PlayerViewModel: ObservableObject {
                     seekObservation = nil
                     Task { @MainActor [weak self, weak player] in
                         guard let self, let player else { return }
-                        // Убеждаемся что mediaId не изменился (пользователь не переключил серию снова)
                         let currentMediaId: String
                         if let kpId = self.currentKpId {
                             if let s = self.currentSeason, let e = self.currentEpisode {
@@ -1450,54 +1444,55 @@ class PlayerViewModel: ObservableObject {
         timeObserver = player.addPeriodicTimeObserver(
             forInterval: CMTime(seconds: 0.5, preferredTimescale: 600),
             queue: .main
-        ) { [weak self, weak player] time in
-            guard let self, let player else { return }
-            if self.isUserSeeking { return }
-            let t = player.currentTime().seconds
-            if t.isFinite && !t.isNaN && t >= 0 {
-                self.currentTime = t
-            }
-            let d = player.currentItem?.duration.seconds ?? 0
-            if d.isFinite && !d.isNaN && d > 0 {
-                self.currentDuration = d
-            }
-            
-            if let intro = self.introRange, intro.contains(self.currentTime) {
-                if !self.showSkipIntro {
-                    withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                        self.showSkipIntro = true
+        ) { [weak self, weak player] _ in
+            Task { @MainActor [weak self, weak player] in
+                guard let self, let player else { return }
+                if self.isUserSeeking { return }
+                let t = player.currentTime().seconds
+                if t.isFinite && !t.isNaN && t >= 0 {
+                    self.currentTime = t
+                }
+                let d = player.currentItem?.duration.seconds ?? 0
+                if d.isFinite && !d.isNaN && d > 0 {
+                    self.currentDuration = d
+                }
+                
+                if let intro = self.introRange, intro.contains(self.currentTime) {
+                    if !self.showSkipIntro {
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                            self.showSkipIntro = true
+                        }
+                    }
+                } else {
+                    if self.showSkipIntro {
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                            self.showSkipIntro = false
+                        }
                     }
                 }
-            } else {
-                if self.showSkipIntro {
-                    withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                        self.showSkipIntro = false
+                
+                if let outro = self.outroRange, outro.contains(self.currentTime) {
+                    if !self.showSkipOutro {
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                            self.showSkipOutro = true
+                        }
+                    }
+                } else {
+                    if self.showSkipOutro {
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                            self.showSkipOutro = false
+                        }
                     }
                 }
-            }
-            
-            if let outro = self.outroRange, outro.contains(self.currentTime) {
-                if !self.showSkipOutro {
-                    withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                        self.showSkipOutro = true
-                    }
+                
+                if Int(t) % 5 == 0 && t > 1 {
+                    let dur = self.currentDuration > 0 ? self.currentDuration : nil
+                    PlaybackProgressStore.shared.save(
+                        mediaId: mediaId,
+                        positionSec: t,
+                        durationSec: dur
+                    )
                 }
-            } else {
-                if self.showSkipOutro {
-                    withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                        self.showSkipOutro = false
-                    }
-                }
-            }
-            
-            // Сохраняем прогресс каждые 5 секунд (только если позиция > 1 секунды, чтобы избежать сброса в ноль)
-            if Int(t) % 5 == 0 && t > 1 {
-                let dur = self.currentDuration > 0 ? self.currentDuration : nil
-                PlaybackProgressStore.shared.save(
-                    mediaId: mediaId,
-                    positionSec: t,
-                    durationSec: dur
-                )
             }
         }
 

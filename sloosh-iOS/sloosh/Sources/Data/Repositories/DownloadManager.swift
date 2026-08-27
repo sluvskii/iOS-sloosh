@@ -533,14 +533,6 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     nonisolated func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
         guard let desc = downloadTask.taskDescription, let comps = extractTaskInfo(desc: desc) else { return }
         
-        var bgTaskId: UIBackgroundTaskIdentifier = .invalid
-        bgTaskId = UIApplication.shared.beginBackgroundTask(withName: "ProcessSegment_\(comps.itemId)_\(comps.index)") {
-            if bgTaskId != .invalid {
-                UIApplication.shared.endBackgroundTask(bgTaskId)
-                bgTaskId = .invalid
-            }
-        }
-        
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
         let taskDir = docs.appendingPathComponent(comps.localDirectory)
         let finalUrl = taskDir.appendingPathComponent("segment_\(comps.index).ts")
@@ -549,6 +541,13 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         try? FileManager.default.moveItem(at: location, to: finalUrl)
         
         Task { @MainActor in
+            var bgTaskId: UIBackgroundTaskIdentifier = .invalid
+            bgTaskId = UIApplication.shared.beginBackgroundTask(withName: "ProcessSegment_\(comps.itemId)_\(comps.index)") {
+                if bgTaskId != .invalid {
+                    UIApplication.shared.endBackgroundTask(bgTaskId)
+                    bgTaskId = .invalid
+                }
+            }
             defer {
                 if bgTaskId != .invalid {
                     UIApplication.shared.endBackgroundTask(bgTaskId)
@@ -567,15 +566,14 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             return
         }
         
-        var bgTaskId: UIBackgroundTaskIdentifier = .invalid
-        bgTaskId = UIApplication.shared.beginBackgroundTask(withName: "RetrySegment_\(comps.itemId)_\(comps.index)") {
-            if bgTaskId != .invalid {
-                UIApplication.shared.endBackgroundTask(bgTaskId)
-                bgTaskId = .invalid
-            }
-        }
-        
         Task { @MainActor in
+            var bgTaskId: UIBackgroundTaskIdentifier = .invalid
+            bgTaskId = UIApplication.shared.beginBackgroundTask(withName: "RetrySegment_\(comps.itemId)_\(comps.index)") {
+                if bgTaskId != .invalid {
+                    UIApplication.shared.endBackgroundTask(bgTaskId)
+                    bgTaskId = .invalid
+                }
+            }
             defer {
                 if bgTaskId != .invalid {
                     UIApplication.shared.endBackgroundTask(bgTaskId)
