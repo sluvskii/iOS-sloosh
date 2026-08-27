@@ -581,19 +581,19 @@ struct MoviePosterCard: View {
     private var overlayBody: some View {
         RemotePosterView(url: URL(string: movie.displayPosterUrl ?? ""), cornerRadius: 12) {
             ZStack(alignment: .bottomLeading) {
-                // Soft dark gradient scrim at the bottom of the card for text legibility without blur
-                LinearGradient(
-                    stops: [
-                        .init(color: .clear, location: 0.35),
-                        .init(color: .black.opacity(0.82), location: 0.95)
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
+                // Progressive blur at the bottom of the poster
+                VariableBlurView(
+                    maxBlurRadius: 16,
+                    direction: .blurredBottomClearTop,
+                    tintColor: .black,
+                    tintOpacity: 0.55
                 )
+                .frame(height: 75)
+                .frame(maxWidth: .infinity, alignment: .bottom)
                 .allowsHitTesting(false)
                 
                 // Metadata inside the poster
-                VStack(alignment: .leading, spacing: 1) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text(movie.displayTitle)
                         .font(.system(size: 13, weight: .bold))
                         .foregroundColor(.white)
