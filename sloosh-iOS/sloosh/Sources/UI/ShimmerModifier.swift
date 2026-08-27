@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct ShimmerModifier: ViewModifier {
-    private static let referenceDate = Date()
+    nonisolated(unsafe) private static let referenceDate = Date()
 
     func body(content: Content) -> some View {
         TimelineView(.animation) { timeline in
