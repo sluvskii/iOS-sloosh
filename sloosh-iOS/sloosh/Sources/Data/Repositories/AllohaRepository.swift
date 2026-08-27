@@ -378,36 +378,7 @@ final class AllohaRepository: @unchecked Sendable {
                 }
             }
             
-            var result = AllohaApiResult(title: title, isSerial: false, movie: movie, seasons: [])
-            
-            if let m = result.movie, let firstIframe = m.translations.first?.iframeUrl {
-                let resolver = await AllohaRuntimeResolver()
-                if let resolved = try? await resolver.resolve(iframeUrl: firstIframe),
-                   let audioVariants = resolved["audioVariants"] as? [[String: Any]], !audioVariants.isEmpty {
-                    let newTranslations = audioVariants.enumerated().compactMap { index, variant -> AllohaTranslation? in
-                        guard let vTitle = variant["title"] as? String, !vTitle.isEmpty,
-                              let streamUrl = variant["url"] as? String, !streamUrl.isEmpty else { return nil }
-                        let cleanTitle = normalizedAllohaTranslationName(vTitle)
-                        let lower = cleanTitle.lowercased()
-                        if lower.contains("субтитр") || lower.contains("subtitle") {
-                            return nil
-                        }
-                        // id хранит оригинальный title из audioVariant (напр. "Russian 1", "English 7").
-                        // Используется в PlayerView для точного сопоставления с audioVariant.title
-                        // при переключении озвучки — независимо от порядка вариантов между двумя resolve-вызовами.
-                        return AllohaTranslation(
-                            id: vTitle,
-                            name: cleanTitle.isEmpty ? vTitle : cleanTitle,
-                            iframeUrl: m.iframeUrl,
-                            streamUrl: nil
-                        )
-                    }
-                    if !newTranslations.isEmpty {
-                        let newMovie = AllohaMovie(title: m.title, iframeUrl: m.iframeUrl, translations: newTranslations)
-                        result = AllohaApiResult(title: result.title, isSerial: false, movie: newMovie, seasons: [])
-                    }
-                }
-            }
+            let result = AllohaApiResult(title: title, isSerial: false, movie: movie, seasons: [])
             
             let finalResult = result
             cacheQueue.async(flags: .barrier) {
