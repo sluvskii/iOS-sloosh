@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct ShimmerModifier: ViewModifier {
-    nonisolated(unsafe) private static let referenceDate = Date()
+    private let referenceDate = Date()
 
     func body(content: Content) -> some View {
         TimelineView(.animation) { timeline in
@@ -9,7 +9,7 @@ struct ShimmerModifier: ViewModifier {
             content.visualEffect { content, proxy in
                 content.colorEffect(
                     ShaderLibrary.shimmerEffect(
-                        .float(date.timeIntervalSince(Self.referenceDate)),
+                        .float(date.timeIntervalSince(referenceDate)),
                         .float2(proxy.size)
                     )
                 )
