@@ -581,14 +581,15 @@ struct MoviePosterCard: View {
     private var overlayBody: some View {
         RemotePosterView(url: URL(string: movie.displayPosterUrl ?? ""), cornerRadius: 12) {
             ZStack(alignment: .bottomLeading) {
-                // Progressive blur at the bottom of the poster
+                // Progressive blur with dark tint at the bottom of the poster
                 VariableBlurView(
                     maxBlurRadius: 2,
                     direction: .blurredBottomClearTop,
                     tintColor: .black,
-                    tintOpacity: 0.6
+                    tintOpacity: 0.78,
+                    style: .dark
                 )
-                .frame(height: 70)
+                .frame(height: 72)
                 .frame(maxWidth: .infinity, alignment: .bottom)
                 .allowsHitTesting(false)
                 
