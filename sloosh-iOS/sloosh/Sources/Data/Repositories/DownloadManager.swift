@@ -319,8 +319,23 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             return
         }
         
-        let streamUrlString = (resolved["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        var streamUrlString = (resolved["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let audioVariants = (resolved["audioVariants"] as? [[String: Any]]) ?? []
         let headers = (resolved["headers"] as? [String: String]) ?? [:]
+        
+        if let targetVoice = item.translationName, !targetVoice.isEmpty, !audioVariants.isEmpty {
+            let exactMatch = audioVariants.first(where: {
+                let vTitle = ($0["title"] as? String) ?? ""
+                return allohaTranslationNamesMatch(vTitle, targetVoice, exactOnly: true)
+            })
+            let match = exactMatch ?? audioVariants.first(where: {
+                let vTitle = ($0["title"] as? String) ?? ""
+                return allohaTranslationNamesMatch(vTitle, targetVoice, exactOnly: false)
+            })
+            if let validMatch = match, let matchedUrl = validMatch["url"] as? String, !matchedUrl.isEmpty {
+                streamUrlString = matchedUrl.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
+        }
         
         guard let masterPlaylistUrl = URL(string: streamUrlString) else {
             await finishWithError(id: itemId, message: "Не удалось получить ссылку на поток")
