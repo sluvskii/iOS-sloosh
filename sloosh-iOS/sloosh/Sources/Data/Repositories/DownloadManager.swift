@@ -319,17 +319,8 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             return
         }
         
-        let audioVariants = (resolved["audioVariants"] as? [[String: Any]]) ?? []
-        var streamUrlString = (resolved["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let streamUrlString = (resolved["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let headers = (resolved["headers"] as? [String: String]) ?? [:]
-        
-        if let targetVoice = item.translationName, !targetVoice.isEmpty {
-            let exactMatch = audioVariants.first(where: { allohaTranslationNamesMatch($0["title"] as? String, targetVoice, exactOnly: true) })
-            let match = exactMatch ?? audioVariants.first(where: { allohaTranslationNamesMatch($0["title"] as? String, targetVoice, exactOnly: false) })
-            if let validMatch = match, let matchedUrl = validMatch["url"] as? String, !matchedUrl.isEmpty {
-                streamUrlString = matchedUrl.trimmingCharacters(in: .whitespacesAndNewlines)
-            }
-        }
         
         guard let masterPlaylistUrl = URL(string: streamUrlString) else {
             await finishWithError(id: itemId, message: "Не удалось получить ссылку на поток")
@@ -657,29 +648,81 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     }
     
     private func chooseMediaPlaylistUrl(from content: String, baseUrl: URL, preferredQuality: VideoQualityPreference) -> URL? {
-        let lines = content.components(separatedBy: .newlines)
+        let lines = content.replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+            .components(separatedBy: "\n")
+        
         var variants: [(url: URL, height: Int, bandwidth: Double)] = []
         var currentBandwidth: Double = 0
         var currentHeight: Int = 0
+        var isAv1 = false
+        var hasStreamInf = false
         
         for line in lines {
             let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
             if trimmed.isEmpty { continue }
+            
             if trimmed.hasPrefix("#EXT-X-STREAM-INF:") {
+                hasStreamInf = true
                 currentBandwidth = 0
                 currentHeight = 0
-                if let range = trimmed.range(of: "RESOLUTION=([^,\\s]+)", options: .regularExpression) {
-                    let match = String(trimmed[range]).replacingOccurrences(of: "RESOLUTION=", with: "")
-                    let components = match.components(separatedBy: "x")
-                    if components.count == 2, let h = Int(components[1]) { currentHeight = h }
+                isAv1 = false
+                
+                let lower = trimmed.lowercased()
+                
+                // Parse CODECS and filter out AV1 streams
+                if lower.contains("av01") || lower.contains("codecs=\"av01") || lower.contains("codecs=\"av1") || lower.contains("codecs='av1") {
+                    isAv1 = true
                 }
-            } else if !trimmed.hasPrefix("#") {
+                
+                // Parse BANDWIDTH or AVERAGE-BANDWIDTH
+                if let bwRange = trimmed.range(of: #"BANDWIDTH=([0-9]+)"#, options: .regularExpression) {
+                    let match = String(trimmed[bwRange])
+                    let comps = match.components(separatedBy: "=")
+                    if comps.count == 2, let bw = Double(comps[1]) {
+                        currentBandwidth = bw
+                    }
+                } else if let avgBwRange = trimmed.range(of: #"AVERAGE-BANDWIDTH=([0-9]+)"#, options: .regularExpression) {
+                    let match = String(trimmed[avgBwRange])
+                    let comps = match.components(separatedBy: "=")
+                    if comps.count == 2, let bw = Double(comps[1]) {
+                        currentBandwidth = bw
+                    }
+                }
+                
+                // Parse RESOLUTION=WxH
+                if let resRange = trimmed.range(of: #"RESOLUTION=([0-9]+)x([0-9]+)"#, options: .regularExpression) {
+                    let match = String(trimmed[resRange]).replacingOccurrences(of: "RESOLUTION=", with: "")
+                    let comps = match.components(separatedBy: "x")
+                    if comps.count == 2, let h = Int(comps[1]) {
+                        currentHeight = h
+                    }
+                }
+            } else if hasStreamInf && !trimmed.hasPrefix("#") {
+                hasStreamInf = false
+                
+                let lowerUrl = trimmed.lowercased()
+                if lowerUrl.contains("av01") || lowerUrl.contains("_av1") || lowerUrl.contains(".av1") {
+                    isAv1 = true
+                }
+                
+                // If AV1 stream, filter out completely
+                if isAv1 {
+                    continue
+                }
+                
+                // Fallback resolution detection from variant URL if not found in #EXT-X-STREAM-INF
+                if currentHeight == 0 {
+                    currentHeight = extractHeightFromUrlString(trimmed)
+                }
+                
                 let variantUrl = trimmed.hasPrefix("http") ? URL(string: trimmed) : URL(string: trimmed, relativeTo: baseUrl)
-                if let variantUrl = variantUrl {
+                if let variantUrl = variantUrl?.absoluteURL {
                     variants.append((url: variantUrl, height: currentHeight, bandwidth: currentBandwidth))
                 }
             }
         }
+        
         if variants.isEmpty { return nil }
         
         let targetHeight: Int
@@ -691,13 +734,46 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         default: targetHeight = 1080
         }
         
+        // Select the variant with highest resolution <= targetHeight, tie-breaking on highest bandwidth
+        let eligible = variants.filter { $0.height > 0 && $0.height <= targetHeight }
+        if !eligible.isEmpty {
+            let sorted = eligible.sorted { a, b in
+                if a.height != b.height {
+                    return a.height > b.height
+                }
+                return a.bandwidth > b.bandwidth
+            }
+            return sorted.first?.url
+        }
+        
+        // If no variant <= targetHeight exists, select the closest available resolution
         let sorted = variants.sorted { a, b in
-            let diffA = abs(a.height - targetHeight)
-            let diffB = abs(b.height - targetHeight)
-            if diffA != diffB { return diffA < diffB }
+            if a.height > 0 && b.height > 0 {
+                let diffA = abs(a.height - targetHeight)
+                let diffB = abs(b.height - targetHeight)
+                if diffA != diffB {
+                    return diffA < diffB
+                }
+            } else if a.height > 0 || b.height > 0 {
+                return a.height > b.height
+            }
             return a.bandwidth > b.bandwidth
         }
         return sorted.first?.url
+    }
+    
+    private func extractHeightFromUrlString(_ urlString: String) -> Int {
+        let pathWithoutQuery = urlString.components(separatedBy: "?").first?.lowercased() ?? urlString.lowercased()
+        
+        let pattern = #"(?:^|[/._\-])(2160|1440|1080|720|480|360|240)(?:p)?(?:\.m3u8|[/._\-]|$)"#
+        if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
+           let match = regex.firstMatch(in: pathWithoutQuery, options: [], range: NSRange(location: 0, length: pathWithoutQuery.utf16.count)),
+           match.numberOfRanges >= 2,
+           let range = Range(match.range(at: 1), in: pathWithoutQuery),
+           let height = Int(pathWithoutQuery[range]) {
+            return height
+        }
+        return 0
     }
 }
 
