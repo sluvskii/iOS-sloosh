@@ -25,7 +25,7 @@ struct BottomRowView: View {
                 SpeedPickerSheet(vm: vm)
             }
 
-            if !vm.availableVoiceovers.isEmpty || vm.resolvedAudioVariants.count > 1 {
+            if vm.availableVoiceovers.count > 1 {
                 divider
                 Button { showVoiceoverSheet = true } label: {
                     Image(systemName: "waveform")

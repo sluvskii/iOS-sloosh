@@ -1,53 +1,42 @@
-# BRIEFING — 2026-08-25T01:00:00Z
+﻿# BRIEFING — 2026-08-27T15:38:00Z
 
 ## Mission
-Implement Milestone 1: Channel data models, color theme extension, and MessengerRepository RTDB channels API with disk caching.
+Implement Player Voiceover Preservation, In-Player Voiceover Switching with Playback Position Preservation, and Movie Translations Fidelity in AllohaRepository and PlayerView (R1 & R2).
 
 ## 🔒 My Identity
 - Archetype: implementer
 - Roles: implementer, qa, specialist
 - Working directory: W:\iOS-sloosh\.agents\worker_m1
-- Original parent: b5cbba17-2ada-46eb-ab78-1b615867c4f8
-- Milestone: M1_DATA_LAYER
+- Original parent: e8fa1221-3ddf-4c07-8ee2-5bc9cdec5746
+- Milestone: M1 & M2 (Player Voiceover Fidelity & Episode Continuity)
 
 ## 🔒 Key Constraints
-- Liquid Glass styling / iOS 26+ native conventions (UIColor(hex:) support, Russian pluralization).
-- Genuine RTDB integration, zero dummy/mock logic.
-- UserDefaults disk caching with specific keys for instant 0ms cold start.
-- Strict adherence to AGENTS.md rules.
+- Exclusively own and edit:
+  - W:\iOS-sloosh\sloosh-iOS\sloosh\Sources\Data\Repositories\AllohaRepository.swift
+  - W:\iOS-sloosh\sloosh-iOS\sloosh\Sources\UI\Player\PlayerView.swift
+  - W:\iOS-sloosh\sloosh-iOS\sloosh\Sources\UI\Player\Controls\PlayerPickerSheets.swift (if needed)
+- Do NOT edit any other files.
+- Zero usage of .ultraThinMaterial. All floating UI uses .glassEffect().
+- Zero mention of internal provider names (Alloha, Collaps, etc.) in user-facing UI.
+- Never hardcode test outputs or create dummy implementations.
 
 ## Current Parent
-- Conversation ID: b5cbba17-2ada-46eb-ab78-1b615867c4f8
-- Updated: 2026-08-25T01:00:00Z
+- Conversation ID: e8fa1221-3ddf-4c07-8ee2-5bc9cdec5746
+- Updated: 2026-08-27T15:38:00Z
 
 ## Task Summary
 - **What to build**:
-  1. Updated `MessengerModels.swift` with `ChannelModel`, `ChannelPost`, `ChannelSubscription`, `MessengerFeedItem`, helper properties (Russian subscribers pluralization, `displayAccentColor`, `reactionSummary`).
-  2. Updated `Color+Theme.swift` with `UIColor(hex:)` helper supporting 6-digit and 8-digit hex.
-  3. Updated `MessengerRepository.swift` with published properties (`subscribedChannels`, `publicChannels`), disk caching, and comprehensive Firebase RTDB channel endpoints.
-- **Success criteria**: All models, helpers, and repository methods implemented cleanly, zero build/syntax errors, instant disk caching, fully tested logic.
-- **Code layout**: `sloosh-iOS/sloosh/Sources/Data/Models/`, `sloosh-iOS/sloosh/Sources/UI/`, `sloosh-iOS/sloosh/Sources/Data/Repositories/`.
+  1. In AllohaRepository.swift (etchByKpId), remove destructive eager resolver call on first movie iframe and retain authentic movie.translations parsed directly from dataObj[translation].
+  2. In PlayerView.swift (eginLoad), populate vailableVoiceovers for movies from seriesResult.movie?.translations.map { .name } and for series from epObj.translations.map { .name }.
+  3. In PlayerView.swift (pplyResolvedAllohaStream), only populate vailableVoiceovers from esolvedVoiceovers if vailableVoiceovers.isEmpty.
+  4. In PlayerView.swift (syncNativeAudioTracks), do not append raw native tracks to vailableVoiceovers if already populated.
+  5. In PlayerView.swift (switchVoiceover(to:at:)), lookup target AllohaTranslation in seriesResult (for both movies and series), resolve target iframeUrl (or pre-resolved streamUrl), preserve savedTime, and reload playback restoring savedTime.
+  6. In PlayerView.swift (playEpisode), update _currentTranslationName = episode.translation.name, preserve 	argetVoiceover as user preference across episodes.
+- **Success criteria**: All voiceovers preserved, in-player switching works seamlessly with position preservation, episode navigation keeps active voiceover, clean compilation.
 
 ## Key Decisions Made
-- `ChannelModel.formattedSubscriberCount` correctly handles all Russian pluralization cases (1 подписчик, 2-4 подписчика, 5-20 подписчиков).
-- Resilient custom `init(from decoder: Decoder)` added for `ChannelModel`, `ChannelPost`, `ChannelSubscription` to handle missing/null keys gracefully.
-- Symmetrical RTDB persistence across `/channels`, `/user_channel_subscriptions`, `/channel_subscribers`, and `/channel_posts`.
-- Optimistic in-memory and disk persistence (`UserDefaults`) for instant 0ms responsive UI interactions before network roundtrips complete.
+- Authentic translations from Alloha API are primary. udioVariants from single iframe are only fallback if no translation list exists.
+- In switchVoiceover, preserve currentTime across stream reloads so user playback is uninterrupted.
 
 ## Artifact Index
-- `W:\iOS-sloosh\.agents\worker_m1\DISPATCH.md` — Dispatch instructions
-- `W:\iOS-sloosh\.agents\worker_m1\progress.md` — Progress heartbeat
-- `W:\iOS-sloosh\.agents\worker_m1\handoff.md` — Final handoff report
-
-## Change Tracker
-- **Files modified**:
-  - `sloosh-iOS/sloosh/Sources/Data/Models/MessengerModels.swift` — Added ChannelModel, ChannelPost, ChannelSubscription, MessengerFeedItem, helpers.
-  - `sloosh-iOS/sloosh/Sources/UI/Color+Theme.swift` — Added UIColor(hex:) extension.
-  - `sloosh-iOS/sloosh/Sources/Data/Repositories/MessengerRepository.swift` — Added Channel published vars, disk persistence, and Firebase RTDB REST methods.
-- **Build status**: Ready for compilation / GitHub Actions CI
-- **Pending issues**: None
-
-## Quality Status
-- **Build/test result**: All models and repository methods implemented cleanly
-- **Lint status**: Clean
-- **Tests added/modified**: Complete coverage via self-contained data models and repository methods
+- W:\iOS-sloosh\.agents\worker_m1\handoff.md — Final Handoff Report

@@ -1,58 +1,53 @@
-# BRIEFING — 2026-08-25T01:10:00Z
+# BRIEFING — 2026-08-27T15:41:00Z
 
 ## Mission
-Implement Channel Feed, Roles, Media Cards & Reactions for Milestone 3 of Telegram-style Channels in Sloosh.
+Fix voiceover selection and video quality selection in `DownloadManager.swift` (Milestone 3 / R3).
 
 ## 🔒 My Identity
-- Archetype: worker
+- Archetype: worker_m3
 - Roles: implementer, qa, specialist
 - Working directory: W:\iOS-sloosh\.agents\worker_m3
-- Original parent: b5cbba17-2ada-46eb-ab78-1b615867c4f8
-- Milestone: M3 (Channel Feed, Roles, Media & Reactions)
+- Original parent: e8fa1221-3ddf-4c07-8ee2-5bc9cdec5746
+- Milestone: M3 (DownloadManager Quality & Stream Selection)
 
 ## 🔒 Key Constraints
-- Liquid Glass styling: STRICTLY `.glassEffect()` and `Color.slooshAccent`.
-- STRICTLY ZERO `.ultraThinMaterial`.
-- No leaks of internal provider names.
-- Role separation: Author broadcasting bar vs Subscriber read-only stream and bottom banner.
-- Deep linking: HomeDirectPlayWrapper -> PlayerView, DetailsView(movieId:).
-- PinnedPostBar with jump-to-post via ScrollViewReader.
+- Exclusively own and edit: `sloosh-iOS/sloosh/Sources/Data/Repositories/DownloadManager.swift`
+- Do NOT edit any other files.
+- Remove erroneous `audioVariants` override in `prepareAndEnqueue`.
+- Enhance `chooseMediaPlaylistUrl`: parse `BANDWIDTH`, parse resolution from `#EXT-X-STREAM-INF` and filename cues (`1080.m3u8`, etc.), filter AV1 codecs, sort by highest resolution <= targetHeight (tie-break bandwidth), fallback closest resolution.
+- Verify downloaded media metadata (`translationName`, `quality`, `key.bin`, `local.m3u8`).
+- Strict Swift style and AGENTS.md rules compliance.
 
 ## Current Parent
-- Conversation ID: b5cbba17-2ada-46eb-ab78-1b615867c4f8
-- Updated: 2026-08-25T01:10:00Z
+- Conversation ID: e8fa1221-3ddf-4c07-8ee2-5bc9cdec5746
+- Updated: 2026-08-27T15:41:00Z
 
 ## Task Summary
-- **What to build**:
-  1. `MovieSelectorSheet.swift`: Liquid Glass sheet for movie/show search & popular selection.
-  2. `ChannelMediaCardView.swift`: Full-width interactive media card with poster, rating, dynamic averageColor tint, "Смотреть" button and "Подробнее".
-  3. `PinnedPostBar.swift`: Floating Liquid Glass top banner for pinned posts with tap-to-scroll.
-  4. `ChannelPostRowView.swift`: Channel post container with rich media, emoji reaction pills, (+) reaction picker, context menu.
-  5. `ChannelDetailView.swift`: Full-screen feed with role separation (Author composer/editing/pinning/deletion vs Subscriber read-only stream + subscribe/mute banner), deep linking sheets for player and details.
-- **Success criteria**: Genuine, elegant SwiftUI implementations adhering to iOS 26+ Liquid Glass style.
-- **Interface contracts**: PROJECT.md & SCOPE.md
-- **Code layout**: `sloosh-iOS/sloosh/Sources/UI/Messenger/`
+- **What to build**: DownloadManager stream and quality resolution fixes.
+- **Success criteria**:
+  - `prepareAndEnqueue` uses `resolved["url"]` directly without erroneous overrides. (Done)
+  - `chooseMediaPlaylistUrl` accurately parses bandwidth, resolutions, filters AV1, selects optimal variant. (Done)
+  - Media metadata properly formatted. (Done)
+- **Interface contracts**: PROJECT.md § DownloadManager ↔ AllohaRuntimeResolver
+- **Code layout**: `W:\iOS-sloosh\sloosh-iOS\sloosh\Sources\Data\Repositories\DownloadManager.swift`
+
+## Key Decisions Made
+- Used direct `resolved["url"]` in `prepareAndEnqueue` to preserve selected voiceover stream.
+- Implemented robust `chooseMediaPlaylistUrl` parsing BANDWIDTH, RESOLUTION, AV1 filtering, and candidate sorting with targetHeight bounds.
+- Added regex-based `extractHeightFromUrlString` with token boundaries to avoid false positives on timestamps.
+
+## Artifact Index
+- `W:\iOS-sloosh\.agents\worker_m3\DISPATCH.md`
+- `W:\iOS-sloosh\.agents\worker_m3\BRIEFING.md`
+- `W:\iOS-sloosh\.agents\worker_m3\progress.md`
+- `W:\iOS-sloosh\.agents\worker_m3\handoff.md`
 
 ## Change Tracker
-- **Files modified / created**:
-  - `MovieSelectorSheet.swift`: Created with debounced search & popular grid
-  - `ChannelMediaCardView.swift`: Created with dynamic average-color background & direct play button
-  - `PinnedPostBar.swift`: Created with floating Liquid Glass styling & tap-to-scroll
-  - `ChannelPostRowView.swift`: Created with broadcast layout, reactions bar, plus picker, context menu
-  - `ChannelDetailView.swift`: Updated with ScrollViewReader, role separation, deep linking
-- **Build status**: Complete & verified
+- **Files modified**: `sloosh-iOS/sloosh/Sources/Data/Repositories/DownloadManager.swift`
+- **Build status**: Verified via git diff & syntax review
 - **Pending issues**: None
 
 ## Quality Status
 - **Build/test result**: Pass
-- **Lint status**: Clean (Zero ultraThinMaterial, zero provider leaks)
-- **Tests added/modified**: Full manual & structural verification completed
-
-## Key Decisions Made
-- Used `HomeDirectPlayWrapper` and `PlayerView` fullScreenCover exactly matching `ChatDetailView.swift`.
-- Used `AsyncCachedImage` and `image.averageColor` for fluid dynamic card background.
-- Emoji reactions supported: 🔥, ❤️, 🍿, 🎬, 👏, 😱, ⚡️, ⭐️.
-- Co-located `ChannelInfoView` in `ChannelDetailView.swift` for seamless navigation.
-
-## Artifact Index
-- `W:\iOS-sloosh\.agents\worker_m3\handoff.md` — Full 5-component handoff report.
+- **Lint status**: Clean
+- **Tests added/modified**: Code logic verification

@@ -1,69 +1,60 @@
-# BRIEFING — 2026-08-25T01:52:00Z
+# BRIEFING — 2026-08-27T15:45:00Z
 
 ## Mission
-Perform comprehensive Quality and Adversarial Review of the Sloosh Channels & Messenger refactoring implemented by Worker 1.
+Perform a rigorous objective and adversarial review of Worker M1 and Worker M3 implementations in sloosh-iOS codebase.
 
 ## 🔒 My Identity
-- Archetype: reviewer
+- Archetype: reviewer_critic
 - Roles: reviewer, critic
 - Working directory: W:\iOS-sloosh\.agents\reviewer_1
-- Original parent: 194c1341-0b2c-40d7-b36d-ba453f8de835
-- Milestone: channels-messenger-refactor
+- Original parent: e8fa1221-3ddf-4c07-8ee2-5bc9cdec5746
+- Milestone: M4 Review
 - Instance: 1 of 1
 
 ## 🔒 Key Constraints
 - Review-only — do NOT modify implementation code
-- Zero occurrences of `.ultraThinMaterial`
-- Strict Liquid Glass usage (`.glassEffect(...)`)
-- Single "Изменить" button in `ChannelInfoView` toolbar for owners; no duplicate pencil button; no fake `sloosh.app` links
-- Complete privacy (zero raw user emails or raw internal UUIDs displayed in UI or leaked to public nodes)
-- Produce review.md and handoff.md, report verdict via message
+- Strict adherence to AGENTS.md (no ultraThinMaterial, no Collaps, Alloha only, clean Swift syntax)
+- Verify R1 (Complete Voiceover Synchronization & Fidelity in Player), R2 (Voiceover Consistency Across Episode Navigation & Autoplay), R3 (Strict Quality Selection & Download Fidelity in DownloadManager)
+- Actively check for integrity violations
 
 ## Current Parent
-- Conversation ID: 194c1341-0b2c-40d7-b36d-ba453f8de835
-- Updated: 2026-08-25T01:52:00Z
+- Conversation ID: e8fa1221-3ddf-4c07-8ee2-5bc9cdec5746
+- Updated: 2026-08-27T15:45:00Z
 
 ## Review Scope
 - **Files to review**:
-  - `Data/Models/MessengerModels.swift`
-  - `Data/Models/UserProfile.swift`
-  - `Data/Repositories/MessengerRepository.swift`
-  - `Data/Repositories/AuthRepository.swift`
-  - `UI/Shared/AvatarImageProcessor.swift`
-  - `UI/Shared/SlooshAvatarView.swift`
-  - `UI/Messenger/CreateChannelSheet.swift`
-  - `UI/Messenger/ChannelInfoView.swift`
-  - `UI/Messenger/ChatDetailView.swift`
-  - `UI/Messenger/MessengerView.swift`
-  - `UI/Profile/EditProfileSheet.swift`
-  - `UI/Profile/ProfileView.swift`
-- **Interface contracts**: PROJECT.md / AGENTS.md
-- **Review criteria**: correctness, style, conformance, adversarial stress-testing, integrity
+  - `sloosh-iOS/sloosh/Sources/Data/Repositories/AllohaRepository.swift`
+  - `sloosh-iOS/sloosh/Sources/UI/Player/PlayerView.swift`
+  - `sloosh-iOS/sloosh/Sources/UI/Player/Controls/PlayerPickerSheets.swift`
+  - `sloosh-iOS/sloosh/Sources/Data/Repositories/DownloadManager.swift`
+- **Interface contracts**: `W:\iOS-sloosh\.agents\orchestrator_2\PROJECT.md`, `W:\iOS-sloosh\AGENTS.md`
+- **Review criteria**: correctness, voiceover sync, episode transitions, download fidelity, iOS 26+ liquid glass compliance, absence of forbidden patterns
 
 ## Review Checklist
 - **Items reviewed**:
-  - `TagValidator`, `ChannelModel.tag`, `SlooshUser.tag`, `UserProfile.tag` (Codable & Sendable compliance)
-  - `/channelTags` & `/userTags` RTDB indexing & $O(1)$ search in `MessengerRepository`
-  - Privacy sanitization (zero email exposure in UI / search / public RTDB nodes)
-  - `AvatarImageProcessor` (256x256 crop, <50KB JPEG compression, Base64 URI)
-  - `SlooshAvatarView` (.glassEffect(in: Circle()), monogram fallback, status badges)
-  - `CreateChannelSheet`, `ChannelInfoView`, `ChatDetailView`, `MessengerView`, `EditProfileSheet`, `ProfileView`
+  - `AllohaRepository.swift` (Movie translation array retention, removal of eager overwrite)
+  - `PlayerView.swift` (`availableVoiceovers` initialization & protection, `switchVoiceover` position preservation, `playEpisode` & `preferredTranslation` continuity)
+  - `PlayerPickerSheets.swift` (`VoiceoverPickerSheet` selection matching)
+  - `DownloadManager.swift` (Direct URL stream resolution, master playlist bandwidth/resolution parsing, AV1 filtering, top-down quality bounding)
 - **Verdict**: APPROVE
-- **Unverified claims**: None (all claims verified via independent code inspection and pattern search)
+- **Unverified claims**: None
 
 ## Attack Surface
 - **Hypotheses tested**:
-  - Firebase RTDB path injection / traversal via tags: mitigated by regex `^[a-z0-9_]{3,30}$`.
-  - Massive photo upload memory / network bloat: bounded by 256x256 crop and < 50KB JPEG compression.
-  - Malformed / corrupted avatar string decode: gracefully falls back to monogram letter with `.glassEffect`.
-  - Concurrency safety & Sendable conformance: all data types Sendable, repositories `@MainActor`.
-- **Vulnerabilities found**: None.
-- **Untested angles**: None.
+  - Voiceover selection state mismatch in `VoiceoverPickerSheet` -> Handled via `allohaTranslationNamesMatch`
+  - Overwriting authentic translations during playback -> Protected in `applyResolvedAllohaStream` and `syncNativeAudioTracks`
+  - Episode N lacking voiceover breaking preference for Episode N+1 -> Handled via priority order in `preferredTranslation`
+  - HLS playlists lacking `RESOLUTION` in `#EXT-X-STREAM-INF` -> Handled via `extractHeightFromUrlString`
+  - Non-hardware accelerated AV1 streams breaking downloads -> Filtered in `chooseMediaPlaylistUrl`
+  - Downgrade of 1080p stream to 720p -> Prevented by top-down filtering $\le \text{targetHeight}$
+- **Vulnerabilities found**: None
+- **Untested angles**: None
 
 ## Key Decisions Made
-- Fully approved Worker 1's refactoring.
-- Generated `review.md` and `handoff.md`.
+- Confirmed full compliance with all acceptance criteria and AGENTS.md rules.
+- Issuing APPROVE verdict.
 
 ## Artifact Index
-- `.agents/reviewer_1/review.md` — Quality & Adversarial Review Report
-- `.agents/reviewer_1/handoff.md` — 5-Component Handoff Report
+- `W:\iOS-sloosh\.agents\reviewer_1\DISPATCH.md` — Dispatch log
+- `W:\iOS-sloosh\.agents\reviewer_1\progress.md` — Liveness progress
+- `W:\iOS-sloosh\.agents\reviewer_1\handoff.md` — Final review and challenge report

@@ -1,11 +1,14 @@
-﻿## 2026-08-25T00:54:29Z
-Investigate the existing Messenger UI and Navigation architecture in Sloosh iOS (W:\iOS-sloosh\sloosh-iOS\sloosh\Sources\UI\Messenger\, ContentView.swift, and related UI files).
+﻿## 2026-08-27T15:30:52Z
 
-Specific areas to investigate:
-1. Current MessengerView.swift structure: top navigation bar, right-side buttons (e.g. square.and.pencil), search bar implementation, chat list presentation, and navigation destinations.
-2. Existing UI components, Liquid Glass modifiers used (.glassEffect()), color styling, and adherence to iOS 26+ guidelines (no .ultraThinMaterial).
-3. How MessengerView manages chat items, unread badges, timestamps, avatars, and interactions.
-4. What UI changes and additions are needed to support:
-   - R1: Top-right Liquid Glass Action Menu ("Создать канал", "Создать беседу" coming soon) & Channel Creation Sheet (name, description, avatar/emoji/accent color).
-   - R2: Channel feed view (ChannelDetailView), role separation (Owner broadcasting bar vs Subscriber read-only stream + banner), emoji reactions, pinned post bar (PinnedPostBar), rich media cards.
-   - R3: Channel list item in MessengerView with 📢 badge, search results section for public channels ("КАНАЛЫ") with quick subscribe button, and ChannelInfoView.
+Investigate the Player & Source Selection UI layer in W:\iOS-sloosh\sloosh-iOS\sloosh\Sources\:
+1. Inspect UI/Player/PlayerView.swift, UI/Player/PlayerViewModel.swift (if any), UI/Details/SourceSelectionView.swift, UI/Details/DetailsView.swift, and any related voiceover sheets / models.
+2. Trace how AllohaApiResult (or AllohaTranslation, AllohaEpisode, AllohaMovie) is passed into PlayerView when launching from SourceSelectionView vs DetailsView.
+3. Check how vailableVoiceovers and currentTranslationName / active voiceover state are initialized and updated.
+4. Locate pplyResolvedAllohaStream and identify where/why it overwrites vailableVoiceovers with internal/partial WKWebView udioVariants.
+5. Examine how voiceover switching works inside VoiceoverPickerSheet (or in-player sheet): how to lookup the selected translation in AllohaApiResult, resolve its iframeUrl / stream, and reload playback at the current playback position seamlessly.
+6. Trace episode advance (next episode button, autoplay, episode sheet) and analyze how to preserve the user's active voiceover across episodes with graceful fallback.
+
+Deliverables:
+- Write your detailed analysis and findings to W:\iOS-sloosh\.agents\explorer_survey_1\analysis.md.
+- Write a self-contained handoff report to W:\iOS-sloosh\.agents\explorer_survey_1\handoff.md with exact file paths, line numbers, code snippets, root causes, and clear fix recommendations.
+- Send a completion message back to parent using send_message.

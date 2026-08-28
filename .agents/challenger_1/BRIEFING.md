@@ -1,52 +1,55 @@
-# BRIEFING — 2026-08-25T01:52:30Z
+# BRIEFING — 2026-08-27T15:46:30Z
 
 ## Mission
-Empirical stress-testing and verification of Sloosh Channels & Messenger refactor: TagValidator, AvatarImageProcessor, MessengerRepository search, and ChannelModel legacy decoding compatibility.
+Empirically challenge, stress-test, and verify the Player Voiceover & Episode Navigation implementation (R1 & R2) in sloosh-iOS.
 
 ## 🔒 My Identity
-- Archetype: empirical challenger
+- Archetype: EMPIRICAL CHALLENGER
 - Roles: critic, specialist
-- Working directory: W:\iOS-sloosh\.agents\challenger_1\
-- Original parent: 194c1341-0b2c-40d7-b36d-ba453f8de835
-- Milestone: Channels & Messenger refactor verification
+- Working directory: W:\iOS-sloosh\.agents\challenger_1
+- Original parent: e8fa1221-3ddf-4c07-8ee2-5bc9cdec5746
+- Milestone: Player Voiceover & Episode Navigation Verification
 - Instance: 1 of 1
 
 ## 🔒 Key Constraints
-- Review-only — do NOT modify implementation code unless creating test harnesses
-- Must verify empirically with runnable test harnesses and evidence
+- Review-only — do NOT modify implementation code directly unless testing harness.
+- Must independently verify implementation details and logic chains.
+- Strict Liquid Glass UI rules (.glassEffect(), NO .ultraThinMaterial).
+- Final deliverable is handoff.md with Verdict: APPROVE or Verdict: REQUEST_CHANGES.
 
 ## Current Parent
-- Conversation ID: 194c1341-0b2c-40d7-b36d-ba453f8de835
-- Updated: 2026-08-25T01:52:30Z
+- Conversation ID: e8fa1221-3ddf-4c07-8ee2-5bc9cdec5746
+- Updated: 2026-08-27T15:46:30Z
 
 ## Review Scope
 - **Files to review**:
-  - `sloosh-iOS/sloosh/Sources/Data/Models/MessengerModels.swift` (`TagValidator`, `ChannelModel`, `ChannelType`, etc.)
-  - `sloosh-iOS/sloosh/Sources/UI/Shared/AvatarImageProcessor.swift`
-  - `sloosh-iOS/sloosh/Sources/Data/Repositories/MessengerRepository.swift`
-- **Review criteria**: correctness, edge cases, bounds, backward compatibility, performance/compression bounds
+  - `sloosh-iOS/sloosh/Sources/Data/Repositories/AllohaRepository.swift`
+  - `sloosh-iOS/sloosh/Sources/UI/Player/PlayerView.swift`
+  - `sloosh-iOS/sloosh/Sources/UI/Player/Controls/PlayerPickerSheets.swift`
+- **Interface contracts**: `PROJECT.md`, `ORIGINAL_REQUEST.md`, `AGENTS.md`
+- **Review criteria**: correctness, edge-case resilience, performance, memory leaks/task leaks, state consistency across episodes/translations, UI conformance.
 
 ## Attack Surface
 - **Hypotheses tested**:
-  - Boundary lengths (<3, 3, 30, >30), uppercase normalization, Cyrillic/emoji/accented Latin rejection, reserved words dictionary.
-  - Image cropping geometry across 11 aspect ratios (1:1, 16:9, 9:16, 4:1 panorama, 1:6 banner, 50x50, 1x1).
-  - Iterative compression payload bounds (<50KB) and Base64 Data URI formatting.
-  - MessengerRepository search with `@tag` vs plain text, Cyrillic channel names/descriptions, case insensitivity, empty query fallback, direct match prepending.
-  - ChannelModel and SlooshUser legacy JSON decoding with missing `tag`, missing `avatarUrl`, missing `isPublic`, and legacy `email` fields.
-  - 10,000 randomized fuzzing iterations.
+  1. Movie with single vs 15+ translations (passed)
+  2. In-player voiceover switching with savedTime & task cancellation (passed)
+  3. Multi-audio HLS track fallback & syncNativeAudioTracks guard (passed)
+  4. Episode transition with fallback translation on Ep 2 and Dubbed on Ep 3 (FAILED - targetVoiceover overwritten in beginLoad)
 - **Vulnerabilities found**:
-  - [Minor Polish] Word `"system"` is not currently included in `reserved` set `["sloosh", "admin", "support", "official", "channel", "user", "help"]`.
+  - `beginLoad` line 381 overwrites `targetVoiceover = selectedVoiceover`, resetting sticky preference during episode transitions.
 - **Untested angles**:
-  - Live multi-user Firebase Realtime Database concurrent websocket synchronization (handled by GitHub CI).
+  - Offline download playlist parsing (handled by Challenger 2 / Milestone 3).
 
 ## Loaded Skills
-- None
+- None specified.
 
 ## Key Decisions Made
-- Built dedicated C# .NET empirical test suite `EmpiricalTests` running 10,706 assertions with 10,000 fuzzing cycles. All passed.
-- Verdict: **APPROVE**.
+- Executed empirical test simulation in C# / PowerShell.
+- Discovered and confirmed state overwriting defect on episode transition.
+- Delivered handoff report with Verdict: REQUEST_CHANGES and concrete fix.
 
 ## Artifact Index
-- `W:\iOS-sloosh\.agents\challenger_1\challenge.md` — Detailed challenge findings report
-- `W:\iOS-sloosh\.agents\challenger_1\handoff.md` — Handoff report
-- `W:\iOS-sloosh\.agents\challenger_1\EmpiricalTests\Program.cs` — Test harness source code
+- `W:\iOS-sloosh\.agents\challenger_1\handoff.md` — Final Challenge Report (Verdict: REQUEST_CHANGES)
+- `W:\iOS-sloosh\.agents\challenger_1\test_sim.ps1` — Reproduction Harness
+- `W:\iOS-sloosh\.agents\challenger_1\test_sim_fix.ps1` — Verification Harness for Fix
+- `W:\iOS-sloosh\.agents\challenger_1\progress.md` — Liveness & Progress
