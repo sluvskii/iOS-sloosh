@@ -1,97 +1,130 @@
-# Handoff Report: Sloosh Channels & Messenger Refactor Verification
-
-**From**: Challenger 1 (`W:\iOS-sloosh\.agents\challenger_1\`)  
-**To**: Orchestrator / Parent Agent (`194c1341-0b2c-40d7-b36d-ba453f8de835`)  
-**Date**: 2026-08-25  
-**Verdict**: **APPROVE** (All 10,706 empirical assertions and fuzzing tests passed)
-
----
+# Handoff Report: Player Voiceover & Episode Navigation Empirical Verification (R1 & R2)
 
 ## 1. Observation
 
-1. **`TagValidator` in `sloosh-iOS/sloosh/Sources/Data/Models/MessengerModels.swift` (lines 7–34)**:
-   - `sanitize`:
+### Codebase Inspection
+1. **`AllohaRepository.swift`**:
+   - **Lines 313–387**: Movie translation parsing preserves all translations provided by the Alloha API (whether dictionary, array, or string) in `parsedTrans`.
+   - **Lines 383–387**: The destructive eager iframe resolution loop (which previously replaced translations with audio variants) was successfully removed.
+   - **Lines 260–307**: TV series episode parsing preserves `parsedTrans` per episode in `AllohaEpisode.translations` and `AllohaSeason.episodes`.
+   - **Lines 55–62**: `injectTranslationId` properly injects `?translation=<id>` for both movie and episode iframes.
+   - **Lines 103–135**: `allohaTranslationNamesMatch` provides robust exact, word-overlap, and language-tag matching.
+
+2. **`PlayerView.swift` & `PlayerViewModel`**:
+   - **Lines 397–406**: In `beginLoad`, `availableVoiceovers` is correctly initialized from `seriesResult.seasons[...].episodes[...].translations` for TV shows and `seriesResult.movie.translations` for movies.
+   - **Lines 1887–1890**: In `applyResolvedAllohaStream`, `availableVoiceovers` is preserved and not overwritten:
      ```swift
-     var clean = rawTag.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-     while clean.hasPrefix("@") {
-         clean.removeFirst()
+     let voices = resolvedVoiceovers(from: resolved)
+     if self.availableVoiceovers.isEmpty && !voices.isEmpty {
+         self.availableVoiceovers = voices
      }
-     return clean.filter { $0.isLetter || $0.isNumber || $0 == "_" }
      ```
-   - `validate`:
-     - Enforces bounds `clean.count >= 3 && clean.count <= 30`.
-     - Validates regex `^[a-z0-9_]{3,30}$`.
-     - Checks `reserved: Set<String> = ["sloosh", "admin", "support", "official", "channel", "user", "help"]`.
-     - Empirically verified: Correctly rejects empty strings, 1-2 char tags, 31+ char tags, Cyrillic, accented Latin, emojis, and reserved words.
-     - Observation on `"system"`: `"system"` is not currently in the `reserved` Set.
-
-2. **`AvatarImageProcessor` in `sloosh-iOS/sloosh/Sources/UI/Shared/AvatarImageProcessor.swift` (lines 4–90)**:
-   - `cropAndResize` (lines 43–65) calculates:
+   - **Lines 2068–2070**: In `syncNativeAudioTracks`, `availableVoiceovers` is not overwritten:
      ```swift
-     let minSide = min(size.width, size.height)
-     let cropX = (size.width - minSide) / 2.0
-     let cropY = (size.height - minSide) / 2.0
-     let scaleRatio = targetSize.width / minSide
+     guard self.availableVoiceovers.isEmpty else { return }
      ```
-     Target frame is strictly `256 x 256` with `format.scale = 1.0`.
-   - Empirically verified across 11 aspect ratio profiles (1:1, 16:9, 9:16, 4:1 panorama, 1:6 banner, 50x50, 1x1): center coordinates are exact `(128.0, 128.0)` and rendered bounds cover the full canvas without empty gaps (`DrawX <= 0, DrawY <= 0, DrawX + DrawW >= 256, DrawY + DrawH >= 256`).
-   - `processAvatar` iterative compression (lines 19–30) starts at quality `0.85`, decrementing by `0.1` down to `0.15` while payload exceeds `50 * 1024` (51,200 bytes). For 256x256 image DCT blocks (1,024 blocks), payload is mathematically bounded and guaranteed < 50KB.
+   - **Lines 787–908**: In `switchVoiceover(to:at:)`:
+     - Captures `let savedTime = self.player?.currentTime().seconds ?? self.currentTime` (line 789).
+     - Cancels in-flight tasks and resolvers (`resolveTask?.cancel()`, `resolver?.cancel()`, lines 844-845).
+     - Invalidates resolver cache: `AllohaRuntimeResolver.invalidateCache(for: iframeUrl)` (line 843).
+     - Restores `self.currentTime = savedTime` (line 890) and performs sample-accurate seek upon `.readyToPlay` (line 1016).
+     - Provides native audio track fallback via `selectAudioTrackInPlayer(named: name)` (lines 910–915).
+   - **Lines 1730–1768**: In `playEpisode`:
+     - Sets `_currentTranslationName = episode.translation.name` (line 1745).
+     - Sets `if targetVoiceover == nil { targetVoiceover = episode.translation.name }` (lines 1748–1750).
+     - Persists selection only if matching: `if let pref = targetVoiceover, allohaTranslationNamesMatch(episode.translation.name, pref) { persistVoiceoverSelection(episode.translation.name) }` (lines 1752–1754).
+     - Calls `beginLoad(..., selectedVoiceover: episode.translation.name)` (lines 1760–1766).
+   - **Line 381**: In `beginLoad`:
+     ```swift
+     self.targetVoiceover = selectedVoiceover
+     ```
+     **Defect Found**: `beginLoad` unconditionally overwrites `self.targetVoiceover` with `selectedVoiceover`. When advancing to an episode where the preferred voiceover is missing (e.g. Ep 2 has only LostFilm), `self.targetVoiceover` is changed from "Дубляж" to "LostFilm".
 
-3. **`MessengerRepository` Tag Search in `sloosh-iOS/sloosh/Sources/Data/Repositories/MessengerRepository.swift` (lines 1072–1135)**:
-   - `fetchPublicChannels(query:)` and `filterChannels(_:query:directMatch:)`:
-     - Strips leading `@` for direct tag lookup in `channelTags/{clean}`.
-     - Matches `ch.name.lowercased().contains(cleanQuery) || ch.tag.lowercased().contains(cleanQuery) || ch.description.lowercased().contains(query)`.
-     - Correctly handles null/empty/whitespace queries (returns all public channels).
-     - Direct match is prepended to index 0 without duplicates.
+### Empirical Test Execution
+We built and executed a test harness simulating the player state machine (`W:\iOS-sloosh\.agents\challenger_1\test_sim.ps1` and `test_sim_fix.ps1`).
 
-4. **`ChannelModel` & `SlooshUser` Backward Compatibility in `sloosh-iOS/sloosh/Sources/Data/Models/MessengerModels.swift` (lines 71–135, 206–347)**:
-   - Missing `tag` in legacy JSON generates fallback `channel_<id.prefix(6)>`.
-   - Missing `avatarUrl` / `avatarEmoji` cleanly defaults to `"📢"` (`displayAvatarEmoji`) or initial letter (`avatarInitials`).
-   - `SlooshUser` includes `case email` in `CodingKeys` to prevent decoding failures on legacy user JSON records.
-
-5. **Empirical Verification Results**:
-   - Total test assertions executed: **10,706**
-   - Passed: **10,706**
-   - Failed: **0**
+**Test Run Output for Scenario C (Current Implementation)**:
+```
+=== RUNNING TEST SUITE ===
+[PASS] Test 1: Single translation movie initialized correctly.
+[PASS] Test 2: Movie with 15+ translations preserves all options in availableVoiceovers.
+[PASS] Test 3: In-player voiceover switching preserves playback position (1450.5s) and updates iframe URL.
+Started Series Ep 1 with translation: Дубляж, TargetVoiceover: Дубляж
+Candidate for Ep 2: S1E2 - LostFilm
+Now playing Ep 2 with translation: LostFilm, TargetVoiceover: LostFilm
+Candidate for Ep 3: S1E3 - LostFilm
+Now playing Ep 3 with translation: LostFilm, TargetVoiceover: LostFilm
+=== TEST SUITE COMPLETE ===
+```
+**Observation**: On Episode 3 (where "Дубляж" is available), candidate selection returned "LostFilm" because `targetVoiceover` was overwritten during Episode 2 load.
 
 ---
 
 ## 2. Logic Chain
 
-1. From **Observation 1**, `TagValidator` guarantees that any tag processed through `sanitize` and `validate` conforms to `^[a-z0-9_]{3,30}$`. Uppercase is normalized to lowercase, whitespace is trimmed, leading `@` is stripped, and Cyrillic/emoji/non-ASCII characters are rejected.
-2. From **Observation 2**, `AvatarImageProcessor` implements exact center square cropping with invariant scaling, guaranteeing 256x256 point resolution. High-frequency noise testing confirms 256x256 JPEGs never exceed the 50 KB ceiling, ensuring Base64 data URIs remain within Firebase limits.
-3. From **Observation 3**, `MessengerRepository` handles both `@tag` prefixed queries and plain-text substrings across Latin and Cyrillic script with case insensitivity, correctly prepending direct matches to index 0.
-4. From **Observation 4**, `ChannelModel` and `SlooshUser` `init(from decoder:)` implementations supply safe defaults for all optional/missing legacy fields, preserving 100% backward compatibility.
-5. In combination, all subsystems satisfy functional, performance, security, and backward compatibility requirements.
+1. In `playEpisode`, the developer designed `targetVoiceover` to act as the user's sticky preferred voiceover across episodes (preserving preference even when a single episode temporarily lacks that voiceover).
+2. On Episode 1, the user selects "Дубляж". `targetVoiceover` is set to "Дубляж".
+3. When advancing to Episode 2 (which only offers "LostFilm"), `preferredTranslation(in: ep2)` cannot find "Дубляж" and falls back to `ep2.translations.first` ("LostFilm").
+4. `playEpisode` correctly updates `_currentTranslationName = "LostFilm"` (so the UI displays "LostFilm" on Ep 2) and avoids calling `persistVoiceoverSelection("LostFilm")` because `targetVoiceover` ("Дубляж") != "LostFilm".
+5. However, `playEpisode` then invokes `beginLoad(..., selectedVoiceover: "LostFilm")`.
+6. Inside `beginLoad` (line 381), `self.targetVoiceover = selectedVoiceover` unconditionally overwrites `self.targetVoiceover` with `"LostFilm"`.
+7. When Episode 2 ends and `nextEpisodeCandidate()` is called for Episode 3:
+   - `preferredTranslation(in: ep3)` evaluates `targetVoiceover` (now `"LostFilm"`).
+   - Because Episode 3 has both "Дубляж" and "LostFilm", `preferredTranslation` matches `"LostFilm"` in step 1 and returns `"LostFilm"`.
+8. Result: The user's preference ("Дубляж") is permanently lost after any intermediate episode that lacked that translation, violating the requirement that "Episode 3 (Dubbed exists) restores Dubbed".
+
+### Proposed Fix
+In `sloosh-iOS/sloosh/Sources/UI/Player/PlayerView.swift` at line 381:
+```swift
+// Replace:
+self.targetVoiceover = selectedVoiceover
+
+// With:
+if self.targetVoiceover == nil {
+    self.targetVoiceover = selectedVoiceover
+}
+```
+*(Note: `switchVoiceover` explicitly updates `targetVoiceover = translation.name` at line 821 when the user actively changes voiceover).*
+
+With this fix applied, the simulation test confirms:
+```
+=== RUNNING FIXED SIMULATION TEST SUITE ===
+Started Series Ep 1 with translation: Дубляж, TargetVoiceover: Дубляж
+Candidate for Ep 2: S1E2 - LostFilm
+Now playing Ep 2 with translation: LostFilm, TargetVoiceover: Дубляж
+[PASS] Ep 2 plays fallback LostFilm while preserving TargetVoiceover=Дубляж
+Candidate for Ep 3: S1E3 - Дубляж
+Now playing Ep 3 with translation: Дубляж, TargetVoiceover: Дубляж
+[PASS] Ep 3 restored user preference (Дубляж) successfully!
+=== FIXED TEST COMPLETE ===
+```
 
 ---
 
 ## 3. Caveats
 
-1. **System Tag Reservation**: While `"sloosh"`, `"admin"`, `"support"`, `"official"`, `"channel"`, `"user"`, and `"help"` are reserved, `"system"` and `"root"` are not explicitly in the `reserved` Set. Recommend adding `"system"` and `"root"` in a future polish iteration.
-2. **Network Integration**: Tests verified local decoding, repository caching, and filter logic. Live multi-user Firebase Realtime Database websocket interactions are verified on GitHub CI.
+- All other tested areas (movie single/multi voiceover parsing, in-player switching with position preservation, cancellation tokens, cache invalidation, native audio track sync, 1080p quality clamping, and AV1 rejection) were verified and found fully sound and robust.
+- The only identified flaw is the sticky preference overwrite in `PlayerViewModel.beginLoad`.
 
 ---
 
 ## 4. Conclusion
 
-**Verdict: APPROVE.**  
-The Sloosh Channels & Messenger implementation is robust, mathematically sound, handles boundary edge cases gracefully, and preserves complete backward compatibility with legacy payloads.
+The implementation of R1 and R2 is well-structured and largely complete, but contains a reproducible defect in episode-to-episode voiceover preference stickiness:
+- Overwriting `self.targetVoiceover` in `beginLoad` causes fallback voiceovers on missing episodes to permanently replace user preferences on subsequent episodes.
+- A one-line guard in `beginLoad` (`if self.targetVoiceover == nil { self.targetVoiceover = selectedVoiceover }`) completely resolves the issue.
 
 ---
 
 ## 5. Verification Method
 
-To independently execute and verify the empirical test suite:
+1. Run the empirical test harness:
+   ```powershell
+   powershell -ExecutionPolicy Bypass -File W:\iOS-sloosh\.agents\challenger_1\test_sim.ps1
+   powershell -ExecutionPolicy Bypass -File W:\iOS-sloosh\.agents\challenger_1\test_sim_fix.ps1
+   ```
+2. Inspect `PlayerView.swift` line 381 vs lines 1748–1766.
 
-```powershell
-# Run the complete test suite with 10,000 fuzzing iterations
-dotnet run --project W:\iOS-sloosh\.agents\challenger_1\EmpiricalTests\EmpiricalTests.csproj
-```
+---
 
-**Files to Inspect**:
-- `W:\iOS-sloosh\.agents\challenger_1\challenge.md` (Detailed challenge report)
-- `W:\iOS-sloosh\.agents\challenger_1\EmpiricalTests\Program.cs` (Empirical test suite source)
-- `W:\iOS-sloosh\sloosh-iOS\sloosh\Sources\Data\Models\MessengerModels.swift`
-- `W:\iOS-sloosh\sloosh-iOS\sloosh\Sources\UI\Shared\AvatarImageProcessor.swift`
-- `W:\iOS-sloosh\sloosh-iOS\sloosh\Sources\Data\Repositories\MessengerRepository.swift`
+Verdict: REQUEST_CHANGES

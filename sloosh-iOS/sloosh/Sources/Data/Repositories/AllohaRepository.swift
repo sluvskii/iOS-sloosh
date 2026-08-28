@@ -86,10 +86,6 @@ func normalizedAllohaTranslationName(_ raw: String?) -> String {
         .trimmingCharacters(in: .whitespacesAndNewlines)
 
 
-    for flag in ["🇷🇺", "🇺🇸", "🇺🇦", "🇰🇿", "🇬🇪", "🇯🇵", "🇰🇷", "🇨🇳", "🇫🇷", "🇩🇪", "🇪🇸", "🇮🇹", "🇹🇷"] {
-        value = value.replacingOccurrences(of: flag, with: "")
-    }
-
     while value.hasPrefix("-") || value.hasPrefix(",") {
         value = String(value.dropFirst()).trimmingCharacters(in: .whitespaces)
     }
@@ -113,50 +109,17 @@ func allohaTranslationNamesMatch(_ lhs: String?, _ rhs: String?, exactOnly: Bool
         return true
     }
     
-    if exactOnly {
-        return false
-    }
-    
-    // Studios that must NEVER cross-match with each other
-    let studios = [
-        "hdrezka", "rezka", "red head sound", "rhs", "lostfilm", "кубик", "kubik",
-        "tvshows", "alexfilm", "jaskier", "newstudio", "flarrow", "пифагор",
-        "невафильм", "force media", "coldfilm", "shadowcraft", "лостфильм", "ред хед саунд"
-    ]
-    
-    let leftStudios = studios.filter { left.contains($0) }
-    let rightStudios = studios.filter { right.contains($0) }
-    
-    // If both have recognized studio tags, they MUST share at least one studio tag
-    if !leftStudios.isEmpty && !rightStudios.isEmpty {
-        let common = Set(leftStudios).intersection(Set(rightStudios))
-        if common.isEmpty {
-            return false
-        }
-    }
-    
-    // Dubbed vs Multi-voice check: if one is specifically Dubbed and the other is Multi-voice / Two-voice, never match
-    let isDub: (String) -> Bool = { $0.contains("дубляж") || $0.contains("дублирован") }
-    let isMvo: (String) -> Bool = { $0.contains("многоголосый") || $0.contains("двухголосый") || $0.contains("закадровый") }
-    if (isDub(left) && isMvo(right)) || (isMvo(left) && isDub(right)) {
-        return false
-    }
-    
-    // Token-based matching with strict word boundary
+    // Check for significant word overlap (e.g. "AlexFilm" vs "AlexFilm Studio")
     let leftWords = Set(left.components(separatedBy: CharacterSet.alphanumerics.inverted).filter { $0.count > 2 })
     let rightWords = Set(right.components(separatedBy: CharacterSet.alphanumerics.inverted).filter { $0.count > 2 })
     
     if !leftWords.isEmpty && !rightWords.isEmpty {
-        if leftWords == rightWords {
+        if leftWords == rightWords || leftWords.isSubset(of: rightWords) || rightWords.isSubset(of: leftWords) {
             return true
         }
-        let intersection = leftWords.intersection(rightWords)
-        if intersection.count >= 2 {
-            return true
-        }
-        if intersection.count == 1, let word = intersection.first, studios.contains(word) {
-            return true
-        }
+    } else if left.contains(right) || right.contains(left) {
+        // Fallback for very short names (like "en", "ru", "qtv")
+        return true
     }
     
     let isOriginalOrEnglish: (String) -> Bool = { name in
@@ -185,7 +148,8 @@ class AllohaTrustedSessionDelegate: NSObject, @preconcurrency URLSessionDelegate
         "videocdn.tv", "dhklxm.ru", "cdnhl.ru"
     ]
     
-    func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge, completionHandler: @escaping (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+    @MainActor
+    func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge, completionHandler: @escaping @MainActor @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
         guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
               let serverTrust = challenge.protectionSpace.serverTrust else {
             completionHandler(.performDefaultHandling, nil)
@@ -293,47 +257,43 @@ final class AllohaRepository: @unchecked Sendable {
                           let eDict = eValue as? [String: Any] else { continue }
                     
                     var parsedTrans: [AllohaTranslation] = []
-                    if let transObj = (eDict["translation"] ?? eDict["translations"]) as? [String: Any] {
+                    if let transObj = eDict["translation"] as? [String: Any] {
                         for (tKey, tValue) in transObj {
                             guard let tDict = tValue as? [String: Any],
-                                  var iframe = (tDict["iframe"] as? String) ?? (eDict["iframe"] as? String), !iframe.isEmpty else { continue }
+                                  var iframe = tDict["iframe"] as? String, !iframe.isEmpty else { continue }
                             if iframe.hasPrefix("//") {
                                 iframe = "https:" + iframe
                             }
                             iframe = injectTranslationId(tKey, into: iframe)
-                            let transName = (tDict["translation"] as? String) ?? (tDict["name"] as? String) ?? "AlexFilm"
+                            let transName = tDict["translation"] as? String ?? "Unknown"
                             
                             let cleanTitle = normalizedAllohaTranslationName(transName)
                             let lower = cleanTitle.lowercased()
                             if !lower.contains("субтитр") && !lower.contains("subtitle") {
-                                parsedTrans.append(AllohaTranslation(id: tKey, name: cleanTitle.isEmpty ? transName : cleanTitle, iframeUrl: iframe, streamUrl: nil))
+                                parsedTrans.append(AllohaTranslation(id: tKey, name: cleanTitle, iframeUrl: iframe, streamUrl: nil))
                             }
                         }
-                    } else if let transArray = (eDict["translation"] ?? eDict["translations"]) as? [[String: Any]] {
+                    } else if let transArray = eDict["translation"] as? [[String: Any]] {
                         for (index, tDict) in transArray.enumerated() {
-                            guard var iframe = (tDict["iframe"] as? String) ?? (eDict["iframe"] as? String), !iframe.isEmpty else { continue }
+                            guard var iframe = tDict["iframe"] as? String, !iframe.isEmpty else { continue }
                             if iframe.hasPrefix("//") {
                                 iframe = "https:" + iframe
                             }
-                            iframe = injectTranslationId(String(index), into: iframe)
-                            let transName = (tDict["translation"] as? String) ?? (tDict["name"] as? String) ?? "AlexFilm"
+                            // Prefer real translation ID from the element if available,
+                            // fall back to numeric index for backward compatibility
+                            let translationId = (tDict["id"] as? String)
+                                ?? (tDict["translation_id"] as? String)
+                                ?? ((tDict["id"] as? Int).map { String($0) })
+                                ?? String(index)
+                            iframe = injectTranslationId(translationId, into: iframe)
+                            let transName = tDict["translation"] as? String ?? "Unknown"
                             
                             let cleanTitle = normalizedAllohaTranslationName(transName)
                             let lower = cleanTitle.lowercased()
                             if !lower.contains("субтитр") && !lower.contains("subtitle") {
-                                parsedTrans.append(AllohaTranslation(id: String(index), name: cleanTitle.isEmpty ? transName : cleanTitle, iframeUrl: iframe, streamUrl: nil))
+                                parsedTrans.append(AllohaTranslation(id: translationId, name: cleanTitle, iframeUrl: iframe, streamUrl: nil))
                             }
                         }
-                    } else if let transStr = eDict["translation"] as? String {
-                        var iframe = eDict["iframe"] as? String ?? ""
-                        if iframe.hasPrefix("//") { iframe = "https:" + iframe }
-                        if !iframe.isEmpty {
-                            let cleanTitle = normalizedAllohaTranslationName(transStr)
-                            parsedTrans.append(AllohaTranslation(id: "default", name: cleanTitle.isEmpty ? transStr : cleanTitle, iframeUrl: iframe, streamUrl: nil))
-                        }
-                    } else if var iframe = eDict["iframe"] as? String, !iframe.isEmpty {
-                        if iframe.hasPrefix("//") { iframe = "https:" + iframe }
-                        parsedTrans.append(AllohaTranslation(id: "default", name: "AlexFilm", iframeUrl: iframe, streamUrl: nil))
                     }
                     
                     parsedTrans.sort { $0.name < $1.name }
@@ -381,13 +341,19 @@ final class AllohaRepository: @unchecked Sendable {
                     if iframe.hasPrefix("//") {
                         iframe = "https:" + iframe
                     }
-                    iframe = injectTranslationId(String(index), into: iframe)
+                    // Prefer real translation ID from the element if available,
+                    // fall back to numeric index for backward compatibility
+                    let translationId = (tDict["id"] as? String)
+                        ?? (tDict["translation_id"] as? String)
+                        ?? ((tDict["id"] as? Int).map { String($0) })
+                        ?? String(index)
+                    iframe = injectTranslationId(translationId, into: iframe)
                     let transName = tDict["translation"] as? String ?? "Unknown"
                     
                     let cleanTitle = normalizedAllohaTranslationName(transName)
                     let lower = cleanTitle.lowercased()
                     if !lower.contains("субтитр") && !lower.contains("subtitle") {
-                        parsedTrans.append(AllohaTranslation(id: String(index), name: cleanTitle, iframeUrl: iframe, streamUrl: nil))
+                        parsedTrans.append(AllohaTranslation(id: translationId, name: cleanTitle, iframeUrl: iframe, streamUrl: nil))
                     }
                 }
                 parsedTrans.sort { $0.name < $1.name }

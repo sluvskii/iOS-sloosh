@@ -1,15 +1,9 @@
-# Progress — Worker M3
+# Progress — worker_m3
 
-Last visited: 2026-08-25T01:10:00Z
-Status: COMPLETED
+Last visited: 2026-08-27T15:41:00Z
 
-## Tasks
-- [x] Read DISPATCH.md and workspace contracts
-- [x] Create worker_m3 folder and BRIEFING.md
-- [x] Implement `MovieSelectorSheet.swift`
-- [x] Implement `ChannelMediaCardView.swift`
-- [x] Implement `PinnedPostBar.swift`
-- [x] Implement `ChannelPostRowView.swift`
-- [x] Implement `ChannelDetailView.swift`
-- [x] Verify Liquid Glass compliance, no `.ultraThinMaterial`, no provider leaks
-- [x] Write handoff report and notify orchestrator
+- [x] Initialized workspace and briefing
+- [x] Inspect `sloosh-iOS/sloosh/Sources/Data/Repositories/DownloadManager.swift`
+- [x] Implement required changes in `DownloadManager.swift`
+- [x] Verify changes against requirements
+- [x] Write handoff report and notify parent

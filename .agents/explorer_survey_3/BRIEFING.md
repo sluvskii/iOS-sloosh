@@ -1,50 +1,48 @@
-# BRIEFING — 2026-08-25T00:56:00+05:00
+# BRIEFING — 2026-08-27T15:35:00Z
 
 ## Mission
-Investigate Media Card integration, Movie Selection sheet, Player/Details linking, and reference implementations for Channel Feeds in Sloosh iOS.
+Investigate DownloadManager, quality and stream resolution, master playlist parsing, and offline playback fidelity in sloosh-iOS.
 
 ## 🔒 My Identity
-- Archetype: explorer
-- Roles: read-only investigation, architectural analysis, synthesis
+- Archetype: Explorer
+- Roles: Read-only investigation, analysis, synthesis, reporting
 - Working directory: W:\iOS-sloosh\.agents\explorer_survey_3
-- Original parent: b5cbba17-2ada-46eb-ab78-1b615867c4f8
-- Milestone: Channel Feed Media Card, Movie Selector & Interactions Exploration
+- Original parent: e8fa1221-3ddf-4c07-8ee2-5bc9cdec5746
+- Milestone: Voiceover & Quality Discrepancies Investigation - DownloadManager & Quality/Stream Selection (Task 3)
 
 ## 🔒 Key Constraints
-- Read-only investigation — do NOT implement or modify source code
-- Adhere to iOS 26+ Liquid Glass (`.glassEffect()`), strictly NO `.ultraThinMaterial`
-- Never leak internal provider names (Alloha, NeoMovies, Collaps, etc.) into UI
-- Strictly follow Swift MVVM and existing Sloosh architecture
+- Read-only investigation — do NOT implement
+- Inspect DownloadManager, AllohaRuntimeResolver, DetailsView/SourceSelectionView download triggers, PlayerView offline consumption
+- Produce structured analysis.md and handoff.md
 
 ## Current Parent
-- Conversation ID: b5cbba17-2ada-46eb-ab78-1b615867c4f8
-- Updated: 2026-08-25T00:56:00+05:00
+- Conversation ID: e8fa1221-3ddf-4c07-8ee2-5bc9cdec5746
+- Updated: 2026-08-27T15:35:00Z
 
 ## Investigation State
 - **Explored paths**:
-  - `Data/Network/MoviesApi.swift` & `Data/Repositories/MoviesRepository.swift` (Search, popular, details, caching)
-  - `Data/Models/Models.swift` & `Data/Models/MessengerModels.swift` (`MediaDto`, `MediaDetailsDto`, `MediaCardPayload`, `ChatMessage`)
-  - `UI/Messenger/MediaMessageCardView.swift` & `UI/Messenger/ChatDetailView.swift`
-  - `UI/Search/SearchView.swift` & `UI/Home/HomeView.swift`
-  - `UI/Details/DetailsView.swift`, `UI/Home/HomeDirectPlayWrapper.swift`, `UI/Player/PlayerView.swift`
-  - `UI/Details/ShareToFriendSheet.swift` & `UI/Shared/MediaHelpers.swift`
-  - `neomovies-mobile/` inspection
+  - `sloosh-iOS/sloosh/Sources/Data/Repositories/DownloadManager.swift`
+  - `sloosh-iOS/sloosh/Sources/Data/Repositories/DownloadManifest.swift`
+  - `sloosh-iOS/sloosh/Sources/Data/Repositories/AllohaRuntimeResolver.swift`
+  - `sloosh-iOS/sloosh/Sources/Data/Repositories/AllohaRuntimeParser.swift`
+  - `sloosh-iOS/sloosh/Sources/Data/Repositories/HlsProxyServer.swift`
+  - `sloosh-iOS/sloosh/Sources/UI/Player/PlayerView.swift`
+  - `sloosh-iOS/sloosh/Sources/UI/Downloads/DownloadsView.swift`
+  - `sloosh-iOS/sloosh/Sources/UI/Details/DetailsView.swift`
+  - `sloosh-iOS/sloosh/Sources/UI/Details/SourceSelectionView.swift`
+  - `sloosh-iOS/sloosh/Sources/UI/Details/QualitySelectionSheet.swift`
 - **Key findings**:
-  - `MoviesRepository.shared` provides cached and resilient search (`searchMovies`), lists (`getPopularMovies`), and details (`getDetails`).
-  - `MediaCardPayload` is the unified lightweight DTO for embedding movies in chats and channel posts.
-  - `MovieSelectorSheet` should offer an empty-state "Популярное сейчас" grid and a debounced live search grid.
-  - `ChannelMediaCardView` combines poster, rating badge (`Color.rating`), title, year, genre, average-color ambient background, one-tap "Смотреть" (`HomeDirectPlayWrapper` -> `PlayerView`), and tap-to-open `DetailsView`.
-  - Emoji reactions can use a `[String: String]` (userId: emoji) schema on Firebase, with an interactive Liquid Glass picker and toggleable reaction pill aggregates.
-- **Unexplored areas**: None within this subtask scope.
+  1. `prepareAndEnqueue` performs erroneous `audioVariants` matching that overrides the authentic translation master playlist with 720p/secondary variants.
+  2. `chooseMediaPlaylistUrl` fails to parse `BANDWIDTH`, ignores variant filename resolution hints, ignores `resolved["qualityVariants"]`, does not filter AV1 codecs, and uses an ambiguous distance-based sorter rather than picking highest $\le \text{targetHeight}$.
+  3. Offline media packaging and `HlsProxyServer` local serving are verified; offline playback in `PlayerView` and translation matching in `DetailsView` operate cleanly.
+- **Unexplored areas**: None for Task 3 scope.
 
 ## Key Decisions Made
-- [API]: Leverage `MoviesRepository.shared.searchMoviesResponse` and `getPopularMovies` directly for `MovieSelectorSheet`.
-- [Data Model]: Reuse and enhance `MediaCardPayload` for channel post attachments.
-- [Presentation]: Reuse `HomeDirectPlayWrapper` sheet for source selection before full-screen `PlayerView` cover, and push `DetailsView` via standard `NavigationStack` / `navigationDestination`.
-- [Reactions]: Implement optimistic local toggling + Firebase node `channels/{channelId}/posts/{postId}/reactions/{userId}`.
+- Completed deep dive analysis in `analysis.md`.
+- Completed self-contained 5-component report in `handoff.md`.
 
 ## Artifact Index
-- `W:\iOS-sloosh\.agents\explorer_survey_3\DISPATCH.md` — Dispatch message
-- `W:\iOS-sloosh\.agents\explorer_survey_3\BRIEFING.md` — Persistent briefing
-- `W:\iOS-sloosh\.agents\explorer_survey_3\progress.md` — Liveness and progress
-- `W:\iOS-sloosh\.agents\explorer_survey_3\handoff.md` — Final analysis report
+- `W:\iOS-sloosh\.agents\explorer_survey_3\analysis.md` — Comprehensive analysis and proposed code fixes
+- `W:\iOS-sloosh\.agents\explorer_survey_3\handoff.md` — 5-component handoff report
+- `W:\iOS-sloosh\.agents\explorer_survey_3\progress.md` — Progress tracker
+- `W:\iOS-sloosh\.agents\explorer_survey_3\DISPATCH.md` — Task dispatch log

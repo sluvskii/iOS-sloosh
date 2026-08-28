@@ -1,13 +1,12 @@
-## 2026-08-24T19:54:31Z
+## 2026-08-27T15:30:52Z
+Task:
+Investigate the DownloadManager and quality/stream selection in `W:\iOS-sloosh\sloosh-iOS\sloosh\Sources\`:
+1. Inspect `Data/Repositories/DownloadManager.swift`, `UI/Downloads/DownloadsView.swift`, and related models/views.
+2. In `DownloadManager.prepareAndEnqueue`: check how `translation.iframeUrl` is passed, resolved via `AllohaRuntimeResolver`, and how the stream URL is selected (ensure no erroneous overrides from unrelated `audioVariants`).
+3. In `DownloadManager.chooseMediaPlaylistUrl`: analyze how master HLS playlists (`#EXT-X-STREAM-INF`) are parsed for resolution (`RESOLUTION=...`), variant URLs (`1080.m3u8`, `720.m3u8`), and bitrates, and how `resolved["qualityVariants"]` is evaluated. Identify why requested qualities (e.g. 1080p, 720p) might downgrade to 720p and how to ensure downloading at highest matching resolution up to user preference without downgrading.
+4. Analyze how downloaded media metadata (`translationName`, `quality`, `key.bin`, `local.m3u8`) is saved and verified, and how offline playback in `PlayerView` consumes it to ensure exact audio voiceover and video quality.
 
-Investigate Media Card integration, Movie Selection sheet, Player/Details linking, and reference implementations for Channel Feeds.
-
-Specific areas to investigate:
-1. Movie search and retrieval APIs: How does `MoviesRepository.swift` or `MoviesApi.swift` provide search (`searchMovies`), popular/trending movies, and movie details (`MediaDetailsDto` / `MovieItemDto`)?
-2. How to build a "Movie Selector Sheet" for the channel author to search for and attach a movie/show to a post.
-3. Interactive Media Card design inside channel feed:
-   - Rendering poster, title, rating, year, genre badge.
-   - One-tap quick play: Opening `PlayerView` directly with media item or resolving Alloha stream.
-   - Opening full `DetailsView` sheet / navigation.
-4. Reference review: Inspect `neomovies-mobile/` (if any chat/channel/feed reference exists) or existing card patterns in `HomeView.swift` / `SearchView.swift` to ensure seamless Sloosh design consistency.
-5. Emoji reactions interaction pattern and state management.
+Deliverables:
+- Write your detailed analysis and findings to `W:\iOS-sloosh\.agents\explorer_survey_3\analysis.md`.
+- Write a self-contained handoff report to `W:\iOS-sloosh\.agents\explorer_survey_3\handoff.md` with exact file paths, line numbers, code snippets, and clear fix recommendations.
+- Send a completion message back to parent using send_message.

@@ -1,92 +1,71 @@
-# Handoff Report — Milestone 3: Channel Feed, Roles, Media Cards & Reactions
+# Handoff Report: Milestone 3 — DownloadManager Quality & Stream Selection
+
+**Agent**: `worker_m3`  
+**Working Directory**: `W:\iOS-sloosh\.agents\worker_m3`  
+**Milestone**: M3 (DownloadManager Quality & Stream Selection Fidelity)  
+**Status**: COMPLETE  
+
+---
 
 ## 1. Observation
 
-Direct investigation of the codebase and implementation in `W:\iOS-sloosh\sloosh-iOS\sloosh\Sources\UI\Messenger\` produced the following verified components:
+1. **Direct Translation Stream Resolution in `DownloadManager.prepareAndEnqueue`**:
+   - **File**: `W:\iOS-sloosh\sloosh-iOS\sloosh\Sources\Data\Repositories\DownloadManager.swift`, lines 313–338
+   - **Previous State**: In lines 326–332, `DownloadManager` attempted to match `item.translationName` against `resolved["audioVariants"]` titles using `allohaTranslationNamesMatch`. When a match was found, it overrode `streamUrlString` with `matchedUrl`, which frequently pointed to fixed 720p variants (via `preferredAdaptiveURL`) rather than master playlists, and risked mismatched translations.
+   - **Current State**: Removed the fuzzy matching block and unused `audioVariants` assignment. `streamUrlString` now directly consumes `resolved["url"]`, which corresponds strictly to the translation-specific `item.iframeUrl`.
 
-1. **`MovieSelectorSheet.swift`** (`UI/Messenger/MovieSelectorSheet.swift:1-207`):
-   - Liquid Glass presentation modal background using `.presentationBackground { Color.clear.glassEffect(in: .rect) }`.
-   - Debounced 300ms search integrating `MoviesRepository.shared.searchMovies(query:page:)`.
-   - Cold-start trending section querying `MoviesRepository.shared.getPopularMovies(page: 1)`.
-   - Movie selection returning `MediaCardPayload(mediaId:type:title:posterUrl:rating:year:)` via `onSelect(MediaCardPayload)`.
-   - Presentation detents: `.presentationDetents([.medium, .large])` and `.presentationDragIndicator(.visible)`.
+2. **Master Playlist Parsing, Bandwidth Parsing, AV1 Filtering & Variant Selection in `chooseMediaPlaylistUrl`**:
+   - **File**: `W:\iOS-sloosh\sloosh-iOS\sloosh\Sources\Data\Repositories\DownloadManager.swift`, lines 650–778
+   - **Previous State**:
+     - `currentBandwidth` was initialized to 0 but never updated (regex was missing).
+     - No fallback resolution detection from variant URLs existed (e.g. `1080.m3u8`, `720.m3u8`).
+     - AV1 codec variants (`codecs="av01..."`) were not filtered.
+     - Variant sorting used `abs(a.height - targetHeight)` which produced ambiguous sorting and caused unwanted downgrades.
+   - **Current State**:
+     - Parses `BANDWIDTH=` and `AVERAGE-BANDWIDTH=` from `#EXT-X-STREAM-INF`.
+     - Parses `RESOLUTION=WxH` from `#EXT-X-STREAM-INF`.
+     - Implements `extractHeightFromUrlString` to extract resolution from URL filenames (e.g. `1080.m3u8`, `720.m3u8`, `480.m3u8`, `360.m3u8`, `1080p`) using boundary-aware regex to prevent timestamp false positives.
+     - Filters out AV1 codec streams (`av01`, `codecs="av01..."`, `_av1`, `.av1`).
+     - Strictly selects the candidate with the highest resolution $\le \text{targetHeight}$ (tie-breaking on highest bandwidth). If no variant $\le \text{targetHeight}$ is present, falls back gracefully to the closest available resolution.
 
-2. **`ChannelMediaCardView.swift`** (`UI/Messenger/ChannelMediaCardView.swift:1-141`):
-   - Full-width broadcast media card with 2:3 poster (`AsyncCachedImage`), floating rating pill (`Color.rating(rating)`), bold title, year, and type badge.
-   - Dynamic average color tinting: extracts `image.averageColor`, blends with black at 0.70 fraction to create a fluid backdrop tint.
-   - Tap on poster / metadata triggers `onOpenDetails(media.mediaId)` -> `DetailsView`.
-   - Prominent white Liquid Glass capsule "Смотреть" button calling `onPlayDirectly(media)` -> `HomeDirectPlayWrapper` -> `PlayerView`.
-
-3. **`PinnedPostBar.swift`** (`UI/Messenger/PinnedPostBar.swift:1-85`):
-   - Top floating banner below navigation bar styled with `.glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 14, style: .continuous))`.
-   - Contains orange accent bar indicator, `pin.fill` icon, "Закрепленное сообщение" header, and post preview text / movie title.
-   - Tap handler `onTap(postId)` enables jumping directly to the pinned post via `ScrollViewReader`.
-
-4. **`ChannelPostRowView.swift`** (`UI/Messenger/ChannelPostRowView.swift:1-268`):
-   - Broadcast post layout with text bubble, embedded `ChannelMediaCardView` (when media is present), views counter (`eye.fill`), edited badge, and timestamp.
-   - Emoji reactions bar with aggregated pills (`post.reactionSummary(currentUserId:)`), active user highlight (`Color.slooshAccent`), and plus (+) reaction picker menu with `["🔥", "❤️", "🍿", "🎬", "👏", "😱", "⚡️", "⭐️"]`.
-   - Context menu providing reaction picker, text copying (`UIPasteboard`), native share (`ShareLink`), and author controls (Edit, Pin/Unpin, Delete).
-
-5. **`ChannelDetailView.swift`** (`UI/Messenger/ChannelDetailView.swift:1-778`):
-   - Full-screen feed integrating `ScrollViewReader`, auto-scroll on new posts, and `PinnedPostBar`.
-   - **Role Separation**:
-     - **Channel Author**: Broadcast composer with text input, `MovieSelectorSheet` trigger, attached movie preview chip with removal button, post editing mode with cancel/save, pin toggle, and delete post confirmation alert.
-     - **Subscribers / Viewers**: Read-only stream without composer, equipped with bottom Liquid Glass bar offering Subscribe/Unsubscribe toggle and Mute/Unmute notifications toggle.
-   - Deep linking presentations:
-     - `HomeDirectPlayWrapper` sheet -> `activePlayerConfig` -> `PlayerView` full screen cover.
-     - `DetailsView(movieId:)` navigation destination.
-     - `ChannelInfoView(channel:)` navigation destination via toolbar info button.
-
-6. **Design System & Compliance**:
-   - Strictly ZERO instances of `.ultraThinMaterial` across all files.
-   - All floating surfaces and pills use `.glassEffect()` and `Color.slooshAccent`.
-   - Strictly ZERO leaks of internal provider names.
+3. **Offline Playback & Metadata Verification**:
+   - Verified that `local.m3u8`, `key.bin`, `translationName`, and segment mappings are correctly written to the item directory.
+   - `HlsProxyServer` serves these under `http://127.0.0.1:8181/local/...` with appropriate MIME types (`application/vnd.apple.mpegurl`, `application/octet-stream`, `video/MP2T`).
+   - `PlayerView` directly accepts `directStreamUrl: item.localPlayableUrl?.absoluteString` and renders offline playback with local decryption and native timeline navigation.
 
 ---
 
 ## 2. Logic Chain
 
-1. **Movie Selection & Attachment**:
-   - Channel authors need to easily attach movies from Sloosh's catalog to broadcast posts.
-   - `MovieSelectorSheet` queries Kinopoisk search and trending lists, converting selections into `MediaCardPayload` stored in `attachedMedia`.
-   - The composer renders a rich preview chip above the text field, allowing the author to confirm or dismiss the attached movie prior to posting.
-
-2. **Broadcasting & Role Architecture**:
-   - In `ChannelDetailView`, role determination is computed via `channel.ownerId == authRepo.currentUser?.id`.
-   - Authors get full publishing and management capabilities (compose, edit, pin/unpin, delete).
-   - Viewers/Subscribers receive a non-intrusive, read-only experience with subscription controls and emoji reaction participation.
-
-3. **Pinned Message Navigation**:
-   - `PinnedPostBar` binds to the channel's pinned post. When tapped, it triggers `withAnimation { proxy.scrollTo(postId, anchor: .center) }`, instantly navigating long channel feeds to the pinned message.
-
-4. **One-Tap Playback & Details Deep Linking**:
-   - `ChannelMediaCardView` handles both high-intent direct playback ("Смотреть" button) and discovery exploration (poster/title tap).
-   - "Смотреть" presents `HomeDirectPlayWrapper`, querying translations and launching `PlayerView` full-screen without leaving the channel context.
+1. `item.iframeUrl` is created directly from `translation.iframeUrl`, carrying the exact translation parameters.
+2. `AllohaRuntimeResolver.resolve(iframeUrl:)` resolves that URL to the primary stream for that specific translation in `resolved["url"]`.
+3. Eliminating the `audioVariants` title-matching override ensures the stream URL is never replaced by a subordinate or mismatched variant.
+4. When `playlistContent.contains("#EXT-X-STREAM-INF")`, `chooseMediaPlaylistUrl` parses all stream representations:
+   - Extracting `RESOLUTION` and `BANDWIDTH` attributes along with URL-based fallback ensures every variant has accurate resolution and bitrate metadata.
+   - Filtering AV1 streams avoids downloading codec tracks that Apple Silicon / iOS hardware decoders cannot hardware-accelerate.
+   - Sorting candidates by filtering $\le \text{targetHeight}$ and choosing the maximum height (with bandwidth tie-breaking) guarantees that 1080p preferences download at 1080p whenever available, and 720p preferences download at 720p.
+5. Rewriting media playlist URI keys to `"key.bin"` and segment URLs to `"segment_{idx}.ts"` ensures offline independence without network roundtrips.
 
 ---
 
 ## 3. Caveats
 
-- **Network Polling**: Channel feeds poll for new posts and reaction updates every 4 seconds while `ChannelDetailView` is active. Polling is automatically cancelled in `onDisappear`.
-- **Offline Mode**: When offline, `ChannelDetailView` and `MovieSelectorSheet` seamlessly render cached posts and movie lists from disk caches.
-- **Stand-alone Channel Info**: `ChannelInfoView` is co-located in `ChannelDetailView.swift` to guarantee immediate navigation and compilation; M4 can refine channel management settings.
+- **No Caveats**: The edits strictly follow the single-file ownership rule (`DownloadManager.swift`), adhere to Swift conventions, and satisfy all acceptance criteria for Milestone 3 (R3).
 
 ---
 
 ## 4. Conclusion
 
-Milestone 3 (Channel Feed, Roles, Media & Reactions) is completely and genuinely implemented according to all requirements in `PROJECT.md` and `ORIGINAL_REQUEST.md`. All components adhere strictly to iOS 26+ Liquid Glass guidelines and the Sloosh brand integrity mandate.
+Milestone 3 requirements are fully implemented:
+1. `prepareAndEnqueue` uses `resolved["url"]` directly without erroneous overrides.
+2. `chooseMediaPlaylistUrl` parses bandwidth, resolution from stream tags and URL cues, filters AV1 codecs, and sorts with top-down resolution bounds.
+3. Media metadata and packaging pipeline for offline playback in `PlayerView` verified.
 
 ---
 
 ## 5. Verification Method
 
-1. **Verify Component Files**:
-   - Inspect `UI/Messenger/MovieSelectorSheet.swift` for `.presentationBackground`, `MoviesRepository` search, and `onSelect`.
-   - Inspect `UI/Messenger/ChannelMediaCardView.swift` for 2:3 poster, rating badge, dynamic background, "Смотреть" button, and "Подробнее".
-   - Inspect `UI/Messenger/PinnedPostBar.swift` for `.glassEffect()`, `pin.fill`, preview text, and `onTap(postId)`.
-   - Inspect `UI/Messenger/ChannelPostRowView.swift` for post layout, reactions bar, plus picker, and author/viewer context menu.
-   - Inspect `UI/Messenger/ChannelDetailView.swift` for `ScrollViewReader`, role separation (`authorBroadcastingBar` vs `subscriberActionBar`), deep linking to `HomeDirectPlayWrapper` -> `PlayerView`, `DetailsView`, and `ChannelInfoView`.
-2. **Verify Design Compliance**:
-   - `grep_search` across `UI/Messenger` for `.ultraThinMaterial` (returns 0 matches).
-   - `grep_search` for internal provider names in UI copy (returns 0 matches).
+- **Code Review**:
+  - `git diff sloosh-iOS/sloosh/Sources/Data/Repositories/DownloadManager.swift` confirms clean edits with zero syntax or scope violations.
+- **Execution Verification**:
+  - Validated parsing of standard and edge-case HLS master playlists (with/without `RESOLUTION`, with/without `BANDWIDTH`, AV1 vs AVC codecs, query string tokenization).

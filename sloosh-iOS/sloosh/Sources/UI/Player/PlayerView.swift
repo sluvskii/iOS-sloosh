@@ -299,7 +299,7 @@ class PlayerViewModel: ObservableObject {
     /// Оригинальный iframeUrl Alloha. Нужен для корректного переключения озвучки в плеере.
     private var currentIframeUrl: String?
     /// Все audioVariants из последнего resolve. Нужны для мгновенного переключения озвучки без re-resolve.
-    var resolvedAudioVariants: [[String: Any]] = []
+    private var resolvedAudioVariants: [[String: Any]] = []
 
     var targetQualityPreference: VideoQualityPreference?
     var seriesResult: AllohaApiResult?
@@ -794,45 +794,14 @@ class PlayerViewModel: ObservableObject {
         logDebug("switchVoiceover: switching to '\(name)' at index \(index ?? -1)")
         let savedTime = self.player?.currentTime().seconds ?? self.currentTime
 
-        _currentTranslationName = name
-        targetVoiceover = name
-        targetDirectStreamUrl = nil
-        persistVoiceoverSelection(name)
-
-        // 1. Быстрое переключение через resolvedAudioVariants, если дорожка уже в памяти
-        if !resolvedAudioVariants.isEmpty {
-            let exactMatch = resolvedAudioVariants.first(where: {
-                let vTitle = ($0["title"] as? String) ?? ""
-                return allohaTranslationNamesMatch(vTitle, name, exactOnly: true)
-            })
-            let match = exactMatch ?? resolvedAudioVariants.first(where: {
-                let vTitle = ($0["title"] as? String) ?? ""
-                return allohaTranslationNamesMatch(vTitle, name, exactOnly: false)
-            })
-            if let validMatch = match, let streamUrlString = validMatch["url"] as? String, let streamUrl = URL(string: streamUrlString) {
-                logDebug("switchVoiceover: instant reload from resolvedAudioVariant '\(validMatch["title"] ?? "")' url=\(streamUrlString)")
-                self.currentTime = savedTime
-                let activeBitrate: Double? = {
-                    if let currentKey = currentQualityKey, let opt = availableQualities.first(where: { $0.key == currentKey }), !opt.isAuto {
-                        return resolvedBitrate(for: opt)
-                    }
-                    return player?.currentItem?.preferredPeakBitRate
-                }()
-                reloadPlayback(to: streamUrl, preferredPeakBitRate: activeBitrate)
-                return
-            }
-        }
-
-        // 2. Ищем target AllohaTranslation в seriesResult (для фильмов и сериалов)
+        // 1. Ищем target AllohaTranslation в seriesResult (для фильмов и сериалов)
         var targetTranslation: AllohaTranslation?
 
         if isMovie {
             if let movie = seriesResult?.movie {
-                if let idx = index, idx < movie.translations.count && allohaTranslationNamesMatch(movie.translations[idx].name, name, exactOnly: true) {
+                if let idx = index, idx < movie.translations.count && allohaTranslationNamesMatch(movie.translations[idx].name, name) {
                     targetTranslation = movie.translations[idx]
-                } else if let match = movie.translations.first(where: { allohaTranslationNamesMatch($0.name, name, exactOnly: true) }) {
-                    targetTranslation = match
-                } else if let match = movie.translations.first(where: { allohaTranslationNamesMatch($0.name, name, exactOnly: false) }) {
+                } else if let match = movie.translations.first(where: { allohaTranslationNamesMatch($0.name, name) }) {
                     targetTranslation = match
                 } else if let idx = index, idx < movie.translations.count {
                     targetTranslation = movie.translations[idx]
@@ -842,11 +811,9 @@ class PlayerViewModel: ObservableObject {
             if let seriesResult, let season = currentSeason, let episode = currentEpisode,
                let seasonObj = seriesResult.seasons.first(where: { $0.season == season }),
                let epObj = seasonObj.episodes.first(where: { $0.episode == episode }) {
-                if let idx = index, idx < epObj.translations.count && allohaTranslationNamesMatch(epObj.translations[idx].name, name, exactOnly: true) {
+                if let idx = index, idx < epObj.translations.count && allohaTranslationNamesMatch(epObj.translations[idx].name, name) {
                     targetTranslation = epObj.translations[idx]
-                } else if let match = epObj.translations.first(where: { allohaTranslationNamesMatch($0.name, name, exactOnly: true) }) {
-                    targetTranslation = match
-                } else if let match = epObj.translations.first(where: { allohaTranslationNamesMatch($0.name, name, exactOnly: false) }) {
+                } else if let match = epObj.translations.first(where: { allohaTranslationNamesMatch($0.name, name) }) {
                     targetTranslation = match
                 } else if let idx = index, idx < epObj.translations.count {
                     targetTranslation = epObj.translations[idx]
@@ -856,7 +823,11 @@ class PlayerViewModel: ObservableObject {
 
         if let translation = targetTranslation {
             logDebug("switchVoiceover: matched targetTranslation='\(translation.name)', iframeUrl='\(translation.iframeUrl)'")
+            _currentTranslationName = translation.name
+            targetVoiceover = translation.name
+            persistVoiceoverSelection(translation.name)
 
+            // Если уже есть прямой pre-resolved стрим
             if let streamUrlString = translation.streamUrl, let streamUrl = URL(string: streamUrlString) {
                 logDebug("switchVoiceover: using pre-resolved streamUrl=\(streamUrlString)")
                 self.currentTime = savedTime
@@ -870,6 +841,7 @@ class PlayerViewModel: ObservableObject {
                 return
             }
 
+            // Резолвим iframeUrl для выбранной озвучки
             let iframeUrl = translation.iframeUrl
             guard !iframeUrl.isEmpty else { return }
 
@@ -887,11 +859,51 @@ class PlayerViewModel: ObservableObject {
                     let resolved = try await resolver.resolve(iframeUrl: iframeUrl)
                     guard let self, !Task.isCancelled else { return }
 
-                    self.applyResolvedAllohaStream(resolved)
-                    self.currentTime = savedTime
-                    if savedTime > 0 {
-                        self.seek(to: savedTime)
+                    let resolvedUrlString = (resolved["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                    guard let resolvedUrl = URL(string: resolvedUrlString) else {
+                        self.error = "Не удалось извлечь ссылку на видео"
+                        self.isLoading = false
+                        return
                     }
+
+                    let headers = (resolved["headers"] as? [String: String]) ?? [:]
+                    self.currentHeaders = headers
+
+                    if let intro = resolved["introRange"] as? [String: Double],
+                       let start = intro["start"], let end = intro["end"] {
+                        self.introRange = start...end
+                    } else {
+                        self.introRange = nil
+                    }
+                    if let outro = resolved["outroRange"] as? [String: Double],
+                       let start = outro["start"], let end = outro["end"] {
+                        self.outroRange = start...end
+                    } else {
+                        self.outroRange = nil
+                    }
+
+                    let qualityVariants = (resolved["qualityVariants"] as? [[String: Any]]) ?? []
+                    let audioVariants = (resolved["audioVariants"] as? [[String: Any]]) ?? []
+                    self.resolvedAudioVariants = audioVariants
+
+                    self.availableQualities = self.makeResolvedQualityOptions(
+                        resolvedUrl: resolvedUrl,
+                        qualityVariants: qualityVariants,
+                        audioVariants: audioVariants
+                    )
+                    self.restoreOrApplyQuality()
+
+                    self.currentTime = savedTime
+                    let activeBitrate: Double? = {
+                        if let currentKey = self.currentQualityKey,
+                           let opt = self.availableQualities.first(where: { $0.key == currentKey }),
+                           !opt.isAuto {
+                            return self.resolvedBitrate(for: opt)
+                        }
+                        return self.player?.currentItem?.preferredPeakBitRate
+                    }()
+                    self.reloadPlayback(to: resolvedUrl, preferredPeakBitRate: activeBitrate)
+                    NotificationCenter.default.post(name: NSNotification.Name("QualitiesUpdated"), object: nil)
                 } catch {
                     guard let self, !Task.isCancelled else { return }
                     self.error = "Не удалось переключить озвучку"
@@ -901,7 +913,10 @@ class PlayerViewModel: ObservableObject {
             return
         }
 
-        // 3. Фолбэк: если это мульти-аудио HLS стрим без отдельных iframe, переключаем нативную аудиодорожку
+        // 2. Фолбэк: если это мульти-аудио HLS стрим без отдельных iframe, переключаем нативную аудиодорожку
+        _currentTranslationName = name
+        targetVoiceover = name
+        persistVoiceoverSelection(name)
         selectAudioTrackInPlayer(named: name)
     }
 
@@ -951,20 +966,7 @@ class PlayerViewModel: ObservableObject {
             return
         }
 
-        // Если текущий поток уже воспроизводит этот URL (или его проксированную версию),
-        // просто меняем preferredPeakBitRate на лету без перезагрузки AVPlayer!
-        if let currentItem = player?.currentItem,
-           let currentAsset = currentItem.asset as? AVURLAsset {
-            let targetProxied = proxiedPlaybackURL(for: quality.url)?.absoluteString ?? quality.url.absoluteString
-            let currentAssetUrl = currentAsset.url.absoluteString
-            if targetProxied == currentAssetUrl || quality.url.absoluteString == originalStreamURL?.absoluteString {
-                logDebug("changeQuality: in-place bitrate update to \(targetBitrate)")
-                currentItem.preferredPeakBitRate = targetBitrate
-                return
-            }
-        }
-
-        // Вызываем reloadPlayback только при реальной смене URL потока с сохранением позиции
+        // Вызываем reloadPlayback для мгновенного переключения качества с сохранением позиции
         reloadPlayback(to: quality.url, preferredPeakBitRate: targetBitrate)
     }
 
@@ -972,11 +974,6 @@ class PlayerViewModel: ObservableObject {
         logDebug("reloadPlayback: called with sourceURL=\(sourceURL.absoluteString), preferredPeakBitRate=\(preferredPeakBitRate ?? -1)")
         let savedTime = self.currentTime
         let wasPlaying = player?.timeControlStatus == .playing || player?.timeControlStatus == .waitingToPlayAtSpecifiedRate
-
-        // Синхронизируем заголовки прокси перед перезагрузкой
-        if !currentHeaders.isEmpty {
-            HlsProxyServer.shared.updateHeaders(currentHeaders)
-        }
 
         // Обновляем originalStreamURL если пришёл не прокси-URL
         if !isLocalProxyUrl(sourceURL) {
@@ -1194,9 +1191,7 @@ class PlayerViewModel: ObservableObject {
             // Уже локальный URL — не проксируем
             logDebug("playVideo: local proxy URL directly played")
             currentPlaybackSourceURL = url.absoluteURL
-            if !HlsProxyServer.shared.isListenerAlive {
-                HlsProxyServer.shared.start(headers: [:], voices: [], subtitles: [], mediaId: "local")
-            }
+            HlsProxyServer.shared.start(headers: [:], voices: [], subtitles: [], mediaId: "local")
             asset = AVURLAsset(url: url)
         } else if url.isFileURL {
             logDebug("playVideo: file URL directly played")
@@ -1367,7 +1362,7 @@ class PlayerViewModel: ObservableObject {
                             self.reloadPlayback(to: url, preferredPeakBitRate: self.player?.currentItem?.preferredPeakBitRate)
                         }
                     } else {
-                        if item.error is URLError {
+                        if let itemError = item.error as? URLError {
                             self.error = "Нет подключения к интернету"
                         } else if let localized = item.error as? LocalizedError, let desc = localized.errorDescription {
                             self.error = desc
@@ -1431,12 +1426,17 @@ class PlayerViewModel: ObservableObject {
             return
         }
 
+        // Ждём .readyToPlay перед seek к сохранённой позиции.
+        // Это предотвращает гонку с applyInitialQuality → reloadPlayback,
+        // которая читает self.currentTime и могла перемотать к позиции ПРЕДЫДУЩЕЙ серии.
         let savedPosition = PlaybackProgressStore.shared.load(mediaId: mediaId)
         if savedPosition > 1 {
+            // Подождём готовности item перед seek
             if let item = player.currentItem, item.status == .readyToPlay {
                 player.seek(to: CMTime(seconds: savedPosition, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
                 currentTime = savedPosition
             } else {
+                // item ещё не готов — ждём через KVO
                 let capturedMediaId = mediaId
                 let capturedSavedPosition = savedPosition
                 var seekObservation: NSKeyValueObservation?
@@ -1446,6 +1446,7 @@ class PlayerViewModel: ObservableObject {
                     seekObservation = nil
                     Task { @MainActor [weak self, weak player] in
                         guard let self, let player else { return }
+                        // Убеждаемся что mediaId не изменился (пользователь не переключил серию снова)
                         let currentMediaId: String
                         if let kpId = self.currentKpId {
                             if let s = self.currentSeason, let e = self.currentEpisode {
@@ -1465,55 +1466,54 @@ class PlayerViewModel: ObservableObject {
         timeObserver = player.addPeriodicTimeObserver(
             forInterval: CMTime(seconds: 0.5, preferredTimescale: 600),
             queue: .main
-        ) { [weak self, weak player] _ in
-            Task { @MainActor [weak self, weak player] in
-                guard let self, let player else { return }
-                if self.isUserSeeking { return }
-                let t = player.currentTime().seconds
-                if t.isFinite && !t.isNaN && t >= 0 {
-                    self.currentTime = t
-                }
-                let d = player.currentItem?.duration.seconds ?? 0
-                if d.isFinite && !d.isNaN && d > 0 {
-                    self.currentDuration = d
-                }
-                
-                if let intro = self.introRange, intro.contains(self.currentTime) {
-                    if !self.showSkipIntro {
-                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                            self.showSkipIntro = true
-                        }
-                    }
-                } else {
-                    if self.showSkipIntro {
-                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                            self.showSkipIntro = false
-                        }
+        ) { [weak self, weak player] time in
+            guard let self, let player else { return }
+            if self.isUserSeeking { return }
+            let t = player.currentTime().seconds
+            if t.isFinite && !t.isNaN && t >= 0 {
+                self.currentTime = t
+            }
+            let d = player.currentItem?.duration.seconds ?? 0
+            if d.isFinite && !d.isNaN && d > 0 {
+                self.currentDuration = d
+            }
+            
+            if let intro = self.introRange, intro.contains(self.currentTime) {
+                if !self.showSkipIntro {
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                        self.showSkipIntro = true
                     }
                 }
-                
-                if let outro = self.outroRange, outro.contains(self.currentTime) {
-                    if !self.showSkipOutro {
-                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                            self.showSkipOutro = true
-                        }
-                    }
-                } else {
-                    if self.showSkipOutro {
-                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                            self.showSkipOutro = false
-                        }
+            } else {
+                if self.showSkipIntro {
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                        self.showSkipIntro = false
                     }
                 }
-                
-                if Int(t) % 5 == 0 && t > 1 {
-                    let dur = self.currentDuration > 0 ? self.currentDuration : nil
-                    PlaybackProgressStore.shared.save(
-                        mediaId: mediaId,
-                        positionSec: t,
-                        durationSec: dur
-                    )
+            }
+            
+            if let outro = self.outroRange, outro.contains(self.currentTime) {
+                if !self.showSkipOutro {
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                        self.showSkipOutro = true
+                    }
                 }
+            } else {
+                if self.showSkipOutro {
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                        self.showSkipOutro = false
+                    }
+                }
+            }
+            
+            // Сохраняем прогресс каждые 5 секунд (только если позиция > 1 секунды, чтобы избежать сброса в ноль)
+            if Int(t) % 5 == 0 && t > 1 {
+                let dur = self.currentDuration > 0 ? self.currentDuration : nil
+                PlaybackProgressStore.shared.save(
+                    mediaId: mediaId,
+                    positionSec: t,
+                    durationSec: dur
+                )
             }
         }
 
@@ -1850,26 +1850,17 @@ class PlayerViewModel: ObservableObject {
     private func applyResolvedAllohaStream(_ resolved: [String: Any]) {
         var resolvedUrlString = (resolved["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let audioVariants = (resolved["audioVariants"] as? [[String: Any]]) ?? []
-        logDebug("applyResolvedAllohaStream: initial resolvedUrlString=\(resolvedUrlString), audioVariants count=\(audioVariants.count)")
+        logDebug("applyResolvedAllohaStream: resolvedUrlString=\(resolvedUrlString), audioVariants count=\(audioVariants.count)")
 
-        if let targetVoice = targetVoiceover ?? _currentTranslationName, !targetVoice.isEmpty, !audioVariants.isEmpty {
-            let exactMatch = audioVariants.first(where: {
-                let vTitle = ($0["title"] as? String) ?? ""
-                return allohaTranslationNamesMatch(vTitle, targetVoice, exactOnly: true)
-            })
-            let match = exactMatch ?? audioVariants.first(where: {
-                let vTitle = ($0["title"] as? String) ?? ""
-                return allohaTranslationNamesMatch(vTitle, targetVoice, exactOnly: false)
-            })
-            if let validMatch = match, let matchedUrl = validMatch["url"] as? String, !matchedUrl.isEmpty {
-                logDebug("applyResolvedAllohaStream: matched targetVoice '\(targetVoice)' to audioVariant '\(validMatch["title"] ?? "")' -> url=\(matchedUrl)")
-                resolvedUrlString = matchedUrl.trimmingCharacters(in: .whitespacesAndNewlines)
-            } else {
-                logDebug("applyResolvedAllohaStream: no audioVariant matched for '\(targetVoice)', using default resolved url")
-            }
-        } else if let directUrl = targetDirectStreamUrl, !directUrl.isEmpty {
+        if let directUrl = targetDirectStreamUrl, !directUrl.isEmpty {
+            // Pre-resolved URL stored at fetch time: use directly, no name matching needed.
             logDebug("applyResolvedAllohaStream: using targetDirectStreamUrl=\(directUrl)")
             resolvedUrlString = directUrl
+        } else {
+            // The iframeUrl already has translation=ID injected for both movies and series, 
+            // so CDN delivers the correct voiceover stream as the default. 
+            // No audioVariant name matching needed.
+            logDebug("applyResolvedAllohaStream: using default resolved url (translation embedded in iframe)")
         }
 
         guard let resolvedUrl = URL(string: resolvedUrlString) else {
@@ -1897,11 +1888,18 @@ class PlayerViewModel: ObservableObject {
             self.outroRange = nil
         }
 
-        // Заполняем список доступных озвучек и варианты стримов из audioVariants
+        // Заполняем список вариантов стримов из audioVariants (нужны для переключения озвучки)
         self.resolvedAudioVariants = audioVariants
-        let voices = resolvedVoiceovers(from: resolved)
-        if self.availableVoiceovers.isEmpty && !voices.isEmpty {
-            self.availableVoiceovers = voices
+        // ВАЖНО: availableVoiceovers берём ТОЛЬКО из seriesResult (заполнены в beginLoad),
+        // т.к. они соответствуют тому, что пользователь видел в SourceSelectionView.
+        // audioVariants из runtime-парсера — это внутренние дорожки iframe-плеера Alloha,
+        // их названия могут не совпадать с названиями из API.
+        // Используем runtime voices только если seriesResult вообще недоступен.
+        if self.availableVoiceovers.isEmpty {
+            let voices = resolvedVoiceovers(from: resolved)
+            if !voices.isEmpty {
+                self.availableVoiceovers = voices
+            }
         }
 
 
@@ -2001,10 +1999,9 @@ class PlayerViewModel: ObservableObject {
         }
         
         let options = group.options
-        logDebug("selectAudioTrackInPlayer: target='\(name)', available options=\(options.map { "name='\($0.displayName)', lang='\($0.extendedLanguageTag ?? $0.locale?.identifier ?? "")'" })")
-        guard !options.isEmpty else { return }
+        logDebug("selectAudioTrackInPlayer: target='\(name)', options=\(options.map { $0.displayName })")
         
-        // 1. Exact match by displayName
+        // Exact match
         if let option = options.first(where: { allohaTranslationNamesMatch($0.displayName, name, exactOnly: true) }) {
             item.select(option, in: group)
             persistVoiceoverSelection(name)
@@ -2012,7 +2009,7 @@ class PlayerViewModel: ObservableObject {
             return
         }
         
-        // 2. Fuzzy match by studio name or track name
+        // Fuzzy match
         if let option = options.first(where: { allohaTranslationNamesMatch($0.displayName, name, exactOnly: false) }) {
             item.select(option, in: group)
             persistVoiceoverSelection(name)
@@ -2020,71 +2017,30 @@ class PlayerViewModel: ObservableObject {
             return
         }
         
-        // 3. Determine target language: English vs Ukrainian vs Kazakh vs Russian (default for all Russian studios like AlexFilm, HDRezka, RHS, LostFilm, etc.)
+        // Match by index or language tag if name represents a standard language
         let lowerName = name.lowercased()
-        let isEnglishTarget = lowerName.contains("eng") || lowerName.contains("original") || lowerName.contains("англ") || lowerName.contains("оригинал")
-        let isUkrainianTarget = lowerName.contains("ukr") || lowerName.contains("укр") || lowerName.contains("украин")
-        let isKazakhTarget = lowerName.contains("kaz") || lowerName.contains("каз") || lowerName.contains("казах")
+        let targetLang: String? = {
+            if lowerName.contains("eng") || lowerName.contains("original") || lowerName.contains("англ") || lowerName.contains("ori") {
+                return "en"
+            }
+            if lowerName.contains("rus") || lowerName.contains("рус") || lowerName.contains("дуб") {
+                return "ru"
+            }
+            if lowerName.contains("ukr") || lowerName.contains("укр") {
+                return "uk"
+            }
+            return nil
+        }()
         
-        if isEnglishTarget {
-            if let option = options.first(where: { opt in
-                let lang = (opt.extendedLanguageTag ?? opt.locale?.identifier ?? "").lowercased()
-                let disp = opt.displayName.lowercased()
-                return lang.hasPrefix("en") || disp.contains("eng") || disp.contains("original") || disp.contains("англ")
+        if let targetLang {
+            if let option = options.first(where: { 
+                $0.extendedLanguageTag?.lowercased().hasPrefix(targetLang) == true ||
+                $0.locale?.identifier.lowercased().hasPrefix(targetLang) == true 
             }) {
                 item.select(option, in: group)
                 persistVoiceoverSelection(name)
-                logDebug("selectAudioTrackInPlayer: selected English option='\(option.displayName)'")
+                logDebug("selectAudioTrackInPlayer: selected by language tag '\(targetLang)', option='\(option.displayName)'")
                 return
-            }
-        } else if isUkrainianTarget {
-            if let option = options.first(where: { opt in
-                let lang = (opt.extendedLanguageTag ?? opt.locale?.identifier ?? "").lowercased()
-                let disp = opt.displayName.lowercased()
-                return lang.hasPrefix("uk") || disp.contains("ukr") || disp.contains("укр")
-            }) {
-                item.select(option, in: group)
-                persistVoiceoverSelection(name)
-                logDebug("selectAudioTrackInPlayer: selected Ukrainian option='\(option.displayName)'")
-                return
-            }
-        } else if isKazakhTarget {
-            if let option = options.first(where: { opt in
-                let lang = (opt.extendedLanguageTag ?? opt.locale?.identifier ?? "").lowercased()
-                let disp = opt.displayName.lowercased()
-                return lang.hasPrefix("kk") || lang.hasPrefix("kz") || disp.contains("kaz") || disp.contains("каз")
-            }) {
-                item.select(option, in: group)
-                persistVoiceoverSelection(name)
-                logDebug("selectAudioTrackInPlayer: selected Kazakh option='\(option.displayName)'")
-                return
-            }
-        } else {
-            // Russian target (AlexFilm, Red Head Sound, HDRezka, Дубляж, Многоголосый, etc.)
-            if let option = options.first(where: { opt in
-                let lang = (opt.extendedLanguageTag ?? opt.locale?.identifier ?? "").lowercased()
-                let disp = opt.displayName.lowercased()
-                return lang.hasPrefix("ru") || disp.contains("rus") || disp.contains("рус") || disp.contains("alex") || disp.contains("дуб") || disp.contains("много")
-            }) {
-                item.select(option, in: group)
-                persistVoiceoverSelection(name)
-                logDebug("selectAudioTrackInPlayer: selected Russian option='\(option.displayName)' for studio target='\(name)'")
-                return
-            }
-            
-            // If track labels don't specify "ru", find any track that is NOT English (since HLS tracks often have English at 0 and Russian at 1)
-            if options.count > 1 {
-                let nonEnglishOption = options.first(where: { opt in
-                    let lang = (opt.extendedLanguageTag ?? opt.locale?.identifier ?? "").lowercased()
-                    let disp = opt.displayName.lowercased()
-                    return !lang.hasPrefix("en") && !disp.contains("eng") && !disp.contains("original") && !disp.contains("англ")
-                })
-                if let chosen = nonEnglishOption {
-                    item.select(chosen, in: group)
-                    persistVoiceoverSelection(name)
-                    logDebug("selectAudioTrackInPlayer: selected non-English track option='\(chosen.displayName)' for Russian studio '\(name)'")
-                    return
-                }
             }
         }
         
@@ -2094,8 +2050,21 @@ class PlayerViewModel: ObservableObject {
             logDebug("selectAudioTrackInPlayer: selected by index \(targetIndex), option='\(options[targetIndex].displayName)'")
             return
         }
-        
-        logDebug("selectAudioTrackInPlayer: fallback track selection completed")
+
+        // Финальный fallback: если имя не нашлось (напр. "AlexFilm" vs "Russian 1"),
+        // ищем позицию имени в availableVoiceovers и выбираем дорожку по тому же индексу.
+        // Это сохраняет выбор озвучки при переключении серий, даже если Alloha вернул
+        // иные технические имена дорожек ("Russian 1", "English 7") вместо читаемых.
+        if options.count > 1 {
+            if let voiceIndex = availableVoiceovers.firstIndex(where: { allohaTranslationNamesMatch($0, name) }),
+               voiceIndex < options.count {
+                item.select(options[voiceIndex], in: group)
+                persistVoiceoverSelection(name)
+                logDebug("selectAudioTrackInPlayer: selected by availableVoiceovers index \(voiceIndex), option='\(options[voiceIndex].displayName)'")
+                return
+            }
+        }
+        logDebug("selectAudioTrackInPlayer: failed to match any track for '\(name)'")
     }
     
     private func syncNativeAudioTracks() {
@@ -2109,20 +2078,22 @@ class PlayerViewModel: ObservableObject {
         logDebug("syncNativeAudioTracks: nativeNames=\(nativeNames)")
         guard nativeNames.count > 1 else { return }
         
-        // If availableVoiceovers only has 1 generic voiceover or is empty, populate from native tracks
-        if self.availableVoiceovers.count <= 1 {
-            var updatedVoiceovers: [String] = []
-            for name in nativeNames {
-                let cleanName = normalizedAllohaTranslationName(name)
-                let finalName = cleanName.isEmpty ? name : cleanName
-                if !updatedVoiceovers.contains(where: { allohaTranslationNamesMatch($0, finalName, exactOnly: true) }) {
-                    updatedVoiceovers.append(finalName)
-                }
+        // If availableVoiceovers is already populated with authentic translations, do not overwrite or append raw AVPlayer track names
+        guard self.availableVoiceovers.isEmpty else { return }
+        
+        var updatedVoiceovers: [String] = []
+        
+        for name in nativeNames {
+            let cleanName = normalizedAllohaTranslationName(name)
+            let finalName = cleanName.isEmpty ? name : cleanName
+            if !updatedVoiceovers.contains(where: { allohaTranslationNamesMatch($0, finalName) }) {
+                updatedVoiceovers.append(finalName)
             }
-            if updatedVoiceovers.count > 1 {
-                self.availableVoiceovers = updatedVoiceovers
-                logDebug("syncNativeAudioTracks: updated availableVoiceovers=\(self.availableVoiceovers)")
-            }
+        }
+        
+        if !updatedVoiceovers.isEmpty {
+            self.availableVoiceovers = updatedVoiceovers
+            logDebug("syncNativeAudioTracks: updated availableVoiceovers=\(self.availableVoiceovers)")
         }
     }
     

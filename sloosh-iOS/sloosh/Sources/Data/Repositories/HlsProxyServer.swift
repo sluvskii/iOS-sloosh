@@ -7,12 +7,7 @@ import UIKit
 class HlsProxyServer {
     static let shared = HlsProxyServer()
     private var listener: NWListener?
-    private var _isListenerAlive = false // надёжный флаг: false если .failed/.cancelled
-    
-    var isListenerAlive: Bool {
-        stateLock.withLock { _isListenerAlive }
-    }
-
+    private var isListenerAlive = false // надёжный флаг: false если .failed/.cancelled
     private let queue = DispatchQueue(label: "com.sloosh.ios.hlsproxy", attributes: .concurrent)
     private let stateLock = NSLock()
     private var headers: [String: String] = [:]
@@ -41,7 +36,7 @@ class HlsProxyServer {
     @objc func appWillEnterForeground() {
         let params: (headers: [String: String], voices: [String], subtitles: [PlaybackSubtitle], mediaId: String)? = stateLock.withLock {
             // Перезапускаем если mediaId есть, но слушатель мёртв (nil или упавший)
-            if !self.mediaId.isEmpty && !self._isListenerAlive {
+            if !self.mediaId.isEmpty && !self.isListenerAlive {
                 return (self.headers, self.voices, self.subtitles, self.mediaId)
             }
             return nil
@@ -53,7 +48,7 @@ class HlsProxyServer {
             stateLock.withLock {
                 self.listener?.cancel()
                 self.listener = nil
-                self._isListenerAlive = false
+                self.isListenerAlive = false
             }
             start(headers: p.headers, voices: p.voices, subtitles: p.subtitles, mediaId: p.mediaId)
         }
@@ -61,25 +56,18 @@ class HlsProxyServer {
     
     func start(headers: [String: String], voices: [String] = [], subtitles: [PlaybackSubtitle] = [], mediaId: String = "", preferredVoiceName: String? = nil) {
         let isAlreadyRunning = stateLock.withLock {
-            if !headers.isEmpty {
-                self.headers = headers
-            }
-            if !voices.isEmpty {
-                self.voices = voices
-            }
-            if !subtitles.isEmpty {
-                self.subtitles = subtitles
-            }
-            if !mediaId.isEmpty {
-                self.mediaId = mediaId
-            }
+            self.headers = headers
+            self.voices = voices
+            self.subtitles = subtitles
+            self.mediaId = mediaId
             if let preferredVoiceName, !preferredVoiceName.isEmpty {
                 self.preferredVoiceName = preferredVoiceName
             }
             // Блокируем повторный запуск если listener уже есть (пусть даже ещё не .ready)
             // или уже .ready. Это предотвращает двойное создание на одном порту.
-            return self._isListenerAlive || self.listener != nil
+            return self.isListenerAlive || self.listener != nil
         }
+
         
         if isAlreadyRunning { return }
         
@@ -95,18 +83,18 @@ class HlsProxyServer {
                 switch state {
                 case .ready:
                     print("HlsProxyServer listener ready")
-                    self.stateLock.withLock { self._isListenerAlive = true }
+                    self.stateLock.withLock { self.isListenerAlive = true }
                 case .failed(let error):
                     print("HlsProxyServer listener failed: \(error)")
                     self.stateLock.withLock {
                         self.listener = nil
-                        self._isListenerAlive = false
+                        self.isListenerAlive = false
                     }
                 case .cancelled:
                     print("HlsProxyServer listener cancelled")
                     self.stateLock.withLock {
                         self.listener = nil
-                        self._isListenerAlive = false
+                        self.isListenerAlive = false
                     }
                 default: break
                 }
@@ -114,7 +102,7 @@ class HlsProxyServer {
             // Сохраняем listener ДО start(), чтобы stateUpdateHandler не увидел nil при немедленном сбое
             stateLock.withLock {
                 self.listener = newListener
-                self._isListenerAlive = false // станет true только когда state == .ready
+                self.isListenerAlive = false // станет true только когда state == .ready
             }
             newListener.start(queue: queue)
             
@@ -140,7 +128,7 @@ class HlsProxyServer {
         stateLock.withLock {
             listener?.cancel()
             listener = nil
-            _isListenerAlive = false
+            isListenerAlive = false
             currentMasterUrl = nil
             self.voices = []
             self.subtitles = []
@@ -322,45 +310,19 @@ class HlsProxyServer {
         
         do {
             if isPlaylist {
-                var responseData: Data?
-                var httpResponse: HTTPURLResponse?
-
-                // Попробуем с ретраем до 3 раз при статусах 403 / 503 (кратковременный CDN handshake)
-                for attempt in 0..<3 {
-                    do {
-                        let (data, response) = try await session.data(for: request)
-                        if let resp = response as? HTTPURLResponse {
-                            httpResponse = resp
-                            responseData = data
-                            if resp.statusCode == 200 {
-                                break
-                            }
-                        }
-                    } catch {
-                        if attempt == 2 { throw error }
-                    }
-                    if attempt < 2 {
-                        try? await Task.sleep(nanoseconds: 200_000_000) // 200ms
-                    }
-                }
-
-                guard let httpResp = httpResponse, let data = responseData else {
+                let (data, response) = try await session.data(for: request)
+                guard !Task.isCancelled else { return }
+                guard let httpResponse = response as? HTTPURLResponse else {
                     AppDiagnostics.shared.log("HlsProxyServer fetchAndServe: invalid response for \(realUrl)")
                     self.send404(on: connection)
                     return
                 }
-
-                let statusCode = httpResp.statusCode
+                
+                let statusCode = httpResponse.statusCode
                 AppDiagnostics.shared.log("HlsProxyServer fetchAndServe: \(realUrl) returned \(statusCode)")
-
-                guard statusCode == 200 else {
-                    guard !Task.isCancelled else { return }
-                    self.sendResponse(data: data, statusCode: statusCode, contentType: httpResp.mimeType ?? "text/plain", contentRange: nil, connection: connection)
-                    return
-                }
-
-                if let content = String(data: data, encoding: .utf8), content.contains("#EXT") {
-                    let finalUrl = httpResp.url ?? realUrl
+                
+                if let content = String(data: data, encoding: .utf8) {
+                    let finalUrl = httpResponse.url ?? realUrl
                     let rewritten: String
                     if content.contains("#EXT-X-STREAM-INF") {
                         let playlistRewritten = PlaybackHlsRewriter.rewrite(
@@ -370,13 +332,15 @@ class HlsProxyServer {
                             mediaId: currentMediaId
                         )
 
+                        
                         AppDiagnostics.shared.log("HlsProxyServer: rewritten master playlist:\n\(playlistRewritten)")
+                        
                         rewritten = self.rewriteM3u8(content: playlistRewritten, baseUrl: finalUrl)
                     } else {
                         AppDiagnostics.shared.log("HlsProxyServer: playlist fallback:\n\(content)")
                         rewritten = self.rewriteM3u8(content: content, baseUrl: finalUrl)
                     }
-
+                    
                     let rewrittenData = rewritten.data(using: .utf8) ?? Data()
                     guard !Task.isCancelled else { return }
                     self.sendResponse(data: rewrittenData, statusCode: 200, contentType: "application/vnd.apple.mpegurl", contentRange: nil, connection: connection)

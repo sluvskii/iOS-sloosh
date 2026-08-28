@@ -44,6 +44,8 @@ private struct TelegramUIButtonRepresentable: UIViewRepresentable {
     
     func makeUIView(context: Context) -> UIButton {
         let button = HighlightableTelegramButton(type: .custom)
+        button.adjustsImageWhenHighlighted = false
+        button.adjustsImageWhenDisabled = false
         
         let config = UIImage.SymbolConfiguration(pointSize: iconSize, weight: .medium)
         let image = UIImage(systemName: systemName, withConfiguration: config)?.withRenderingMode(.alwaysTemplate)
@@ -79,6 +81,8 @@ private class HighlightableTelegramButton: UIButton {
     }
     
     private func setup() {
+        adjustsImageWhenHighlighted = false
+        adjustsImageWhenDisabled = false
         addTarget(self, action: #selector(didTap), for: .touchUpInside)
     }
     
