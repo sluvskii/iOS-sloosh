@@ -44,3 +44,41 @@ Integrity mode: development
 ### Clean Screens
 - [ ] `ChannelInfoView` has only one "Изменить" button for owners, no duplicate settings buttons, no fake domain links, and no share button.
 - [ ] Post feed and chat experience match the visual style of private chats seamlessly.
+
+## 2026-08-27T15:29:02Z
+
+Fix voiceover selection and video quality discrepancies across the playback stack (`PlayerView`, `SourceSelectionView`, `DetailsView`, `AllohaRuntimeResolver`, and `DownloadManager`) so that user choices (e.g., Dubbed voiceover, 1080p quality) are strictly honored during both online streaming and offline downloads.
+
+Working directory: W:\iOS-sloosh\sloosh-iOS
+Integrity mode: development
+
+## Requirements
+
+### R1. Complete Synchronization & Fidelity of Voiceovers in Player
+- In `PlayerView` and `PlayerViewModel`, preserve the authentic list of translation voiceovers provided by `AllohaApiResult` (`epObj.translations` for TV shows, `movie.translations` for movies) in `availableVoiceovers`.
+- Prevent `applyResolvedAllohaStream` from overwriting `availableVoiceovers` with internal/partial WKWebView `audioVariants`.
+- Ensure that selecting a voiceover (e.g., "Дублированный" for "Локи") in `SourceSelectionView` opens `PlayerView` with that exact translation's stream and displays the correct active voiceover in the in-player sheet.
+- When the user switches voiceovers inside the player via `VoiceoverPickerSheet`, look up the target translation in `AllohaApiResult` to load its exact `iframeUrl` / stream, updating playback seamlessly at the current playback position.
+
+### R2. Voiceover Consistency Across Episode Navigation & Autoplay
+- When advancing to the next episode (via autoplay, next episode button, or episode picker in player), automatically look up and select the matching voiceover in the new episode (matching the user's current choice).
+- If the current voiceover is unavailable in the next episode, fall back gracefully to the preferred voiceover order and update `currentTranslationName` and player UI accordingly.
+
+### R3. Strict Quality Selection & Download Fidelity in DownloadManager
+- In `DownloadManager.prepareAndEnqueue`, use the resolved stream URL directly for the chosen `translation.iframeUrl` without erroneous overrides from unrelated `audioVariants`.
+- In `DownloadManager.chooseMediaPlaylistUrl`, accurately parse HLS master playlists (`#EXT-X-STREAM-INF` resolutions `RESOLUTION=...`, variant URLs like `1080.m3u8`, and bitrates) and evaluate `resolved["qualityVariants"]` so that requested qualities (e.g., `1080p`, `720p`) download at the highest matching resolution up to the user's preference without downgrading.
+- Save and verify downloaded media metadata (`translationName`, `quality`, `key.bin`, `local.m3u8`) ensuring offline playback in `PlayerView` plays the exact downloaded audio and video stream.
+
+## Acceptance Criteria
+
+### Player Voiceover & Quality
+- [ ] Selecting "Дублированный" (or any chosen voiceover) on multi-voice titles like "Локи" plays that exact voiceover in `PlayerView`.
+- [ ] The in-player voiceover sheet (`VoiceoverPickerSheet`) displays the full, accurate list of available voiceovers matching the episode's translations.
+- [ ] Switching voiceovers in `VoiceoverPickerSheet` reloads the correct translation stream and preserves current playback time.
+- [ ] Transitioning to the next episode preserves the active voiceover.
+
+### Downloads Fidelity
+- [ ] Downloading a movie or series episode with a chosen voiceover downloads the exact audio stream corresponding to that translation.
+- [ ] Downloading in 1080p selects the 1080p stream variant from the master playlist (or highest available up to 1080p) rather than defaulting to 720p.
+- [ ] Offline playback of completed downloads via `PlayerView` reflects the downloaded voiceover and video quality.
+

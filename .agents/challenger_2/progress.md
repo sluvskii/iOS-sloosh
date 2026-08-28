@@ -1,13 +1,12 @@
-# Progress Log
+# Progress — Challenger 2
 
-- **Last visited**: 2026-08-25T01:51:40Z
-- **Status**: Verification complete. Verdict: APPROVE.
+**Last visited**: 2026-08-27T15:46:30Z
+**Status**: COMPLETED
 
 ## Steps
-1. [x] Initialize BRIEFING.md and DISPATCH.md
-2. [x] Audit 1: Privacy leaks in UI views (`email`, raw `id`, peer/current user email rendering)
-3. [x] Audit 2: Firebase sync payload audit (`/user_profiles/{uid}`, `/user_chats/...` email isolation)
-4. [x] Audit 3: Design system compliance (`.ultraThinMaterial`, emoji pickers/grids, radial gradient glow shadows, ChannelInfoView edit button count)
-5. [x] Audit 4: UI state handling and edge cases
-6. [x] Compile findings into challenge.md and handoff.md
-7. [x] Send completion message to parent
+- [x] Step 1: Initialize DISPATCH.md and BRIEFING.md
+- [x] Step 2: Code inspection of `DownloadManager.swift`, `DownloadsView.swift`, `HlsProxyServer.swift`, `PlayerView.swift`
+- [x] Step 3: Implement empirical test harness for `chooseMediaPlaylistUrl`, URL extraction, AV1 filtering, resolution edge cases, tie-breaking
+- [x] Step 4: Execute stress tests against real-world Alloha/CDN master playlists and synthetic pathological playlists (39/39 passed)
+- [x] Step 5: Verify `prepareAndEnqueue` stream selection and offline packaging / playback mechanics
+- [x] Step 6: Complete challenge report in `handoff.md` and send completion message to parent

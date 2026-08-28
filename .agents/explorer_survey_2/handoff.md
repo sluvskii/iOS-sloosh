@@ -1,418 +1,192 @@
-# Handoff Report — Channels Data Layer, Firebase Realtime Database REST Integration, User Identity & Caching
+# Handoff Report: Resolver, Parser, and Stream Handling Layer
 
 ## 1. Observation
 
-Direct examination of the codebase (`sloosh-iOS/sloosh/Sources/Data/` and `sloosh-iOS/sloosh/Sources/UI/Messenger/`) revealed the following existing state:
+### 1.1 Codebase Structure and File Locations
+The playback resolution and stream handling subsystem consists of the following components:
+- **API Models & Client**:
+  - `sloosh-iOS/sloosh/Sources/Data/Repositories/AllohaRepository.swift`
+    - Defines `AllohaTranslation` (lines 3-10), `AllohaEpisode` (lines 12-16), `AllohaSeason` (lines 18-21), `AllohaMovie` (lines 23-27), `AllohaApiResult` (lines 29-34).
+    - `fetchByKpId(kpId:)` (lines 217-418): Fetches and parses JSON from `https://api.alloha.tv/?token=...&kp=...`.
+- **Runtime Resolution & Parsing**:
+  - `sloosh-iOS/sloosh/Sources/Data/Repositories/AllohaRuntimeResolver.swift`
+    - `SharedWebViewProvider` (lines 489-577): Maintains a pooled `WKWebView`.
+    - `resolve(iframeUrl:)` (lines 42-63): Injects `bootstrapScript` (lines 332-486) into `WKWebView`, hooks XHR/fetch/WS, captures headers and `/bnsi/` payloads, and returns a resolved dictionary (`url`, `audioVariants`, `qualityVariants`, `headers`, `subtitles`, `introRange`, `outroRange`).
+    - In-memory cache with TTL (lines 7-13).
+  - `sloosh-iOS/sloosh/Sources/Data/Repositories/AllohaRuntimeParser.swift`
+    - `parsePayload(_:baseURL:headers:)` (lines 4-41): Parses the JSON payload from `/bnsi/` (`parseAllohaBNsiStream`, lines 64-159).
+    - Extracts `qualityVariants` from `item["quality"]` (lines 80-118).
+    - Extracts `audioVariants` with `audioVariantTitle(from:item:index:)` (lines 127-133).
+    - Extracts skip ranges (`extractSkips`, lines 161-219) and subtitles (lines 305-324).
+- **HLS Proxy & Master Playlist Rewriter**:
+  - `sloosh-iOS/sloosh/Sources/Data/Repositories/HlsProxyServer.swift`
+    - TCP server running on `127.0.0.1:8181` using `NWListener` (lines 7-113).
+    - Rewrites upstream master playlists via `PlaybackHlsRewriter.rewrite` (lines 328-338) and `rewriteM3u8` (lines 372-421).
+    - Strips AV1 codecs (`hlsLineHasAV1Codecs`, lines 442-463) and normalizes `VIDEO-RANGE` for non-HEVC streams (`normalizeStreamInfVideoRange`, lines 426-439).
+    - Serves `/local/...` endpoints for offline downloads (lines 261-288).
+  - `sloosh-iOS/sloosh/Sources/Data/Repositories/PlaybackHlsRewriter.swift`
+    - Rewrites `#EXT-X-STREAM-INF` and `#EXT-X-MEDIA` lines (lines 3-77).
+- **Player & UI Integration**:
+  - `sloosh-iOS/sloosh/Sources/UI/Player/PlayerView.swift`
+    - `PlayerViewModel.beginLoad(...)` (lines 359-433)
+    - `PlayerViewModel.applyResolvedAllohaStream(...)` (lines 1813-1886)
+    - `PlayerViewModel.switchVoiceover(to:at:)` (lines 785-884)
+    - `PlayerViewModel.playEpisode(...)` & `nextEpisodeCandidate()` (lines 1699-1762)
+    - `PlayerViewModel.changeQuality(to:)` (lines 908-934)
+  - `sloosh-iOS/sloosh/Sources/UI/Player/Controls/PlayerPickerSheets.swift`
+    - `VoiceoverPickerSheet` (lines 6-23): Displays `vm.availableVoiceovers` and triggers `vm.switchVoiceover`.
+- **Download Management**:
+  - `sloosh-iOS/sloosh/Sources/Data/Repositories/DownloadManager.swift`
+    - `prepareAndEnqueue(itemId:item:preferredQuality:)` (lines 296-447)
+    - `chooseMediaPlaylistUrl(from:baseUrl:preferredQuality:)` (lines 659-701)
 
-### 1.1 Existing Network & Firebase Architecture
-- **Location**: `sloosh-iOS/sloosh/Sources/Data/Repositories/MessengerRepository.swift:13`
-  - Firebase Realtime Database Base URL: `https://sloosh-77434-default-rtdb.firebaseio.com`.
-  - HTTP client: Native `URLSession.shared` performing standard REST calls (`GET`, `PUT`, `DELETE`) with JSON serialization.
-  - Auth token mechanism (`MessengerRepository.swift:69-76`):
-    ```swift
-    private func makeURL(path: String) async -> URL? {
-        let safePath = path.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? path
-        var urlString = "\(databaseBaseURL)/\(safePath).json"
-        if let token = await AuthRepository.shared.ensureFreshToken(), !token.isEmpty {
-            urlString += "?auth=\(token)"
+---
+
+### 1.2 Observed Defects & Code Snippets
+
+#### Observation 1: `PlayerView.swift:1856-1859` Overwrites API Voiceovers with Resolver `audioVariants`
+```swift
+// sloosh-iOS/sloosh/Sources/UI/Player/PlayerView.swift:1854-1860
+// Заполняем список доступных озвучек и варианты стримов из audioVariants
+self.resolvedAudioVariants = audioVariants
+let voices = resolvedVoiceovers(from: resolved)
+if !voices.isEmpty {
+    self.availableVoiceovers = voices
+}
+```
+When `applyResolvedAllohaStream` executes, `self.availableVoiceovers` (which was populated with the full translation list from `seriesResult` / `epObj.translations`) is overwritten by `voices`, which are extracted from `resolved["audioVariants"]` of that single iframe. This replaces authentic studio names with generic labels like `["Russian 1"]`.
+
+#### Observation 2: `AllohaRepository.swift:383-410` Mutates Movie Translations on Fetch
+```swift
+// sloosh-iOS/sloosh/Sources/Data/Repositories/AllohaRepository.swift:383-410
+if let m = result.movie, let firstIframe = m.translations.first?.iframeUrl {
+    let resolver = await AllohaRuntimeResolver()
+    if let resolved = try? await resolver.resolve(iframeUrl: firstIframe),
+       let audioVariants = resolved["audioVariants"] as? [[String: Any]], !audioVariants.isEmpty {
+        let newTranslations = audioVariants.enumerated().compactMap { index, variant -> AllohaTranslation? in
+            ...
+            return AllohaTranslation(
+                id: vTitle,
+                name: cleanTitle.isEmpty ? vTitle : cleanTitle,
+                iframeUrl: m.iframeUrl,
+                streamUrl: nil
+            )
         }
-        return URL(string: urlString)
+        if !newTranslations.isEmpty {
+            let newMovie = AllohaMovie(title: m.title, iframeUrl: m.iframeUrl, translations: newTranslations)
+            result = AllohaApiResult(title: result.title, isSerial: false, movie: newMovie, seasons: [])
+        }
     }
-    ```
-  - Firebase Auth REST endpoints are managed in `AuthRepository.swift:165,260` via `identitytoolkit.googleapis.com/v1/accounts:*` with API Key loaded from `GoogleService-Info.plist`.
-  - Token refresh occurs via `securetoken.googleapis.com/v1/token` (`AuthRepository.swift:430-474`).
+}
+```
+In `AllohaRepository.fetchByKpId`, movie metadata was eagerly resolved and overwritten by `audioVariants` from the first iframe, wiping out the authentic translations list directly at the repository level.
 
-### 1.2 User Identity & Roles
-- **Location**: `sloosh-iOS/sloosh/Sources/Data/Models/UserProfile.swift` and `Data/Models/MessengerModels.swift:34-71`
-  - `UserProfile`: Contains `id` (Firebase UID or `"guest_\(UUID().prefix(8))"`), `email`, `displayName`, `photoURL`, `isAnonymous`, `provider`, `idToken`, `refreshToken`.
-  - `SlooshUser`: Public messenger profile model (`id`, `displayName`, `email`, `avatarUrl`, `isOnline`).
-  - Profiles are synchronized to Firebase REST under `/user_profiles/{uid}.json` and `/users/{uid}/profile.json` (`MessengerRepository.swift:80-129`).
-  - Search queries fetch and merge `/user_profiles.json` and local cache (`MessengerRepository.swift:131-200`).
-  - **Channel Roles Status**: Currently, no Channel or Group Chat models exist in the repository; only 1-to-1 direct chats (`ChatConversation`, `ChatMessage`) are implemented.
+#### Observation 3: `PlayerView.swift:397-405` Movie Translation Population Gap
+```swift
+// sloosh-iOS/sloosh/Sources/UI/Player/PlayerView.swift:397-405
+if let seriesResult = self.seriesResult, let s = season, let e = episode {
+    if let seasonObj = seriesResult.seasons.first(where: { $0.season == s }),
+       let epObj = seasonObj.episodes.first(where: { $0.episode == e }) {
+        self.availableVoiceovers = epObj.translations.map { $0.name }
+    }
+} else if !voices.isEmpty {
+    self.availableVoiceovers = voices
+}
+```
+`beginLoad` handles `seriesResult.seasons` for series, but lacks explicit handling for `seriesResult.movie?.translations.map { $0.name }` for movies.
 
-### 1.3 Message & Direct Chat Models
-- **Location**: `sloosh-iOS/sloosh/Sources/Data/Models/MessengerModels.swift`
-  - `MessageType`: Enum (`.text`, `.media`).
-  - `MediaCardPayload`: Model for attached movie cards (`mediaId`, `type`, `title`, `posterUrl`, `rating`, `year`).
-  - `ChatMessage`: Contains `id`, `senderId`, `receiverId`, `type`, `text`, `media`, `timestampMs`, `replyToId`, `reactions: [String: String]?` (mapped as `userId -> emoji`), `isEdited: Bool?`, `isRead: Bool?`.
-  - `ChatConversation`: Direct conversation entry (`chatId`, `peerUser`, `lastMessageText`, `unreadCount`, `updatedAtMs`).
+#### Observation 4: `DownloadManager.swift:326-332` Unnecessary `audioVariants` URL Override
+```swift
+// sloosh-iOS/sloosh/Sources/Data/Repositories/DownloadManager.swift:326-332
+if let targetVoice = item.translationName, !targetVoice.isEmpty {
+    let exactMatch = audioVariants.first(where: { allohaTranslationNamesMatch($0["title"] as? String, targetVoice, exactOnly: true) })
+    let match = exactMatch ?? audioVariants.first(where: { allohaTranslationNamesMatch($0["title"] as? String, targetVoice, exactOnly: false) })
+    if let validMatch = match, let matchedUrl = validMatch["url"] as? String, !matchedUrl.isEmpty {
+        streamUrlString = matchedUrl.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+```
+`item.iframeUrl` is already the specific translation's iframe URL. Overriding `streamUrlString` by fuzzy-matching against internal `audioVariants` causes the wrong stream/audio to be downloaded.
 
-### 1.4 Persistence & Caching Strategy
-- **Location**: `MessengerRepository.swift:19-50`
-  - `loadConversationsFromDisk()` / `saveConversationsToDisk()`: Uses `UserDefaults` with key `sloosh_messenger_conversations_v1` for 0ms instant cold start.
-  - `loadMessagesFromDisk(chatId:)` / `saveMessagesToDisk(_:chatId:)`: Uses `UserDefaults` with key `sloosh_messenger_messages_v1_{chatId}`.
-  - `MediaDetailsDiskCache` & `MediaListDiskCache` in `MoviesRepository.swift:328-383`: Uses `CachesDirectory` with JSON files and TTL.
+#### Observation 5: `DownloadManager.swift:659-701` Incomplete Master Playlist Parsing
+```swift
+// sloosh-iOS/sloosh/Sources/Data/Repositories/DownloadManager.swift:671-675
+if let range = trimmed.range(of: "RESOLUTION=([^,\\s]+)", options: .regularExpression) {
+    let match = String(trimmed[range]).replacingOccurrences(of: "RESOLUTION=", with: "")
+    let components = match.components(separatedBy: "x")
+    if components.count == 2, let h = Int(components[1]) { currentHeight = h }
+}
+```
+- `currentBandwidth` is not parsed from `#EXT-X-STREAM-INF` lines.
+- Variant URLs without explicit `RESOLUTION=` attributes (e.g. `1080.m3u8`, `720.m3u8`) are not detected by filename cues.
+- Sorting should choose the highest resolution variant `<= targetHeight` (or highest available) rather than pure absolute difference.
 
 ---
 
 ## 2. Logic Chain
 
-1. **Channels Requirement**: The application requires Telegram-style broadcasting channels where:
-   - Only the Channel Owner / Author can publish, edit, pin, and delete posts.
-   - Subscribers / Viewers receive a read-only stream with emoji reactions, direct movie playback, details sheet navigation, and subscription toggles.
-   - Public channels can be searched and discovered in `MessengerView`.
-2. **Schema Design Rationale**:
-   - Storing channel metadata at `/channels/{channelId}.json` allows both single-channel fetching and querying all public channels at `/channels.json`.
-   - Storing posts at `/channel_posts/{channelId}/{postId}.json` isolates high-frequency post operations from metadata updates.
-   - Storing subscriptions symmetrically at `/user_channel_subscriptions/{userId}/{channelId}.json` allows 1-query instant loading of all user channels without scanning the entire database.
-   - Storing subscriber counts directly on `/channels/{channelId}/subscriberCount` allows instant O(1) display in search results and feeds.
-3. **Data Model Compatibility**:
-   - Reusing `MediaCardPayload` ensures 100% interoperability with `MediaMessageCardView`, `PlayerView`, and `DetailsView`.
-   - Aligning `ChannelPost.reactions` as `[String: String]` (mapping `userId -> emoji`) maintains identical semantics to `ChatMessage.reactions`, preventing multi-vote duplicate exploits per user and enabling simple aggregation into pill counters `(emoji, count, isReactedByMe)`.
-4. **Instant Cold-Start Caching**:
-   - Storing subscribed channels in `UserDefaults` (`sloosh_messenger_subscribed_channels_v1`) and channel posts (`sloosh_channel_posts_v1_{channelId}`) matches the existing proven pattern in `MessengerRepository`, giving 0ms cold-start render upon app launch.
+1. **Step 1 (Catalog Authenticity)**: `AllohaRepository` receives authentic translation names (e.g., "Дублированный (Red Head Sound)", "Дубляж (FlixBros)", "LostFilm") and distinct iframe URLs from `api.alloha.tv`. Overwriting this metadata with `audioVariants` (from `AllohaRuntimeResolver` on a single iframe) corrupts the translation list.
+2. **Step 2 (Player Voiceover List Preservation)**: When `PlayerView` opens, `availableVoiceovers` must reflect the authentic list from `seriesResult` (`epObj.translations` for series, `movie.translations` for movies, or `voices`). `applyResolvedAllohaStream` must NOT overwrite `availableVoiceovers` with internal `audioVariants`.
+3. **Step 3 (In-Player Voiceover Switching)**: When switching voiceovers via `VoiceoverPickerSheet`, `switchVoiceover` must find the target translation in `seriesResult`, invalidate the resolver cache for that translation's `iframeUrl`, and reload playback with the new translation stream while preserving `currentTime`.
+4. **Step 4 (Episode Navigation Fidelity)**: When navigating to the next episode, `nextEpisodeCandidate()` uses `preferredTranslation` to select the translation matching the active voiceover (`_currentTranslationName`), or falls back gracefully to saved preferences if unavailable.
+5. **Step 5 (Download Fidelity)**: In `DownloadManager.prepareAndEnqueue`, using `resolved["url"]` directly for `item.iframeUrl` guarantees downloading the exact chosen translation. Parsing master playlist resolutions accurately ensures the requested quality (e.g. 1080p) is downloaded without downgrade.
 
 ---
 
-## 3. Detailed Data Architecture Specification
+## 3. Caveats
 
-### 3.1 Firebase Realtime Database REST Schema Proposal
-
-```
-Firebase Root (https://sloosh-77434-default-rtdb.firebaseio.com)
-├── channels/
-│   └── {channelId}/
-│       ├── id: string (e.g. "ch_1724543940123_a1b2")
-│       ├── name: string (e.g. "Киноновинки 2026")
-│       ├── description: string (e.g. "Главные премьеры и подборки Sloosh")
-│       ├── avatarEmoji: string? (e.g. "🎬")
-│       ├── avatarUrl: string? (optional)
-│       ├── accentColorHex: string (e.g. "#FF453A")
-│       ├── ownerId: string (UID of creator)
-│       ├── ownerName: string (display name of creator)
-│       ├── createdAtMs: number (timestamp in ms)
-│       ├── updatedAtMs: number (timestamp in ms)
-│       ├── subscriberCount: number
-│       ├── pinnedPostId: string? (id of currently pinned post, if any)
-│       ├── isPublic: boolean (true by default)
-│       ├── lastPostText: string? (preview text for list row)
-│       └── lastPostTimestampMs: number?
-│
-├── channel_posts/
-│   └── {channelId}/
-│       └── {postId}/
-│           ├── id: string (e.g. "post_1724544000123_c3d4")
-│           ├── channelId: string
-│           ├── authorId: string
-│           ├── text: string?
-│           ├── media: {
-│           │     mediaId: string,
-│           │     type: string,
-│           │     title: string,
-│           │     posterUrl: string?,
-│           │     rating: number?,
-│           │     year: string?
-│           │   }?
-│           ├── reactions: {
-│           │     "{userId}": "🔥",
-│           │     "{userId2}": "❤️"
-│           │   }?
-│           ├── timestampMs: number
-│           ├── isPinned: boolean
-│           ├── isEdited: boolean?
-│           └── viewsCount: number?
-│
-├── channel_subscribers/
-│   └── {channelId}/
-│       └── {userId}: {
-│             "subscribedAtMs": number
-│           }
-│
-└── user_channel_subscriptions/
-    └── {userId}/
-        └── {channelId}: {
-              "channelId": string,
-              "channel": { ...ChannelModel snapshot... },
-              "subscribedAtMs": number,
-              "isMuted": boolean
-            }
-```
+- **Network Mode**: Investigation conducted in read-only mode across local codebase.
+- **Provider Names**: Internal provider names (e.g. `Alloha`) are used strictly in internal code and technical documentation and must not leak into user-facing copy per `AGENTS.md`.
+- **Collaps Integration**: As mandated in `AGENTS.md`, Collaps is excluded. The focus is strictly on Alloha.
 
 ---
 
-### 3.2 Swift Data Models & DTOs to Add/Update (`MessengerModels.swift`)
+## 4. Conclusion & Actionable Recommendations
 
-```swift
-import Foundation
-import SwiftUI
+### Recommendation 1: Fix `PlayerView.swift`
+- In `PlayerViewModel.beginLoad`, populate `availableVoiceovers` for movies:
+  ```swift
+  if let seriesResult = self.seriesResult, let s = season, let e = episode {
+      if let seasonObj = seriesResult.seasons.first(where: { $0.season == s }),
+         let epObj = seasonObj.episodes.first(where: { $0.episode == e }) {
+          self.availableVoiceovers = epObj.translations.map { $0.name }
+      }
+  } else if let seriesResult = self.seriesResult, let movie = seriesResult.movie {
+      self.availableVoiceovers = movie.translations.map { $0.name }
+  } else if !voices.isEmpty {
+      self.availableVoiceovers = voices
+  }
+  ```
+- In `PlayerViewModel.applyResolvedAllohaStream`, preserve `availableVoiceovers` if already populated:
+  ```swift
+  self.resolvedAudioVariants = audioVariants
+  let voices = resolvedVoiceovers(from: resolved)
+  if self.availableVoiceovers.isEmpty && !voices.isEmpty {
+      self.availableVoiceovers = voices
+  }
+  ```
+- In `PlayerViewModel.switchVoiceover`, ensure seamless reload to the target translation's `iframeUrl` while preserving `currentTime`.
 
-// MARK: - Channel Model
+### Recommendation 2: Fix `AllohaRepository.swift`
+- Remove lines 383-410 in `AllohaRepository.swift` where `movie.translations` was being overwritten with `audioVariants`. Preserve the authentic `movie.translations` parsed directly from `dataObj["translation"]`.
 
-public struct ChannelModel: Identifiable, Codable, Equatable, Hashable {
-    public let id: String
-    public let name: String
-    public let description: String
-    public let avatarEmoji: String?
-    public let avatarUrl: String?
-    public let accentColorHex: String?
-    public let ownerId: String
-    public let ownerName: String
-    public let createdAtMs: Int64
-    public var updatedAtMs: Int64
-    public var subscriberCount: Int
-    public var pinnedPostId: String?
-    public var isPublic: Bool
-    public var lastPostText: String?
-    public var lastPostTimestampMs: Int64?
-
-    public init(
-        id: String = "ch_\(Int64(Date().timeIntervalSince1970 * 1000))_\(UUID().uuidString.prefix(6))",
-        name: String,
-        description: String = "",
-        avatarEmoji: String? = "📢",
-        avatarUrl: String? = nil,
-        accentColorHex: String? = "#FF9F0A",
-        ownerId: String,
-        ownerName: String,
-        createdAtMs: Int64 = Int64(Date().timeIntervalSince1970 * 1000),
-        updatedAtMs: Int64 = Int64(Date().timeIntervalSince1970 * 1000),
-        subscriberCount: Int = 1,
-        pinnedPostId: String? = nil,
-        isPublic: Bool = true,
-        lastPostText: String? = nil,
-        lastPostTimestampMs: Int64? = nil
-    ) {
-        self.id = id
-        self.name = name
-        self.description = description
-        self.avatarEmoji = avatarEmoji
-        self.avatarUrl = avatarUrl
-        self.accentColorHex = accentColorHex
-        self.ownerId = ownerId
-        self.ownerName = ownerName
-        self.createdAtMs = createdAtMs
-        self.updatedAtMs = updatedAtMs
-        self.subscriberCount = subscriberCount
-        self.pinnedPostId = pinnedPostId
-        self.isPublic = isPublic
-        self.lastPostText = lastPostText
-        self.lastPostTimestampMs = lastPostTimestampMs
-    }
-
-    public var displayAvatarEmoji: String {
-        avatarEmoji?.isEmpty == false ? avatarEmoji! : "📢"
-    }
-
-    public var displayAccentColor: Color {
-        if let hex = accentColorHex, let uiColor = UIColor(hex: hex) {
-            return Color(uiColor)
-        }
-        return Color.slooshAccent
-    }
-
-    public var formattedSubscriberCount: String {
-        if subscriberCount <= 1 {
-            return "1 подписчик"
-        }
-        let remainder10 = subscriberCount % 10
-        let remainder100 = subscriberCount % 100
-        if remainder10 == 1 && remainder100 != 11 {
-            return "\(subscriberCount) подписчик"
-        } else if [2, 3, 4].contains(remainder10) && ![12, 13, 14].contains(remainder100) {
-            return "\(subscriberCount) подписчика"
-        } else {
-            return "\(subscriberCount) подписчиков"
-        }
-    }
-}
-
-// MARK: - Channel Post Model
-
-public struct ChannelPost: Identifiable, Codable, Equatable, Hashable {
-    public let id: String
-    public let channelId: String
-    public let authorId: String
-    public var text: String?
-    public var media: MediaCardPayload?
-    public var reactions: [String: String]? // [userId: emoji]
-    public let timestampMs: Int64
-    public var isPinned: Bool
-    public var isEdited: Bool?
-    public var viewsCount: Int?
-
-    public init(
-        id: String = "post_\(Int64(Date().timeIntervalSince1970 * 1000))_\(UUID().uuidString.prefix(6))",
-        channelId: String,
-        authorId: String,
-        text: String? = nil,
-        media: MediaCardPayload? = nil,
-        reactions: [String: String]? = nil,
-        timestampMs: Int64 = Int64(Date().timeIntervalSince1970 * 1000),
-        isPinned: Bool = false,
-        isEdited: Bool? = nil,
-        viewsCount: Int? = nil
-    ) {
-        self.id = id
-        self.channelId = channelId
-        self.authorId = authorId
-        self.text = text
-        self.media = media
-        self.reactions = reactions
-        self.timestampMs = timestampMs
-        self.isPinned = isPinned
-        self.isEdited = isEdited
-        self.viewsCount = viewsCount
-    }
-
-    /// Aggregates reactions into distinct emojis with total count and current user reaction flag
-    public func reactionSummary(currentUserId: String) -> [(emoji: String, count: Int, isMine: Bool)] {
-        guard let reactions = reactions, !reactions.isEmpty else { return [] }
-        var counts: [String: Int] = [:]
-        for (_, emoji) in reactions {
-            counts[emoji, default: 0] += 1
-        }
-        let myEmoji = reactions[currentUserId]
-        return counts.map { (emoji, count) in
-            (emoji: emoji, count: count, isMine: myEmoji == emoji)
-        }.sorted { $0.count > $1.count }
-    }
-}
-
-// MARK: - Channel User Subscription
-
-public struct ChannelSubscription: Codable, Equatable, Hashable {
-    public let channelId: String
-    public let channel: ChannelModel?
-    public let subscribedAtMs: Int64
-    public var isMuted: Bool
-
-    public init(
-        channelId: String,
-        channel: ChannelModel? = nil,
-        subscribedAtMs: Int64 = Int64(Date().timeIntervalSince1970 * 1000),
-        isMuted: Bool = false
-    ) {
-        self.channelId = channelId
-        self.channel = channel
-        self.subscribedAtMs = subscribedAtMs
-        self.isMuted = isMuted
-    }
-}
-
-// MARK: - Unified Messenger Feed Item
-
-public enum MessengerFeedItem: Identifiable, Hashable {
-    case directChat(ChatConversation)
-    case channel(ChannelModel)
-
-    public var id: String {
-        switch self {
-        case .directChat(let chat): return "chat_\(chat.chatId)"
-        case .channel(let ch): return "ch_\(ch.id)"
-        }
-    }
-
-    public var timestampMs: Int64 {
-        switch self {
-        case .directChat(let chat): return chat.updatedAtMs
-        case .channel(let ch): return ch.lastPostTimestampMs ?? ch.updatedAtMs
-        }
-    }
-}
-```
+### Recommendation 3: Fix `DownloadManager.swift`
+- In `prepareAndEnqueue`, remove lines 326-332 that overrode `streamUrlString` with `audioVariants`.
+- In `chooseMediaPlaylistUrl`, enhance master playlist parsing:
+  - Parse `BANDWIDTH=` attribute.
+  - Parse resolution from variant filenames (`1080.m3u8`, `720.m3u8`, `480.m3u8`, `360.m3u8`).
+  - Select highest resolution matching or below the target preference.
 
 ---
 
-### 3.3 Proposed Repository Method Signatures (`MessengerRepository.swift`)
+## 5. Verification Method
 
-```swift
-// MARK: - Channels State
-@Published public private(set) var subscribedChannels: [ChannelModel] = []
-@Published public private(set) var publicChannels: [ChannelModel] = []
-
-// MARK: - Channel Disk Caching
-public func saveSubscribedChannelsToDisk(_ list: [ChannelModel])
-public func loadSubscribedChannelsFromDisk() -> [ChannelModel]
-public func savePublicChannelsToDisk(_ list: [ChannelModel])
-public func loadPublicChannelsFromDisk() -> [ChannelModel]
-public func saveChannelPostsToDisk(_ posts: [ChannelPost], channelId: String)
-public func loadChannelPostsFromDisk(channelId: String) -> [ChannelPost]
-
-// MARK: - Channel Lifecycle (CRUD)
-public func createChannel(
-    name: String,
-    description: String,
-    avatarEmoji: String?,
-    accentColorHex: String?
-) async -> ChannelModel?
-
-public func updateChannelMetadata(channel: ChannelModel) async -> Bool
-public func deleteChannel(channelId: String) async -> Bool
-
-// MARK: - Channel Subscriptions & Discovery
-public func fetchSubscribedChannels() async -> [ChannelModel]
-public func fetchPublicChannels(query: String? = nil) async -> [ChannelModel]
-public func isSubscribed(channelId: String) -> Bool
-public func subscribeToChannel(channel: ChannelModel) async -> Bool
-public func unsubscribeFromChannel(channelId: String) async -> Bool
-
-// MARK: - Channel Posts & Reactions
-public func fetchChannelPosts(channelId: String) async -> [ChannelPost]
-public func publishChannelPost(
-    channelId: String,
-    text: String?,
-    mediaPayload: MediaCardPayload?,
-    isPinned: Bool
-) async -> ChannelPost?
-
-public func editChannelPost(
-    channelId: String,
-    postId: String,
-    newText: String?,
-    mediaPayload: MediaCardPayload?
-) async -> Bool
-
-public func deleteChannelPost(channelId: String, postId: String) async -> Bool
-public func togglePinChannelPost(channelId: String, postId: String, isPinned: Bool) async -> Bool
-public func toggleChannelPostReaction(channelId: String, postId: String, emoji: String) async -> Bool
-```
-
----
-
-### 3.4 UIColor Hex Extension Helper
-To support customizable channel accent colors (`accentColorHex`), add a standard hex initializer in `Color+Theme.swift`:
-```swift
-extension UIColor {
-    convenience init?(hex: String) {
-        var cleanHex = hex.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        if cleanHex.hasPrefix("#") { cleanHex.removeFirst() }
-        guard cleanHex.count == 6, let rgbValue = UInt64(cleanHex, radix: 16) else { return nil }
-        self.init(
-            red: CGFloat((rgbValue & 0xFF0000) >> 16) / 255.0,
-            green: CGFloat((rgbValue & 0x00FF00) >> 8) / 255.0,
-            blue: CGFloat(rgbValue & 0x0000FF) / 255.0,
-            alpha: 1.0
-        )
-    }
-}
-```
-
----
-
-## 4. Caveats
-
-1. **Firebase Security Rules**: Realtime Database rules must permit read/write on `/channels`, `/channel_posts`, `/channel_subscribers`, and `/user_channel_subscriptions`. If rules are configured with strict user auth, `auth != null` will be required.
-2. **Atomic Subscriber Count Increment**: In Firebase RTDB REST API, there is no direct atomic transaction operator via plain `PUT`. Subscribing / unsubscribing updates the count by fetching current metadata, modifying `subscriberCount`, and saving. To ensure count stability, `subscriberCount` can also be calculated as `count(channel_subscribers/{channelId})`.
-3. **No ultraThinMaterial**: In all channel UI implementations (`ChannelDetailView`, `CreateChannelSheet`, `ChannelInfoView`), only `.glassEffect()` and `Color.slooshAccent` must be used, adhering strictly to AGENTS.md rules.
-
----
-
-## 5. Conclusion
-
-- The existing Data Layer architecture in `MessengerRepository.swift` and `AuthRepository.swift` provides a reliable foundation using Firebase Realtime Database REST API and local disk persistence.
-- The proposed schema cleanly integrates Channels, Posts, Media Attachments, Reactions, Pinned Posts, and Subscriptions with zero schema collisions.
-- The data models and repository methods are fully specified and ready for implementation.
-
----
-
-## 6. Verification Method
-
-1. **Data Model Validation**: Verify that `ChannelModel`, `ChannelPost`, `ChannelSubscription`, and `MessengerFeedItem` compile without errors and satisfy `Codable`, `Identifiable`, `Equatable`, `Hashable`.
-2. **REST Endpoint Testing**: Verify Firebase REST endpoints:
-   - `PUT https://sloosh-77434-default-rtdb.firebaseio.com/channels/{channelId}.json`
-   - `GET https://sloosh-77434-default-rtdb.firebaseio.com/channels.json`
-   - `PUT https://sloosh-77434-default-rtdb.firebaseio.com/channel_posts/{channelId}/{postId}.json`
-   - `GET https://sloosh-77434-default-rtdb.firebaseio.com/channel_posts/{channelId}.json`
-3. **Disk Cache Cold-Start Validation**:
-   - Verify that `loadSubscribedChannelsFromDisk()` returns stored channels instantly before network calls return.
-   - Verify that `loadChannelPostsFromDisk(channelId:)` renders initial channel posts instantly.
+To verify these findings and fixes:
+1. **Source Inspection**:
+   - Inspect `AllohaRepository.swift` to ensure `movie.translations` retains the raw API translation list.
+   - Inspect `PlayerView.swift` to verify `availableVoiceovers` is populated from `seriesResult` and not overwritten by `applyResolvedAllohaStream`.
+   - Inspect `DownloadManager.swift` to verify direct stream URL usage and master playlist parsing.
+2. **Behavioral Test Scenarios**:
+   - **Multi-voice Series (e.g. "Локи")**: Open in `SourceSelectionView`, select "Дублированный" -> verify `PlayerView` plays the dubbed audio, `VoiceoverPickerSheet` lists all translations, and switching voiceover updates playback at current position.
+   - **Episode Navigation**: Complete an episode -> verify next episode plays with the same active voiceover.
+   - **Offline Downloads**: Download an episode with a specific voiceover in 1080p -> verify `DownloadManager` downloads the 1080p variant of that voiceover and plays offline accurately in `PlayerView`.

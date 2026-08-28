@@ -1,18 +1,29 @@
-## 2026-08-24T20:49:37Z
-You are Reviewer 1 for the Sloosh Channels & Messenger refactor.
-Your working directory is W:\iOS-sloosh\.agents\reviewer_1\
-Codebase Root: W:\iOS-sloosh\sloosh-iOS\
+## 2026-08-27T15:42:29Z
 
-Review Objectives:
-1. Examine code correctness, completeness, and robustness of the changes made by Worker 1 in:
-   - `Data/Models/MessengerModels.swift` & `Data/Models/UserProfile.swift` (TagValidator, SlooshUser, ChannelModel, Codable & Sendable compliance).
-   - `Data/Repositories/MessengerRepository.swift` & `Data/Repositories/AuthRepository.swift` (tag reservation, instant @tag lookup, privacy sanitization, channel and profile sync).
-   - `UI/Shared/AvatarImageProcessor.swift` & `UI/Shared/SlooshAvatarView.swift`.
-   - `UI/Messenger/CreateChannelSheet.swift`, `UI/Messenger/ChannelInfoView.swift`, `UI/Messenger/ChatDetailView.swift`, `UI/Messenger/MessengerView.swift`.
-   - `UI/Profile/EditProfileSheet.swift`, `UI/Profile/ProfileView.swift`.
-2. Verify:
-   - Zero occurrences of `.ultraThinMaterial`.
-   - Strict Liquid Glass usage (`.glassEffect(...)`).
-   - Single "Изменить" button in `ChannelInfoView` toolbar for owners; no duplicate pencil button; no fake `sloosh.app` links.
-   - Complete privacy (zero raw user emails or raw internal UUIDs displayed in UI or leaked to public nodes).
-3. Produce a structured review report at W:\iOS-sloosh\.agents\reviewer_1\review.md and a handoff at W:\iOS-sloosh\.agents\reviewer_1\handoff.md with an explicit verdict: APPROVE or REQUEST_CHANGES. Send a completion message when done.
+<USER_REQUEST>
+You are Reviewer 1 (reviewer_1).
+Your working directory is: W:\iOS-sloosh\.agents\reviewer_1
+Read ORIGINAL_REQUEST.md at: W:\iOS-sloosh\.agents\ORIGINAL_REQUEST.md (section 2026-08-27T15:29:02Z)
+Read AGENTS.md at: W:\iOS-sloosh\AGENTS.md
+Read PROJECT.md at: W:\iOS-sloosh\.agents\orchestrator_2\PROJECT.md
+Read Worker M1 handoff at: W:\iOS-sloosh\.agents\worker_m1\handoff.md
+Read Worker M3 handoff at: W:\iOS-sloosh\.agents\worker_m3\handoff.md
+
+Task:
+Perform a thorough and objective code review of all changes made in:
+1. `W:\iOS-sloosh\sloosh-iOS\sloosh\Sources\Data\Repositories\AllohaRepository.swift`
+2. `W:\iOS-sloosh\sloosh-iOS\sloosh\Sources\UI\Player\PlayerView.swift`
+3. `W:\iOS-sloosh\sloosh-iOS\sloosh\Sources\UI\Player\Controls\PlayerPickerSheets.swift`
+4. `W:\iOS-sloosh\sloosh-iOS\sloosh\Sources\Data\Repositories\DownloadManager.swift`
+
+Verify:
+- R1: Complete Synchronization & Fidelity of Voiceovers in Player
+- R2: Voiceover Consistency Across Episode Navigation & Autoplay
+- R3: Strict Quality Selection & Download Fidelity in DownloadManager
+- Strict adherence to AGENTS.md (no ultraThinMaterial, no Collaps, Alloha only, clean Swift syntax).
+
+Deliverables:
+- Write your detailed review to `W:\iOS-sloosh\.agents\reviewer_1\handoff.md`.
+- Explicitly state your verdict at the end: Verdict: APPROVE or Verdict: REQUEST_CHANGES (with actionable list of issues).
+- Send a completion message back to parent using send_message.
+</USER_REQUEST>

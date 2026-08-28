@@ -1,11 +1,20 @@
-# Progress — worker_m1
+﻿# Progress — worker_m1
 
-Last visited: 2026-08-25T01:00:00Z
+Last visited: 2026-08-27T15:41:30Z
 
+## Current Status: Completed
 - [x] Initialized workspace and briefing
-- [x] Investigated current `MessengerModels.swift`, `Color+Theme.swift`, `MessengerRepository.swift`, and explorer report
-- [x] Implemented data models & helpers in `MessengerModels.swift` (`ChannelModel`, `ChannelPost`, `ChannelSubscription`, `MessengerFeedItem`, Russian pluralization helper, `displayAvatarEmoji`, `displayAccentColor`, `reactionSummary`)
-- [x] Implemented `UIColor(hex:)` in `Color+Theme.swift`
-- [x] Implemented channel repository methods & disk caching in `MessengerRepository.swift` (`subscribedChannels`, `publicChannels`, `createChannel`, `fetchSubscribedChannels`, `fetchPublicChannels`, `subscribeToChannel`, `unsubscribeFromChannel`, `isSubscribed`, `fetchChannelPosts`, `publishChannelPost`, `editChannelPost`, `deleteChannelPost`, `togglePinChannelPost`, `toggleChannelPostReaction`, `deleteChannel`, `updateChannelMetadata`, instant 0ms `UserDefaults` caching)
-- [x] Verified Swift syntax, model consistency, and compilation readiness
-- [x] Completed handoff report and notified parent
+- [x] Inspected AllohaRepository.swift around lines 383-410
+- [x] Inspected PlayerView.swift (beginLoad, applyResolvedAllohaStream, syncNativeAudioTracks, switchVoiceover, playEpisode, preferredTranslation)
+- [x] Inspected PlayerPickerSheets.swift
+- [x] Applied changes to AllohaRepository.swift: removed destructive eager resolver call on first movie iframe, preserved authentic movie.translations list parsed directly from API
+- [x] Applied changes to PlayerView.swift:
+  - Initialized availableVoiceovers for movies from seriesResult.movie?.translations.map { .name }
+  - Protected availableVoiceovers from being overwritten by resolvedAudioVariants in applyResolvedAllohaStream
+  - Guarded syncNativeAudioTracks to not append raw AVPlayer track names when authentic translations exist
+  - Rewrote switchVoiceover(to:at:) to resolve target translation iframeUrl / stream, preserve savedTime, and reload playback restoring savedTime
+  - Updated playEpisode to set _currentTranslationName = episode.translation.name and preserve targetVoiceover preference across episodes
+  - Updated preferredTranslation(in:) to check targetVoiceover first
+- [x] Applied changes to PlayerPickerSheets.swift: used allohaTranslationNamesMatch for isSelected matching in VoiceoverPickerSheet
+- [x] Verified git diff and static integrity across all modified files
+- [x] Prepared handoff report

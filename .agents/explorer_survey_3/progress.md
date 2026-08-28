@@ -1,13 +1,15 @@
 # Progress — explorer_survey_3
 
-Last visited: 2026-08-25T00:56:00+05:00
+Last visited: 2026-08-27T15:35:00Z
+Status: Completed
 
-- [x] Initialized DISPATCH.md, BRIEFING.md, and progress.md
-- [x] Investigate `MoviesRepository.swift`, `MoviesApi.swift`, `MovieItemDto.swift`, `MediaDetailsDto.swift`
-- [x] Investigate existing search and list views (`SearchView.swift`, `HomeView.swift`, `DetailsView.swift`, `PlayerView.swift`)
-- [x] Investigate Messenger models and views (`MessengerRepository.swift`, `MessengerView.swift`, `ChatDetailView.swift`, `MediaMessageCardView.swift`)
-- [x] Investigate `neomovies-mobile/` for any feed / channel / reaction patterns
-- [x] Design `MovieSelectorSheet` and `ChannelMediaCardView`
-- [x] Design navigation / sheet presentation flow for Player and Details
-- [x] Design Emoji Reaction data flow and interaction model
-- [x] Compile comprehensive `handoff.md` and send completion message to parent
+- [x] Initialized DISPATCH.md, BRIEFING.md, progress.md
+- [x] Inspect DownloadManager.swift
+- [x] Inspect AllohaRuntimeResolver.swift and interaction with DownloadManager
+- [x] Inspect SourceSelectionView.swift / DetailsView.swift download trigger calls
+- [x] Inspect chooseMediaPlaylistUrl, master playlist parsing, and qualityVariants
+- [x] Inspect offline media packaging (local.m3u8, key.bin, segments, metadata)
+- [x] Inspect PlayerView.swift offline playback flow
+- [x] Synthesize findings into analysis.md
+- [x] Write 5-component handoff.md
+- [x] Send completion message to parent

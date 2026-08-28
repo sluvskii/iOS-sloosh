@@ -361,7 +361,7 @@ struct FavoriteCheckDto: Codable {
     let isFavorite: Bool
 }
 
-enum VideoQualityPreference: String, CaseIterable, Identifiable {
+enum VideoQualityPreference: String, CaseIterable, Identifiable, Codable {
     case ask = "Спрашивать каждый раз"
     case auto = "Авто"
 

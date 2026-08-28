@@ -1,38 +1,24 @@
-## 2026-08-25T01:07:19Z
+## 2026-08-27T15:37:14Z
+You are a Worker subagent (worker_m3).
+Your working directory is: W:\iOS-sloosh\.agents\worker_m3
+Read ORIGINAL_REQUEST.md at: W:\iOS-sloosh\.agents\ORIGINAL_REQUEST.md (latest section 2026-08-27T15:29:02Z)
+Read AGENTS.md at: W:\iOS-sloosh\AGENTS.md
+Read PROJECT.md at: W:\iOS-sloosh\.agents\orchestrator_2\PROJECT.md
+Read Explorer 3 findings at: W:\iOS-sloosh\.agents\explorer_survey_3\handoff.md
 
-Assignment for Milestone 3 (Channel Feed, Roles, Media & Reactions):
-1. **Create `MovieSelectorSheet.swift`** in `W:\iOS-sloosh\sloosh-iOS\sloosh\Sources\UI\Messenger\MovieSelectorSheet.swift`:
-   - Liquid Glass presentation background: `.presentationBackground { Color.clear.glassEffect(in: .rect) }`.
-   - Debounced search using `MoviesRepository.shared.searchMovies(query:page:)`.
-   - Popular / trending grid on cold open (`MoviesRepository.shared.getPopularMovies(page: 1)`).
-   - Selecting a movie packages it as `MediaCardPayload` and passes to `onSelect(MediaCardPayload)`.
-2. **Create `ChannelMediaCardView.swift`** in `W:\iOS-sloosh\sloosh-iOS\sloosh\Sources\UI\Messenger\ChannelMediaCardView.swift`:
-   - Full-width card with 2:3 poster, rating badge (`Color.rating(...)`), title, year/type, dynamic average-color background extracted from poster.
-   - Prominent "Смотреть" button with Liquid Glass capsule, calling `onPlayDirectly(media)` which triggers `HomeDirectPlayWrapper` -> `PlayerView`.
-   - Poster / title / "Подробнее" tap calling `onOpenDetails(media.mediaId)` which triggers `DetailsView(movieId:)`.
-3. **Create `PinnedPostBar.swift`** in `W:\iOS-sloosh\sloosh-iOS\sloosh\Sources\UI\Messenger\PinnedPostBar.swift`:
-   - Top floating Liquid Glass banner below navigation bar (`.glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 14, style: .continuous))`).
-   - Displays `pin.fill` icon, post preview text or movie title.
-   - Tapping invokes `onTap(postId)` to scroll `ScrollViewReader` directly to the pinned post.
-4. **Create `ChannelPostRowView.swift`** in `W:\iOS-sloosh\sloosh-iOS\sloosh\Sources\UI\Messenger\ChannelPostRowView.swift`:
-   - Broadcast post layout with post text, embedded `ChannelMediaCardView` (if media attached), timestamp, edit badge, views count.
-   - Emoji reaction bar rendering aggregated pills with counters and active user reaction highlight.
-   - Plus (+) reaction picker popup allowing viewers/subscribers to add emoji reactions (🔥, ❤️, 🍿, 🎬, 👏, 😱, ⚡️, ⭐️).
-   - Context menu with Author actions (Edit, Pin/Unpin, Delete) and Viewer actions (Copy, Share, React).
-5. **Update `ChannelDetailView.swift`** in `W:\iOS-sloosh\sloosh-iOS\sloosh\Sources\UI\Messenger\ChannelDetailView.swift`:
-   - Full screen feed integrating `ScrollViewReader`, post list using `ChannelPostRowView`, and top `PinnedPostBar`.
-   - **Role Separation**:
-     - **Channel Owner/Author**:
-       - Broadcasting input bar (`BroadcastInputBar`) at the bottom: text field with Liquid Glass morphing capsule, movie selector button opening `MovieSelectorSheet`, attached movie preview chip with remove button, and send button.
-       - Support editing existing posts (editing banner & state).
-       - Support pinning/unpinning posts (`MessengerRepository.shared.togglePinChannelPost`).
-       - Support deleting posts (`MessengerRepository.shared.deleteChannelPost`).
-     - **Subscribers / Viewers**:
-       - Read-only post stream (no text input bar).
-       - Bottom floating Liquid Glass banner with:
-         - "Подписаться" / "Отписаться" toggle button.
-         - Mute / Unmute toggle button (`bell.fill` / `bell.slash.fill`).
-   - Deep linking presentations:
-     - `.sheet(item: $selectedMediaForDirectPlay)` presenting `HomeDirectPlayWrapper` -> `.fullScreenCover(item: $activePlayerConfig) { PlayerView(...) }`.
-     - `.navigationDestination(item: $selectedMovieIdForDetails) { DetailsView(movieId: $0, ...) }`.
-     - Navigation to `ChannelInfoView(channel: channel)` via info button in toolbar.
+MANDATORY INTEGRITY WARNING:
+DO NOT CHEAT. All implementations must be genuine. DO NOT hardcode test results, create dummy/facade implementations, or circumvent the intended task. A teamwork_preview_auditor will independently verify your work. Integrity violations WILL be detected and your work WILL be rejected.
+
+Scope & Write Ownership:
+You exclusively own and may edit:
+- `W:\iOS-sloosh\sloosh-iOS\sloosh\Sources\Data\Repositories\DownloadManager.swift`
+Do NOT edit any other files.
+
+Requirements (R3):
+1. `DownloadManager.swift` (`prepareAndEnqueue`): Remove lines 326-332 that overrode `streamUrlString` with fuzzy matched `audioVariants`. Use `resolved["url"]` directly as the stream URL for the chosen `translation.iframeUrl` without erroneous overrides.
+2. `DownloadManager.swift` (`chooseMediaPlaylistUrl`):
+   - Parse `BANDWIDTH=` from `#EXT-X-STREAM-INF`.
+   - Parse resolution from `#EXT-X-STREAM-INF` `RESOLUTION=WxH` and fallback from variant URLs (e.g. `1080.m3u8`, `720.m3u8`, `480.m3u8`, `360.m3u8`).
+   - Filter out AV1 streams (`codecs="av01..."` or `av01` in codecs).
+   - Implement accurate sorting: select the variant with highest resolution <= targetHeight (e.g. 1080p for `.q1080`), tie-breaking on highest bandwidth. If no variant <= targetHeight exists, select the closest available resolution.
+3. Ensure downloaded media metadata (`translationName`, `quality`, `key.bin`, `local.m3u8`) is properly formatted and saved for seamless offline playback in `PlayerView`.

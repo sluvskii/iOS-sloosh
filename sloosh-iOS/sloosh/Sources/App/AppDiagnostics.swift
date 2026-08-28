@@ -18,19 +18,10 @@ class AppDiagnostics: ObservableObject {
         logsFileURL = docDir.appendingPathComponent("sloosh_logs.txt")
         crashFileURL = docDir.appendingPathComponent("sloosh_crash.txt")
         
-        // Очищаем старые обычные логи при каждом перезапуске приложения,
-        // чтобы логи всегда были свежими и не разрастались до десятков мегабайт.
-        try? FileManager.default.removeItem(at: logsFileURL)
-        
-        // Записываем заголовок новой сессии
-        let timestamp = ISO8601DateFormatter().string(from: Date())
-        let header = "=== Sloosh Session Started: [\(timestamp)] (iOS \(UIDevice.current.systemVersion)) ===\n"
-        try? header.data(using: .utf8)?.write(to: logsFileURL, options: .atomic)
-        
         checkPreviousCrash()
     }
     
-    /// Записывает сообщение в файл логов с защитой от переполнения (макс. 2 МБ).
+    /// Записывает сообщение в скрытый файл логов.
     func log(_ message: String, file: String = #file, function: String = #function, line: Int = #line) {
         let fileName = (file as NSString).lastPathComponent
         let timestamp = ISO8601DateFormatter().string(from: Date())
@@ -43,18 +34,7 @@ class AppDiagnostics: ObservableObject {
         ioQueue.async { [weak self] in
             guard let self = self else { return }
             guard let data = logMessage.data(using: .utf8) else { return }
-            
             if FileManager.default.fileExists(atPath: self.logsFileURL.path) {
-                // Если файл логов превысил 2 МБ за одну сессию, обрезаем старую половину
-                if let attrs = try? FileManager.default.attributesOfItem(atPath: self.logsFileURL.path),
-                   let size = attrs[.size] as? UInt64, size > 2 * 1024 * 1024 {
-                    if let content = try? String(contentsOf: self.logsFileURL, encoding: .utf8) {
-                        let lines = content.components(separatedBy: .newlines)
-                        let trimmed = lines.suffix(lines.count / 2).joined(separator: "\n")
-                        try? trimmed.write(to: self.logsFileURL, atomically: true, encoding: .utf8)
-                    }
-                }
-                
                 if let fileHandle = try? FileHandle(forWritingTo: self.logsFileURL) {
                     fileHandle.seekToEndOfFile()
                     try? fileHandle.write(contentsOf: data)

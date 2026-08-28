@@ -27,8 +27,51 @@ struct DownloadItem: Identifiable, Codable, Equatable {
     var totalBytes: Int64?
     let translationName: String?
     let iframeUrl: String
+    var preferredQuality: VideoQualityPreference
     let addedAt: Date
     var errorMessage: String?
+
+    // MARK: - Custom Codable for backward compatibility
+    // preferredQuality was added later, so existing JSON may not have it.
+    enum CodingKeys: String, CodingKey {
+        case id, kpId, title, season, episode, episodeTitle, mediaType, posterUrl
+        case localDirectory, localPlayableFileName, progress, status
+        case downloadedBytes, totalBytes, translationName, iframeUrl
+        case preferredQuality, addedAt, errorMessage
+    }
+
+    init(id: String, kpId: Int, title: String, season: Int?, episode: Int?, episodeTitle: String?, mediaType: String, posterUrl: String?, localDirectory: String, localPlayableFileName: String, progress: Double, status: DownloadStatus, downloadedBytes: Int64?, totalBytes: Int64?, translationName: String?, iframeUrl: String, preferredQuality: VideoQualityPreference = .q1080, addedAt: Date) {
+        self.id = id; self.kpId = kpId; self.title = title; self.season = season; self.episode = episode
+        self.episodeTitle = episodeTitle; self.mediaType = mediaType; self.posterUrl = posterUrl
+        self.localDirectory = localDirectory; self.localPlayableFileName = localPlayableFileName
+        self.progress = progress; self.status = status; self.downloadedBytes = downloadedBytes; self.totalBytes = totalBytes
+        self.translationName = translationName; self.iframeUrl = iframeUrl
+        self.preferredQuality = preferredQuality; self.addedAt = addedAt; self.errorMessage = nil
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        kpId = try container.decode(Int.self, forKey: .kpId)
+        title = try container.decode(String.self, forKey: .title)
+        season = try container.decodeIfPresent(Int.self, forKey: .season)
+        episode = try container.decodeIfPresent(Int.self, forKey: .episode)
+        episodeTitle = try container.decodeIfPresent(String.self, forKey: .episodeTitle)
+        mediaType = try container.decode(String.self, forKey: .mediaType)
+        posterUrl = try container.decodeIfPresent(String.self, forKey: .posterUrl)
+        localDirectory = try container.decode(String.self, forKey: .localDirectory)
+        localPlayableFileName = try container.decode(String.self, forKey: .localPlayableFileName)
+        progress = try container.decode(Double.self, forKey: .progress)
+        status = try container.decode(DownloadStatus.self, forKey: .status)
+        downloadedBytes = try container.decodeIfPresent(Int64.self, forKey: .downloadedBytes)
+        totalBytes = try container.decodeIfPresent(Int64.self, forKey: .totalBytes)
+        translationName = try container.decodeIfPresent(String.self, forKey: .translationName)
+        iframeUrl = try container.decode(String.self, forKey: .iframeUrl)
+        // Backward compatibility: field may not exist in older saved files
+        preferredQuality = try container.decodeIfPresent(VideoQualityPreference.self, forKey: .preferredQuality) ?? .q1080
+        addedAt = try container.decode(Date.self, forKey: .addedAt)
+        errorMessage = try container.decodeIfPresent(String.self, forKey: .errorMessage)
+    }
     
     var localPlayableUrl: URL? {
         let relative = "\(localDirectory)/\(localPlayableFileName)"
@@ -190,6 +233,7 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                 totalBytes: 0,
                 translationName: translation.name,
                 iframeUrl: translation.iframeUrl,
+                preferredQuality: preferredQuality,
                 addedAt: Date()
             )
             downloads.append(item)
@@ -231,7 +275,7 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                     return
                 }
             }
-            await prepareAndEnqueue(itemId: id, item: item, preferredQuality: .q1080)
+            await prepareAndEnqueue(itemId: id, item: item, preferredQuality: item.preferredQuality)
         }
     }
     
@@ -319,23 +363,8 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             return
         }
         
-        var streamUrlString = (resolved["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let audioVariants = (resolved["audioVariants"] as? [[String: Any]]) ?? []
+        let streamUrlString = (resolved["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let headers = (resolved["headers"] as? [String: String]) ?? [:]
-        
-        if let targetVoice = item.translationName, !targetVoice.isEmpty, !audioVariants.isEmpty {
-            let exactMatch = audioVariants.first(where: {
-                let vTitle = ($0["title"] as? String) ?? ""
-                return allohaTranslationNamesMatch(vTitle, targetVoice, exactOnly: true)
-            })
-            let match = exactMatch ?? audioVariants.first(where: {
-                let vTitle = ($0["title"] as? String) ?? ""
-                return allohaTranslationNamesMatch(vTitle, targetVoice, exactOnly: false)
-            })
-            if let validMatch = match, let matchedUrl = validMatch["url"] as? String, !matchedUrl.isEmpty {
-                streamUrlString = matchedUrl.trimmingCharacters(in: .whitespacesAndNewlines)
-            }
-        }
         
         guard let masterPlaylistUrl = URL(string: streamUrlString) else {
             await finishWithError(id: itemId, message: "Не удалось получить ссылку на поток")
@@ -533,6 +562,14 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     nonisolated func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
         guard let desc = downloadTask.taskDescription, let comps = extractTaskInfo(desc: desc) else { return }
         
+        var bgTaskId: UIBackgroundTaskIdentifier = .invalid
+        bgTaskId = UIApplication.shared.beginBackgroundTask(withName: "ProcessSegment_\(comps.itemId)_\(comps.index)") {
+            if bgTaskId != .invalid {
+                UIApplication.shared.endBackgroundTask(bgTaskId)
+                bgTaskId = .invalid
+            }
+        }
+        
         let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
         let taskDir = docs.appendingPathComponent(comps.localDirectory)
         let finalUrl = taskDir.appendingPathComponent("segment_\(comps.index).ts")
@@ -541,13 +578,6 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         try? FileManager.default.moveItem(at: location, to: finalUrl)
         
         Task { @MainActor in
-            var bgTaskId: UIBackgroundTaskIdentifier = .invalid
-            bgTaskId = UIApplication.shared.beginBackgroundTask(withName: "ProcessSegment_\(comps.itemId)_\(comps.index)") {
-                if bgTaskId != .invalid {
-                    UIApplication.shared.endBackgroundTask(bgTaskId)
-                    bgTaskId = .invalid
-                }
-            }
             defer {
                 if bgTaskId != .invalid {
                     UIApplication.shared.endBackgroundTask(bgTaskId)
@@ -566,14 +596,15 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             return
         }
         
-        Task { @MainActor in
-            var bgTaskId: UIBackgroundTaskIdentifier = .invalid
-            bgTaskId = UIApplication.shared.beginBackgroundTask(withName: "RetrySegment_\(comps.itemId)_\(comps.index)") {
-                if bgTaskId != .invalid {
-                    UIApplication.shared.endBackgroundTask(bgTaskId)
-                    bgTaskId = .invalid
-                }
+        var bgTaskId: UIBackgroundTaskIdentifier = .invalid
+        bgTaskId = UIApplication.shared.beginBackgroundTask(withName: "RetrySegment_\(comps.itemId)_\(comps.index)") {
+            if bgTaskId != .invalid {
+                UIApplication.shared.endBackgroundTask(bgTaskId)
+                bgTaskId = .invalid
             }
+        }
+        
+        Task { @MainActor in
             defer {
                 if bgTaskId != .invalid {
                     UIApplication.shared.endBackgroundTask(bgTaskId)
