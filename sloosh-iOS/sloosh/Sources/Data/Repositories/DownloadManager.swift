@@ -1,6 +1,8 @@
 import Foundation
 import Combine
 import UIKit
+import AVFoundation
+import Photos
 
 enum DownloadStatus: String, Codable {
     case pending
@@ -824,7 +826,102 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
            let height = Int(pathWithoutQuery[range]) {
             return height
         }
-        return 0
+    // MARK: - Export as MP4
+    func exportAsMP4(item: DownloadItem) async throws -> URL {
+        guard let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
+            throw NSError(domain: "ru.sloosh.download", code: 404, userInfo: [NSLocalizedDescriptionKey: "Директория документов не найдена"])
+        }
+        let taskDir = docs.appendingPathComponent(item.localDirectory)
+        
+        var filename = item.title
+        if let season = item.season, let episode = item.episode {
+            filename += " S\(String(format: "%02d", season))E\(String(format: "%02d", episode))"
+        }
+        if let voice = item.translationName, !voice.isEmpty {
+            filename += " (\(voice))"
+        }
+        let invalidChars = CharacterSet(charactersIn: "\\/:*?\"<>|")
+        filename = filename.components(separatedBy: invalidChars).joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+        if filename.isEmpty {
+            filename = "video_\(item.id)"
+        }
+        
+        let tempDir = FileManager.default.temporaryDirectory
+        let exportUrl = tempDir.appendingPathComponent("\(filename).mp4")
+        
+        let fm = FileManager.default
+        try? fm.removeItem(at: exportUrl)
+        
+        // 1. Check if unencrypted .ts segments exist in taskDir
+        let files = (try? fm.contentsOfDirectory(atPath: taskDir.path)) ?? []
+        let tsFiles = files.filter { $0.hasPrefix("segment_") && $0.hasSuffix(".ts") }
+            .sorted { a, b in
+                let numA = Int(a.replacingOccurrences(of: "segment_", with: "").replacingOccurrences(of: ".ts", with: "")) ?? 0
+                let numB = Int(b.replacingOccurrences(of: "segment_", with: "").replacingOccurrences(of: ".ts", with: "")) ?? 0
+                return numA < numB
+            }
+        
+        let isEncrypted = fm.fileExists(atPath: taskDir.appendingPathComponent("key.bin").path)
+        
+        if !tsFiles.isEmpty && !isEncrypted {
+            let mergedTsUrl = tempDir.appendingPathComponent("\(UUID().uuidString).ts")
+            fm.createFile(atPath: mergedTsUrl.path, contents: nil)
+            if let fileHandle = try? FileHandle(forWritingTo: mergedTsUrl) {
+                for tsName in tsFiles {
+                    let segUrl = taskDir.appendingPathComponent(tsName)
+                    if let data = try? Data(contentsOf: segUrl) {
+                        fileHandle.write(data)
+                    }
+                }
+                try? fileHandle.close()
+                
+                let asset = AVURLAsset(url: mergedTsUrl)
+                let presets = [AVAssetExportPresetPassthrough, AVAssetExportPresetHighestQuality, AVAssetExportPreset1920x1080]
+                for preset in presets {
+                    if let exportSession = AVAssetExportSession(asset: asset, presetName: preset) {
+                        exportSession.outputURL = exportUrl
+                        exportSession.outputFileType = .mp4
+                        exportSession.shouldOptimizeForNetworkUse = true
+                        await exportSession.export()
+                        if exportSession.status == .completed && fm.fileExists(atPath: exportUrl.path) {
+                            try? fm.removeItem(at: mergedTsUrl)
+                            return exportUrl
+                        }
+                    }
+                }
+                try? fm.removeItem(at: mergedTsUrl)
+            }
+        }
+        
+        // 2. Export via local HLS proxy server
+        if let localUrl = item.localPlayableUrl {
+            HlsProxyServer.shared.start()
+            let asset = AVURLAsset(url: localUrl)
+            let presets = [AVAssetExportPresetPassthrough, AVAssetExportPresetHighestQuality, AVAssetExportPreset1920x1080]
+            for preset in presets {
+                if let exportSession = AVAssetExportSession(asset: asset, presetName: preset) {
+                    exportSession.outputURL = exportUrl
+                    exportSession.outputFileType = .mp4
+                    exportSession.shouldOptimizeForNetworkUse = true
+                    await exportSession.export()
+                    if exportSession.status == .completed && fm.fileExists(atPath: exportUrl.path) {
+                        return exportUrl
+                    }
+                }
+            }
+        }
+        
+        // 3. Fallback direct copy if mp4 exists
+        let mp4Files = files.filter { $0.hasSuffix(".mp4") }
+        if let firstMp4 = mp4Files.first {
+            let srcUrl = taskDir.appendingPathComponent(firstMp4)
+            try? fm.copyItem(at: srcUrl, to: exportUrl)
+            if fm.fileExists(atPath: exportUrl.path) {
+                return exportUrl
+            }
+        }
+        
+        throw NSError(domain: "ru.sloosh.export", code: 500, userInfo: [NSLocalizedDescriptionKey: "Не удалось подготовить файл для экспорта"])
     }
 }
 

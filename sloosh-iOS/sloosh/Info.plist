@@ -20,6 +20,12 @@
     <string>890</string>
     <key>LSRequiresIPhoneOS</key>
     <true/>
+    <key>NSPhotoLibraryAddUsageDescription</key>
+    <string>Разрешите доступ к фотопленке для сохранения видео в галерею</string>
+    <key>UIFileSharingEnabled</key>
+    <true/>
+    <key>LSSupportsOpeningDocumentsInPlace</key>
+    <true/>
     <key>AllohaToken</key>
     <string>$(ALLOHA_TOKEN)</string>
     <key>UIApplicationSceneManifest</key>
