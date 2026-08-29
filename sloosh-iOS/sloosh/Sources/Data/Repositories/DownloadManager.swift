@@ -101,32 +101,23 @@ struct DownloadItem: Identifiable, Codable, Equatable {
     
     var sizeString: String {
         guard let total = totalBytes, total > 0 else { return "" }
-        let totalMB: Double
+        let formatter = ByteCountFormatter()
+        formatter.allowedUnits = [.useMB, .useGB]
+        formatter.countStyle = .file
+        
         if total > 100_000 {
-            totalMB = Double(total) / (1024.0 * 1024.0)
-        } else {
-            totalMB = Double(total) * 1.5
-        }
-        
-        func formatMB(_ mb: Double) -> String {
-            if mb >= 1024 {
-                return String(format: "%.2f ГБ", mb / 1024.0)
+            if status == .completed {
+                return formatter.string(fromByteCount: total)
             } else {
-                return String(format: "%.0f МБ", mb)
+                let downloaded = downloadedBytes ?? 0
+                return "\(formatter.string(fromByteCount: downloaded)) / \(formatter.string(fromByteCount: total))"
             }
-        }
-        
-        if status == .completed {
-            return formatMB(totalMB)
         } else {
-            let downloaded = downloadedBytes ?? 0
-            let downloadedMB: Double
-            if downloaded > 100_000 {
-                downloadedMB = Double(downloaded) / (1024.0 * 1024.0)
-            } else {
-                downloadedMB = Double(downloaded) * 1.5
+            let current = downloadedBytes ?? 0
+            if status == .completed {
+                return ""
             }
-            return "\(formatMB(downloadedMB)) / \(formatMB(totalMB))"
+            return "\(current) / \(total) сегм."
         }
     }
 }
@@ -192,6 +183,17 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                     }
                 } else if let files = try? fm.contentsOfDirectory(atPath: taskDir.path), files.contains(where: { $0.hasPrefix("segment_") }) {
                     await DownloadManager.shared.finalizeAndAssembleMP4(for: item.id)
+                } else if let files = try? fm.contentsOfDirectory(atPath: taskDir.path), !files.isEmpty {
+                    var totalDisk: Int64 = 0
+                    for f in files {
+                        if let attrs = try? fm.attributesOfItem(atPath: taskDir.appendingPathComponent(f).path),
+                           let s = attrs[.size] as? Int64 {
+                            totalDisk += s
+                        }
+                    }
+                    if totalDisk > 0 && item.totalBytes != totalDisk {
+                        updatedSizes[item.id] = totalDisk
+                    }
                 }
             }
             
