@@ -126,25 +126,38 @@ func allohaTranslationNamesMatch(_ lhs: String?, _ rhs: String?, exactOnly: Bool
         return false
     }
     
+    // Check for specific studio names
+    let studios = ["red head sound", "rhs", "flarrow", "lostfilm", "tvshows", "newstudio", "newcomers", "alexfilm", "кубик", "hdrezka", "rezka", "baibako", "jaskier", "vsi", "iron voice"]
+    let leftStudios = studios.filter { left.contains($0) }
+    let rightStudios = studios.filter { right.contains($0) }
+    
+    if !leftStudios.isEmpty && !rightStudios.isEmpty {
+        // Both mention studios: they MUST share at least one studio
+        let shared = Set(leftStudios).intersection(Set(rightStudios))
+        if shared.isEmpty {
+            return false
+        }
+        let leftHasDub = left.contains("дубл")
+        let rightHasDub = right.contains("дубл")
+        if leftHasDub != rightHasDub {
+            return false
+        }
+        return true
+    }
+    
+    // If one specifies an exclusive third-party studio (like RHS or Flarrow) and the other doesn't, they don't match
+    let exclusiveStudios = ["red head sound", "rhs", "flarrow", "lostfilm", "tvshows", "newstudio", "newcomers", "alexfilm", "кубик", "baibako", "jaskier", "vsi", "iron voice"]
+    let leftHasExclusive = exclusiveStudios.contains(where: { left.contains($0) })
+    let rightHasExclusive = exclusiveStudios.contains(where: { right.contains($0) })
+    if leftHasExclusive != rightHasExclusive {
+        return false
+    }
+    
     // Handle Dubbing vs Voiceover:
     let leftHasDub = left.contains("дубл")
     let rightHasDub = right.contains("дубл")
     
-    let isPureDub: (String) -> Bool = { name in
-        let n = name.replacingOccurrences(of: "дублированный", with: "дубляж")
-            .replacingOccurrences(of: "профессиональный", with: "")
-            .replacingOccurrences(of: "полное дублирование", with: "дубляж")
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-        return n == "дубляж"
-    }
-    
-    let leftIsPureDub = isPureDub(left)
-    let rightIsPureDub = isPureDub(right)
-    
-    if leftIsPureDub && rightHasDub {
-        return true
-    }
-    if rightIsPureDub && leftHasDub {
+    if leftHasDub && rightHasDub {
         return true
     }
     
@@ -160,14 +173,6 @@ func allohaTranslationNamesMatch(_ lhs: String?, _ rhs: String?, exactOnly: Bool
     
     let leftCore = stripNoise(left)
     let rightCore = stripNoise(right)
-    
-    // If one has dub and the other doesn't, only match if the specific studio name matches (e.g. "Дубляж Red Head Sound" vs "Red Head Sound")
-    if leftHasDub != rightHasDub {
-        if !leftCore.isEmpty && leftCore == rightCore {
-            return true
-        }
-        return false
-    }
     
     if !leftCore.isEmpty && leftCore == rightCore {
         return true
