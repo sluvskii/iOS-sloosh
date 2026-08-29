@@ -126,22 +126,26 @@ func allohaTranslationNamesMatch(_ lhs: String?, _ rhs: String?, exactOnly: Bool
         return false
     }
     
-    // Pure dubbing check (without specific studio)
+    // Handle Dubbing vs Voiceover:
+    let leftHasDub = left.contains("дубл")
+    let rightHasDub = right.contains("дубл")
+    
     let isPureDub: (String) -> Bool = { name in
         let n = name.replacingOccurrences(of: "дублированный", with: "дубляж")
             .replacingOccurrences(of: "профессиональный", with: "")
             .replacingOccurrences(of: "полное дублирование", with: "дубляж")
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        return n == "дубляж" || n == "дублированный"
+        return n == "дубляж"
     }
+    
     let leftIsPureDub = isPureDub(left)
     let rightIsPureDub = isPureDub(right)
-    if leftIsPureDub && rightIsPureDub {
+    
+    if leftIsPureDub && rightHasDub {
         return true
     }
-    if leftIsPureDub != rightIsPureDub {
-        // One is pure dub and the other is a studio dub (e.g. "Дубляж Red Head Sound"), do not match
-        return false
+    if rightIsPureDub && leftHasDub {
+        return true
     }
     
     // Helper to strip generic studio/dub noise words
@@ -156,6 +160,14 @@ func allohaTranslationNamesMatch(_ lhs: String?, _ rhs: String?, exactOnly: Bool
     
     let leftCore = stripNoise(left)
     let rightCore = stripNoise(right)
+    
+    // If one has dub and the other doesn't, only match if the specific studio name matches (e.g. "Дубляж Red Head Sound" vs "Red Head Sound")
+    if leftHasDub != rightHasDub {
+        if !leftCore.isEmpty && leftCore == rightCore {
+            return true
+        }
+        return false
+    }
     
     if !leftCore.isEmpty && leftCore == rightCore {
         return true
