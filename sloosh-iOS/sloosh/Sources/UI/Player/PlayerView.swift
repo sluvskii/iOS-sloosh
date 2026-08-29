@@ -1348,8 +1348,8 @@ class PlayerViewModel: ObservableObject {
                     self.logDebug("setupPlayerItemObservers: item failed! Domain=\(nsError?.domain ?? ""), Code=\(nsError?.code ?? 0), Desc=\(nsError?.localizedDescription ?? "")")
                     print("PlayerItem failed: \(nsError?.localizedDescription ?? "Unknown error")")
                     
-                    if !self.currentIframeUrl.isEmpty {
-                        AllohaRuntimeResolver.invalidateCache(for: self.currentIframeUrl)
+                    if let iframeUrl = self.currentIframeUrl, !iframeUrl.isEmpty {
+                        AllohaRuntimeResolver.invalidateCache(for: iframeUrl)
                     }
                     
                     if nsError?.domain == AVFoundationErrorDomain, nsError?.code == -11848 {
