@@ -1900,16 +1900,13 @@ class PlayerViewModel: ObservableObject {
 
         // Заполняем список вариантов стримов из audioVariants (нужны для переключения озвучки)
         self.resolvedAudioVariants = audioVariants
-        // ВАЖНО: availableVoiceovers берём ТОЛЬКО из seriesResult (заполнены в beginLoad),
-        // т.к. они соответствуют тому, что пользователь видел в SourceSelectionView.
-        // audioVariants из runtime-парсера — это внутренние дорожки iframe-плеера Alloha,
-        // их названия могут не совпадать с названиями из API.
-        // Используем runtime voices только если seriesResult вообще недоступен.
-        if self.availableVoiceovers.isEmpty {
-            let voices = resolvedVoiceovers(from: resolved)
-            if !voices.isEmpty {
-                self.availableVoiceovers = voices
-            }
+        // Вычисляем runtime voices (внутренние аудиодорожки iframe-плеера Alloha).
+        // Они нужны для передачи в playVideo (для нативного переключения дорожек).
+        // Но НЕ используем их для availableVoiceovers если список уже заполнен из API,
+        // т.к. их названия могут не совпадать с тем, что пользователь видел в SourceSelectionView.
+        let voices = resolvedVoiceovers(from: resolved)
+        if self.availableVoiceovers.isEmpty && !voices.isEmpty {
+            self.availableVoiceovers = voices
         }
 
 
