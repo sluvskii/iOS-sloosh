@@ -61,6 +61,16 @@ func injectTranslationId(_ id: String, into urlString: String) -> String {
     return comps.string ?? urlString
 }
 
+func injectSeasonEpisode(season: Int, episode: Int, into urlString: String) -> String {
+    guard var comps = URLComponents(string: urlString) else { return urlString }
+    var items = comps.queryItems ?? []
+    items.removeAll { $0.name == "season" || $0.name == "episode" }
+    items.append(URLQueryItem(name: "season", value: String(season)))
+    items.append(URLQueryItem(name: "episode", value: String(episode)))
+    comps.queryItems = items
+    return comps.string ?? urlString
+}
+
 func normalizedAllohaTranslationName(_ raw: String?) -> String {
     guard var value = raw?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else {
         return ""
@@ -312,6 +322,7 @@ final class AllohaRepository: @unchecked Sendable {
                                 iframe = "https:" + iframe
                             }
                             iframe = injectTranslationId(tKey, into: iframe)
+                            iframe = injectSeasonEpisode(season: seasonNum, episode: episodeNum, into: iframe)
                             let transName = tDict["translation"] as? String ?? "Unknown"
                             
                             let cleanTitle = normalizedAllohaTranslationName(transName)
@@ -333,6 +344,7 @@ final class AllohaRepository: @unchecked Sendable {
                                 ?? ((tDict["id"] as? Int).map { String($0) })
                                 ?? String(index)
                             iframe = injectTranslationId(translationId, into: iframe)
+                            iframe = injectSeasonEpisode(season: seasonNum, episode: episodeNum, into: iframe)
                             let transName = tDict["translation"] as? String ?? "Unknown"
                             
                             let cleanTitle = normalizedAllohaTranslationName(transName)

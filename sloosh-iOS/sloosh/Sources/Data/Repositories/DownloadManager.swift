@@ -261,11 +261,17 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             epTitle = nil
         }
         
+        var iframeUrl = translation.iframeUrl
+        if let s = season, let e = episode {
+            iframeUrl = injectSeasonEpisode(season: s, episode: e, into: iframeUrl)
+        }
+        
         var item: DownloadItem
         if let existingIdx = downloads.firstIndex(where: { $0.id == itemId }) {
             downloads[existingIdx].status = .pending
             downloads[existingIdx].progress = 0.0
             downloads[existingIdx].errorMessage = nil
+            downloads[existingIdx].iframeUrl = iframeUrl
             item = downloads[existingIdx]
         } else {
             item = DownloadItem(
@@ -284,7 +290,7 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                 downloadedBytes: 0,
                 totalBytes: 0,
                 translationName: translation.name,
-                iframeUrl: translation.iframeUrl,
+                iframeUrl: iframeUrl,
                 preferredQuality: preferredQuality,
                 addedAt: Date()
             )
@@ -952,105 +958,126 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         let audioFormats = try? await audioTracks.first?.load(.formatDescriptions)
         let audioFormat = audioFormats?.first
         
-        // Fast Lossless Passthrough Remux with AVAssetReader + AVAssetWriter (Trims audio to video duration, fixes PTS)
-        do {
-            let reader = try AVAssetReader(asset: asset)
-            let writer = try AVAssetWriter(outputURL: outputUrl, fileType: .mp4)
-            writer.shouldOptimizeForNetworkUse = true
+        let reader = try AVAssetReader(asset: asset)
+        let writer = try AVAssetWriter(outputURL: outputUrl, fileType: .mp4)
+        writer.shouldOptimizeForNetworkUse = true
+        
+        let videoOutput = AVAssetReaderTrackOutput(track: videoTrack, outputSettings: nil)
+        videoOutput.alwaysCopiesSampleData = false
+        let videoInput = AVAssetWriterInput(mediaType: .video, outputSettings: nil, sourceFormatHint: videoFormat)
+        videoInput.expectsMediaDataInRealTime = false
+        
+        guard reader.canAdd(videoOutput), writer.canAdd(videoInput) else {
+            throw NSError(domain: "ru.sloosh.export", code: 401, userInfo: [NSLocalizedDescriptionKey: "Не удалось настроить видео"])
+        }
+        reader.add(videoOutput)
+        writer.add(videoInput)
+        
+        var audioOutput: AVAssetReaderTrackOutput?
+        var audioInput: AVAssetWriterInput?
+        if let audioTrack = audioTracks.first {
+            let aOut = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: nil)
+            aOut.alwaysCopiesSampleData = false
+            let aIn = AVAssetWriterInput(mediaType: .audio, outputSettings: nil, sourceFormatHint: audioFormat)
+            aIn.expectsMediaDataInRealTime = false
+            if reader.canAdd(aOut) && writer.canAdd(aIn) {
+                reader.add(aOut)
+                writer.add(aIn)
+                audioOutput = aOut
+                audioInput = aIn
+            }
+        }
+        
+        guard reader.startReading() else {
+            throw reader.error ?? NSError(domain: "ru.sloosh.export", code: 402, userInfo: [NSLocalizedDescriptionKey: "Ошибка чтения видео"])
+        }
+        guard writer.startWriting() else {
+            throw writer.error ?? NSError(domain: "ru.sloosh.export", code: 403, userInfo: [NSLocalizedDescriptionKey: "Ошибка записи MP4"])
+        }
+        
+        let lock = NSLock()
+        var sessionStarted = false
+        var sessionStartPts: CMTime = .zero
+        
+        let audioCutoffDuration = (videoDuration.isNumeric && videoDuration.seconds > 0) ? videoDuration : CMTime(seconds: 7200, preferredTimescale: 600)
+        
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            let group = DispatchGroup()
+            let queue = DispatchQueue(label: "ru.sloosh.exportMuxQueue", qos: .userInitiated)
             
-            let videoOutput = AVAssetReaderTrackOutput(track: videoTrack, outputSettings: nil)
-            videoOutput.alwaysCopiesSampleData = false
-            let videoInput = AVAssetWriterInput(mediaType: .video, outputSettings: nil, sourceFormatHint: videoFormat)
-            videoInput.expectsMediaDataInRealTime = false
-            
-            if reader.canAdd(videoOutput) && writer.canAdd(videoInput) {
-                reader.add(videoOutput)
-                writer.add(videoInput)
-                
-                var audioOutput: AVAssetReaderTrackOutput?
-                var audioInput: AVAssetWriterInput?
-                if let audioTrack = audioTracks.first {
-                    let aOut = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: nil)
-                    aOut.alwaysCopiesSampleData = false
-                    let aIn = AVAssetWriterInput(mediaType: .audio, outputSettings: nil, sourceFormatHint: audioFormat)
-                    aIn.expectsMediaDataInRealTime = false
-                    if reader.canAdd(aOut) && writer.canAdd(aIn) {
-                        reader.add(aOut)
-                        writer.add(aIn)
-                        audioOutput = aOut
-                        audioInput = aIn
-                    }
-                }
-                
-                if reader.startReading() && writer.startWriting() {
-                    var sessionStarted = false
-                    var sessionStartPts: CMTime = .zero
-                    var videoFinished = false
-                    var audioFinished = (audioInput == nil)
-                    
-                    let audioCutoffDuration = (videoDuration.isNumeric && videoDuration.seconds > 0) ? videoDuration : CMTime(seconds: 7200, preferredTimescale: 600)
-                    
-                    while reader.status == .reading && (!videoFinished || !audioFinished) {
-                        var hasAppended = false
-                        
-                        if !videoFinished && videoInput.isReadyForMoreMediaData {
-                            if let sample = videoOutput.copyNextSampleBuffer() {
-                                hasAppended = true
-                                let pts = CMSampleBufferGetPresentationTimeStamp(sample)
-                                if !sessionStarted {
-                                    sessionStartPts = pts.isValid ? pts : .zero
-                                    writer.startSession(atSourceTime: sessionStartPts)
-                                    sessionStarted = true
-                                }
-                                videoInput.append(sample)
-                            } else {
-                                videoInput.markAsFinished()
-                                videoFinished = true
-                            }
+            group.enter()
+            videoInput.requestMediaDataWhenReady(on: queue) {
+                while videoInput.isReadyForMoreMediaData {
+                    if let sample = videoOutput.copyNextSampleBuffer() {
+                        lock.lock()
+                        if !sessionStarted {
+                            let pts = CMSampleBufferGetPresentationTimeStamp(sample)
+                            sessionStartPts = pts.isValid ? pts : .zero
+                            writer.startSession(atSourceTime: sessionStartPts)
+                            sessionStarted = true
                         }
-                        
-                        if !audioFinished, let aIn = audioInput, let aOut = audioOutput, aIn.isReadyForMoreMediaData {
-                            if let sample = aOut.copyNextSampleBuffer() {
-                                hasAppended = true
-                                let pts = CMSampleBufferGetPresentationTimeStamp(sample)
-                                if !sessionStarted {
-                                    sessionStartPts = pts.isValid ? pts : .zero
-                                    writer.startSession(atSourceTime: sessionStartPts)
-                                    sessionStarted = true
-                                }
-                                
-                                // Stop appending audio samples beyond the video duration to prevent black screen!
-                                let relativePts = CMTimeSubtract(pts, sessionStartPts)
-                                if relativePts <= audioCutoffDuration {
-                                    aIn.append(sample)
-                                } else {
-                                    aIn.markAsFinished()
-                                    audioFinished = true
-                                }
-                            } else {
-                                aIn.markAsFinished()
-                                audioFinished = true
-                            }
+                        lock.unlock()
+                        if !videoInput.append(sample) {
+                            videoInput.markAsFinished()
+                            group.leave()
+                            break
                         }
-                        
-                        if !hasAppended && reader.status == .reading && (!videoFinished || !audioFinished) {
-                            try? await Task.sleep(nanoseconds: 3_000_000) // 3ms
-                        }
-                    }
-                    
-                    if !videoFinished { videoInput.markAsFinished() }
-                    if !audioFinished { audioInput?.markAsFinished() }
-                    
-                    await writer.finishWriting()
-                    
-                    let size = ((try? fm.attributesOfItem(atPath: outputUrl.path))?[.size] as? Int64) ?? 0
-                    if writer.status == .completed && fm.fileExists(atPath: outputUrl.path) && size > 1000 {
-                        return
+                    } else {
+                        videoInput.markAsFinished()
+                        group.leave()
+                        break
                     }
                 }
             }
-        } catch {
-            AppDiagnostics.shared.log("Lossless passthrough writer error: \(error.localizedDescription)")
+            
+            if let aIn = audioInput, let aOut = audioOutput {
+                group.enter()
+                aIn.requestMediaDataWhenReady(on: queue) {
+                    while aIn.isReadyForMoreMediaData {
+                        if let sample = aOut.copyNextSampleBuffer() {
+                            lock.lock()
+                            if !sessionStarted {
+                                let pts = CMSampleBufferGetPresentationTimeStamp(sample)
+                                sessionStartPts = pts.isValid ? pts : .zero
+                                writer.startSession(atSourceTime: sessionStartPts)
+                                sessionStarted = true
+                            }
+                            let startPts = sessionStartPts
+                            lock.unlock()
+                            
+                            let pts = CMSampleBufferGetPresentationTimeStamp(sample)
+                            let relativePts = CMTimeSubtract(pts, startPts)
+                            
+                            if relativePts <= audioCutoffDuration {
+                                if !aIn.append(sample) {
+                                    aIn.markAsFinished()
+                                    group.leave()
+                                    break
+                                }
+                            } else {
+                                aIn.markAsFinished()
+                                group.leave()
+                                break
+                            }
+                        } else {
+                            aIn.markAsFinished()
+                            group.leave()
+                            break
+                        }
+                    }
+                }
+            }
+            
+            group.notify(queue: queue) {
+                continuation.resume()
+            }
+        }
+        
+        await writer.finishWriting()
+        
+        let size = ((try? fm.attributesOfItem(atPath: outputUrl.path))?[.size] as? Int64) ?? 0
+        if writer.status == .completed && fm.fileExists(atPath: outputUrl.path) && size > 1000 {
+            return
         }
         
         // Fallback to AVAssetExportSession
@@ -1070,8 +1097,8 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                     exportSession.timeRange = CMTimeRange(start: .zero, duration: videoDuration)
                 }
                 await exportSession.export()
-                let size = ((try? fm.attributesOfItem(atPath: outputUrl.path))?[.size] as? Int64) ?? 0
-                if exportSession.status == .completed && fm.fileExists(atPath: outputUrl.path) && size > 1000 {
+                let sessionSize = ((try? fm.attributesOfItem(atPath: outputUrl.path))?[.size] as? Int64) ?? 0
+                if exportSession.status == .completed && fm.fileExists(atPath: outputUrl.path) && sessionSize > 1000 {
                     return
                 }
             }
