@@ -167,38 +167,8 @@ class PlaybackHlsRewriter {
     private static func rewriteMediaLine(_ line: String, voices: [String]) -> String {
         guard line.hasPrefix("#EXT-X-MEDIA") else { return line }
         guard line.contains("TYPE=AUDIO") else { return line }
-        
-        let rawName = extractQuotedAttr(line, key: "NAME")
-        let uri = extractQuotedAttr(line, key: "URI")
-        let language = extractQuotedAttr(line, key: "LANGUAGE")
-
-        let index = extractAudioIndex(from: rawName)
-            ?? extractAudioIndex(from: uri)
-            ?? extractAudioIndex(from: language)
-
-        guard let index, index >= 0, index < voices.count else { return line }
-        let voiceName = voices[index]
-        
-        let lowerName = voiceName.lowercased()
-        let normalizedLang: String
-        if lowerName.contains("eng") || lowerName.contains("original") || lowerName.contains("англ") || lowerName.contains("ориг") {
-            normalizedLang = "en"
-        } else if lowerName.contains("ukr") || lowerName.contains("укр") {
-            normalizedLang = "uk"
-        } else if lowerName.contains("fra") || lowerName.contains("фр") {
-            normalizedLang = "fr"
-        } else if lowerName.contains("ger") || lowerName.contains("нем") {
-            normalizedLang = "de"
-        } else if lowerName.contains("esp") || lowerName.contains("исп") {
-            normalizedLang = "es"
-        } else {
-            normalizedLang = "ru"
-        }
-        
-        var output = addOrReplaceAttribute(line, key: "NAME", value: voiceName)
-        output = addOrReplaceAttribute(output, key: "LANGUAGE", value: normalizedLang)
-        
-        return output
+        // Preserve authentic audio track lines without corrupting them with arbitrary array index mappings
+        return line
     }
 
 
