@@ -1348,6 +1348,10 @@ class PlayerViewModel: ObservableObject {
                     self.logDebug("setupPlayerItemObservers: item failed! Domain=\(nsError?.domain ?? ""), Code=\(nsError?.code ?? 0), Desc=\(nsError?.localizedDescription ?? "")")
                     print("PlayerItem failed: \(nsError?.localizedDescription ?? "Unknown error")")
                     
+                    if !self.currentIframeUrl.isEmpty {
+                        AllohaRuntimeResolver.invalidateCache(for: self.currentIframeUrl)
+                    }
+                    
                     if nsError?.domain == AVFoundationErrorDomain, nsError?.code == -11848 {
                         self.logDebug("setupPlayerItemObservers: Cannot Open (-11848) detected.")
                         
