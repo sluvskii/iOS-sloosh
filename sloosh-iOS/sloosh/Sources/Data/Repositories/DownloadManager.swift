@@ -170,17 +170,16 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             
             for item in currentDownloads where item.status == .completed {
                 let taskDir = docs.appendingPathComponent(item.localDirectory)
-                if let files = try? fm.contentsOfDirectory(atPath: taskDir.path) {
-                    var totalDiskBytes: Int64 = 0
-                    for f in files {
-                        if let attrs = try? fm.attributesOfItem(atPath: taskDir.appendingPathComponent(f).path),
-                           let s = attrs[.size] as? Int64 {
-                            totalDiskBytes += s
+                let finalMp4 = taskDir.appendingPathComponent("video.mp4")
+                if fm.fileExists(atPath: finalMp4.path) {
+                    if let attrs = try? fm.attributesOfItem(atPath: finalMp4.path),
+                       let s = attrs[.size] as? Int64, s > 0 {
+                        if item.totalBytes != s || item.localPlayableFileName != "video.mp4" {
+                            updatedSizes[item.id] = s
                         }
                     }
-                    if totalDiskBytes > 0 && (item.totalBytes != totalDiskBytes) {
-                        updatedSizes[item.id] = totalDiskBytes
-                    }
+                } else if let files = try? fm.contentsOfDirectory(atPath: taskDir.path), files.contains(where: { $0.hasPrefix("segment_") }) {
+                    await DownloadManager.shared.finalizeAndAssembleMP4(for: item.id)
                 }
             }
             
@@ -189,6 +188,7 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                 await MainActor.run {
                     for (id, size) in finalSizes {
                         DownloadManager.shared.updateItem(id: id) {
+                            $0.localPlayableFileName = "video.mp4"
                             $0.downloadedBytes = size
                             $0.totalBytes = size
                         }
@@ -593,29 +593,8 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         }
         
         if downloadedCount == totalSegments {
-            var totalDiskBytes: Int64 = 0
-            if let files = try? FileManager.default.contentsOfDirectory(atPath: taskDir.path) {
-                for f in files {
-                    if let attrs = try? FileManager.default.attributesOfItem(atPath: taskDir.appendingPathComponent(f).path),
-                       let s = attrs[.size] as? Int64 {
-                        totalDiskBytes += s
-                    }
-                }
-            }
-            updateItem(id: itemId) {
-                $0.progress = 1.0
-                $0.downloadedBytes = totalDiskBytes > 0 ? totalDiskBytes : Int64(downloadedCount)
-                $0.totalBytes = totalDiskBytes > 0 ? totalDiskBytes : Int64(totalSegments)
-                $0.status = .completed
-            }
-            if let downloadedItem = downloads.first(where: { $0.id == itemId }) {
-                ToastManager.shared.show(
-                    title: "Загрузка завершена",
-                    subtitle: "«\(downloadedItem.title)» сохранено",
-                    icon: "checkmark.circle.fill"
-                )
-            }
             activeManifests.removeValue(forKey: itemId)
+            await finalizeAndAssembleMP4(for: itemId)
             return
         }
         
@@ -1181,41 +1160,25 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         throw NSError(domain: "ru.sloosh.export", code: 404, userInfo: [NSLocalizedDescriptionKey: "Ошибка создания чистого MP4"])
     }
 
-    func exportAsMP4(item: DownloadItem) async throws -> URL {
-        guard let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
-            throw NSError(domain: "ru.sloosh.download", code: 404, userInfo: [NSLocalizedDescriptionKey: "Директория документов не найдена"])
-        }
-        let taskDir = docs.appendingPathComponent(item.localDirectory)
-        
-        var filename = item.title
-        if let season = item.season, let episode = item.episode {
-            filename += " S\(String(format: "%02d", season))E\(String(format: "%02d", episode))"
-        }
-        if let voice = item.translationName, !voice.isEmpty {
-            filename += " (\(voice))"
-        }
-        let invalidChars = CharacterSet(charactersIn: "\\/:*?\"<>|")
-        filename = filename.components(separatedBy: invalidChars).joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
-        if filename.isEmpty {
-            filename = "video_\(item.id)"
-        }
-        
-        let tempDir = FileManager.default.temporaryDirectory
-        let exportUrl = tempDir.appendingPathComponent("\(filename).mp4")
-        
+    func finalizeAndAssembleMP4(for itemId: String) async {
+        guard let item = downloads.first(where: { $0.id == itemId }) else { return }
         let fm = FileManager.default
-        try? fm.removeItem(at: exportUrl)
+        guard let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
+        let taskDir = docs.appendingPathComponent(item.localDirectory)
+        let finalMp4Url = taskDir.appendingPathComponent("video.mp4")
         
-        let files = (try? fm.contentsOfDirectory(atPath: taskDir.path)) ?? []
-        
-        // 1. Direct copy if an mp4 file is already present
-        let mp4Files = files.filter { $0.hasSuffix(".mp4") }
-        if let firstMp4 = mp4Files.first {
-            let srcUrl = taskDir.appendingPathComponent(firstMp4)
-            try? fm.copyItem(at: srcUrl, to: exportUrl)
-            if fm.fileExists(atPath: exportUrl.path) {
-                return exportUrl
+        // If already assembled, update item properties and return
+        if fm.fileExists(atPath: finalMp4Url.path),
+           let size = (try? fm.attributesOfItem(atPath: finalMp4Url.path)[.size]) as? Int64,
+           size > 1000 {
+            updateItem(id: itemId) {
+                $0.localPlayableFileName = "video.mp4"
+                $0.downloadedBytes = size
+                $0.totalBytes = size
+                $0.status = .completed
+                $0.progress = 1.0
             }
+            return
         }
         
         // Calculate true duration from local.m3u8 if available
@@ -1236,7 +1199,7 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             }
         }
         
-        // 2. Identify exact segment files from manifest (prevent stale files from previous downloads)
+        let files = (try? fm.contentsOfDirectory(atPath: taskDir.path)) ?? []
         var segmentFiles: [String] = []
         let manifestUrl = taskDir.appendingPathComponent("manifest.json")
         if let mData = try? Data(contentsOf: manifestUrl),
@@ -1259,48 +1222,40 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                 }
         }
         
-        if !segmentFiles.isEmpty {
-            let keyFile = taskDir.appendingPathComponent("key.bin")
-            let keyData = (try? Data(contentsOf: keyFile))
-            
-            // Check if key.bin is an fMP4 init segment (ftyp/moov or > 16 bytes)
-            let isFmp4Init = (keyData != nil && (isFmp4Data(keyData!) || keyData!.count > 16))
-            let firstSegData = (try? Data(contentsOf: taskDir.appendingPathComponent(segmentFiles[0]))) ?? Data()
-            let isFmp4Segments = isFmp4Init || isFmp4Data(firstSegData)
-            
-            if isFmp4Segments {
-                let tempStitchedUrl = tempDir.appendingPathComponent("\(UUID().uuidString).mp4")
-                fm.createFile(atPath: tempStitchedUrl.path, contents: nil)
-                if let fileHandle = try? FileHandle(forWritingTo: tempStitchedUrl) {
-                    if let keyData, isFmp4Init {
-                        fileHandle.write(keyData)
-                    }
-                    for segName in segmentFiles {
-                        let segUrl = taskDir.appendingPathComponent(segName)
-                        if let segData = try? Data(contentsOf: segUrl) {
-                            fileHandle.write(segData)
-                        }
-                    }
-                    try? fileHandle.close()
+        guard !segmentFiles.isEmpty else { return }
+        
+        let keyFile = taskDir.appendingPathComponent("key.bin")
+        let keyData = (try? Data(contentsOf: keyFile))
+        let isFmp4Init = (keyData != nil && (isFmp4Data(keyData!) || keyData!.count > 16))
+        let firstSegData = (try? Data(contentsOf: taskDir.appendingPathComponent(segmentFiles[0]))) ?? Data()
+        let isFmp4Segments = isFmp4Init || isFmp4Data(firstSegData)
+        
+        let tempDir = FileManager.default.temporaryDirectory
+        
+        if isFmp4Segments {
+            let tempStitchedUrl = tempDir.appendingPathComponent("\(UUID().uuidString).mp4")
+            fm.createFile(atPath: tempStitchedUrl.path, contents: nil)
+            if let fileHandle = try? FileHandle(forWritingTo: tempStitchedUrl) {
+                if let keyData, isFmp4Init {
+                    fileHandle.write(keyData)
                 }
-                
-                // Remux fMP4 to monolithic standard ISO MP4 to fix duration / timescale
-                do {
-                    try await remuxToCleanMp4(inputUrl: tempStitchedUrl, outputUrl: exportUrl, expectedDuration: playlistDurationSec)
-                    let size = ((try? fm.attributesOfItem(atPath: exportUrl.path))?[.size] as? Int64) ?? 0
-                    if fm.fileExists(atPath: exportUrl.path) && size > 1000 {
-                        try? fm.removeItem(at: tempStitchedUrl)
-                        return exportUrl
+                for segName in segmentFiles {
+                    let segUrl = taskDir.appendingPathComponent(segName)
+                    if let segData = try? Data(contentsOf: segUrl) {
+                        fileHandle.write(segData)
                     }
-                } catch {
-                    AppDiagnostics.shared.log("remuxToCleanMp4 fmp4 error: \(error.localizedDescription)")
                 }
-                
-                try? fm.removeItem(at: tempStitchedUrl)
-                throw NSError(domain: "ru.sloosh.export", code: 500, userInfo: [NSLocalizedDescriptionKey: "Не удалось пересобрать видео в чистый MP4"])
+                try? fileHandle.close()
             }
             
-            // Otherwise, MPEG-TS stream (either encrypted with 16-byte AES key or unencrypted)
+            do {
+                try await remuxToCleanMp4(inputUrl: tempStitchedUrl, outputUrl: finalMp4Url, expectedDuration: playlistDurationSec)
+                try? fm.removeItem(at: tempStitchedUrl)
+            } catch {
+                AppDiagnostics.shared.log("finalizeAndAssembleMP4 fmp4 error: \(error.localizedDescription)")
+                try? fm.removeItem(at: tempStitchedUrl)
+            }
+        } else {
             let isEncrypted = (keyData?.count == 16 && !isFmp4Init)
             let mergedTsUrl = tempDir.appendingPathComponent("\(UUID().uuidString).ts")
             fm.createFile(atPath: mergedTsUrl.path, contents: nil)
@@ -1319,24 +1274,89 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                     }
                 }
                 try? fileHandle.close()
-                
-                // Try clean remux
-                do {
-                    try await remuxToCleanMp4(inputUrl: mergedTsUrl, outputUrl: exportUrl, expectedDuration: playlistDurationSec)
-                    let size = ((try? fm.attributesOfItem(atPath: exportUrl.path))?[.size] as? Int64) ?? 0
-                    if fm.fileExists(atPath: exportUrl.path) && size > 1000 {
-                        try? fm.removeItem(at: mergedTsUrl)
-                        return exportUrl
-                    }
-                } catch {
-                    AppDiagnostics.shared.log("remuxToCleanMp4 ts error: \(error.localizedDescription)")
-                }
-                
+            }
+            
+            do {
+                try await remuxToCleanMp4(inputUrl: mergedTsUrl, outputUrl: finalMp4Url, expectedDuration: playlistDurationSec)
+                try? fm.removeItem(at: mergedTsUrl)
+            } catch {
+                AppDiagnostics.shared.log("finalizeAndAssembleMP4 ts error: \(error.localizedDescription)")
                 try? fm.removeItem(at: mergedTsUrl)
             }
         }
         
-        throw NSError(domain: "ru.sloosh.export", code: 500, userInfo: [NSLocalizedDescriptionKey: "Не удалось подготовить файл для экспорта"])
+        let exactSize = ((try? fm.attributesOfItem(atPath: finalMp4Url.path))?[.size] as? Int64) ?? 0
+        if fm.fileExists(atPath: finalMp4Url.path) && exactSize > 1000 {
+            // Delete raw segment chunks to free up space!
+            for segName in segmentFiles {
+                try? fm.removeItem(at: taskDir.appendingPathComponent(segName))
+            }
+            try? fm.removeItem(at: keyFile)
+            try? fm.removeItem(at: taskDir.appendingPathComponent("local.m3u8"))
+            
+            updateItem(id: itemId) {
+                $0.localPlayableFileName = "video.mp4"
+                $0.downloadedBytes = exactSize
+                $0.totalBytes = exactSize
+                $0.status = .completed
+                $0.progress = 1.0
+            }
+            
+            ToastManager.shared.show(
+                title: "Загрузка завершена",
+                subtitle: "«\(item.title)» сохранено",
+                icon: "checkmark.circle.fill"
+            )
+        }
+    }
+
+    func exportAsMP4(item: DownloadItem) async throws -> URL {
+        guard let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
+            throw NSError(domain: "ru.sloosh.download", code: 404, userInfo: [NSLocalizedDescriptionKey: "Директория документов не найдена"])
+        }
+        let taskDir = docs.appendingPathComponent(item.localDirectory)
+        let finalMp4Url = taskDir.appendingPathComponent("video.mp4")
+        let fm = FileManager.default
+        
+        var filename = item.title
+        if let season = item.season, let episode = item.episode {
+            filename += " S\(String(format: "%02d", season))E\(String(format: "%02d", episode))"
+        }
+        if let voice = item.translationName, !voice.isEmpty {
+            filename += " (\(voice))"
+        }
+        let invalidChars = CharacterSet(charactersIn: "\\/:*?\"<>|")
+        filename = filename.components(separatedBy: invalidChars).joined(separator: " ").trimmingCharacters(in: .whitespacesAndNewlines)
+        if filename.isEmpty {
+            filename = "video_\(item.id)"
+        }
+        
+        let tempDir = FileManager.default.temporaryDirectory
+        let exportUrl = tempDir.appendingPathComponent("\(filename).mp4")
+        try? fm.removeItem(at: exportUrl)
+        
+        // 1. Direct copy if video.mp4 is already assembled
+        if fm.fileExists(atPath: finalMp4Url.path) {
+            try fm.copyItem(at: finalMp4Url, to: exportUrl)
+            return exportUrl
+        }
+        
+        // 2. Direct copy if any other mp4 exists
+        let files = (try? fm.contentsOfDirectory(atPath: taskDir.path)) ?? []
+        if let firstMp4 = files.first(where: { $0.hasSuffix(".mp4") }) {
+            let srcUrl = taskDir.appendingPathComponent(firstMp4)
+            try fm.copyItem(at: srcUrl, to: exportUrl)
+            return exportUrl
+        }
+        
+        // 3. Fallback for legacy items: assemble into video.mp4 now
+        await finalizeAndAssembleMP4(for: item.id)
+        if fm.fileExists(atPath: finalMp4Url.path) {
+            try fm.copyItem(at: finalMp4Url, to: exportUrl)
+            return exportUrl
+        }
+        
+        throw NSError(domain: "ru.sloosh.export", code: 404, userInfo: [NSLocalizedDescriptionKey: "Файл видео не найден"])
     }
 
     func saveToPhotos(item: DownloadItem) async throws {
