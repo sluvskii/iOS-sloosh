@@ -34,18 +34,30 @@ public final class FavoritesRepository: ObservableObject {
         refreshMissingMetadataIfNeeded()
     }
     
-    public func handleUserChanged() {
+    private var lastSyncedUserId: String?
+    private var lastSyncTime: Date = .distantPast
+
+    public func handleUserChanged(force: Bool = false) {
         reloadFromDb()
         
         let user = AuthRepository.shared.currentUser
         
         if AuthRepository.shared.isAuthenticated, let user = user {
+            let now = Date()
+            if !force && lastSyncedUserId == user.id && now.timeIntervalSince(lastSyncTime) < 30.0 {
+                return
+            }
+            lastSyncedUserId = user.id
+            lastSyncTime = now
+            
             Task {
                 // Загружаем удаленные избранные конкретного аккаунта из облака Firebase
                 if let remoteFavorites = await CloudSyncService.shared.fetchRemoteFavorites(userId: user.id, idToken: user.idToken) {
                     await self.syncRemoteFavoritesToLocal(remoteFavorites, userId: user.id)
                 }
             }
+        } else {
+            lastSyncedUserId = nil
         }
     }
     

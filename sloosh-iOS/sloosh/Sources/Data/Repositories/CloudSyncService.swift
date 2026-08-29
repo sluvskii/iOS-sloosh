@@ -7,17 +7,25 @@ public final class CloudSyncService: ObservableObject {
     public static let shared = CloudSyncService()
 
     @Published public private(set) var isSyncing: Bool = false
-    @Published public private(set) var lastSyncDate: Date?
+    public private(set) var lastSyncDate: Date?
+
+    private var lastSyncAttempt: Date = .distantPast
+    private let minSyncInterval: TimeInterval = 30.0
 
     private let databaseBaseURL = "https://sloosh-77434-default-rtdb.firebaseio.com/users"
 
     private init() {}
 
     /// Запускает полную синхронизацию данных при входе в аккаунт
-    public func syncAllData() {
+    public func syncAllData(force: Bool = false) {
         guard AuthRepository.shared.isAuthenticated else { return }
-        FavoritesRepository.shared.handleUserChanged()
-        PlaybackProgressStore.shared.handleUserChanged()
+        let now = Date()
+        if !force && now.timeIntervalSince(lastSyncAttempt) < minSyncInterval {
+            return
+        }
+        lastSyncAttempt = now
+        FavoritesRepository.shared.handleUserChanged(force: force)
+        PlaybackProgressStore.shared.handleUserChanged(force: force)
         Task {
             await MessengerRepository.shared.syncCurrentUserProfile()
         }

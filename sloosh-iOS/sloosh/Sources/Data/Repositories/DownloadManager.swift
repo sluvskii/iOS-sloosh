@@ -77,6 +77,18 @@ struct DownloadItem: Identifiable, Codable, Equatable {
     }
     
     var localPlayableUrl: URL? {
+        guard let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else { return nil }
+        let dirUrl = docs.appendingPathComponent(localDirectory)
+        let mp4Url = dirUrl.appendingPathComponent("video.mp4")
+        if FileManager.default.fileExists(atPath: mp4Url.path) {
+            return mp4Url
+        }
+        
+        let namedFileUrl = dirUrl.appendingPathComponent(localPlayableFileName)
+        if localPlayableFileName.hasSuffix(".mp4") && FileManager.default.fileExists(atPath: namedFileUrl.path) {
+            return namedFileUrl
+        }
+        
         let relative = "\(localDirectory)/\(localPlayableFileName)"
         guard let encoded = relative.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) else { return nil }
         return URL(string: "http://127.0.0.1:8181/local/\(encoded)")
