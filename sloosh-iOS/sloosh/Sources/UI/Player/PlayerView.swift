@@ -2104,19 +2104,6 @@ class PlayerViewModel: ObservableObject {
             return
         }
 
-        // Финальный fallback: если имя не нашлось (напр. "AlexFilm" vs "Russian 1"),
-        // ищем позицию имени в availableVoiceovers и выбираем дорожку по тому же индексу.
-        // Это сохраняет выбор озвучки при переключении серий, даже если Alloha вернул
-        // иные технические имена дорожек ("Russian 1", "English 7") вместо читаемых.
-        if options.count > 1 {
-            if let voiceIndex = availableVoiceovers.firstIndex(where: { allohaTranslationNamesMatch($0, name) }),
-               voiceIndex < options.count {
-                item.select(options[voiceIndex], in: group)
-                persistVoiceoverSelection(name)
-                logDebug("selectAudioTrackInPlayer: selected by availableVoiceovers index \(voiceIndex), option='\(options[voiceIndex].displayName)'")
-                return
-            }
-        }
         logDebug("selectAudioTrackInPlayer: failed to match any track for '\(name)'")
     }
     
