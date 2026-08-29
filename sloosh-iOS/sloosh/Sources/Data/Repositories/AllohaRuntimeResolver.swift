@@ -389,6 +389,9 @@ final class AllohaRuntimeResolver: NSObject, WKNavigationDelegate, WKScriptMessa
             var entries = win.performance.getEntriesByType('resource');
             for (var p = 0; p < entries.length; p++) chunks.push(entries[p].name || '');
           }
+          if (win.hlsSource) {
+            try { chunks.push(JSON.stringify({ hlsSource: win.hlsSource })); } catch(e) {}
+          }
           report(chunks.join('\\n'));
         } catch(e) {}
       }
@@ -454,13 +457,20 @@ final class AllohaRuntimeResolver: NSObject, WKNavigationDelegate, WKScriptMessa
                 this.__neoAllohaWsHooked = true;
                 this.addEventListener('message', function(event) {
                   try {
-                    var msg = JSON.parse(event.data);
+                    var msg = typeof event.data === 'string' ? JSON.parse(event.data) : null;
                     if (msg && msg.type === 'config_update' && msg.edge_hash) {
                       putHeader('accepts-controls', msg.edge_hash);
                       if (msg.ttl) putHeader('x-neo-config-ttl', String(msg.ttl));
                       post('headers', '');
                     }
-                  } catch(e) {}
+                    if (typeof event.data === 'string' && looksPlayable(event.data)) {
+                      report(event.data);
+                    }
+                  } catch(e) {
+                    if (typeof event.data === 'string' && looksPlayable(event.data)) {
+                      report(event.data);
+                    }
+                  }
                 });
               }
               return originalSend.apply(this, arguments);
@@ -478,8 +488,10 @@ final class AllohaRuntimeResolver: NSObject, WKNavigationDelegate, WKScriptMessa
         } catch(e) {}
       }
 
+      install(window);
+      scan(window);
       tick();
-      setInterval(tick, 700);
+      setInterval(tick, 500);
       window.addEventListener('load', tick);
     })();
     """
@@ -558,7 +570,7 @@ final class SharedWebViewProvider {
             uc.addUserScript(
                 WKUserScript(
                     source: AllohaRuntimeResolver.bootstrapScript,
-                    injectionTime: .atDocumentEnd,
+                    injectionTime: .atDocumentStart,
                     forMainFrameOnly: false
                 )
             )

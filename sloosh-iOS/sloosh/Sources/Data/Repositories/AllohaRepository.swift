@@ -101,24 +101,15 @@ func normalizedAllohaTranslationName(_ raw: String?) -> String {
 }
 
 func allohaTranslationNamesMatch(_ lhs: String?, _ rhs: String?, exactOnly: Bool = false) -> Bool {
-    let left = normalizedAllohaTranslationName(lhs).lowercased()
-    let right = normalizedAllohaTranslationName(rhs).lowercased()
-    guard !left.isEmpty, !right.isEmpty else { return false }
-    
-    if left == right {
-        return true
+    guard let lhs = lhs?.trimmingCharacters(in: .whitespacesAndNewlines), !lhs.isEmpty,
+          let rhs = rhs?.trimmingCharacters(in: .whitespacesAndNewlines), !rhs.isEmpty else {
+        return false
     }
     
-    // Check for significant word overlap (e.g. "AlexFilm" vs "AlexFilm Studio")
-    let leftWords = Set(left.components(separatedBy: CharacterSet.alphanumerics.inverted).filter { $0.count > 2 })
-    let rightWords = Set(right.components(separatedBy: CharacterSet.alphanumerics.inverted).filter { $0.count > 2 })
+    let left = normalizedAllohaTranslationName(lhs).lowercased()
+    let right = normalizedAllohaTranslationName(rhs).lowercased()
     
-    if !leftWords.isEmpty && !rightWords.isEmpty {
-        if leftWords == rightWords || leftWords.isSubset(of: rightWords) || rightWords.isSubset(of: leftWords) {
-            return true
-        }
-    } else if left.contains(right) || right.contains(left) {
-        // Fallback for very short names (like "en", "ru", "qtv")
+    if left == right {
         return true
     }
     
@@ -128,6 +119,45 @@ func allohaTranslationNamesMatch(_ lhs: String?, _ rhs: String?, exactOnly: Bool
     }
     
     if isOriginalOrEnglish(left) && isOriginalOrEnglish(right) {
+        return true
+    }
+    
+    if exactOnly {
+        return false
+    }
+    
+    // Pure dubbing check (without specific studio)
+    let isPureDub: (String) -> Bool = { name in
+        let n = name.replacingOccurrences(of: "дублированный", with: "дубляж")
+            .replacingOccurrences(of: "профессиональный", with: "")
+            .replacingOccurrences(of: "полное дублирование", with: "дубляж")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return n == "дубляж" || n == "дублированный"
+    }
+    let leftIsPureDub = isPureDub(left)
+    let rightIsPureDub = isPureDub(right)
+    if leftIsPureDub && rightIsPureDub {
+        return true
+    }
+    if leftIsPureDub != rightIsPureDub {
+        // One is pure dub and the other is a studio dub (e.g. "Дубляж Red Head Sound"), do not match
+        return false
+    }
+    
+    // Helper to strip generic studio/dub noise words
+    let stripNoise: (String) -> String = { name in
+        var n = name.lowercased()
+        let noise = ["studio", "студия", "дубляж", "дублированный", "многоголосый", "двухголосый", "озвучка", "production", "films", "film", "team", "voice"]
+        for word in noise {
+            n = n.replacingOccurrences(of: "(?i)\\b\(word)\\b", with: "", options: .regularExpression)
+        }
+        return n.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression).trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    
+    let leftCore = stripNoise(left)
+    let rightCore = stripNoise(right)
+    
+    if !leftCore.isEmpty && leftCore == rightCore {
         return true
     }
     
