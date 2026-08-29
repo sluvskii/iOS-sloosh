@@ -160,7 +160,7 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         recalculateDiskSizesInBackground()
     }
     
-    private func recalculateDiskSizesInBackground() {
+    func recalculateDiskSizesInBackground() {
         Task.detached(priority: .background) {
             let fm = FileManager.default
             guard let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
@@ -593,6 +593,21 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         }
         
         if downloadedCount == totalSegments {
+            var totalDiskBytes: Int64 = 0
+            if let files = try? FileManager.default.contentsOfDirectory(atPath: taskDir.path) {
+                for f in files {
+                    if let attrs = try? FileManager.default.attributesOfItem(atPath: taskDir.appendingPathComponent(f).path),
+                       let s = attrs[.size] as? Int64 {
+                        totalDiskBytes += s
+                    }
+                }
+            }
+            updateItem(id: itemId) {
+                $0.progress = 1.0
+                $0.downloadedBytes = totalDiskBytes > 0 ? totalDiskBytes : Int64(downloadedCount)
+                $0.totalBytes = totalDiskBytes > 0 ? totalDiskBytes : Int64(totalSegments)
+                $0.status = .completed
+            }
             if let downloadedItem = downloads.first(where: { $0.id == itemId }) {
                 ToastManager.shared.show(
                     title: "Загрузка завершена",

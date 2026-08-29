@@ -180,6 +180,9 @@ struct DownloadsView: View {
         .navigationTitle("Загрузки")
         .toolbar(.hidden, for: .navigationBar)
         .background(Color(UIColor.systemBackground))
+        .onAppear {
+            downloadManager.recalculateDiskSizesInBackground()
+        }
         .fullWidthSwipeBack()
         .fullScreenCover(item: $playerItem, onDismiss: {
             playerItem = nil
