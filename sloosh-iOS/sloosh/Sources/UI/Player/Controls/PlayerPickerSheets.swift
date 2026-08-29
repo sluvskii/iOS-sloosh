@@ -8,9 +8,24 @@ struct VoiceoverPickerSheet: View {
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
+        let activeIdx: Int? = {
+            if let current = vm.currentTranslationName {
+                if let directIdx = vm.availableVoiceovers.firstIndex(of: current) {
+                    return directIdx
+                }
+                if let matchIdx = vm.availableVoiceovers.firstIndex(where: { allohaTranslationNamesMatch($0, current, exactOnly: true) }) {
+                    return matchIdx
+                }
+                if let matchIdx = vm.availableVoiceovers.firstIndex(where: { allohaTranslationNamesMatch($0, current, exactOnly: false) }) {
+                    return matchIdx
+                }
+            }
+            return nil
+        }()
+
         PopoverContainer(title: "Озвучка") {
             ForEach(Array(vm.availableVoiceovers.enumerated()), id: \.offset) { idx, name in
-                let isSelected = (vm.currentTranslationName == name) || (vm.currentTranslationName.map { allohaTranslationNamesMatch($0, name) } ?? false)
+                let isSelected = (activeIdx == idx)
                 popoverRow(
                     label: displayTranslationName(name, at: idx, in: vm.availableVoiceovers),
                     isSelected: isSelected

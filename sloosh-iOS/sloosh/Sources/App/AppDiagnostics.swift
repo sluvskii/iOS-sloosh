@@ -18,7 +18,12 @@ class AppDiagnostics: ObservableObject {
         logsFileURL = docDir.appendingPathComponent("sloosh_logs.txt")
         crashFileURL = docDir.appendingPathComponent("sloosh_crash.txt")
         
+        // Reset normal logs on fresh app launch so logs are strictly for the current session
+        try? FileManager.default.removeItem(at: logsFileURL)
+        
         checkPreviousCrash()
+        
+        log("=== NEW SESSION STARTED ===")
     }
     
     /// Записывает сообщение в скрытый файл логов.
@@ -35,6 +40,16 @@ class AppDiagnostics: ObservableObject {
             guard let self = self else { return }
             guard let data = logMessage.data(using: .utf8) else { return }
             if FileManager.default.fileExists(atPath: self.logsFileURL.path) {
+                // Prevent single session log file from exceeding 2MB
+                if let attrs = try? FileManager.default.attributesOfItem(atPath: self.logsFileURL.path),
+                   let size = attrs[.size] as? Int64, size > 2_000_000 {
+                    if let existingContent = try? String(contentsOf: self.logsFileURL, encoding: .utf8) {
+                        let lines = existingContent.components(separatedBy: .newlines)
+                        let trimmed = lines.suffix(1000).joined(separator: "\n")
+                        try? trimmed.write(to: self.logsFileURL, atomically: true, encoding: .utf8)
+                    }
+                }
+                
                 if let fileHandle = try? FileHandle(forWritingTo: self.logsFileURL) {
                     fileHandle.seekToEndOfFile()
                     try? fileHandle.write(contentsOf: data)
