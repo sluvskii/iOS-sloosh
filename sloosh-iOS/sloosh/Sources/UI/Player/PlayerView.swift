@@ -396,15 +396,21 @@ class PlayerViewModel: ObservableObject {
         // Сбрасываем кэш audioVariants — будет обновлён после resolve нового стрима
         self.resolvedAudioVariants = []
 
-        if let seriesResult = self.seriesResult, let s = season, let e = episode {
+        // ВАЖНО: availableVoiceovers должны совпадать с тем, что пользователь видел
+        // в SourceSelectionView. SourceSelectionView использует allTranslationNames —
+        // глобальный список уникальных озвучек по всем эпизодам сезона.
+        // voices (параметр) = result.allTranslationNames, переданный из DetailsView.
+        // Для сериалов — приоритет отдаём voices (глобальный список), чтобы списки совпадали.
+        // Для фильмов — берём из movie.translations (они и так глобальны).
+        if !voices.isEmpty {
+            self.availableVoiceovers = voices
+        } else if let seriesResult = self.seriesResult, let s = season, let e = episode {
             if let seasonObj = seriesResult.seasons.first(where: { $0.season == s }),
                let epObj = seasonObj.episodes.first(where: { $0.episode == e }) {
                 self.availableVoiceovers = epObj.translations.map { $0.name }
             }
         } else if let seriesResult = self.seriesResult, let movie = seriesResult.movie {
             self.availableVoiceovers = movie.translations.map { $0.name }
-        } else if !voices.isEmpty {
-            self.availableVoiceovers = voices
         }
 
         if kpId != nil, let selectedVoiceover, !selectedVoiceover.isEmpty {
@@ -811,11 +817,15 @@ class PlayerViewModel: ObservableObject {
             if let seriesResult, let season = currentSeason, let episode = currentEpisode,
                let seasonObj = seriesResult.seasons.first(where: { $0.season == season }),
                let epObj = seasonObj.episodes.first(where: { $0.episode == episode }) {
-                if let idx = index, idx < epObj.translations.count && allohaTranslationNamesMatch(epObj.translations[idx].name, name) {
-                    targetTranslation = epObj.translations[idx]
-                } else if let match = epObj.translations.first(where: { allohaTranslationNamesMatch($0.name, name) }) {
+                // ВАЖНО: availableVoiceovers — глобальный список (по всем эпизодам),
+                // а epObj.translations — только для текущего эпизода.
+                // Индекс из глобального списка НЕ совпадает с индексом в epObj.translations!
+                // Поэтому ВСЕГДА матчим по имени, а индекс используем только как резервный
+                // вариант для epObj.translations (не глобального списка).
+                if let match = epObj.translations.first(where: { allohaTranslationNamesMatch($0.name, name) }) {
                     targetTranslation = match
-                } else if let idx = index, idx < epObj.translations.count {
+                } else if let idx = index, idx < epObj.translations.count,
+                          allohaTranslationNamesMatch(epObj.translations[idx].name, name) {
                     targetTranslation = epObj.translations[idx]
                 }
             }
