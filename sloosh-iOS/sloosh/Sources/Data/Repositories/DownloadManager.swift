@@ -88,6 +88,28 @@ struct DownloadItem: Identifiable, Codable, Equatable {
     }
     
     var sizeString: String {
+        let fm = FileManager.default
+        if let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first {
+            let taskDir = docs.appendingPathComponent(localDirectory)
+            if let files = try? fm.contentsOfDirectory(atPath: taskDir.path) {
+                var totalDiskBytes: Int64 = 0
+                for f in files {
+                    if let attrs = try? fm.attributesOfItem(atPath: taskDir.appendingPathComponent(f).path),
+                       let s = attrs[.size] as? Int64 {
+                        totalDiskBytes += s
+                    }
+                }
+                if totalDiskBytes > 0 && status == .completed {
+                    let mb = Double(totalDiskBytes) / (1024.0 * 1024.0)
+                    if mb >= 1024 {
+                        return String(format: "%.2f ГБ", mb / 1024.0)
+                    } else {
+                        return String(format: "%.0f МБ", mb)
+                    }
+                }
+            }
+        }
+        
         guard let downloaded = downloadedBytes, let total = totalBytes, total > 0 else { return "" }
         let totalMB = Double(total) * 1.5
         
@@ -886,100 +908,33 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
 
     private func remuxToCleanMp4(inputUrl: URL, outputUrl: URL) async throws {
         let asset = AVURLAsset(url: inputUrl)
+        let fm = FileManager.default
         
-        let videoTracks = try await asset.loadTracks(withMediaType: .video)
-        guard let videoTrack = videoTracks.first else {
-            throw NSError(domain: "ru.sloosh.export", code: 400, userInfo: [NSLocalizedDescriptionKey: "Видеодорожка не найдена в файле"])
-        }
-        let audioTracks = (try? await asset.loadTracks(withMediaType: .audio)) ?? []
+        let presets = [
+            AVAssetExportPresetPassthrough,
+            AVAssetExportPresetHighestQuality,
+            AVAssetExportPreset1920x1080,
+            AVAssetExportPreset1280x720
+        ]
         
-        let reader = try AVAssetReader(asset: asset)
-        let writer = try AVAssetWriter(outputURL: outputUrl, fileType: .mp4)
-        writer.shouldOptimizeForNetworkUse = true
-        
-        let videoOutput = AVAssetReaderTrackOutput(track: videoTrack, outputSettings: nil)
-        videoOutput.alwaysCopiesSampleData = false
-        let videoInput = AVAssetWriterInput(mediaType: .video, outputSettings: nil)
-        videoInput.expectsMediaDataInRealTime = false
-        
-        guard reader.canAdd(videoOutput), writer.canAdd(videoInput) else {
-            throw NSError(domain: "ru.sloosh.export", code: 401, userInfo: [NSLocalizedDescriptionKey: "Не удалось настроить видеодорожку"])
-        }
-        reader.add(videoOutput)
-        writer.add(videoInput)
-        
-        var audioOutput: AVAssetReaderTrackOutput?
-        var audioInput: AVAssetWriterInput?
-        if let audioTrack = audioTracks.first {
-            let aOut = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: nil)
-            aOut.alwaysCopiesSampleData = false
-            let aIn = AVAssetWriterInput(mediaType: .audio, outputSettings: nil)
-            aIn.expectsMediaDataInRealTime = false
-            if reader.canAdd(aOut) && writer.canAdd(aIn) {
-                reader.add(aOut)
-                writer.add(aIn)
-                audioOutput = aOut
-                audioInput = aIn
-            }
-        }
-        
-        guard reader.startReading() else {
-            throw reader.error ?? NSError(domain: "ru.sloosh.export", code: 402, userInfo: [NSLocalizedDescriptionKey: "Не удалось прочитать видео"])
-        }
-        guard writer.startWriting() else {
-            throw writer.error ?? NSError(domain: "ru.sloosh.export", code: 403, userInfo: [NSLocalizedDescriptionKey: "Не удалось начать запись MP4"])
-        }
-        
-        var sessionStarted = false
-        var videoFinished = false
-        var audioFinished = (audioInput == nil)
-        
-        while reader.status == .reading && (!videoFinished || !audioFinished) {
-            var hasAppended = false
-            
-            if !videoFinished && videoInput.isReadyForMoreMediaData {
-                if let sample = videoOutput.copyNextSampleBuffer() {
-                    hasAppended = true
-                    if !sessionStarted {
-                        let pts = CMSampleBufferGetPresentationTimeStamp(sample)
-                        writer.startSession(atSourceTime: pts.isValid ? pts : .zero)
-                        sessionStarted = true
-                    }
-                    videoInput.append(sample)
-                } else {
-                    videoInput.markAsFinished()
-                    videoFinished = true
+        for preset in presets {
+            try? fm.removeItem(at: outputUrl)
+            if let exportSession = AVAssetExportSession(asset: asset, presetName: preset) {
+                exportSession.outputURL = outputUrl
+                exportSession.outputFileType = .mp4
+                exportSession.shouldOptimizeForNetworkUse = true
+                await exportSession.export()
+                let size = ((try? fm.attributesOfItem(atPath: outputUrl.path))?[.size] as? Int64) ?? 0
+                if exportSession.status == .completed && fm.fileExists(atPath: outputUrl.path) && size > 1000 {
+                    return
+                }
+                if let err = exportSession.error {
+                    AppDiagnostics.shared.log("exportSession preset \(preset) error: \(err.localizedDescription)")
                 }
             }
-            
-            if !audioFinished, let aIn = audioInput, let aOut = audioOutput, aIn.isReadyForMoreMediaData {
-                if let sample = aOut.copyNextSampleBuffer() {
-                    hasAppended = true
-                    if !sessionStarted {
-                        let pts = CMSampleBufferGetPresentationTimeStamp(sample)
-                        writer.startSession(atSourceTime: pts.isValid ? pts : .zero)
-                        sessionStarted = true
-                    }
-                    aIn.append(sample)
-                } else {
-                    aIn.markAsFinished()
-                    audioFinished = true
-                }
-            }
-            
-            if !hasAppended && reader.status == .reading && (!videoFinished || !audioFinished) {
-                try? await Task.sleep(nanoseconds: 5_000_000) // 5ms
-            }
         }
         
-        if !videoFinished { videoInput.markAsFinished() }
-        if !audioFinished { audioInput?.markAsFinished() }
-        
-        await writer.finishWriting()
-        
-        if writer.status != .completed {
-            throw writer.error ?? NSError(domain: "ru.sloosh.export", code: 404, userInfo: [NSLocalizedDescriptionKey: "Ошибка финализации MP4"])
-        }
+        throw NSError(domain: "ru.sloosh.export", code: 404, userInfo: [NSLocalizedDescriptionKey: "Ошибка создания чистого MP4"])
     }
 
     func exportAsMP4(item: DownloadItem) async throws -> URL {
