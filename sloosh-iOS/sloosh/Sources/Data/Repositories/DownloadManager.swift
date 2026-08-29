@@ -1039,8 +1039,8 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                         }
                     }
                     try? fileHandle.close()
-                    
-                    if fm.fileExists(atPath: exportUrl.path), (try? fm.attributesOfItem(atPath: exportUrl.path)[.size] as? Int64 ?? 0) > 1000 {
+                    let fileSize = ((try? fm.attributesOfItem(atPath: exportUrl.path))?[.size] as? Int64) ?? 0
+                    if fm.fileExists(atPath: exportUrl.path) && fileSize > 1000 {
                         return exportUrl
                     }
                 }
