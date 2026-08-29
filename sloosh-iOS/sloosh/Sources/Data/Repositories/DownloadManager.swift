@@ -88,30 +88,13 @@ struct DownloadItem: Identifiable, Codable, Equatable {
     }
     
     var sizeString: String {
-        let fm = FileManager.default
-        if let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first {
-            let taskDir = docs.appendingPathComponent(localDirectory)
-            if let files = try? fm.contentsOfDirectory(atPath: taskDir.path) {
-                var totalDiskBytes: Int64 = 0
-                for f in files {
-                    if let attrs = try? fm.attributesOfItem(atPath: taskDir.appendingPathComponent(f).path),
-                       let s = attrs[.size] as? Int64 {
-                        totalDiskBytes += s
-                    }
-                }
-                if totalDiskBytes > 0 && status == .completed {
-                    let mb = Double(totalDiskBytes) / (1024.0 * 1024.0)
-                    if mb >= 1024 {
-                        return String(format: "%.2f ГБ", mb / 1024.0)
-                    } else {
-                        return String(format: "%.0f МБ", mb)
-                    }
-                }
-            }
+        guard let total = totalBytes, total > 0 else { return "" }
+        let totalMB: Double
+        if total > 100_000 {
+            totalMB = Double(total) / (1024.0 * 1024.0)
+        } else {
+            totalMB = Double(total) * 1.5
         }
-        
-        guard let downloaded = downloadedBytes, let total = totalBytes, total > 0 else { return "" }
-        let totalMB = Double(total) * 1.5
         
         func formatMB(_ mb: Double) -> String {
             if mb >= 1024 {
@@ -124,7 +107,13 @@ struct DownloadItem: Identifiable, Codable, Equatable {
         if status == .completed {
             return formatMB(totalMB)
         } else {
-            let downloadedMB = Double(downloaded) * 1.5
+            let downloaded = downloadedBytes ?? 0
+            let downloadedMB: Double
+            if downloaded > 100_000 {
+                downloadedMB = Double(downloaded) / (1024.0 * 1024.0)
+            } else {
+                downloadedMB = Double(downloaded) * 1.5
+            }
             return "\(formatMB(downloadedMB)) / \(formatMB(totalMB))"
         }
     }
@@ -168,6 +157,44 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         self.session = URLSession(configuration: config, delegate: self, delegateQueue: queue)
         
         loadDownloads()
+        recalculateDiskSizesInBackground()
+    }
+    
+    private func recalculateDiskSizesInBackground() {
+        Task.detached(priority: .background) {
+            let fm = FileManager.default
+            guard let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
+            
+            let currentDownloads = await MainActor.run { DownloadManager.shared.downloads }
+            var updatedSizes: [String: Int64] = [:]
+            
+            for item in currentDownloads where item.status == .completed {
+                let taskDir = docs.appendingPathComponent(item.localDirectory)
+                if let files = try? fm.contentsOfDirectory(atPath: taskDir.path) {
+                    var totalDiskBytes: Int64 = 0
+                    for f in files {
+                        if let attrs = try? fm.attributesOfItem(atPath: taskDir.appendingPathComponent(f).path),
+                           let s = attrs[.size] as? Int64 {
+                            totalDiskBytes += s
+                        }
+                    }
+                    if totalDiskBytes > 0 && (item.totalBytes != totalDiskBytes) {
+                        updatedSizes[item.id] = totalDiskBytes
+                    }
+                }
+            }
+            
+            if !updatedSizes.isEmpty {
+                await MainActor.run {
+                    for (id, size) in updatedSizes {
+                        DownloadManager.shared.updateItem(id: id) {
+                            $0.downloadedBytes = size
+                            $0.totalBytes = size
+                        }
+                    }
+                }
+            }
+        }
     }
     
     private func loadDownloads() {
@@ -910,11 +937,127 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         let asset = AVURLAsset(url: inputUrl)
         let fm = FileManager.default
         
+        let videoTracks = try await asset.loadTracks(withMediaType: .video)
+        guard let videoTrack = videoTracks.first else {
+            throw NSError(domain: "ru.sloosh.export", code: 400, userInfo: [NSLocalizedDescriptionKey: "Видеодорожка не найдена"])
+        }
+        let audioTracks = (try? await asset.loadTracks(withMediaType: .audio)) ?? []
+        
+        let videoTimeRange = try await videoTrack.load(.timeRange)
+        let videoDuration = videoTimeRange.duration
+        
+        let videoFormats = try await videoTrack.load(.formatDescriptions)
+        let videoFormat = videoFormats.first
+        
+        let audioFormats = try? await audioTracks.first?.load(.formatDescriptions)
+        let audioFormat = audioFormats?.first
+        
+        // Fast Lossless Passthrough Remux with AVAssetReader + AVAssetWriter (Trims audio to video duration, fixes PTS)
+        do {
+            let reader = try AVAssetReader(asset: asset)
+            let writer = try AVAssetWriter(outputURL: outputUrl, fileType: .mp4)
+            writer.shouldOptimizeForNetworkUse = true
+            
+            let videoOutput = AVAssetReaderTrackOutput(track: videoTrack, outputSettings: nil)
+            videoOutput.alwaysCopiesSampleData = false
+            let videoInput = AVAssetWriterInput(mediaType: .video, outputSettings: nil, sourceFormatHint: videoFormat)
+            videoInput.expectsMediaDataInRealTime = false
+            
+            if reader.canAdd(videoOutput) && writer.canAdd(videoInput) {
+                reader.add(videoOutput)
+                writer.add(videoInput)
+                
+                var audioOutput: AVAssetReaderTrackOutput?
+                var audioInput: AVAssetWriterInput?
+                if let audioTrack = audioTracks.first {
+                    let aOut = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: nil)
+                    aOut.alwaysCopiesSampleData = false
+                    let aIn = AVAssetWriterInput(mediaType: .audio, outputSettings: nil, sourceFormatHint: audioFormat)
+                    aIn.expectsMediaDataInRealTime = false
+                    if reader.canAdd(aOut) && writer.canAdd(aIn) {
+                        reader.add(aOut)
+                        writer.add(aIn)
+                        audioOutput = aOut
+                        audioInput = aIn
+                    }
+                }
+                
+                if reader.startReading() && writer.startWriting() {
+                    var sessionStarted = false
+                    var sessionStartPts: CMTime = .zero
+                    var videoFinished = false
+                    var audioFinished = (audioInput == nil)
+                    
+                    let audioCutoffDuration = (videoDuration.isNumeric && videoDuration.seconds > 0) ? videoDuration : CMTime(seconds: 7200, preferredTimescale: 600)
+                    
+                    while reader.status == .reading && (!videoFinished || !audioFinished) {
+                        var hasAppended = false
+                        
+                        if !videoFinished && videoInput.isReadyForMoreMediaData {
+                            if let sample = videoOutput.copyNextSampleBuffer() {
+                                hasAppended = true
+                                let pts = CMSampleBufferGetPresentationTimeStamp(sample)
+                                if !sessionStarted {
+                                    sessionStartPts = pts.isValid ? pts : .zero
+                                    writer.startSession(atSourceTime: sessionStartPts)
+                                    sessionStarted = true
+                                }
+                                videoInput.append(sample)
+                            } else {
+                                videoInput.markAsFinished()
+                                videoFinished = true
+                            }
+                        }
+                        
+                        if !audioFinished, let aIn = audioInput, let aOut = audioOutput, aIn.isReadyForMoreMediaData {
+                            if let sample = aOut.copyNextSampleBuffer() {
+                                hasAppended = true
+                                let pts = CMSampleBufferGetPresentationTimeStamp(sample)
+                                if !sessionStarted {
+                                    sessionStartPts = pts.isValid ? pts : .zero
+                                    writer.startSession(atSourceTime: sessionStartPts)
+                                    sessionStarted = true
+                                }
+                                
+                                // Stop appending audio samples beyond the video duration to prevent black screen!
+                                let relativePts = CMTimeSubtract(pts, sessionStartPts)
+                                if relativePts <= audioCutoffDuration {
+                                    aIn.append(sample)
+                                } else {
+                                    aIn.markAsFinished()
+                                    audioFinished = true
+                                }
+                            } else {
+                                aIn.markAsFinished()
+                                audioFinished = true
+                            }
+                        }
+                        
+                        if !hasAppended && reader.status == .reading && (!videoFinished || !audioFinished) {
+                            try? await Task.sleep(nanoseconds: 3_000_000) // 3ms
+                        }
+                    }
+                    
+                    if !videoFinished { videoInput.markAsFinished() }
+                    if !audioFinished { audioInput?.markAsFinished() }
+                    
+                    await writer.finishWriting()
+                    
+                    let size = ((try? fm.attributesOfItem(atPath: outputUrl.path))?[.size] as? Int64) ?? 0
+                    if writer.status == .completed && fm.fileExists(atPath: outputUrl.path) && size > 1000 {
+                        return
+                    }
+                }
+            }
+        } catch {
+            AppDiagnostics.shared.log("Lossless passthrough writer error: \(error.localizedDescription)")
+        }
+        
+        // Fallback to AVAssetExportSession
         let presets = [
             AVAssetExportPresetPassthrough,
             AVAssetExportPresetHighestQuality,
-            AVAssetExportPreset1920x1080,
-            AVAssetExportPreset1280x720
+            AVAssetExportPreset1920x1080
         ]
         
         for preset in presets {
@@ -923,13 +1066,13 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                 exportSession.outputURL = outputUrl
                 exportSession.outputFileType = .mp4
                 exportSession.shouldOptimizeForNetworkUse = true
+                if videoDuration.isNumeric && videoDuration.seconds > 0 {
+                    exportSession.timeRange = CMTimeRange(start: .zero, duration: videoDuration)
+                }
                 await exportSession.export()
                 let size = ((try? fm.attributesOfItem(atPath: outputUrl.path))?[.size] as? Int64) ?? 0
                 if exportSession.status == .completed && fm.fileExists(atPath: outputUrl.path) && size > 1000 {
                     return
-                }
-                if let err = exportSession.error {
-                    AppDiagnostics.shared.log("exportSession preset \(preset) error: \(err.localizedDescription)")
                 }
             }
         }
