@@ -215,7 +215,7 @@ struct DownloadsView: View {
             } catch {
                 await MainActor.run {
                     self.isExporting = false
-                    ToastManager.shared.show(message: error.localizedDescription, icon: "exclamationmark.triangle.fill")
+                    ToastManager.shared.show(title: error.localizedDescription, icon: "exclamationmark.triangle.fill")
                     AppDiagnostics.shared.log("Failed to export download item: \(error.localizedDescription)")
                 }
             }
@@ -236,12 +236,12 @@ struct DownloadsView: View {
                 try await DownloadManager.shared.saveToPhotos(item: item)
                 await MainActor.run {
                     self.isExporting = false
-                    ToastManager.shared.show(message: "Видео сохранено в Фото", icon: "checkmark.circle.fill")
+                    ToastManager.shared.show(title: "Видео сохранено в Фото", icon: "checkmark.circle.fill")
                 }
             } catch {
                 await MainActor.run {
                     self.isExporting = false
-                    ToastManager.shared.show(message: error.localizedDescription, icon: "exclamationmark.triangle.fill")
+                    ToastManager.shared.show(title: error.localizedDescription, icon: "exclamationmark.triangle.fill")
                     AppDiagnostics.shared.log("Failed to save to Photos: \(error.localizedDescription)")
                 }
             }
