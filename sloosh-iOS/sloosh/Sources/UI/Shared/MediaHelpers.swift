@@ -36,19 +36,89 @@ func isCartoonByTitle(_ title: String?) -> Bool {
 
 // MARK: - Translation Name Sanitization
 
-/// Очищает и красиво форматирует названия озвучек (убирает тех. релиз-теги типа INTERNAL2160pWEB-DL, переводит языковые имена)
+/// Очищает и красиво форматирует названия озвучек (убирает тех. релиз-теги типа INTERNAL2160pWEB-DL, динамически извлекает язык и флаг)
 func cleanTranslationName(_ rawName: String) -> String {
     var name = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
     guard !name.isEmpty else { return "По умолчанию" }
     
-    // 1. Убираем громоздкие сцен-теги релиза
+    // 1. Убираем громоздкие сцен-теги релиза (2160p, WEB-DL, BDRip и т.д.)
     if let regex = try? NSRegularExpression(pattern: "(?i)[a-z0-9._-]{3,}(?:2160p|1080p|720p|480p|internal|web-dl|web-dlrip|bdrip|bluray|hdr10|hdr|dv|hevc|x264|x265|spacehd\\d*)[a-z0-9._-]*", options: []) {
         let range = NSRange(location: 0, length: name.utf16.count)
         name = regex.stringByReplacingMatches(in: name, options: [], range: range, withTemplate: "").trimmingCharacters(in: .whitespacesAndNewlines)
     }
     
-    // 2. Нормализуем скобки и трубы в чистые пробелы для аккуратного разбора
-    name = name
+    // 2. Субтитры
+    if name.localizedCaseInsensitiveContains("субтитр") || name.localizedCaseInsensitiveContains("subtitle") {
+        return "💬 \(name)"
+    }
+    
+    // 3. Динамическое извлечение языка из тегов вида (Russian), (English), [Ukrainian] или префиксов
+    struct LangInfo {
+        let flag: String
+        let defaultName: String
+        let patterns: [String]
+    }
+    
+    let knownLanguages: [LangInfo] = [
+        LangInfo(flag: "🇷🇺", defaultName: "Русский", patterns: ["russian", "русский", "рус", "ru"]),
+        LangInfo(flag: "🇺🇸", defaultName: "Оригинал", patterns: ["original", "оригинальный", "оригинал", "english", "английский", "англ", "eng", "usa", "en"]),
+        LangInfo(flag: "🇺🇦", defaultName: "Украинский", patterns: ["ukrainian", "украинский", "укр", "ukr", "uk"]),
+        LangInfo(flag: "🇯🇵", defaultName: "Японский", patterns: ["japanese", "японский", "япон", "jap", "ja"]),
+        LangInfo(flag: "🇰🇷", defaultName: "Корейский", patterns: ["korean", "корейский", "корей", "kor", "ko"]),
+        LangInfo(flag: "🇨🇳", defaultName: "Китайский", patterns: ["chinese", "китайский", "китай", "chi", "zh"]),
+        LangInfo(flag: "🇰🇿", defaultName: "Казахский", patterns: ["kazakh", "казахский", "казах", "kaz", "kz"]),
+        LangInfo(flag: "🇬🇪", defaultName: "Грузинский", patterns: ["georgian", "грузинский", "грузин", "geo", "ka"]),
+        LangInfo(flag: "🇫🇷", defaultName: "Французский", patterns: ["french", "французский", "француз", "fra", "fr"]),
+        LangInfo(flag: "🇩🇪", defaultName: "Немецкий", patterns: ["german", "немецкий", "немец", "ger", "de"]),
+        LangInfo(flag: "🇪🇸", defaultName: "Испанский", patterns: ["spanish", "испанский", "испан", "spa", "es"]),
+        LangInfo(flag: "🇮🇹", defaultName: "Итальянский", patterns: ["italian", "итальянский", "итальян", "ita", "it"]),
+        LangInfo(flag: "🇹🇷", defaultName: "Турецкий", patterns: ["turkish", "турецкий", "турец", "tur", "tr"])
+    ]
+    
+    var detectedFlag: String?
+    var detectedDefaultName: String = "Русский"
+    var cleanRemainder = name
+    
+    // Ищем соответствие языку
+    for lang in knownLanguages {
+        for pattern in lang.patterns {
+            // Проверяем формат (Language) или [Language]
+            let parenPattern = "(?i)[\\(\\[]\\s*\(pattern)\\s*[\\)\\]]"
+            if let regex = try? NSRegularExpression(pattern: parenPattern, options: []) {
+                let range = NSRange(location: 0, length: cleanRemainder.utf16.count)
+                if regex.firstMatch(in: cleanRemainder, options: [], range: range) != nil {
+                    detectedFlag = lang.flag
+                    detectedDefaultName = lang.defaultName
+                    cleanRemainder = regex.stringByReplacingMatches(in: cleanRemainder, options: [], range: range, withTemplate: " ")
+                    break
+                }
+            }
+            
+            // Проверяем формат в начале строки "Language: ..." или "Language ..."
+            let prefixPattern = "(?i)^\(pattern)[:\\s-]+"
+            if let regex = try? NSRegularExpression(pattern: prefixPattern, options: []) {
+                let range = NSRange(location: 0, length: cleanRemainder.utf16.count)
+                if regex.firstMatch(in: cleanRemainder, options: [], range: range) != nil {
+                    detectedFlag = lang.flag
+                    detectedDefaultName = lang.defaultName
+                    cleanRemainder = regex.stringByReplacingMatches(in: cleanRemainder, options: [], range: range, withTemplate: " ")
+                    break
+                }
+            }
+            
+            // Если вся строка это просто название языка (например "English", "Оригинальный")
+            if cleanRemainder.lowercased().trimmingCharacters(in: .whitespacesAndNewlines) == pattern {
+                detectedFlag = lang.flag
+                detectedDefaultName = lang.defaultName
+                cleanRemainder = ""
+                break
+            }
+        }
+        if detectedFlag != nil { break }
+    }
+    
+    // Очищаем оставшиеся скобки, спецсимволы и лишние пробелы
+    cleanRemainder = cleanRemainder
         .replacingOccurrences(of: "(", with: " ")
         .replacingOccurrences(of: ")", with: " ")
         .replacingOccurrences(of: "[", with: " ")
@@ -57,72 +127,14 @@ func cleanTranslationName(_ rawName: String) -> String {
         .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
         .trimmingCharacters(in: .whitespacesAndNewlines)
     
-    if name.isEmpty {
-        name = rawName.components(separatedBy: " ").first ?? rawName
+    let flag = detectedFlag ?? "🇷🇺"
+    
+    // Если осталась только цифра дорожки (например "(English) 8" -> "8") или строка пуста
+    if cleanRemainder.isEmpty || Int(cleanRemainder) != nil {
+        return "\(flag) \(detectedDefaultName)"
     }
     
-    let lower = name.lowercased()
-    
-    // 3. Распознавание конкретных иностранных языков (включая оригиналы аниме, дорам и европейского кино)
-    if lower.contains("japanese") || lower.contains("япон") || lower == "jap" || lower == "яп" {
-        return "🇯🇵 Японский"
-    }
-    if lower.contains("korean") || lower.contains("корей") || lower == "kor" || lower == "кор" {
-        return "🇰🇷 Корейский"
-    }
-    if lower.contains("chinese") || lower.contains("китай") || lower == "chi" || lower == "кит" {
-        return "🇨🇳 Китайский"
-    }
-    if lower.contains("ukrainian") || lower.contains("украин") || lower == "укр" || lower == "ukr" {
-        return "🇺🇦 Украинский"
-    }
-    if lower.contains("kazakh") || lower.contains("казах") || lower == "каз" || lower == "kz" {
-        return "🇰🇿 Казахский"
-    }
-    if lower.contains("georgian") || lower.contains("грузин") || lower == "geo" {
-        return "🇬🇪 Грузинский"
-    }
-    if lower.contains("french") || lower.contains("француз") || lower == "fra" || lower == "фр" {
-        return "🇫🇷 Французский"
-    }
-    if lower.contains("german") || lower.contains("немец") || lower == "ger" || lower == "нем" {
-        return "🇩🇪 Немецкий"
-    }
-    if lower.contains("spanish") || lower.contains("испан") || lower == "spa" || lower == "исп" {
-        return "🇪🇸 Испанский"
-    }
-    if lower.contains("italian") || lower.contains("итальян") || lower == "ita" || lower == "ит" {
-        return "🇮🇹 Итальянский"
-    }
-    if lower.contains("turkish") || lower.contains("турец") || lower == "tur" || lower == "тур" {
-        return "🇹🇷 Турецкий"
-    }
-    
-    // 4. Английский / Оригинал (Original, Оригинал, English, Английский, ENG, USA, UK)
-    if lower.contains("original") || lower.contains("оригинал") || lower.contains("english") || lower.contains("английск") || lower == "eng" || lower == "usa" || lower.hasPrefix("eng ") || lower.hasSuffix(" eng") || lower.contains(" eng ") {
-        if lower.contains("english") || lower.contains("английск") {
-            return "🇺🇸 Английский"
-        }
-        return "🇺🇸 Оригинал"
-    }
-    
-    // 5. Субтитры
-    if lower.contains("субтитр") || lower.contains("subtitle") {
-        return "💬 \(name)"
-    }
-    
-    // 6. Для всех русских озвучек и студий (Дубляж, HDrezka, Red Head Sound, AlexFilm, LostFilm, Кубик в Кубе, Flarrow Films, TVShows, NewComers, Newstudio и т.д.)
-    var cleanRus = name
-    for rusPrefix in ["Russian", "Русский", "русский", "russian", "RU", "ru"] {
-        if cleanRus.hasPrefix(rusPrefix) {
-            cleanRus = cleanRus.dropFirst(rusPrefix.count).trimmingCharacters(in: .whitespacesAndNewlines)
-        }
-    }
-    if cleanRus.isEmpty {
-        cleanRus = "Русский"
-    }
-    
-    return "🇷🇺 \(cleanRus)"
+    return "\(flag) \(cleanRemainder)"
 }
 
 
