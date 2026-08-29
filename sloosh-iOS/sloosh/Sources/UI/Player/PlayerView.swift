@@ -1180,21 +1180,20 @@ class PlayerViewModel: ObservableObject {
         var qualities = [makeAutoQualityOption(url: resolvedUrl)]
         var seenKeys = Set<String>(["Авто"])
 
-        appendQualityVariants(qualityVariants, to: &qualities, seenKeys: &seenKeys)
-
-        if qualities.count == 1 {
-            let targetVoice = targetVoiceover ?? _currentTranslationName
-            let selectedAudioVariant: [String: Any]? = {
-                if let target = targetVoice, !target.isEmpty {
-                    return audioVariants.first(where: { allohaTranslationNamesMatch($0["title"] as? String, target) })
-                }
-                return nil
-            }() ?? audioVariants.first
-
-            if let selectedAudio = selectedAudioVariant,
-               let nestedQualityVariants = selectedAudio["qualityVariants"] as? [[String: Any]] {
-                appendQualityVariants(nestedQualityVariants, to: &qualities, seenKeys: &seenKeys)
+        let targetVoice = targetVoiceover ?? _currentTranslationName
+        let selectedAudioVariant: [String: Any]? = {
+            if let target = targetVoice, !target.isEmpty {
+                return audioVariants.first(where: { allohaTranslationNamesMatch($0["title"] as? String, target) })
             }
+            return nil
+        }() ?? audioVariants.first(where: { (($0["url"] as? String) ?? "").isEmpty == false })
+
+        if let selectedAudio = selectedAudioVariant,
+           let nestedQualityVariants = selectedAudio["qualityVariants"] as? [[String: Any]],
+           !nestedQualityVariants.isEmpty {
+            appendQualityVariants(nestedQualityVariants, to: &qualities, seenKeys: &seenKeys)
+        } else {
+            appendQualityVariants(qualityVariants, to: &qualities, seenKeys: &seenKeys)
         }
 
         // Filter out any qualities higher than 1080p (e.g. 1440p, 2160p)
