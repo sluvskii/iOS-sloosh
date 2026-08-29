@@ -870,6 +870,119 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         return nil
     }
 
+    private func remuxTsToMp4(tsUrl: URL, outputUrl: URL) async throws {
+        let asset = AVURLAsset(url: tsUrl)
+        
+        let videoTracks = try await asset.loadTracks(withMediaType: .video)
+        guard let videoTrack = videoTracks.first else {
+            throw NSError(domain: "ru.sloosh.export", code: 400, userInfo: [NSLocalizedDescriptionKey: "Видеодорожка не найдена в файле"])
+        }
+        let audioTracks = (try? await asset.loadTracks(withMediaType: .audio)) ?? []
+        
+        let reader = try AVAssetReader(asset: asset)
+        let writer = try AVAssetWriter(outputURL: outputUrl, fileType: .mp4)
+        writer.shouldOptimizeForNetworkUse = true
+        
+        let videoOutput = AVAssetReaderTrackOutput(track: videoTrack, outputSettings: nil)
+        videoOutput.alwaysCopiesSampleData = false
+        let videoInput = AVAssetWriterInput(mediaType: .video, outputSettings: nil)
+        videoInput.expectsMediaDataInRealTime = false
+        
+        guard reader.canAdd(videoOutput), writer.canAdd(videoInput) else {
+            throw NSError(domain: "ru.sloosh.export", code: 401, userInfo: [NSLocalizedDescriptionKey: "Не удалось настроить видеодорожку"])
+        }
+        reader.add(videoOutput)
+        writer.add(videoInput)
+        
+        var audioOutput: AVAssetReaderTrackOutput?
+        var audioInput: AVAssetWriterInput?
+        if let audioTrack = audioTracks.first {
+            let aOut = AVAssetReaderTrackOutput(track: audioTrack, outputSettings: nil)
+            aOut.alwaysCopiesSampleData = false
+            let aIn = AVAssetWriterInput(mediaType: .audio, outputSettings: nil)
+            aIn.expectsMediaDataInRealTime = false
+            if reader.canAdd(aOut) && writer.canAdd(aIn) {
+                reader.add(aOut)
+                writer.add(aIn)
+                audioOutput = aOut
+                audioInput = aIn
+            }
+        }
+        
+        guard reader.startReading() else {
+            throw reader.error ?? NSError(domain: "ru.sloosh.export", code: 402, userInfo: [NSLocalizedDescriptionKey: "Не удалось прочитать видео"])
+        }
+        guard writer.startWriting() else {
+            throw writer.error ?? NSError(domain: "ru.sloosh.export", code: 403, userInfo: [NSLocalizedDescriptionKey: "Не удалось начать запись MP4"])
+        }
+        
+        let lock = NSLock()
+        var sessionStarted = false
+        
+        func startSessionIfNeeded(with sample: CMSampleBuffer) {
+            lock.lock()
+            defer { lock.unlock() }
+            if !sessionStarted {
+                let pts = CMSampleBufferGetPresentationTimeStamp(sample)
+                writer.startSession(atSourceTime: pts.isValid ? pts : .zero)
+                sessionStarted = true
+            }
+        }
+        
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            let group = DispatchGroup()
+            let queue = DispatchQueue(label: "ru.sloosh.exportQueue", qos: .userInitiated)
+            
+            group.enter()
+            videoInput.requestMediaDataWhenReady(on: queue) {
+                while videoInput.isReadyForMoreMediaData {
+                    if let sample = videoOutput.copyNextSampleBuffer() {
+                        startSessionIfNeeded(with: sample)
+                        if !videoInput.append(sample) {
+                            videoInput.markAsFinished()
+                            group.leave()
+                            break
+                        }
+                    } else {
+                        videoInput.markAsFinished()
+                        group.leave()
+                        break
+                    }
+                }
+            }
+            
+            if let aIn = audioInput, let aOut = audioOutput {
+                group.enter()
+                aIn.requestMediaDataWhenReady(on: queue) {
+                    while aIn.isReadyForMoreMediaData {
+                        if let sample = aOut.copyNextSampleBuffer() {
+                            startSessionIfNeeded(with: sample)
+                            if !aIn.append(sample) {
+                                aIn.markAsFinished()
+                                group.leave()
+                                break
+                            }
+                        } else {
+                            aIn.markAsFinished()
+                            group.leave()
+                            break
+                        }
+                    }
+                }
+            }
+            
+            group.notify(queue: queue) {
+                continuation.resume()
+            }
+        }
+        
+        await writer.finishWriting()
+        
+        if writer.status != .completed {
+            throw writer.error ?? NSError(domain: "ru.sloosh.export", code: 404, userInfo: [NSLocalizedDescriptionKey: "Ошибка финализации MP4"])
+        }
+    }
+
     func exportAsMP4(item: DownloadItem) async throws -> URL {
         guard let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
             throw NSError(domain: "ru.sloosh.download", code: 404, userInfo: [NSLocalizedDescriptionKey: "Директория документов не найдена"])
@@ -938,10 +1051,22 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                 }
                 try? fileHandle.close()
                 
-                // Mux merged TS to clean MP4
+                // Try fast lossless remux to ISO MP4 with AVAssetReader + AVAssetWriter
+                do {
+                    try await remuxTsToMp4(tsUrl: mergedTsUrl, outputUrl: exportUrl)
+                    if fm.fileExists(atPath: exportUrl.path) {
+                        try? fm.removeItem(at: mergedTsUrl)
+                        return exportUrl
+                    }
+                } catch {
+                    AppDiagnostics.shared.log("remuxTsToMp4 error: \(error.localizedDescription), trying fallback presets...")
+                }
+                
+                // Fallback to AVAssetExportSession
                 let asset = AVURLAsset(url: mergedTsUrl)
                 let presets = [AVAssetExportPresetPassthrough, AVAssetExportPresetHighestQuality, AVAssetExportPreset1920x1080, AVAssetExportPreset1280x720]
                 for preset in presets {
+                    try? fm.removeItem(at: exportUrl)
                     if let exportSession = AVAssetExportSession(asset: asset, presetName: preset) {
                         exportSession.outputURL = exportUrl
                         exportSession.outputFileType = .mp4
@@ -954,19 +1079,24 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                     }
                 }
                 
-                // Fallback: If AVAssetExportSession could not remux, copy merged file as mp4
-                if fm.fileExists(atPath: mergedTsUrl.path) {
-                    try? fm.copyItem(at: mergedTsUrl, to: exportUrl)
-                    try? fm.removeItem(at: mergedTsUrl)
-                    if fm.fileExists(atPath: exportUrl.path) {
-                        return exportUrl
-                    }
-                }
                 try? fm.removeItem(at: mergedTsUrl)
             }
         }
         
         throw NSError(domain: "ru.sloosh.export", code: 500, userInfo: [NSLocalizedDescriptionKey: "Не удалось подготовить файл для экспорта"])
+    }
+
+    func saveToPhotos(item: DownloadItem) async throws {
+        let mp4Url = try await exportAsMP4(item: item)
+        
+        let status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
+        guard status == .authorized || status == .limited else {
+            throw NSError(domain: "ru.sloosh.photos", code: 403, userInfo: [NSLocalizedDescriptionKey: "Нет разрешения на сохранение в Фото. Разрешите доступ к Фото в Настройках iPhone."])
+        }
+        
+        try await PHPhotoLibrary.shared().performChanges {
+            PHAssetChangeRequest.creationRequestForAssetFromVideo(atFileURL: mp4Url)
+        }
     }
 }
 
