@@ -29,7 +29,7 @@ struct DownloadItem: Identifiable, Codable, Equatable {
     var downloadedBytes: Int64?
     var totalBytes: Int64?
     let translationName: String?
-    let iframeUrl: String
+    var iframeUrl: String
     var preferredQuality: VideoQualityPreference
     let addedAt: Date
     var errorMessage: String?
@@ -185,8 +185,9 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             }
             
             if !updatedSizes.isEmpty {
+                let finalSizes = updatedSizes
                 await MainActor.run {
-                    for (id, size) in updatedSizes {
+                    for (id, size) in finalSizes {
                         DownloadManager.shared.updateItem(id: id) {
                             $0.downloadedBytes = size
                             $0.totalBytes = size
