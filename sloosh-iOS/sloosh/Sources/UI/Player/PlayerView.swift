@@ -1914,6 +1914,10 @@ class PlayerViewModel: ObservableObject {
                     return allohaTranslationNamesMatch(title, target)
                 }), let variantUrl = (matchingVariant["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !variantUrl.isEmpty {
                     resolvedUrlString = variantUrl
+                    if let title = matchingVariant["title"] as? String, !title.isEmpty {
+                        _currentTranslationName = title
+                        targetVoiceover = title
+                    }
                     logDebug("applyResolvedAllohaStream: matched audioVariant '\(matchingVariant["title"] ?? "")' -> \(variantUrl)")
                 }
             }
@@ -1946,12 +1950,10 @@ class PlayerViewModel: ObservableObject {
 
         // Заполняем список вариантов стримов из audioVariants (нужны для переключения озвучки)
         self.resolvedAudioVariants = audioVariants
-        // Вычисляем runtime voices (внутренние аудиодорожки iframe-плеера Alloha).
-        // Они нужны для передачи в playVideo (для нативного переключения дорожек).
-        // Но НЕ используем их для availableVoiceovers если список уже заполнен из API,
-        // т.к. их названия могут не совпадать с тем, что пользователь видел в SourceSelectionView.
+        // Вычисляем реальные аудиодорожки из стрима Alloha и обновляем availableVoiceovers,
+        // чтобы пользователь видел точные студийные названия (например "Дубляж HDRezka", а не просто "Дублированный").
         let voices = resolvedVoiceovers(from: resolved)
-        if self.availableVoiceovers.isEmpty && !voices.isEmpty {
+        if !voices.isEmpty {
             self.availableVoiceovers = voices
         }
 
