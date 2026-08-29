@@ -54,7 +54,7 @@ class HlsProxyServer {
         }
     }
     
-    func start(headers: [String: String], voices: [String] = [], subtitles: [PlaybackSubtitle] = [], mediaId: String = "", preferredVoiceName: String? = nil) {
+    func start(headers: [String: String] = [:], voices: [String] = [], subtitles: [PlaybackSubtitle] = [], mediaId: String = "", preferredVoiceName: String? = nil) {
         let isAlreadyRunning = stateLock.withLock {
             self.headers = headers
             self.voices = voices
