@@ -826,6 +826,9 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
            let height = Int(pathWithoutQuery[range]) {
             return height
         }
+        return 0
+    }
+    
     // MARK: - Export as MP4
     func exportAsMP4(item: DownloadItem) async throws -> URL {
         guard let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
