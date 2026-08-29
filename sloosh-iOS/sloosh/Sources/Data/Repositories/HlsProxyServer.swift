@@ -321,7 +321,13 @@ class HlsProxyServer {
                 let statusCode = httpResponse.statusCode
                 AppDiagnostics.shared.log("HlsProxyServer fetchAndServe: \(realUrl) returned \(statusCode)")
                 
-                if let content = String(data: data, encoding: .utf8) {
+                guard statusCode >= 200 && statusCode < 300 else {
+                    AppDiagnostics.shared.log("HlsProxyServer fetchAndServe: HTTP error \(statusCode) for \(realUrl)")
+                    self.sendResponse(data: data, statusCode: statusCode, contentType: httpResponse.mimeType ?? "text/plain", contentRange: nil, connection: connection)
+                    return
+                }
+                
+                if let content = String(data: data, encoding: .utf8), content.contains("#EXT") {
                     let finalUrl = httpResponse.url ?? realUrl
                     let rewritten: String
                     if content.contains("#EXT-X-STREAM-INF") {
@@ -331,7 +337,6 @@ class HlsProxyServer {
                             subtitles: currentSubtitles,
                             mediaId: currentMediaId
                         )
-
                         
                         AppDiagnostics.shared.log("HlsProxyServer: rewritten master playlist:\n\(playlistRewritten)")
                         
