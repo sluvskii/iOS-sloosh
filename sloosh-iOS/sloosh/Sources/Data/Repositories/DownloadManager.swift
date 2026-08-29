@@ -363,7 +363,14 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             return
         }
         
-        let streamUrlString = (resolved["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        var streamUrlString = (resolved["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let audioVariants = (resolved["audioVariants"] as? [[String: Any]]) ?? []
+        if let matchingVariant = audioVariants.first(where: { variant in
+            let title = (variant["title"] as? String) ?? ""
+            return allohaTranslationNamesMatch(title, item.translationName)
+        }), let variantUrl = (matchingVariant["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !variantUrl.isEmpty {
+            streamUrlString = variantUrl
+        }
         let headers = (resolved["headers"] as? [String: String]) ?? [:]
         
         guard let masterPlaylistUrl = URL(string: streamUrlString) else {
