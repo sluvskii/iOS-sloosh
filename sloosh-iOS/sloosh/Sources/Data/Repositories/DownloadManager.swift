@@ -3,6 +3,7 @@ import Combine
 import UIKit
 import AVFoundation
 import Photos
+import CommonCrypto
 
 enum DownloadStatus: String, Codable {
     case pending
@@ -830,6 +831,45 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     }
     
     // MARK: - Export as MP4
+    private func decryptHlsSegment(data: Data, key: Data, sequence: Int) -> Data? {
+        guard key.count == 16 else { return nil }
+        
+        var iv = [UInt8](repeating: 0, count: 16)
+        var seqBig = UInt64(sequence).bigEndian
+        withUnsafeBytes(of: &seqBig) { bytes in
+            for i in 0..<min(8, bytes.count) {
+                iv[16 - bytes.count + i] = bytes[i]
+            }
+        }
+        
+        let bufferSize = data.count + kCCBlockSizeAES128
+        var decryptedData = Data(count: bufferSize)
+        var numBytesDecrypted: size_t = 0
+        
+        let cryptStatus = key.withUnsafeBytes { keyBytes in
+            data.withUnsafeBytes { dataBytes in
+                decryptedData.withUnsafeMutableBytes { decBytes in
+                    CCCrypt(
+                        CCOperation(kCCDecrypt),
+                        CCAlgorithm(kCCAlgorithmAES),
+                        CCOptions(kCCOptionPKCS7Padding),
+                        keyBytes.baseAddress, 16,
+                        iv,
+                        dataBytes.baseAddress, data.count,
+                        decBytes.baseAddress, bufferSize,
+                        &numBytesDecrypted
+                    )
+                }
+            }
+        }
+        
+        if cryptStatus == kCCSuccess {
+            decryptedData.removeSubrange(numBytesDecrypted..<bufferSize)
+            return decryptedData
+        }
+        return nil
+    }
+
     func exportAsMP4(item: DownloadItem) async throws -> URL {
         guard let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first else {
             throw NSError(domain: "ru.sloosh.download", code: 404, userInfo: [NSLocalizedDescriptionKey: "Директория документов не найдена"])
@@ -855,31 +895,52 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         let fm = FileManager.default
         try? fm.removeItem(at: exportUrl)
         
-        // 1. Check if unencrypted .ts segments exist in taskDir
         let files = (try? fm.contentsOfDirectory(atPath: taskDir.path)) ?? []
-        let tsFiles = files.filter { $0.hasPrefix("segment_") && $0.hasSuffix(".ts") }
+        
+        // 1. Direct copy if an mp4 file is already present
+        let mp4Files = files.filter { $0.hasSuffix(".mp4") }
+        if let firstMp4 = mp4Files.first {
+            let srcUrl = taskDir.appendingPathComponent(firstMp4)
+            try? fm.copyItem(at: srcUrl, to: exportUrl)
+            if fm.fileExists(atPath: exportUrl.path) {
+                return exportUrl
+            }
+        }
+        
+        // 2. Stitch and decrypt (if needed) downloaded segments
+        let segmentFiles = files.filter { $0.hasPrefix("segment_") }
             .sorted { a, b in
-                let numA = Int(a.replacingOccurrences(of: "segment_", with: "").replacingOccurrences(of: ".ts", with: "")) ?? 0
-                let numB = Int(b.replacingOccurrences(of: "segment_", with: "").replacingOccurrences(of: ".ts", with: "")) ?? 0
+                let numA = Int(a.components(separatedBy: CharacterSet.decimalDigits.inverted).joined()) ?? 0
+                let numB = Int(b.components(separatedBy: CharacterSet.decimalDigits.inverted).joined()) ?? 0
                 return numA < numB
             }
         
-        let isEncrypted = fm.fileExists(atPath: taskDir.appendingPathComponent("key.bin").path)
-        
-        if !tsFiles.isEmpty && !isEncrypted {
+        if !segmentFiles.isEmpty {
+            let keyFile = taskDir.appendingPathComponent("key.bin")
+            let keyData = (try? Data(contentsOf: keyFile))
+            let isEncrypted = (keyData?.count == 16)
+            
             let mergedTsUrl = tempDir.appendingPathComponent("\(UUID().uuidString).ts")
             fm.createFile(atPath: mergedTsUrl.path, contents: nil)
+            
             if let fileHandle = try? FileHandle(forWritingTo: mergedTsUrl) {
-                for tsName in tsFiles {
-                    let segUrl = taskDir.appendingPathComponent(tsName)
-                    if let data = try? Data(contentsOf: segUrl) {
-                        fileHandle.write(data)
+                for (seqIdx, segName) in segmentFiles.enumerated() {
+                    let segUrl = taskDir.appendingPathComponent(segName)
+                    if let rawData = try? Data(contentsOf: segUrl) {
+                        let finalData: Data
+                        if isEncrypted, let key = keyData {
+                            finalData = decryptHlsSegment(data: rawData, key: key, sequence: seqIdx) ?? rawData
+                        } else {
+                            finalData = rawData
+                        }
+                        fileHandle.write(finalData)
                     }
                 }
                 try? fileHandle.close()
                 
+                // Mux merged TS to clean MP4
                 let asset = AVURLAsset(url: mergedTsUrl)
-                let presets = [AVAssetExportPresetPassthrough, AVAssetExportPresetHighestQuality, AVAssetExportPreset1920x1080]
+                let presets = [AVAssetExportPresetPassthrough, AVAssetExportPresetHighestQuality, AVAssetExportPreset1920x1080, AVAssetExportPreset1280x720]
                 for preset in presets {
                     if let exportSession = AVAssetExportSession(asset: asset, presetName: preset) {
                         exportSession.outputURL = exportUrl
@@ -892,35 +953,16 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                         }
                     }
                 }
-                try? fm.removeItem(at: mergedTsUrl)
-            }
-        }
-        
-        // 2. Export via local HLS proxy server
-        if let localUrl = item.localPlayableUrl {
-            HlsProxyServer.shared.start()
-            let asset = AVURLAsset(url: localUrl)
-            let presets = [AVAssetExportPresetPassthrough, AVAssetExportPresetHighestQuality, AVAssetExportPreset1920x1080]
-            for preset in presets {
-                if let exportSession = AVAssetExportSession(asset: asset, presetName: preset) {
-                    exportSession.outputURL = exportUrl
-                    exportSession.outputFileType = .mp4
-                    exportSession.shouldOptimizeForNetworkUse = true
-                    await exportSession.export()
-                    if exportSession.status == .completed && fm.fileExists(atPath: exportUrl.path) {
+                
+                // Fallback: If AVAssetExportSession could not remux, copy merged file as mp4
+                if fm.fileExists(atPath: mergedTsUrl.path) {
+                    try? fm.copyItem(at: mergedTsUrl, to: exportUrl)
+                    try? fm.removeItem(at: mergedTsUrl)
+                    if fm.fileExists(atPath: exportUrl.path) {
                         return exportUrl
                     }
                 }
-            }
-        }
-        
-        // 3. Fallback direct copy if mp4 exists
-        let mp4Files = files.filter { $0.hasSuffix(".mp4") }
-        if let firstMp4 = mp4Files.first {
-            let srcUrl = taskDir.appendingPathComponent(firstMp4)
-            try? fm.copyItem(at: srcUrl, to: exportUrl)
-            if fm.fileExists(atPath: exportUrl.path) {
-                return exportUrl
+                try? fm.removeItem(at: mergedTsUrl)
             }
         }
         
