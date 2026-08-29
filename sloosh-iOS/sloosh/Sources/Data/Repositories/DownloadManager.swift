@@ -870,6 +870,13 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         return nil
     }
 
+    private func isFmp4Data(_ data: Data) -> Bool {
+        guard data.count >= 8 else { return false }
+        let boxType = [UInt8](data[4..<8])
+        let str = String(bytes: boxType, encoding: .ascii) ?? ""
+        return str == "ftyp" || str == "moov" || str == "moof" || str == "styp"
+    }
+
     private func remuxTsToMp4(tsUrl: URL, outputUrl: URL) async throws {
         let asset = AVURLAsset(url: tsUrl)
         
@@ -916,65 +923,46 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             throw writer.error ?? NSError(domain: "ru.sloosh.export", code: 403, userInfo: [NSLocalizedDescriptionKey: "Не удалось начать запись MP4"])
         }
         
-        let lock = NSLock()
         var sessionStarted = false
         
-        func startSessionIfNeeded(with sample: CMSampleBuffer) {
-            lock.lock()
-            defer { lock.unlock() }
-            if !sessionStarted {
-                let pts = CMSampleBufferGetPresentationTimeStamp(sample)
-                writer.startSession(atSourceTime: pts.isValid ? pts : .zero)
-                sessionStarted = true
+        while reader.status == .reading {
+            var hasMoreData = false
+            
+            if videoInput.isReadyForMoreMediaData {
+                if let sample = videoOutput.copyNextSampleBuffer() {
+                    hasMoreData = true
+                    if !sessionStarted {
+                        let pts = CMSampleBufferGetPresentationTimeStamp(sample)
+                        writer.startSession(atSourceTime: pts.isValid ? pts : .zero)
+                        sessionStarted = true
+                    }
+                    videoInput.append(sample)
+                } else {
+                    videoInput.markAsFinished()
+                }
+            }
+            
+            if let aIn = audioInput, let aOut = audioOutput, aIn.isReadyForMoreMediaData {
+                if let sample = aOut.copyNextSampleBuffer() {
+                    hasMoreData = true
+                    if !sessionStarted {
+                        let pts = CMSampleBufferGetPresentationTimeStamp(sample)
+                        writer.startSession(atSourceTime: pts.isValid ? pts : .zero)
+                        sessionStarted = true
+                    }
+                    aIn.append(sample)
+                } else {
+                    aIn.markAsFinished()
+                }
+            }
+            
+            if !hasMoreData && (audioInput?.isReadyForMoreMediaData == false || audioOutput == nil) && !videoInput.isReadyForMoreMediaData {
+                try? await Task.sleep(nanoseconds: 10_000_000) // 10ms
             }
         }
         
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            let group = DispatchGroup()
-            let queue = DispatchQueue(label: "ru.sloosh.exportQueue", qos: .userInitiated)
-            
-            group.enter()
-            videoInput.requestMediaDataWhenReady(on: queue) {
-                while videoInput.isReadyForMoreMediaData {
-                    if let sample = videoOutput.copyNextSampleBuffer() {
-                        startSessionIfNeeded(with: sample)
-                        if !videoInput.append(sample) {
-                            videoInput.markAsFinished()
-                            group.leave()
-                            break
-                        }
-                    } else {
-                        videoInput.markAsFinished()
-                        group.leave()
-                        break
-                    }
-                }
-            }
-            
-            if let aIn = audioInput, let aOut = audioOutput {
-                group.enter()
-                aIn.requestMediaDataWhenReady(on: queue) {
-                    while aIn.isReadyForMoreMediaData {
-                        if let sample = aOut.copyNextSampleBuffer() {
-                            startSessionIfNeeded(with: sample)
-                            if !aIn.append(sample) {
-                                aIn.markAsFinished()
-                                group.leave()
-                                break
-                            }
-                        } else {
-                            aIn.markAsFinished()
-                            group.leave()
-                            break
-                        }
-                    }
-                }
-            }
-            
-            group.notify(queue: queue) {
-                continuation.resume()
-            }
-        }
+        videoInput.markAsFinished()
+        audioInput?.markAsFinished()
         
         await writer.finishWriting()
         
@@ -1020,7 +1008,7 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             }
         }
         
-        // 2. Stitch and decrypt (if needed) downloaded segments
+        // 2. Stitch segments
         let segmentFiles = files.filter { $0.hasPrefix("segment_") }
             .sorted { a, b in
                 let numA = Int(a.components(separatedBy: CharacterSet.decimalDigits.inverted).joined()) ?? 0
@@ -1031,8 +1019,35 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         if !segmentFiles.isEmpty {
             let keyFile = taskDir.appendingPathComponent("key.bin")
             let keyData = (try? Data(contentsOf: keyFile))
-            let isEncrypted = (keyData?.count == 16)
             
+            // Check if key.bin is an fMP4 init segment (ftyp/moov or > 16 bytes)
+            let isFmp4Init = (keyData != nil && (isFmp4Data(keyData!) || keyData!.count > 16))
+            let firstSegData = (try? Data(contentsOf: taskDir.appendingPathComponent(segmentFiles[0]))) ?? Data()
+            let isFmp4Segments = isFmp4Init || isFmp4Data(firstSegData)
+            
+            if isFmp4Segments {
+                // Fragmented MP4 stream: init segment + moof/mdat fragment stitching produces 100% valid MP4
+                fm.createFile(atPath: exportUrl.path, contents: nil)
+                if let fileHandle = try? FileHandle(forWritingTo: exportUrl) {
+                    if let keyData, isFmp4Init {
+                        fileHandle.write(keyData)
+                    }
+                    for segName in segmentFiles {
+                        let segUrl = taskDir.appendingPathComponent(segName)
+                        if let segData = try? Data(contentsOf: segUrl) {
+                            fileHandle.write(segData)
+                        }
+                    }
+                    try? fileHandle.close()
+                    
+                    if fm.fileExists(atPath: exportUrl.path), (try? fm.attributesOfItem(atPath: exportUrl.path)[.size] as? Int64 ?? 0) > 1000 {
+                        return exportUrl
+                    }
+                }
+            }
+            
+            // Otherwise, MPEG-TS stream (either encrypted with 16-byte AES key or unencrypted)
+            let isEncrypted = (keyData?.count == 16 && !isFmp4Init)
             let mergedTsUrl = tempDir.appendingPathComponent("\(UUID().uuidString).ts")
             fm.createFile(atPath: mergedTsUrl.path, contents: nil)
             
