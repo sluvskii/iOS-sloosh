@@ -192,10 +192,9 @@ func allohaTranslationNamesMatch(_ lhs: String?, _ rhs: String?, exactOnly: Bool
 }
 
 
-// MARK: - Selective SSL Delegate
 // Bypasses certificate validation only for Alloha CDN hosts that use self-signed certs.
 // This is intentionally narrow — all other hosts still go through default cert validation.
-class AllohaTrustedSessionDelegate: NSObject, @preconcurrency URLSessionDelegate, @preconcurrency URLSessionTaskDelegate, @unchecked Sendable {
+class AllohaTrustedSessionDelegate: NSObject, @preconcurrency URLSessionDelegate, URLSessionTaskDelegate, @unchecked Sendable {
     
     private static let trustedHosts: Set<String> = [
         "alloha.tv", "alloh.tv",
@@ -480,7 +479,7 @@ final class AllohaRepository: @unchecked Sendable {
             if defaultIframe.hasPrefix("//") { defaultIframe = "https:" + defaultIframe }
             
             if parsedTrans.count <= 1 && !defaultIframe.isEmpty {
-                let resolver = AllohaRuntimeResolver()
+                let resolver = await AllohaRuntimeResolver()
                 if let resolved = try? await resolver.resolve(iframeUrl: defaultIframe),
                    let audioVariants = resolved["audioVariants"] as? [[String: Any]],
                    audioVariants.count > 1 {
