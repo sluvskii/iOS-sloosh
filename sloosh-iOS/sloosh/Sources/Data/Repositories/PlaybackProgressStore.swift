@@ -82,9 +82,19 @@ public final class PlaybackProgressStore: ObservableObject {
             .store(in: &cancellables)
     }
 
-    public func handleUserChanged() {
+    private var lastSyncedUserId: String?
+    private var lastSyncTime: Date = .distantPast
+
+    public func handleUserChanged(force: Bool = false) {
         let user = AuthRepository.shared.currentUser
         if AuthRepository.shared.isAuthenticated, let user = user {
+            let now = Date()
+            if !force && lastSyncedUserId == user.id && now.timeIntervalSince(lastSyncTime) < 30.0 {
+                return
+            }
+            lastSyncedUserId = user.id
+            lastSyncTime = now
+            
             Task {
                 if let remoteProgress = await CloudSyncService.shared.fetchRemoteProgress(userId: user.id, idToken: user.idToken) {
                     await self.syncRemoteProgressToLocal(remoteProgress, userId: user.id)
@@ -93,6 +103,8 @@ public final class PlaybackProgressStore: ObservableObject {
                     await self.syncRemoteMetadataToLocal(remoteMetadata, userId: user.id)
                 }
             }
+        } else {
+            lastSyncedUserId = nil
         }
     }
 
