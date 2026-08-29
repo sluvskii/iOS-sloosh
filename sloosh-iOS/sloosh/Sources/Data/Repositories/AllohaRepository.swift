@@ -110,6 +110,41 @@ func normalizedAllohaTranslationName(_ raw: String?) -> String {
     return value
 }
 
+private func detectLanguageTag(in text: String) -> String? {
+    let lower = text.lowercased()
+    if lower.contains("украин") || lower.contains("ukrain") || lower.contains("укр") || lower.contains("ukr") {
+        return "ukr"
+    }
+    if lower.contains("казах") || lower.contains("kazakh") || lower.contains("каз") || lower.contains("kaz") {
+        return "kaz"
+    }
+    if lower.contains("узбек") || lower.contains("uzbek") || lower.contains("узб") || lower.contains("uzb") {
+        return "uzb"
+    }
+    if lower.contains("оригинал") || lower.contains("original") || lower.contains("english") || lower.contains("английск") || lower.contains("eng") {
+        return "eng"
+    }
+    if lower.contains("грузин") || lower.contains("georgian") || lower.contains("geo") {
+        return "geo"
+    }
+    if lower.contains("турец") || lower.contains("turkish") || lower.contains("turk") {
+        return "tur"
+    }
+    if lower.contains("япон") || lower.contains("japan") || lower.contains("jap") {
+        return "jap"
+    }
+    if lower.contains("корей") || lower.contains("korean") || lower.contains("kor") {
+        return "kor"
+    }
+    if lower.contains("китай") || lower.contains("chinese") || lower.contains("chi") {
+        return "chi"
+    }
+    if lower.contains("русск") || lower.contains("rus") {
+        return "rus"
+    }
+    return nil
+}
+
 func allohaTranslationNamesMatch(_ lhs: String?, _ rhs: String?, exactOnly: Bool = false) -> Bool {
     guard let lhs = lhs?.trimmingCharacters(in: .whitespacesAndNewlines), !lhs.isEmpty,
           let rhs = rhs?.trimmingCharacters(in: .whitespacesAndNewlines), !rhs.isEmpty else {
@@ -121,6 +156,13 @@ func allohaTranslationNamesMatch(_ lhs: String?, _ rhs: String?, exactOnly: Bool
     
     if left == right {
         return true
+    }
+    
+    // Strict language mismatch check
+    let langLeft = detectLanguageTag(in: left)
+    let langRight = detectLanguageTag(in: right)
+    if let langLeft, let langRight, langLeft != langRight {
+        return false
     }
     
     let isOriginalOrEnglish: (String) -> Bool = { name in
@@ -168,7 +210,7 @@ func allohaTranslationNamesMatch(_ lhs: String?, _ rhs: String?, exactOnly: Bool
     let rightHasDub = right.contains("дубл")
     
     if leftHasDub && rightHasDub {
-        return true
+        return langLeft == langRight
     }
     
     // Helper to strip generic studio/dub noise words
