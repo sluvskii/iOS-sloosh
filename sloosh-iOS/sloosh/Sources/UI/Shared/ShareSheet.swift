@@ -15,7 +15,11 @@ struct ShareSheet: UIViewControllerRepresentable {
 enum SharePresenter {
     @MainActor
     static func presentShare(url: URL, text: String) {
-        let items: [Any] = [url, text]
+        presentShare(items: [url, text])
+    }
+    
+    @MainActor
+    static func presentShare(items: [Any]) {
         let activityVC = UIActivityViewController(activityItems: items, applicationActivities: nil)
         
         let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
@@ -25,6 +29,11 @@ enum SharePresenter {
             var topVC = rootVC
             while let presented = topVC.presentedViewController {
                 topVC = presented
+            }
+            if let popover = activityVC.popoverPresentationController {
+                popover.sourceView = topVC.view
+                popover.sourceRect = CGRect(x: topVC.view.bounds.midX, y: topVC.view.bounds.midY, width: 0, height: 0)
+                popover.permittedArrowDirections = []
             }
             topVC.present(activityVC, animated: true)
         }

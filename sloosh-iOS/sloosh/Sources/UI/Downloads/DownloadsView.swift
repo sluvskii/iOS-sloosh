@@ -60,6 +60,8 @@ struct DownloadsView: View {
     @State private var selectedFilter = 0 // 0 = Все, 1 = Фильмы, 2 = Сериалы
     @State private var playerItem: DownloadItem? = nil
     @State private var scrollOffset: CGFloat = 0
+    @State private var isExporting: Bool = false
+    @State private var exportingTitle: String = ""
     @Environment(\.dismiss) private var dismiss
     
     private var blurOpacity: Double {
@@ -81,61 +83,98 @@ struct DownloadsView: View {
     }
     
     var body: some View {
-        Group {
-            if downloadManager.downloads.isEmpty {
-                emptyView
-            } else {
-                List {
-                    ForEach(listItems) { item in
-                        Button {
-                            if item.status == .completed {
-                                playerItem = item
+        ZStack {
+            Group {
+                if downloadManager.downloads.isEmpty {
+                    emptyView
+                } else {
+                    List {
+                        ForEach(listItems) { item in
+                            Button {
+                                if item.status == .completed {
+                                    playerItem = item
+                                }
+                            } label: {
+                                DownloadRowView(item: item, onShare: { shareItem in
+                                    shareDownloadedItem(shareItem)
+                                })
                             }
-                        } label: {
-                            DownloadRowView(item: item)
+                            .buttonStyle(DownloadCardScaleButtonStyle())
+                            .listRowBackground(Color.clear)
+                            .listRowSeparator(.hidden)
+                            .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
                         }
-                        .buttonStyle(DownloadCardScaleButtonStyle())
-                        .listRowBackground(Color.clear)
-                        .listRowSeparator(.hidden)
-                        .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
+                    }
+                    .listStyle(.plain)
+                    .scrollIndicators(.hidden)
+                    .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                        geometry.contentOffset.y + geometry.contentInsets.top
+                    } action: { oldOffset, newOffset in
+                        scrollOffset = newOffset
                     }
                 }
-                .listStyle(.plain)
-                .scrollIndicators(.hidden)
-                .onScrollGeometryChange(for: CGFloat.self) { geometry in
-                    geometry.contentOffset.y + geometry.contentInsets.top
-                } action: { oldOffset, newOffset in
-                    scrollOffset = newOffset
-                }
             }
-        }
-        .safeAreaInset(edge: .top, spacing: 0) {
-            VStack(spacing: 8) {
+            .safeAreaInset(edge: .top, spacing: 0) {
+                VStack(spacing: 8) {
+                    ZStack {
+                        Text("Загрузки")
+                            .font(.system(size: 18, weight: .semibold))
+                            .foregroundStyle(.primary)
+
+                        HStack {
+                            TelegramGlassIconButton(systemName: "chevron.left") {
+                                dismiss()
+                            }
+                            Spacer()
+                        }
+                    }
+                    .padding(.horizontal, 16)
+
+                    DownloadsCategoryTextTabs(selectedFilter: $selectedFilter)
+                        .padding(.bottom, 2)
+                }
+                .background(
+                    VariableBlurView(tintOpacity: 1.0)
+                        .padding(.bottom, -60)
+                        .ignoresSafeArea(edges: .top)
+                        .opacity(blurOpacity)
+                        .animation(.easeInOut(duration: 0.2), value: blurOpacity)
+                )
+            }
+            
+            if isExporting {
                 ZStack {
-                    Text("Загрузки")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(.primary)
-
-                    HStack {
-                        TelegramGlassIconButton(systemName: "chevron.left") {
-                            dismiss()
+                    Color.black.opacity(0.4)
+                        .ignoresSafeArea()
+                    
+                    VStack(spacing: 16) {
+                        ProgressView()
+                            .controlSize(.large)
+                            .tint(.white)
+                        
+                        VStack(spacing: 4) {
+                            Text("Подготовка видео...")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundStyle(.white)
+                            
+                            if !exportingTitle.isEmpty {
+                                Text(exportingTitle)
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundStyle(.white.opacity(0.8))
+                                    .lineLimit(1)
+                            }
                         }
-                        Spacer()
                     }
+                    .padding(.horizontal, 28)
+                    .padding(.vertical, 24)
+                    .glassEffect(in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    .shadow(color: .black.opacity(0.3), radius: 20, x: 0, y: 10)
                 }
-                .padding(.horizontal, 16)
-
-                DownloadsCategoryTextTabs(selectedFilter: $selectedFilter)
-                    .padding(.bottom, 2)
+                .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                .zIndex(100)
             }
-            .background(
-                VariableBlurView(tintOpacity: 1.0)
-                    .padding(.bottom, -60)
-                    .ignoresSafeArea(edges: .top)
-                    .opacity(blurOpacity)
-                    .animation(.easeInOut(duration: 0.2), value: blurOpacity)
-            )
         }
+        .animation(.easeInOut(duration: 0.25), value: isExporting)
         .navigationTitle("Загрузки")
         .toolbar(.hidden, for: .navigationBar)
         .background(Color(UIColor.systemBackground))
@@ -152,6 +191,31 @@ struct DownloadsView: View {
                 selectedVoiceover: item.translationName,
                 directStreamUrl: item.localPlayableUrl?.absoluteString
             )
+        }
+    }
+    
+    private func shareDownloadedItem(_ item: DownloadItem) {
+        guard item.status == .completed else { return }
+        let generator = UIImpactFeedbackGenerator(style: .medium)
+        generator.prepare()
+        generator.impactOccurred()
+        
+        isExporting = true
+        exportingTitle = item.title
+        
+        Task {
+            do {
+                let mp4Url = try await DownloadManager.shared.exportAsMP4(item: item)
+                await MainActor.run {
+                    self.isExporting = false
+                    SharePresenter.presentShare(items: [mp4Url])
+                }
+            } catch {
+                await MainActor.run {
+                    self.isExporting = false
+                    AppDiagnostics.shared.log("Failed to export download item: \(error.localizedDescription)")
+                }
+            }
         }
     }
     
@@ -175,6 +239,7 @@ private struct DownloadCardScaleButtonStyle: ButtonStyle {
 
 private struct DownloadRowView: View {
     let item: DownloadItem
+    var onShare: (DownloadItem) -> Void = { _ in }
     
     var body: some View {
         HStack(spacing: 16) {
@@ -225,11 +290,58 @@ private struct DownloadRowView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, 8)
 
-            statusBadge
+            HStack(spacing: 12) {
+                if item.status == .completed {
+                    Button {
+                        onShare(item)
+                    } label: {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(.primary)
+                            .frame(width: 32, height: 32)
+                            .glassEffect(in: Circle())
+                    }
+                    .buttonStyle(.plain)
+                }
+                
+                statusBadge
+            }
         }
         .frame(height: 150)
         .contentShape(Rectangle())
         .padding(.vertical, 4)
+        .contextMenu {
+            if item.status == .completed {
+                Button {
+                    onShare(item)
+                } label: {
+                    Label("Поделиться / Сохранить", systemImage: "square.and.arrow.up")
+                }
+                
+                Divider()
+            }
+            
+            Button(role: .destructive) {
+                let generator = UIImpactFeedbackGenerator(style: .medium)
+                generator.prepare()
+                generator.impactOccurred()
+                withAnimation {
+                    DownloadManager.shared.deleteDownload(id: item.id)
+                }
+            } label: {
+                Label("Удалить", systemImage: "trash.fill")
+            }
+        }
+        .swipeActions(edge: .leading) {
+            if item.status == .completed {
+                Button {
+                    onShare(item)
+                } label: {
+                    Label("Поделиться", systemImage: "square.and.arrow.up")
+                }
+                .tint(Color.slooshAccent)
+            }
+        }
         .swipeActions(edge: .trailing) {
             Button(role: .destructive) {
                 let generator = UIImpactFeedbackGenerator(style: .medium)
