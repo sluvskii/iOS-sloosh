@@ -377,38 +377,47 @@ final class AllohaRepository: @unchecked Sendable {
         } else {
             var parsedTrans: [AllohaTranslation] = []
             
-            if let transObj = dataObj["translation"] as? [String: Any] {
-                for (tKey, tValue) in transObj {
-                    guard let tDict = tValue as? [String: Any],
-                          var iframe = tDict["iframe"] as? String, !iframe.isEmpty else { continue }
-                    if iframe.hasPrefix("//") {
-                        iframe = "https:" + iframe
+            // 1. Проверяем translation_iframe (основной формат Alloha для фильмов)
+            if let transIframeDict = dataObj["translation_iframe"] as? [String: Any] {
+                for (tKey, tValue) in transIframeDict {
+                    var iframe = ""
+                    var transName = ""
+                    if let tDict = tValue as? [String: Any] {
+                        iframe = tDict["iframe"] as? String ?? tDict["url"] as? String ?? ""
+                        transName = tDict["name"] as? String ?? tDict["translation"] as? String ?? tDict["title"] as? String ?? ""
+                    } else if let str = tValue as? String {
+                        iframe = str
                     }
+                    guard !iframe.isEmpty else { continue }
+                    if iframe.hasPrefix("//") { iframe = "https:" + iframe }
                     iframe = injectTranslationId(tKey, into: iframe)
-                    let transName = tDict["translation"] as? String ?? "Unknown"
                     
-                    let cleanTitle = normalizedAllohaTranslationName(transName)
+                    if transName.isEmpty {
+                        if let nameDict = (dataObj["translation"] as? [String: Any]) ?? (dataObj["translations"] as? [String: Any]) {
+                            if let n = nameDict[tKey] as? String {
+                                transName = n
+                            } else if let nDict = nameDict[tKey] as? [String: Any] {
+                                transName = nDict["translation"] as? String ?? nDict["name"] as? String ?? ""
+                            }
+                        }
+                    }
+                    let cleanTitle = normalizedAllohaTranslationName(transName.isEmpty ? "Озвучка \(tKey)" : transName)
                     let lower = cleanTitle.lowercased()
                     if !lower.contains("субтитр") && !lower.contains("subtitle") {
                         parsedTrans.append(AllohaTranslation(id: tKey, name: cleanTitle, iframeUrl: iframe, streamUrl: nil))
                     }
                 }
                 parsedTrans.sort { $0.name < $1.name }
-            } else if let transArray = dataObj["translation"] as? [[String: Any]] {
-                for (index, tDict) in transArray.enumerated() {
-                    guard var iframe = tDict["iframe"] as? String, !iframe.isEmpty else { continue }
-                    if iframe.hasPrefix("//") {
-                        iframe = "https:" + iframe
-                    }
-                    // Prefer real translation ID from the element if available,
-                    // fall back to numeric index for backward compatibility
+            } else if let transIframeArray = dataObj["translation_iframe"] as? [[String: Any]] {
+                for (index, tDict) in transIframeArray.enumerated() {
+                    guard var iframe = tDict["iframe"] as? String ?? tDict["url"] as? String, !iframe.isEmpty else { continue }
+                    if iframe.hasPrefix("//") { iframe = "https:" + iframe }
                     let translationId = (tDict["id"] as? String)
                         ?? (tDict["translation_id"] as? String)
                         ?? ((tDict["id"] as? Int).map { String($0) })
                         ?? String(index)
                     iframe = injectTranslationId(translationId, into: iframe)
-                    let transName = tDict["translation"] as? String ?? "Unknown"
-                    
+                    let transName = tDict["name"] as? String ?? tDict["translation"] as? String ?? tDict["title"] as? String ?? "Озвучка \(index + 1)"
                     let cleanTitle = normalizedAllohaTranslationName(transName)
                     let lower = cleanTitle.lowercased()
                     if !lower.contains("субтитр") && !lower.contains("subtitle") {
@@ -416,37 +425,92 @@ final class AllohaRepository: @unchecked Sendable {
                     }
                 }
                 parsedTrans.sort { $0.name < $1.name }
-            } else if let transStr = dataObj["translation"] as? String {
-                // Если translation пришел как просто строка с названием озвучки
-                var iframe = dataObj["iframe"] as? String ?? ""
-                if iframe.hasPrefix("//") {
-                    iframe = "https:" + iframe
-                }
-                if !iframe.isEmpty {
-                    let cleanTitle = normalizedAllohaTranslationName(transStr)
-                    let lower = cleanTitle.lowercased()
-                    if !lower.contains("субтитр") && !lower.contains("subtitle") {
-                        let finalName = cleanTitle.isEmpty ? transStr : cleanTitle
-                        parsedTrans.append(AllohaTranslation(id: "default", name: finalName, iframeUrl: iframe, streamUrl: nil))
+            }
+            
+            // 2. Если translation_iframe не дал результатов, проверяем translation и translations
+            if parsedTrans.isEmpty {
+                let transSource = dataObj["translation"] ?? dataObj["translations"]
+                if let transObj = transSource as? [String: Any] {
+                    for (tKey, tValue) in transObj {
+                        guard let tDict = tValue as? [String: Any],
+                              var iframe = tDict["iframe"] as? String, !iframe.isEmpty else { continue }
+                        if iframe.hasPrefix("//") { iframe = "https:" + iframe }
+                        iframe = injectTranslationId(tKey, into: iframe)
+                        let transName = tDict["translation"] as? String ?? tDict["name"] as? String ?? "Unknown"
+                        let cleanTitle = normalizedAllohaTranslationName(transName)
+                        let lower = cleanTitle.lowercased()
+                        if !lower.contains("субтитр") && !lower.contains("subtitle") {
+                            parsedTrans.append(AllohaTranslation(id: tKey, name: cleanTitle, iframeUrl: iframe, streamUrl: nil))
+                        }
+                    }
+                    parsedTrans.sort { $0.name < $1.name }
+                } else if let transArray = transSource as? [[String: Any]] {
+                    for (index, tDict) in transArray.enumerated() {
+                        guard var iframe = tDict["iframe"] as? String, !iframe.isEmpty else { continue }
+                        if iframe.hasPrefix("//") { iframe = "https:" + iframe }
+                        let translationId = (tDict["id"] as? String)
+                            ?? (tDict["translation_id"] as? String)
+                            ?? ((tDict["id"] as? Int).map { String($0) })
+                            ?? String(index)
+                        iframe = injectTranslationId(translationId, into: iframe)
+                        let transName = tDict["translation"] as? String ?? tDict["name"] as? String ?? "Unknown"
+                        let cleanTitle = normalizedAllohaTranslationName(transName)
+                        let lower = cleanTitle.lowercased()
+                        if !lower.contains("субтитр") && !lower.contains("subtitle") {
+                            parsedTrans.append(AllohaTranslation(id: translationId, name: cleanTitle, iframeUrl: iframe, streamUrl: nil))
+                        }
+                    }
+                    parsedTrans.sort { $0.name < $1.name }
+                } else if let transStr = transSource as? String {
+                    var iframe = dataObj["iframe"] as? String ?? ""
+                    if iframe.hasPrefix("//") { iframe = "https:" + iframe }
+                    if !iframe.isEmpty {
+                        let cleanTitle = normalizedAllohaTranslationName(transStr)
+                        let lower = cleanTitle.lowercased()
+                        if !lower.contains("субтитр") && !lower.contains("subtitle") {
+                            let finalName = cleanTitle.isEmpty ? transStr : cleanTitle
+                            parsedTrans.append(AllohaTranslation(id: "default", name: finalName, iframeUrl: iframe, streamUrl: nil))
+                        }
                     }
                 }
             }
             
+            // 3. Если для фильма доступен один мастер-iframe со скрытыми bnsi audioVariants
+            var defaultIframe = dataObj["iframe"] as? String ?? parsedTrans.first?.iframeUrl ?? ""
+            if defaultIframe.hasPrefix("//") { defaultIframe = "https:" + defaultIframe }
+            
+            if parsedTrans.count <= 1 && !defaultIframe.isEmpty {
+                let resolver = AllohaRuntimeResolver()
+                if let resolved = try? await resolver.resolve(iframeUrl: defaultIframe),
+                   let audioVariants = resolved["audioVariants"] as? [[String: Any]],
+                   audioVariants.count > 1 {
+                    var dynamicTrans: [AllohaTranslation] = []
+                    for (idx, variant) in audioVariants.enumerated() {
+                        let vTitle = (variant["title"] as? String) ?? "Озвучка \(idx + 1)"
+                        let vUrl = (variant["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                        let cleanTitle = normalizedAllohaTranslationName(vTitle)
+                        let lower = cleanTitle.lowercased()
+                        if !lower.contains("субтитр") && !lower.contains("subtitle") {
+                            dynamicTrans.append(AllohaTranslation(id: "\(idx)", name: cleanTitle, iframeUrl: defaultIframe, streamUrl: vUrl))
+                        }
+                    }
+                    if !dynamicTrans.isEmpty {
+                        parsedTrans = dynamicTrans
+                    }
+                }
+            }
+            
+            // 4. Финальный фолбэк — если ничего не найдено, ставим дефолтную дорожку "Основной"
+            if parsedTrans.isEmpty && !defaultIframe.isEmpty {
+                parsedTrans = [
+                    AllohaTranslation(id: "default", name: "Основной", iframeUrl: defaultIframe, streamUrl: nil)
+                ]
+            }
+            
             var movie: AllohaMovie? = nil
             if !parsedTrans.isEmpty {
-                // Ищем дефолтный iframe на всякий случай
-                var iframe = dataObj["iframe"] as? String ?? parsedTrans.first!.iframeUrl
-                if iframe.hasPrefix("//") { iframe = "https:" + iframe }
-                movie = AllohaMovie(title: title, iframeUrl: iframe, translations: parsedTrans)
-            } else {
-                // Фолбэк на старую логику, если нет объекта translation
-                var iframe = dataObj["iframe"] as? String ?? ""
-                if iframe.hasPrefix("//") { iframe = "https:" + iframe }
-                if !iframe.isEmpty {
-                    movie = AllohaMovie(title: title, iframeUrl: iframe, translations: [
-                        AllohaTranslation(id: "default", name: title, iframeUrl: iframe, streamUrl: nil)
-                    ])
-                }
+                let movieIframe = defaultIframe.isEmpty ? parsedTrans.first!.iframeUrl : defaultIframe
+                movie = AllohaMovie(title: title, iframeUrl: movieIframe, translations: parsedTrans)
             }
             
             let result = AllohaApiResult(title: title, isSerial: false, movie: movie, seasons: [])
