@@ -940,7 +940,7 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         return str == "ftyp" || str == "moov" || str == "moof" || str == "styp"
     }
 
-    private func remuxToCleanMp4(inputUrl: URL, outputUrl: URL) async throws {
+    private func remuxToCleanMp4(inputUrl: URL, outputUrl: URL, expectedDuration: Double? = nil) async throws {
         let asset = AVURLAsset(url: inputUrl)
         let fm = FileManager.default
         
@@ -951,7 +951,14 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         let audioTracks = (try? await asset.loadTracks(withMediaType: .audio)) ?? []
         
         let videoTimeRange = try await videoTrack.load(.timeRange)
-        let videoDuration = videoTimeRange.duration
+        var targetDuration = videoTimeRange.duration
+        
+        if let expected = expectedDuration, expected > 0 {
+            let expectedCM = CMTime(seconds: expected, preferredTimescale: 600)
+            if !targetDuration.isNumeric || targetDuration.seconds > (expected * 1.1) || targetDuration.seconds < 1 {
+                targetDuration = expectedCM
+            }
+        }
         
         let videoFormats = try await videoTrack.load(.formatDescriptions)
         let videoFormat = videoFormats.first
@@ -999,8 +1006,8 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         let lock = NSLock()
         var sessionStarted = false
         var sessionStartPts: CMTime = .zero
-        
-        let audioCutoffDuration = (videoDuration.isNumeric && videoDuration.seconds > 0) ? videoDuration : CMTime(seconds: 7200, preferredTimescale: 600)
+        var isVideoFinished = false
+        var isAudioFinished = (audioInput == nil)
         
         await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
             let group = DispatchGroup()
@@ -1009,23 +1016,54 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             group.enter()
             videoInput.requestMediaDataWhenReady(on: queue) {
                 while videoInput.isReadyForMoreMediaData {
+                    lock.lock()
+                    if isVideoFinished {
+                        lock.unlock()
+                        break
+                    }
+                    lock.unlock()
+                    
                     if let sample = videoOutput.copyNextSampleBuffer() {
+                        let pts = CMSampleBufferGetPresentationTimeStamp(sample)
                         lock.lock()
                         if !sessionStarted {
-                            let pts = CMSampleBufferGetPresentationTimeStamp(sample)
                             sessionStartPts = pts.isValid ? pts : .zero
                             writer.startSession(atSourceTime: sessionStartPts)
                             sessionStarted = true
                         }
+                        let startPts = sessionStartPts
                         lock.unlock()
-                        if !videoInput.append(sample) {
-                            videoInput.markAsFinished()
-                            group.leave()
+                        
+                        let relPts = CMTimeSubtract(pts, startPts)
+                        if !targetDuration.isNumeric || relPts <= targetDuration {
+                            if !videoInput.append(sample) {
+                                lock.lock()
+                                if !isVideoFinished {
+                                    isVideoFinished = true
+                                    videoInput.markAsFinished()
+                                    group.leave()
+                                }
+                                lock.unlock()
+                                break
+                            }
+                        } else {
+                            lock.lock()
+                            if !isVideoFinished {
+                                isVideoFinished = true
+                                videoInput.markAsFinished()
+                                group.leave()
+                            }
+                            lock.unlock()
                             break
                         }
                     } else {
-                        videoInput.markAsFinished()
-                        group.leave()
+                        lock.lock()
+                        if !isVideoFinished {
+                            isVideoFinished = true
+                            videoInput.markAsFinished()
+                            group.leave()
+                        }
+                        lock.unlock()
                         break
                     }
                 }
@@ -1035,10 +1073,17 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                 group.enter()
                 aIn.requestMediaDataWhenReady(on: queue) {
                     while aIn.isReadyForMoreMediaData {
+                        lock.lock()
+                        if isAudioFinished {
+                            lock.unlock()
+                            break
+                        }
+                        lock.unlock()
+                        
                         if let sample = aOut.copyNextSampleBuffer() {
+                            let pts = CMSampleBufferGetPresentationTimeStamp(sample)
                             lock.lock()
                             if !sessionStarted {
-                                let pts = CMSampleBufferGetPresentationTimeStamp(sample)
                                 sessionStartPts = pts.isValid ? pts : .zero
                                 writer.startSession(atSourceTime: sessionStartPts)
                                 sessionStarted = true
@@ -1046,23 +1091,36 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                             let startPts = sessionStartPts
                             lock.unlock()
                             
-                            let pts = CMSampleBufferGetPresentationTimeStamp(sample)
-                            let relativePts = CMTimeSubtract(pts, startPts)
-                            
-                            if relativePts <= audioCutoffDuration {
+                            let relPts = CMTimeSubtract(pts, startPts)
+                            if !targetDuration.isNumeric || relPts <= targetDuration {
                                 if !aIn.append(sample) {
-                                    aIn.markAsFinished()
-                                    group.leave()
+                                    lock.lock()
+                                    if !isAudioFinished {
+                                        isAudioFinished = true
+                                        aIn.markAsFinished()
+                                        group.leave()
+                                    }
+                                    lock.unlock()
                                     break
                                 }
                             } else {
-                                aIn.markAsFinished()
-                                group.leave()
+                                lock.lock()
+                                if !isAudioFinished {
+                                    isAudioFinished = true
+                                    aIn.markAsFinished()
+                                    group.leave()
+                                }
+                                lock.unlock()
                                 break
                             }
                         } else {
-                            aIn.markAsFinished()
-                            group.leave()
+                            lock.lock()
+                            if !isAudioFinished {
+                                isAudioFinished = true
+                                aIn.markAsFinished()
+                                group.leave()
+                            }
+                            lock.unlock()
                             break
                         }
                     }
@@ -1094,8 +1152,8 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                 exportSession.outputURL = outputUrl
                 exportSession.outputFileType = .mp4
                 exportSession.shouldOptimizeForNetworkUse = true
-                if videoDuration.isNumeric && videoDuration.seconds > 0 {
-                    exportSession.timeRange = CMTimeRange(start: .zero, duration: videoDuration)
+                if targetDuration.isNumeric && targetDuration.seconds > 0 {
+                    exportSession.timeRange = CMTimeRange(start: .zero, duration: targetDuration)
                 }
                 await exportSession.export()
                 let sessionSize = ((try? fm.attributesOfItem(atPath: outputUrl.path))?[.size] as? Int64) ?? 0
@@ -1142,6 +1200,24 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             try? fm.copyItem(at: srcUrl, to: exportUrl)
             if fm.fileExists(atPath: exportUrl.path) {
                 return exportUrl
+            }
+        }
+        
+        // Calculate true duration from local.m3u8 if available
+        var playlistDurationSec: Double? = nil
+        if let playlistStr = try? String(contentsOf: taskDir.appendingPathComponent("local.m3u8")) {
+            var sum: Double = 0
+            for line in playlistStr.components(separatedBy: .newlines) {
+                let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                if trimmed.hasPrefix("#EXTINF:") {
+                    let valStr = trimmed.replacingOccurrences(of: "#EXTINF:", with: "").components(separatedBy: ",")[0]
+                    if let d = Double(valStr) {
+                        sum += d
+                    }
+                }
+            }
+            if sum > 0 {
+                playlistDurationSec = sum
             }
         }
         
@@ -1195,7 +1271,7 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                 
                 // Remux fMP4 to monolithic standard ISO MP4 to fix duration / timescale
                 do {
-                    try await remuxToCleanMp4(inputUrl: tempStitchedUrl, outputUrl: exportUrl)
+                    try await remuxToCleanMp4(inputUrl: tempStitchedUrl, outputUrl: exportUrl, expectedDuration: playlistDurationSec)
                     let size = ((try? fm.attributesOfItem(atPath: exportUrl.path))?[.size] as? Int64) ?? 0
                     if fm.fileExists(atPath: exportUrl.path) && size > 1000 {
                         try? fm.removeItem(at: tempStitchedUrl)
@@ -1205,14 +1281,8 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                     AppDiagnostics.shared.log("remuxToCleanMp4 fmp4 error: \(error.localizedDescription)")
                 }
                 
-                // Fallback: move stitched file directly
-                if fm.fileExists(atPath: tempStitchedUrl.path) {
-                    try? fm.moveItem(at: tempStitchedUrl, to: exportUrl)
-                    let size = ((try? fm.attributesOfItem(atPath: exportUrl.path))?[.size] as? Int64) ?? 0
-                    if fm.fileExists(atPath: exportUrl.path) && size > 1000 {
-                        return exportUrl
-                    }
-                }
+                try? fm.removeItem(at: tempStitchedUrl)
+                throw NSError(domain: "ru.sloosh.export", code: 500, userInfo: [NSLocalizedDescriptionKey: "Не удалось пересобрать видео в чистый MP4"])
             }
             
             // Otherwise, MPEG-TS stream (either encrypted with 16-byte AES key or unencrypted)
@@ -1237,31 +1307,14 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                 
                 // Try clean remux
                 do {
-                    try await remuxToCleanMp4(inputUrl: mergedTsUrl, outputUrl: exportUrl)
+                    try await remuxToCleanMp4(inputUrl: mergedTsUrl, outputUrl: exportUrl, expectedDuration: playlistDurationSec)
                     let size = ((try? fm.attributesOfItem(atPath: exportUrl.path))?[.size] as? Int64) ?? 0
                     if fm.fileExists(atPath: exportUrl.path) && size > 1000 {
                         try? fm.removeItem(at: mergedTsUrl)
                         return exportUrl
                     }
                 } catch {
-                    AppDiagnostics.shared.log("remuxToCleanMp4 ts error: \(error.localizedDescription), trying fallback presets...")
-                }
-                
-                // Fallback to AVAssetExportSession
-                let asset = AVURLAsset(url: mergedTsUrl)
-                let presets = [AVAssetExportPresetPassthrough, AVAssetExportPresetHighestQuality, AVAssetExportPreset1920x1080, AVAssetExportPreset1280x720]
-                for preset in presets {
-                    try? fm.removeItem(at: exportUrl)
-                    if let exportSession = AVAssetExportSession(asset: asset, presetName: preset) {
-                        exportSession.outputURL = exportUrl
-                        exportSession.outputFileType = .mp4
-                        exportSession.shouldOptimizeForNetworkUse = true
-                        await exportSession.export()
-                        if exportSession.status == .completed && fm.fileExists(atPath: exportUrl.path) {
-                            try? fm.removeItem(at: mergedTsUrl)
-                            return exportUrl
-                        }
-                    }
+                    AppDiagnostics.shared.log("remuxToCleanMp4 ts error: \(error.localizedDescription)")
                 }
                 
                 try? fm.removeItem(at: mergedTsUrl)
