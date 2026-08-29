@@ -299,18 +299,9 @@ struct DetailsView: View {
                                 playerSeriesResult = result
                                 playerVoices = result.allTranslationNames
                                 
-                                if let kpId = wrapper.kpId,
-                                   DownloadManager.shared.isDownloaded(kpId: kpId, season: season, episode: episode),
-                                   let downloadItem = DownloadManager.shared.getDownloadItem(kpId: kpId, season: season, episode: episode),
-                                   downloadItem.translationName == translation.name {
-                                    selectedIframeUrl = nil
-                                    playerVoiceover = downloadItem.translationName
-                                    playerStreamUrl = downloadItem.localPlayableUrl?.absoluteString
-                                } else {
-                                    selectedIframeUrl = translation.iframeUrl
-                                    playerVoiceover = translation.name
-                                    playerStreamUrl = translation.streamUrl
-                                }
+                                selectedIframeUrl = translation.iframeUrl
+                                playerVoiceover = translation.name
+                                playerStreamUrl = translation.streamUrl
                                 
                                 pendingPlayerLaunch = true
                                 showSourceSheet = false
