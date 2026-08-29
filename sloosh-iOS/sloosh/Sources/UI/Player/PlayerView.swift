@@ -800,14 +800,63 @@ class PlayerViewModel: ObservableObject {
         logDebug("switchVoiceover: switching to '\(name)' at index \(index ?? -1)")
         let savedTime = self.player?.currentTime().seconds ?? self.currentTime
 
-        // 1. Ищем target AllohaTranslation в seriesResult (для фильмов и сериалов)
+        // 1. Быстрое переключение через resolvedAudioVariants (прямые HLS ссылки от текущего Alloha плеера)
+        if !resolvedAudioVariants.isEmpty {
+            var targetVariant: [String: Any]?
+            
+            if let match = resolvedAudioVariants.first(where: { variant in
+                let title = (variant["title"] as? String) ?? ""
+                return allohaTranslationNamesMatch(title, name, exactOnly: true)
+            }) {
+                targetVariant = match
+            } else if let match = resolvedAudioVariants.first(where: { variant in
+                let title = (variant["title"] as? String) ?? ""
+                return allohaTranslationNamesMatch(title, name, exactOnly: false)
+            }) {
+                targetVariant = match
+            } else if let idx = index, idx < resolvedAudioVariants.count {
+                targetVariant = resolvedAudioVariants[idx]
+            }
+            
+            if let variant = targetVariant,
+               let variantUrlString = (variant["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+               let variantUrl = URL(string: variantUrlString) {
+                let trackTitle = (variant["title"] as? String) ?? name
+                logDebug("switchVoiceover: fast switching to audioVariant '\(trackTitle)' -> \(variantUrlString)")
+                _currentTranslationName = trackTitle
+                targetVoiceover = trackTitle
+                persistVoiceoverSelection(trackTitle)
+                
+                self.currentTime = savedTime
+                self.availableQualities = self.makeResolvedQualityOptions(
+                    resolvedUrl: variantUrl,
+                    qualityVariants: (variant["qualityVariants"] as? [[String: Any]]) ?? [],
+                    audioVariants: resolvedAudioVariants
+                )
+                self.restoreOrApplyQuality()
+                
+                let activeBitrate: Double? = {
+                    if let currentKey = self.currentQualityKey,
+                       let opt = self.availableQualities.first(where: { $0.key == currentKey }),
+                       !opt.isAuto {
+                        return self.resolvedBitrate(for: opt)
+                    }
+                    return self.player?.currentItem?.preferredPeakBitRate
+                }()
+                self.reloadPlayback(to: variantUrl, preferredPeakBitRate: activeBitrate)
+                NotificationCenter.default.post(name: NSNotification.Name("QualitiesUpdated"), object: nil)
+                return
+            }
+        }
+
+        // 2. Ищем target AllohaTranslation в seriesResult (для сериалов и фильмов с отдельными iframe)
         var targetTranslation: AllohaTranslation?
 
         if isMovie {
             if let movie = seriesResult?.movie {
-                if let idx = index, idx < movie.translations.count && allohaTranslationNamesMatch(movie.translations[idx].name, name) {
-                    targetTranslation = movie.translations[idx]
-                } else if let match = movie.translations.first(where: { allohaTranslationNamesMatch($0.name, name) }) {
+                if let match = movie.translations.first(where: { allohaTranslationNamesMatch($0.name, name, exactOnly: true) }) {
+                    targetTranslation = match
+                } else if let match = movie.translations.first(where: { allohaTranslationNamesMatch($0.name, name, exactOnly: false) }) {
                     targetTranslation = match
                 } else if let idx = index, idx < movie.translations.count {
                     targetTranslation = movie.translations[idx]
@@ -817,15 +866,11 @@ class PlayerViewModel: ObservableObject {
             if let seriesResult, let season = currentSeason, let episode = currentEpisode,
                let seasonObj = seriesResult.seasons.first(where: { $0.season == season }),
                let epObj = seasonObj.episodes.first(where: { $0.episode == episode }) {
-                // ВАЖНО: availableVoiceovers — глобальный список (по всем эпизодам),
-                // а epObj.translations — только для текущего эпизода.
-                // Индекс из глобального списка НЕ совпадает с индексом в epObj.translations!
-                // Поэтому ВСЕГДА матчим по имени, а индекс используем только как резервный
-                // вариант для epObj.translations (не глобального списка).
-                if let match = epObj.translations.first(where: { allohaTranslationNamesMatch($0.name, name) }) {
+                if let match = epObj.translations.first(where: { allohaTranslationNamesMatch($0.name, name, exactOnly: true) }) {
                     targetTranslation = match
-                } else if let idx = index, idx < epObj.translations.count,
-                          allohaTranslationNamesMatch(epObj.translations[idx].name, name) {
+                } else if let match = epObj.translations.first(where: { allohaTranslationNamesMatch($0.name, name, exactOnly: false) }) {
+                    targetTranslation = match
+                } else if let idx = index, idx < epObj.translations.count {
                     targetTranslation = epObj.translations[idx]
                 }
             }
@@ -929,27 +974,6 @@ class PlayerViewModel: ObservableObject {
                     self.isLoading = false
                 }
             }
-            return
-        }
-
-        // 2. Если targetTranslation не найдена в seriesResult (например, дорожка из audioVariants внутри одного iframe)
-        if let matchingVariant = resolvedAudioVariants.first(where: { variant in
-            let title = (variant["title"] as? String) ?? ""
-            return allohaTranslationNamesMatch(title, name)
-        }), let variantUrlString = (matchingVariant["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
-           let variantUrl = URL(string: variantUrlString) {
-            _currentTranslationName = name
-            targetVoiceover = name
-            persistVoiceoverSelection(name)
-            self.currentTime = savedTime
-            self.availableQualities = self.makeResolvedQualityOptions(
-                resolvedUrl: variantUrl,
-                qualityVariants: (matchingVariant["qualityVariants"] as? [[String: Any]]) ?? [],
-                audioVariants: resolvedAudioVariants
-            )
-            self.restoreOrApplyQuality()
-            self.reloadPlayback(to: variantUrl, preferredPeakBitRate: player?.currentItem?.preferredPeakBitRate)
-            NotificationCenter.default.post(name: NSNotification.Name("QualitiesUpdated"), object: nil)
             return
         }
 
