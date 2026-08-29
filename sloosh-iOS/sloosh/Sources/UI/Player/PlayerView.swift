@@ -869,7 +869,18 @@ class PlayerViewModel: ObservableObject {
                     let resolved = try await resolver.resolve(iframeUrl: iframeUrl)
                     guard let self, !Task.isCancelled else { return }
 
-                    let resolvedUrlString = (resolved["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                    var resolvedUrlString = (resolved["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                    let audioVariants = (resolved["audioVariants"] as? [[String: Any]]) ?? []
+                    self.resolvedAudioVariants = audioVariants
+
+                    if let matchingVariant = audioVariants.first(where: { variant in
+                        let title = (variant["title"] as? String) ?? ""
+                        return allohaTranslationNamesMatch(title, translation.name)
+                    }), let variantUrl = (matchingVariant["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !variantUrl.isEmpty {
+                        resolvedUrlString = variantUrl
+                        logDebug("switchVoiceover: matched audioVariant '\(matchingVariant["title"] ?? "")' -> \(variantUrl)")
+                    }
+
                     guard let resolvedUrl = URL(string: resolvedUrlString) else {
                         self.error = "Не удалось извлечь ссылку на видео"
                         self.isLoading = false
@@ -893,8 +904,6 @@ class PlayerViewModel: ObservableObject {
                     }
 
                     let qualityVariants = (resolved["qualityVariants"] as? [[String: Any]]) ?? []
-                    let audioVariants = (resolved["audioVariants"] as? [[String: Any]]) ?? []
-                    self.resolvedAudioVariants = audioVariants
 
                     self.availableQualities = self.makeResolvedQualityOptions(
                         resolvedUrl: resolvedUrl,
@@ -923,7 +932,28 @@ class PlayerViewModel: ObservableObject {
             return
         }
 
-        // 2. Фолбэк: если это мульти-аудио HLS стрим без отдельных iframe, переключаем нативную аудиодорожку
+        // 2. Если targetTranslation не найдена в seriesResult (например, дорожка из audioVariants внутри одного iframe)
+        if let matchingVariant = resolvedAudioVariants.first(where: { variant in
+            let title = (variant["title"] as? String) ?? ""
+            return allohaTranslationNamesMatch(title, name)
+        }), let variantUrlString = (matchingVariant["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+           let variantUrl = URL(string: variantUrlString) {
+            _currentTranslationName = name
+            targetVoiceover = name
+            persistVoiceoverSelection(name)
+            self.currentTime = savedTime
+            self.availableQualities = self.makeResolvedQualityOptions(
+                resolvedUrl: variantUrl,
+                qualityVariants: (matchingVariant["qualityVariants"] as? [[String: Any]]) ?? [],
+                audioVariants: resolvedAudioVariants
+            )
+            self.restoreOrApplyQuality()
+            self.reloadPlayback(to: variantUrl, preferredPeakBitRate: player?.currentItem?.preferredPeakBitRate)
+            NotificationCenter.default.post(name: NSNotification.Name("QualitiesUpdated"), object: nil)
+            return
+        }
+
+        // 3. Фолбэк: если это мульти-аудио HLS стрим без отдельных iframe, переключаем нативную аудиодорожку
         _currentTranslationName = name
         targetVoiceover = name
         persistVoiceoverSelection(name)
@@ -1152,10 +1182,19 @@ class PlayerViewModel: ObservableObject {
 
         appendQualityVariants(qualityVariants, to: &qualities, seenKeys: &seenKeys)
 
-        if qualities.count == 1,
-           let firstAudio = audioVariants.first,
-           let nestedQualityVariants = firstAudio["qualityVariants"] as? [[String: Any]] {
-            appendQualityVariants(nestedQualityVariants, to: &qualities, seenKeys: &seenKeys)
+        if qualities.count == 1 {
+            let targetVoice = targetVoiceover ?? _currentTranslationName
+            let selectedAudioVariant: [String: Any]? = {
+                if let target = targetVoice, !target.isEmpty {
+                    return audioVariants.first(where: { allohaTranslationNamesMatch($0["title"] as? String, target) })
+                }
+                return nil
+            }() ?? audioVariants.first
+
+            if let selectedAudio = selectedAudioVariant,
+               let nestedQualityVariants = selectedAudio["qualityVariants"] as? [[String: Any]] {
+                appendQualityVariants(nestedQualityVariants, to: &qualities, seenKeys: &seenKeys)
+            }
         }
 
         // Filter out any qualities higher than 1080p (e.g. 1440p, 2160p)
@@ -1867,10 +1906,17 @@ class PlayerViewModel: ObservableObject {
             logDebug("applyResolvedAllohaStream: using targetDirectStreamUrl=\(directUrl)")
             resolvedUrlString = directUrl
         } else {
-            // The iframeUrl already has translation=ID injected for both movies and series, 
-            // so CDN delivers the correct voiceover stream as the default. 
-            // No audioVariant name matching needed.
-            logDebug("applyResolvedAllohaStream: using default resolved url (translation embedded in iframe)")
+            // Check if audioVariants contains a track specifically matching our targetVoiceover or selectedVoiceover
+            let targetVoice = targetVoiceover ?? _currentTranslationName
+            if let target = targetVoice, !target.isEmpty {
+                if let matchingVariant = audioVariants.first(where: { variant in
+                    let title = (variant["title"] as? String) ?? ""
+                    return allohaTranslationNamesMatch(title, target)
+                }), let variantUrl = (matchingVariant["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !variantUrl.isEmpty {
+                    resolvedUrlString = variantUrl
+                    logDebug("applyResolvedAllohaStream: matched audioVariant '\(matchingVariant["title"] ?? "")' -> \(variantUrl)")
+                }
+            }
         }
 
         guard let resolvedUrl = URL(string: resolvedUrlString) else {
