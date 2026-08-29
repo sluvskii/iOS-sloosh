@@ -350,6 +350,13 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         let taskDir = docs.appendingPathComponent(item.localDirectory)
         try? FileManager.default.createDirectory(at: taskDir, withIntermediateDirectories: true)
         
+        // Clean up any stale segment files from prior downloads in the same directory
+        if let oldFiles = try? FileManager.default.contentsOfDirectory(atPath: taskDir.path) {
+            for f in oldFiles where f.hasPrefix("segment_") || f == "key.bin" || f == "local.m3u8" || f == "manifest.json" {
+                try? FileManager.default.removeItem(at: taskDir.appendingPathComponent(f))
+            }
+        }
+        
         if let posterStr = item.posterUrl, let posterUrl = URL(string: posterStr) {
             do {
                 let posterData = try await downloadDataDirectly(from: posterUrl, headers: [:])
@@ -877,8 +884,8 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         return str == "ftyp" || str == "moov" || str == "moof" || str == "styp"
     }
 
-    private func remuxTsToMp4(tsUrl: URL, outputUrl: URL) async throws {
-        let asset = AVURLAsset(url: tsUrl)
+    private func remuxToCleanMp4(inputUrl: URL, outputUrl: URL) async throws {
+        let asset = AVURLAsset(url: inputUrl)
         
         let videoTracks = try await asset.loadTracks(withMediaType: .video)
         guard let videoTrack = videoTracks.first else {
@@ -924,13 +931,15 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         }
         
         var sessionStarted = false
+        var videoFinished = false
+        var audioFinished = (audioInput == nil)
         
-        while reader.status == .reading {
-            var hasMoreData = false
+        while reader.status == .reading && (!videoFinished || !audioFinished) {
+            var hasAppended = false
             
-            if videoInput.isReadyForMoreMediaData {
+            if !videoFinished && videoInput.isReadyForMoreMediaData {
                 if let sample = videoOutput.copyNextSampleBuffer() {
-                    hasMoreData = true
+                    hasAppended = true
                     if !sessionStarted {
                         let pts = CMSampleBufferGetPresentationTimeStamp(sample)
                         writer.startSession(atSourceTime: pts.isValid ? pts : .zero)
@@ -939,12 +948,13 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                     videoInput.append(sample)
                 } else {
                     videoInput.markAsFinished()
+                    videoFinished = true
                 }
             }
             
-            if let aIn = audioInput, let aOut = audioOutput, aIn.isReadyForMoreMediaData {
+            if !audioFinished, let aIn = audioInput, let aOut = audioOutput, aIn.isReadyForMoreMediaData {
                 if let sample = aOut.copyNextSampleBuffer() {
-                    hasMoreData = true
+                    hasAppended = true
                     if !sessionStarted {
                         let pts = CMSampleBufferGetPresentationTimeStamp(sample)
                         writer.startSession(atSourceTime: pts.isValid ? pts : .zero)
@@ -953,16 +963,17 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                     aIn.append(sample)
                 } else {
                     aIn.markAsFinished()
+                    audioFinished = true
                 }
             }
             
-            if !hasMoreData && (audioInput?.isReadyForMoreMediaData == false || audioOutput == nil) && !videoInput.isReadyForMoreMediaData {
-                try? await Task.sleep(nanoseconds: 10_000_000) // 10ms
+            if !hasAppended && reader.status == .reading && (!videoFinished || !audioFinished) {
+                try? await Task.sleep(nanoseconds: 5_000_000) // 5ms
             }
         }
         
-        videoInput.markAsFinished()
-        audioInput?.markAsFinished()
+        if !videoFinished { videoInput.markAsFinished() }
+        if !audioFinished { audioInput?.markAsFinished() }
         
         await writer.finishWriting()
         
@@ -1008,13 +1019,28 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             }
         }
         
-        // 2. Stitch segments
-        let segmentFiles = files.filter { $0.hasPrefix("segment_") }
-            .sorted { a, b in
-                let numA = Int(a.components(separatedBy: CharacterSet.decimalDigits.inverted).joined()) ?? 0
-                let numB = Int(b.components(separatedBy: CharacterSet.decimalDigits.inverted).joined()) ?? 0
-                return numA < numB
+        // 2. Identify exact segment files from manifest (prevent stale files from previous downloads)
+        var segmentFiles: [String] = []
+        let manifestUrl = taskDir.appendingPathComponent("manifest.json")
+        if let mData = try? Data(contentsOf: manifestUrl),
+           let manifest = try? JSONDecoder().decode(DownloadManifest.self, from: mData) {
+            let totalCount = manifest.segmentUrls.count
+            for i in 0..<totalCount {
+                let name = "segment_\(i).ts"
+                if fm.fileExists(atPath: taskDir.appendingPathComponent(name).path) {
+                    segmentFiles.append(name)
+                }
             }
+        }
+        
+        if segmentFiles.isEmpty {
+            segmentFiles = files.filter { $0.hasPrefix("segment_") }
+                .sorted { a, b in
+                    let numA = Int(a.components(separatedBy: CharacterSet.decimalDigits.inverted).joined()) ?? 0
+                    let numB = Int(b.components(separatedBy: CharacterSet.decimalDigits.inverted).joined()) ?? 0
+                    return numA < numB
+                }
+        }
         
         if !segmentFiles.isEmpty {
             let keyFile = taskDir.appendingPathComponent("key.bin")
@@ -1026,9 +1052,9 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             let isFmp4Segments = isFmp4Init || isFmp4Data(firstSegData)
             
             if isFmp4Segments {
-                // Fragmented MP4 stream: init segment + moof/mdat fragment stitching produces 100% valid MP4
-                fm.createFile(atPath: exportUrl.path, contents: nil)
-                if let fileHandle = try? FileHandle(forWritingTo: exportUrl) {
+                let tempStitchedUrl = tempDir.appendingPathComponent("\(UUID().uuidString).mp4")
+                fm.createFile(atPath: tempStitchedUrl.path, contents: nil)
+                if let fileHandle = try? FileHandle(forWritingTo: tempStitchedUrl) {
                     if let keyData, isFmp4Init {
                         fileHandle.write(keyData)
                     }
@@ -1039,8 +1065,25 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                         }
                     }
                     try? fileHandle.close()
-                    let fileSize = ((try? fm.attributesOfItem(atPath: exportUrl.path))?[.size] as? Int64) ?? 0
-                    if fm.fileExists(atPath: exportUrl.path) && fileSize > 1000 {
+                }
+                
+                // Remux fMP4 to monolithic standard ISO MP4 to fix duration / timescale
+                do {
+                    try await remuxToCleanMp4(inputUrl: tempStitchedUrl, outputUrl: exportUrl)
+                    let size = ((try? fm.attributesOfItem(atPath: exportUrl.path))?[.size] as? Int64) ?? 0
+                    if fm.fileExists(atPath: exportUrl.path) && size > 1000 {
+                        try? fm.removeItem(at: tempStitchedUrl)
+                        return exportUrl
+                    }
+                } catch {
+                    AppDiagnostics.shared.log("remuxToCleanMp4 fmp4 error: \(error.localizedDescription)")
+                }
+                
+                // Fallback: move stitched file directly
+                if fm.fileExists(atPath: tempStitchedUrl.path) {
+                    try? fm.moveItem(at: tempStitchedUrl, to: exportUrl)
+                    let size = ((try? fm.attributesOfItem(atPath: exportUrl.path))?[.size] as? Int64) ?? 0
+                    if fm.fileExists(atPath: exportUrl.path) && size > 1000 {
                         return exportUrl
                     }
                 }
@@ -1066,15 +1109,16 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                 }
                 try? fileHandle.close()
                 
-                // Try fast lossless remux to ISO MP4 with AVAssetReader + AVAssetWriter
+                // Try clean remux
                 do {
-                    try await remuxTsToMp4(tsUrl: mergedTsUrl, outputUrl: exportUrl)
-                    if fm.fileExists(atPath: exportUrl.path) {
+                    try await remuxToCleanMp4(inputUrl: mergedTsUrl, outputUrl: exportUrl)
+                    let size = ((try? fm.attributesOfItem(atPath: exportUrl.path))?[.size] as? Int64) ?? 0
+                    if fm.fileExists(atPath: exportUrl.path) && size > 1000 {
                         try? fm.removeItem(at: mergedTsUrl)
                         return exportUrl
                     }
                 } catch {
-                    AppDiagnostics.shared.log("remuxTsToMp4 error: \(error.localizedDescription), trying fallback presets...")
+                    AppDiagnostics.shared.log("remuxToCleanMp4 ts error: \(error.localizedDescription), trying fallback presets...")
                 }
                 
                 // Fallback to AVAssetExportSession
