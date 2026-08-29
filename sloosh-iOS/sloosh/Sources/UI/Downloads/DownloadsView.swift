@@ -97,6 +97,8 @@ struct DownloadsView: View {
                             } label: {
                                 DownloadRowView(item: item, onShare: { shareItem in
                                     shareDownloadedItem(shareItem)
+                                }, onSaveToPhotos: { photoItem in
+                                    saveToPhotosAction(photoItem)
                                 })
                             }
                             .buttonStyle(DownloadCardScaleButtonStyle())
@@ -213,7 +215,34 @@ struct DownloadsView: View {
             } catch {
                 await MainActor.run {
                     self.isExporting = false
+                    ToastManager.shared.show(message: error.localizedDescription, icon: "exclamationmark.triangle.fill")
                     AppDiagnostics.shared.log("Failed to export download item: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+    
+    private func saveToPhotosAction(_ item: DownloadItem) {
+        guard item.status == .completed else { return }
+        let generator = UIImpactFeedbackGenerator(style: .medium)
+        generator.prepare()
+        generator.impactOccurred()
+        
+        isExporting = true
+        exportingTitle = "Сохранение в Фото..."
+        
+        Task {
+            do {
+                try await DownloadManager.shared.saveToPhotos(item: item)
+                await MainActor.run {
+                    self.isExporting = false
+                    ToastManager.shared.show(message: "Видео сохранено в Фото", icon: "checkmark.circle.fill")
+                }
+            } catch {
+                await MainActor.run {
+                    self.isExporting = false
+                    ToastManager.shared.show(message: error.localizedDescription, icon: "exclamationmark.triangle.fill")
+                    AppDiagnostics.shared.log("Failed to save to Photos: \(error.localizedDescription)")
                 }
             }
         }
@@ -240,6 +269,7 @@ private struct DownloadCardScaleButtonStyle: ButtonStyle {
 private struct DownloadRowView: View {
     let item: DownloadItem
     var onShare: (DownloadItem) -> Void = { _ in }
+    var onSaveToPhotos: (DownloadItem) -> Void = { _ in }
     
     var body: some View {
         HStack(spacing: 16) {
@@ -313,9 +343,15 @@ private struct DownloadRowView: View {
         .contextMenu {
             if item.status == .completed {
                 Button {
+                    onSaveToPhotos(item)
+                } label: {
+                    Label("Сохранить в Фото (Галерея)", systemImage: "photo.on.rectangle")
+                }
+                
+                Button {
                     onShare(item)
                 } label: {
-                    Label("Поделиться / Сохранить", systemImage: "square.and.arrow.up")
+                    Label("Поделиться / Сохранить в Файлы", systemImage: "square.and.arrow.up")
                 }
                 
                 Divider()
