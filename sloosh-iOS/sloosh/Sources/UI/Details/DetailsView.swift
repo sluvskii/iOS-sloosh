@@ -190,7 +190,7 @@ struct DetailsView: View {
                             isTopBar: true
                         )
                         .frame(height: 32)
-                        .padding(.horizontal, 116)
+                        .padding(.horizontal, 68)
                         .transition(.blurFadeScale)
                     }
                     
@@ -221,25 +221,34 @@ struct DetailsView: View {
                             .disabled(viewModel.details == nil)
                             .accessibilityLabel(viewModel.isFavorite ? "Убрать из избранного" : "Добавить в избранное")
 
-                            Button {
-                                let generator = UIImpactFeedbackGenerator(style: .medium)
-                                generator.prepare()
-                                generator.impactOccurred()
-                                showShareToFriendSheet = true
-                            } label: {
-                                Image(systemName: "square.and.arrow.up")
-                                    .font(.system(size: 20, weight: .medium))
-                                    .foregroundStyle(.white)
-                                    .frame(width: 44, height: 44)
-                                    .contentShape(Rectangle())
+                            if !isLogoAtTop {
+                                Button {
+                                    let generator = UIImpactFeedbackGenerator(style: .medium)
+                                    generator.prepare()
+                                    generator.impactOccurred()
+                                    showShareToFriendSheet = true
+                                } label: {
+                                    Image(systemName: "square.and.arrow.up")
+                                        .font(.system(size: 20, weight: .medium))
+                                        .foregroundStyle(.white)
+                                        .frame(width: 44, height: 44)
+                                        .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                .disabled(viewModel.details == nil)
+                                .accessibilityLabel("Поделиться фильмом")
+                                .transition(
+                                    .asymmetric(
+                                        insertion: .opacity.combined(with: .scale(scale: 0.5)),
+                                        removal: .opacity.combined(with: .scale(scale: 0.5))
+                                    )
+                                )
                             }
-                            .buttonStyle(.plain)
-                            .disabled(viewModel.details == nil)
-                            .accessibilityLabel("Поделиться фильмом")
                         }
-                        .padding(.horizontal, 2)
+                        .padding(.horizontal, isLogoAtTop ? 0 : 2)
                         .frame(height: 44)
                         .glassEffect(.regular.interactive(), in: .capsule)
+                        .animation(.easeInOut(duration: 0.3), value: isLogoAtTop)
                     }
 
                 }
