@@ -78,11 +78,20 @@ struct slooshApp: App {
     
     @ObservedObject private var diagnostics = AppDiagnostics.shared
     @State private var showShareSheet = false
+    @State private var isSplashActive = true
     @Environment(\.scenePhase) private var scenePhase
     
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            ZStack {
+                ContentView()
+                
+                if isSplashActive {
+                    LaunchSplashView(isPresented: $isSplashActive)
+                        .transition(.opacity)
+                        .zIndex(999)
+                }
+            }
                 .modelContainer(AppDatabase.shared.container)
                 .preferredColorScheme(appTheme.colorScheme)
                 .alert("Приложение было закрыто из-за ошибки", isPresented: $diagnostics.hasCrashLog) {
