@@ -2,14 +2,18 @@ import SwiftUI
 import UIKit
 
 /// Премиальный экран запуска (Splash Screen) в стиле iOS 26+ Liquid Glass:
+/// - Полная адаптация под Темную и Светлую темы без мерцаний
 /// - Гарантированная видимость с первого кадра (opacity: 1.0)
-/// - Темный фон с глубоким неоновым ореолом slooshAccent
-/// - Векторный логотип `LogoText`
+/// - Атмосферный неоновый ореол фирменного цвета slooshAccent
+/// - Векторный логотип `LogoText` с адаптивной глубиной и мягкой тенью
 /// - Световой блик (shimmer), плавно скользящий по буквам логотипа
 /// - Тактильный отклик (haptic feedback)
 /// - Мягкое растворение при переходе к контенту приложения
 struct LaunchSplashView: View {
     @Binding var isPresented: Bool
+    
+    @AppStorage("appTheme") private var appTheme: AppTheme = .system
+    @Environment(\.colorScheme) private var systemColorScheme
     
     @State private var logoScale: CGFloat = 0.92
     @State private var glowScale: CGFloat = 0.85
@@ -17,10 +21,25 @@ struct LaunchSplashView: View {
     @State private var shimmerOffset: CGFloat = -260
     @State private var contentOpacity: Double = 1.0
     
+    private var isDark: Bool {
+        switch appTheme {
+        case .light:
+            return false
+        case .dark:
+            return true
+        case .system:
+            return systemColorScheme == .dark
+        }
+    }
+    
+    private var backgroundColor: Color {
+        isDark ? Color.black : Color(uiColor: .systemBackground)
+    }
+
     var body: some View {
         ZStack {
-            // Глубокий темный фон на весь экран
-            Color.black
+            // Адаптивный фон под текущую тему (без мерцаний и скачков)
+            backgroundColor
                 .ignoresSafeArea()
             
             // Атмосферное неоновое свечение фирменного акцентного цвета
@@ -28,19 +47,19 @@ struct LaunchSplashView: View {
                 .fill(
                     RadialGradient(
                         colors: [
-                            Color.slooshAccent.opacity(0.40),
-                            Color.slooshAccent.opacity(0.15),
+                            Color.slooshAccent.opacity(isDark ? 0.40 : 0.28),
+                            Color.slooshAccent.opacity(isDark ? 0.15 : 0.08),
                             Color.clear
                         ],
                         center: .center,
                         startRadius: 10,
-                        endRadius: 180
+                        endRadius: isDark ? 180 : 160
                     )
                 )
                 .frame(width: 320, height: 320)
                 .scaleEffect(glowScale)
                 .opacity(glowOpacity)
-                .blur(radius: 40)
+                .blur(radius: isDark ? 40 : 32)
             
             // Центральный векторный логотип со скользящим световым лучом
             ZStack {
@@ -51,6 +70,12 @@ struct LaunchSplashView: View {
                     .scaledToFit()
                     .foregroundColor(Color.slooshAccent)
                     .frame(maxWidth: 240, maxHeight: 64)
+                    .shadow(
+                        color: Color.slooshAccent.opacity(isDark ? 0.50 : 0.28),
+                        radius: isDark ? 18 : 10,
+                        x: 0,
+                        y: isDark ? 0 : 3
+                    )
                 
                 // Бегущий луч света (Shimmer beam) по контуру букв
                 Image("LogoText")
@@ -65,7 +90,7 @@ struct LaunchSplashView: View {
                                 LinearGradient(
                                     stops: [
                                         .init(color: .clear, location: 0.0),
-                                        .init(color: .white.opacity(0.95), location: 0.5),
+                                        .init(color: .white.opacity(isDark ? 0.95 : 0.85), location: 0.5),
                                         .init(color: .clear, location: 1.0)
                                     ],
                                     startPoint: .leading,
@@ -90,7 +115,7 @@ struct LaunchSplashView: View {
         withAnimation(.spring(response: 0.6, dampingFraction: 0.7)) {
             logoScale = 1.0
             glowScale = 1.15
-            glowOpacity = 0.85
+            glowOpacity = isDark ? 0.85 : 0.75
         }
         
         let generator = UIImpactFeedbackGenerator(style: .soft)
