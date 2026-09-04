@@ -13,7 +13,6 @@ struct ContentView: View {
     @AppStorage("tabBarShowsLabels") private var tabBarShowsLabels = false
     @State private var selectedTab: AppTab = .home
     @ObservedObject private var deepLinkManager = DeepLinkManager.shared
-    @State private var isSplashActive = true
 
     @ViewBuilder
     private func tabLabel(_ title: LocalizedStringKey, systemImage: String) -> some View {
@@ -93,13 +92,6 @@ struct ContentView: View {
                         .padding(.top, topPadding)
                         .ignoresSafeArea(edges: .top)
                         .allowsHitTesting(false)
-                }
-                
-                if isSplashActive {
-                    LaunchSplashView(isPresented: $isSplashActive)
-                        .ignoresSafeArea()
-                        .zIndex(999)
-                        .transition(.opacity)
                 }
             }
             .withToasts()
