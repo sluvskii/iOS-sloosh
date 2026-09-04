@@ -176,6 +176,9 @@ struct DetailsView: View {
             )
             .environment(\.colorScheme, .dark)
             .ignoresSafeArea(edges: .top)
+            .navigationTitle("")
+            .navigationBarBackButtonHidden(true)
+            .toolbarVisibility(.hidden, for: .navigationBar)
             .toolbar(.hidden, for: .navigationBar)
             .safeAreaInset(edge: .top, spacing: 0) {
                 ZStack {
@@ -251,6 +254,10 @@ struct DetailsView: View {
                         .allowsHitTesting(false)
                 )
             }
+            .navigationTitle("")
+            .navigationBarBackButtonHidden(true)
+            .toolbarVisibility(.hidden, for: .navigationBar)
+            .toolbar(.hidden, for: .navigationBar)
             .task {
                 await viewModel.loadDetails(id: movieId)
             }

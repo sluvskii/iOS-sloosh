@@ -323,6 +323,7 @@ struct MovieDetailsNavigationLink<Label: View>: View {
                 navigationTransitionID: transitionID,
                 navigationTransitionNamespace: navigationTransition
             )
+            .navigationBarBackButtonHidden(true)
         ) {
             label()
                 .matchedTransitionSource(id: transitionID, in: navigationTransition)
