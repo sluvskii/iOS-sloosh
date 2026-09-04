@@ -7,6 +7,7 @@ import UIKit
 /// - Атмосферный неоновый ореол фирменного цвета slooshAccent
 /// - Векторный логотип `LogoText` с адаптивной глубиной и мягкой тенью
 /// - Световой блик (shimmer), плавно скользящий по буквам логотипа
+/// - Аккуратная версия приложения внизу экрана (как в настройках)
 /// - Тактильный отклик (haptic feedback)
 /// - Мягкое растворение при переходе к контенту приложения
 struct LaunchSplashView: View {
@@ -20,6 +21,7 @@ struct LaunchSplashView: View {
     @State private var glowOpacity: Double = 0.65
     @State private var shimmerOffset: CGFloat = -260
     @State private var contentOpacity: Double = 1.0
+    @State private var versionOpacity: Double = 0.0
     
     private var isDark: Bool {
         switch appTheme {
@@ -34,6 +36,12 @@ struct LaunchSplashView: View {
     
     private var backgroundColor: Color {
         isDark ? Color.black : Color(uiColor: .systemBackground)
+    }
+
+    private var appVersion: String {
+        let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "1.0"
+        let build = Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "1"
+        return "Версия \(version) (\(build))"
     }
 
     var body: some View {
@@ -102,6 +110,16 @@ struct LaunchSplashView: View {
                     }
             }
             .scaleEffect(logoScale)
+            
+            // Аккуратная версия приложения снизу экрана (как в настройках)
+            VStack {
+                Spacer()
+                Text(appVersion)
+                    .font(.system(size: 13, weight: .regular, design: .default))
+                    .foregroundColor(isDark ? Color.white.opacity(0.38) : Color.black.opacity(0.35))
+                    .padding(.bottom, 28)
+            }
+            .opacity(versionOpacity)
         }
         .opacity(contentOpacity)
         .ignoresSafeArea()
@@ -111,11 +129,12 @@ struct LaunchSplashView: View {
     }
     
     private func runAnimationSequence() {
-        // Фаза 1: Нежное пружинное раскрытие логотипа и сияния
+        // Фаза 1: Нежное пружинное раскрытие логотипа, сияния и версии
         withAnimation(.spring(response: 0.6, dampingFraction: 0.7)) {
             logoScale = 1.0
             glowScale = 1.15
             glowOpacity = isDark ? 0.85 : 0.75
+            versionOpacity = 1.0
         }
         
         let generator = UIImpactFeedbackGenerator(style: .soft)
