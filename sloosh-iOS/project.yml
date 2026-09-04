@@ -28,7 +28,7 @@ targets:
       properties:
         CFBundleShortVersionString: "1.5"
         CFBundleVersion: "890"
-        UILaunchStoryboardName: LaunchScreen
+        UILaunchScreen: {}
         UIApplicationSceneManifest:
           UIApplicationSupportsMultipleScenes: false
           UISceneConfigurations: {}
