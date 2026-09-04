@@ -99,7 +99,7 @@ struct SearchView: View {
                                                 Label("Смотреть", systemImage: "play.fill")
                                             }
                                             
-                                            NavigationLink(destination: DetailsView(movieId: movie.id, navigationTransitionID: nil, navigationTransitionNamespace: nil)) {
+                                            NavigationLink(destination: DetailsView(movieId: movie.id, navigationTransitionID: nil, navigationTransitionNamespace: nil).navigationBarBackButtonHidden(true)) {
                                                 Label("Подробнее", systemImage: "info.circle")
                                             }
                                         }
