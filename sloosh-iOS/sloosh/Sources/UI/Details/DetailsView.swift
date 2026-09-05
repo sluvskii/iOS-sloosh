@@ -202,7 +202,28 @@ struct DetailsView: View {
                         Spacer()
                         
                         HStack(spacing: 0) {
-                            // Кнопка «Поделиться» (слева в капсуле, со стороны логотипа)
+                            // Кнопка «Избранное» (слева, как было изначально)
+                            Button {
+                                let generator = UIImpactFeedbackGenerator(style: .light)
+                                generator.prepare()
+                                generator.impactOccurred()
+                                favoriteBounce.toggle()
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.5, blendDuration: 0.5)) {
+                                    viewModel.toggleFavorite()
+                                }
+                            } label: {
+                                Image(systemName: viewModel.isFavorite ? "heart.fill" : "heart")
+                                    .font(.system(size: 21, weight: .medium))
+                                    .foregroundStyle(.white)
+                                    .frame(width: 44, height: 44)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(viewModel.details == nil)
+                            .accessibilityLabel(viewModel.isFavorite ? "Убрать из избранного" : "Добавить в избранное")
+                            .frame(width: 44, height: 44)
+
+                            // Кнопка «Поделиться» (справа, растворяется с блюром)
                             Button {
                                 let generator = UIImpactFeedbackGenerator(style: .medium)
                                 generator.prepare()
@@ -224,27 +245,6 @@ struct DetailsView: View {
                             .frame(width: isLogoAtTop ? 0 : 44, height: 44)
                             .clipped()
                             .allowsHitTesting(!isLogoAtTop)
-
-                            // Кнопка «Избранное» (справа в капсуле, остаётся на месте при сворачивании)
-                            Button {
-                                let generator = UIImpactFeedbackGenerator(style: .light)
-                                generator.prepare()
-                                generator.impactOccurred()
-                                favoriteBounce.toggle()
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.5, blendDuration: 0.5)) {
-                                    viewModel.toggleFavorite()
-                                }
-                            } label: {
-                                Image(systemName: viewModel.isFavorite ? "heart.fill" : "heart")
-                                    .font(.system(size: 21, weight: .medium))
-                                    .foregroundStyle(.white)
-                                    .frame(width: 44, height: 44)
-                                    .contentShape(Rectangle())
-                            }
-                            .buttonStyle(.plain)
-                            .disabled(viewModel.details == nil)
-                            .accessibilityLabel(viewModel.isFavorite ? "Убрать из избранного" : "Добавить в избранное")
-                            .frame(width: 44, height: 44)
                         }
                         .padding(.horizontal, isLogoAtTop ? 0 : 2)
                         .frame(width: isLogoAtTop ? 44 : 92, height: 44)
