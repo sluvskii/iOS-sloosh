@@ -121,7 +121,7 @@ struct ProfileView: View {
                             .foregroundStyle(.primary)
                             .lineLimit(1)
                             .truncationMode(.tail)
-                            .padding(.horizontal, 64)
+                            .padding(.horizontal, 100)
 
                         HStack {
                             // Left Avatar / Sign-In Button
@@ -168,15 +168,42 @@ struct ProfileView: View {
 
                             Spacer()
 
-                            HStack(spacing: 8) {
-                                TelegramGlassIconButton(systemName: "arrow.down.circle.fill") {
+                            // Двойная капсула: Загрузки + Настройки
+                            HStack(spacing: 0) {
+                                Button {
+                                    let generator = UIImpactFeedbackGenerator(style: .medium)
+                                    generator.prepare()
+                                    generator.impactOccurred()
                                     showsDownloads = true
+                                } label: {
+                                    Image(systemName: "arrow.down.circle.fill")
+                                        .font(.system(size: 21, weight: .medium))
+                                        .foregroundStyle(.primary)
+                                        .frame(width: 44, height: 44)
+                                        .contentShape(Rectangle())
                                 }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Загрузки")
 
-                                TelegramGlassIconButton(systemName: "gearshape.fill") {
+                                Button {
+                                    let generator = UIImpactFeedbackGenerator(style: .medium)
+                                    generator.prepare()
+                                    generator.impactOccurred()
                                     showsSettings = true
+                                } label: {
+                                    Image(systemName: "gearshape.fill")
+                                        .font(.system(size: 20, weight: .medium))
+                                        .foregroundStyle(.primary)
+                                        .frame(width: 44, height: 44)
+                                        .contentShape(Rectangle())
                                 }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Настройки")
                             }
+                            .padding(.horizontal, 2)
+                            .frame(height: 44)
+                            .clipShape(Capsule())
+                            .glassEffect(.regular.interactive(), in: .capsule)
                         }
                     }
                     .padding(.horizontal, 16)
