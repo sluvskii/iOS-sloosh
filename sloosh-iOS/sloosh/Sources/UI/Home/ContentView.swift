@@ -180,44 +180,43 @@ struct ContentView: View {
             let traits = UITraitCollection.current
             let accent = UIColor.slooshAccent.resolvedColor(with: traits)
 
-            // Inner avatar circle frame
-            let avatarInset: CGFloat = 2.25
-            let avatarRect = bounds.insetBy(dx: avatarInset, dy: avatarInset)
+            let strokeWidth: CGFloat = 2.0
+            let circleRect = bounds.insetBy(dx: strokeWidth / 2.0, dy: strokeWidth / 2.0)
 
             if let img = image {
                 cgContext.saveGState()
-                let clipPath = UIBezierPath(ovalIn: avatarRect)
+                let clipPath = UIBezierPath(ovalIn: circleRect)
                 clipPath.addClip()
 
                 let imgSize = img.size
                 if imgSize.width > 0 && imgSize.height > 0 {
-                    let scale = max(avatarRect.width / imgSize.width, avatarRect.height / imgSize.height)
+                    let scale = max(circleRect.width / imgSize.width, circleRect.height / imgSize.height)
                     let drawWidth = imgSize.width * scale
                     let drawHeight = imgSize.height * scale
                     let drawRect = CGRect(
-                        x: avatarRect.midX - drawWidth / 2.0,
-                        y: avatarRect.midY - drawHeight / 2.0,
+                        x: circleRect.midX - drawWidth / 2.0,
+                        y: circleRect.midY - drawHeight / 2.0,
                         width: drawWidth,
                         height: drawHeight
                     )
-                    img.draw(in: drawRect, blendMode: .normal, alpha: isSelected ? 1.0 : 0.85)
+                    img.draw(in: drawRect, blendMode: .normal, alpha: isSelected ? 1.0 : 0.82)
                 }
                 cgContext.restoreGState()
             } else {
                 let fallbackBg = isSelected
-                    ? accent
-                    : (traits.userInterfaceStyle == .dark ? UIColor(white: 0.25, alpha: 1.0) : UIColor(white: 0.85, alpha: 1.0))
+                    ? accent.withAlphaComponent(0.25)
+                    : (traits.userInterfaceStyle == .dark ? UIColor(white: 0.2, alpha: 1.0) : UIColor(white: 0.85, alpha: 1.0))
                 let textColor = isSelected
-                    ? UIColor.black
+                    ? accent
                     : (traits.userInterfaceStyle == .dark ? UIColor.white : UIColor.black)
 
                 fallbackBg.setFill()
-                UIBezierPath(ovalIn: avatarRect).fill()
+                UIBezierPath(ovalIn: circleRect).fill()
 
                 let cleanInitials = initials.trimmingCharacters(in: .whitespacesAndNewlines)
                 let textToDraw = cleanInitials.isEmpty ? "S" : String(cleanInitials.prefix(1)).uppercased()
 
-                let fontSize: CGFloat = max(9, avatarRect.width * 0.46)
+                let fontSize: CGFloat = max(10, circleRect.width * 0.48)
                 let font = UIFont.systemFont(ofSize: fontSize, weight: .bold)
 
                 let paragraphStyle = NSMutableParagraphStyle()
@@ -231,30 +230,24 @@ struct ContentView: View {
 
                 let textSize = (textToDraw as NSString).size(withAttributes: attributes)
                 let textRect = CGRect(
-                    x: avatarRect.origin.x + (avatarRect.width - textSize.width) / 2.0,
-                    y: avatarRect.origin.y + (avatarRect.height - textSize.height) / 2.0,
+                    x: circleRect.origin.x + (circleRect.width - textSize.width) / 2.0,
+                    y: circleRect.origin.y + (circleRect.height - textSize.height) / 2.0,
                     width: textSize.width,
                     height: textSize.height
                 )
                 (textToDraw as NSString).draw(in: textRect, withAttributes: attributes)
             }
 
-            // Outer Ring / Border
-            if isSelected {
-                let ringRect = bounds.insetBy(dx: 0.75, dy: 0.75)
-                let ringPath = UIBezierPath(ovalIn: ringRect)
-                ringPath.lineWidth = 1.5
-                accent.setStroke()
-                ringPath.stroke()
-            } else {
-                let borderPath = UIBezierPath(ovalIn: avatarRect)
-                borderPath.lineWidth = 0.8
-                let borderColor = traits.userInterfaceStyle == .dark
-                    ? UIColor(white: 1.0, alpha: 0.3)
-                    : UIColor(white: 0.0, alpha: 0.2)
-                borderColor.setStroke()
-                borderPath.stroke()
-            }
+            // Stroke directly hugs the circular avatar: accent when selected, clean white when unselected
+            let strokePath = UIBezierPath(ovalIn: circleRect)
+            strokePath.lineWidth = strokeWidth
+            let strokeColor = isSelected
+                ? accent
+                : (traits.userInterfaceStyle == .dark
+                    ? UIColor.white.withAlphaComponent(0.7)
+                    : UIColor.black.withAlphaComponent(0.6))
+            strokeColor.setStroke()
+            strokePath.stroke()
         }
 
         return rendered.withRenderingMode(.alwaysOriginal)
