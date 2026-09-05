@@ -10,11 +10,13 @@ struct SettingsView: View {
     @AppStorage("appTheme") private var appTheme: AppTheme = .system
     @AppStorage("showOriginalTitle") private var showOriginalTitle = true
     @ObservedObject private var iconManager = AppIconManager.shared
+    @ObservedObject private var cacheManager = CacheManager.shared
     @State private var tabBarShowsLabelsDraft = false
     @State private var applyTabBarLabelsTask: Task<Void, Never>?
     @State private var scrollOffset: CGFloat = 0
     @Environment(\.dismiss) private var dismiss
     @State private var showLogsShareSheet = false
+    @State private var showClearCacheDialog = false
     
     private var blurOpacity: Double {
         let progress = max(0, scrollOffset) / 30.0
@@ -175,6 +177,42 @@ struct SettingsView: View {
                 }
             }
             
+            Section("Хранилище") {
+                HStack(spacing: 12) {
+                    Image(systemName: "internaldrive.fill")
+                        .foregroundStyle(Color.slooshAccent)
+                        .font(.system(size: 18))
+                        .frame(width: 24)
+                    
+                    Text("Кэш приложения")
+                        .font(.body)
+                    
+                    Spacer()
+                    
+                    Text(cacheManager.formattedCacheSize)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+                
+                Button(role: .destructive) {
+                    showClearCacheDialog = true
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "trash.fill")
+                            .font(.system(size: 18))
+                            .frame(width: 24)
+                        
+                        if cacheManager.isClearing {
+                            ProgressView()
+                                .tint(.red)
+                        } else {
+                            Text("Очистить кэш")
+                        }
+                    }
+                }
+                .disabled(cacheManager.isClearing || cacheManager.isCacheEmpty)
+            }
+            
             Section("О приложении") {
                 NavigationLink {
                     AboutView()
@@ -237,6 +275,7 @@ struct SettingsView: View {
         .scrollEdgeEffectStyle(.soft, for: .all)
         .onAppear {
             tabBarShowsLabelsDraft = tabBarShowsLabels
+            cacheManager.calculateCacheSize()
         }
         .onChange(of: tabBarShowsLabels) { _, newValue in
             if tabBarShowsLabelsDraft != newValue {
@@ -255,6 +294,20 @@ struct SettingsView: View {
             applyTabBarLabelsTask?.cancel()
         }
         .fullWidthSwipeBack()
+        .confirmationDialog(
+            "Очистить кэш?",
+            isPresented: $showClearCacheDialog,
+            titleVisibility: .visible
+        ) {
+            Button("Очистить кэш (\(cacheManager.formattedCacheSize))", role: .destructive) {
+                Task {
+                    await cacheManager.clearCache()
+                }
+            }
+            Button("Отмена", role: .cancel) {}
+        } message: {
+            Text("Временные файлы изображений и постеров будут удалены. Ваши загрузки и избранное останутся нетронутыми.")
+        }
         .sheet(isPresented: $showLogsShareSheet) {
             ShareSheet(items: [AppDiagnostics.shared.getLogsURL()])
         }
