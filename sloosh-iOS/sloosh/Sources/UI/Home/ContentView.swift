@@ -238,16 +238,13 @@ struct ContentView: View {
                 (textToDraw as NSString).draw(in: textRect, withAttributes: attributes)
             }
 
-            // Stroke directly hugs the circular avatar: accent when selected, clean white when unselected
-            let strokePath = UIBezierPath(ovalIn: circleRect)
-            strokePath.lineWidth = strokeWidth
-            let strokeColor = isSelected
-                ? accent
-                : (traits.userInterfaceStyle == .dark
-                    ? UIColor.white.withAlphaComponent(0.7)
-                    : UIColor.black.withAlphaComponent(0.6))
-            strokeColor.setStroke()
-            strokePath.stroke()
+            // Stroke only when selected: accent green border. When unselected: clean borderless avatar.
+            if isSelected {
+                let strokePath = UIBezierPath(ovalIn: circleRect)
+                strokePath.lineWidth = strokeWidth
+                accent.setStroke()
+                strokePath.stroke()
+            }
         }
 
         return rendered.withRenderingMode(.alwaysOriginal)
