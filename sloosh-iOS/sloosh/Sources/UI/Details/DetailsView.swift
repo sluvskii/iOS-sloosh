@@ -202,6 +202,30 @@ struct DetailsView: View {
                         Spacer()
                         
                         HStack(spacing: 0) {
+                            // Кнопка «Поделиться» (слева в капсуле, со стороны логотипа)
+                            Button {
+                                let generator = UIImpactFeedbackGenerator(style: .medium)
+                                generator.prepare()
+                                generator.impactOccurred()
+                                showShareToFriendSheet = true
+                            } label: {
+                                Image(systemName: "square.and.arrow.up")
+                                    .font(.system(size: 20, weight: .medium))
+                                    .foregroundStyle(.white)
+                                    .frame(width: 44, height: 44)
+                                    .blur(radius: isLogoAtTop ? 12 : 0)
+                                    .opacity(isLogoAtTop ? 0 : 1)
+                                    .scaleEffect(isLogoAtTop ? 0.4 : 1.0)
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .disabled(viewModel.details == nil || isLogoAtTop)
+                            .accessibilityLabel("Поделиться фильмом")
+                            .frame(width: isLogoAtTop ? 0 : 44, height: 44)
+                            .clipped()
+                            .allowsHitTesting(!isLogoAtTop)
+
+                            // Кнопка «Избранное» (справа в капсуле, остаётся на месте при сворачивании)
                             Button {
                                 let generator = UIImpactFeedbackGenerator(style: .light)
                                 generator.prepare()
@@ -220,35 +244,13 @@ struct DetailsView: View {
                             .buttonStyle(.plain)
                             .disabled(viewModel.details == nil)
                             .accessibilityLabel(viewModel.isFavorite ? "Убрать из избранного" : "Добавить в избранное")
-
-                            if !isLogoAtTop {
-                                Button {
-                                    let generator = UIImpactFeedbackGenerator(style: .medium)
-                                    generator.prepare()
-                                    generator.impactOccurred()
-                                    showShareToFriendSheet = true
-                                } label: {
-                                    Image(systemName: "square.and.arrow.up")
-                                        .font(.system(size: 20, weight: .medium))
-                                        .foregroundStyle(.white)
-                                        .frame(width: 44, height: 44)
-                                        .contentShape(Rectangle())
-                                }
-                                .buttonStyle(.plain)
-                                .disabled(viewModel.details == nil)
-                                .accessibilityLabel("Поделиться фильмом")
-                                .transition(
-                                    .asymmetric(
-                                        insertion: .opacity.combined(with: .scale(scale: 0.5)),
-                                        removal: .opacity.combined(with: .scale(scale: 0.5))
-                                    )
-                                )
-                            }
+                            .frame(width: 44, height: 44)
                         }
                         .padding(.horizontal, isLogoAtTop ? 0 : 2)
-                        .frame(height: 44)
+                        .frame(width: isLogoAtTop ? 44 : 92, height: 44)
+                        .clipShape(Capsule())
                         .glassEffect(.regular.interactive(), in: .capsule)
-                        .animation(.easeInOut(duration: 0.3), value: isLogoAtTop)
+                        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: isLogoAtTop)
                     }
 
                 }
