@@ -85,45 +85,9 @@ struct SettingsView: View {
             }
 
             Section("Иконка приложения") {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 18) {
-                        ForEach(AppIconOption.allCases) { option in
-                            let isSelected = iconManager.currentIcon == option
-                            Button {
-                                iconManager.selectIcon(option)
-                            } label: {
-                                VStack(spacing: 4) {
-                                    Image(option.previewAsset)
-                                        .resizable()
-                                        .aspectRatio(contentMode: .fit)
-                                        .frame(width: 58, height: 58)
-                                        .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
-                                        .overlay(
-                                            RoundedRectangle(cornerRadius: 13, style: .continuous)
-                                                .stroke(Color.primary.opacity(0.08), lineWidth: 1)
-                                        )
-                                        .shadow(color: Color.black.opacity(0.12), radius: 3, x: 0, y: 2)
-                                        .padding(3)
-                                        .background(
-                                            RoundedRectangle(cornerRadius: 16, style: .continuous)
-                                                .strokeBorder(isSelected ? Color.slooshAccent : Color.clear, lineWidth: 2)
-                                        )
-                                        .scaleEffect(isSelected ? 1.04 : 1.0)
-
-                                    Text(option.title)
-                                        .font(.system(size: 12, weight: .medium))
-                                        .foregroundColor(isSelected ? Color.slooshAccent : Color.secondary)
-                                        .lineLimit(1)
-                                }
-                                .animation(.spring(response: 0.35, dampingFraction: 0.72), value: isSelected)
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                    .padding(.vertical, 10)
-                    .padding(.horizontal, 16)
-                }
-                .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 0, trailing: 0))
+                appIconSelectorView
+                    .padding(.vertical, 8)
+                    .listRowInsets(EdgeInsets(top: 4, leading: 8, bottom: 4, trailing: 8))
             }
             
             Section("Интерфейс") {
@@ -294,6 +258,62 @@ struct SettingsView: View {
         .sheet(isPresented: $showLogsShareSheet) {
             ShareSheet(items: [AppDiagnostics.shared.getLogsURL()])
         }
+    }
+
+    // MARK: - App Icon Selector
+
+    private var appIconSelectorView: some View {
+        let options = AppIconOption.allCases
+        let columnsCount = max(1, iconGridColumns)
+        let rows = stride(from: 0, to: options.count, by: columnsCount).map {
+            Array(options[$0..<min($0 + columnsCount, options.count)])
+        }
+
+        return VStack(spacing: 12) {
+            ForEach(rows.indices, id: \.self) { rowIndex in
+                HStack(spacing: 0) {
+                    ForEach(rows[rowIndex]) { option in
+                        appIconButton(for: option)
+                            .frame(maxWidth: .infinity)
+                    }
+                }
+            }
+        }
+    }
+
+    private var iconGridColumns: Int {
+        let count = AppIconOption.allCases.count
+        if count <= 5 { return count }
+        if count == 6 { return 3 }
+        return 4
+    }
+
+    @ViewBuilder
+    private func appIconButton(for option: AppIconOption) -> some View {
+        let isSelected = iconManager.currentIcon == option
+        Button {
+            iconManager.selectIcon(option)
+        } label: {
+            Image(option.previewAsset)
+                .resizable()
+                .aspectRatio(contentMode: .fit)
+                .frame(width: 58, height: 58)
+                .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 13, style: .continuous)
+                        .stroke(Color.primary.opacity(0.08), lineWidth: 1)
+                )
+                .shadow(color: Color.black.opacity(isSelected ? 0.22 : 0.08), radius: isSelected ? 4 : 2, x: 0, y: 2)
+                .padding(3)
+                .background(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .strokeBorder(isSelected ? Color.slooshAccent : Color.clear, lineWidth: 2.5)
+                )
+                .scaleEffect(isSelected ? 1.05 : 1.0)
+                .animation(.spring(response: 0.35, dampingFraction: 0.72), value: isSelected)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(option.title)
     }
 }
 
