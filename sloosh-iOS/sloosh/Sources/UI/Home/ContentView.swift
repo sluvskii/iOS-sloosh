@@ -14,12 +14,8 @@ struct ContentView: View {
     @State private var selectedTab: AppTab = .home
     @ObservedObject private var deepLinkManager = DeepLinkManager.shared
     @ObservedObject private var authRepo = AuthRepository.shared
-    @State private var loadedAvatarImage: UIImage? = {
-        if let source = AuthRepository.shared.currentUser?.photoURL, !source.isEmpty {
-            return AvatarImageProcessor.decodeImage(from: source)
-        }
-        return nil
-    }()
+    @State private var loadedAvatarImage: UIImage? = resolveInitialAvatar(for: AuthRepository.shared.currentUser)
+    @State private var avatarVersion: Int = 0
 
     @ViewBuilder
     private func tabLabel(_ title: LocalizedStringKey, systemImage: String) -> some View {
@@ -34,8 +30,9 @@ struct ContentView: View {
     @ViewBuilder
     private func profileTabLabel() -> some View {
         if authRepo.isAuthenticated, let user = authRepo.currentUser {
+            let currentAvatar = loadedAvatarImage ?? Self.resolveInitialAvatar(for: user)
             let avatar = renderCircularAvatar(
-                from: loadedAvatarImage,
+                from: currentAvatar,
                 initials: user.avatarInitials,
                 isSelected: selectedTab == .profile
             )
@@ -90,7 +87,7 @@ struct ContentView: View {
                         profileTabLabel()
                     }
                 }
-                .id("\(tabBarShowsLabels)_\(authRepo.isAuthenticated)")
+                .id("\(tabBarShowsLabels)_\(authRepo.isAuthenticated)_\(avatarVersion)")
                 .tabViewStyle(.tabBarOnly)
                 .tabBarMinimizeBehavior(.onScrollDown)
                 .tint(Color.slooshAccent)
@@ -177,7 +174,7 @@ struct ContentView: View {
         format.opaque = false
         let renderer = UIGraphicsImageRenderer(size: CGSize(width: size, height: size), format: format)
 
-        return renderer.image { ctx in
+        let rendered = renderer.image { ctx in
             let cgContext = ctx.cgContext
             let bounds = CGRect(x: 0, y: 0, width: size, height: size)
             let traits = UITraitCollection.current
@@ -203,7 +200,7 @@ struct ContentView: View {
                         width: drawWidth,
                         height: drawHeight
                     )
-                    img.draw(in: drawRect, blendMode: .normal, alpha: isSelected ? 1.0 : 0.75)
+                    img.draw(in: drawRect, blendMode: .normal, alpha: isSelected ? 1.0 : 0.85)
                 }
                 cgContext.restoreGState()
             } else {
@@ -259,23 +256,50 @@ struct ContentView: View {
                 borderPath.stroke()
             }
         }
+
+        return rendered.withRenderingMode(.alwaysOriginal)
+    }
+
+    private static func resolveInitialAvatar(for user: UserProfile?) -> UIImage? {
+        guard let source = user?.photoURL, !source.isEmpty else { return nil }
+        if let decoded = AvatarImageProcessor.decodeImage(from: source) {
+            return decoded
+        }
+        if source.starts(with: "http"), let url = URL(string: source) {
+            let request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad, timeoutInterval: 5)
+            if let cachedData = URLCache.shared.cachedResponse(for: request)?.data,
+               let img = UIImage(data: cachedData) {
+                ImageCache.shared.insertImage(img, forKey: source)
+                return img
+            }
+        }
+        return nil
     }
 
     @MainActor
     private func loadAvatarImage() async {
         guard authRepo.isAuthenticated, let user = authRepo.currentUser else {
-            loadedAvatarImage = nil
+            if loadedAvatarImage != nil {
+                loadedAvatarImage = nil
+                avatarVersion += 1
+            }
             return
         }
 
         guard let source = user.photoURL, !source.isEmpty else {
-            loadedAvatarImage = nil
+            if loadedAvatarImage != nil {
+                loadedAvatarImage = nil
+                avatarVersion += 1
+            }
             return
         }
 
         // 1. Base64 or cached image
         if let decoded = AvatarImageProcessor.decodeImage(from: source) {
-            loadedAvatarImage = decoded
+            if loadedAvatarImage != decoded {
+                loadedAvatarImage = decoded
+                avatarVersion += 1
+            }
             return
         }
 
@@ -285,7 +309,10 @@ struct ContentView: View {
             if let cachedResponse = URLCache.shared.cachedResponse(for: request),
                let cachedImg = UIImage(data: cachedResponse.data) {
                 ImageCache.shared.insertImage(cachedImg, forKey: source)
-                loadedAvatarImage = cachedImg
+                if loadedAvatarImage != cachedImg {
+                    loadedAvatarImage = cachedImg
+                    avatarVersion += 1
+                }
                 return
             }
 
@@ -296,6 +323,7 @@ struct ContentView: View {
                     URLCache.shared.storeCachedResponse(CachedURLResponse(response: response, data: data), for: request)
                     ImageCache.shared.insertImage(downloadedImg, forKey: source)
                     loadedAvatarImage = downloadedImg
+                    avatarVersion += 1
                 }
             } catch {
                 // Ignore network failure, fallback will remain visible
