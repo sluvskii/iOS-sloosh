@@ -1,14 +1,18 @@
 import UIKit
 import SwiftUI
 
-extension Color {
-    public static let slooshAccent = Color(UIColor { traitCollection in
+extension UIColor {
+    public static let slooshAccent = UIColor { traitCollection in
         if traitCollection.userInterfaceStyle == .dark {
             return UIColor(red: 0.70, green: 1.0, blue: 0.0, alpha: 1.0)
         } else {
             return UIColor(red: 0.45, green: 0.80, blue: 0.0, alpha: 1.0)
         }
-    })
+    }
+}
+
+extension Color {
+    public static let slooshAccent = Color(uiColor: .slooshAccent)
 }
 
 extension UIColor {
