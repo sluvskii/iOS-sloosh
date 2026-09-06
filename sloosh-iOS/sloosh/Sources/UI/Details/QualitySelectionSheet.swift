@@ -49,12 +49,14 @@ struct QualitySelectionSheet: View {
                         Text("Продолжить")
                             .font(.system(size: 19, weight: .heavy))
                     }
-                    .foregroundStyle(.black)
+                    .foregroundStyle(Color.black.opacity(0.90))
+                    .blendMode(.plusDarker)
                     .padding(.horizontal, 24)
                     .frame(height: 50)
                     .background(
                         Capsule()
-                            .fill(Color.white.opacity(0.60))
+                            .fill(Color.white.opacity(0.55))
+                            .blendMode(.plusLighter)
                     )
                     .glassEffect(.regular.interactive(), in: .capsule)
                 }
