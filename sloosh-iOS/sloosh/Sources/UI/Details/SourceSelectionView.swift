@@ -366,13 +366,13 @@ struct SourceSelectionView: View {
                 Text(mode == .play ? "Смотреть" : "Скачать")
                     .font(.system(size: 19, weight: .heavy))
             }
-            .foregroundStyle(Color.black.opacity(0.90))
+            .foregroundStyle(Color.black.opacity(0.72))
             .blendMode(.plusDarker)
             .padding(.horizontal, 24)
             .frame(height: 50)
             .background(
                 Capsule()
-                    .fill(Color.white.opacity(0.60))
+                    .fill(Color.white.opacity(0.70))
             )
             .compositingGroup()
             .glassEffect(.regular.interactive(), in: .capsule)
