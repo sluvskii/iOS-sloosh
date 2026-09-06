@@ -49,13 +49,13 @@ struct CenterControlsView: View {
                                 .scaleEffect(1.6)
                         } else {
                             Image(systemName: vm.isPlaying ? "pause.fill" : "play.fill")
-                                .font(.system(size: 34, weight: .bold))
+                                .font(.system(size: 40, weight: .bold))
                                 .foregroundStyle(.white.opacity(0.65))
                                 .blendMode(.plusLighter)
                                 .contentTransition(.symbolEffect(.replace))
                         }
                     }
-                    .frame(width: 72, height: 72)
+                    .frame(width: 80, height: 80)
                     .contentShape(Circle())
                 }
                 .accessibilityLabel(vm.isPlaying ? "Пауза" : "Воспроизвести")
