@@ -55,7 +55,7 @@ struct TopBarView: View {
     private var fallbackTextView: some View {
         Text(vm.fallbackTitle)
             .font(.system(size: 15, weight: .semibold))
-            .foregroundStyle(.white.opacity(0.85))
+            .foregroundStyle(.white)
             .blendMode(.plusLighter)
             .lineLimit(1)
     }
