@@ -130,14 +130,6 @@ struct DetailsView: View {
         }
     }
 
-    private var dominantMovieColor: Color {
-        if let dominant = dominantBackdropColor ?? dominantPosterColor {
-            return Color(dominant.vibrantForGlass)
-        } else {
-            return Color.slooshAccent
-        }
-    }
-
     private func fetchAverageColor(from url: URL?) async -> UIColor? {
         guard let url else { return nil }
         return await Task.detached(priority: .userInitiated) {
@@ -477,7 +469,7 @@ struct DetailsView: View {
             .frame(height: 50)
             .padding(.horizontal, 24)
         }
-        .buttonStyle(GlassPlayButtonStyle(tintColor: dominantMovieColor))
+        .buttonStyle(GlassPlayButtonStyle())
         .matchedTransitionSource(id: "playBtn", in: transition) { source in
             source
                 .background(.clear)
@@ -2193,33 +2185,29 @@ class DetailsViewModel: ObservableObject {
 }
 
 struct GlassPlayButtonStyle: ButtonStyle {
-    var tintColor: Color = Color.slooshAccent
     @Environment(\.isEnabled) private var isEnabled
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .foregroundStyle(Color.white.opacity(0.9))
-            .blendMode(.plusLighter)
+            .foregroundStyle(Color.black.opacity(0.85))
+            .blendMode(.plusDarker)
             .background(
                 Capsule()
-                    .fill(
-                        LinearGradient(
-                            stops: [
-                                .init(color: tintColor.opacity(0.75), location: 0.0),
-                                .init(color: tintColor.opacity(0.35), location: 0.35),
-                                .init(color: tintColor.opacity(0.10), location: 0.65),
-                                .init(color: .clear, location: 0.85)
-                            ],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                    )
+                    .fill(Color.white.opacity(0.88))
             )
             .glassEffect(.regular.interactive(), in: Capsule())
-            .shadow(color: .black.opacity(0.18), radius: 8, x: 0, y: 3)
+            .shadow(
+                color: .black.opacity(configuration.isPressed ? 0.08 : 0.18),
+                radius: configuration.isPressed ? 4 : 10,
+                x: 0,
+                y: configuration.isPressed ? 2 : 4
+            )
             .opacity(isEnabled ? 1.0 : 0.4)
-            .scaleEffect(configuration.isPressed ? 0.94 : 1.0)
-            .animation(.spring(response: 0.25, dampingFraction: 0.6), value: configuration.isPressed)
+            .scaleEffect(
+                x: configuration.isPressed ? 0.97 : 1.0,
+                y: configuration.isPressed ? 0.93 : 1.0
+            )
+            .animation(.spring(response: 0.28, dampingFraction: 0.55), value: configuration.isPressed)
     }
 }
 
