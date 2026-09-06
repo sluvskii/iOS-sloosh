@@ -58,7 +58,6 @@ struct TopBarView: View {
             .foregroundStyle(.white.opacity(0.85))
             .blendMode(.plusLighter)
             .lineLimit(1)
-            .shadow(color: .black.opacity(0.6), radius: 3, x: 0, y: 1)
     }
 
     // MARK: - Отдельная кнопка «Закрыть» (нативная круглая иконка как в окне шеринга)
