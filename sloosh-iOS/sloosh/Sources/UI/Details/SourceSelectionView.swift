@@ -372,9 +372,9 @@ struct SourceSelectionView: View {
             .frame(height: 50)
             .background(
                 Capsule()
-                    .fill(Color.white.opacity(0.55))
-                    .blendMode(.plusLighter)
+                    .fill(Color.white.opacity(0.60))
             )
+            .compositingGroup()
             .glassEffect(.regular.interactive(), in: .capsule)
         }
         .buttonStyle(.glassPress)
