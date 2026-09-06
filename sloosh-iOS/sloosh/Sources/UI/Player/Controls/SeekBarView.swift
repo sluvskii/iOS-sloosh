@@ -81,9 +81,9 @@ struct SeekBarView: View {
                 .font(.system(size: 13, weight: .medium).monospacedDigit())
                 .foregroundStyle(.white.opacity(0.65))
                 .blendMode(.plusLighter)
-        }
         .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .frame(height: 44)
+        .clipShape(Capsule())
         .glassEffect(.regular, in: .capsule)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Прогресс воспроизведения")

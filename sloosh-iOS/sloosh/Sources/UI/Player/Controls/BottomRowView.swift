@@ -14,27 +14,28 @@ struct BottomRowView: View {
             // Скорость
             Button { showSpeedSheet = true } label: {
                 Text(speedLabel)
-                    .font(.system(size: 13, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.65))
+                    .font(.system(size: 14, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.75))
                     .blendMode(.plusLighter)
-                    .frame(width: 44, height: 40)
+                    .frame(width: 44, height: 44)
                     .contentShape(Rectangle())
             }
+            .buttonStyle(.glassPress)
             .accessibilityLabel("Скорость воспроизведения: \(speedLabel)")
             .popover(isPresented: $showSpeedSheet) {
                 SpeedPickerSheet(vm: vm)
             }
 
             if vm.availableVoiceovers.count > 1 {
-                divider
                 Button { showVoiceoverSheet = true } label: {
                     Image(systemName: "waveform")
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.65))
+                        .font(.system(size: 17, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.75))
                         .blendMode(.plusLighter)
-                        .frame(width: 44, height: 40)
+                        .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
+                .buttonStyle(.glassPress)
                 .accessibilityLabel("Озвучка")
                 .popover(isPresented: $showVoiceoverSheet) {
                     VoiceoverPickerSheet(vm: vm)
@@ -42,15 +43,15 @@ struct BottomRowView: View {
             }
 
             if vm.availableQualities.count > 1 {
-                divider
                 Button { showQualitySheet = true } label: {
                     Image(systemName: "gearshape")
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.65))
+                        .font(.system(size: 17, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.75))
                         .blendMode(.plusLighter)
-                        .frame(width: 44, height: 40)
+                        .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
+                .buttonStyle(.glassPress)
                 .accessibilityLabel("Качество видео")
                 .popover(isPresented: $showQualitySheet) {
                     QualityPickerSheet(vm: vm)
@@ -58,22 +59,25 @@ struct BottomRowView: View {
             }
 
             if !vm.availableSubtitles.isEmpty {
-                divider
                 Button { showSubtitleSheet = true } label: {
                     Image(systemName: vm.currentSubtitle != nil ? "text.bubble.fill" : "text.bubble")
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.65))
+                        .font(.system(size: 17, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.75))
                         .blendMode(.plusLighter)
-                        .frame(width: 44, height: 40)
+                        .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
+                .buttonStyle(.glassPress)
                 .accessibilityLabel(vm.currentSubtitle != nil ? "Субтитры (включены)" : "Субтитры")
                 .popover(isPresented: $showSubtitleSheet) {
                     SubtitlePickerSheet(vm: vm)
                 }
             }
         }
-        .glassEffect(.regular, in: .capsule)
+        .padding(.horizontal, 2)
+        .frame(height: 44)
+        .clipShape(Capsule())
+        .glassEffect(.regular.interactive(), in: .capsule)
     }
 
     private var speedLabel: String {
@@ -83,11 +87,5 @@ struct BottomRowView: View {
         case 2.0: return "2×"
         default:  return String(format: "%.2g×", vm.playbackRate)
         }
-    }
-
-    private var divider: some View {
-        Rectangle()
-            .fill(.white.opacity(0.2))
-            .frame(width: 0.5, height: 22)
     }
 }
