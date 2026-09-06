@@ -2189,16 +2189,16 @@ struct GlassPlayButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .foregroundStyle(.white)
+            .foregroundStyle(.black)
             .background(
                 Capsule()
                     .fill(
                         LinearGradient(
                             stops: [
-                                .init(color: Color(red: 0.08, green: 0.44, blue: 0.98).opacity(0.85), location: 0.0),
-                                .init(color: Color(red: 0.08, green: 0.44, blue: 0.98).opacity(0.40), location: 0.35),
-                                .init(color: Color(red: 0.08, green: 0.44, blue: 0.98).opacity(0.12), location: 0.65),
-                                .init(color: .clear, location: 0.85)
+                                .init(color: Color.white.opacity(0.95), location: 0.0),
+                                .init(color: Color.white.opacity(0.60), location: 0.40),
+                                .init(color: Color.white.opacity(0.20), location: 0.75),
+                                .init(color: .clear, location: 1.0)
                             ],
                             startPoint: .top,
                             endPoint: .bottom
@@ -2206,8 +2206,7 @@ struct GlassPlayButtonStyle: ButtonStyle {
                     )
             )
             .glassEffect(.regular.interactive(), in: Capsule())
-            .shadow(color: Color(red: 0.08, green: 0.44, blue: 0.98).opacity(isEnabled ? 0.35 : 0.0), radius: 12, x: 0, y: 3)
-            .shadow(color: .black.opacity(0.18), radius: 6, x: 0, y: 2)
+            .shadow(color: .black.opacity(0.18), radius: 8, x: 0, y: 3)
             .opacity(isEnabled ? 1.0 : 0.4)
             .scaleEffect(configuration.isPressed ? 0.94 : 1.0)
             .animation(.spring(response: 0.25, dampingFraction: 0.6), value: configuration.isPressed)
