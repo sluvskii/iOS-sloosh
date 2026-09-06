@@ -27,44 +27,39 @@ struct TopBarView: View {
             // Закрыть
             Button(action: onDismiss) {
                 Image(systemName: "xmark")
-                    .font(.system(size: 14, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.65))
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.75))
                     .blendMode(.plusLighter)
-                    .frame(width: 44, height: 40)
+                    .frame(width: 44, height: 44)
                     .contentShape(Rectangle())
             }
+            .buttonStyle(.glassPress)
             .accessibilityLabel("Закрыть плеер")
-
-            divider
 
             // PiP
             if AVPictureInPictureController.isPictureInPictureSupported() {
                 Button { vm.togglePiP() } label: {
                     Image(systemName: vm.isPiPActive ? "pip.exit" : "pip.enter")
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.65))
+                        .font(.system(size: 17, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.75))
                         .blendMode(.plusLighter)
-                        .frame(width: 44, height: 40)
+                        .frame(width: 44, height: 44)
                         .contentShape(Rectangle())
                 }
+                .buttonStyle(.glassPress)
                 .accessibilityLabel(vm.isPiPActive ? "Выйти из режима картинка в картинке" : "Картинка в картинке")
-
-                divider
             }
 
             // AirPlay (системная кнопка Apple)
             AirPlayButton()
-                .frame(width: 44, height: 40)
-                .colorMultiply(.white.opacity(0.65))
+                .frame(width: 44, height: 44)
+                .colorMultiply(.white.opacity(0.75))
                 .blendMode(.plusLighter)
         }
-        .glassEffect(.regular, in: .capsule)
-    }
-
-    private var divider: some View {
-        Rectangle()
-            .fill(.white.opacity(0.2))
-            .frame(width: 0.5, height: 22)
+        .padding(.horizontal, 2)
+        .frame(height: 44)
+        .clipShape(Capsule())
+        .glassEffect(.regular.interactive(), in: .capsule)
     }
 }
 

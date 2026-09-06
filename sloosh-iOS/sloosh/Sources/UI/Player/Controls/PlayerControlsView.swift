@@ -46,7 +46,7 @@ struct PlayerControlsView: View {
                 VStack(alignment: .trailing, spacing: 8) {
                     HStack(alignment: .bottom) {
                         PlayerTitleInfoView(vm: vm)
-                            .padding(.leading, 16)
+                            .padding(.leading, 8)
                             .padding(.bottom, 4)
                         
                         Spacer()
@@ -63,12 +63,14 @@ struct PlayerControlsView: View {
                                 } label: {
                                     HStack(spacing: 6) {
                                         Image(systemName: "forward.end.fill")
+                                            .font(.system(size: 13, weight: .semibold))
                                         Text("Пропустить заставку")
+                                            .font(.system(size: 14, weight: .semibold, design: .rounded))
                                     }
-                                    .font(.system(size: 15, weight: .semibold, design: .rounded))
                                     .foregroundStyle(.white)
-                                    .padding(.horizontal, 20)
-                                    .padding(.vertical, 12)
+                                    .padding(.horizontal, 18)
+                                    .frame(height: 44)
+                                    .clipShape(Capsule())
                                     .glassEffect(.regular.interactive(), in: .capsule)
                                 }
                                 .buttonStyle(.glassPress)
@@ -86,12 +88,14 @@ struct PlayerControlsView: View {
                                 } label: {
                                     HStack(spacing: 6) {
                                         Image(systemName: "forward.end.fill")
+                                            .font(.system(size: 13, weight: .semibold))
                                         Text("Пропустить титры")
+                                            .font(.system(size: 14, weight: .semibold, design: .rounded))
                                     }
-                                    .font(.system(size: 15, weight: .semibold, design: .rounded))
                                     .foregroundStyle(.white)
-                                    .padding(.horizontal, 20)
-                                    .padding(.vertical, 12)
+                                    .padding(.horizontal, 18)
+                                    .frame(height: 44)
+                                    .clipShape(Capsule())
                                     .glassEffect(.regular.interactive(), in: .capsule)
                                 }
                                 .buttonStyle(.glassPress)
@@ -106,7 +110,7 @@ struct PlayerControlsView: View {
                                 showSubtitleSheet: $showSubtitleSheet
                             )
                         }
-                        .padding(.trailing, 16)
+                        .padding(.trailing, 8)
                     }
                     .opacity(isSeeking ? 0 : 1)
                     .animation(.easeInOut(duration: 0.2), value: isSeeking)
