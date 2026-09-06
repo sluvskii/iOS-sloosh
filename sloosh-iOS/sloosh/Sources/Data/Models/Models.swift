@@ -313,13 +313,13 @@ struct EpisodeRatingsDto: Codable {
 
 // MARK: - Studios, Networks & Collections
 
-public struct ProductionCompanyDto: Codable, Identifiable, Hashable {
-    public let id: Int
-    public let name: String
-    public let logo: String?
-    public let logos: [String: String]?
+struct ProductionCompanyDto: Codable, Identifiable, Hashable {
+    let id: Int
+    let name: String
+    let logo: String?
+    let logos: [String: String]?
     
-    public init(id: Int, name: String, logo: String? = nil, logos: [String: String]? = nil) {
+    init(id: Int, name: String, logo: String? = nil, logos: [String: String]? = nil) {
         self.id = id
         self.name = name
         self.logo = logo
@@ -327,13 +327,13 @@ public struct ProductionCompanyDto: Codable, Identifiable, Hashable {
     }
 }
 
-public struct NetworkDto: Codable, Identifiable, Hashable {
-    public let id: Int
-    public let name: String
-    public let logo: String?
-    public let logos: [String: String]?
+struct NetworkDto: Codable, Identifiable, Hashable {
+    let id: Int
+    let name: String
+    let logo: String?
+    let logos: [String: String]?
     
-    public init(id: Int, name: String, logo: String? = nil, logos: [String: String]? = nil) {
+    init(id: Int, name: String, logo: String? = nil, logos: [String: String]? = nil) {
         self.id = id
         self.name = name
         self.logo = logo
@@ -341,15 +341,15 @@ public struct NetworkDto: Codable, Identifiable, Hashable {
     }
 }
 
-public struct MovieCollectionDto: Codable, Identifiable {
-    public let id: Int?
-    public let name: String?
-    public let overview: String?
-    public let poster: String?
-    public let backdrop: String?
-    public let parts: [MediaDto]?
+struct MovieCollectionDto: Codable, Identifiable {
+    let id: Int?
+    let name: String?
+    let overview: String?
+    let poster: String?
+    let backdrop: String?
+    let parts: [MediaDto]?
     
-    public init(id: Int? = nil, name: String? = nil, overview: String? = nil, poster: String? = nil, backdrop: String? = nil, parts: [MediaDto]? = nil) {
+    init(id: Int? = nil, name: String? = nil, overview: String? = nil, poster: String? = nil, backdrop: String? = nil, parts: [MediaDto]? = nil) {
         self.id = id
         self.name = name
         self.overview = overview
@@ -359,28 +359,28 @@ public struct MovieCollectionDto: Codable, Identifiable {
     }
 }
 
-public struct RelatedStudioResponse: Codable {
-    public let items: [MediaDto]?
-    public let label: String?
-    public let page: Int?
-    public let totalPages: Int?
-    public let totalResults: Int?
+struct RelatedStudioResponse: Codable {
+    let items: [MediaDto]?
+    let label: String?
+    let page: Int?
+    let totalPages: Int?
+    let totalResults: Int?
 }
 
-public struct CategorySectionDto: Codable, Identifiable {
-    public var id: String { section }
-    public let section: String
-    public let items: [CategoryItemDto]
+struct CategorySectionDto: Codable, Identifiable {
+    var id: String { section }
+    let section: String
+    let items: [CategoryItemDto]
 }
 
-public struct CategoryItemDto: Codable, Identifiable, Hashable {
-    public let id: String
-    public let name: String
-    public let slug: String?
-    public let type: String?
-    public let backdrop: String?
+struct CategoryItemDto: Codable, Identifiable, Hashable {
+    let id: String
+    let name: String
+    let slug: String?
+    let type: String?
+    let backdrop: String?
     
-    public init(id: String, name: String, slug: String? = nil, type: String? = nil, backdrop: String? = nil) {
+    init(id: String, name: String, slug: String? = nil, type: String? = nil, backdrop: String? = nil) {
         self.id = id
         self.name = name
         self.slug = slug
@@ -389,15 +389,15 @@ public struct CategoryItemDto: Codable, Identifiable, Hashable {
     }
 }
 
-public struct StudioBrand: Identifiable, Hashable {
-    public let id: String
-    public let name: String
-    public let slug: String
-    public let systemIcon: String
-    public let accentColor: Color
-    public let isNetwork: Bool
+struct StudioBrand: Identifiable, Hashable {
+    let id: String
+    let name: String
+    let slug: String
+    let systemIcon: String
+    let accentColor: Color
+    let isNetwork: Bool
     
-    public static let all: [StudioBrand] = [
+    static let all: [StudioBrand] = [
         StudioBrand(id: "marvel", name: "Marvel", slug: "marvel", systemIcon: "bolt.shield.fill", accentColor: .red, isNetwork: false),
         StudioBrand(id: "dc", name: "DC", slug: "dc", systemIcon: "shield.fill", accentColor: .blue, isNetwork: false),
         StudioBrand(id: "a24", name: "A24", slug: "a24", systemIcon: "sparkles.tv", accentColor: .white, isNetwork: false),
@@ -420,7 +420,7 @@ public struct StudioBrand: Identifiable, Hashable {
         StudioBrand(id: "adult-swim", name: "Adult Swim", slug: "adult-swim", systemIcon: "water.waves", accentColor: .white, isNetwork: true),
     ]
     
-    public static func find(by nameOrId: String) -> StudioBrand? {
+    static func find(by nameOrId: String) -> StudioBrand? {
         let clean = nameOrId.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
         return all.first {
             $0.id.lowercased() == clean ||
