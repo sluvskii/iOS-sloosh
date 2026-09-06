@@ -175,15 +175,12 @@ struct PlayerTitleInfoView: View {
             raw = vm.availableVoiceovers.first
         }
         guard let r = raw, !r.isEmpty else { return nil }
-        let idx = vm.availableVoiceovers.firstIndex(of: r) ?? 0
-        let full = displayTranslationName(r, at: idx, in: vm.availableVoiceovers)
-        // Убираем ведущий эмодзи-флаг и пробел за ним
-        return stripLeadingEmoji(full)
+        let cleaned = cleanTranslationName(r)
+        return stripLeadingEmoji(cleaned)
     }
     
     private func stripLeadingEmoji(_ s: String) -> String {
         var result = s
-        // Проверяем, начинается ли строка с emoji-символа
         if let first = result.unicodeScalars.first,
            first.properties.isEmoji && first.value > 0x2000 {
             result = String(result.dropFirst()).trimmingCharacters(in: .whitespaces)
