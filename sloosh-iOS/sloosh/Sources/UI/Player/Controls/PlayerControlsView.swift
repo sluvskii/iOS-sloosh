@@ -138,48 +138,42 @@ struct PlayerControlsView: View {
     }
 }
 
-// MARK: - Инфо о текущем видео (Логотип, Сезон, Серия)
+// MARK: - Инфо о текущем видео снизу слева (Озвучка, Сезон, Серия)
 
 struct PlayerTitleInfoView: View {
     @ObservedObject var vm: PlayerViewModel
     
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            // Логотип или текстовое название
-            if let logoUrl = vm.displayLogoUrl {
-                AsyncCachedImage(url: logoUrl) {
-                    fallbackTextView
-                } content: { image in
-                    Image(uiImage: image)
-                        .resizable()
-                        .aspectRatio(contentMode: .fit)
-                        .frame(maxWidth: 320, maxHeight: 56, alignment: .leading)
-                        .shadow(color: .black.opacity(0.4), radius: 4, x: 0, y: 2)
-                } fallback: {
-                    fallbackTextView
-                }
-            } else {
-                fallbackTextView
+        VStack(alignment: .leading, spacing: 2) {
+            // Текущая озвучка (сверху)
+            if let voiceoverName = displayVoiceoverText {
+                Text(voiceoverName)
+                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.85))
+                    .blendMode(.plusLighter)
+                    .shadow(color: .black.opacity(0.5), radius: 3, x: 0, y: 1)
+                    .lineLimit(1)
             }
             
-            // Сезон и Серия (если это сериал)
+            // Сезон и Серия (снизу, если сериал)
             if !vm.isMovie, let season = vm.currentSeason, let episode = vm.currentEpisode {
                 Text("\(season) сезон, \(episode) серия")
-                    .font(.footnote)
-                    .fontWeight(.medium)
-                    .foregroundColor(.white.opacity(0.65))
+                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.65))
                     .blendMode(.plusLighter)
-                    .shadow(color: .black.opacity(0.4), radius: 2, x: 0, y: 1)
+                    .shadow(color: .black.opacity(0.5), radius: 3, x: 0, y: 1)
+                    .lineLimit(1)
             }
         }
     }
     
-    private var fallbackTextView: some View {
-        Text(vm.fallbackTitle)
-            .font(.title3)
-            .fontWeight(.bold)
-            .foregroundColor(.white)
-            .lineLimit(2)
-            .shadow(color: .black.opacity(0.6), radius: 3, x: 0, y: 1)
+    private var displayVoiceoverText: String? {
+        if let raw = vm.currentTranslationName, !raw.isEmpty {
+            return cleanTranslationName(raw)
+        }
+        if let first = vm.availableVoiceovers.first, !first.isEmpty {
+            return cleanTranslationName(first)
+        }
+        return nil
     }
 }

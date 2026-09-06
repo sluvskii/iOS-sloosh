@@ -259,7 +259,7 @@ class PlayerViewModel: ObservableObject {
     // MARK: - Voiceovers
     @Published var availableVoiceovers: [String] = []
     var currentTranslationName: String? { _currentTranslationName }
-    private var _currentTranslationName: String?
+    @Published private var _currentTranslationName: String?
 
     // MARK: - Subtitles
     @Published var availableSubtitles: [PlaybackSubtitle] = []
@@ -290,8 +290,8 @@ class PlayerViewModel: ObservableObject {
     private var currentPlaybackSourceURL: URL?
 
     private(set) var currentKpId: Int?
-    private(set) var currentSeason: Int?
-    private(set) var currentEpisode: Int?
+    @Published private(set) var currentSeason: Int?
+    @Published private(set) var currentEpisode: Int?
     private var targetVoiceover: String?
     /// Pre-resolved direct stream URL; bypasses audioVariant matching when set.
     private var targetDirectStreamUrl: String?
