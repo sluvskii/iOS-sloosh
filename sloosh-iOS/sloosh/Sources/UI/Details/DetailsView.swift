@@ -466,16 +466,24 @@ struct DetailsView: View {
                 Text("Смотреть")
                     .font(.system(size: 19, weight: .heavy))
             }
+            .foregroundStyle(Color.black.opacity(0.85))
+            .blendMode(.plusDarker)
             .frame(height: 50)
             .padding(.horizontal, 24)
+            .background(
+                Capsule()
+                    .fill(Color.white.opacity(0.60))
+            )
+            .contentShape(Capsule())
         }
-        .buttonStyle(GlassPlayButtonStyle())
+        .buttonStyle(.glassPress)
+        .glassEffect(.regular.interactive(), in: Capsule())
+        .shadow(color: .black.opacity(0.18), radius: 8, x: 0, y: 3)
         .matchedTransitionSource(id: "playBtn", in: transition) { source in
             source
                 .background(.clear)
                 .clipShape(RoundedRectangle(cornerRadius: 25))
         }
-        .contentShape(Capsule())
     }
 
     @ViewBuilder
@@ -509,15 +517,18 @@ struct DetailsView: View {
                         .foregroundColor(.primary)
                 }
             }
+            .foregroundStyle(.white)
             .frame(width: 50, height: 50)
+            .contentShape(Circle())
         }
-        .buttonStyle(GlassDownloadButtonStyle())
+        .buttonStyle(.glassPress)
+        .glassEffect(.regular.interactive(), in: Circle())
+        .shadow(color: .black.opacity(0.18), radius: 8, x: 0, y: 3)
         .matchedTransitionSource(id: "downloadBtn", in: transition) { source in
             source
                 .background(.clear)
                 .clipShape(RoundedRectangle(cornerRadius: 25))
         }
-        .contentShape(Capsule())
     }
 
     private func handleDownloadAction(details: MediaDetailsDto, item: DownloadItem?) {
@@ -2193,7 +2204,7 @@ struct GlassPlayButtonStyle: ButtonStyle {
             .blendMode(.plusDarker)
             .background(
                 Capsule()
-                    .fill(Color.white.opacity(0.68))
+                    .fill(Color.white.opacity(0.60))
             )
             .glassEffect(.regular.interactive(), in: Capsule())
             .shadow(color: .black.opacity(0.18), radius: 8, x: 0, y: 3)
