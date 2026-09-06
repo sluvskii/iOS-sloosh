@@ -2185,15 +2185,29 @@ class DetailsViewModel: ObservableObject {
 }
 
 struct GlassPlayButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .foregroundStyle(.black)
+            .foregroundStyle(.white)
             .background(
                 Capsule()
-                    .fill(.white)
+                    .fill(
+                        LinearGradient(
+                            stops: [
+                                .init(color: Color(red: 0.10, green: 0.42, blue: 0.92).opacity(0.85), location: 0.0),
+                                .init(color: Color(red: 0.05, green: 0.22, blue: 0.58).opacity(0.80), location: 0.45),
+                                .init(color: Color(red: 0.03, green: 0.10, blue: 0.30).opacity(0.75), location: 1.0)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
             )
             .glassEffect(.regular.interactive(), in: Capsule())
-            .shadow(color: .black.opacity(0.18), radius: 8, x: 0, y: 3)
+            .shadow(color: Color(red: 0.10, green: 0.42, blue: 0.92).opacity(isEnabled ? 0.35 : 0.0), radius: 12, x: 0, y: 5)
+            .shadow(color: .black.opacity(0.25), radius: 6, x: 0, y: 2)
+            .opacity(isEnabled ? 1.0 : 0.4)
             .scaleEffect(configuration.isPressed ? 0.94 : 1.0)
             .animation(.spring(response: 0.25, dampingFraction: 0.6), value: configuration.isPressed)
     }
