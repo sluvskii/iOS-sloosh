@@ -148,7 +148,7 @@ struct PlayerTitleInfoView: View {
             // Текущая озвучка (сверху)
             if let voiceoverName = displayVoiceoverText {
                 Text(voiceoverName)
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.system(size: vm.isMovie ? 19 : 15, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.85))
                     .blendMode(.plusLighter)
                     .shadow(color: .black.opacity(0.5), radius: 3, x: 0, y: 1)
