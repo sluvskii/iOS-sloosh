@@ -342,7 +342,6 @@ struct DetailsView: View {
                     }
                 }
                 .presentationDetents([.medium, .large], selection: $sourceSheetDetent)
-                .navigationTransition(.zoom(sourceID: sourceSheetSourceID, in: transition))
             }
             .fullScreenCover(isPresented: $showPlayer, onDismiss: {
                 showPlayer = false
@@ -468,20 +467,16 @@ struct DetailsView: View {
             }
             .foregroundStyle(Color.black.opacity(0.85))
             .blendMode(.plusDarker)
-            .frame(height: 50)
             .padding(.horizontal, 24)
+            .frame(height: 50)
             .background(
                 Capsule()
                     .fill(Color.white.opacity(0.60))
             )
+            .glassEffect(.regular.interactive(), in: .capsule)
+            .shadow(color: .black.opacity(0.15), radius: 8, x: 0, y: 4)
         }
         .buttonStyle(.plain)
-        .glassEffect(.regular.interactive(), in: .capsule)
-        .matchedTransitionSource(id: "playBtn", in: transition) { source in
-            source
-                .background(.clear)
-                .clipShape(RoundedRectangle(cornerRadius: 25))
-        }
     }
 
     @ViewBuilder
@@ -517,14 +512,10 @@ struct DetailsView: View {
             }
             .foregroundStyle(.white)
             .frame(width: 50, height: 50)
+            .glassEffect(.regular.interactive(), in: .circle)
+            .shadow(color: .black.opacity(0.15), radius: 8, x: 0, y: 4)
         }
         .buttonStyle(.plain)
-        .glassEffect(.regular.interactive(), in: .circle)
-        .matchedTransitionSource(id: "downloadBtn", in: transition) { source in
-            source
-                .background(.clear)
-                .clipShape(RoundedRectangle(cornerRadius: 25))
-        }
     }
 
     private func handleDownloadAction(details: MediaDetailsDto, item: DownloadItem?) {
