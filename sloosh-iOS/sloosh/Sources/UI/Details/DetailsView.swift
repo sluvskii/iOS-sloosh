@@ -2193,21 +2193,11 @@ struct GlassPlayButtonStyle: ButtonStyle {
             .blendMode(.plusDarker)
             .background(
                 Capsule()
-                    .fill(Color.white.opacity(0.88))
+                    .fill(Color.white.opacity(0.68))
             )
             .glassEffect(.regular.interactive(), in: Capsule())
-            .shadow(
-                color: .black.opacity(configuration.isPressed ? 0.08 : 0.18),
-                radius: configuration.isPressed ? 4 : 10,
-                x: 0,
-                y: configuration.isPressed ? 2 : 4
-            )
+            .shadow(color: .black.opacity(0.18), radius: 8, x: 0, y: 3)
             .opacity(isEnabled ? 1.0 : 0.4)
-            .scaleEffect(
-                x: configuration.isPressed ? 0.97 : 1.0,
-                y: configuration.isPressed ? 0.93 : 1.0
-            )
-            .animation(.spring(response: 0.28, dampingFraction: 0.55), value: configuration.isPressed)
     }
 }
 
@@ -2215,9 +2205,7 @@ struct GlassDownloadButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .foregroundStyle(.white)
-            .glassEffect(in: Circle())
-            .scaleEffect(configuration.isPressed ? 0.94 : 1.0)
-            .animation(.spring(response: 0.25, dampingFraction: 0.6), value: configuration.isPressed)
+            .glassEffect(.regular.interactive(), in: Circle())
     }
 }
 struct BlurFadeScaleModifier: ViewModifier {
