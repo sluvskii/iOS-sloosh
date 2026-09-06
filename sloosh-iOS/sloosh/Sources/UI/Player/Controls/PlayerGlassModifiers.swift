@@ -35,6 +35,9 @@ struct GlassGroupModifier: ViewModifier {
 struct GlassPressButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
+            .transaction { transaction in
+                transaction.animation = nil
+            }
     }
 }
 
