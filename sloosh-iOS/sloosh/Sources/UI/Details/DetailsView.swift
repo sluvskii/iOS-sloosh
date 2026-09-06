@@ -457,9 +457,9 @@ struct DetailsView: View {
 
 
     private func playButton(for details: MediaDetailsDto) -> some View {
-        Button(action: {
+        Button {
             handlePlayAction(details: details)
-        }) {
+        } label: {
             HStack(spacing: 8) {
                 Image(systemName: "play.fill")
                     .font(.system(size: 18, weight: .black))
@@ -474,11 +474,9 @@ struct DetailsView: View {
                 Capsule()
                     .fill(Color.white.opacity(0.60))
             )
-            .contentShape(Capsule())
         }
-        .buttonStyle(.glassPress)
-        .glassEffect(.regular.interactive(), in: Capsule())
-        .shadow(color: .black.opacity(0.18), radius: 8, x: 0, y: 3)
+        .buttonStyle(.plain)
+        .glassEffect(.regular.interactive(), in: .capsule)
         .matchedTransitionSource(id: "playBtn", in: transition) { source in
             source
                 .background(.clear)
@@ -491,9 +489,9 @@ struct DetailsView: View {
         let kpId = details.ids?.kp ?? 0
         let item = DownloadManager.shared.getDownloadItem(kpId: kpId, season: nil, episode: nil)
         
-        Button(action: {
+        Button {
             handleDownloadAction(details: details, item: item)
-        }) {
+        } label: {
             Group {
                 if let item = item, item.status == .downloading {
                     ZStack {
@@ -519,11 +517,9 @@ struct DetailsView: View {
             }
             .foregroundStyle(.white)
             .frame(width: 50, height: 50)
-            .contentShape(Circle())
         }
-        .buttonStyle(.glassPress)
-        .glassEffect(.regular.interactive(), in: Circle())
-        .shadow(color: .black.opacity(0.18), radius: 8, x: 0, y: 3)
+        .buttonStyle(.plain)
+        .glassEffect(.regular.interactive(), in: .circle)
         .matchedTransitionSource(id: "downloadBtn", in: transition) { source in
             source
                 .background(.clear)
@@ -2195,30 +2191,6 @@ class DetailsViewModel: ObservableObject {
     }
 }
 
-struct GlassPlayButtonStyle: ButtonStyle {
-    @Environment(\.isEnabled) private var isEnabled
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .foregroundStyle(Color.black.opacity(0.85))
-            .blendMode(.plusDarker)
-            .background(
-                Capsule()
-                    .fill(Color.white.opacity(0.60))
-            )
-            .glassEffect(.regular.interactive(), in: Capsule())
-            .shadow(color: .black.opacity(0.18), radius: 8, x: 0, y: 3)
-            .opacity(isEnabled ? 1.0 : 0.4)
-    }
-}
-
-struct GlassDownloadButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .foregroundStyle(.white)
-            .glassEffect(.regular.interactive(), in: Circle())
-    }
-}
 struct BlurFadeScaleModifier: ViewModifier {
     let isBlurry: Bool
     func body(content: Content) -> some View {
