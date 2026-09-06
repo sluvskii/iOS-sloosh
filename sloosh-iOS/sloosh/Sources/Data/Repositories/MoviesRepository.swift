@@ -206,6 +206,73 @@ class MoviesRepository: ObservableObject {
         }
     }
 
+    // MARK: - Categories, Studios & Collections
+
+    func getCategories() async -> [CategorySectionDto] {
+        do {
+            let response = try await MoviesApi.shared.getCategories()
+            if let sections = response.data, !sections.isEmpty {
+                return sections
+            }
+        } catch {
+            // Graceful fallback: built-in studios and networks
+        }
+        
+        return [
+            CategorySectionDto(
+                section: "Studios",
+                items: StudioBrand.all.filter { !$0.isNetwork }.map {
+                    CategoryItemDto(id: $0.id, name: $0.name, slug: $0.slug, type: "movie", backdrop: nil)
+                }
+            ),
+            CategorySectionDto(
+                section: "Networks",
+                items: StudioBrand.all.filter { $0.isNetwork }.map {
+                    CategoryItemDto(id: $0.id, name: $0.name, slug: $0.slug, type: "tv", backdrop: nil)
+                }
+            )
+        ]
+    }
+
+    func getCollection(id: String, page: Int = 1) async throws -> (items: [MediaDto], totalPages: Int) {
+        do {
+            let response = try await MoviesApi.shared.getCollection(id: id, page: page)
+            let items = response.data?.results ?? []
+            let totalPages = response.data?.effectiveTotalPages ?? 1
+            if !items.isEmpty {
+                return (items, totalPages)
+            }
+        } catch {
+            // Fallback for search
+        }
+        
+        // If collection endpoint is not ready yet, fallback to searching by studio brand name
+        if let brand = StudioBrand.find(by: id) {
+            let searchRes = try await searchMoviesResponse(query: brand.name, page: page)
+            return (searchRes.results ?? [], searchRes.effectiveTotalPages)
+        }
+        
+        return ([], 1)
+    }
+
+    func getRelatedByStudio(type: String, id: String, page: Int = 1) async -> RelatedStudioResponse? {
+        do {
+            let response = try await MoviesApi.shared.getRelatedByStudio(type: type, id: id, page: page)
+            return response.data
+        } catch {
+            return nil
+        }
+    }
+
+    func getMovieCollection(id: String) async -> MovieCollectionDto? {
+        do {
+            let response = try await MoviesApi.shared.getMovieCollection(id: id)
+            return response.data
+        } catch {
+            return nil
+        }
+    }
+
     private func applyFilters(_ items: [MediaDto], filters: SearchFilters) -> [MediaDto] {
         return items.filter { item in
             // Фильтр по типу

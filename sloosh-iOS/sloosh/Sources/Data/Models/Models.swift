@@ -228,6 +228,9 @@ struct MediaDetailsDto: Codable {
     let backdrop: String?
     let ratings: RatingsV2Dto?
     let ids: IdsDto?
+    let productionCompanies: [ProductionCompanyDto]?
+    let networks: [NetworkDto]?
+    let collection: MovieCollectionDto?
     
     var displayPosterUrl: String? {
         normalizeImageUrl(path: poster, id: id)
@@ -306,6 +309,127 @@ struct EpisodeRatingsDto: Codable {
     let kp: Double?
     let tmdb: Double?
     let imdb: Double?
+}
+
+// MARK: - Studios, Networks & Collections
+
+public struct ProductionCompanyDto: Codable, Identifiable, Hashable {
+    public let id: Int
+    public let name: String
+    public let logo: String?
+    public let logos: [String: String]?
+    
+    public init(id: Int, name: String, logo: String? = nil, logos: [String: String]? = nil) {
+        self.id = id
+        self.name = name
+        self.logo = logo
+        self.logos = logos
+    }
+}
+
+public struct NetworkDto: Codable, Identifiable, Hashable {
+    public let id: Int
+    public let name: String
+    public let logo: String?
+    public let logos: [String: String]?
+    
+    public init(id: Int, name: String, logo: String? = nil, logos: [String: String]? = nil) {
+        self.id = id
+        self.name = name
+        self.logo = logo
+        self.logos = logos
+    }
+}
+
+public struct MovieCollectionDto: Codable, Identifiable {
+    public let id: Int?
+    public let name: String?
+    public let overview: String?
+    public let poster: String?
+    public let backdrop: String?
+    public let parts: [MediaDto]?
+    
+    public init(id: Int? = nil, name: String? = nil, overview: String? = nil, poster: String? = nil, backdrop: String? = nil, parts: [MediaDto]? = nil) {
+        self.id = id
+        self.name = name
+        self.overview = overview
+        self.poster = poster
+        self.backdrop = backdrop
+        self.parts = parts
+    }
+}
+
+public struct RelatedStudioResponse: Codable {
+    public let items: [MediaDto]?
+    public let label: String?
+    public let page: Int?
+    public let totalPages: Int?
+    public let totalResults: Int?
+}
+
+public struct CategorySectionDto: Codable, Identifiable {
+    public var id: String { section }
+    public let section: String
+    public let items: [CategoryItemDto]
+}
+
+public struct CategoryItemDto: Codable, Identifiable, Hashable {
+    public let id: String
+    public let name: String
+    public let slug: String?
+    public let type: String?
+    public let backdrop: String?
+    
+    public init(id: String, name: String, slug: String? = nil, type: String? = nil, backdrop: String? = nil) {
+        self.id = id
+        self.name = name
+        self.slug = slug
+        self.type = type
+        self.backdrop = backdrop
+    }
+}
+
+public struct StudioBrand: Identifiable, Hashable {
+    public let id: String
+    public let name: String
+    public let slug: String
+    public let systemIcon: String
+    public let accentColor: Color
+    public let isNetwork: Bool
+    
+    public static let all: [StudioBrand] = [
+        StudioBrand(id: "marvel", name: "Marvel", slug: "marvel", systemIcon: "bolt.shield.fill", accentColor: .red, isNetwork: false),
+        StudioBrand(id: "dc", name: "DC", slug: "dc", systemIcon: "shield.fill", accentColor: .blue, isNetwork: false),
+        StudioBrand(id: "a24", name: "A24", slug: "a24", systemIcon: "sparkles.tv", accentColor: .white, isNetwork: false),
+        StudioBrand(id: "pixar", name: "Pixar", slug: "pixar", systemIcon: "sparkles", accentColor: .cyan, isNetwork: false),
+        StudioBrand(id: "disney", name: "Disney", slug: "disney", systemIcon: "wand.and.stars", accentColor: .indigo, isNetwork: false),
+        StudioBrand(id: "warner-bros", name: "Warner Bros.", slug: "warner-bros", systemIcon: "film.stack", accentColor: .blue, isNetwork: false),
+        StudioBrand(id: "universal", name: "Universal", slug: "universal", systemIcon: "globe.americas.fill", accentColor: .teal, isNetwork: false),
+        StudioBrand(id: "paramount", name: "Paramount", slug: "paramount", systemIcon: "mountain.2.fill", accentColor: .blue, isNetwork: false),
+        StudioBrand(id: "20th-century-studios", name: "20th Century", slug: "20th-century-studios", systemIcon: "film.fill", accentColor: .orange, isNetwork: false),
+        StudioBrand(id: "sony-pictures", name: "Sony Pictures", slug: "sony-pictures", systemIcon: "video.fill", accentColor: .mint, isNetwork: false),
+        StudioBrand(id: "dreamworks", name: "DreamWorks", slug: "dreamworks", systemIcon: "moon.stars.fill", accentColor: .blue, isNetwork: false),
+        
+        // Networks / Streamings
+        StudioBrand(id: "netflix", name: "Netflix", slug: "netflix", systemIcon: "play.tv.fill", accentColor: .red, isNetwork: true),
+        StudioBrand(id: "hbo", name: "HBO", slug: "hbo", systemIcon: "tv.fill", accentColor: .purple, isNetwork: true),
+        StudioBrand(id: "apple-tv-plus", name: "Apple TV+", slug: "apple-tv-plus", systemIcon: "apple.logo", accentColor: .white, isNetwork: true),
+        StudioBrand(id: "prime-video", name: "Prime Video", slug: "prime-video", systemIcon: "cart.fill", accentColor: .cyan, isNetwork: true),
+        StudioBrand(id: "hulu", name: "Hulu", slug: "hulu", systemIcon: "play.circle.fill", accentColor: .green, isNetwork: true),
+        StudioBrand(id: "cartoon-network", name: "Cartoon Network", slug: "cartoon-network", systemIcon: "square.grid.2x2.fill", accentColor: .white, isNetwork: true),
+        StudioBrand(id: "adult-swim", name: "Adult Swim", slug: "adult-swim", systemIcon: "water.waves", accentColor: .white, isNetwork: true),
+    ]
+    
+    public static func find(by nameOrId: String) -> StudioBrand? {
+        let clean = nameOrId.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        return all.first {
+            $0.id.lowercased() == clean ||
+            $0.slug.lowercased() == clean ||
+            $0.name.lowercased() == clean ||
+            clean.contains($0.id.lowercased()) ||
+            clean.contains($0.name.lowercased())
+        }
+    }
 }
 
 public struct FavoriteDto: Codable, Identifiable {

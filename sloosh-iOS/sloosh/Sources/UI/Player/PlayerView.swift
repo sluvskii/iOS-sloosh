@@ -94,6 +94,22 @@ struct PlayerView: View {
         self.seriesResult = seriesResult
     }
 
+    init(config: PlayerConfig) {
+        self.init(
+            iframeUrl: config.iframeUrl,
+            fallbackTitle: config.title,
+            kpId: config.kpId,
+            season: config.season,
+            episode: config.episode,
+            selectedVoiceover: config.voiceover,
+            directStreamUrl: config.streamUrl,
+            voices: config.voices,
+            subtitles: config.subtitles,
+            initialQuality: config.quality,
+            seriesResult: config.seriesResult
+        )
+    }
+
     var body: some View {
         PlayerPresenter(vm: viewModel) {
             dismissEnv()
