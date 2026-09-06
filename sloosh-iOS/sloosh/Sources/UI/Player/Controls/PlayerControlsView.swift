@@ -149,7 +149,7 @@ struct PlayerTitleInfoView: View {
             if let voiceoverName = displayVoiceoverText {
                 Text(voiceoverName)
                     .font(.system(size: vm.isMovie ? 24 : 15, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(.white.opacity(0.75))
                     .blendMode(.plusLighter)
                     .lineLimit(1)
             }
@@ -158,7 +158,7 @@ struct PlayerTitleInfoView: View {
             if !vm.isMovie, let season = vm.currentSeason, let episode = vm.currentEpisode {
                 Text("\(season) сезон, \(episode) серия")
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.6))
+                    .foregroundStyle(.white.opacity(0.55))
                     .blendMode(.plusLighter)
                     .lineLimit(1)
             }
