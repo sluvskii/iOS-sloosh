@@ -26,7 +26,7 @@ struct TopBarView: View {
     private var closeButton: some View {
         Button(action: onDismiss) {
             Image(systemName: "xmark")
-                .font(.system(size: 15, weight: .bold))
+                .font(.system(size: 20, weight: .semibold))
                 .foregroundStyle(.white)
                 .frame(width: 44, height: 44)
                 .contentShape(Circle())
