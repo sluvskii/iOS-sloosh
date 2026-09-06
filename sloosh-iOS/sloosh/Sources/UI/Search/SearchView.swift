@@ -17,46 +17,7 @@ struct SearchView: View {
         NavigationStack {
             Group {
                 if viewModel.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    if viewModel.history.isEmpty {
-                        SearchEmptyState(
-                            icon: "magnifyingglass",
-                            title: "Начните поиск",
-                            subtitle: "Ищите фильмы и сериалы по названию"
-                        )
-                    } else {
-                        List {
-                            Section("Недавние запросы") {
-                                ForEach(viewModel.history, id: \.self) { query in
-                                    HStack(spacing: 12) {
-                                        Image(systemName: "clock.arrow.circlepath")
-                                            .foregroundColor(.secondary)
-
-                                        Button {
-                                            viewModel.selectHistory(query)
-                                        } label: {
-                                            Text(query)
-                                                .foregroundColor(.primary)
-                                                .frame(maxWidth: .infinity, alignment: .leading)
-                                        }
-                                        .buttonStyle(.plain)
-
-                                        Button {
-                                            viewModel.removeHistory(query)
-                                        } label: {
-                                            Image(systemName: "xmark")
-                                                .font(.system(size: 12, weight: .bold))
-                                                .foregroundColor(.secondary)
-                                                .frame(width: 24, height: 24)
-                                                .glassEffect(in: Circle())
-                                        }
-                                        .buttonStyle(.plain)
-                                    }
-                                    .padding(.vertical, 4)
-                                }
-                            }
-                        }
-                        .listStyle(.insetGrouped)
-                    }
+                    SearchDiscoveryView(viewModel: viewModel)
                 } else if viewModel.isLoading && viewModel.results.isEmpty {
                     ProgressView("Ищем...")
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -149,19 +110,7 @@ struct SearchView: View {
             .fullScreenCover(item: $viewModel.playerConfig, onDismiss: {
                 viewModel.playerConfig = nil
             }) { config in
-                PlayerView(
-                    iframeUrl: config.iframeUrl,
-                    fallbackTitle: config.title,
-                    kpId: config.kpId,
-                    season: config.season,
-                    episode: config.episode,
-                    selectedVoiceover: config.voiceover,
-                    directStreamUrl: config.streamUrl,
-                    voices: config.voices,
-                    subtitles: config.subtitles,
-                    initialQuality: config.quality,
-                    seriesResult: config.seriesResult
-                )
+                PlayerView(config: config)
             }
             .toolbar {
                 ToolbarItemGroup(placement: .topBarTrailing) {
@@ -172,6 +121,117 @@ struct SearchView: View {
                     }
                 }
             }
+        }
+    }
+}
+
+struct SearchDiscoveryView: View {
+    @ObservedObject var viewModel: SearchViewModel
+
+    var body: some View {
+        ScrollView(showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 24) {
+                // 1. History
+                if !viewModel.history.isEmpty {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack {
+                            Text("Недавние запросы")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundColor(.secondary)
+                            Spacer()
+                            Button("Очистить") {
+                                viewModel.clearHistory()
+                            }
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(.slooshAccent)
+                        }
+                        .padding(.horizontal, 16)
+                        
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) {
+                                ForEach(viewModel.history, id: \.self) { query in
+                                    HStack(spacing: 8) {
+                                        Button {
+                                            viewModel.selectHistory(query)
+                                        } label: {
+                                            Text(query)
+                                                .font(.system(size: 14, weight: .medium))
+                                                .foregroundColor(.primary)
+                                        }
+                                        .buttonStyle(.plain)
+                                        
+                                        Button {
+                                            viewModel.removeHistory(query)
+                                        } label: {
+                                            Image(systemName: "xmark")
+                                                .font(.system(size: 11, weight: .bold))
+                                                .foregroundColor(.secondary)
+                                        }
+                                        .buttonStyle(.plain)
+                                    }
+                                    .padding(.horizontal, 12)
+                                    .padding(.vertical, 7)
+                                    .glassEffect(.regular.interactive(), in: Capsule())
+                                }
+                            }
+                            .padding(.horizontal, 16)
+                        }
+                    }
+                }
+
+                // 2. Studios and Networks
+                VStack(alignment: .leading, spacing: 14) {
+                    Text("Студии и стриминги")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(.primary)
+                        .padding(.horizontal, 16)
+                    
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        LazyHGrid(rows: [GridItem(.fixed(48)), GridItem(.fixed(48))], spacing: 10) {
+                            ForEach(StudioBrand.all) { brand in
+                                NavigationLink(destination: StudioCatalogView(studioId: brand.id, studioName: brand.name)) {
+                                    HStack(spacing: 10) {
+                                        Image(systemName: brand.systemIcon)
+                                            .font(.system(size: 15, weight: .semibold))
+                                            .foregroundColor(brand.accentColor)
+                                            .frame(width: 22, height: 22)
+                                        
+                                        Text(brand.name)
+                                            .font(.system(size: 14, weight: .semibold))
+                                            .foregroundColor(.primary)
+                                    }
+                                    .padding(.horizontal, 14)
+                                    .frame(height: 48)
+                                    .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                    }
+                }
+                
+                // 3. Quick hint when history is empty
+                if viewModel.history.isEmpty {
+                    VStack(spacing: 8) {
+                        Image(systemName: "sparkle.magnifyingglass")
+                            .font(.system(size: 34))
+                            .foregroundColor(.secondary.opacity(0.6))
+                            .padding(.bottom, 2)
+                        Text("Быстрый поиск")
+                            .font(.system(size: 16, weight: .semibold))
+                            .foregroundColor(.primary)
+                        Text("Ищите фильмы, сериалы или выбирайте студии выше")
+                            .font(.system(size: 13))
+                            .foregroundColor(.secondary)
+                            .multilineTextAlignment(.center)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 28)
+                    .padding(.horizontal, 24)
+                }
+            }
+            .padding(.vertical, 16)
         }
     }
 }
