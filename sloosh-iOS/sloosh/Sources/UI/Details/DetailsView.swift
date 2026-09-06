@@ -130,6 +130,14 @@ struct DetailsView: View {
         }
     }
 
+    private var dominantMovieColor: Color {
+        if let dominant = dominantBackdropColor ?? dominantPosterColor {
+            return Color(dominant.vibrantForGlass)
+        } else {
+            return Color.slooshAccent
+        }
+    }
+
     private func fetchAverageColor(from url: URL?) async -> UIColor? {
         guard let url else { return nil }
         return await Task.detached(priority: .userInitiated) {
@@ -469,7 +477,7 @@ struct DetailsView: View {
             .frame(height: 50)
             .padding(.horizontal, 24)
         }
-        .buttonStyle(GlassPlayButtonStyle())
+        .buttonStyle(GlassPlayButtonStyle(tintColor: dominantMovieColor))
         .matchedTransitionSource(id: "playBtn", in: transition) { source in
             source
                 .background(.clear)
@@ -2185,20 +2193,22 @@ class DetailsViewModel: ObservableObject {
 }
 
 struct GlassPlayButtonStyle: ButtonStyle {
+    var tintColor: Color = Color.slooshAccent
     @Environment(\.isEnabled) private var isEnabled
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .foregroundStyle(.black)
+            .foregroundStyle(Color.white.opacity(0.9))
+            .blendMode(.plusLighter)
             .background(
                 Capsule()
                     .fill(
                         LinearGradient(
                             stops: [
-                                .init(color: Color.white.opacity(0.95), location: 0.0),
-                                .init(color: Color.white.opacity(0.60), location: 0.40),
-                                .init(color: Color.white.opacity(0.20), location: 0.75),
-                                .init(color: .clear, location: 1.0)
+                                .init(color: tintColor.opacity(0.75), location: 0.0),
+                                .init(color: tintColor.opacity(0.35), location: 0.35),
+                                .init(color: tintColor.opacity(0.10), location: 0.65),
+                                .init(color: .clear, location: 0.85)
                             ],
                             startPoint: .top,
                             endPoint: .bottom
