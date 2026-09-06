@@ -457,9 +457,9 @@ struct DetailsView: View {
 
     private var buttonAmbientTintColor: Color {
         if let dominant = dominantBackdropColor ?? dominantPosterColor {
-            return Color(uiColor: dominant)
+            return Color(uiColor: dominant.vibrantForGlass)
         } else {
-            return effectiveBackgroundColor
+            return Color.slooshAccent
         }
     }
 
@@ -473,16 +473,16 @@ struct DetailsView: View {
                 Text("Смотреть")
                     .font(.system(size: 19, weight: .heavy))
             }
-            .foregroundStyle(Color.black.opacity(0.90))
+            .foregroundStyle(Color.black.opacity(0.72))
             .blendMode(.plusDarker)
             .padding(.horizontal, 24)
             .frame(height: 50)
             .background(
                 ZStack {
                     Capsule()
-                        .fill(buttonAmbientTintColor.opacity(0.35))
+                        .fill(Color.white.opacity(0.68))
                     Capsule()
-                        .fill(Color.white.opacity(0.55))
+                        .fill(buttonAmbientTintColor.opacity(0.45))
                 }
             )
             .compositingGroup()
