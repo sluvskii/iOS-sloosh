@@ -455,6 +455,14 @@ struct DetailsView: View {
     }
 
 
+    private var buttonAmbientTintColor: Color {
+        if let dominant = dominantBackdropColor ?? dominantPosterColor {
+            return Color(uiColor: dominant)
+        } else {
+            return effectiveBackgroundColor
+        }
+    }
+
     private func playButton(for details: MediaDetailsDto) -> some View {
         Button {
             handlePlayAction(details: details)
@@ -465,15 +473,19 @@ struct DetailsView: View {
                 Text("Смотреть")
                     .font(.system(size: 19, weight: .heavy))
             }
-            .foregroundStyle(Color.black.opacity(0.80))
+            .foregroundStyle(Color.black.opacity(0.90))
             .blendMode(.plusDarker)
             .padding(.horizontal, 24)
             .frame(height: 50)
             .background(
-                Capsule()
-                    .fill(Color.white.opacity(0.42))
-                    .blendMode(.plusLighter)
+                ZStack {
+                    Capsule()
+                        .fill(buttonAmbientTintColor.opacity(0.35))
+                    Capsule()
+                        .fill(Color.white.opacity(0.55))
+                }
             )
+            .compositingGroup()
             .glassEffect(.regular.interactive(), in: .capsule)
             .shadow(color: .black.opacity(0.15), radius: 8, x: 0, y: 4)
         }
@@ -743,6 +755,17 @@ struct DetailsView: View {
                             .padding(.top, 8)
                             .padding(.bottom, 20)
                         }
+
+                        if let collection = viewModel.movieCollection ?? details.collection {
+                            FranchiseCollectionSection(collection: collection)
+                                .padding(.top, 16)
+                        }
+
+                        if let relatedStudio = viewModel.relatedStudio, let items = relatedStudio.items, !items.isEmpty {
+                            RelatedStudioSection(response: relatedStudio)
+                                .padding(.top, 16)
+                                .padding(.bottom, 20)
+                        }
                     }
                     .offset(y: -25)
                     .transition(.opacity)
@@ -862,6 +885,17 @@ struct DetailsView: View {
                                 }
                                 .padding(.top, 8)
                                 .padding(.bottom, 40)
+                            }
+
+                            if let collection = viewModel.movieCollection ?? details.collection {
+                                FranchiseCollectionSection(collection: collection)
+                                    .padding(.top, 16)
+                            }
+
+                            if let relatedStudio = viewModel.relatedStudio, let items = relatedStudio.items, !items.isEmpty {
+                                RelatedStudioSection(response: relatedStudio)
+                                    .padding(.top, 16)
+                                    .padding(.bottom, 20)
                             }
                         }
                         .offset(y: -60)
@@ -1185,6 +1219,65 @@ private struct DetailsInfoSection: View {
                             NavigationLink(destination: GenreCatalogView(genre: genre)) {
                                 HStack(spacing: 6) {
                                     Text(genre)
+                                        .font(.system(size: 14, weight: .semibold))
+                                        .foregroundColor(.primary)
+                                }
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 8)
+                                .glassEffect(.regular.interactive(), in: Capsule())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+            }
+
+            let companies = details.productionCompanies ?? []
+            let networks = details.networks ?? []
+            if !companies.isEmpty || !networks.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(details.type == "tv" ? "Студии и платформы" : "Студии производства")
+                        .font(.system(size: 18, weight: .bold))
+
+                    FlowLayout(spacing: 8) {
+                        ForEach(companies) { company in
+                            let brand = StudioBrand.find(by: company.name)
+                            NavigationLink(destination: StudioCatalogView(studioId: brand?.id ?? String(company.id), studioName: company.name)) {
+                                HStack(spacing: 6) {
+                                    if let brand = brand {
+                                        Image(systemName: brand.systemIcon)
+                                            .font(.system(size: 13, weight: .semibold))
+                                            .foregroundStyle(brand.accentColor)
+                                    } else {
+                                        Image(systemName: "film.fill")
+                                            .font(.system(size: 12, weight: .semibold))
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    Text(company.name)
+                                        .font(.system(size: 14, weight: .semibold))
+                                        .foregroundColor(.primary)
+                                }
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 8)
+                                .glassEffect(.regular.interactive(), in: Capsule())
+                            }
+                            .buttonStyle(.plain)
+                        }
+
+                        ForEach(networks) { net in
+                            let brand = StudioBrand.find(by: net.name)
+                            NavigationLink(destination: StudioCatalogView(studioId: brand?.id ?? String(net.id), studioName: net.name)) {
+                                HStack(spacing: 6) {
+                                    if let brand = brand {
+                                        Image(systemName: brand.systemIcon)
+                                            .font(.system(size: 13, weight: .semibold))
+                                            .foregroundStyle(brand.accentColor)
+                                    } else {
+                                        Image(systemName: "tv.fill")
+                                            .font(.system(size: 12, weight: .semibold))
+                                            .foregroundStyle(.secondary)
+                                    }
+                                    Text(net.name)
                                         .font(.system(size: 14, weight: .semibold))
                                         .foregroundColor(.primary)
                                 }
@@ -2062,6 +2155,11 @@ class DetailsViewModel: ObservableObject {
     @Published var selectedInlineSeason: Int = 1
     @Published var isFetchingInlineSeasons = false
 
+    @Published var relatedStudio: RelatedStudioResponse? = nil
+    @Published var movieCollection: MovieCollectionDto? = nil
+    @Published var isFetchingRelatedStudio = false
+    @Published var isFetchingCollection = false
+
     @Published var isFavorite: Bool = false
 
     private let allohaTranslationPreferenceKey = "alloha_last_translation_name"
@@ -2097,9 +2195,32 @@ class DetailsViewModel: ObservableObject {
             if details?.type == "tv", let kpId = details?.ids?.kp {
                 await fetchInlineSeasons(kpId: kpId)
             }
+
+            if let type = details?.type {
+                Task {
+                    await self.fetchRelatedByStudio(type: type, id: id)
+                }
+            }
+            if details?.type != "tv" {
+                Task {
+                    await self.fetchMovieCollection(id: id)
+                }
+            }
         } catch {
             print("Error loading details: \(error)")
         }
+    }
+
+    func fetchRelatedByStudio(type: String, id: String) async {
+        isFetchingRelatedStudio = true
+        defer { isFetchingRelatedStudio = false }
+        self.relatedStudio = await MoviesRepository.shared.getRelatedByStudio(type: type, id: id)
+    }
+
+    func fetchMovieCollection(id: String) async {
+        isFetchingCollection = true
+        defer { isFetchingCollection = false }
+        self.movieCollection = await MoviesRepository.shared.getMovieCollection(id: id)
     }
 
     func fetchInlineSeasons(kpId: Int) async {
@@ -2180,6 +2301,140 @@ class DetailsViewModel: ObservableObject {
     private func preferredAllohaTranslation(from movie: AllohaMovie) -> AllohaTranslation? {
         let savedName = UserDefaults.standard.string(forKey: allohaTranslationPreferenceKey)
         return movie.translations.first(where: { $0.name == savedName }) ?? movie.translations.first
+    }
+}
+
+// MARK: - Franchise & Studio Sections
+
+private struct FranchiseCollectionSection: View {
+    let collection: MovieCollectionDto
+
+    var body: some View {
+        if let parts = collection.parts, !parts.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text("Все части франшизы")
+                        .font(.system(size: 18, weight: .bold))
+                    if let name = collection.name, !name.isEmpty {
+                        Text(name)
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.horizontal)
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(spacing: 14) {
+                        ForEach(parts) { part in
+                            NavigationLink(destination: DetailsView(movieId: part.id, navigationTransitionID: nil, navigationTransitionNamespace: nil).navigationBarBackButtonHidden(true)) {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    AsyncCachedImage(url: URL(string: part.posterUrl ?? "")) {
+                                        Rectangle().fill(Color.gray.opacity(0.2))
+                                            .frame(width: 110, height: 165)
+                                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                    } content: { img in
+                                        Image(uiImage: img).resizable().aspectRatio(contentMode: .fill)
+                                            .frame(width: 110, height: 165)
+                                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                    } fallback: {
+                                        Rectangle().fill(Color.gray.opacity(0.2))
+                                            .frame(width: 110, height: 165)
+                                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                    }
+
+                                    Text(part.title ?? part.originalTitle ?? "")
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .foregroundStyle(.primary)
+                                        .lineLimit(1)
+                                        .frame(width: 110, alignment: .leading)
+
+                                    if let year = part.year?.stringValue {
+                                        Text(year)
+                                            .font(.system(size: 11, weight: .regular))
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal)
+                }
+            }
+        }
+    }
+}
+
+private struct RelatedStudioSection: View {
+    let response: RelatedStudioResponse
+
+    var body: some View {
+        if let items = response.items, !items.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 8) {
+                    Text("Другие релизы")
+                        .font(.system(size: 18, weight: .bold))
+                    if let label = response.label, !label.isEmpty {
+                        let brand = StudioBrand.find(by: label)
+                        NavigationLink(destination: StudioCatalogView(studioId: brand?.id ?? label, studioName: label)) {
+                            HStack(spacing: 5) {
+                                if let brand = brand {
+                                    Image(systemName: brand.systemIcon)
+                                        .font(.system(size: 11, weight: .semibold))
+                                        .foregroundStyle(brand.accentColor)
+                                }
+                                Text(label)
+                                    .font(.system(size: 12, weight: .semibold))
+                                    .foregroundStyle(.primary)
+                            }
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 5)
+                            .glassEffect(.regular.interactive(), in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal)
+
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(spacing: 14) {
+                        ForEach(items) { movie in
+                            NavigationLink(destination: DetailsView(movieId: movie.id, navigationTransitionID: nil, navigationTransitionNamespace: nil).navigationBarBackButtonHidden(true)) {
+                                VStack(alignment: .leading, spacing: 6) {
+                                    AsyncCachedImage(url: URL(string: movie.posterUrl ?? "")) {
+                                        Rectangle().fill(Color.gray.opacity(0.2))
+                                            .frame(width: 110, height: 165)
+                                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                    } content: { img in
+                                        Image(uiImage: img).resizable().aspectRatio(contentMode: .fill)
+                                            .frame(width: 110, height: 165)
+                                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                    } fallback: {
+                                        Rectangle().fill(Color.gray.opacity(0.2))
+                                            .frame(width: 110, height: 165)
+                                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                    }
+
+                                    Text(movie.title ?? movie.name ?? movie.originalTitle ?? "")
+                                        .font(.system(size: 12, weight: .semibold))
+                                        .foregroundStyle(.primary)
+                                        .lineLimit(1)
+                                        .frame(width: 110, alignment: .leading)
+
+                                    if let year = movie.year?.stringValue {
+                                        Text(year)
+                                            .font(.system(size: 11, weight: .regular))
+                                            .foregroundStyle(.secondary)
+                                    }
+                                }
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal)
+                }
+            }
+        }
     }
 }
 

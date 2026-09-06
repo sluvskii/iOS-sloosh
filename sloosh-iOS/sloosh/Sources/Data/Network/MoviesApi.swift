@@ -173,4 +173,40 @@ class MoviesApi {
         // api/v2/search — серверный движок каталога с поддержкой параметров фильтров
         return try await performRequest(endpoint: "api/v2/search", queryItems: queryItems)
     }
+
+    // MARK: - Categories & Collections (feat/ts-migration)
+
+    func getCategories() async throws -> ApiEnvelope<[CategorySectionDto]> {
+        return try await performRequest(endpoint: "api/v1/categories")
+    }
+
+    func getCollection(id: String, page: Int = 1) async throws -> ApiEnvelope<MediaResponse> {
+        let queryItems = [
+            URLQueryItem(name: "page", value: String(page))
+        ]
+        return try await performRequest(endpoint: "api/v1/collection/\(id)", queryItems: queryItems)
+    }
+
+    func getRelatedByStudio(type: String, id: String, page: Int = 1) async throws -> ApiEnvelope<RelatedStudioResponse> {
+        let cleanType = (type.lowercased().contains("tv") || type.lowercased().contains("serial")) ? "tv" : "movie"
+        let cleanId = id.replacingOccurrences(of: "kp_", with: "")
+        let queryItems = [
+            URLQueryItem(name: "page", value: String(page))
+        ]
+        return try await performRequest(endpoint: "api/v1/media/\(cleanType)/\(cleanId)/related/studio", queryItems: queryItems)
+    }
+
+    func getMovieCollection(id: String) async throws -> ApiEnvelope<MovieCollectionDto> {
+        let cleanId = id.replacingOccurrences(of: "kp_", with: "")
+        return try await performRequest(endpoint: "api/v1/media/movie/\(cleanId)/collection")
+    }
+
+    func getRelatedByCast(type: String, id: String, page: Int = 1) async throws -> ApiEnvelope<MediaResponse> {
+        let cleanType = (type.lowercased().contains("tv") || type.lowercased().contains("serial")) ? "tv" : "movie"
+        let cleanId = id.replacingOccurrences(of: "kp_", with: "")
+        let queryItems = [
+            URLQueryItem(name: "page", value: String(page))
+        ]
+        return try await performRequest(endpoint: "api/v1/media/\(cleanType)/\(cleanId)/related/cast", queryItems: queryItems)
+    }
 }
