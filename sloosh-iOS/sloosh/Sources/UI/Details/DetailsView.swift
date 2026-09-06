@@ -465,8 +465,7 @@ struct DetailsView: View {
                 Text("Смотреть")
                     .font(.system(size: 19, weight: .heavy))
             }
-            .foregroundStyle(Color.black.opacity(0.85))
-            .blendMode(.plusDarker)
+            .foregroundStyle(.black)
             .padding(.horizontal, 24)
             .frame(height: 50)
             .background(
@@ -476,7 +475,7 @@ struct DetailsView: View {
             .glassEffect(.regular.interactive(), in: .capsule)
             .shadow(color: .black.opacity(0.15), radius: 8, x: 0, y: 4)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.glassPress)
     }
 
     @ViewBuilder
@@ -515,7 +514,7 @@ struct DetailsView: View {
             .glassEffect(.regular.interactive(), in: .circle)
             .shadow(color: .black.opacity(0.15), radius: 8, x: 0, y: 4)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.glassPress)
     }
 
     private func handleDownloadAction(details: MediaDetailsDto, item: DownloadItem?) {
