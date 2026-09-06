@@ -13,12 +13,52 @@ struct TopBarView: View {
     // Tips
 
     var body: some View {
-        HStack(alignment: .center, spacing: 8) {
-            closeButton
-            dualActionsGroup
-            Spacer()
+        ZStack {
+            // Логотип проекта или название фильма строго по центру
+            centerLogoView
+                .padding(.horizontal, 148)
+                .allowsHitTesting(false)
+
+            // Левая группа: закрыть + (PiP | AirPlay)
+            HStack(alignment: .center, spacing: 8) {
+                closeButton
+                dualActionsGroup
+                Spacer()
+            }
+            .padding(.horizontal, 8)
         }
-        .padding(.horizontal, 8)
+    }
+
+    // MARK: - Логотип / Название по центру
+
+    private var centerLogoView: some View {
+        Group {
+            if let logoUrl = vm.displayLogoUrl {
+                AsyncCachedImage(url: logoUrl) {
+                    fallbackTextView
+                } content: { image in
+                    Image(uiImage: image)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(maxHeight: 36)
+                        .shadow(color: .black.opacity(0.5), radius: 4, x: 0, y: 2)
+                } fallback: {
+                    fallbackTextView
+                }
+            } else {
+                fallbackTextView
+            }
+        }
+        .frame(maxWidth: 240)
+    }
+
+    private var fallbackTextView: some View {
+        Text(vm.fallbackTitle)
+            .font(.system(size: 15, weight: .semibold, design: .rounded))
+            .foregroundStyle(.white.opacity(0.85))
+            .blendMode(.plusLighter)
+            .lineLimit(1)
+            .shadow(color: .black.opacity(0.6), radius: 3, x: 0, y: 1)
     }
 
     // MARK: - Отдельная кнопка «Закрыть» (нативная круглая иконка как в окне шеринга)
