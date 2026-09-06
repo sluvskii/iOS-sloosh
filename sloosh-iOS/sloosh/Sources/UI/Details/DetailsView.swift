@@ -455,6 +455,14 @@ struct DetailsView: View {
     }
 
 
+    private var buttonAmbientTintColor: Color {
+        if let dominant = dominantBackdropColor ?? dominantPosterColor {
+            return Color(uiColor: dominant)
+        } else {
+            return effectiveBackgroundColor
+        }
+    }
+
     private func playButton(for details: MediaDetailsDto) -> some View {
         Button {
             handlePlayAction(details: details)
@@ -470,10 +478,14 @@ struct DetailsView: View {
             .padding(.horizontal, 24)
             .frame(height: 50)
             .background(
-                Capsule()
-                    .fill(Color.white.opacity(0.55))
-                    .blendMode(.plusLighter)
+                ZStack {
+                    Capsule()
+                        .fill(buttonAmbientTintColor.opacity(0.35))
+                    Capsule()
+                        .fill(Color.white.opacity(0.55))
+                }
             )
+            .compositingGroup()
             .glassEffect(.regular.interactive(), in: .capsule)
             .shadow(color: .black.opacity(0.15), radius: 8, x: 0, y: 4)
         }
