@@ -455,14 +455,6 @@ struct DetailsView: View {
     }
 
 
-    private var buttonAmbientTintColor: Color {
-        if let dominant = dominantBackdropColor ?? dominantPosterColor {
-            return Color(uiColor: dominant.vibrantForGlass)
-        } else {
-            return Color.slooshAccent
-        }
-    }
-
     private func playButton(for details: MediaDetailsDto) -> some View {
         Button {
             handlePlayAction(details: details)
@@ -473,19 +465,15 @@ struct DetailsView: View {
                 Text("Смотреть")
                     .font(.system(size: 19, weight: .heavy))
             }
-            .foregroundStyle(Color.black.opacity(0.72))
+            .foregroundStyle(Color.black.opacity(0.80))
             .blendMode(.plusDarker)
             .padding(.horizontal, 24)
             .frame(height: 50)
             .background(
-                ZStack {
-                    Capsule()
-                        .fill(Color.white.opacity(0.68))
-                    Capsule()
-                        .fill(buttonAmbientTintColor.opacity(0.45))
-                }
+                Capsule()
+                    .fill(Color.white.opacity(0.42))
+                    .blendMode(.plusLighter)
             )
-            .compositingGroup()
             .glassEffect(.regular.interactive(), in: .capsule)
             .shadow(color: .black.opacity(0.15), radius: 8, x: 0, y: 4)
         }
