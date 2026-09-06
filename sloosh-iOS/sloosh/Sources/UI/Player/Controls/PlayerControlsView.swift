@@ -148,7 +148,7 @@ struct PlayerTitleInfoView: View {
             // Текущая озвучка (сверху)
             if let voiceoverName = displayVoiceoverText {
                 Text(voiceoverName)
-                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+                    .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(.white.opacity(0.85))
                     .blendMode(.plusLighter)
                     .shadow(color: .black.opacity(0.5), radius: 3, x: 0, y: 1)
@@ -158,7 +158,7 @@ struct PlayerTitleInfoView: View {
             // Сезон и Серия (снизу, если сериал)
             if !vm.isMovie, let season = vm.currentSeason, let episode = vm.currentEpisode {
                 Text("\(season) сезон, \(episode) серия")
-                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                    .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(.white.opacity(0.65))
                     .blendMode(.plusLighter)
                     .shadow(color: .black.opacity(0.5), radius: 3, x: 0, y: 1)
@@ -168,12 +168,26 @@ struct PlayerTitleInfoView: View {
     }
     
     private var displayVoiceoverText: String? {
-        if let raw = vm.currentTranslationName, !raw.isEmpty {
-            return cleanTranslationName(raw)
+        let raw: String?
+        if let name = vm.currentTranslationName, !name.isEmpty {
+            raw = name
+        } else {
+            raw = vm.availableVoiceovers.first
         }
-        if let first = vm.availableVoiceovers.first, !first.isEmpty {
-            return cleanTranslationName(first)
+        guard let r = raw, !r.isEmpty else { return nil }
+        let idx = vm.availableVoiceovers.firstIndex(of: r) ?? 0
+        let full = displayTranslationName(r, at: idx, in: vm.availableVoiceovers)
+        // Убираем ведущий эмодзи-флаг и пробел за ним
+        return stripLeadingEmoji(full)
+    }
+    
+    private func stripLeadingEmoji(_ s: String) -> String {
+        var result = s
+        // Проверяем, начинается ли строка с emoji-символа
+        if let first = result.unicodeScalars.first,
+           first.properties.isEmoji && first.value > 0x2000 {
+            result = String(result.dropFirst()).trimmingCharacters(in: .whitespaces)
         }
-        return nil
+        return result
     }
 }
