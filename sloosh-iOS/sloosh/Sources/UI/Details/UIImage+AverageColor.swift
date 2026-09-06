@@ -71,4 +71,19 @@ extension UIColor {
         
         return UIColor(red: r, green: g, blue: b, alpha: a)
     }
+
+    /// Преобразует цвет в сочный, чистый оттенок для подсветки Liquid Glass
+    var vibrantForGlass: UIColor {
+        var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        if self.getHue(&h, saturation: &s, brightness: &b, alpha: &a) {
+            if s > 0.08 {
+                let newS = min(1.0, max(s, 0.65))
+                let newB = min(1.0, max(b, 0.80))
+                return UIColor(hue: h, saturation: newS, brightness: newB, alpha: 1.0)
+            } else {
+                return UIColor(white: 0.85, alpha: 1.0)
+            }
+        }
+        return self
+    }
 }
