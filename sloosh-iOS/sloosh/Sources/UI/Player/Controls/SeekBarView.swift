@@ -83,7 +83,7 @@ struct SeekBarView: View {
                 .blendMode(.plusLighter)
         }
         .padding(.horizontal, 16)
-        .frame(height: 44)
+        .padding(.vertical, 12)
         .clipShape(Capsule())
         .glassEffect(.regular, in: .capsule)
         .accessibilityElement(children: .combine)

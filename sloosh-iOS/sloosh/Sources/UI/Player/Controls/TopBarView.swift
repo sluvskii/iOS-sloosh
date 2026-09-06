@@ -13,29 +13,33 @@ struct TopBarView: View {
     // Tips
 
     var body: some View {
-        HStack(alignment: .center) {
-            leftGroup
+        HStack(alignment: .center, spacing: 8) {
+            closeButton
+            dualActionsGroup
             Spacer()
         }
         .padding(.horizontal, 8)
     }
 
-    // MARK: Левая группа: закрыть | PiP | AirPlay
+    // MARK: - Отдельная кнопка «Закрыть» (нативная круглая иконка как в окне шеринга)
 
-    private var leftGroup: some View {
+    private var closeButton: some View {
+        Button(action: onDismiss) {
+            Image(systemName: "xmark")
+                .font(.system(size: 15, weight: .bold))
+                .foregroundStyle(.white)
+                .frame(width: 44, height: 44)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.glassPress)
+        .glassEffect(.regular.interactive(), in: .circle)
+        .accessibilityLabel("Закрыть плеер")
+    }
+
+    // MARK: - Двойная капсула: PiP + AirPlay
+
+    private var dualActionsGroup: some View {
         HStack(spacing: 0) {
-            // Закрыть
-            Button(action: onDismiss) {
-                Image(systemName: "xmark")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.75))
-                    .blendMode(.plusLighter)
-                    .frame(width: 44, height: 44)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.glassPress)
-            .accessibilityLabel("Закрыть плеер")
-
             // PiP
             if AVPictureInPictureController.isPictureInPictureSupported() {
                 Button { vm.togglePiP() } label: {
