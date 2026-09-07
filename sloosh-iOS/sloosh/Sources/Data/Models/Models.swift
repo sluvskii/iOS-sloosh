@@ -193,17 +193,17 @@ struct MediaDto: Codable, Identifiable {
             return normalizeImageUrl(path: p, id: originalId?.stringValue)
         }
         if let path = poster_path, !path.isEmpty {
-            return path.hasPrefix("http") ? path : "https://image.tmdb.org/t/p/w500\(path)"
+            return normalizeImageUrl(path: path, id: originalId?.stringValue) ?? (path.hasPrefix("http") ? path : "https://api-sloosh.vercel.app/api/v1/images/tmdb/w500\(path)")
         }
         return nil
     }
 
     var displayBackdropUrl: String? {
         if let b = backdrop, !b.isEmpty {
-            return b
+            return normalizeImageUrl(path: b, id: originalId?.stringValue) ?? b
         }
         if let path = backdrop_path, !path.isEmpty {
-            return path.hasPrefix("http") ? path : "https://image.tmdb.org/t/p/original\(path)"
+            return normalizeImageUrl(path: path, id: originalId?.stringValue) ?? (path.hasPrefix("http") ? path : "https://api-sloosh.vercel.app/api/v1/images/tmdb/original\(path)")
         }
         return displayPosterUrl
     }
@@ -229,6 +229,7 @@ func adjustExternalImageUrl(urlStr: String, isLowQuality: Bool) -> String {
         } else {
             result = result.replacingOccurrences(of: "/w342/", with: "/w500/")
         }
+        result = result.replacingOccurrences(of: "https://image.tmdb.org/t/p/", with: "https://api-sloosh.vercel.app/api/v1/images/tmdb/")
     }
     
     // 3. Backend Kinopoisk proxy (/kp/ -> /kp_small/)
@@ -268,12 +269,13 @@ func normalizeImageUrl(path: String?, id: String? = nil) -> String? {
             return nil
         }
         if val.hasPrefix("http://") || val.hasPrefix("https://") {
-            return val.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? val
+            let proxied = val.replacingOccurrences(of: "https://image.tmdb.org/t/p/", with: "https://api-sloosh.vercel.app/api/v1/images/tmdb/")
+            return proxied
         }
         if val.hasPrefix("/") {
             if val.hasSuffix(".jpg") || val.hasSuffix(".png") || val.hasSuffix(".jpeg") || val.hasSuffix(".webp") {
                 let size = isLowQuality ? "w342" : "w500"
-                return "https://image.tmdb.org/t/p/\(size)\(val)"
+                return "https://api-sloosh.vercel.app/api/v1/images/tmdb/\(size)\(val)"
             }
             return (baseUrl + val).addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? (baseUrl + val)
         }
@@ -421,10 +423,10 @@ struct MediaDetailsDto: Codable {
     
     var displayBackdropUrl: String? {
         if let backdrop = backdrop, !backdrop.isEmpty {
-            return backdrop
+            return normalizeImageUrl(path: backdrop, id: id) ?? backdrop
         }
         if let poster = poster, !poster.isEmpty {
-            return poster
+            return normalizeImageUrl(path: poster, id: id) ?? poster
         }
         guard let validId = id?.replacingOccurrences(of: "kp_", with: ""), !validId.isEmpty else { return nil }
         return "https://api-sloosh.vercel.app/api/v1/images/backdrops/\(validId)/original"
@@ -432,10 +434,10 @@ struct MediaDetailsDto: Codable {
     
     var previewBackdropUrl: String? {
         if let backdrop = backdrop, !backdrop.isEmpty {
-            return backdrop
+            return normalizeImageUrl(path: backdrop, id: id) ?? backdrop
         }
         if let poster = poster, !poster.isEmpty {
-            return poster
+            return normalizeImageUrl(path: poster, id: id) ?? poster
         }
         guard let validId = id?.replacingOccurrences(of: "kp_", with: ""), !validId.isEmpty else { return nil }
         return "https://api-sloosh.vercel.app/api/v1/images/backdrops/\(validId)/small"
@@ -443,10 +445,9 @@ struct MediaDetailsDto: Codable {
 
     var displayLogoUrl: String? {
         if let logo = logo, !logo.isEmpty {
-            return logo
+            return normalizeImageUrl(path: logo, id: id) ?? logo
         }
-        guard let validId = id?.replacingOccurrences(of: "kp_", with: ""), !validId.isEmpty else { return nil }
-        return "https://api-sloosh.vercel.app/api/v1/images/logos/\(validId)/original"
+        return nil
     }
 
     var identifiedStudio: StudioBrand? {
