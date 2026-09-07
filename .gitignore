@@ -5,3 +5,8 @@ scratch/
 neomovies-mobile/
 
 Peak-Messenger/
+
+**/node_modules/
+**/.env
+**/.env.local
+**/dist/
