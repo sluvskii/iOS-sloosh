@@ -631,15 +631,13 @@ struct StudioBrand: Identifiable, Hashable {
     let slug: String
     let isNetwork: Bool
     let aliases: [String]
-    let catalogQueries: [String]
 
-    init(id: String, name: String, slug: String, isNetwork: Bool, aliases: [String] = [], catalogQueries: [String] = []) {
+    init(id: String, name: String, slug: String, isNetwork: Bool, aliases: [String] = []) {
         self.id = id
         self.name = name
         self.slug = slug
         self.isNetwork = isNetwork
         self.aliases = aliases
-        self.catalogQueries = catalogQueries
     }
     
     static let all: [StudioBrand] = [
@@ -648,88 +646,77 @@ struct StudioBrand: Identifiable, Hashable {
             name: "Marvel",
             slug: "marvel",
             isNetwork: false,
-            aliases: ["marvel", "марвел", "marvel studios", "marvel entertainment", "marvel comics"],
-            catalogQueries: ["Мстители", "Железный человек", "Человек-паук", "Стражи галактики", "Дэдпул", "Тор", "Локи", "Доктор Стрэндж", "Первый мститель", "Черная пантера", "Люди Икс", "Росомаха", "Капитан Марвел"]
+            aliases: ["marvel", "марвел", "marvel studios", "marvel entertainment", "marvel comics"]
         ),
         StudioBrand(
             id: "dc",
             name: "DC",
             slug: "dc",
             isNetwork: false,
-            aliases: ["dc", "диси", "dc entertainment", "dc comics", "dc studios"],
-            catalogQueries: ["Бэтмен", "Джокер", "Темный рыцарь", "Супермен", "Лига справедливости", "Отряд самоубийц", "Миротворец", "Флэш", "Аквамен", "Хранители", "Константин"]
+            aliases: ["dc", "диси", "dc entertainment", "dc comics", "dc studios"]
         ),
         StudioBrand(
             id: "a24",
             name: "A24",
             slug: "a24",
             isNetwork: false,
-            aliases: ["a24"],
-            catalogQueries: ["Всё везде и сразу", "Солнцестояние", "Реинкарнация", "Кит", "Маяк", "Падение империи", "Прошлые жизни", "Лобстер", "Стальная хватка"]
+            aliases: ["a24"]
         ),
         StudioBrand(
             id: "pixar",
             name: "Pixar",
             slug: "pixar",
             isNetwork: false,
-            aliases: ["pixar", "пиксар", "pixar animation", "pixar animation studios"],
-            catalogQueries: ["История игрушек", "Тачки", "Корпорация монстров", "ВАЛЛ-И", "Вверх", "Головоломка", "Тайна Коко", "Душа", "В поисках Немо", "Рататуй", "Суперсемейка"]
+            aliases: ["pixar", "пиксар", "pixar animation", "pixar animation studios"]
         ),
         StudioBrand(
             id: "disney",
             name: "Disney",
             slug: "disney",
             isNetwork: false,
-            aliases: ["disney", "дисне", "дискей", "walt disney", "walt disney pictures", "walt disney animation"],
-            catalogQueries: ["Король Лев", "Холодное сердце", "Зверополис", "Аладдин", "Красавица и чудовище", "Моана", "Рапунцель", "Энканто", "Русалочка", "Пираты Карибского моря", "Мулан", "Геркулес"]
+            aliases: ["disney", "дисне", "дискей", "walt disney", "walt disney pictures", "walt disney animation"]
         ),
         StudioBrand(
             id: "warner-bros",
             name: "Warner Bros.",
             slug: "warner-bros",
             isNetwork: false,
-            aliases: ["warner", "уорнер", "warner bros", "warner bros.", "warner brothers", "warner pictures"],
-            catalogQueries: ["Гарри Поттер", "Властелин колец", "Хоббит", "Матрица", "Дюна", "Интерстеллар", "Безумный Макс", "Начало", "Престиж", "Шерлок Холмс"]
+            aliases: ["warner", "уорнер", "warner bros", "warner bros.", "warner brothers", "warner pictures"]
         ),
         StudioBrand(
             id: "universal",
             name: "Universal",
             slug: "universal",
             isNetwork: false,
-            aliases: ["universal", "юниверсал", "universal pictures", "universal studios"],
-            catalogQueries: ["Оппенгеймер", "Форсаж", "Парк юрского периода", "Назад в будущее", "Гадкий я", "Миньоны", "Челюсти", "Гладиатор", "Нечто", "Мумия"]
+            aliases: ["universal", "юниверсал", "universal pictures", "universal studios"]
         ),
         StudioBrand(
             id: "paramount",
             name: "Paramount",
             slug: "paramount",
             isNetwork: false,
-            aliases: ["paramount", "парамаунт", "paramount pictures"],
-            catalogQueries: ["Миссия невыполнима", "Трансформеры", "Крестный отец", "Топ Ган", "Индиана Джонс", "Тихое место", "Интерстеллар", "Соник в кино", "Форрест Гамп", "Волк с Уолл-стрит"]
+            aliases: ["paramount", "парамаунт", "paramount pictures"]
         ),
         StudioBrand(
             id: "20th-century-studios",
             name: "20th Century",
             slug: "20th-century-studios",
             isNetwork: false,
-            aliases: ["20th century", "двадцатый век", "20th century fox", "20th century studios"],
-            catalogQueries: ["Аватар", "Чужой", "Хищник", "Планета обезьян", "Крепкий орешек", "Титаник", "Kingsman", "Ледниковый период", "Бойцовский клуб"]
+            aliases: ["20th century", "двадцатый век", "20th century fox", "20th century studios"]
         ),
         StudioBrand(
             id: "sony-pictures",
             name: "Sony Pictures",
             slug: "sony-pictures",
             isNetwork: false,
-            aliases: ["sony", "сони", "sony pictures", "columbia pictures", "tristar pictures"],
-            catalogQueries: ["Человек-паук: Через вселенные", "Охотники за привидениями", "Джуманджи", "Люди в черном", "Однажды в Голливуде", "Веном", "Бегущий по лезвию 2049"]
+            aliases: ["sony", "сони", "sony pictures", "columbia pictures", "tristar pictures"]
         ),
         StudioBrand(
             id: "dreamworks",
             name: "DreamWorks",
             slug: "dreamworks",
             isNetwork: false,
-            aliases: ["dreamworks", "дримворкс", "dreamworks animation"],
-            catalogQueries: ["Шрек", "Как приручить дракона", "Кунг-фу панда", "Мадагаскар", "Кот в сапогах", "Мегамозг", "Дикий робот", "Хранители снов"]
+            aliases: ["dreamworks", "дримворкс", "dreamworks animation"]
         ),
         
         // Networks / Streamings
@@ -738,56 +725,49 @@ struct StudioBrand: Identifiable, Hashable {
             name: "Netflix",
             slug: "netflix",
             isNetwork: true,
-            aliases: ["netflix", "нетфликс"],
-            catalogQueries: ["Очень странные дела", "Игра в кальмара", "Уэнсдэй", "Ведьмак", "Бумажный дом", "Аркейн", "Черное зеркало", "Люпен", "Озарк", "Корона", "Ход королевы"]
+            aliases: ["netflix", "нетфликс"]
         ),
         StudioBrand(
             id: "hbo",
             name: "HBO",
             slug: "hbo",
             isNetwork: true,
-            aliases: ["hbo", "эйчби", "hbo max", "max", "hbo films"],
-            catalogQueries: ["Игра престолов", "Дом дракона", "Чернобыль", "Одни из нас", "Настоящий детектив", "Клан Сопрано", "Эйфория", "Белый лотос", "Наследники", "Прослушка"]
+            aliases: ["hbo", "эйчби", "hbo max", "max", "hbo films"]
         ),
         StudioBrand(
             id: "apple-tv-plus",
             name: "Apple TV+",
             slug: "apple-tv-plus",
             isNetwork: true,
-            aliases: ["apple tv", "apple tv+", "apple+", "эппл тв", "apple original films"],
-            catalogQueries: ["Тед Лассо", "Разделение", "Утреннее шоу", "Бункер", "Основание", "Медленные лошади", "Убийцы цветочной луны"]
+            aliases: ["apple tv", "apple tv+", "apple+", "эппл тв", "apple original films"]
         ),
         StudioBrand(
             id: "prime-video",
             name: "Prime Video",
             slug: "prime-video",
             isNetwork: true,
-            aliases: ["prime video", "amazon prime", "amazon studios", "прайм видео"],
-            catalogQueries: ["Пацаны", "Властелин колец: Кольца власти", "Джек Ричер", "Фоллаут", "Непобедимый", "Джентльмены"]
+            aliases: ["prime video", "amazon prime", "amazon studios", "прайм видео"]
         ),
         StudioBrand(
             id: "hulu",
             name: "Hulu",
             slug: "hulu",
             isNetwork: true,
-            aliases: ["hulu", "хулу"],
-            catalogQueries: ["Медведь", "Рассказ служанки", "Убийства в одном здании", "Сёгун"]
+            aliases: ["hulu", "хулу"]
         ),
         StudioBrand(
             id: "cartoon-network",
             name: "Cartoon Network",
             slug: "cartoon-network",
             isNetwork: true,
-            aliases: ["cartoon network", "картун нетворк"],
-            catalogQueries: ["Время приключений", "Рик и Морти", "Самурай Джек", "Обычный мультик", "Гравити Фолз"]
+            aliases: ["cartoon network", "картун нетворк"]
         ),
         StudioBrand(
             id: "adult-swim",
             name: "Adult Swim",
             slug: "adult-swim",
             isNetwork: true,
-            aliases: ["adult swim", "эдалт свим"],
-            catalogQueries: ["Рик и Морти", "Первобытный", "Робоцып", "Самурай Джек"]
+            aliases: ["adult swim", "эдалт свим"]
         ),
     ]
     
