@@ -247,9 +247,12 @@ class MoviesRepository: ObservableObject {
             // Fallback for search
         }
         
-        // If collection endpoint is not ready yet, fallback to searching by studio brand name / catalog queries
+        // If collection endpoint is not ready yet, fallback to searching by studio brand name
         if let brand = StudioBrand.find(by: id) {
-            return try await getStudioCatalogMovies(brand: brand, page: page)
+            let searchRes = try await searchMoviesResponse(query: brand.name, page: page)
+            let rawItems = searchRes.results ?? []
+            let cleaned = rawItems.filter { isQualityStudioItem($0, for: brand) }
+            return (cleaned, searchRes.effectiveTotalPages)
         }
         
         return ([], 1)
@@ -267,9 +270,17 @@ class MoviesRepository: ObservableObject {
             return false
         }
 
-        // 2. Rating check: must have a valid rating of at least 6.0
-        guard let rating = item.rating, rating >= 6.0 else {
-            return false
+        // 2. Rating check: valid rating (at least 5.0) or recent release
+        if let rating = item.rating, rating > 0 {
+            if rating < 5.0 {
+                return false
+            }
+        } else {
+            let currentYear = Calendar.current.component(.year, from: Date())
+            let itemYear = item.year?.intValue ?? Int(item.year?.stringValue ?? "") ?? 0
+            if itemYear < currentYear - 1 {
+                return false
+            }
         }
 
         // 3. Year check: must have a valid release year (not in distant future or missing)
@@ -303,12 +314,6 @@ class MoviesRepository: ObservableObject {
                 if junkGenres.contains(where: { gName.contains($0) || gId.contains($0) }) {
                     return false
                 }
-                // Hollywood studios (Marvel, DC, Disney, Pixar, Warner Bros., Paramount, Universal)
-                if let brand = brand, !brand.isNetwork && brand.id != "sony-pictures" {
-                    if gName.contains("аниме") || gId.contains("аниме") || gName.contains("anime") || gId.contains("anime") {
-                        return false
-                    }
-                }
             }
         }
 
@@ -331,10 +336,7 @@ class MoviesRepository: ObservableObject {
             "тизер", "трейлер", "trailer", "teaser",
             "промо", "promo",
             "интервью", "interview",
-            "бонусы", "bonus",
-            "nba finals", "spidey and iron man",
-            "no good deed", "wet on wet",
-            "revengers", "elon musk", "spiderman or batman"
+            "бонусы", "bonus"
         ]
 
         if junkKeywords.contains(where: { combinedTitle.contains($0) }) {
@@ -342,192 +344,6 @@ class MoviesRepository: ObservableObject {
         }
 
         return true
-    }
-
-    private func matchesFranchiseQuery(title: String, originalTitle: String?, query: String) -> Bool {
-        let combined = "\(title) \(originalTitle ?? "")".lowercased()
-        let q = query.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-        
-        // Short single-word queries (e.g. "тор", "локи") require standalone word boundary matching
-        if q.count <= 5 && !q.contains(" ") {
-            let pattern = "(^|[^а-яёa-z0-9])" + NSRegularExpression.escapedPattern(for: q) + "([^а-яёa-z0-9]|$)"
-            if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) {
-                let range = NSRange(combined.startIndex..<combined.endIndex, in: combined)
-                return regex.firstMatch(in: combined, range: range) != nil
-            }
-        }
-        
-        // Multi-word franchise queries
-        if q.contains("стражи") {
-            return combined.contains("страж") || combined.contains("guardians of the galaxy")
-        }
-        if q.contains("паук") {
-            return combined.contains("паук") || combined.contains("spider")
-        }
-        if q.contains("железный") {
-            return combined.contains("железн") || combined.contains("iron man")
-        }
-        if q.contains("первый мститель") {
-            return combined.contains("первый мститель") || combined.contains("captain america")
-        }
-        if q.contains("черная пантера") {
-            return combined.contains("пантер") || combined.contains("black panther")
-        }
-        if q.contains("доктор стрэндж") {
-            return combined.contains("стрэндж") || combined.contains("strange")
-        }
-        if q.contains("властелин колец") {
-            return combined.contains("властелин") || combined.contains("lord of the rings")
-        }
-        if q.contains("гарри поттер") {
-            return combined.contains("поттер") || combined.contains("harry potter")
-        }
-        if q.contains("темный рыцарь") {
-            return combined.contains("темный рыцарь") || combined.contains("dark knight") || combined.contains("бэтмен") || combined.contains("batman")
-        }
-        if q.contains("лига справедливости") {
-            return combined.contains("лига справедливости") || combined.contains("justice league")
-        }
-        if q.contains("отряд самоубийц") {
-            return combined.contains("самоубийц") || combined.contains("suicide squad")
-        }
-        if q.contains("история игрушек") {
-            return combined.contains("игрушек") || combined.contains("toy story")
-        }
-        if q.contains("корпорация монстров") {
-            return combined.contains("монстров") || combined.contains("monsters")
-        }
-        if q.contains("как приручить дракона") {
-            return combined.contains("дракон") || combined.contains("dragon")
-        }
-        if q.contains("парк юрского периода") {
-            return combined.contains("юрск") || combined.contains("jurassic")
-        }
-        if q.contains("назад в будущее") {
-            return combined.contains("будущее") || combined.contains("future")
-        }
-        if q.contains("миссия невыполнима") {
-            return combined.contains("невыполнима") || combined.contains("mission: impossible") || combined.contains("mission impossible")
-        }
-        if q.contains("пираты карибского моря") {
-            return combined.contains("пират") || combined.contains("pirates of the caribbean")
-        }
-        if q.contains("игра престолов") {
-            return combined.contains("престолов") || combined.contains("game of thrones")
-        }
-        if q.contains("дом дракона") {
-            return combined.contains("дом дракона") || combined.contains("house of the dragon")
-        }
-        if q.contains("одни из нас") {
-            return combined.contains("одни из нас") || combined.contains("last of us")
-        }
-        if q.contains("очень странные дела") {
-            return combined.contains("странные дела") || combined.contains("stranger things")
-        }
-        if q.contains("игра в кальмара") {
-            return combined.contains("кальмар") || combined.contains("squid game")
-        }
-        if q.contains("бумажный дом") {
-            return combined.contains("бумажный дом") || combined.contains("money heist") || combined.contains("casa de papel")
-        }
-        if q.contains("убийства в одном здании") {
-            return combined.contains("в одном здании") || combined.contains("only murders in the building")
-        }
-
-        // General multi-word check
-        let words = q.components(separatedBy: " ").filter { $0.count >= 4 }
-        if words.isEmpty {
-            return combined.contains(q)
-        }
-        return words.contains(where: { combined.contains($0) })
-    }
-
-    private func getStudioCatalogMovies(brand: StudioBrand, page: Int) async throws -> (items: [MediaDto], totalPages: Int) {
-        let queries = brand.catalogQueries.isEmpty ? [brand.name] : brand.catalogQueries
-        
-        if page == 1 {
-            let queriesToRun = Array(queries.prefix(8))
-            var collected: [MediaDto] = []
-            var seenIds = Set<String>()
-
-            await withTaskGroup(of: (String, [MediaDto]).self) { group in
-                for q in queriesToRun {
-                    group.addTask {
-                        do {
-                            let resp = try await MoviesApi.shared.searchMovies(query: q, page: 1)
-                            return (q, resp.data?.results ?? [])
-                        } catch {
-                            return (q, [])
-                        }
-                    }
-                }
-
-                for await (query, results) in group {
-                    for item in results {
-                        let cleanId = item.id.replacingOccurrences(of: "kp_", with: "")
-                        if !seenIds.contains(cleanId) &&
-                           self.isQualityStudioItem(item, for: brand) &&
-                           self.matchesFranchiseQuery(title: item.displayTitle, originalTitle: item.originalTitle, query: query) {
-                            seenIds.insert(cleanId)
-                            collected.append(item)
-                        }
-                    }
-                }
-            }
-
-            // Sort collected hits by rating descending so top-rated masterpieces are at the top
-            collected.sort { ($0.rating ?? 0) > ($1.rating ?? 0) }
-
-            let totalPages = max(3, Int(ceil(Double(collected.count) / 20.0)))
-            return (collected, totalPages)
-        } else {
-            var collected: [MediaDto] = []
-            var seenIds = Set<String>()
-
-            let startIndex = 8 + (page - 2) * 4
-            if startIndex < queries.count {
-                let slice = Array(queries[startIndex..<min(queries.count, startIndex + 4)])
-                await withTaskGroup(of: (String, [MediaDto]).self) { group in
-                    for q in slice {
-                        group.addTask {
-                            do {
-                                let resp = try await MoviesApi.shared.searchMovies(query: q, page: 1)
-                                return (q, resp.data?.results ?? [])
-                            } catch {
-                                return (q, [])
-                            }
-                        }
-                    }
-
-                    for await (query, results) in group {
-                        for item in results {
-                            let cleanId = item.id.replacingOccurrences(of: "kp_", with: "")
-                            if !seenIds.contains(cleanId) &&
-                               self.isQualityStudioItem(item, for: brand) &&
-                               self.matchesFranchiseQuery(title: item.displayTitle, originalTitle: item.originalTitle, query: query) {
-                                seenIds.insert(cleanId)
-                                collected.append(item)
-                            }
-                        }
-                    }
-                }
-            } else {
-                do {
-                    let firstQuery = queries.first ?? brand.name
-                    let resp = try await MoviesApi.shared.searchMovies(query: firstQuery, page: page)
-                    for item in resp.data?.results ?? [] {
-                        let cleanId = item.id.replacingOccurrences(of: "kp_", with: "")
-                        if !seenIds.contains(cleanId) && self.isQualityStudioItem(item, for: brand) {
-                            seenIds.insert(cleanId)
-                            collected.append(item)
-                        }
-                    }
-                } catch {}
-            }
-
-            collected.sort { ($0.rating ?? 0) > ($1.rating ?? 0) }
-            return (collected, max(page, 5))
-        }
     }
 
     func getRelatedByStudio(type: String, id: String, page: Int = 1) async -> RelatedStudioResponse? {
