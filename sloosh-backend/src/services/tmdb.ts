@@ -1,4 +1,4 @@
-﻿import { config } from "../config"
+import { config } from "../config"
 import type {
   MediaDto,
   MediaDetailsDto,
@@ -449,6 +449,20 @@ export class TMDBService {
       poster: formatImageUrl(data.poster_path, "w500") || null,
       backdrop: formatImageUrl(data.backdrop_path, "original") || null,
       parts,
+    }
+  }
+
+  async getEpisodeDetails(tvId: number, season: number, episode: number): Promise<any> {
+    const data = await tmdbFetch<any>(`/tv/${tvId}/season/${season}/episode/${episode}`)
+    return {
+      id: data.id,
+      name: data.name || `Серия ${episode}`,
+      overview: data.overview || "",
+      airDate: data.air_date,
+      seasonNumber: data.season_number,
+      episodeNumber: data.episode_number,
+      stillPath: formatImageUrl(data.still_path, "original"),
+      voteAverage: data.vote_average,
     }
   }
 }
