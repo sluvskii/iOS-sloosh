@@ -240,19 +240,125 @@ class MoviesRepository: ObservableObject {
             let items = response.data?.results ?? []
             let totalPages = response.data?.effectiveTotalPages ?? 1
             if !items.isEmpty {
-                return (items, totalPages)
+                let cleaned = items.filter { isQualityStudioItem($0) }
+                return (cleaned.isEmpty ? items : cleaned, totalPages)
             }
         } catch {
             // Fallback for search
         }
         
-        // If collection endpoint is not ready yet, fallback to searching by studio brand name
+        // If collection endpoint is not ready yet, fallback to searching by studio brand name / catalog queries
         if let brand = StudioBrand.find(by: id) {
-            let searchRes = try await searchMoviesResponse(query: brand.name, page: page)
-            return (searchRes.results ?? [], searchRes.effectiveTotalPages)
+            return try await getStudioCatalogMovies(brand: brand, page: page)
         }
         
         return ([], 1)
+    }
+
+    private func isQualityStudioItem(_ item: MediaDto) -> Bool {
+        let title = (item.displayTitle).lowercased()
+        if title.contains("короткометражк") ||
+           title.contains("lego") ||
+           title.contains("общий сбор") ||
+           title.contains("легенды") ||
+           title.contains("фильм о фильме") ||
+           title.contains("создание героя") ||
+           title.contains("клип") {
+            return false
+        }
+        let poster = item.displayPosterUrl ?? item.posterUrl ?? item.poster_path ?? ""
+        if poster.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return false
+        }
+        if let rating = item.rating, rating > 0 && rating < 5.8 {
+            return false
+        }
+        return true
+    }
+
+    private func getStudioCatalogMovies(brand: StudioBrand, page: Int) async throws -> (items: [MediaDto], totalPages: Int) {
+        let queries = brand.catalogQueries.isEmpty ? [brand.name] : brand.catalogQueries
+        
+        if page == 1 {
+            let queriesToRun = Array(queries.prefix(6))
+            var collected: [MediaDto] = []
+            var seenIds = Set<String>()
+
+            await withTaskGroup(of: [MediaDto].self) { group in
+                for q in queriesToRun {
+                    group.addTask {
+                        do {
+                            let resp = try await MoviesApi.shared.searchMovies(query: q, page: 1)
+                            return resp.data?.results ?? []
+                        } catch {
+                            return []
+                        }
+                    }
+                }
+
+                for await results in group {
+                    for item in results {
+                        let cleanId = item.id.replacingOccurrences(of: "kp_", with: "")
+                        if !seenIds.contains(cleanId) && self.isQualityStudioItem(item) {
+                            seenIds.insert(cleanId)
+                            collected.append(item)
+                        }
+                    }
+                }
+            }
+
+            // Also search the brand name itself
+            do {
+                let resp = try await MoviesApi.shared.searchMovies(query: brand.name, page: 1)
+                for item in resp.data?.results ?? [] {
+                    let cleanId = item.id.replacingOccurrences(of: "kp_", with: "")
+                    if !seenIds.contains(cleanId) && self.isQualityStudioItem(item) {
+                        seenIds.insert(cleanId)
+                        collected.append(item)
+                    }
+                }
+            } catch {}
+
+            // Sort collected hits by rating descending so top-rated masterpieces are at the top
+            collected.sort { ($0.rating ?? 0) > ($1.rating ?? 0) }
+
+            let totalPages = max(3, Int(ceil(Double(collected.count) / 20.0)))
+            return (collected, totalPages)
+        } else {
+            var collected: [MediaDto] = []
+            var seenIds = Set<String>()
+
+            let startIndex = 6 + (page - 2) * 3
+            if startIndex < queries.count {
+                let slice = Array(queries[startIndex..<min(queries.count, startIndex + 3)])
+                for q in slice {
+                    do {
+                        let resp = try await MoviesApi.shared.searchMovies(query: q, page: 1)
+                        for item in resp.data?.results ?? [] {
+                            let cleanId = item.id.replacingOccurrences(of: "kp_", with: "")
+                            if !seenIds.contains(cleanId) && self.isQualityStudioItem(item) {
+                                seenIds.insert(cleanId)
+                                collected.append(item)
+                            }
+                        }
+                    } catch {}
+                }
+            }
+
+            do {
+                let resp = try await MoviesApi.shared.searchMovies(query: brand.name, page: page)
+                for item in resp.data?.results ?? [] {
+                    let cleanId = item.id.replacingOccurrences(of: "kp_", with: "")
+                    if !seenIds.contains(cleanId) && self.isQualityStudioItem(item) {
+                        seenIds.insert(cleanId)
+                        collected.append(item)
+                    }
+                }
+            } catch {}
+
+            collected.sort { ($0.rating ?? 0) > ($1.rating ?? 0) }
+            return (collected, max(page, 5))
+        }
     }
 
     func getRelatedByStudio(type: String, id: String, page: Int = 1) async -> RelatedStudioResponse? {
