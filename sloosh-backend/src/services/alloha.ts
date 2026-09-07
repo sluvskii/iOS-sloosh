@@ -1,4 +1,4 @@
-﻿import { config } from "../config"
+import { config } from "../config"
 
 interface AllohaData {
   id_kp?: number
@@ -47,3 +47,20 @@ export async function resolveAlloha(tmdbId: number): Promise<{
     return { kpId: null, imdbId: null, iframeUrl: null }
   }
 }
+
+export async function resolveTmdbIdByKp(kpId: number): Promise<number | null> {
+  if (!config.alloha.token) return null
+  try {
+    const url = `${config.alloha.baseUrl}/?token=${config.alloha.token}&kp=${kpId}`
+    const res = await fetch(url, {
+      headers: { Accept: "application/json" },
+      signal: AbortSignal.timeout(5000),
+    })
+    if (!res.ok) return null
+    const json = (await res.json()) as AllohaResponse
+    return json.data?.id_tmdb ?? null
+  } catch {
+    return null
+  }
+}
+

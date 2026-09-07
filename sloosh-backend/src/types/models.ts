@@ -1,4 +1,4 @@
-﻿export interface CastMemberDto {
+export interface CastMemberDto {
   id: number
   name: string
   originalName: string
@@ -65,8 +65,10 @@ export interface MediaDto {
     tmdb?: number
   }
   poster?: string
+  posterUrl?: string
   poster_path?: string
   backdrop?: string
+  backdropUrl?: string
   backdrop_path?: string
   genres?: Array<{ id: string | number; name: string }>
   externalIds?: {
