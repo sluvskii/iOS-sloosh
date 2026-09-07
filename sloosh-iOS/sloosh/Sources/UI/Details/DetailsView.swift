@@ -1472,7 +1472,7 @@ struct EpisodeDetailsSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     // Still Image (Edge-to-edge)
-                    let previewUrl = URL(string: "https://api.neome.uk/api/v1/images/screens/\(item.movieId)/\(item.season)/\(item.episode)/large")
+                    let previewUrl = URL(string: "https://api-sloosh.vercel.app/api/v1/images/screens/\(item.movieId)/\(item.season)/\(item.episode)/large")
                     
                     AsyncCachedImage(url: previewUrl) {
                         Rectangle()
@@ -1681,7 +1681,7 @@ struct EpisodeCellView: View {
     @ObservedObject private var downloadManager = DownloadManager.shared
     
     var previewUrl: URL? {
-        URL(string: "https://api.neome.uk/api/v1/images/screens/\(movieId)/\(season)/\(episode)/large")
+        URL(string: "https://api-sloosh.vercel.app/api/v1/images/screens/\(movieId)/\(season)/\(episode)/large")
     }
     
     private var progressKey: String {

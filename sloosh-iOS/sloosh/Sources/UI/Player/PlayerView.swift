@@ -324,7 +324,7 @@ class PlayerViewModel: ObservableObject {
 
     var displayLogoUrl: URL? {
         guard let kpId = currentKpId, kpId > 0 else { return nil }
-        return URL(string: "https://api.neome.uk/api/v1/images/logos/\(kpId)/original")
+        return URL(string: "https://api-sloosh.vercel.app/api/v1/images/logos/\(kpId)/original")
     }
 
     private var autoplayNextEpisodeEnabled: Bool {
