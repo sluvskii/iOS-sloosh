@@ -19,8 +19,9 @@ struct PersonDetailView: View {
     private var effectiveBackgroundColor: Color {
         if let dominant = dominantColor {
             return Color(uiColor: dominant).opacity(0.35)
+        } else {
+            return Color(red: 0.05, green: 0.05, blue: 0.05)
         }
-        return Color(red: 0.06, green: 0.06, blue: 0.08)
     }
 
     private func preloadDominantColor(from photoUrl: String?) async {
@@ -38,28 +39,6 @@ struct PersonDetailView: View {
                 }
             }
         } catch { }
-    }
-
-    private func sharePerson(details: PersonDetailsDto) {
-        var items: [Any] = []
-        let title = details.name
-        items.append(title)
-
-        if let photoStr = details.photo, let url = URL(string: photoStr),
-           let data = URLCache.shared.cachedResponse(for: URLRequest(url: url))?.data,
-           let img = UIImage(data: data) {
-            items.append(img)
-        }
-
-        let av = UIActivityViewController(activityItems: items, applicationActivities: nil)
-        if let windowScene = UIApplication.shared.connectedScenes
-            .compactMap({ $0 as? UIWindowScene }).first,
-           let rootVC = windowScene.windows.first(where: { $0.isKeyWindow })?.rootViewController {
-            var topVC = rootVC
-            while let presented = topVC.presentedViewController { topVC = presented }
-            av.popoverPresentationController?.sourceView = topVC.view
-            topVC.present(av, animated: true)
-        }
     }
 
     var body: some View {
@@ -106,7 +85,7 @@ struct PersonDetailView: View {
                         .foregroundStyle(.white)
                         .lineLimit(1)
                         .padding(.horizontal, 68)
-                        .transition(.opacity)
+                        .transition(.opacity.combined(with: .scale(scale: 0.95)))
                 }
 
                 HStack {
@@ -115,12 +94,6 @@ struct PersonDetailView: View {
                     }
 
                     Spacer()
-
-                    if let details = viewModel.details {
-                        TelegramGlassIconButton(systemName: "square.and.arrow.up") {
-                            sharePerson(details: details)
-                        }
-                    }
                 }
             }
             .padding(.horizontal, 16)
@@ -135,22 +108,9 @@ struct PersonDetailView: View {
             )
         }
         .background {
-            ZStack {
-                Color.black.ignoresSafeArea()
-
-                LinearGradient(
-                    stops: [
-                        .init(color: effectiveBackgroundColor, location: 0.0),
-                        .init(color: effectiveBackgroundColor.opacity(0.5), location: 0.35),
-                        .init(color: Color.black.opacity(0.95), location: 0.65),
-                        .init(color: Color.black, location: 1.0)
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
+            effectiveBackgroundColor
+                .animation(.easeInOut(duration: 0.4), value: effectiveBackgroundColor)
                 .ignoresSafeArea()
-                .animation(.easeInOut(duration: 0.4), value: dominantColor)
-            }
         }
         .task {
             await viewModel.loadDetails()
@@ -172,7 +132,7 @@ struct PersonDetailView: View {
     private func personContent(details: PersonDetailsDto) -> some View {
         let baseHeight: CGFloat = 380
 
-        // Stretchy Parallax Hero Header
+        // Stretchy Parallax Hero Header (edge-to-edge top, softly fading downward)
         GeometryReader { geometry in
             let minY = geometry.frame(in: .global).minY
             let isScrollingDown = minY > 0
@@ -190,53 +150,68 @@ struct PersonDetailView: View {
 
         // Information stack
         VStack(spacing: 20) {
-            // Title & original name
+            // Main name & original name (smoothly fades away when top bar title appears)
             VStack(spacing: 6) {
                 Text(details.name)
                     .font(.system(size: 28, weight: .bold))
                     .foregroundStyle(.white)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 20)
-                    .background(
-                        GeometryReader { geo in
-                            Color.clear
-                                .onChange(of: geo.frame(in: .global).midY) { _, midY in
-                                    let isAtTop = midY < 80
-                                    if isTitleAtTop != isAtTop {
-                                        withAnimation(.easeInOut(duration: 0.25)) {
-                                            isTitleAtTop = isAtTop
-                                        }
-                                    }
-                                }
-                                .onAppear {
-                                    isTitleAtTop = geo.frame(in: .global).midY < 80
-                                }
-                        }
-                    )
+                    .opacity(isTitleAtTop ? 0 : 1)
+                    .blur(radius: isTitleAtTop ? 8 : 0)
+                    .scaleEffect(isTitleAtTop ? 0.92 : 1.0)
+                    .animation(.spring(response: 0.35, dampingFraction: 0.8), value: isTitleAtTop)
 
                 if let originalName = details.originalName, !originalName.isEmpty, originalName.lowercased() != details.name.lowercased() {
                     Text(originalName)
                         .font(.system(size: 15, weight: .medium))
                         .foregroundStyle(.secondary)
-                }
-
-                if let department = details.department ?? details.knownForDepartment, !department.isEmpty {
-                    Text(department)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(Color.slooshAccent)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 6)
-                        .glassEffect(.regular.interactive(), in: Capsule())
-                        .padding(.top, 4)
+                        .opacity(isTitleAtTop ? 0 : 1)
+                        .blur(radius: isTitleAtTop ? 6 : 0)
+                        .scaleEffect(isTitleAtTop ? 0.92 : 1.0)
+                        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: isTitleAtTop)
                 }
             }
+            .background(
+                GeometryReader { geo in
+                    Color.clear
+                        .onChange(of: geo.frame(in: .global).midY) { _, midY in
+                            let isAtTop = midY < 80
+                            if isTitleAtTop != isAtTop {
+                                withAnimation(.easeInOut(duration: 0.25)) {
+                                    isTitleAtTop = isAtTop
+                                }
+                            }
+                        }
+                        .onAppear {
+                            isTitleAtTop = geo.frame(in: .global).midY < 80
+                        }
+                }
+            )
 
-            // Quick Stats / Metadata card
+            // Minimalist typography-driven metadata section (NO icons)
             PersonMetadataSection(details: details)
 
-            // Biography
-            if let bio = details.biography, !bio.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                PersonBiographySection(biography: bio)
+            // Parsed biography & separated sections (Awards, Projects, Facts)
+            let parsedBio = ParsedBiography.parse(from: details.biography, details: details)
+
+            if !parsedBio.bio.isEmpty {
+                PersonBiographySection(biography: parsedBio.bio)
+                    .padding(.horizontal, 16)
+            }
+
+            if let awards = parsedBio.awards, !awards.isEmpty {
+                PersonExtraInfoBlock(title: "Главные награды", content: awards)
+                    .padding(.horizontal, 16)
+            }
+
+            if let keyProjects = parsedBio.keyProjects, !keyProjects.isEmpty {
+                PersonExtraInfoBlock(title: "Главные проекты", content: keyProjects)
+                    .padding(.horizontal, 16)
+            }
+
+            if let fact = parsedBio.interestingFact, !fact.isEmpty {
+                PersonExtraInfoBlock(title: "Интересный факт", content: fact)
                     .padding(.horizontal, 16)
             }
 
@@ -285,14 +260,11 @@ private struct PersonHeroHeaderView: View {
         .mask(
             LinearGradient(
                 gradient: Gradient(stops: [
-                    .init(color: .clear, location: 0.0),
-                    .init(color: .black.opacity(0.4), location: 0.05),
-                    .init(color: .black.opacity(0.85), location: 0.12),
-                    .init(color: .black, location: 0.20),
-                    .init(color: .black, location: 0.60),
-                    .init(color: .black.opacity(0.85), location: 0.75),
-                    .init(color: .black.opacity(0.40), location: 0.88),
-                    .init(color: .black.opacity(0.12), location: 0.95),
+                    .init(color: .black, location: 0.0),
+                    .init(color: .black, location: 0.55),
+                    .init(color: .black.opacity(0.85), location: 0.70),
+                    .init(color: .black.opacity(0.50), location: 0.82),
+                    .init(color: .black.opacity(0.18), location: 0.92),
                     .init(color: .clear, location: 1.0)
                 ]),
                 startPoint: .top,
@@ -302,7 +274,7 @@ private struct PersonHeroHeaderView: View {
     }
 }
 
-// MARK: - Metadata Section
+// MARK: - Metadata Section (Clean, typography-first, NO icons)
 
 private struct PersonMetadataSection: View {
     let details: PersonDetailsDto
@@ -310,19 +282,21 @@ private struct PersonMetadataSection: View {
     var body: some View {
         VStack(spacing: 12) {
             if let birth = details.formattedBirthdayWithAge {
-                infoRow(icon: "calendar", title: "Дата рождения", value: birth)
+                metadataRow(label: "Дата рождения", value: birth)
             }
             if let place = details.placeOfBirth, !place.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                infoRow(icon: "mappin.circle.fill", title: "Место рождения", value: place)
+                metadataRow(label: "Место рождения", value: place)
             }
             if let death = details.deathday, !death.isEmpty {
-                infoRow(icon: "clock.badge.xmark.fill", title: "Дата смерти", value: death)
+                metadataRow(label: "Дата смерти", value: death)
             }
             if let count = details.filmography?.count, count > 0 {
-                infoRow(icon: "film.stack.fill", title: "Карьера", value: "\(count) \(declinedProjects(count))")
+                metadataRow(label: "Карьера", value: "\(count) \(declinedProjects(count))")
             }
         }
-        .padding(16)
+        .padding(.horizontal, 18)
+        .padding(.vertical, 16)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(
             RoundedRectangle(cornerRadius: 18, style: .continuous)
                 .fill(Color.white.opacity(0.04))
@@ -331,18 +305,14 @@ private struct PersonMetadataSection: View {
         .padding(.horizontal, 16)
     }
 
-    private func infoRow(icon: String, title: String, value: String) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: icon)
-                .font(.system(size: 15, weight: .semibold))
-                .foregroundStyle(Color.slooshAccent)
-                .frame(width: 22)
-            Text(title)
-                .font(.system(size: 14, weight: .medium))
+    private func metadataRow(label: String, value: String) -> some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(label)
+                .font(.system(size: 14, weight: .regular))
                 .foregroundStyle(.secondary)
-            Spacer()
+            Spacer(minLength: 16)
             Text(value)
-                .font(.system(size: 14, weight: .semibold))
+                .font(.system(size: 14, weight: .medium))
                 .foregroundStyle(.primary)
                 .multilineTextAlignment(.trailing)
         }
@@ -469,6 +439,110 @@ private struct PersonBiographySection: View {
         if !isExpanded {
             canExpand = fullHeight > visibleHeight + 2
         }
+    }
+}
+
+// MARK: - Extra Info Block (Awards, Key Projects, Facts)
+
+private struct PersonExtraInfoBlock: View {
+    let title: String
+    let content: String
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(title)
+                .font(.system(size: 18, weight: .bold))
+
+            Text(content)
+                .font(.system(size: 15, weight: .regular))
+                .foregroundColor(.primary.opacity(0.85))
+                .lineSpacing(4)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, 16)
+                .padding(.vertical, 14)
+                .background(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(Color.white.opacity(0.04))
+                )
+                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+    }
+}
+
+// MARK: - Biography Parser & Sanitizer
+
+private struct ParsedBiography {
+    let bio: String
+    let awards: String?
+    let keyProjects: String?
+    let interestingFact: String?
+
+    static func parse(from raw: String?, details: PersonDetailsDto) -> ParsedBiography {
+        var awards = details.awards
+        var keyProjects = details.keyProjects
+        var interestingFact = details.interestingFact
+
+        guard let text = raw, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return ParsedBiography(bio: "", awards: awards, keyProjects: keyProjects, interestingFact: interestingFact)
+        }
+
+        // Remove emojis and pictographs
+        var cleaned = text.unicodeScalars
+            .filter { scalar in
+                let v = scalar.value
+                if v >= 0x1F300 && v <= 0x1FAFF { return false }
+                if v >= 0x2600 && v <= 0x27BF { return false }
+                if v == 0x2B50 || v == 0xFE0F { return false }
+                return true
+            }
+            .map { String($0) }
+            .joined()
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        // If not already separated on backend, parse via regex
+        if awards == nil {
+            if let match = cleaned.range(of: #"(?:^|\n)\s*Главные награды\s*:\s*([\s\S]*?)(?=(?:\n\s*(?:Главные проекты|Интересн))|$)"#, options: .regularExpression) {
+                let sub = String(cleaned[match])
+                let parts = sub.components(separatedBy: ":")
+                if parts.count > 1 {
+                    awards = parts.dropFirst().joined(separator: ":").trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+                cleaned.removeSubrange(match)
+            }
+        }
+
+        if keyProjects == nil {
+            if let match = cleaned.range(of: #"(?:^|\n)\s*Главные проекты\s*:\s*([\s\S]*?)(?=(?:\n\s*(?:Главные награды|Интересн))|$)"#, options: .regularExpression) {
+                let sub = String(cleaned[match])
+                let parts = sub.components(separatedBy: ":")
+                if parts.count > 1 {
+                    keyProjects = parts.dropFirst().joined(separator: ":").trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+                cleaned.removeSubrange(match)
+            }
+        }
+
+        if interestingFact == nil {
+            if let match = cleaned.range(of: #"(?:^|\n)\s*Интересны[ей]\s+факты?\s*:\s*([\s\S]*?)(?=(?:\n\s*(?:Главные награды|Главные проекты))|$)"#, options: .regularExpression) {
+                let sub = String(cleaned[match])
+                let parts = sub.components(separatedBy: ":")
+                if parts.count > 1 {
+                    interestingFact = parts.dropFirst().joined(separator: ":").trimmingCharacters(in: .whitespacesAndNewlines)
+                }
+                cleaned.removeSubrange(match)
+            }
+        }
+
+        let finalBio = cleaned
+            .replacingOccurrences(of: #"\n\s*\n+"#, with: "\n\n", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        return ParsedBiography(
+            bio: finalBio,
+            awards: awards,
+            keyProjects: keyProjects,
+            interestingFact: interestingFact
+        )
     }
 }
 

@@ -2427,7 +2427,7 @@ private struct ActorsSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("В главных ролях")
+            Text("Актёры")
                 .font(.system(size: 18, weight: .bold))
                 .padding(.horizontal)
 
