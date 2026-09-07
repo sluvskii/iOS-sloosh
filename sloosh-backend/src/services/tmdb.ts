@@ -55,11 +55,46 @@ async function tmdbFetch<T>(endpoint: string, params: Record<string, string> = {
   return res.json() as Promise<T>
 }
 
+export const TMDB_GENRES: Record<number, string> = {
+  28: "боевик",
+  12: "приключения",
+  16: "мультфильм",
+  35: "комедия",
+  80: "криминал",
+  99: "документальный",
+  18: "драма",
+  10751: "семейный",
+  14: "фэнтези",
+  36: "история",
+  27: "ужасы",
+  10402: "музыка",
+  9648: "детектив",
+  10749: "мелодрама",
+  878: "фантастика",
+  10770: "телефильм",
+  53: "триллер",
+  10752: "военный",
+  37: "вестерн",
+  10759: "боевик и приключения",
+  10762: "детский",
+  10763: "новости",
+  10764: "реалити-шоу",
+  10765: "научная фантастика и фэнтези",
+  10766: "мыльная опера",
+  10767: "ток-шоу",
+  10768: "война и политика",
+}
+
 export function mapRawMovie(m: any): MediaDto {
   const year = m.release_date ? parseInt(m.release_date.split("-")[0], 10) : undefined
   const poster = formatImageUrl(m.poster_path, "w500")
-  const backdrop = formatImageUrl(m.backdrop_path, "original")
+  const backdrop = formatImageUrl(m.backdrop_path, "original") || poster
   const rating = m.vote_average ? Math.round(m.vote_average * 10) / 10 : 0
+  const genres = Array.isArray(m.genres)
+    ? m.genres.map((g: any) => ({ id: String(g.id), name: g.name || TMDB_GENRES[g.id] || "" }))
+    : (Array.isArray(m.genre_ids)
+        ? m.genre_ids.map((gid: number) => ({ id: String(gid), name: TMDB_GENRES[gid] || "" }))
+        : [])
 
   return {
     id: String(m.id),
@@ -79,7 +114,7 @@ export function mapRawMovie(m: any): MediaDto {
     backdrop,
     backdropUrl: backdrop,
     backdrop_path: m.backdrop_path,
-    genres: m.genres || (m.genre_ids ? m.genre_ids.map((gid: number) => ({ id: gid, name: "" })) : []),
+    genres,
     externalIds: {
       tmdb: m.id,
     },
@@ -89,8 +124,13 @@ export function mapRawMovie(m: any): MediaDto {
 export function mapRawTv(t: any): MediaDto {
   const year = t.first_air_date ? parseInt(t.first_air_date.split("-")[0], 10) : undefined
   const poster = formatImageUrl(t.poster_path, "w500")
-  const backdrop = formatImageUrl(t.backdrop_path, "original")
+  const backdrop = formatImageUrl(t.backdrop_path, "original") || poster
   const rating = t.vote_average ? Math.round(t.vote_average * 10) / 10 : 0
+  const genres = Array.isArray(t.genres)
+    ? t.genres.map((g: any) => ({ id: String(g.id), name: g.name || TMDB_GENRES[g.id] || "" }))
+    : (Array.isArray(t.genre_ids)
+        ? t.genre_ids.map((gid: number) => ({ id: String(gid), name: TMDB_GENRES[gid] || "" }))
+        : [])
 
   return {
     id: String(t.id),
@@ -111,7 +151,7 @@ export function mapRawTv(t: any): MediaDto {
     backdrop,
     backdropUrl: backdrop,
     backdrop_path: t.backdrop_path,
-    genres: t.genres || (t.genre_ids ? t.genre_ids.map((gid: number) => ({ id: gid, name: "" })) : []),
+    genres,
     externalIds: {
       tmdb: t.id,
     },
@@ -341,8 +381,12 @@ export class TMDBService {
       logo: formatImageUrl(c.logo_path, "w500") || null,
     }))
 
+    const genreNames = (data.genres || []).map((g: any) => g.name || TMDB_GENRES[g.id] || "").filter(Boolean)
+
     return {
       ...base,
+      genres: (genreNames.length > 0 ? genreNames : (base.genres || []).map((g: any) => g.name).filter(Boolean)) as any,
+      backdrop: base.backdrop || base.poster,
       duration: data.runtime || undefined,
       countries: (data.production_countries || []).map((c: any) => c.name),
       logo: logoUrl,
@@ -408,8 +452,12 @@ export class TMDBService {
       logo: formatImageUrl(n.logo_path, "w500") || null,
     }))
 
+    const tvGenreNames = (data.genres || []).map((g: any) => g.name || TMDB_GENRES[g.id] || "").filter(Boolean)
+
     return {
       ...base,
+      genres: (tvGenreNames.length > 0 ? tvGenreNames : (base.genres || []).map((g: any) => g.name).filter(Boolean)) as any,
+      backdrop: base.backdrop || base.poster,
       duration: data.episode_run_time?.[0] || undefined,
       countries: (data.origin_country || []),
       logo: logoUrl,
