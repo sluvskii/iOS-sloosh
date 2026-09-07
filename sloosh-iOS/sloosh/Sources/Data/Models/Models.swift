@@ -64,6 +64,14 @@ enum AnyCodableValue: Codable {
         case .double(let v): return String(v)
         }
     }
+
+    var intValue: Int? {
+        switch self {
+        case .int(let v): return v
+        case .string(let v): return Int(v)
+        case .double(let v): return Int(v)
+        }
+    }
 }
 
 struct MediaDto: Codable, Identifiable {
