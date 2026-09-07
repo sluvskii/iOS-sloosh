@@ -881,12 +881,13 @@ class HomeViewModel: ObservableObject {
 
     private func filterValidItems(_ items: [MediaDto]) -> [MediaDto] {
         return items.filter { item in
-            let poster = item.posterUrl ?? item.poster_path ?? ""
+            let poster = item.poster ?? item.posterUrl ?? item.poster_path ?? ""
             let hasPoster = !poster.isEmpty && !poster.lowercased().contains("no-poster")
             let hasTitle = !(item.title ?? item.name ?? "").isEmpty
-            let hasRating = (item.rating ?? 0) > 0.0
+            let rating = item.rating ?? 0
+            let hasValidRating = rating >= 0.0
             
-            return hasPoster && hasTitle && hasRating
+            return hasPoster && hasTitle && hasValidRating
         }
     }
 

@@ -22,8 +22,8 @@ func isCartoon(_ item: MediaDto) -> Bool {
     let genreNames = item.genres?.compactMap { $0.name?.lowercased() } ?? []
     
     // Strict checking against API genres to prevent false positives (like "Мультиверс" movie)
-    return genreIds.contains("мультфильм") || genreIds.contains("аниме") ||
-           genreNames.contains("мультфильм") || genreNames.contains("аниме")
+    return genreIds.contains("16") || genreIds.contains("мультфильм") || genreIds.contains("аниме") ||
+           genreNames.contains("мультфильм") || genreNames.contains("аниме") || genreNames.contains("animation")
 }
 
 /// Облегчённая версия для случаев, когда жанры недоступны (например, FavoriteDto).
