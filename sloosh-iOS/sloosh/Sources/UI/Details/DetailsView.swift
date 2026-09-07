@@ -80,16 +80,19 @@ struct DetailsView: View {
     let movieId: String
     let navigationTransitionID: String?
     let navigationTransitionNamespace: Namespace.ID?
+    let initialStudio: StudioBrand?
     @StateObject private var viewModel = DetailsViewModel()
     
     init(
         movieId: String,
         navigationTransitionID: String? = nil,
-        navigationTransitionNamespace: Namespace.ID? = nil
+        navigationTransitionNamespace: Namespace.ID? = nil,
+        initialStudio: StudioBrand? = nil
     ) {
         self.movieId = movieId
         self.navigationTransitionID = navigationTransitionID
         self.navigationTransitionNamespace = navigationTransitionNamespace
+        self.initialStudio = initialStudio
     }
     
     @State private var showPlayer = false
@@ -283,7 +286,7 @@ struct DetailsView: View {
             .toolbarVisibility(.hidden, for: .navigationBar)
             .toolbar(.hidden, for: .navigationBar)
             .task {
-                await viewModel.loadDetails(id: movieId)
+                await viewModel.loadDetails(id: movieId, studio: initialStudio)
             }
             .task(id: viewModel.details?.id) {
                 guard let details = viewModel.details else { return }
@@ -787,7 +790,7 @@ struct DetailsView: View {
                             .padding(.top, 8)
                             .padding(.bottom, -4)
 
-                        DetailsInfoSection(details: details, backgroundColor: effectiveBackgroundColor)
+                        DetailsInfoSection(details: details, backgroundColor: effectiveBackgroundColor, studio: initialStudio)
                             .padding(.top, 20)
                             .padding(.horizontal)
 
@@ -832,7 +835,7 @@ struct DetailsView: View {
                 .ignoresSafeArea()
         }
         .refreshable {
-            await viewModel.loadDetails(id: movieId, force: true)
+            await viewModel.loadDetails(id: movieId, force: true, studio: initialStudio)
         }
     }
 
@@ -914,7 +917,7 @@ struct DetailsView: View {
                                     .padding(.top, 8)
                                     .padding(.bottom, -4)
 
-                                DetailsInfoSection(details: details, backgroundColor: effectiveBackgroundColor)
+                                DetailsInfoSection(details: details, backgroundColor: effectiveBackgroundColor, studio: initialStudio)
                                     .padding(.top, 20)
                                     .padding(.horizontal)
                             }
@@ -961,7 +964,7 @@ struct DetailsView: View {
                     .ignoresSafeArea()
             }
             .refreshable {
-                await viewModel.loadDetails(id: movieId, force: true)
+                await viewModel.loadDetails(id: movieId, force: true, studio: initialStudio)
             }
         }.ignoresSafeArea()
     }
@@ -1246,6 +1249,7 @@ private struct DetailsPrimaryMetadataRow: View {
 private struct DetailsInfoSection: View {
     let details: MediaDetailsDto
     let backgroundColor: Color
+    var studio: StudioBrand? = nil
     @Environment(\.dismiss) private var dismiss
     @State private var isDescriptionExpanded = false
     @State private var canExpand = false
@@ -1321,7 +1325,7 @@ private struct DetailsInfoSection: View {
                         }
                     }
                 }
-            } else if let brand = details.identifiedStudio {
+            } else if let brand = details.identifiedStudio ?? studio {
                 VStack(alignment: .leading, spacing: 10) {
                     Text(brand.isNetwork ? "Платформа" : "Студия")
                         .font(.system(size: 18, weight: .bold))
@@ -2226,7 +2230,7 @@ class DetailsViewModel: ObservableObject {
         UserDefaults.standard.set(name, forKey: allohaTranslationPreferenceKey)
     }
 
-    func loadDetails(id: String, force: Bool = false) async {
+    func loadDetails(id: String, force: Bool = false, studio: StudioBrand? = nil) async {
         if !force && details != nil && (details?.id == id || details?.ids?.kp?.description == id.replacingOccurrences(of: "kp_", with: "")) {
             return
         }
@@ -2245,7 +2249,7 @@ class DetailsViewModel: ObservableObject {
                 await fetchInlineSeasons(kpId: kpId)
             }
 
-            let studioToFetch = details?.identifiedStudio
+            let studioToFetch = details?.identifiedStudio ?? studio
             let type = details?.type ?? "movie"
             Task {
                 await self.fetchRelatedByStudio(type: type, id: id, studio: studioToFetch)
@@ -2473,7 +2477,7 @@ private struct RelatedStudioSection: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(alignment: .top, spacing: 14) {
                         ForEach(items) { movie in
-                            NavigationLink(destination: DetailsView(movieId: movie.id, navigationTransitionID: nil, navigationTransitionNamespace: nil).navigationBarBackButtonHidden(true)) {
+                            NavigationLink(destination: DetailsView(movieId: movie.id, navigationTransitionID: nil, navigationTransitionNamespace: nil, initialStudio: brand).navigationBarBackButtonHidden(true)) {
                                 MoviePosterCard(movie: movie)
                                     .frame(width: 120)
                             }
@@ -2485,7 +2489,7 @@ private struct RelatedStudioSection: View {
                                     } label: {
                                         Label("Смотреть", systemImage: "play.fill")
                                     }
-                                    NavigationLink(destination: DetailsView(movieId: movie.id, navigationTransitionID: nil, navigationTransitionNamespace: nil).navigationBarBackButtonHidden(true)) {
+                                    NavigationLink(destination: DetailsView(movieId: movie.id, navigationTransitionID: nil, navigationTransitionNamespace: nil, initialStudio: brand).navigationBarBackButtonHidden(true)) {
                                         Label("Подробнее", systemImage: "info.circle")
                                     }
                                 }

@@ -247,130 +247,18 @@ class MoviesRepository: ObservableObject {
             // Fallback for search
         }
         
-        // If collection endpoint is not ready yet, fallback to searching by curated studio franchises
+        // Fallback: search by studio brand directly through API
         if let brand = StudioBrand.find(by: id) {
-            if !brand.searchFranchises.isEmpty {
-                let chunkSize = 6
-                let totalFranchises = brand.searchFranchises.count
-                let totalPages = max(1, (totalFranchises + chunkSize - 1) / chunkSize)
-                
-                let startIndex = (page - 1) * chunkSize
-                guard startIndex < totalFranchises else {
-                    return ([], totalPages)
-                }
-                let endIndex = min(startIndex + chunkSize, totalFranchises)
-                let currentQueries = Array(brand.searchFranchises[startIndex..<endIndex])
-                
-                let fetchedItems = await withTaskGroup(of: [MediaDto].self, returning: [MediaDto].self) { group in
-                    for query in currentQueries {
-                        group.addTask {
-                            do {
-                                let res = try await MoviesApi.shared.searchMovies(query: query, page: 1)
-                                let list = res.data?.results ?? []
-                                return list.filter { item in
-                                    Self.isQualityStudioItem(item, for: brand) &&
-                                    Self.matchesStudio(item: item, brand: brand, query: query)
-                                }
-                            } catch {
-                                return []
-                            }
-                        }
-                    }
-                    
-                    var collected: [MediaDto] = []
-                    for await subList in group {
-                        collected.append(contentsOf: subList)
-                    }
-                    return collected
-                }
-                
-                // Deduplicate by ID and title
-                var seenIds = Set<String>()
-                var seenTitles = Set<String>()
-                var uniqueItems: [MediaDto] = []
-                for item in fetchedItems {
-                    let key = item.id.replacingOccurrences(of: "kp_", with: "")
-                    let titleKey = item.displayTitle.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-                    if !seenIds.contains(key) && !seenTitles.contains(titleKey) {
-                        seenIds.insert(key)
-                        seenTitles.insert(titleKey)
-                        uniqueItems.append(item)
-                    }
-                }
-                
-                // Sort by rating descending
-                uniqueItems.sort { ($0.rating ?? 0.0) > ($1.rating ?? 0.0) }
-                return (uniqueItems, totalPages)
-            } else {
-                let searchRes = try await searchMoviesResponse(query: brand.name, page: page)
-                let rawItems = searchRes.results ?? []
-                let cleaned = rawItems.filter {
-                    Self.isQualityStudioItem($0, for: brand) &&
-                    Self.matchesStudio(item: $0, brand: brand, query: brand.name)
-                }
-                return (cleaned, searchRes.effectiveTotalPages)
-            }
+            let searchRes = try await searchMoviesResponse(query: brand.name, page: page)
+            let rawItems = searchRes.results ?? []
+            let cleaned = rawItems.filter { Self.isQualityStudioItem($0) }
+            return (cleaned, searchRes.effectiveTotalPages)
         }
         
         return ([], 1)
     }
 
-    nonisolated private static func matchesStudio(item: MediaDto, brand: StudioBrand, query: String) -> Bool {
-        let title = (item.displayTitle).lowercased()
-        let origTitle = (item.originalTitle ?? "").lowercased()
-        let combined = "\(title) \(origTitle)"
-        
-        // Exception: Deadpool & Wolverine is official Marvel Studios MCU
-        let isDeadpoolWolverine = combined.contains("дэдпул и росомаха") || combined.contains("deadpool & wolverine")
-
-        // 1. Strict exclusion check
-        for excluded in brand.excludedKeywords {
-            let lowerExcluded = excluded.lowercased()
-            if isDeadpoolWolverine && (lowerExcluded == "росомаха" || lowerExcluded == "wolverine" || lowerExcluded == "deadpool" || lowerExcluded == "дэдпул") {
-                continue
-            }
-            if lowerExcluded.count <= 3 {
-                if StudioBrand.containsWord(in: combined, word: lowerExcluded) {
-                    return false
-                }
-            } else {
-                if combined.contains(lowerExcluded) || StudioBrand.containsWord(in: combined, word: lowerExcluded) {
-                    return false
-                }
-            }
-        }
-        
-        // 2. Query relevance check
-        let lowerQuery = query.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-        if lowerQuery.count <= 3 {
-            if !StudioBrand.containsWord(in: combined, word: lowerQuery) {
-                return false
-            }
-        } else {
-            let words = lowerQuery.components(separatedBy: " ").filter { $0.count > 2 }
-            if !words.isEmpty {
-                if !combined.contains(lowerQuery) && !words.allSatisfy({ StudioBrand.containsWord(in: combined, word: $0) }) {
-                    return false
-                }
-            } else {
-                if !combined.contains(lowerQuery) && !StudioBrand.containsWord(in: combined, word: lowerQuery) {
-                    return false
-                }
-            }
-        }
-        
-        return true
-    }
-
-    nonisolated private static func isQualityStudioItem(_ item: MediaDto, for brand: StudioBrand? = nil) -> Bool {
-        // 0. Major studio items must have an original international title (rejects domestic Russian movies like Babushka 2, etc.)
-        if brand != nil {
-            let orig = (item.originalTitle ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-            if orig.isEmpty {
-                return false
-            }
-        }
-
+    nonisolated private static func isQualityStudioItem(_ item: MediaDto) -> Bool {
         // 1. Poster check: must have a real poster and not be a placeholder
         let rawPoster = item.posterUrl ?? item.poster_path ?? ""
         if rawPoster.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || rawPoster.contains("no-poster") {
@@ -409,7 +297,7 @@ class MoviesRepository: ObservableObject {
             return false
         }
 
-        // 4. Genres check: discard shorts, documentaries, news, specials, talk-shows, ceremonies, anime, etc.
+        // 4. Genres check: discard shorts, documentaries, news, specials, talk-shows, ceremonies, etc.
         let junkGenres = [
             "короткометражк", "short",
             "документальн", "documentary",
@@ -417,8 +305,7 @@ class MoviesRepository: ObservableObject {
             "ток-шоу", "talk-show",
             "церемони", "ceremony",
             "концерт", "concert",
-            "музык", "music",
-            "аниме", "anime"
+            "музык", "music"
         ]
         if let genres = item.genres {
             for g in genres {
@@ -430,17 +317,14 @@ class MoviesRepository: ObservableObject {
             }
         }
 
-        // 5. Title & Original Title check: exclude promotional, reaction, lego, behind the scenes, etc.
+        // 5. Title & Original Title check: exclude promotional, reaction, behind the scenes, bloopers, etc.
         let title = (item.displayTitle).lowercased()
         let origTitle = (item.originalTitle ?? "").lowercased()
         let combinedTitle = "\(title) \(origTitle)"
 
         let junkKeywords = [
             "короткометражк", "one-shot", "ван-шот", "короткий метр",
-            "lego",
-            "общий сбор", "assembled",
-            "легенды", "legends",
-            "фильм о фильме", "making of", "behind the scenes", "за кадром", "создание героя",
+            "фильм о фильме", "making of", "behind the scenes", "за кадром",
             "клип", "music video",
             "реагируют", "reaction", "реакци",
             "coca-cola", "реклам", "commercial",
