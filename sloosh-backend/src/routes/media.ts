@@ -1,4 +1,4 @@
-﻿import { Hono } from "hono"
+import { Hono } from "hono"
 import { tmdb } from "../services/tmdb"
 import { resolveAlloha } from "../services/alloha"
 import { listCache, detailsCache, getCached, setCached } from "../services/cache"
@@ -70,6 +70,25 @@ mediaRouter.get("/tv/:id", async (c) => {
   }
 })
 
+// GET /api/v1/tv/:id/season/:season/episode/:episode
+mediaRouter.get("/tv/:id/season/:season/episode/:episode", async (c) => {
+  const rawId = c.req.param("id").replace(/^(tmdb_|kp_)/, "")
+  const id = parseInt(rawId, 10)
+  const season = parseInt(c.req.param("season"), 10)
+  const episode = parseInt(c.req.param("episode"), 10)
+
+  if (isNaN(id) || isNaN(season) || isNaN(episode)) {
+    return c.json({ status: "error", message: "Invalid parameters" }, 400)
+  }
+
+  try {
+    const epDetails = await tmdb.getEpisodeDetails(id, season, episode)
+    return c.json({ status: "success", data: epDetails })
+  } catch (err: any) {
+    return c.json({ status: "error", message: err.message || "Episode details not found" }, 500)
+  }
+})
+
 // GET /api/v1/search
 mediaRouter.get("/search", async (c) => {
   const query = c.req.query("query") || c.req.query("q") || ""
@@ -94,8 +113,8 @@ mediaRouter.get("/search", async (c) => {
   }
 })
 
-// GET /api/v1/popular
-mediaRouter.get("/popular", async (c) => {
+// GET /api/v1/popular & /api/v1/movies/popular
+const handlePopular = async (c: any) => {
   const type = (c.req.query("type") === "tv" ? "tv" : "movie") as "movie" | "tv"
   const page = parseInt(c.req.query("page") || "1", 10)
 
@@ -112,11 +131,14 @@ mediaRouter.get("/popular", async (c) => {
   } catch (err: any) {
     return c.json({ status: "error", message: err.message }, 500)
   }
-})
+}
+mediaRouter.get("/popular", handlePopular)
+mediaRouter.get("/movies/popular", handlePopular)
 
-// GET /api/v1/top
-mediaRouter.get("/top", async (c) => {
-  const type = (c.req.query("type") === "tv" ? "tv" : "movie") as "movie" | "tv"
+// GET /api/v1/top & /api/v1/movies/top-rated & /api/v1/tv/top-rated
+const handleTopRated = (defaultType: "movie" | "tv") => async (c: any) => {
+  const queryType = c.req.query("type")
+  const type = (queryType === "tv" || queryType === "movie") ? queryType : defaultType
   const page = parseInt(c.req.query("page") || "1", 10)
 
   const cacheKey = `top:${type}:${page}`
@@ -132,7 +154,10 @@ mediaRouter.get("/top", async (c) => {
   } catch (err: any) {
     return c.json({ status: "error", message: err.message }, 500)
   }
-})
+}
+mediaRouter.get("/top", handleTopRated("movie"))
+mediaRouter.get("/movies/top-rated", handleTopRated("movie"))
+mediaRouter.get("/tv/top-rated", handleTopRated("tv"))
 
 // GET /api/v1/trending
 mediaRouter.get("/trending", async (c) => {
