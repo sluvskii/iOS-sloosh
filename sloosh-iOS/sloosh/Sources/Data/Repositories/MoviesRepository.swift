@@ -390,11 +390,11 @@ class MoviesRepository: ObservableObject {
             // Фильтр по типу
             if let type = filters.type {
                 switch type {
-                case "FILM":
+                case "FILM", "movie":
                     if item.type != "movie" || isCartoon(item) { return false }
-                case "TV_SERIES":
+                case "TV_SERIES", "tv":
                     if item.type != "tv" || isCartoon(item) { return false }
-                case "CARTOON":
+                case "CARTOON", "cartoon":
                     if !isCartoon(item) { return false }
                 default:
                     break
@@ -433,8 +433,12 @@ class MoviesRepository: ObservableObject {
                 let itemGenres = item.genres?.compactMap { genreDto -> String? in
                     return genreDto.name?.lowercased() ?? genreDto.id?.lowercased()
                 } ?? []
-                let matches = itemGenres.contains { $0.contains(targetGenre) }
-                if !matches { return false }
+                if !itemGenres.isEmpty {
+                    let matches = itemGenres.contains { g in
+                        g.contains(targetGenre) || targetGenre.contains(g)
+                    }
+                    if !matches { return false }
+                }
             }
             
             return true

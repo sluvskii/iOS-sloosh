@@ -406,7 +406,11 @@ struct MediaDetailsDto: Codable {
             self.genres = nil
         }
         
-        self.countries = try? container.decodeIfPresent([String].self, forKey: .countries)
+        if let rawCountries = try? container.decodeIfPresent([String].self, forKey: .countries) {
+            self.countries = rawCountries.map { CountryLocalizer.format($0) }.filter { !$0.isEmpty }
+        } else {
+            self.countries = nil
+        }
         self.duration = try? container.decodeIfPresent(Int.self, forKey: .duration)
         self.poster = try? container.decodeIfPresent(String.self, forKey: .poster)
         self.backdrop = try? container.decodeIfPresent(String.self, forKey: .backdrop)
@@ -545,6 +549,107 @@ struct IdsDto: Codable {
         self.kp = kp
         self.imdb = imdb
         self.tmdb = tmdb
+    }
+}
+
+enum CountryLocalizer {
+    private static let countryCodeToRu: [String: String] = [
+        "US": "США", "USA": "США", "GB": "Великобритания", "UK": "Великобритания",
+        "RU": "Россия", "SU": "СССР", "FR": "Франция", "DE": "Германия",
+        "IT": "Италия", "ES": "Испания", "JP": "Япония", "KR": "Южная Корея",
+        "CN": "Китай", "HK": "Гонконг", "TW": "Тайвань", "CA": "Канада",
+        "AU": "Австралия", "IN": "Индия", "TR": "Турция", "SE": "Швеция",
+        "NO": "Норвегия", "DK": "Дания", "FI": "Финляндия", "NL": "Нидерланды",
+        "BE": "Бельгия", "PL": "Польша", "CZ": "Чехия", "AT": "Австрия",
+        "CH": "Швейцария", "IE": "Ирландия", "NZ": "Новая Зеландия", "ZA": "ЮАР",
+        "IL": "Израиль", "UA": "Украина", "BY": "Беларусь", "KZ": "Казахстан",
+        "TH": "Таиланд", "ID": "Индонезия", "IS": "Исландия", "GR": "Греция",
+        "PT": "Португалия", "MX": "Мексика", "BR": "Бразилия", "AR": "Аргентина",
+        "AE": "ОАЭ", "EG": "Египет", "GE": "Грузия", "AM": "Армения"
+    ]
+
+    private static let englishNameToRu: [String: String] = [
+        "united states of america": "США",
+        "united states": "США",
+        "usa": "США",
+        "united kingdom": "Великобритания",
+        "great britain": "Великобритания",
+        "uk": "Великобритания",
+        "england": "Великобритания",
+        "russia": "Россия",
+        "russian federation": "Россия",
+        "soviet union": "СССР",
+        "ussr": "СССР",
+        "france": "Франция",
+        "germany": "Германия",
+        "italy": "Италия",
+        "spain": "Испания",
+        "japan": "Япония",
+        "south korea": "Южная Корея",
+        "korea, republic of": "Южная Корея",
+        "republic of korea": "Южная Корея",
+        "korea": "Южная Корея",
+        "china": "Китай",
+        "hong kong": "Гонконг",
+        "taiwan": "Тайвань",
+        "canada": "Канада",
+        "australia": "Австралия",
+        "india": "Индия",
+        "turkey": "Турция",
+        "türkiye": "Турция",
+        "sweden": "Швеция",
+        "norway": "Норвегия",
+        "denmark": "Дания",
+        "finland": "Финляндия",
+        "netherlands": "Нидерланды",
+        "belgium": "Бельгия",
+        "poland": "Польша",
+        "czech republic": "Чехия",
+        "czechia": "Чехия",
+        "austria": "Австрия",
+        "switzerland": "Швейцария",
+        "ireland": "Ирландия",
+        "new zealand": "Новая Зеландия",
+        "south africa": "ЮАР",
+        "israel": "Израиль",
+        "ukraine": "Украина",
+        "belarus": "Беларусь",
+        "kazakhstan": "Казахстан",
+        "thailand": "Таиланд",
+        "indonesia": "Индонезия",
+        "philippines": "Филиппины",
+        "iceland": "Исландия",
+        "greece": "Греция",
+        "portugal": "Португалия",
+        "united arab emirates": "ОАЭ",
+        "uae": "ОАЭ",
+        "mexico": "Мексика",
+        "brazil": "Бразилия",
+        "argentina": "Аргентина"
+    ]
+
+    static func format(_ raw: String) -> String {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return "" }
+
+        let upper = trimmed.uppercased()
+        if let match = countryCodeToRu[upper] {
+            return match
+        }
+
+        let lower = trimmed.lowercased()
+        if let match = englishNameToRu[lower] {
+            return match
+        }
+
+        if upper.count == 2 {
+            let locale = Locale(identifier: "ru_RU")
+            if let localized = locale.localizedString(forRegionCode: upper), !localized.isEmpty {
+                return localized
+            }
+        }
+
+        return trimmed
     }
 }
 
