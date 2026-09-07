@@ -250,7 +250,7 @@ class MoviesRepository: ObservableObject {
         // If collection endpoint is not ready yet, fallback to searching by curated studio franchises
         if let brand = StudioBrand.find(by: id) {
             if !brand.searchFranchises.isEmpty {
-                let chunkSize = 4
+                let chunkSize = 6
                 let totalFranchises = brand.searchFranchises.count
                 let totalPages = max(1, (totalFranchises + chunkSize - 1) / chunkSize)
                 
@@ -320,16 +320,21 @@ class MoviesRepository: ObservableObject {
         let origTitle = (item.originalTitle ?? "").lowercased()
         let combined = "\(title) \(origTitle)"
         
+        // Exception: Deadpool & Wolverine is official Marvel Studios MCU
+        let isDeadpoolWolverine = combined.contains("дэдпул и росомаха") || combined.contains("deadpool & wolverine")
+
         // 1. Strict exclusion check
         for excluded in brand.excludedKeywords {
             let lowerExcluded = excluded.lowercased()
+            if isDeadpoolWolverine && (lowerExcluded == "росомаха" || lowerExcluded == "wolverine" || lowerExcluded == "deadpool" || lowerExcluded == "дэдпул") {
+                continue
+            }
             if lowerExcluded.count <= 3 {
-                let pattern = "(^|[^a-zA-Z0-9а-яА-ЯёЁ])" + NSRegularExpression.escapedPattern(for: lowerExcluded) + "([^a-zA-Z0-9а-яА-ЯёЁ]|$)"
-                if combined.range(of: pattern, options: .regularExpression) != nil {
+                if StudioBrand.containsWord(in: combined, word: lowerExcluded) {
                     return false
                 }
             } else {
-                if combined.contains(lowerExcluded) {
+                if combined.contains(lowerExcluded) || StudioBrand.containsWord(in: combined, word: lowerExcluded) {
                     return false
                 }
             }
@@ -338,18 +343,17 @@ class MoviesRepository: ObservableObject {
         // 2. Query relevance check
         let lowerQuery = query.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
         if lowerQuery.count <= 3 {
-            let pattern = "(^|[^a-zA-Z0-9а-яА-ЯёЁ])" + NSRegularExpression.escapedPattern(for: lowerQuery) + "([^a-zA-Z0-9а-яА-ЯёЁ]|$)"
-            if combined.range(of: pattern, options: .regularExpression) == nil {
+            if !StudioBrand.containsWord(in: combined, word: lowerQuery) {
                 return false
             }
         } else {
             let words = lowerQuery.components(separatedBy: " ").filter { $0.count > 2 }
             if !words.isEmpty {
-                if !combined.contains(lowerQuery) && !words.allSatisfy({ combined.contains($0) }) {
+                if !combined.contains(lowerQuery) && !words.allSatisfy({ StudioBrand.containsWord(in: combined, word: $0) }) {
                     return false
                 }
             } else {
-                if !combined.contains(lowerQuery) {
+                if !combined.contains(lowerQuery) && !StudioBrand.containsWord(in: combined, word: lowerQuery) {
                     return false
                 }
             }
@@ -359,6 +363,14 @@ class MoviesRepository: ObservableObject {
     }
 
     nonisolated private static func isQualityStudioItem(_ item: MediaDto, for brand: StudioBrand? = nil) -> Bool {
+        // 0. Major studio items must have an original international title (rejects domestic Russian movies like Babushka 2, etc.)
+        if brand != nil {
+            let orig = (item.originalTitle ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            if orig.isEmpty {
+                return false
+            }
+        }
+
         // 1. Poster check: must have a real poster and not be a placeholder
         let rawPoster = item.posterUrl ?? item.poster_path ?? ""
         if rawPoster.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || rawPoster.contains("no-poster") {
@@ -397,7 +409,7 @@ class MoviesRepository: ObservableObject {
             return false
         }
 
-        // 4. Genres check: discard shorts, documentaries, news, specials, talk-shows, ceremonies, etc.
+        // 4. Genres check: discard shorts, documentaries, news, specials, talk-shows, ceremonies, anime, etc.
         let junkGenres = [
             "короткометражк", "short",
             "документальн", "documentary",
@@ -405,7 +417,8 @@ class MoviesRepository: ObservableObject {
             "ток-шоу", "talk-show",
             "церемони", "ceremony",
             "концерт", "concert",
-            "музык", "music"
+            "музык", "music",
+            "аниме", "anime"
         ]
         if let genres = item.genres {
             for g in genres {

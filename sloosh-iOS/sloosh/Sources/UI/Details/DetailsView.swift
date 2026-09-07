@@ -1321,6 +1321,23 @@ private struct DetailsInfoSection: View {
                         }
                     }
                 }
+            } else if let brand = details.identifiedStudio {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(brand.isNetwork ? "Платформа" : "Студия")
+                        .font(.system(size: 18, weight: .bold))
+
+                    FlowLayout(spacing: 8) {
+                        NavigationLink(destination: StudioCatalogView(studioId: brand.id, studioName: brand.name)) {
+                            Text(brand.name)
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundColor(.primary)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 8)
+                                .glassEffect(.regular.interactive(), in: Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
             }
 
             if let description = details.description, !description.isEmpty {
