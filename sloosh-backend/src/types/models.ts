@@ -137,4 +137,7 @@ export interface PersonDetailsDto {
   gender?: number
   filmography: MediaDto[]
   photos?: string[]
+  awards?: string
+  keyProjects?: string
+  interestingFact?: string
 }

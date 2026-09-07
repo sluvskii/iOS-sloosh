@@ -742,6 +742,9 @@ struct PersonDetailsDto: Codable, Identifiable {
     let gender: Int?
     let filmography: [MediaDto]?
     let photos: [String]?
+    let awards: String?
+    let keyProjects: String?
+    let interestingFact: String?
 
     var age: Int? {
         guard let birthday = birthday, !birthday.isEmpty else { return nil }
