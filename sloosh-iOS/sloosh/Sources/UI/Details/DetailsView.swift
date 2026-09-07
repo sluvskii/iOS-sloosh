@@ -2271,7 +2271,7 @@ class DetailsViewModel: ObservableObject {
         let rawCleanId = id.replacingOccurrences(of: "kp_", with: "")
 
         if let apiResult = await MoviesRepository.shared.getRelatedByStudio(type: type, id: id),
-           let items = apiResult.items, !items.isEmpty {
+           let items = Optional(apiResult.allItems), !items.isEmpty {
             let otherMovies = items.filter {
                 let itemCleanId = $0.id.replacingOccurrences(of: "kp_", with: "")
                 return itemCleanId != rawCleanId && $0.id != id
@@ -2280,10 +2280,13 @@ class DetailsViewModel: ObservableObject {
                 let randomized = Array(otherMovies.shuffled().prefix(20))
                 self.relatedStudio = RelatedStudioResponse(
                     items: randomized,
+                    results: randomized,
                     label: apiResult.label,
                     page: apiResult.page,
-                    totalPages: apiResult.totalPages,
-                    totalResults: randomized.count
+                    totalPages: apiResult.totalPages ?? apiResult.total_pages,
+                    totalResults: randomized.count,
+                    total_pages: apiResult.total_pages ?? apiResult.totalPages,
+                    total_results: randomized.count
                 )
                 return
             }
@@ -2454,7 +2457,8 @@ private struct RelatedStudioSection: View {
     var onDirectPlay: ((MediaDto) -> Void)? = nil
 
     var body: some View {
-        if let items = response.items, !items.isEmpty {
+        let items = response.allItems
+        if !items.isEmpty {
             let brand = response.label.flatMap { StudioBrand.find(by: $0) }
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 8) {
