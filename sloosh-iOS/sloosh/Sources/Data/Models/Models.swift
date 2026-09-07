@@ -276,21 +276,21 @@ struct MediaDetailsDto: Codable {
     }
 
     var identifiedStudio: StudioBrand? {
-        if let companies = productionCompanies {
+        if let companies = productionCompanies, !companies.isEmpty {
             for c in companies {
                 if let brand = StudioBrand.find(by: c.name) {
                     return brand
                 }
             }
         }
-        if let nets = networks {
+        if let nets = networks, !nets.isEmpty {
             for n in nets {
                 if let brand = StudioBrand.find(by: n.name) {
                     return brand
                 }
             }
         }
-        return nil
+        return StudioBrand.detectBrand(title: title, originalTitle: originalTitle)
     }
 }
 
@@ -455,6 +455,14 @@ struct StudioBrand: Identifiable, Hashable {
         self.searchFranchises = searchFranchises
         self.excludedKeywords = excludedKeywords
     }
+
+    nonisolated static func containsWord(in text: String, word: String) -> Bool {
+        let trimmed = word.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !trimmed.isEmpty else { return false }
+        let escaped = NSRegularExpression.escapedPattern(for: trimmed)
+        let pattern = "(?:^|[^\\p{L}\\p{N}])" + escaped + "(?:[^\\p{L}\\p{N}]|$)"
+        return text.lowercased().range(of: pattern, options: .regularExpression) != nil
+    }
     
     static let all: [StudioBrand] = [
         StudioBrand(
@@ -464,14 +472,24 @@ struct StudioBrand: Identifiable, Hashable {
             isNetwork: false,
             aliases: ["marvel", "марвел", "marvel studios", "marvel entertainment", "marvel comics"],
             searchFranchises: [
-                "Мстители", "Железный человек", "Тор", "Первый мститель",
-                "Стражи Галактики", "Доктор Стрэндж", "Черная пантера", "Локи",
-                "Вандавижн", "Шан-Чи", "Вечные", "Капитан Марвел"
+                "Мстители", "Железный человек", "Первый мститель", "Тор: Рагнарёк", "Тор Marvel",
+                "Стражи Галактики", "Человек-паук: Возвращение домой", "Человек-паук: Вдали от дома",
+                "Человек-паук: Нет пути домой", "Доктор Стрэндж", "Черная пантера", "Локи",
+                "Вандавижн", "Шан-Чи", "Вечные Marvel", "Капитан Марвел", "Человек-муравей",
+                "Черная вдова", "Соколиный глаз", "Лунный рыцарь", "Дэдпул и Росомаха"
             ],
             excludedKeywords: [
-                "шазам", "shazam", "мейзел", "maisel", "revengers", "неуловимые",
-                "люди икс", "x-men", "росомаха", "wolverine", "deadpool", "дэдпул",
-                "морбиус", "morbius", "человек-паук", "spider-man", "веном", "venom", "1961"
+                // Exclude DC / other comics
+                "шазам", "shazam", "бэтмен", "batman", "супермен", "superman", "диси", "супермощная команда", "super powers",
+                // Exclude foreign non-Marvel & domestic Russian films
+                "бабушка", "легкого поведения", "локис", "локита", "викинг", "valhall", "мифический детектив",
+                "tori et lokita", "вечные земли", "foreverland", "мейзел", "maisel", "revengers", "неуловимые",
+                // Exclude Fox X-Men (except Deadpool & Wolverine)
+                "люди икс", "x-men", "росомаха", "wolverine",
+                // Exclude Sony Spider-Man universe & non-MCU Spider-Man films
+                "морбиус", "morbius", "веном", "venom", "мадам паутина", "madame web", "крайвен", "kraven",
+                "новый человек-паук", "amazing spider-man", "через вселенные", "паутина вселенных", "spider-verse",
+                "spider-man 1994", "тоби магуайр", "tobey maguire", "эндрю гарфилд", "andrew garfield"
             ]
         ),
         StudioBrand(
@@ -483,9 +501,10 @@ struct StudioBrand: Identifiable, Hashable {
             searchFranchises: [
                 "Бэтмен", "Темный рыцарь", "Джокер", "Супермен",
                 "Лига справедливости", "Шазам", "Аквамен", "Флэш",
-                "Отряд самоубийц", "Миротворец", "Хранители", "Константин", "Чудо-женщина"
+                "Отряд самоубийц", "Миротворец", "Хранители", "Константин", "Чудо-женщина",
+                "Пингвин", "Харли Квинн"
             ],
-            excludedKeywords: ["marvel", "марвел"]
+            excludedKeywords: ["marvel", "марвел", "дисне", "disney"]
         ),
         StudioBrand(
             id: "a24",
@@ -496,7 +515,7 @@ struct StudioBrand: Identifiable, Hashable {
             searchFranchises: [
                 "Всё везде и сразу", "Солнцестояние", "Реинкарнация", "Кит",
                 "Маяк", "Падение империи", "Прошлые жизни", "Стальная хватка",
-                "Лобстер", "Легенда о Зеленом рыцаре"
+                "Лобстер", "Легенда о Зеленом рыцаре", "Эйфория", "Леди Бёрд", "Лунный свет", "Зона интересов"
             ]
         ),
         StudioBrand(
@@ -508,7 +527,8 @@ struct StudioBrand: Identifiable, Hashable {
             searchFranchises: [
                 "История игрушек", "Тачки", "Корпорация монстров", "ВАЛЛ-И",
                 "Вверх", "Головоломка", "Тайна Коко", "Душа",
-                "В поисках Немо", "Рататуй", "Суперсемейка", "Элементарно", "Лука", "Вперед"
+                "В поисках Немо", "Рататуй", "Суперсемейка", "Элементарно", "Лука", "Вперед",
+                "Храбрая сердцем", "Я краснею"
             ]
         ),
         StudioBrand(
@@ -520,9 +540,9 @@ struct StudioBrand: Identifiable, Hashable {
             searchFranchises: [
                 "Король Лев", "Холодное сердце", "Зверополис", "Аладдин",
                 "Красавица и чудовище", "Моана", "Рапунцель", "Пираты Карибского моря",
-                "Русалочка", "Мулан"
+                "Русалочка", "Мулан", "Энканто", "Малефисента", "Круэлла", "Алиса в стране чудес"
             ],
-            excludedKeywords: ["marvel", "марвел", "star wars", "звездные войны"]
+            excludedKeywords: ["marvel", "марвел", "star wars", "звездные войны", "pixar", "пиксар"]
         ),
         StudioBrand(
             id: "warner-bros",
@@ -532,7 +552,8 @@ struct StudioBrand: Identifiable, Hashable {
             aliases: ["warner", "уорнер", "warner bros", "warner bros.", "warner brothers", "warner pictures"],
             searchFranchises: [
                 "Гарри Поттер", "Фантастические твари", "Властелин колец", "Хоббит",
-                "Матрица", "Дюна", "Начало", "Престиж", "Шерлок Холмс"
+                "Матрица", "Дюна", "Начало", "Престиж", "Шерлок Холмс", "Интерстеллар",
+                "Безумный Макс", "Гравитация", "Вонка", "Барби"
             ]
         ),
         StudioBrand(
@@ -543,7 +564,7 @@ struct StudioBrand: Identifiable, Hashable {
             aliases: ["universal", "юниверсал", "universal pictures", "universal studios"],
             searchFranchises: [
                 "Оппенгеймер", "Форсаж", "Парк юрского периода", "Мир юрского периода",
-                "Назад в будущее", "Гадкий я", "Миньоны", "Челюсти", "Нечто"
+                "Назад в будущее", "Гадкий я", "Миньоны", "Челюсти", "Нечто", "Идентификация Борна", "Как приручить дракона"
             ]
         ),
         StudioBrand(
@@ -554,7 +575,8 @@ struct StudioBrand: Identifiable, Hashable {
             aliases: ["paramount", "парамаунт", "paramount pictures"],
             searchFranchises: [
                 "Миссия невыполнима", "Трансформеры", "Топ Ган", "Крестный отец",
-                "Интерстеллар", "Соник в кино", "Тихое место", "Форрест Гамп", "Гладиатор", "Волк с Уолл-стрит"
+                "Интерстеллар", "Соник в кино", "Тихое место", "Форрест Гамп", "Гладиатор", "Волк с Уолл-стрит",
+                "Терминатор", "Шоу Трумана"
             ]
         ),
         StudioBrand(
@@ -566,7 +588,7 @@ struct StudioBrand: Identifiable, Hashable {
             searchFranchises: [
                 "Люди Икс", "Росомаха", "Дэдпул", "Логан",
                 "Аватар", "Чужой", "Хищник", "Планета обезьян",
-                "Крепкий орешек", "Титаник", "Kingsman", "Ледниковый период", "Бойцовский клуб"
+                "Крепкий орешек", "Титаник", "Kingsman", "Ледниковый период", "Бойцовский клуб", "Бегущий в лабиринте"
             ]
         ),
         StudioBrand(
@@ -578,7 +600,7 @@ struct StudioBrand: Identifiable, Hashable {
             searchFranchises: [
                 "Человек-паук", "Веном", "Морбиус", "Джуманджи",
                 "Охотники за привидениями", "Люди в черном", "Плохие парни",
-                "Однажды в Голливуде", "Бегущий по лезвию 2049", "Анчартед", "Гран туризмо", "Малыш на драйве"
+                "Однажды в Голливуде", "Бегущий по лезвию 2049", "Анчартед", "Гран туризмо", "Малыш на драйве", "Мадам Паутина"
             ]
         ),
         StudioBrand(
@@ -589,7 +611,8 @@ struct StudioBrand: Identifiable, Hashable {
             aliases: ["dreamworks", "дримворкс", "dreamworks animation"],
             searchFranchises: [
                 "Шрек", "Как приручить дракона", "Кунг-фу панда", "Мадагаскар",
-                "Кот в сапогах", "Мегамозг", "Дикий робот", "Семейка Крудс", "Босс-молокосос"
+                "Кот в сапогах", "Мегамозг", "Дикий робот", "Семейка Крудс", "Босс-молокосос", "Подводная братва",
+                "Пингвины Мадагаскара", "Хранители снов"
             ]
         ),
         
@@ -603,7 +626,7 @@ struct StudioBrand: Identifiable, Hashable {
             searchFranchises: [
                 "Очень странные дела", "Игра в кальмара", "Уэнсдэй", "Ведьмак",
                 "Бумажный дом", "Аркейн", "Черное зеркало", "Люпен", "Озарк",
-                "Корона", "Ход королевы", "Бриджертоны"
+                "Корона", "Ход королевы", "Бриджертоны", "Тьма", "Половое воспитание"
             ]
         ),
         StudioBrand(
@@ -615,7 +638,7 @@ struct StudioBrand: Identifiable, Hashable {
             searchFranchises: [
                 "Игра престолов", "Дом дракона", "Чернобыль", "Одни из нас",
                 "Настоящий детектив", "Клан Сопрано", "Эйфория", "Белый лотос",
-                "Наследники", "Прослушка", "Барри"
+                "Наследники", "Прослушка", "Барри", "Мир Дикого Запада"
             ]
         ),
         StudioBrand(
@@ -626,7 +649,8 @@ struct StudioBrand: Identifiable, Hashable {
             aliases: ["apple tv", "apple tv+", "apple+", "эппл тв", "apple original films"],
             searchFranchises: [
                 "Тед Лассо", "Разделение", "Утреннее шоу", "Бункер",
-                "Основание", "Медленные лошади", "Убийцы цветочной луны", "Защищая Джейкоба"
+                "Основание", "Медленные лошади", "Убийцы цветочной луны", "Защищая Джейкоба",
+                "Черная птица", "Презумпция невиновности", "Темная материя", "Терапия"
             ]
         ),
         StudioBrand(
@@ -637,17 +661,7 @@ struct StudioBrand: Identifiable, Hashable {
             aliases: ["prime video", "amazon prime", "amazon studios", "прайм видео"],
             searchFranchises: [
                 "Пацаны", "Властелин колец: Кольца власти", "Джек Ричер",
-                "Фоллаут", "Непобедимый", "Джентльмены"
-            ]
-        ),
-        StudioBrand(
-            id: "hulu",
-            name: "Hulu",
-            slug: "hulu",
-            isNetwork: true,
-            aliases: ["hulu", "хулу"],
-            searchFranchises: [
-                "Медведь", "Рассказ служанки", "Убийства в одном здании", "Сёгун", "Фарго"
+                "Фоллаут", "Непобедимый", "Джентльмены", "Поколение «Ви»", "Ричер", "Периферийные устройства", "Благие знамения"
             ]
         ),
         StudioBrand(
@@ -692,23 +706,72 @@ struct StudioBrand: Identifiable, Hashable {
             return aliasMatch
         }
         
-        // Word-boundary / token match: company name contains the studio name/alias as a distinct token
+        // Word-boundary / token match
         return all.first { brand in
             for alias in brand.aliases {
-                let lowerAlias = alias.lowercased()
-                if lowerAlias.count <= 3 {
-                    let pattern = "(^|[^a-zA-Z0-9а-яА-ЯёЁ])" + NSRegularExpression.escapedPattern(for: lowerAlias) + "([^a-zA-Z0-9а-яА-ЯёЁ]|$)"
-                    if clean.range(of: pattern, options: .regularExpression) != nil {
-                        return true
-                    }
-                } else {
-                    if clean.contains(lowerAlias) {
-                        return true
-                    }
+                if containsWord(in: clean, word: alias) {
+                    return true
                 }
             }
             return false
         }
+    }
+
+    static func detectBrand(title: String?, originalTitle: String?) -> StudioBrand? {
+        let t = (title ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let o = (originalTitle ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !t.isEmpty || !o.isEmpty else { return nil }
+        let combined = "\(t) \(o)".lowercased()
+        
+        let isDeadpoolWolverine = combined.contains("дэдпул и росомаха") || combined.contains("deadpool & wolverine")
+
+        for brand in all {
+            // 1. Exclusions
+            var isExcluded = false
+            for excluded in brand.excludedKeywords {
+                let lowerExcluded = excluded.lowercased()
+                if isDeadpoolWolverine && (lowerExcluded == "росомаха" || lowerExcluded == "wolverine" || lowerExcluded == "deadpool" || lowerExcluded == "дэдпул") {
+                    continue
+                }
+                if lowerExcluded.count <= 3 {
+                    if containsWord(in: combined, word: lowerExcluded) {
+                        isExcluded = true
+                        break
+                    }
+                } else if combined.contains(lowerExcluded) || containsWord(in: combined, word: lowerExcluded) {
+                    isExcluded = true
+                    break
+                }
+            }
+            if isExcluded { continue }
+            
+            // 2. Exact match in aliases
+            for alias in brand.aliases {
+                if containsWord(in: combined, word: alias) {
+                    return brand
+                }
+            }
+            
+            // 3. Search franchises
+            for franchise in brand.searchFranchises {
+                let lowerFranchise = franchise.lowercased()
+                if lowerFranchise.count <= 3 {
+                    if containsWord(in: combined, word: lowerFranchise) {
+                        return brand
+                    }
+                } else {
+                    let words = lowerFranchise.components(separatedBy: " ").filter { $0.count > 2 }
+                    if !words.isEmpty {
+                        if combined.contains(lowerFranchise) || words.allSatisfy({ containsWord(in: combined, word: $0) }) {
+                            return brand
+                        }
+                    } else if combined.contains(lowerFranchise) || containsWord(in: combined, word: lowerFranchise) {
+                        return brand
+                    }
+                }
+            }
+        }
+        return nil
     }
 }
 
