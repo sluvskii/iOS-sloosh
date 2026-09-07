@@ -1177,14 +1177,14 @@ struct SourceSelectionEmptyView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 16) {
-                Image(systemName: "exclamationmark.bubble")
-                    .font(.system(size: 34, weight: .semibold))
+                Image(systemName: "film.stack")
+                    .font(.system(size: 38, weight: .semibold))
                     .foregroundStyle(.secondary)
 
-                Text("Не удалось получить источники")
+                Text("Видео пока недоступно")
                     .font(.system(size: 20, weight: .bold))
 
-                Text("Попробуйте закрыть окно и нажать `Смотреть` еще раз.")
+                Text("Этот проект пока отсутствует в источниках стриминга или еще не вышел в релиз.")
                     .font(.system(size: 15, weight: .medium))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
