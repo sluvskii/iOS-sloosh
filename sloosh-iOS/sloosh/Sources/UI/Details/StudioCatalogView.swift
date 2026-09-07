@@ -141,9 +141,6 @@ struct StudioCatalogView: View {
                 }
             }
         }
-        .refreshable {
-            await viewModel.loadInitial(force: true)
-        }
         .navigationTitle(studioName)
         .navigationBarTitleDisplayMode(.large)
         .fullWidthSwipeBack()
