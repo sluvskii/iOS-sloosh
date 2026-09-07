@@ -290,202 +290,6 @@ struct MediaDetailsDto: Codable {
                 }
             }
         }
-        
-        let text = " \(title ?? "") \(originalTitle ?? "") \(description ?? "") ".lowercased()
-
-        // 1. Marvel
-        if let marvel = StudioBrand.find(by: "marvel") {
-            let marvelKeywords = [
-                "marvel", "марвел", "мстители", "avengers", "железный человек", "iron man",
-                "человек-паук", "человек паук", "spider-man", "spiderman", "тор: ", "тор ", " thor",
-                "локи", "loki", "капитан америка", "captain america", " халк", "hulk",
-                "стражи галактики", "guardians of the galaxy", "дэдпул", "дедпул", "deadpool",
-                "росомаха", "wolverine", "люди икс", "люди-икс", "x-men",
-                "доктор стрэндж", "доктор стрендж", "doctor strange", "черная пантера", "чёрная пантера", "black panther",
-                "человек-муравей", "человек муравей", "ant-man", "соколиный глаз", "hawkeye",
-                "вандавижн", "wandavision", "веном", "venom", "вечные", "eternals",
-                "шан-чи", "shang-chi", "квантомания", "daredevil", "сорвиголова", "морбиус", "танос"
-            ]
-            if marvelKeywords.contains(where: { text.contains($0) }) {
-                return marvel
-            }
-        }
-
-        // 2. DC
-        if let dc = StudioBrand.find(by: "dc") {
-            let dcKeywords = [
-                " dc ", "dc comics", "диси", "бэтмен", "батмен", "batman",
-                "супермен", "superman", "джокер", "joker", "харли квинн", "harley quinn",
-                "чудо-женщина", "чудо женщина", "wonder woman", "аквамен", "aquaman",
-                "флэш", "the flash", "шазам", "shazam", "отряд самоубийц", "suicide squad",
-                "лига справедливости", "justice league", "миротворец", "peacemaker",
-                "готэм", "gotham", "пингвин", "the penguin", "черный адам", "чёрный адам"
-            ]
-            if dcKeywords.contains(where: { text.contains($0) }) {
-                return dc
-            }
-        }
-
-        // 3. Pixar
-        if let pixar = StudioBrand.find(by: "pixar") {
-            let pixarKeywords = [
-                "pixar", "пиксар", "история игрушек", "toy story", "тачки", "тачки 2", "тачки 3", " cars",
-                "в поисках немо", "finding nemo", "в поисках дори", "головоломка", "inside out",
-                "вверх", "корпорация монстров", "monsters, inc", "суперсемейка", "the incredibles",
-                "рататуй", "ratatouille", "тайна коко", " coco", "душа", " soul", "лука", " luca",
-                "я краснею", "turning red", "элементарно", "elemental", "храбрая сердцем",
-                "хороший динозавр", "вперед", "onward", "базз лайтер", "lightyear", "валл-и", "wall-e"
-            ]
-            if pixarKeywords.contains(where: { text.contains($0) }) {
-                return pixar
-            }
-        }
-
-        // 4. Disney
-        if let disney = StudioBrand.find(by: "disney") {
-            let disneyKeywords = [
-                "disney", "дисне", "холодное сердце", "frozen", "король лев", "lion king",
-                "русалочка", "little mermaid", "моана", "moana", "энканто", "encanto",
-                "зверополис", "zootopia", "рапунцель", "tangled", "красавица и чудовище", "beauty and the beast",
-                "аладдин", "aladdin", "мулан", "mulan", "покахонтас", "геркулес", "hercules",
-                "пиноккио", "тарзан", "дамбо", "бэмби", "белоснежка", "snow white", "круэлла", "cruella", "малефисента"
-            ]
-            if disneyKeywords.contains(where: { text.contains($0) }) {
-                return disney
-            }
-        }
-
-        // 5. DreamWorks
-        if let dreamworks = StudioBrand.find(by: "dreamworks") {
-            let dwKeywords = [
-                "dreamworks", "дримворкс", "дримворк", "шрек", "shrek", "кот в сапогах", "puss in boots",
-                "как приручить дракона", "how to train your dragon", "кунг-фу панда", "кунг фу панда", "kung fu panda",
-                "мадагаскар", "madagascar", "босс-молокосос", "босс молокосос", "the boss baby",
-                "тролли", "trolls", "плохие парни", "the bad guys", "мегамозг", "megamind",
-                "подводная братва", "синдбад", "дикий робот", "the wild robot"
-            ]
-            if dwKeywords.contains(where: { text.contains($0) }) {
-                return dreamworks
-            }
-        }
-
-        // 6. HBO
-        if let hbo = StudioBrand.find(by: "hbo") {
-            let hboKeywords = [
-                "hbo", "эйчби", "игра престолов", "game of thrones", "дом дракона", "house of the dragon",
-                "чернобыль", "chernobyl", "настоящий детектив", "true detective", "наследники", "succession",
-                "клан сопрано", "the sopranos", "прослушка", "the wire", "белый лотос", "the white lotus",
-                "эйфория", "euphoria", "одни из нас", "одних из нас", "the last of us",
-                "мир дикого запада", "westworld", "секс в большом городе", "sex and the city", "барри", "кремниевая долина"
-            ]
-            if hboKeywords.contains(where: { text.contains($0) }) {
-                return hbo
-            }
-        }
-
-        // 7. Netflix
-        if let netflix = StudioBrand.find(by: "netflix") {
-            let netflixKeywords = [
-                "netflix", "нетфликс", "очень странные дела", "stranger things", "игра в кальмара", "squid game",
-                "уэнсдэй", "уэнздей", "wednesday", "ведьмак", "the witcher", "бумажный дом", "money heist",
-                "la casa de papel", "аркейн", "arcane", "половое воспитание", "sex education",
-                "корона", "the crown", "черное зеркало", "чёрное зеркало", "black mirror",
-                "люпен", "lupin", "озарк", "ozark", "бриджертоны", "bridgerton"
-            ]
-            if netflixKeywords.contains(where: { text.contains($0) }) {
-                return netflix
-            }
-        }
-
-        // 8. Apple TV+
-        if let apple = StudioBrand.find(by: "apple-tv-plus") {
-            let appleKeywords = [
-                "apple tv", "apple+", "эппл тв", "тед лассо", "ted lasso", "утреннее шоу", "the morning show",
-                "разделение", "severance", "основание", "foundation", "медленные лошади", "slow horses",
-                "бункер", "silo", "ради всего человечества", "убийцы цветочной луны"
-            ]
-            if appleKeywords.contains(where: { text.contains($0) }) {
-                return apple
-            }
-        }
-
-        // 9. A24
-        if let a24 = StudioBrand.find(by: "a24") {
-            let a24Keywords = [
-                "a24", "всё везде и сразу", "все везде и сразу", "everything everywhere all at once",
-                "солнцестояние", "midsommar", "реинкарнация", "hereditary", "кит", "the whale",
-                "лунный свет", "moonlight", "маяк", "the lighthouse", "гражданская война", "civil war",
-                "прошлые жизни", "past lives", "зона интересов", "zone of interest"
-            ]
-            if a24Keywords.contains(where: { text.contains($0) }) {
-                return a24
-            }
-        }
-
-        // 10. Warner Bros.
-        if let warner = StudioBrand.find(by: "warner-bros") {
-            let warnerKeywords = [
-                "warner", "уорнер", "гарри поттер", "harry potter", "фантастические твари", "fantastic beasts",
-                "властелин колец", "lord of the rings", "хоббит", "the hobbit", "матрица", "the matrix",
-                "дюна", "dune"
-            ]
-            if warnerKeywords.contains(where: { text.contains($0) }) {
-                return warner
-            }
-        }
-
-        // 11. Universal
-        if let universal = StudioBrand.find(by: "universal") {
-            let universalKeywords = [
-                "universal", "юниверсал", "форсаж", "fast & furious", "парк юрского периода", "мир юрского периода",
-                "jurassic park", "jurassic world", "оппенгеймер", "oppenheimer", "челюсти", "jaws",
-                "назад в будущее", "back to the future", "гадкий я", "despicable me", "миньоны", "minions"
-            ]
-            if universalKeywords.contains(where: { text.contains($0) }) {
-                return universal
-            }
-        }
-
-        // 12. Paramount
-        if let paramount = StudioBrand.find(by: "paramount") {
-            let paramountKeywords = [
-                "paramount", "парамаунт", "миссия невыполнима", "mission: impossible", "трансформеры", "transformers",
-                "крестный отец", "крёстный отец", "the godfather", "топ ган", "top gun", "индиана джонс",
-                "тихое место", "a quiet place", "соник в кино", "sonic the hedgehog", "йеллоустоун", "yellowstone"
-            ]
-            if paramountKeywords.contains(where: { text.contains($0) }) {
-                return paramount
-            }
-        }
-
-        // 13. Sony Pictures
-        if let sony = StudioBrand.find(by: "sony-pictures") {
-            let sonyKeywords = [
-                "sony pictures", "сони пикчерз", "сони пикчерс", "через вселенные", "into the spider-verse",
-                "охотники за привидениями", "ghostbusters", "джуманджи", "jumanji", "люди в черном"
-            ]
-            if sonyKeywords.contains(where: { text.contains($0) }) {
-                return sony
-            }
-        }
-
-        // 14. 20th Century
-        if let century = StudioBrand.find(by: "20th-century-studios") {
-            let centuryKeywords = [
-                "20th century", "двадцатый век", "аватар", "avatar", "чужой", "alien", "хищник", "predator",
-                "планета обезьян", "planet of the apes", "крепкий орешек", "die hard", "титаник", "titanic"
-            ]
-            if centuryKeywords.contains(where: { text.contains($0) }) {
-                return century
-            }
-        }
-
-        // General fallback for brand name in text
-        for brand in StudioBrand.all {
-            if text.contains(brand.name.lowercased()) {
-                return brand
-            }
-        }
         return nil
     }
 }
@@ -631,13 +435,25 @@ struct StudioBrand: Identifiable, Hashable {
     let slug: String
     let isNetwork: Bool
     let aliases: [String]
+    let searchFranchises: [String]
+    let excludedKeywords: [String]
 
-    init(id: String, name: String, slug: String, isNetwork: Bool, aliases: [String] = []) {
+    init(
+        id: String,
+        name: String,
+        slug: String,
+        isNetwork: Bool,
+        aliases: [String] = [],
+        searchFranchises: [String] = [],
+        excludedKeywords: [String] = []
+    ) {
         self.id = id
         self.name = name
         self.slug = slug
         self.isNetwork = isNetwork
         self.aliases = aliases
+        self.searchFranchises = searchFranchises
+        self.excludedKeywords = excludedKeywords
     }
     
     static let all: [StudioBrand] = [
@@ -646,77 +462,135 @@ struct StudioBrand: Identifiable, Hashable {
             name: "Marvel",
             slug: "marvel",
             isNetwork: false,
-            aliases: ["marvel", "марвел", "marvel studios", "marvel entertainment", "marvel comics"]
+            aliases: ["marvel", "марвел", "marvel studios", "marvel entertainment", "marvel comics"],
+            searchFranchises: [
+                "Мстители", "Железный человек", "Тор", "Первый мститель",
+                "Стражи Галактики", "Доктор Стрэндж", "Черная пантера", "Локи",
+                "Вандавижн", "Шан-Чи", "Вечные", "Капитан Марвел"
+            ],
+            excludedKeywords: [
+                "шазам", "shazam", "мейзел", "maisel", "revengers", "неуловимые",
+                "люди икс", "x-men", "росомаха", "wolverine", "deadpool", "дэдпул",
+                "морбиус", "morbius", "человек-паук", "spider-man", "веном", "venom", "1961"
+            ]
         ),
         StudioBrand(
             id: "dc",
             name: "DC",
             slug: "dc",
             isNetwork: false,
-            aliases: ["dc", "диси", "dc entertainment", "dc comics", "dc studios"]
+            aliases: ["dc", "диси", "dc entertainment", "dc comics", "dc studios", "dc films"],
+            searchFranchises: [
+                "Бэтмен", "Темный рыцарь", "Джокер", "Супермен",
+                "Лига справедливости", "Шазам", "Аквамен", "Флэш",
+                "Отряд самоубийц", "Миротворец", "Хранители", "Константин", "Чудо-женщина"
+            ],
+            excludedKeywords: ["marvel", "марвел"]
         ),
         StudioBrand(
             id: "a24",
             name: "A24",
             slug: "a24",
             isNetwork: false,
-            aliases: ["a24"]
+            aliases: ["a24"],
+            searchFranchises: [
+                "Всё везде и сразу", "Солнцестояние", "Реинкарнация", "Кит",
+                "Маяк", "Падение империи", "Прошлые жизни", "Стальная хватка",
+                "Лобстер", "Легенда о Зеленом рыцаре"
+            ]
         ),
         StudioBrand(
             id: "pixar",
             name: "Pixar",
             slug: "pixar",
             isNetwork: false,
-            aliases: ["pixar", "пиксар", "pixar animation", "pixar animation studios"]
+            aliases: ["pixar", "пиксар", "pixar animation", "pixar animation studios"],
+            searchFranchises: [
+                "История игрушек", "Тачки", "Корпорация монстров", "ВАЛЛ-И",
+                "Вверх", "Головоломка", "Тайна Коко", "Душа",
+                "В поисках Немо", "Рататуй", "Суперсемейка", "Элементарно", "Лука", "Вперед"
+            ]
         ),
         StudioBrand(
             id: "disney",
             name: "Disney",
             slug: "disney",
             isNetwork: false,
-            aliases: ["disney", "дисне", "дискей", "walt disney", "walt disney pictures", "walt disney animation"]
+            aliases: ["disney", "дисне", "дискей", "walt disney", "walt disney pictures", "walt disney animation"],
+            searchFranchises: [
+                "Король Лев", "Холодное сердце", "Зверополис", "Аладдин",
+                "Красавица и чудовище", "Моана", "Рапунцель", "Пираты Карибского моря",
+                "Русалочка", "Мулан"
+            ],
+            excludedKeywords: ["marvel", "марвел", "star wars", "звездные войны"]
         ),
         StudioBrand(
             id: "warner-bros",
             name: "Warner Bros.",
             slug: "warner-bros",
             isNetwork: false,
-            aliases: ["warner", "уорнер", "warner bros", "warner bros.", "warner brothers", "warner pictures"]
+            aliases: ["warner", "уорнер", "warner bros", "warner bros.", "warner brothers", "warner pictures"],
+            searchFranchises: [
+                "Гарри Поттер", "Фантастические твари", "Властелин колец", "Хоббит",
+                "Матрица", "Дюна", "Начало", "Престиж", "Шерлок Холмс"
+            ]
         ),
         StudioBrand(
             id: "universal",
             name: "Universal",
             slug: "universal",
             isNetwork: false,
-            aliases: ["universal", "юниверсал", "universal pictures", "universal studios"]
+            aliases: ["universal", "юниверсал", "universal pictures", "universal studios"],
+            searchFranchises: [
+                "Оппенгеймер", "Форсаж", "Парк юрского периода", "Мир юрского периода",
+                "Назад в будущее", "Гадкий я", "Миньоны", "Челюсти", "Нечто"
+            ]
         ),
         StudioBrand(
             id: "paramount",
             name: "Paramount",
             slug: "paramount",
             isNetwork: false,
-            aliases: ["paramount", "парамаунт", "paramount pictures"]
+            aliases: ["paramount", "парамаунт", "paramount pictures"],
+            searchFranchises: [
+                "Миссия невыполнима", "Трансформеры", "Топ Ган", "Крестный отец",
+                "Интерстеллар", "Соник в кино", "Тихое место", "Форрест Гамп", "Гладиатор", "Волк с Уолл-стрит"
+            ]
         ),
         StudioBrand(
             id: "20th-century-studios",
             name: "20th Century",
             slug: "20th-century-studios",
             isNetwork: false,
-            aliases: ["20th century", "двадцатый век", "20th century fox", "20th century studios"]
+            aliases: ["20th century", "двадцатый век", "20th century fox", "20th century studios", "fox searchlight"],
+            searchFranchises: [
+                "Люди Икс", "Росомаха", "Дэдпул", "Логан",
+                "Аватар", "Чужой", "Хищник", "Планета обезьян",
+                "Крепкий орешек", "Титаник", "Kingsman", "Ледниковый период", "Бойцовский клуб"
+            ]
         ),
         StudioBrand(
             id: "sony-pictures",
             name: "Sony Pictures",
             slug: "sony-pictures",
             isNetwork: false,
-            aliases: ["sony", "сони", "sony pictures", "columbia pictures", "tristar pictures"]
+            aliases: ["sony", "сони", "sony pictures", "columbia pictures", "tristar pictures", "tri-star"],
+            searchFranchises: [
+                "Человек-паук", "Веном", "Морбиус", "Джуманджи",
+                "Охотники за привидениями", "Люди в черном", "Плохие парни",
+                "Однажды в Голливуде", "Бегущий по лезвию 2049", "Анчартед", "Гран туризмо", "Малыш на драйве"
+            ]
         ),
         StudioBrand(
             id: "dreamworks",
             name: "DreamWorks",
             slug: "dreamworks",
             isNetwork: false,
-            aliases: ["dreamworks", "дримворкс", "dreamworks animation"]
+            aliases: ["dreamworks", "дримворкс", "dreamworks animation"],
+            searchFranchises: [
+                "Шрек", "Как приручить дракона", "Кунг-фу панда", "Мадагаскар",
+                "Кот в сапогах", "Мегамозг", "Дикий робот", "Семейка Крудс", "Босс-молокосос"
+            ]
         ),
         
         // Networks / Streamings
@@ -725,62 +599,115 @@ struct StudioBrand: Identifiable, Hashable {
             name: "Netflix",
             slug: "netflix",
             isNetwork: true,
-            aliases: ["netflix", "нетфликс"]
+            aliases: ["netflix", "нетфликс"],
+            searchFranchises: [
+                "Очень странные дела", "Игра в кальмара", "Уэнсдэй", "Ведьмак",
+                "Бумажный дом", "Аркейн", "Черное зеркало", "Люпен", "Озарк",
+                "Корона", "Ход королевы", "Бриджертоны"
+            ]
         ),
         StudioBrand(
             id: "hbo",
             name: "HBO",
             slug: "hbo",
             isNetwork: true,
-            aliases: ["hbo", "эйчби", "hbo max", "max", "hbo films"]
+            aliases: ["hbo", "эйчби", "hbo max", "max", "hbo films"],
+            searchFranchises: [
+                "Игра престолов", "Дом дракона", "Чернобыль", "Одни из нас",
+                "Настоящий детектив", "Клан Сопрано", "Эйфория", "Белый лотос",
+                "Наследники", "Прослушка", "Барри"
+            ]
         ),
         StudioBrand(
             id: "apple-tv-plus",
             name: "Apple TV+",
             slug: "apple-tv-plus",
             isNetwork: true,
-            aliases: ["apple tv", "apple tv+", "apple+", "эппл тв", "apple original films"]
+            aliases: ["apple tv", "apple tv+", "apple+", "эппл тв", "apple original films"],
+            searchFranchises: [
+                "Тед Лассо", "Разделение", "Утреннее шоу", "Бункер",
+                "Основание", "Медленные лошади", "Убийцы цветочной луны", "Защищая Джейкоба"
+            ]
         ),
         StudioBrand(
             id: "prime-video",
             name: "Prime Video",
             slug: "prime-video",
             isNetwork: true,
-            aliases: ["prime video", "amazon prime", "amazon studios", "прайм видео"]
+            aliases: ["prime video", "amazon prime", "amazon studios", "прайм видео"],
+            searchFranchises: [
+                "Пацаны", "Властелин колец: Кольца власти", "Джек Ричер",
+                "Фоллаут", "Непобедимый", "Джентльмены"
+            ]
         ),
         StudioBrand(
             id: "hulu",
             name: "Hulu",
             slug: "hulu",
             isNetwork: true,
-            aliases: ["hulu", "хулу"]
+            aliases: ["hulu", "хулу"],
+            searchFranchises: [
+                "Медведь", "Рассказ служанки", "Убийства в одном здании", "Сёгун", "Фарго"
+            ]
         ),
         StudioBrand(
             id: "cartoon-network",
             name: "Cartoon Network",
             slug: "cartoon-network",
             isNetwork: true,
-            aliases: ["cartoon network", "картун нетворк"]
+            aliases: ["cartoon network", "картун нетворк"],
+            searchFranchises: [
+                "Время приключений", "Самурай Джек", "Обычный мультик", "По ту сторону изгороди", "Удивительный мир Гамбола"
+            ]
         ),
         StudioBrand(
             id: "adult-swim",
             name: "Adult Swim",
             slug: "adult-swim",
             isNetwork: true,
-            aliases: ["adult swim", "эдалт свим"]
+            aliases: ["adult swim", "эдалт свим"],
+            searchFranchises: [
+                "Рик и Морти", "Первобытный", "Робоцып"
+            ]
         ),
     ]
     
     static func find(by nameOrId: String) -> StudioBrand? {
         let clean = nameOrId.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
         if clean.isEmpty { return nil }
+        
+        // Exact match with ID, slug, or name
+        if let exact = all.first(where: {
+            $0.id.lowercased() == clean ||
+            $0.slug.lowercased() == clean ||
+            $0.name.lowercased() == clean
+        }) {
+            return exact
+        }
+        
+        // Exact match with aliases
+        if let aliasMatch = all.first(where: { brand in
+            brand.aliases.contains(where: { $0.lowercased() == clean })
+        }) {
+            return aliasMatch
+        }
+        
+        // Word-boundary / token match: company name contains the studio name/alias as a distinct token
         return all.first { brand in
-            brand.id.lowercased() == clean ||
-            brand.slug.lowercased() == clean ||
-            brand.name.lowercased() == clean ||
-            clean.contains(brand.id.lowercased()) ||
-            clean.contains(brand.name.lowercased()) ||
-            brand.aliases.contains(where: { clean.contains($0) || $0.contains(clean) })
+            for alias in brand.aliases {
+                let lowerAlias = alias.lowercased()
+                if lowerAlias.count <= 3 {
+                    let pattern = "(^|[^a-zA-Z0-9а-яА-ЯёЁ])" + NSRegularExpression.escapedPattern(for: lowerAlias) + "([^a-zA-Z0-9а-яА-ЯёЁ]|$)"
+                    if clean.range(of: pattern, options: .regularExpression) != nil {
+                        return true
+                    }
+                } else {
+                    if clean.contains(lowerAlias) {
+                        return true
+                    }
+                }
+            }
+            return false
         }
     }
 }
