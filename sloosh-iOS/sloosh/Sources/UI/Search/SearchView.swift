@@ -112,15 +112,6 @@ struct SearchView: View {
             }) { config in
                 PlayerView(config: config)
             }
-            .toolbar {
-                ToolbarItemGroup(placement: .topBarTrailing) {
-                    if viewModel.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !viewModel.history.isEmpty {
-                        Button("Очистить") {
-                            viewModel.clearHistory()
-                        }
-                    }
-                }
-            }
         }
     }
 }
@@ -130,7 +121,7 @@ struct SearchDiscoveryView: View {
 
     var body: some View {
         ScrollView(showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 24) {
+            VStack(alignment: .leading, spacing: 22) {
                 // 1. History
                 if !viewModel.history.isEmpty {
                     VStack(alignment: .leading, spacing: 12) {
@@ -186,49 +177,20 @@ struct SearchDiscoveryView: View {
                         .foregroundColor(.primary)
                         .padding(.horizontal, 16)
                     
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        LazyHGrid(rows: [GridItem(.fixed(48)), GridItem(.fixed(48))], spacing: 10) {
-                            ForEach(StudioBrand.all) { brand in
-                                NavigationLink(destination: StudioCatalogView(studioId: brand.id, studioName: brand.name)) {
-                                    HStack(spacing: 10) {
-                                        Image(systemName: brand.systemIcon)
-                                            .font(.system(size: 15, weight: .semibold))
-                                            .foregroundColor(brand.accentColor)
-                                            .frame(width: 22, height: 22)
-                                        
-                                        Text(brand.name)
-                                            .font(.system(size: 14, weight: .semibold))
-                                            .foregroundColor(.primary)
-                                    }
-                                    .padding(.horizontal, 14)
-                                    .frame(height: 48)
-                                    .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
-                                }
-                                .buttonStyle(.plain)
+                    FlowLayout(spacing: 8) {
+                        ForEach(StudioBrand.all) { brand in
+                            NavigationLink(destination: StudioCatalogView(studioId: brand.id, studioName: brand.name)) {
+                                Text(brand.name)
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundColor(.primary)
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 9)
+                                    .glassEffect(.regular.interactive(), in: Capsule())
                             }
+                            .buttonStyle(.plain)
                         }
-                        .padding(.horizontal, 16)
                     }
-                }
-                
-                // 3. Quick hint when history is empty
-                if viewModel.history.isEmpty {
-                    VStack(spacing: 8) {
-                        Image(systemName: "sparkle.magnifyingglass")
-                            .font(.system(size: 34))
-                            .foregroundColor(.secondary.opacity(0.6))
-                            .padding(.bottom, 2)
-                        Text("Быстрый поиск")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(.primary)
-                        Text("Ищите фильмы, сериалы или выбирайте студии выше")
-                            .font(.system(size: 13))
-                            .foregroundColor(.secondary)
-                            .multilineTextAlignment(.center)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 28)
-                    .padding(.horizontal, 24)
+                    .padding(.horizontal, 16)
                 }
             }
             .padding(.vertical, 16)
