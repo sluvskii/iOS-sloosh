@@ -225,7 +225,7 @@ func normalizeImageUrl(path: String?, id: String? = nil) -> String? {
         return nil
     }
     
-    let baseUrl = "https://api.neome.uk"
+    let baseUrl = "https://api-sloosh.vercel.app"
     let isLowQuality = UserDefaults.standard.string(forKey: "posterQuality") == "low"
     
     var rawUrl = path
@@ -277,6 +277,9 @@ struct MediaDetailsDto: Codable {
     let duration: Int?
     let poster: String?
     let backdrop: String?
+    let logo: String?
+    let cast: [CastMemberDto]?
+    let trailers: [TrailerVideoDto]?
     let ratings: RatingsV2Dto?
     let ids: IdsDto?
     let productionCompanies: [ProductionCompanyDto]?
@@ -288,20 +291,27 @@ struct MediaDetailsDto: Codable {
     }
     
     var displayBackdropUrl: String? {
-        let isLowQuality = UserDefaults.standard.string(forKey: "posterQuality") == "low"
+        if let backdrop = backdrop, !backdrop.isEmpty {
+            return backdrop
+        }
         guard let validId = id?.replacingOccurrences(of: "kp_", with: ""), !validId.isEmpty else { return nil }
-        let size = isLowQuality ? "large" : "original"
-        return "https://api.neome.uk/api/v1/images/backdrops/\(validId)/\(size)"
+        return "https://api-sloosh.vercel.app/api/v1/images/backdrops/\(validId)/original"
     }
     
     var previewBackdropUrl: String? {
+        if let backdrop = backdrop, !backdrop.isEmpty {
+            return backdrop
+        }
         guard let validId = id?.replacingOccurrences(of: "kp_", with: ""), !validId.isEmpty else { return nil }
-        return "https://api.neome.uk/api/v1/images/backdrops/\(validId)/small"
+        return "https://api-sloosh.vercel.app/api/v1/images/backdrops/\(validId)/small"
     }
 
     var displayLogoUrl: String? {
+        if let logo = logo, !logo.isEmpty {
+            return logo
+        }
         guard let validId = id?.replacingOccurrences(of: "kp_", with: ""), !validId.isEmpty else { return nil }
-        return "https://api.neome.uk/api/v1/images/logos/\(validId)/original"
+        return "https://api-sloosh.vercel.app/api/v1/images/logos/\(validId)/original"
     }
 
     var identifiedStudio: StudioBrand? {
@@ -407,6 +417,38 @@ struct NetworkDto: Codable, Identifiable, Hashable {
         self.name = name
         self.logo = logo
         self.logos = logos
+    }
+}
+
+struct CastMemberDto: Codable, Identifiable, Hashable {
+    let id: Int
+    let name: String
+    let originalName: String?
+    let character: String?
+    let photo: String?
+    
+    init(id: Int, name: String, originalName: String? = nil, character: String? = nil, photo: String? = nil) {
+        self.id = id
+        self.name = name
+        self.originalName = originalName
+        self.character = character
+        self.photo = photo
+    }
+}
+
+struct TrailerVideoDto: Codable, Identifiable, Hashable {
+    let id: String
+    let name: String
+    let key: String
+    let site: String
+    let url: String
+    
+    init(id: String, name: String, key: String, site: String, url: String) {
+        self.id = id
+        self.name = name
+        self.key = key
+        self.site = site
+        self.url = url
     }
 }
 

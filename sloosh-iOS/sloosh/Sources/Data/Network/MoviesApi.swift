@@ -29,8 +29,8 @@ enum NetworkError: LocalizedError {
 class MoviesApi {
     static let shared = MoviesApi()
     
-    // Default base URL from android project (would normally be in config)
-    private let baseURL = "https://api.neome.uk"
+    // Production base URL on Vercel
+    private let baseURL = "https://api-sloosh.vercel.app"
     
     private let session: URLSession
     
