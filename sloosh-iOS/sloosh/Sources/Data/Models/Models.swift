@@ -111,6 +111,7 @@ struct MediaDto: Codable, Identifiable {
     let year: AnyCodableValue?
     let rating: Double?
     let ratings: RatingsV2Dto?
+    let poster: String?
     let posterUrl: String?
     let description: String?
     let type: String?
@@ -118,10 +119,12 @@ struct MediaDto: Codable, Identifiable {
     let externalIds: ExternalIdsDto?
     let name: String?
     let poster_path: String?
+    let backdrop: String?
+    let backdrop_path: String?
     
     enum CodingKeys: String, CodingKey {
         case originalId = "id"
-        case title, originalTitle, year, rating, ratings, posterUrl, description, type, genres, externalIds, name, poster_path
+        case title, originalTitle, year, rating, ratings, poster, posterUrl, description, type, genres, externalIds, name, poster_path, backdrop, backdrop_path
     }
 
     init(
@@ -131,13 +134,16 @@ struct MediaDto: Codable, Identifiable {
         year: AnyCodableValue? = nil,
         rating: Double? = nil,
         ratings: RatingsV2Dto? = nil,
+        poster: String? = nil,
         posterUrl: String? = nil,
         description: String? = nil,
         type: String? = nil,
         genres: [GenreDto]? = nil,
         externalIds: ExternalIdsDto? = nil,
         name: String? = nil,
-        poster_path: String? = nil
+        poster_path: String? = nil,
+        backdrop: String? = nil,
+        backdrop_path: String? = nil
     ) {
         self.originalId = originalId
         self.title = title
@@ -145,6 +151,7 @@ struct MediaDto: Codable, Identifiable {
         self.year = year
         self.rating = rating
         self.ratings = ratings
+        self.poster = poster
         self.posterUrl = posterUrl
         self.description = description
         self.type = type
@@ -152,6 +159,8 @@ struct MediaDto: Codable, Identifiable {
         self.externalIds = externalIds
         self.name = name
         self.poster_path = poster_path
+        self.backdrop = backdrop
+        self.backdrop_path = backdrop_path
     }
     
     // Identifiable requirement helper
@@ -164,7 +173,7 @@ struct MediaDto: Codable, Identifiable {
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
         let yearPart = year?.stringValue ?? ""
-        let posterPart = (posterUrl ?? poster_path ?? "")
+        let posterPart = (poster ?? posterUrl ?? poster_path ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
         let typePart = (type ?? "unknown").lowercased()
@@ -177,8 +186,26 @@ struct MediaDto: Codable, Identifiable {
     }
     
     var displayPosterUrl: String? {
-        let rawUrl = posterUrl ?? poster_path
-        return normalizeImageUrl(path: rawUrl, id: originalId?.stringValue)
+        if let p = poster, !p.isEmpty {
+            return normalizeImageUrl(path: p, id: originalId?.stringValue)
+        }
+        if let p = posterUrl, !p.isEmpty {
+            return normalizeImageUrl(path: p, id: originalId?.stringValue)
+        }
+        if let path = poster_path, !path.isEmpty {
+            return path.hasPrefix("http") ? path : "https://image.tmdb.org/t/p/w500\(path)"
+        }
+        return nil
+    }
+
+    var displayBackdropUrl: String? {
+        if let b = backdrop, !b.isEmpty {
+            return b
+        }
+        if let path = backdrop_path, !path.isEmpty {
+            return path.hasPrefix("http") ? path : "https://image.tmdb.org/t/p/original\(path)"
+        }
+        return nil
     }
 }
 
@@ -244,6 +271,10 @@ func normalizeImageUrl(path: String?, id: String? = nil) -> String? {
             return val.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? val
         }
         if val.hasPrefix("/") {
+            if val.hasSuffix(".jpg") || val.hasSuffix(".png") || val.hasSuffix(".jpeg") || val.hasSuffix(".webp") {
+                let size = isLowQuality ? "w342" : "w500"
+                return "https://image.tmdb.org/t/p/\(size)\(val)"
+            }
             return (baseUrl + val).addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? (baseUrl + val)
         }
         if val.hasPrefix("api/") {
