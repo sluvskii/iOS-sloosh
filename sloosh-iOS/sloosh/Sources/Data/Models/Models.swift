@@ -9,17 +9,24 @@ struct ApiEnvelope<T: Codable>: Codable {
 struct MediaResponse: Codable {
     let page: Int?
     let results: [MediaDto]?
+    let items: [MediaDto]?
     let pages: Int?
     let total: Int?
     let total_pages: Int?
     let total_results: Int?
+    let totalPages: Int?
+    let totalResults: Int?
+    
+    var allItems: [MediaDto] {
+        return items ?? results ?? []
+    }
     
     var effectiveTotalPages: Int {
-        return pages ?? total_pages ?? 1
+        return pages ?? total_pages ?? totalPages ?? 1
     }
     
     var effectiveTotalResults: Int {
-        return total ?? total_results ?? results?.count ?? 0
+        return total ?? total_results ?? totalResults ?? allItems.count
     }
 }
 
@@ -401,10 +408,17 @@ struct MovieCollectionDto: Codable, Identifiable {
 
 struct RelatedStudioResponse: Codable {
     let items: [MediaDto]?
+    let results: [MediaDto]?
     let label: String?
     let page: Int?
     let totalPages: Int?
     let totalResults: Int?
+    let total_pages: Int?
+    let total_results: Int?
+    
+    var allItems: [MediaDto] {
+        return items ?? results ?? []
+    }
 }
 
 struct CategorySectionDto: Codable, Identifiable {

@@ -237,7 +237,7 @@ class MoviesRepository: ObservableObject {
     func getCollection(id: String, page: Int = 1) async throws -> (items: [MediaDto], totalPages: Int) {
         do {
             let response = try await MoviesApi.shared.getCollection(id: id, page: page)
-            let items = response.data?.results ?? []
+            let items = response.data?.allItems ?? []
             let totalPages = response.data?.effectiveTotalPages ?? 1
             if !items.isEmpty {
                 let cleaned = items.filter { Self.isQualityStudioItem($0) }
@@ -250,7 +250,7 @@ class MoviesRepository: ObservableObject {
         // Fallback: search by studio brand directly through API
         if let brand = StudioBrand.find(by: id) {
             let searchRes = try await searchMoviesResponse(query: brand.name, page: page)
-            let rawItems = searchRes.results ?? []
+            let rawItems = searchRes.allItems
             let cleaned = rawItems.filter { Self.isQualityStudioItem($0) }
             return (cleaned, searchRes.effectiveTotalPages)
         }
