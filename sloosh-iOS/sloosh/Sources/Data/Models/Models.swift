@@ -205,7 +205,7 @@ struct MediaDto: Codable, Identifiable {
         if let path = backdrop_path, !path.isEmpty {
             return path.hasPrefix("http") ? path : "https://image.tmdb.org/t/p/original\(path)"
         }
-        return nil
+        return displayPosterUrl
     }
 }
 
@@ -317,6 +317,104 @@ struct MediaDetailsDto: Codable {
     let networks: [NetworkDto]?
     let collection: MovieCollectionDto?
     
+    enum CodingKeys: String, CodingKey {
+        case id, title, originalTitle, description, type, year, releaseDate
+        case genres, countries, duration, poster, backdrop, logo, cast, trailers
+        case ratings, ids, productionCompanies, networks, collection
+    }
+
+    init(
+        id: String? = nil,
+        title: String? = nil,
+        originalTitle: String? = nil,
+        description: String? = nil,
+        type: String? = nil,
+        year: Int? = nil,
+        releaseDate: String? = nil,
+        genres: [String]? = nil,
+        countries: [String]? = nil,
+        duration: Int? = nil,
+        poster: String? = nil,
+        backdrop: String? = nil,
+        logo: String? = nil,
+        cast: [CastMemberDto]? = nil,
+        trailers: [TrailerVideoDto]? = nil,
+        ratings: RatingsV2Dto? = nil,
+        ids: IdsDto? = nil,
+        productionCompanies: [ProductionCompanyDto]? = nil,
+        networks: [NetworkDto]? = nil,
+        collection: MovieCollectionDto? = nil
+    ) {
+        self.id = id
+        self.title = title
+        self.originalTitle = originalTitle
+        self.description = description
+        self.type = type
+        self.year = year
+        self.releaseDate = releaseDate
+        self.genres = genres
+        self.countries = countries
+        self.duration = duration
+        self.poster = poster
+        self.backdrop = backdrop
+        self.logo = logo
+        self.cast = cast
+        self.trailers = trailers
+        self.ratings = ratings
+        self.ids = ids
+        self.productionCompanies = productionCompanies
+        self.networks = networks
+        self.collection = collection
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        
+        if let idStr = try? container.decodeIfPresent(String.self, forKey: .id) {
+            self.id = idStr
+        } else if let idInt = try? container.decodeIfPresent(Int.self, forKey: .id) {
+            self.id = String(idInt)
+        } else {
+            self.id = nil
+        }
+        
+        self.title = try? container.decodeIfPresent(String.self, forKey: .title)
+        self.originalTitle = try? container.decodeIfPresent(String.self, forKey: .originalTitle)
+        self.description = try? container.decodeIfPresent(String.self, forKey: .description)
+        self.type = try? container.decodeIfPresent(String.self, forKey: .type)
+        
+        if let yearInt = try? container.decodeIfPresent(Int.self, forKey: .year) {
+            self.year = yearInt
+        } else if let yearStr = try? container.decodeIfPresent(String.self, forKey: .year), let y = Int(yearStr) {
+            self.year = y
+        } else {
+            self.year = nil
+        }
+        
+        self.releaseDate = try? container.decodeIfPresent(String.self, forKey: .releaseDate)
+        
+        if let stringGenres = try? container.decodeIfPresent([String].self, forKey: .genres) {
+            self.genres = stringGenres
+        } else if let objectGenres = try? container.decodeIfPresent([GenreDto].self, forKey: .genres) {
+            self.genres = objectGenres.compactMap { $0.name }.filter { !$0.isEmpty }
+        } else {
+            self.genres = nil
+        }
+        
+        self.countries = try? container.decodeIfPresent([String].self, forKey: .countries)
+        self.duration = try? container.decodeIfPresent(Int.self, forKey: .duration)
+        self.poster = try? container.decodeIfPresent(String.self, forKey: .poster)
+        self.backdrop = try? container.decodeIfPresent(String.self, forKey: .backdrop)
+        self.logo = try? container.decodeIfPresent(String.self, forKey: .logo)
+        self.cast = try? container.decodeIfPresent([CastMemberDto].self, forKey: .cast)
+        self.trailers = try? container.decodeIfPresent([TrailerVideoDto].self, forKey: .trailers)
+        self.ratings = try? container.decodeIfPresent(RatingsV2Dto.self, forKey: .ratings)
+        self.ids = try? container.decodeIfPresent(IdsDto.self, forKey: .ids)
+        self.productionCompanies = try? container.decodeIfPresent([ProductionCompanyDto].self, forKey: .productionCompanies)
+        self.networks = try? container.decodeIfPresent([NetworkDto].self, forKey: .networks)
+        self.collection = try? container.decodeIfPresent(MovieCollectionDto.self, forKey: .collection)
+    }
+    
     var displayPosterUrl: String? {
         normalizeImageUrl(path: poster, id: id)
     }
@@ -325,6 +423,9 @@ struct MediaDetailsDto: Codable {
         if let backdrop = backdrop, !backdrop.isEmpty {
             return backdrop
         }
+        if let poster = poster, !poster.isEmpty {
+            return poster
+        }
         guard let validId = id?.replacingOccurrences(of: "kp_", with: ""), !validId.isEmpty else { return nil }
         return "https://api-sloosh.vercel.app/api/v1/images/backdrops/\(validId)/original"
     }
@@ -332,6 +433,9 @@ struct MediaDetailsDto: Codable {
     var previewBackdropUrl: String? {
         if let backdrop = backdrop, !backdrop.isEmpty {
             return backdrop
+        }
+        if let poster = poster, !poster.isEmpty {
+            return poster
         }
         guard let validId = id?.replacingOccurrences(of: "kp_", with: ""), !validId.isEmpty else { return nil }
         return "https://api-sloosh.vercel.app/api/v1/images/backdrops/\(validId)/small"
@@ -371,6 +475,29 @@ public struct GenreDto: Codable {
     public init(id: String? = nil, name: String? = nil) {
         self.id = id
         self.name = name
+    }
+    
+    public var idString: String? { id }
+
+    enum CodingKeys: String, CodingKey {
+        case id, name
+    }
+
+    public init(from decoder: Decoder) throws {
+        if let single = try? decoder.singleValueContainer(), let str = try? single.decode(String.self) {
+            self.id = nil
+            self.name = str
+            return
+        }
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        if let strId = try? container.decodeIfPresent(String.self, forKey: .id) {
+            self.id = strId
+        } else if let intId = try? container.decodeIfPresent(Int.self, forKey: .id) {
+            self.id = String(intId)
+        } else {
+            self.id = nil
+        }
+        self.name = try? container.decodeIfPresent(String.self, forKey: .name)
     }
 }
 

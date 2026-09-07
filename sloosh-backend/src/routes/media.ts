@@ -8,10 +8,19 @@ export const mediaRouter = new Hono()
 
 // GET /api/v1/movie/:id
 mediaRouter.get("/movie/:id", async (c) => {
-  const rawId = c.req.param("id").replace(/^(tmdb_|kp_)/, "")
-  const id = parseInt(rawId, 10)
+  const origId = c.req.param("id")
+  const isKp = origId.startsWith("kp_")
+  const rawId = origId.replace(/^(tmdb_|kp_)/, "")
+  let id = parseInt(rawId, 10)
   if (isNaN(id)) {
     return c.json({ status: "error", message: "Invalid movie ID" }, 400)
+  }
+
+  if (isKp) {
+    const resolved = await resolveTmdbIdByKp(id)
+    if (resolved) {
+      id = resolved
+    }
   }
 
   const cacheKey = `movie:${id}`
@@ -21,7 +30,18 @@ mediaRouter.get("/movie/:id", async (c) => {
   }
 
   try {
-    const details = await tmdb.getMovieDetails(id)
+    let details: MediaDetailsDto
+    try {
+      details = await tmdb.getMovieDetails(id)
+    } catch (lookupErr) {
+      const resolved = await resolveTmdbIdByKp(id)
+      if (resolved && resolved !== id) {
+        id = resolved
+        details = await tmdb.getMovieDetails(id)
+      } else {
+        throw lookupErr
+      }
+    }
     
     // In parallel, resolve Alloha streams
     const allohaInfo = await resolveAlloha(id)
@@ -41,10 +61,19 @@ mediaRouter.get("/movie/:id", async (c) => {
 
 // GET /api/v1/tv/:id
 mediaRouter.get("/tv/:id", async (c) => {
-  const rawId = c.req.param("id").replace(/^(tmdb_|kp_)/, "")
-  const id = parseInt(rawId, 10)
+  const origId = c.req.param("id")
+  const isKp = origId.startsWith("kp_")
+  const rawId = origId.replace(/^(tmdb_|kp_)/, "")
+  let id = parseInt(rawId, 10)
   if (isNaN(id)) {
     return c.json({ status: "error", message: "Invalid TV ID" }, 400)
+  }
+
+  if (isKp) {
+    const resolved = await resolveTmdbIdByKp(id)
+    if (resolved) {
+      id = resolved
+    }
   }
 
   const cacheKey = `tv:${id}`
@@ -54,7 +83,19 @@ mediaRouter.get("/tv/:id", async (c) => {
   }
 
   try {
-    const details = await tmdb.getTvDetails(id)
+    let details: MediaDetailsDto
+    try {
+      details = await tmdb.getTvDetails(id)
+    } catch (lookupErr) {
+      const resolved = await resolveTmdbIdByKp(id)
+      if (resolved && resolved !== id) {
+        id = resolved
+        details = await tmdb.getTvDetails(id)
+      } else {
+        throw lookupErr
+      }
+    }
+
     const allohaInfo = await resolveAlloha(id)
     if (allohaInfo.kpId || allohaInfo.imdbId) {
       details.alloha = allohaInfo
