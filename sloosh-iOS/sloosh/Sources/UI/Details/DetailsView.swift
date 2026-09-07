@@ -530,21 +530,15 @@ struct DetailsView: View {
                 Text("Смотреть")
                     .font(.system(size: 19, weight: .heavy))
             }
-            .foregroundStyle(Color.black.opacity(0.90))
-            .blendMode(.plusDarker)
-            .padding(.horizontal, 24)
+            .foregroundStyle(Color.black)
+            .padding(.horizontal, 26)
             .frame(height: 50)
             .background(
-                ZStack {
-                    Capsule()
-                        .fill(buttonAmbientTintColor.opacity(0.35))
-                    Capsule()
-                        .fill(Color.white.opacity(0.55))
-                }
+                Capsule()
+                    .fill(Color.white.opacity(0.94))
             )
-            .compositingGroup()
             .glassEffect(.regular.interactive(), in: .capsule)
-            .shadow(color: .black.opacity(0.15), radius: 8, x: 0, y: 4)
+            .shadow(color: Color.black.opacity(0.22), radius: 10, x: 0, y: 4)
         }
         .buttonStyle(.glassPress)
     }
@@ -805,6 +799,11 @@ struct DetailsView: View {
                             .padding(.top, 20)
                             .padding(.horizontal)
 
+                        if let cast = details.cast, !cast.isEmpty {
+                            ActorsSection(cast: cast)
+                                .padding(.top, 16)
+                        }
+
                         if details.type == "tv" {
                             InlineEpisodesSection(viewModel: viewModel, details: details) { season, episode in
                                 handleEpisodeSelection(details: details, season: season, episode: episode)
@@ -934,6 +933,11 @@ struct DetailsView: View {
                             }
                             .frame(maxWidth: 550)
                             .frame(maxWidth: .infinity, alignment: .center)
+
+                            if let cast = details.cast, !cast.isEmpty {
+                                ActorsSection(cast: cast)
+                                    .padding(.top, 16)
+                            }
 
                             if details.type == "tv" {
                                 let paddingVal = max(16, (outerGeometry.size.width - 550) / 2 + 16)
@@ -2413,6 +2417,97 @@ class DetailsViewModel: ObservableObject {
     private func preferredAllohaTranslation(from movie: AllohaMovie) -> AllohaTranslation? {
         let savedName = UserDefaults.standard.string(forKey: allohaTranslationPreferenceKey)
         return movie.translations.first(where: { $0.name == savedName }) ?? movie.translations.first
+    }
+}
+
+// MARK: - Cast / Actors Section
+
+private struct ActorsSection: View {
+    let cast: [CastMemberDto]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("В главных ролях")
+                .font(.system(size: 18, weight: .bold))
+                .padding(.horizontal)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(alignment: .top, spacing: 14) {
+                    ForEach(cast) { actor in
+                        NavigationLink(
+                            destination: PersonDetailView(personId: actor.id, initialName: actor.name)
+                                .navigationBarBackButtonHidden(true)
+                        ) {
+                            ActorCardView(actor: actor)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal)
+            }
+        }
+    }
+}
+
+private struct ActorCardView: View {
+    let actor: CastMemberDto
+
+    var body: some View {
+        VStack(spacing: 8) {
+            ZStack {
+                Circle()
+                    .fill(Color.white.opacity(0.08))
+                    .frame(width: 74, height: 74)
+
+                if let photo = actor.photo, let url = URL(string: photo) {
+                    AsyncCachedImage(url: url) {
+                        Circle()
+                            .fill(Color.white.opacity(0.08))
+                            .frame(width: 74, height: 74)
+                            .shimmer()
+                    } content: { image in
+                        Image(uiImage: image)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: 74, height: 74)
+                            .clipShape(Circle())
+                    } fallback: {
+                        placeholder
+                    }
+                } else {
+                    placeholder
+                }
+            }
+            .overlay(
+                Circle()
+                    .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+            )
+            .shadow(color: .black.opacity(0.25), radius: 6, x: 0, y: 3)
+
+            VStack(spacing: 2) {
+                Text(actor.name)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+
+                if let character = actor.character, !character.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Text(character)
+                        .font(.system(size: 11, weight: .regular))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.center)
+                }
+            }
+            .frame(width: 86)
+        }
+    }
+
+    private var placeholder: some View {
+        Image(systemName: "person.fill")
+            .font(.system(size: 28))
+            .foregroundStyle(Color.white.opacity(0.35))
+            .frame(width: 74, height: 74)
     }
 }
 

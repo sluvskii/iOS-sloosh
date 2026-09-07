@@ -122,3 +122,19 @@ export interface CategorySectionDto {
   section: string
   items: CategoryItemDto[]
 }
+
+export interface PersonDetailsDto {
+  id: number
+  name: string
+  originalName?: string
+  biography?: string
+  birthday?: string
+  deathday?: string | null
+  placeOfBirth?: string
+  photo?: string | null
+  knownForDepartment?: string
+  department?: string
+  gender?: number
+  filmography: MediaDto[]
+  photos?: string[]
+}
