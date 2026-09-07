@@ -119,6 +119,9 @@ struct DetailsView: View {
     @State private var movieToDelete: DownloadItem? = nil
     @State private var showDeleteMovieAlert = false
     @State private var showShareToFriendSheet = false
+    @State private var directPlaybackMovie: MediaDto? = nil
+    @State private var pendingDirectPlayerConfig: PlayerConfig? = nil
+    @State private var directPlaybackTitle: String? = nil
 
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Environment(\.dismiss) private var dismiss
@@ -360,6 +363,7 @@ struct DetailsView: View {
                 showPlayer = false
                 AppDelegate.lockToPortrait()
                 selectedIframeUrl = nil
+                directPlaybackTitle = nil
                 playerKpId = nil
                 playerSeason = nil
                 playerEpisode = nil
@@ -371,10 +375,11 @@ struct DetailsView: View {
                 playerSeriesResult = nil
             }) {
                 if let details = viewModel.details {
+                    let fallbackTitle = directPlaybackTitle ?? details.title ?? details.originalTitle ?? ""
                     if let iframeUrl = selectedIframeUrl {
-                        PlayerView(iframeUrl: iframeUrl, fallbackTitle: details.title ?? details.originalTitle ?? "", kpId: playerKpId, season: playerSeason, episode: playerEpisode, selectedVoiceover: playerVoiceover, directStreamUrl: playerStreamUrl, voices: playerVoices, subtitles: playerSubtitles, initialQuality: playerQuality, seriesResult: playerSeriesResult)
+                        PlayerView(iframeUrl: iframeUrl, fallbackTitle: fallbackTitle, kpId: playerKpId, season: playerSeason, episode: playerEpisode, selectedVoiceover: playerVoiceover, directStreamUrl: playerStreamUrl, voices: playerVoices, subtitles: playerSubtitles, initialQuality: playerQuality, seriesResult: playerSeriesResult)
                     } else if let streamUrl = playerStreamUrl {
-                        PlayerView(iframeUrl: "", fallbackTitle: details.title ?? details.originalTitle ?? "", kpId: playerKpId, season: playerSeason, episode: playerEpisode, selectedVoiceover: playerVoiceover, directStreamUrl: streamUrl, voices: playerVoices, subtitles: playerSubtitles, initialQuality: playerQuality, seriesResult: playerSeriesResult)
+                        PlayerView(iframeUrl: "", fallbackTitle: fallbackTitle, kpId: playerKpId, season: playerSeason, episode: playerEpisode, selectedVoiceover: playerVoiceover, directStreamUrl: streamUrl, voices: playerVoices, subtitles: playerSubtitles, initialQuality: playerQuality, seriesResult: playerSeriesResult)
                     } else {
                         ZStack {
                             Color.black.ignoresSafeArea()
@@ -407,6 +412,34 @@ struct DetailsView: View {
         .sheet(isPresented: $showShareToFriendSheet) {
             if let details = viewModel.details {
                 ShareToFriendSheet(movie: details)
+            }
+        }
+        .sheet(item: $directPlaybackMovie, onDismiss: {
+            if let pending = pendingDirectPlayerConfig {
+                pendingDirectPlayerConfig = nil
+                DispatchQueue.main.async {
+                    directPlaybackTitle = pending.title
+                    selectedIframeUrl = pending.iframeUrl
+                    playerKpId = pending.kpId
+                    playerSeason = pending.season
+                    playerEpisode = pending.episode
+                    playerVoiceover = pending.voiceover
+                    playerStreamUrl = pending.streamUrl
+                    playerVoices = pending.voices
+                    playerSubtitles = pending.subtitles
+                    playerQuality = pending.quality
+                    playerSeriesResult = pending.seriesResult
+                    showPlayer = true
+                }
+            }
+        }) { movie in
+            HomeDirectPlayWrapper(
+                movieId: movie.id,
+                fallbackTitle: movie.title ?? movie.name ?? movie.originalTitle ?? "",
+                initialKpId: movie.externalIds?.kp
+            ) { config in
+                pendingDirectPlayerConfig = config
+                directPlaybackMovie = nil
             }
         }
 
@@ -770,14 +803,18 @@ struct DetailsView: View {
                         }
 
                         if let collection = viewModel.movieCollection ?? details.collection {
-                            FranchiseCollectionSection(collection: collection)
-                                .padding(.top, 16)
+                            FranchiseCollectionSection(collection: collection, onDirectPlay: { movie in
+                                directPlaybackMovie = movie
+                            })
+                            .padding(.top, 16)
                         }
 
                         if let relatedStudio = viewModel.relatedStudio, let items = relatedStudio.items, !items.isEmpty {
-                            RelatedStudioSection(response: relatedStudio)
-                                .padding(.top, 16)
-                                .padding(.bottom, 20)
+                            RelatedStudioSection(response: relatedStudio, onDirectPlay: { movie in
+                                directPlaybackMovie = movie
+                            })
+                            .padding(.top, 16)
+                            .padding(.bottom, 20)
                         }
                     }
                     .offset(y: -25)
@@ -901,14 +938,18 @@ struct DetailsView: View {
                             }
 
                             if let collection = viewModel.movieCollection ?? details.collection {
-                                FranchiseCollectionSection(collection: collection)
-                                    .padding(.top, 16)
+                                FranchiseCollectionSection(collection: collection, onDirectPlay: { movie in
+                                    directPlaybackMovie = movie
+                                })
+                                .padding(.top, 16)
                             }
 
                             if let relatedStudio = viewModel.relatedStudio, let items = relatedStudio.items, !items.isEmpty {
-                                RelatedStudioSection(response: relatedStudio)
-                                    .padding(.top, 16)
-                                    .padding(.bottom, 20)
+                                RelatedStudioSection(response: relatedStudio, onDirectPlay: { movie in
+                                    directPlaybackMovie = movie
+                                })
+                                .padding(.top, 16)
+                                .padding(.bottom, 20)
                             }
                         }
                         .offset(y: -60)
@@ -2239,27 +2280,42 @@ class DetailsViewModel: ObservableObject {
         isFetchingRelatedStudio = true
         defer { isFetchingRelatedStudio = false }
         
+        let rawCleanId = id.replacingOccurrences(of: "kp_", with: "")
+
         if let apiResult = await MoviesRepository.shared.getRelatedByStudio(type: type, id: id),
            let items = apiResult.items, !items.isEmpty {
-            self.relatedStudio = apiResult
-            return
+            let otherMovies = items.filter {
+                let itemCleanId = $0.id.replacingOccurrences(of: "kp_", with: "")
+                return itemCleanId != rawCleanId && $0.id != id
+            }
+            if !otherMovies.isEmpty {
+                let randomized = Array(otherMovies.shuffled().prefix(20))
+                self.relatedStudio = RelatedStudioResponse(
+                    items: randomized,
+                    label: apiResult.label,
+                    page: apiResult.page,
+                    totalPages: apiResult.totalPages,
+                    totalResults: randomized.count
+                )
+                return
+            }
         }
         
         if let brand = studio {
             do {
                 let collection = try await MoviesRepository.shared.getCollection(id: brand.id, page: 1)
-                let rawCleanId = id.replacingOccurrences(of: "kp_", with: "")
                 let otherMovies = collection.items.filter {
                     let itemCleanId = $0.id.replacingOccurrences(of: "kp_", with: "")
                     return itemCleanId != rawCleanId && $0.id != id
                 }
                 if !otherMovies.isEmpty {
+                    let randomized = Array(otherMovies.shuffled().prefix(20))
                     self.relatedStudio = RelatedStudioResponse(
-                        items: otherMovies,
+                        items: randomized,
                         label: brand.name,
                         page: 1,
                         totalPages: collection.totalPages,
-                        totalResults: otherMovies.count
+                        totalResults: randomized.count
                     )
                 }
             } catch {
@@ -2359,6 +2415,7 @@ class DetailsViewModel: ObservableObject {
 
 private struct FranchiseCollectionSection: View {
     let collection: MovieCollectionDto
+    var onDirectPlay: ((MediaDto) -> Void)? = nil
 
     var body: some View {
         if let parts = collection.parts, !parts.isEmpty {
@@ -2375,38 +2432,26 @@ private struct FranchiseCollectionSection: View {
                 .padding(.horizontal)
 
                 ScrollView(.horizontal, showsIndicators: false) {
-                    LazyHStack(spacing: 14) {
+                    LazyHStack(alignment: .top, spacing: 14) {
                         ForEach(parts) { part in
                             NavigationLink(destination: DetailsView(movieId: part.id, navigationTransitionID: nil, navigationTransitionNamespace: nil).navigationBarBackButtonHidden(true)) {
-                                VStack(alignment: .leading, spacing: 6) {
-                                    AsyncCachedImage(url: URL(string: part.displayPosterUrl ?? part.posterUrl ?? "")) {
-                                        Rectangle().fill(Color.gray.opacity(0.2))
-                                            .frame(width: 110, height: 165)
-                                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                                    } content: { img in
-                                        Image(uiImage: img).resizable().aspectRatio(contentMode: .fill)
-                                            .frame(width: 110, height: 165)
-                                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                                    } fallback: {
-                                        Rectangle().fill(Color.gray.opacity(0.2))
-                                            .frame(width: 110, height: 165)
-                                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                                    }
-
-                                    Text(part.title ?? part.originalTitle ?? "")
-                                        .font(.system(size: 12, weight: .semibold))
-                                        .foregroundStyle(.primary)
-                                        .lineLimit(1)
-                                        .frame(width: 110, alignment: .leading)
-
-                                    if let year = part.year?.stringValue {
-                                        Text(year)
-                                            .font(.system(size: 11, weight: .regular))
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
+                                MoviePosterCard(movie: part)
+                                    .frame(width: 120)
                             }
                             .buttonStyle(.plain)
+                            .contextMenu {
+                                Group {
+                                    Button {
+                                        onDirectPlay?(part)
+                                    } label: {
+                                        Label("Смотреть", systemImage: "play.fill")
+                                    }
+                                    NavigationLink(destination: DetailsView(movieId: part.id, navigationTransitionID: nil, navigationTransitionNamespace: nil).navigationBarBackButtonHidden(true)) {
+                                        Label("Подробнее", systemImage: "info.circle")
+                                    }
+                                }
+                                .tint(nil)
+                            }
                         }
                     }
                     .padding(.horizontal)
@@ -2418,6 +2463,7 @@ private struct FranchiseCollectionSection: View {
 
 private struct RelatedStudioSection: View {
     let response: RelatedStudioResponse
+    var onDirectPlay: ((MediaDto) -> Void)? = nil
 
     var body: some View {
         if let items = response.items, !items.isEmpty {
@@ -2441,38 +2487,26 @@ private struct RelatedStudioSection: View {
                 .padding(.horizontal)
 
                 ScrollView(.horizontal, showsIndicators: false) {
-                    LazyHStack(spacing: 14) {
+                    LazyHStack(alignment: .top, spacing: 14) {
                         ForEach(items) { movie in
                             NavigationLink(destination: DetailsView(movieId: movie.id, navigationTransitionID: nil, navigationTransitionNamespace: nil, initialStudio: brand).navigationBarBackButtonHidden(true)) {
-                                VStack(alignment: .leading, spacing: 6) {
-                                    AsyncCachedImage(url: URL(string: movie.displayPosterUrl ?? movie.posterUrl ?? "")) {
-                                        Rectangle().fill(Color.gray.opacity(0.2))
-                                            .frame(width: 110, height: 165)
-                                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                                    } content: { img in
-                                        Image(uiImage: img).resizable().aspectRatio(contentMode: .fill)
-                                            .frame(width: 110, height: 165)
-                                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                                    } fallback: {
-                                        Rectangle().fill(Color.gray.opacity(0.2))
-                                            .frame(width: 110, height: 165)
-                                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                                    }
-
-                                    Text(movie.title ?? movie.name ?? movie.originalTitle ?? "")
-                                        .font(.system(size: 12, weight: .semibold))
-                                        .foregroundStyle(.primary)
-                                        .lineLimit(1)
-                                        .frame(width: 110, alignment: .leading)
-
-                                    if let year = movie.year?.stringValue {
-                                        Text(year)
-                                            .font(.system(size: 11, weight: .regular))
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
+                                MoviePosterCard(movie: movie)
+                                    .frame(width: 120)
                             }
                             .buttonStyle(.plain)
+                            .contextMenu {
+                                Group {
+                                    Button {
+                                        onDirectPlay?(movie)
+                                    } label: {
+                                        Label("Смотреть", systemImage: "play.fill")
+                                    }
+                                    NavigationLink(destination: DetailsView(movieId: movie.id, navigationTransitionID: nil, navigationTransitionNamespace: nil, initialStudio: brand).navigationBarBackButtonHidden(true)) {
+                                        Label("Подробнее", systemImage: "info.circle")
+                                    }
+                                }
+                                .tint(nil)
+                            }
                         }
                     }
                     .padding(.horizontal)
