@@ -100,21 +100,30 @@ class MoviesRepository: ObservableObject {
 
     // MARK: - Details (two-level: memory → disk → network)
 
-    func getDetails(id: String) async throws -> MediaDetailsDto? {
+    func getDetails(id: String, type: String? = nil) async throws -> MediaDetailsDto? {
+        let inferredType = type ?? (id.hasPrefix("tv_") ? "tv" : (id.hasPrefix("movie_") ? "movie" : nil))
+        let cacheKey = inferredType != nil ? "\(inferredType!)_\(id)" : id
+
         // 1. Memory hit
-        if let hit = detailsMemory[id] { return hit }
+        if let hit = detailsMemory[cacheKey] { return hit }
+        if let hit = detailsMemory[id], (inferredType == nil || hit.type == inferredType) { return hit }
 
         // 2. Disk hit
-        if let hit = await detailsDiskCache.load(id: id) {
-            detailsMemory[id] = hit
+        if let hit = await detailsDiskCache.load(id: cacheKey) {
+            detailsMemory[cacheKey] = hit
+            return hit
+        }
+        if let hit = await detailsDiskCache.load(id: id), (inferredType == nil || hit.type == inferredType) {
+            detailsMemory[cacheKey] = hit
             return hit
         }
 
         // 3. Network
-        let response = try await MoviesApi.shared.getDetails(id: id)
+        let response = try await MoviesApi.shared.getDetails(id: id, type: inferredType)
         if let details = response.data {
-            detailsMemory[id] = details
-            await detailsDiskCache.save(details, id: id)
+            detailsMemory[cacheKey] = details
+            await detailsDiskCache.save(details, id: cacheKey)
+            return details
         }
         return response.data
     }
@@ -451,8 +460,9 @@ actor MediaDetailsDiskCache {
             // Clean up legacy caches if present
             try? FileManager.default.removeItem(at: base.appendingPathComponent("sloosh.mediadetails", isDirectory: true))
             try? FileManager.default.removeItem(at: base.appendingPathComponent("sloosh.mediadetails.v3", isDirectory: true))
+            try? FileManager.default.removeItem(at: base.appendingPathComponent("sloosh.mediadetails.v4", isDirectory: true))
             
-            let dir = base.appendingPathComponent("sloosh.mediadetails.v4", isDirectory: true)
+            let dir = base.appendingPathComponent("sloosh.mediadetails.v5", isDirectory: true)
             try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             self.cacheDir = dir
         } else {
@@ -515,8 +525,9 @@ actor MediaListDiskCache {
             // Clean up legacy caches if present
             try? FileManager.default.removeItem(at: base.appendingPathComponent("sloosh.medialist", isDirectory: true))
             try? FileManager.default.removeItem(at: base.appendingPathComponent("sloosh.medialist.v3", isDirectory: true))
+            try? FileManager.default.removeItem(at: base.appendingPathComponent("sloosh.medialist.v4", isDirectory: true))
             
-            let dir = base.appendingPathComponent("sloosh.medialist.v4", isDirectory: true)
+            let dir = base.appendingPathComponent("sloosh.medialist.v5", isDirectory: true)
             try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             self.cacheDir = dir
         } else {

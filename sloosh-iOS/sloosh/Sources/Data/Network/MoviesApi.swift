@@ -129,8 +129,23 @@ class MoviesApi {
         return try await performRequest(endpoint: "api/v1/cartoons", queryItems: [URLQueryItem(name: "page", value: String(page))])
     }
     
-    func getDetails(id: String) async throws -> ApiEnvelope<MediaDetailsDto> {
-        return try await performRequest(endpoint: "api/v2/movie/\(id)")
+    func getDetails(id: String, type: String? = nil) async throws -> ApiEnvelope<MediaDetailsDto> {
+        let cleanId = id.replacingOccurrences(of: "tv_", with: "").replacingOccurrences(of: "movie_", with: "")
+        let inferredType = type ?? (id.hasPrefix("tv_") ? "tv" : (id.hasPrefix("movie_") ? "movie" : nil))
+        
+        let endpoint: String
+        if inferredType == "tv" {
+            endpoint = "api/v2/tv/\(cleanId)"
+        } else {
+            endpoint = "api/v2/movie/\(cleanId)"
+        }
+        
+        var queryItems: [URLQueryItem] = []
+        if let t = inferredType {
+            queryItems.append(URLQueryItem(name: "type", value: t))
+        }
+        
+        return try await performRequest(endpoint: endpoint, queryItems: queryItems)
     }
     
     func getEpisodeDetails(id: String, season: Int, episode: Int) async throws -> ApiEnvelope<TvEpisodeDetailsDto> {

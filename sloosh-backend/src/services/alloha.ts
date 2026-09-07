@@ -6,6 +6,8 @@ interface AllohaData {
   id_tmdb?: number
   name?: string
   iframe?: string
+  category?: number
+  seasons_count?: number
 }
 
 interface AllohaResponse {
@@ -48,7 +50,10 @@ export async function resolveAlloha(tmdbId: number): Promise<{
   }
 }
 
-export async function resolveTmdbIdByKp(kpId: number): Promise<number | null> {
+export async function resolveTmdbInfoByKp(kpId: number): Promise<{
+  tmdbId: number | null
+  isTv: boolean
+} | null> {
   if (!config.alloha.token) return null
   try {
     const url = `${config.alloha.baseUrl}/?token=${config.alloha.token}&kp=${kpId}`
@@ -58,9 +63,15 @@ export async function resolveTmdbIdByKp(kpId: number): Promise<number | null> {
     })
     if (!res.ok) return null
     const json = (await res.json()) as AllohaResponse
-    return json.data?.id_tmdb ?? null
+    if (!json.data?.id_tmdb) return null
+    const isTv = json.data.category === 2 || (json.data.seasons_count !== undefined && json.data.seasons_count > 0)
+    return { tmdbId: json.data.id_tmdb, isTv }
   } catch {
     return null
   }
 }
 
+export async function resolveTmdbIdByKp(kpId: number): Promise<number | null> {
+  const info = await resolveTmdbInfoByKp(kpId)
+  return info?.tmdbId ?? null
+}

@@ -80,6 +80,7 @@ struct RemoteLogoView: View {
 
 struct DetailsView: View {
     let movieId: String
+    let mediaType: String?
     let navigationTransitionID: String?
     let navigationTransitionNamespace: Namespace.ID?
     let initialStudio: StudioBrand?
@@ -87,11 +88,13 @@ struct DetailsView: View {
     
     init(
         movieId: String,
+        mediaType: String? = nil,
         navigationTransitionID: String? = nil,
         navigationTransitionNamespace: Namespace.ID? = nil,
         initialStudio: StudioBrand? = nil
     ) {
         self.movieId = movieId
+        self.mediaType = mediaType
         self.navigationTransitionID = navigationTransitionID
         self.navigationTransitionNamespace = navigationTransitionNamespace
         self.initialStudio = initialStudio
@@ -281,7 +284,7 @@ struct DetailsView: View {
                 )
             }
             .task {
-                await viewModel.loadDetails(id: movieId, studio: initialStudio)
+                await viewModel.loadDetails(id: movieId, type: mediaType, studio: initialStudio)
             }
             .task(id: viewModel.details?.id) {
                 guard let details = viewModel.details else { return }
@@ -830,7 +833,7 @@ struct DetailsView: View {
                 .ignoresSafeArea()
         }
         .refreshable {
-            await viewModel.loadDetails(id: movieId, force: true, studio: initialStudio)
+            await viewModel.loadDetails(id: movieId, type: mediaType, force: true, studio: initialStudio)
         }
     }
 
@@ -959,7 +962,7 @@ struct DetailsView: View {
                     .ignoresSafeArea()
             }
             .refreshable {
-                await viewModel.loadDetails(id: movieId, force: true, studio: initialStudio)
+                await viewModel.loadDetails(id: movieId, type: mediaType, force: true, studio: initialStudio)
             }
         }.ignoresSafeArea()
     }
@@ -2225,8 +2228,9 @@ class DetailsViewModel: ObservableObject {
         UserDefaults.standard.set(name, forKey: allohaTranslationPreferenceKey)
     }
 
-    func loadDetails(id: String, force: Bool = false, studio: StudioBrand? = nil) async {
-        if !force && details != nil && (details?.id == id || details?.ids?.kp?.description == id.replacingOccurrences(of: "kp_", with: "")) {
+    func loadDetails(id: String, type: String? = nil, force: Bool = false, studio: StudioBrand? = nil) async {
+        let inferredType = type ?? (id.hasPrefix("tv_") ? "tv" : (id.hasPrefix("movie_") ? "movie" : nil))
+        if !force && details != nil && (details?.id == id || details?.ids?.kp?.description == id.replacingOccurrences(of: "kp_", with: "")) && (inferredType == nil || details?.type == inferredType) {
             return
         }
 
@@ -2234,22 +2238,25 @@ class DetailsViewModel: ObservableObject {
         defer { isLoading = false }
 
         do {
-            details = try await MoviesRepository.shared.getDetails(id: id)
+            details = try await MoviesRepository.shared.getDetails(id: id, type: inferredType)
             if let details {
                 PlaybackProgressStore.shared.saveMetadata(details: details)
             }
             checkFavoriteStatus()
 
-            if details?.type == "tv", let kpId = details?.ids?.kp {
+            let isTv = details?.type == "tv" || inferredType == "tv"
+            let effectiveKpId = details?.ids?.kp ?? details?.externalIds?.kp ?? (id.hasPrefix("kp_") ? Int(id.replacingOccurrences(of: "kp_", with: "")) : nil)
+
+            if isTv, let kpId = effectiveKpId {
                 await fetchInlineSeasons(kpId: kpId)
             }
 
             let studioToFetch = details?.identifiedStudio ?? studio
-            let type = details?.type ?? "movie"
+            let resolvedType = details?.type ?? inferredType ?? "movie"
             Task {
-                await self.fetchRelatedByStudio(type: type, id: id, studio: studioToFetch)
+                await self.fetchRelatedByStudio(type: resolvedType, id: id, studio: studioToFetch)
             }
-            if details?.type != "tv" {
+            if !isTv {
                 Task {
                     await self.fetchMovieCollection(id: id)
                 }
@@ -2419,7 +2426,7 @@ private struct FranchiseCollectionSection: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(alignment: .top, spacing: 14) {
                         ForEach(parts) { part in
-                            NavigationLink(destination: DetailsView(movieId: part.id, navigationTransitionID: nil, navigationTransitionNamespace: nil).navigationBarBackButtonHidden(true)) {
+                            NavigationLink(destination: DetailsView(movieId: part.id, mediaType: "movie", navigationTransitionID: nil, navigationTransitionNamespace: nil).navigationBarBackButtonHidden(true)) {
                                 MoviePosterCard(movie: part)
                                     .frame(width: 120)
                             }
@@ -2431,7 +2438,7 @@ private struct FranchiseCollectionSection: View {
                                     } label: {
                                         Label("Смотреть", systemImage: "play.fill")
                                     }
-                                    NavigationLink(destination: DetailsView(movieId: part.id, navigationTransitionID: nil, navigationTransitionNamespace: nil).navigationBarBackButtonHidden(true)) {
+                                    NavigationLink(destination: DetailsView(movieId: part.id, mediaType: "movie", navigationTransitionID: nil, navigationTransitionNamespace: nil).navigationBarBackButtonHidden(true)) {
                                         Label("Подробнее", systemImage: "info.circle")
                                     }
                                 }
@@ -2475,7 +2482,7 @@ private struct RelatedStudioSection: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(alignment: .top, spacing: 14) {
                         ForEach(items) { movie in
-                            NavigationLink(destination: DetailsView(movieId: movie.id, navigationTransitionID: nil, navigationTransitionNamespace: nil, initialStudio: brand).navigationBarBackButtonHidden(true)) {
+                            NavigationLink(destination: DetailsView(movieId: movie.id, mediaType: movie.type, navigationTransitionID: nil, navigationTransitionNamespace: nil, initialStudio: brand).navigationBarBackButtonHidden(true)) {
                                 MoviePosterCard(movie: movie)
                                     .frame(width: 120)
                             }
@@ -2487,7 +2494,7 @@ private struct RelatedStudioSection: View {
                                     } label: {
                                         Label("Смотреть", systemImage: "play.fill")
                                     }
-                                    NavigationLink(destination: DetailsView(movieId: movie.id, navigationTransitionID: nil, navigationTransitionNamespace: nil, initialStudio: brand).navigationBarBackButtonHidden(true)) {
+                                    NavigationLink(destination: DetailsView(movieId: movie.id, mediaType: movie.type, navigationTransitionID: nil, navigationTransitionNamespace: nil, initialStudio: brand).navigationBarBackButtonHidden(true)) {
                                         Label("Подробнее", systemImage: "info.circle")
                                     }
                                 }
