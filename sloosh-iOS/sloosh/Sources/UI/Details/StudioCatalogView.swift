@@ -86,11 +86,6 @@ struct StudioCatalogView: View {
     var body: some View {
         ScrollView {
             LazyVStack(spacing: 0) {
-                // Studio Brand Header Badge
-                studioHeaderBadge
-                    .padding(.top, 12)
-                    .padding(.bottom, 8)
-                
                 if viewModel.isLoading && viewModel.items.isEmpty {
                     let spacing: CGFloat = cardDensity == .compact ? 8 : 16
                     let padding: CGFloat = cardDensity == .compact ? 12 : 16
@@ -112,7 +107,7 @@ struct StudioCatalogView: View {
                     let padding: CGFloat = cardDensity == .compact ? 12 : 16
                     LazyVGrid(columns: columns, spacing: spacing) {
                         ForEach(viewModel.items) { movie in
-                            MovieDetailsNavigationLink(movie: movie, navigationTransition: navigationTransition)
+                            MovieDetailsNavigationLink(movie: movie, navigationTransition: navigationTransition, initialStudio: brand)
                                 .contextMenu {
                                     Group {
                                         Button {
@@ -121,7 +116,7 @@ struct StudioCatalogView: View {
                                             Label("Смотреть", systemImage: "play.fill")
                                         }
                                         
-                                        NavigationLink(destination: DetailsView(movieId: movie.id, navigationTransitionID: nil, navigationTransitionNamespace: nil).navigationBarBackButtonHidden(true)) {
+                                        NavigationLink(destination: DetailsView(movieId: movie.id, navigationTransitionID: nil, navigationTransitionNamespace: nil, initialStudio: brand).navigationBarBackButtonHidden(true)) {
                                             Label("Подробнее", systemImage: "info.circle")
                                         }
                                     }
@@ -172,14 +167,5 @@ struct StudioCatalogView: View {
         .fullScreenCover(item: $viewModel.playerConfig) { config in
             PlayerView(config: config)
         }
-    }
-
-    private var studioHeaderBadge: some View {
-        Text(brand?.isNetwork == true ? "Стриминговый сервис" : "Киностудия")
-            .font(.system(size: 13, weight: .semibold))
-            .foregroundStyle(.secondary)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 8)
-            .glassEffect(.regular.interactive(), in: .capsule)
     }
 }
