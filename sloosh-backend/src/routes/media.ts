@@ -1,6 +1,6 @@
 import { Hono } from "hono"
 import { tmdb } from "../services/tmdb"
-import { resolveAlloha } from "../services/alloha"
+import { resolveAlloha, resolveTmdbIdByKp } from "../services/alloha"
 import { listCache, detailsCache, getCached, setCached } from "../services/cache"
 import type { MediaDetailsDto, MediaResponse } from "../types/models"
 
