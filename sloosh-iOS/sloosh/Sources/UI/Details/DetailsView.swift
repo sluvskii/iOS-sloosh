@@ -99,6 +99,19 @@ struct DetailsView: View {
         self.navigationTransitionNamespace = navigationTransitionNamespace
         self.initialStudio = initialStudio
     }
+
+    init(
+        movieId: String,
+        navigationTransitionID: String? = nil,
+        navigationTransitionNamespace: Namespace.ID? = nil,
+        initialStudio: StudioBrand? = nil
+    ) {
+        self.movieId = movieId
+        self.mediaType = nil
+        self.navigationTransitionID = navigationTransitionID
+        self.navigationTransitionNamespace = navigationTransitionNamespace
+        self.initialStudio = initialStudio
+    }
     
     @State private var showPlayer = false
     @State private var pendingPlayerLaunch = false
