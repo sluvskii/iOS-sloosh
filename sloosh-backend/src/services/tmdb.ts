@@ -1,5 +1,5 @@
 import { config } from "../config"
-import { localizeCountry, resolveCountryCode } from "../utils/countries"
+import { localizeCountry, resolveCountryCode, localizePlaceOfBirth } from "../utils/countries"
 import type {
   MediaDto,
   MediaDetailsDto,
@@ -8,6 +8,7 @@ import type {
   TrailerVideoDto,
   MovieCollectionDto,
   CollectionPartDto,
+  PersonDetailsDto,
 } from "../types/models"
 
 export interface DiscoverOptions {
@@ -686,6 +687,64 @@ export class TMDBService {
       episodeNumber: data.episode_number,
       stillPath: formatImageUrl(data.still_path, "original"),
       voteAverage: data.vote_average,
+    }
+  }
+
+  async getPersonDetails(id: number): Promise<PersonDetailsDto> {
+    const data = await tmdbFetch<any>(`/person/${id}`, {
+      append_to_response: "combined_credits,images,external_ids",
+    })
+
+    const photo = formatImageUrl(data.profile_path, "w500")
+    const photos = (data.images?.profiles || [])
+      .slice(0, 20)
+      .map((img: any) => formatImageUrl(img.file_path, "original"))
+      .filter(Boolean) as string[]
+
+    const rawCredits: any[] = data.combined_credits?.cast || []
+    const seenIds = new Set<string>()
+    const filmography: MediaDto[] = []
+
+    const sorted = rawCredits
+      .filter((c: any) => c.poster_path && (c.title || c.name))
+      .sort((a: any, b: any) => (b.popularity || 0) - (a.popularity || 0))
+
+    for (const c of sorted) {
+      const type = c.media_type === "tv" ? "tv" : "movie"
+      const key = `${type}_${c.id}`
+      if (!seenIds.has(key)) {
+        seenIds.add(key)
+        filmography.push(type === "tv" ? mapRawTv(c) : mapRawMovie(c))
+      }
+      if (filmography.length >= 60) break
+    }
+
+    const placeOfBirth = data.place_of_birth ? localizePlaceOfBirth(data.place_of_birth) : undefined
+    let department = data.known_for_department || "Acting"
+    if (department === "Acting") {
+      department = data.gender === 1 ? "Актриса" : "Актёр"
+    } else if (department === "Directing") {
+      department = "Режиссёр"
+    } else if (department === "Writing") {
+      department = "Сценарист"
+    } else if (department === "Production") {
+      department = "Продюсер"
+    }
+
+    return {
+      id: data.id,
+      name: data.name,
+      originalName: data.also_known_as?.[0] || data.name,
+      biography: data.biography || "",
+      birthday: data.birthday || undefined,
+      deathday: data.deathday || undefined,
+      placeOfBirth,
+      photo: photo || null,
+      knownForDepartment: data.known_for_department,
+      department: department,
+      gender: data.gender,
+      filmography,
+      photos,
     }
   }
 }

@@ -237,3 +237,16 @@ export function resolveCountryCode(raw: string): string | undefined {
   }
   return undefined
 }
+
+export function localizePlaceOfBirth(place: string): string {
+  if (!place) return ""
+  const parts = place.split(",").map(p => p.trim())
+  if (parts.length === 0) return place
+  const last = parts[parts.length - 1]
+  const localizedLast = localizeCountry(last)
+  if (localizedLast && localizedLast !== last) {
+    parts[parts.length - 1] = localizedLast
+    return parts.join(", ")
+  }
+  return place
+}

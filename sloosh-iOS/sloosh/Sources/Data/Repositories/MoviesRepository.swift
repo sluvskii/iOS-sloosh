@@ -15,6 +15,7 @@ class MoviesRepository: ObservableObject {
 
     // MARK: - Details cache (memory + disk, 24h TTL)
     private var detailsMemory: [String: MediaDetailsDto] = [:]
+    private var personMemory: [Int: PersonDetailsDto] = [:]
     private let detailsDiskCache = MediaDetailsDiskCache()
     private let listDiskCache = MediaListDiskCache()
 
@@ -38,6 +39,7 @@ class MoviesRepository: ObservableObject {
         cartoonsCache.removeAll()
         episodeCache.removeAll()
         detailsMemory.removeAll()
+        personMemory.removeAll()
         Task {
             await detailsDiskCache.cleanUpExpired()
             await listDiskCache.cleanUpExpired()
@@ -136,6 +138,18 @@ class MoviesRepository: ObservableObject {
         let response = try await MoviesApi.shared.getEpisodeDetails(id: id, season: season, episode: episode)
         if let data = response.data {
             episodeCache[cacheKey] = data
+        }
+        return response.data
+    }
+
+    // MARK: - Person Details
+
+    func getPersonDetails(id: Int) async throws -> PersonDetailsDto? {
+        if let hit = personMemory[id] { return hit }
+        let response = try await MoviesApi.shared.getPersonDetails(id: id)
+        if let details = response.data {
+            personMemory[id] = details
+            return details
         }
         return response.data
     }
