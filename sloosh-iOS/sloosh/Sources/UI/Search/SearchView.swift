@@ -138,35 +138,33 @@ struct SearchDiscoveryView: View {
                         }
                         .padding(.horizontal, 16)
                         
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 8) {
-                                ForEach(viewModel.history, id: \.self) { query in
-                                    HStack(spacing: 8) {
-                                        Button {
-                                            viewModel.selectHistory(query)
-                                        } label: {
-                                            Text(query)
-                                                .font(.system(size: 14, weight: .medium))
-                                                .foregroundColor(.primary)
-                                        }
-                                        .buttonStyle(.plain)
-                                        
-                                        Button {
-                                            viewModel.removeHistory(query)
-                                        } label: {
-                                            Image(systemName: "xmark")
-                                                .font(.system(size: 11, weight: .bold))
-                                                .foregroundColor(.secondary)
-                                        }
-                                        .buttonStyle(.plain)
+                        FlowLayout(spacing: 8) {
+                            ForEach(viewModel.history, id: \.self) { query in
+                                HStack(spacing: 8) {
+                                    Button {
+                                        viewModel.selectHistory(query)
+                                    } label: {
+                                        Text(query)
+                                            .font(.system(size: 14, weight: .medium))
+                                            .foregroundColor(.primary)
                                     }
-                                    .padding(.horizontal, 12)
-                                    .padding(.vertical, 7)
-                                    .glassEffect(.regular.interactive(), in: Capsule())
+                                    .buttonStyle(.plain)
+                                    
+                                    Button {
+                                        viewModel.removeHistory(query)
+                                    } label: {
+                                        Image(systemName: "xmark")
+                                            .font(.system(size: 11, weight: .bold))
+                                            .foregroundColor(.secondary)
+                                    }
+                                    .buttonStyle(.plain)
                                 }
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 7)
+                                .glassEffect(.regular.interactive(), in: Capsule())
                             }
-                            .padding(.horizontal, 16)
                         }
+                        .padding(.horizontal, 16)
                     }
                 }
 

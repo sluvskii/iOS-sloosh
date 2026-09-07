@@ -80,7 +80,20 @@ struct DetailsView: View {
     let movieId: String
     let navigationTransitionID: String?
     let navigationTransitionNamespace: Namespace.ID?
+    var initialStudio: StudioBrand? = nil
     @StateObject private var viewModel = DetailsViewModel()
+    
+    init(
+        movieId: String,
+        navigationTransitionID: String? = nil,
+        navigationTransitionNamespace: Namespace.ID? = nil,
+        initialStudio: StudioBrand? = nil
+    ) {
+        self.movieId = movieId
+        self.navigationTransitionID = navigationTransitionID
+        self.navigationTransitionNamespace = navigationTransitionNamespace
+        self.initialStudio = initialStudio
+    }
     
     @State private var showPlayer = false
     @State private var pendingPlayerLaunch = false
@@ -270,7 +283,7 @@ struct DetailsView: View {
             .toolbarVisibility(.hidden, for: .navigationBar)
             .toolbar(.hidden, for: .navigationBar)
             .task {
-                await viewModel.loadDetails(id: movieId)
+                await viewModel.loadDetails(id: movieId, studio: initialStudio)
             }
             .task(id: viewModel.details?.id) {
                 guard let details = viewModel.details else { return }
@@ -744,7 +757,7 @@ struct DetailsView: View {
                             .padding(.top, 8)
                             .padding(.bottom, -4)
 
-                        DetailsInfoSection(details: details, backgroundColor: effectiveBackgroundColor)
+                        DetailsInfoSection(details: details, studioOverride: viewModel.explicitStudio, backgroundColor: effectiveBackgroundColor)
                             .padding(.top, 20)
                             .padding(.horizontal)
 
@@ -785,7 +798,7 @@ struct DetailsView: View {
                 .ignoresSafeArea()
         }
         .refreshable {
-            await viewModel.loadDetails(id: movieId, force: true)
+            await viewModel.loadDetails(id: movieId, studio: initialStudio, force: true)
         }
     }
 
@@ -867,7 +880,7 @@ struct DetailsView: View {
                                     .padding(.top, 8)
                                     .padding(.bottom, -4)
 
-                                DetailsInfoSection(details: details, backgroundColor: effectiveBackgroundColor)
+                                DetailsInfoSection(details: details, studioOverride: viewModel.explicitStudio, backgroundColor: effectiveBackgroundColor)
                                     .padding(.top, 20)
                                     .padding(.horizontal)
                             }
@@ -910,7 +923,7 @@ struct DetailsView: View {
                     .ignoresSafeArea()
             }
             .refreshable {
-                await viewModel.loadDetails(id: movieId, force: true)
+                await viewModel.loadDetails(id: movieId, studio: initialStudio, force: true)
             }
         }.ignoresSafeArea()
     }
@@ -1194,6 +1207,7 @@ private struct DetailsPrimaryMetadataRow: View {
 
 private struct DetailsInfoSection: View {
     let details: MediaDetailsDto
+    var studioOverride: StudioBrand? = nil
     let backgroundColor: Color
     @Environment(\.dismiss) private var dismiss
     @State private var isDescriptionExpanded = false
@@ -1234,10 +1248,10 @@ private struct DetailsInfoSection: View {
 
             let companies = details.productionCompanies ?? []
             let networks = details.networks ?? []
-            let identified = details.identifiedStudio
+            let identified = studioOverride ?? details.identifiedStudio
             if !companies.isEmpty || !networks.isEmpty || identified != nil {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text(details.type == "tv" ? "Платформа" : "Студия")
+                    Text(details.type == "tv" && (identified?.isNetwork == true || !networks.isEmpty) ? "Платформа" : "Студия")
                         .font(.system(size: 18, weight: .bold))
 
                     FlowLayout(spacing: 8) {
@@ -1269,16 +1283,20 @@ private struct DetailsInfoSection: View {
                                 .buttonStyle(.plain)
                             }
                         }
-                        if companies.isEmpty && networks.isEmpty, let brand = identified {
-                            NavigationLink(destination: StudioCatalogView(studioId: brand.id, studioName: brand.name)) {
-                                Text(brand.name)
-                                    .font(.system(size: 14, weight: .semibold))
-                                    .foregroundColor(.primary)
-                                    .padding(.horizontal, 14)
-                                    .padding(.vertical, 8)
-                                    .glassEffect(.regular.interactive(), in: Capsule())
+                        if let brand = identified {
+                            let alreadyInCompanies = companies.contains { StudioBrand.find(by: $0.name)?.id == brand.id || $0.name.lowercased() == brand.name.lowercased() }
+                            let alreadyInNetworks = networks.contains { StudioBrand.find(by: $0.name)?.id == brand.id || $0.name.lowercased() == brand.name.lowercased() }
+                            if !alreadyInCompanies && !alreadyInNetworks {
+                                NavigationLink(destination: StudioCatalogView(studioId: brand.id, studioName: brand.name)) {
+                                    Text(brand.name)
+                                        .font(.system(size: 14, weight: .semibold))
+                                        .foregroundColor(.primary)
+                                        .padding(.horizontal, 14)
+                                        .padding(.vertical, 8)
+                                        .glassEffect(.regular.interactive(), in: Capsule())
+                                }
+                                .buttonStyle(.plain)
                             }
-                            .buttonStyle(.plain)
                         }
                     }
                 }
@@ -2140,6 +2158,7 @@ struct SourceResultWrapper: Identifiable {
 class DetailsViewModel: ObservableObject {
     @Published var details: MediaDetailsDto?
     @Published var isLoading = true
+    @Published var explicitStudio: StudioBrand? = nil
 
     @Published var isFetchingSources = false
     @Published var sourceResultWrapper: SourceResultWrapper?
@@ -2170,7 +2189,10 @@ class DetailsViewModel: ObservableObject {
         UserDefaults.standard.set(name, forKey: allohaTranslationPreferenceKey)
     }
 
-    func loadDetails(id: String, force: Bool = false) async {
+    func loadDetails(id: String, studio: StudioBrand? = nil, force: Bool = false) async {
+        if let studio = studio {
+            self.explicitStudio = studio
+        }
         if !force && details != nil && (details?.id == id || details?.ids?.kp?.description == id.replacingOccurrences(of: "kp_", with: "")) {
             return
         }
@@ -2189,11 +2211,19 @@ class DetailsViewModel: ObservableObject {
                 await fetchInlineSeasons(kpId: kpId)
             }
 
-            if let type = details?.type {
-                let studio = details?.identifiedStudio
-                Task {
-                    await self.fetchRelatedByStudio(type: type, id: id, studio: studio)
+            var resolvedStudio = self.explicitStudio ?? details?.identifiedStudio
+            if resolvedStudio == nil {
+                if let company = details?.productionCompanies?.first(where: { StudioBrand.find(by: $0.name) != nil }) {
+                    resolvedStudio = StudioBrand.find(by: company.name)
+                } else if let net = details?.networks?.first(where: { StudioBrand.find(by: $0.name) != nil }) {
+                    resolvedStudio = StudioBrand.find(by: net.name)
                 }
+            }
+
+            let studioToFetch = resolvedStudio
+            let type = details?.type ?? "movie"
+            Task {
+                await self.fetchRelatedByStudio(type: type, id: id, studio: studioToFetch)
             }
             if details?.type != "tv" {
                 Task {
@@ -2218,7 +2248,11 @@ class DetailsViewModel: ObservableObject {
         if let brand = studio {
             do {
                 let collection = try await MoviesRepository.shared.getCollection(id: brand.id, page: 1)
-                let otherMovies = collection.items.filter { $0.id != id }
+                let rawCleanId = id.replacingOccurrences(of: "kp_", with: "")
+                let otherMovies = collection.items.filter {
+                    let itemCleanId = $0.id.replacingOccurrences(of: "kp_", with: "")
+                    return itemCleanId != rawCleanId && $0.id != id
+                }
                 if !otherMovies.isEmpty {
                     self.relatedStudio = RelatedStudioResponse(
                         items: otherMovies,
@@ -2345,7 +2379,7 @@ private struct FranchiseCollectionSection: View {
                         ForEach(parts) { part in
                             NavigationLink(destination: DetailsView(movieId: part.id, navigationTransitionID: nil, navigationTransitionNamespace: nil).navigationBarBackButtonHidden(true)) {
                                 VStack(alignment: .leading, spacing: 6) {
-                                    AsyncCachedImage(url: URL(string: part.posterUrl ?? "")) {
+                                    AsyncCachedImage(url: URL(string: part.displayPosterUrl ?? part.posterUrl ?? "")) {
                                         Rectangle().fill(Color.gray.opacity(0.2))
                                             .frame(width: 110, height: 165)
                                             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -2387,12 +2421,12 @@ private struct RelatedStudioSection: View {
 
     var body: some View {
         if let items = response.items, !items.isEmpty {
+            let brand = response.label.flatMap { StudioBrand.find(by: $0) }
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 8) {
                     Text("Другие релизы")
                         .font(.system(size: 18, weight: .bold))
                     if let label = response.label, !label.isEmpty {
-                        let brand = StudioBrand.find(by: label)
                         NavigationLink(destination: StudioCatalogView(studioId: brand?.id ?? label, studioName: label)) {
                             Text(label)
                                 .font(.system(size: 13, weight: .semibold))
@@ -2409,9 +2443,9 @@ private struct RelatedStudioSection: View {
                 ScrollView(.horizontal, showsIndicators: false) {
                     LazyHStack(spacing: 14) {
                         ForEach(items) { movie in
-                            NavigationLink(destination: DetailsView(movieId: movie.id, navigationTransitionID: nil, navigationTransitionNamespace: nil).navigationBarBackButtonHidden(true)) {
+                            NavigationLink(destination: DetailsView(movieId: movie.id, navigationTransitionID: nil, navigationTransitionNamespace: nil, initialStudio: brand).navigationBarBackButtonHidden(true)) {
                                 VStack(alignment: .leading, spacing: 6) {
-                                    AsyncCachedImage(url: URL(string: movie.posterUrl ?? "")) {
+                                    AsyncCachedImage(url: URL(string: movie.displayPosterUrl ?? movie.posterUrl ?? "")) {
                                         Rectangle().fill(Color.gray.opacity(0.2))
                                             .frame(width: 110, height: 165)
                                             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
