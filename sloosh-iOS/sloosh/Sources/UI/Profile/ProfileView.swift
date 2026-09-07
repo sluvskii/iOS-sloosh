@@ -349,7 +349,7 @@ struct ProfileCategoryContentView: View {
                                         Label("Смотреть", systemImage: "play.fill")
                                     }
                                     
-                                    NavigationLink(destination: DetailsView(movieId: media.id, navigationTransitionID: nil, navigationTransitionNamespace: nil)) {
+                                    NavigationLink(destination: DetailsView(movieId: media.id, mediaType: media.type, navigationTransitionID: nil, navigationTransitionNamespace: nil)) {
                                         Label("Подробнее", systemImage: "info.circle")
                                     }
                                     

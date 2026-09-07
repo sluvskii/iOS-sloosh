@@ -76,6 +76,11 @@ export interface MediaDto {
     tmdb?: number
     imdb?: string
   }
+  ids?: {
+    kp?: number
+    tmdb?: number
+    imdb?: string
+  }
 }
 
 export interface MediaDetailsDto extends MediaDto {
