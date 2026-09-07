@@ -731,11 +731,37 @@ export class TMDBService {
       department = "Продюсер"
     }
 
+    // Clean and split biography into sections (awards, key projects, interesting facts)
+    let rawBio = (data.biography || "").replace(/\p{Extended_Pictographic}/gu, "").replace(/\uFE0F/g, "").trim()
+    let awards: string | undefined = undefined
+    let keyProjects: string | undefined = undefined
+    let interestingFact: string | undefined = undefined
+
+    const awardsMatch = rawBio.match(/(?:^|\n)\s*Главные награды\s*:\s*([\s\S]*?)(?=(?:\n\s*(?:Главные проекты|Интересн))|$)/i)
+    if (awardsMatch) {
+      awards = awardsMatch[1].trim()
+      rawBio = rawBio.replace(awardsMatch[0], "")
+    }
+
+    const projectsMatch = rawBio.match(/(?:^|\n)\s*Главные проекты\s*:\s*([\s\S]*?)(?=(?:\n\s*(?:Главные награды|Интересн))|$)/i)
+    if (projectsMatch) {
+      keyProjects = projectsMatch[1].trim()
+      rawBio = rawBio.replace(projectsMatch[0], "")
+    }
+
+    const factsMatch = rawBio.match(/(?:^|\n)\s*Интересны[ей]\s+факты?\s*:\s*([\s\S]*?)(?=(?:\n\s*(?:Главные награды|Главные проекты))|$)/i)
+    if (factsMatch) {
+      interestingFact = factsMatch[1].trim()
+      rawBio = rawBio.replace(factsMatch[0], "")
+    }
+
+    const biography = rawBio.replace(/\n\s*\n+/g, "\n\n").trim()
+
     return {
       id: data.id,
       name: data.name,
       originalName: data.also_known_as?.[0] || data.name,
-      biography: data.biography || "",
+      biography,
       birthday: data.birthday || undefined,
       deathday: data.deathday || undefined,
       placeOfBirth,
@@ -745,6 +771,9 @@ export class TMDBService {
       gender: data.gender,
       filmography,
       photos,
+      awards,
+      keyProjects,
+      interestingFact,
     }
   }
 }
