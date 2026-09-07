@@ -1,8 +1,8 @@
-﻿export const config = {
+export const config = {
   port: parseInt(process.env.PORT || "3000", 10),
   tmdb: {
     baseUrl: "https://api.themoviedb.org/3",
-    imageBaseUrl: "https://image.tmdb.org/t/p",
+    imageBaseUrl: "https://api-sloosh.vercel.app/api/v1/images/tmdb",
     token: process.env.TMDB_TOKEN || "",
     defaultLanguage: process.env.DEFAULT_LANGUAGE || "ru-RU",
   },

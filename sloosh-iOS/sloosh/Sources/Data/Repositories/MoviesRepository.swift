@@ -433,11 +433,11 @@ actor MediaDetailsDiskCache {
 
     init() {
         if let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first {
-            // Clean up legacy v1/v2 caches if present
-            let oldDir = base.appendingPathComponent("sloosh.mediadetails", isDirectory: true)
-            try? FileManager.default.removeItem(at: oldDir)
+            // Clean up legacy caches if present
+            try? FileManager.default.removeItem(at: base.appendingPathComponent("sloosh.mediadetails", isDirectory: true))
+            try? FileManager.default.removeItem(at: base.appendingPathComponent("sloosh.mediadetails.v3", isDirectory: true))
             
-            let dir = base.appendingPathComponent("sloosh.mediadetails.v3", isDirectory: true)
+            let dir = base.appendingPathComponent("sloosh.mediadetails.v4", isDirectory: true)
             try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             self.cacheDir = dir
         } else {
@@ -497,11 +497,11 @@ actor MediaListDiskCache {
 
     init() {
         if let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first {
-            // Clean up legacy v1/v2 caches if present
-            let oldDir = base.appendingPathComponent("sloosh.medialist", isDirectory: true)
-            try? FileManager.default.removeItem(at: oldDir)
+            // Clean up legacy caches if present
+            try? FileManager.default.removeItem(at: base.appendingPathComponent("sloosh.medialist", isDirectory: true))
+            try? FileManager.default.removeItem(at: base.appendingPathComponent("sloosh.medialist.v3", isDirectory: true))
             
-            let dir = base.appendingPathComponent("sloosh.medialist.v3", isDirectory: true)
+            let dir = base.appendingPathComponent("sloosh.medialist.v4", isDirectory: true)
             try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             self.cacheDir = dir
         } else {

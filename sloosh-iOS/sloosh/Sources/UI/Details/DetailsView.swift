@@ -52,8 +52,8 @@ struct RemoteLogoView: View {
     var body: some View {
         AsyncCachedImage(url: url) {
             Text(fallbackTitle)
-                .font(.system(size: isTopBar ? 17 : 34, weight: isTopBar ? .bold : .heavy))
-                .lineLimit(1)
+                .font(.system(size: isTopBar ? 17 : 32, weight: isTopBar ? .bold : .heavy))
+                .lineLimit(isTopBar ? 1 : 2)
                 .multilineTextAlignment(alignment == .leading ? .leading : .center)
                 .padding(.horizontal, alignment == .center ? (isTopBar ? 0 : 16) : 0)
                 .shimmer()
@@ -67,11 +67,13 @@ struct RemoteLogoView: View {
                 .shadow(color: .black.opacity(isTopBar ? 0.0 : 0.3), radius: 8, x: 0, y: 4)
         } fallback: {
             Text(fallbackTitle)
-                .font(.system(size: isTopBar ? 17 : 34, weight: isTopBar ? .bold : .heavy))
-                .lineLimit(1)
+                .font(.system(size: isTopBar ? 17 : 32, weight: isTopBar ? .bold : .heavy))
+                .lineLimit(isTopBar ? 1 : 2)
                 .multilineTextAlignment(alignment == .leading ? .leading : .center)
                 .padding(.horizontal, alignment == .center ? (isTopBar ? 0 : 16) : 0)
                 .frame(maxWidth: .infinity, alignment: alignment)
+                .foregroundStyle(Color.white)
+                .shadow(color: .black.opacity(0.8), radius: 6, x: 0, y: 3)
         }
     }
 }

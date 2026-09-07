@@ -47,7 +47,44 @@ app.route("/api/v2", mediaRouter)
 app.route("/api/v1", categoriesRouter)
 app.route("/api/v2", categoriesRouter)
 
-// Backward compatible Image Redirection
+// Direct streaming proxy helper to bypass ISP blocking of image.tmdb.org
+async function streamImageFromUrl(url: string): Promise<Response | null> {
+  try {
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15",
+        "Referer": "https://www.themoviedb.org/",
+      },
+    })
+    if (!res.ok) return null
+    const contentType = res.headers.get("content-type") || "image/jpeg"
+    return new Response(res.body, {
+      status: 200,
+      headers: {
+        "Content-Type": contentType,
+        "Cache-Control": "public, max-age=31536000, immutable",
+        "Access-Control-Allow-Origin": "*",
+      },
+    })
+  } catch {
+    return null
+  }
+}
+
+// TMDB Image Proxy: streams any TMDB image with long-term Edge caching
+app.get("/api/v1/images/tmdb/:size/*", async (c) => {
+  const size = c.req.param("size")
+  const prefix = `/api/v1/images/tmdb/${size}`
+  const imagePath = c.req.path.startsWith(prefix) ? c.req.path.slice(prefix.length) : ""
+  if (!imagePath) return c.text("Bad request", 400)
+
+  const tmdbUrl = `https://image.tmdb.org/t/p/${size}${imagePath}`
+  const streamed = await streamImageFromUrl(tmdbUrl)
+  if (streamed) return streamed
+  return c.text("Image not found", 404)
+})
+
+// Backward compatible Image Proxy
 app.get("/api/v1/images/logos/:id/original", async (c) => {
   const rawId = c.req.param("id").replace(/^(tmdb_|kp_)/, "")
   let id = parseInt(rawId, 10)
@@ -55,13 +92,15 @@ app.get("/api/v1/images/logos/:id/original", async (c) => {
 
   const cached = getCached<MediaDetailsDto>(detailsCache, `movie:${id}`)
   if (cached?.logo) {
-    return c.redirect(cached.logo, 302)
+    const streamed = await streamImageFromUrl(cached.logo)
+    if (streamed) return streamed
   }
 
   try {
     const movie = await tmdb.getMovieDetails(id)
     if (movie.logo) {
-      return c.redirect(movie.logo, 302)
+      const streamed = await streamImageFromUrl(movie.logo)
+      if (streamed) return streamed
     }
   } catch {
     // Might be Kinopoisk ID -> resolve TMDB ID via Alloha
@@ -70,7 +109,8 @@ app.get("/api/v1/images/logos/:id/original", async (c) => {
       try {
         const movie = await tmdb.getMovieDetails(tmdbId)
         if (movie.logo) {
-          return c.redirect(movie.logo, 302)
+          const streamed = await streamImageFromUrl(movie.logo)
+          if (streamed) return streamed
         }
       } catch {}
     }
@@ -86,13 +126,15 @@ app.get("/api/v1/images/backdrops/:id/:size", async (c) => {
 
   const cached = getCached<MediaDetailsDto>(detailsCache, `movie:${id}`)
   if (cached?.backdrop) {
-    return c.redirect(cached.backdrop, 302)
+    const streamed = await streamImageFromUrl(cached.backdrop)
+    if (streamed) return streamed
   }
 
   try {
     const movie = await tmdb.getMovieDetails(id)
     if (movie.backdrop) {
-      return c.redirect(movie.backdrop, 302)
+      const streamed = await streamImageFromUrl(movie.backdrop)
+      if (streamed) return streamed
     }
   } catch {
     const tmdbId = await resolveTmdbIdByKp(id)
@@ -100,7 +142,8 @@ app.get("/api/v1/images/backdrops/:id/:size", async (c) => {
       try {
         const movie = await tmdb.getMovieDetails(tmdbId)
         if (movie.backdrop) {
-          return c.redirect(movie.backdrop, 302)
+          const streamed = await streamImageFromUrl(movie.backdrop)
+          if (streamed) return streamed
         }
       } catch {}
     }

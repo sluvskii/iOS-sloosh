@@ -102,8 +102,18 @@ public struct AsyncCachedImage<Placeholder: View, Content: View, Fallback: View>
         }
     }
     
+    private func resolveEffectiveUrl(_ targetUrl: URL?) -> URL? {
+        guard let original = targetUrl else { return nil }
+        let str = original.absoluteString
+        if str.contains("image.tmdb.org/t/p/") {
+            let proxied = str.replacingOccurrences(of: "https://image.tmdb.org/t/p/", with: "https://api-sloosh.vercel.app/api/v1/images/tmdb/")
+            return URL(string: proxied) ?? original
+        }
+        return original
+    }
+
     private func loadImage() async {
-        guard let url = url else {
+        guard let rawUrl = url, let url = resolveEffectiveUrl(rawUrl) else {
             await loadFallbackImage()
             return
         }
@@ -118,7 +128,9 @@ public struct AsyncCachedImage<Placeholder: View, Content: View, Fallback: View>
             return
         }
         
-        let request = URLRequest(url: url, cachePolicy: cachePolicy)
+        var request = URLRequest(url: url, cachePolicy: cachePolicy)
+        request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15", forHTTPHeaderField: "User-Agent")
+        
         if let cachedResponse = URLCache.shared.cachedResponse(for: request) {
             let uiImg = await Task.detached(priority: .userInitiated) {
                 UIImage(data: cachedResponse.data)
@@ -171,7 +183,7 @@ public struct AsyncCachedImage<Placeholder: View, Content: View, Fallback: View>
     
     private func loadFallbackImage() async {
         // Handle fallback URL if provided
-        if let fallbackUrl = fallbackUrl {
+        if let rawFallback = fallbackUrl, let fallbackUrl = resolveEffectiveUrl(rawFallback) {
             if let cachedFallback = ImageCache.shared.image(forKey: fallbackUrl.absoluteString) {
                 await MainActor.run {
                     self.image = cachedFallback
@@ -181,7 +193,8 @@ public struct AsyncCachedImage<Placeholder: View, Content: View, Fallback: View>
                 return
             }
             
-            let fallbackRequest = URLRequest(url: fallbackUrl, cachePolicy: cachePolicy)
+            var fallbackRequest = URLRequest(url: fallbackUrl, cachePolicy: cachePolicy)
+            fallbackRequest.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15", forHTTPHeaderField: "User-Agent")
             if let cachedResponse = URLCache.shared.cachedResponse(for: fallbackRequest) {
                 let uiImg = await Task.detached(priority: .userInitiated) {
                     UIImage(data: cachedResponse.data)

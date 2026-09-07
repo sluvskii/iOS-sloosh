@@ -848,11 +848,18 @@ class HomeViewModel: ObservableObject {
 
     private func fetchPage(_ cursor: InfiniteCursor, category: HomeCategory, filter: HomeFilter) async throws -> [MediaDto] {
         if cursor.phase == .original {
-            switch filter {
-            case .popular:
+            switch category {
+            case .all, .movies:
+                switch filter {
+                case .popular:
+                    return try await MoviesRepository.shared.getPopularMovies(page: cursor.page)
+                case .topRated:
+                    return try await MoviesRepository.shared.getTopMovies(page: cursor.page)
+                }
+            case .tvShows:
+                return try await MoviesRepository.shared.getTopTv(page: cursor.page)
+            case .cartoons:
                 return try await MoviesRepository.shared.getPopularMovies(page: cursor.page)
-            case .topRated:
-                return try await MoviesRepository.shared.getTopMovies(page: cursor.page)
             }
         } else {
             var mergedFilters = searchFilters
