@@ -1,4 +1,4 @@
-﻿{
+{
   "compilerOptions": {
     "lib": ["ESNext"],
     "module": "ESNext",
@@ -17,5 +17,5 @@
     "allowJs": true,
     "types": ["bun-types"]
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*", "api/**/*"]
 }
