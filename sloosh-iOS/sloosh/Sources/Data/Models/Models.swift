@@ -366,7 +366,7 @@ struct MediaDetailsDto: Codable {
         self.trailers = trailers
         self.ratings = ratings
         self.ids = ids
-        self.externalIds = externalIds ?? (ids != nil ? ExternalIdsDto(kp: ids?.kp, imdb: ids?.imdb, tmdb: ids?.tmdb) : nil)
+        self.externalIds = externalIds ?? (ids != nil ? ExternalIdsDto(kp: ids?.kp, tmdb: ids?.tmdb, imdb: ids?.imdb) : nil)
         self.productionCompanies = productionCompanies
         self.networks = networks
         self.collection = collection
@@ -419,7 +419,7 @@ struct MediaDetailsDto: Codable {
         let decodedExt = try? container.decodeIfPresent(ExternalIdsDto.self, forKey: .externalIds)
         if let ids = decodedIds {
             self.ids = ids
-            self.externalIds = decodedExt ?? ExternalIdsDto(kp: ids.kp, imdb: ids.imdb, tmdb: ids.tmdb)
+            self.externalIds = decodedExt ?? ExternalIdsDto(kp: ids.kp, tmdb: ids.tmdb, imdb: ids.imdb)
         } else if let ext = decodedExt {
             self.externalIds = ext
             self.ids = IdsDto(kp: ext.kp, imdb: ext.imdb, tmdb: ext.tmdb)
@@ -522,6 +522,12 @@ struct ExternalIdsDto: Codable {
     let kp: Int?
     let tmdb: Int?
     let imdb: String?
+
+    init(kp: Int? = nil, tmdb: Int? = nil, imdb: String? = nil) {
+        self.kp = kp
+        self.tmdb = tmdb
+        self.imdb = imdb
+    }
 }
 
 struct RatingsV2Dto: Codable {
@@ -534,6 +540,12 @@ struct IdsDto: Codable {
     let kp: Int?
     let imdb: String?
     let tmdb: Int?
+
+    init(kp: Int? = nil, imdb: String? = nil, tmdb: Int? = nil) {
+        self.kp = kp
+        self.imdb = imdb
+        self.tmdb = tmdb
+    }
 }
 
 struct SupportItemDto: Codable {
