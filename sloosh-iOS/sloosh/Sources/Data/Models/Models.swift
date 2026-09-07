@@ -290,24 +290,6 @@ struct MediaDetailsDto: Codable {
                 }
             }
         }
-        let fullTitle = "\(title ?? "") \(originalTitle ?? "")".lowercased()
-        for brand in StudioBrand.all {
-            if brand.id == "dc" {
-                if fullTitle.contains(" dc ") || fullTitle.hasPrefix("dc ") || fullTitle.hasSuffix(" dc") || fullTitle.contains("диси") {
-                    return brand
-                }
-            } else if brand.id == "a24" {
-                if fullTitle.contains("a24") {
-                    return brand
-                }
-            } else {
-                for alias in brand.aliases {
-                    if fullTitle.contains(alias) {
-                        return brand
-                    }
-                }
-            }
-        }
         return nil
     }
 }
