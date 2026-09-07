@@ -96,7 +96,4 @@ app.onError((err, c) => {
   return c.json({ status: "error", message: err.message || "Internal server error" }, 500)
 })
 
-export default {
-  port: config.port,
-  fetch: app.fetch,
-}
+export default app
