@@ -125,6 +125,10 @@ class MoviesApi {
         return try await performRequest(endpoint: "api/v1/tv/top-rated", queryItems: [URLQueryItem(name: "page", value: String(page))])
     }
     
+    func getCartoons(page: Int = 1) async throws -> ApiEnvelope<MediaResponse> {
+        return try await performRequest(endpoint: "api/v1/cartoons", queryItems: [URLQueryItem(name: "page", value: String(page))])
+    }
+    
     func getDetails(id: String) async throws -> ApiEnvelope<MediaDetailsDto> {
         return try await performRequest(endpoint: "api/v2/movie/\(id)")
     }
