@@ -5,6 +5,7 @@ import { config } from "./config"
 import { mediaRouter } from "./routes/media"
 import { categoriesRouter } from "./routes/categories"
 import { tmdb } from "./services/tmdb"
+import { resolveTmdbIdByKp } from "./services/alloha"
 import { detailsCache, getCached } from "./services/cache"
 import type { MediaDetailsDto } from "./types/models"
 
@@ -49,7 +50,7 @@ app.route("/api/v2", categoriesRouter)
 // Backward compatible Image Redirection
 app.get("/api/v1/images/logos/:id/original", async (c) => {
   const rawId = c.req.param("id").replace(/^(tmdb_|kp_)/, "")
-  const id = parseInt(rawId, 10)
+  let id = parseInt(rawId, 10)
   if (isNaN(id)) return c.text("Not found", 404)
 
   const cached = getCached<MediaDetailsDto>(detailsCache, `movie:${id}`)
@@ -62,14 +63,25 @@ app.get("/api/v1/images/logos/:id/original", async (c) => {
     if (movie.logo) {
       return c.redirect(movie.logo, 302)
     }
-  } catch {}
+  } catch {
+    // Might be Kinopoisk ID -> resolve TMDB ID via Alloha
+    const tmdbId = await resolveTmdbIdByKp(id)
+    if (tmdbId) {
+      try {
+        const movie = await tmdb.getMovieDetails(tmdbId)
+        if (movie.logo) {
+          return c.redirect(movie.logo, 302)
+        }
+      } catch {}
+    }
+  }
 
   return c.text("Logo not found", 404)
 })
 
 app.get("/api/v1/images/backdrops/:id/:size", async (c) => {
   const rawId = c.req.param("id").replace(/^(tmdb_|kp_)/, "")
-  const id = parseInt(rawId, 10)
+  let id = parseInt(rawId, 10)
   if (isNaN(id)) return c.text("Not found", 404)
 
   const cached = getCached<MediaDetailsDto>(detailsCache, `movie:${id}`)
@@ -82,7 +94,17 @@ app.get("/api/v1/images/backdrops/:id/:size", async (c) => {
     if (movie.backdrop) {
       return c.redirect(movie.backdrop, 302)
     }
-  } catch {}
+  } catch {
+    const tmdbId = await resolveTmdbIdByKp(id)
+    if (tmdbId) {
+      try {
+        const movie = await tmdb.getMovieDetails(tmdbId)
+        if (movie.backdrop) {
+          return c.redirect(movie.backdrop, 302)
+        }
+      } catch {}
+    }
+  }
 
   return c.text("Backdrop not found", 404)
 })

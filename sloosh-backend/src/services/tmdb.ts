@@ -74,8 +74,10 @@ export function mapRawMovie(m: any): MediaDto {
       tmdb: rating,
     },
     poster,
+    posterUrl: poster,
     poster_path: m.poster_path,
     backdrop,
+    backdropUrl: backdrop,
     backdrop_path: m.backdrop_path,
     genres: m.genres || (m.genre_ids ? m.genre_ids.map((gid: number) => ({ id: gid, name: "" })) : []),
     externalIds: {
@@ -104,8 +106,10 @@ export function mapRawTv(t: any): MediaDto {
       tmdb: rating,
     },
     poster,
+    posterUrl: poster,
     poster_path: t.poster_path,
     backdrop,
+    backdropUrl: backdrop,
     backdrop_path: t.backdrop_path,
     genres: t.genres || (t.genre_ids ? t.genre_ids.map((gid: number) => ({ id: gid, name: "" })) : []),
     externalIds: {
