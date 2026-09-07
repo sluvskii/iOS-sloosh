@@ -6,29 +6,68 @@ import type { MediaDetailsDto, MediaResponse } from "../types/models"
 
 export const mediaRouter = new Hono()
 
-// GET /api/v1/search
-mediaRouter.get("/search", async (c) => {
+// GET /api/v1/search & /api/v1/discover
+const handleSearchOrDiscover = async (c: any) => {
   const query = c.req.query("query") || c.req.query("q") || ""
   const page = parseInt(c.req.query("page") || "1", 10)
+  const genres = c.req.query("genres")
+  const countries = c.req.query("countries")
+  const type = c.req.query("type")
+  const order = c.req.query("order")
+  const ratingFrom = c.req.query("ratingFrom") ? parseFloat(c.req.query("ratingFrom")) : undefined
+  const ratingTo = c.req.query("ratingTo") ? parseFloat(c.req.query("ratingTo")) : undefined
+  const yearFrom = c.req.query("yearFrom") ? parseInt(c.req.query("yearFrom"), 10) : undefined
+  const yearTo = c.req.query("yearTo") ? parseInt(c.req.query("yearTo"), 10) : undefined
 
-  if (!query.trim()) {
-    return c.json({ status: "success", data: { results: [], items: [], page: 1, total_pages: 1, total_results: 0 } })
+  // 1. Text search if query is provided
+  if (query.trim()) {
+    const cacheKey = `search:${query.toLowerCase().trim()}:${page}`
+    const cached = getCached<MediaResponse>(listCache, cacheKey)
+    if (cached) {
+      return c.json({ status: "success", data: cached })
+    }
+
+    try {
+      const results = await tmdb.search(query, page)
+      setCached(listCache, cacheKey, results)
+      return c.json({ status: "success", data: results })
+    } catch (err: any) {
+      return c.json({ status: "error", message: err.message || "Search failed" }, 500)
+    }
   }
 
-  const cacheKey = `search:${query.toLowerCase().trim()}:${page}`
-  const cached = getCached<MediaResponse>(listCache, cacheKey)
-  if (cached) {
-    return c.json({ status: "success", data: cached })
+  // 2. Discover if filters are provided (e.g. genre chips, country, type, order)
+  if (genres || countries || type || order || ratingFrom || yearFrom) {
+    const cacheKey = `discover:${type || "all"}:${genres || ""}:${countries || ""}:${order || ""}:${page}`
+    const cached = getCached<MediaResponse>(listCache, cacheKey)
+    if (cached) {
+      return c.json({ status: "success", data: cached })
+    }
+
+    try {
+      const results = await tmdb.discover({
+        genres,
+        countries,
+        type,
+        order,
+        ratingFrom,
+        ratingTo,
+        yearFrom,
+        yearTo,
+        page,
+      })
+      setCached(listCache, cacheKey, results)
+      return c.json({ status: "success", data: results })
+    } catch (err: any) {
+      return c.json({ status: "error", message: err.message || "Discover failed" }, 500)
+    }
   }
 
-  try {
-    const results = await tmdb.search(query, page)
-    setCached(listCache, cacheKey, results)
-    return c.json({ status: "success", data: results })
-  } catch (err: any) {
-    return c.json({ status: "error", message: err.message || "Search failed" }, 500)
-  }
-})
+  return c.json({ status: "success", data: { results: [], items: [], page: 1, total_pages: 1, total_results: 0 } })
+}
+
+mediaRouter.get("/search", handleSearchOrDiscover)
+mediaRouter.get("/discover", handleSearchOrDiscover)
 
 // GET /api/v1/popular, /api/v1/movies/popular, /api/v1/tv/popular
 const handlePopular = (defaultType: "movie" | "tv" = "movie") => async (c: any) => {

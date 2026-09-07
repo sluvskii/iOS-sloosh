@@ -2,15 +2,17 @@ import SwiftUI
 
 struct GenreCatalogView: View {
     let genre: String
+    let mediaType: String?
     @StateObject private var viewModel: GenreCatalogViewModel
     @State private var pendingPlayerConfig: PlayerConfig? = nil
     @Namespace private var navigationTransition
     @AppStorage("cardDensity") private var cardDensity: CardDensity = .regular
     @Environment(\.dismiss) private var dismiss
 
-    init(genre: String) {
+    init(genre: String, mediaType: String? = nil) {
         self.genre = genre
-        _viewModel = StateObject(wrappedValue: GenreCatalogViewModel(genre: genre))
+        self.mediaType = mediaType
+        _viewModel = StateObject(wrappedValue: GenreCatalogViewModel(genre: genre, mediaType: mediaType))
     }
 
     private var columns: [GridItem] {
@@ -128,6 +130,7 @@ struct GenreCatalogView: View {
 @MainActor
 class GenreCatalogViewModel: ObservableObject {
     let genre: String
+    let mediaType: String?
     @Published var items: [MediaDto] = []
     @Published var isLoading = false
     @Published var isAppending = false
@@ -137,8 +140,9 @@ class GenreCatalogViewModel: ObservableObject {
 
     private var page = 1
 
-    init(genre: String) {
+    init(genre: String, mediaType: String? = nil) {
         self.genre = genre
+        self.mediaType = mediaType
     }
 
     func loadInitial(force: Bool = false) async {
@@ -152,7 +156,7 @@ class GenreCatalogViewModel: ObservableObject {
         defer { isLoading = false }
 
         do {
-            let filters = SearchFilters(genres: genre)
+            let filters = SearchFilters(type: mediaType, genres: genre)
             let response = try await MoviesRepository.shared.searchMoviesResponse(query: "", page: 1, filters: filters)
             let valid = filterValidItems(response.results ?? [])
             items = valid
@@ -170,7 +174,7 @@ class GenreCatalogViewModel: ObservableObject {
 
         let nextPage = page + 1
         do {
-            let filters = SearchFilters(genres: genre)
+            let filters = SearchFilters(type: mediaType, genres: genre)
             let response = try await MoviesRepository.shared.searchMoviesResponse(query: "", page: nextPage, filters: filters)
             let raw = response.results ?? []
             if raw.isEmpty {
@@ -189,11 +193,10 @@ class GenreCatalogViewModel: ObservableObject {
 
     private func filterValidItems(_ items: [MediaDto]) -> [MediaDto] {
         return items.filter { item in
-            let poster = item.posterUrl ?? item.poster_path ?? ""
+            let poster = item.poster ?? item.posterUrl ?? item.poster_path ?? ""
             let hasPoster = !poster.isEmpty && !poster.lowercased().contains("no-poster")
             let hasTitle = !(item.title ?? item.name ?? "").isEmpty
-            let hasRating = (item.rating ?? 0) > 0.0
-            return hasPoster && hasTitle && hasRating
+            return hasPoster && hasTitle
         }
     }
 }

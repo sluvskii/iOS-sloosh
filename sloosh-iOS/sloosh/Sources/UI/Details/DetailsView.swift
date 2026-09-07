@@ -1242,7 +1242,7 @@ private struct DetailsPrimaryMetadataRow: View {
             }
 
             if let country = details.countries?.first, !country.isEmpty {
-                Text(country)
+                Text(CountryLocalizer.format(country))
             }
 
             if let duration = details.duration, duration > 0 {
@@ -1282,7 +1282,7 @@ private struct DetailsInfoSection: View {
 
                     FlowLayout(spacing: 8) {
                         ForEach(genres, id: \.self) { genre in
-                            NavigationLink(destination: GenreCatalogView(genre: genre)) {
+                            NavigationLink(destination: GenreCatalogView(genre: genre, mediaType: details.type)) {
                                 HStack(spacing: 6) {
                                     Text(genre)
                                         .font(.system(size: 14, weight: .semibold))
