@@ -859,7 +859,7 @@ class HomeViewModel: ObservableObject {
             case .tvShows:
                 return try await MoviesRepository.shared.getTopTv(page: cursor.page)
             case .cartoons:
-                return try await MoviesRepository.shared.getPopularMovies(page: cursor.page)
+                return try await MoviesRepository.shared.getCartoons(page: cursor.page)
             }
         } else {
             var mergedFilters = searchFilters

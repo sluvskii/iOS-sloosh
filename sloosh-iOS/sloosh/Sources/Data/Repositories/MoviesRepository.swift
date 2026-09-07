@@ -9,6 +9,7 @@ class MoviesRepository: ObservableObject {
     private var popularCache: [Int: [MediaDto]] = [:]
     private var topMoviesCache: [Int: [MediaDto]] = [:]
     private var topTvCache: [Int: [MediaDto]] = [:]
+    private var cartoonsCache: [Int: [MediaDto]] = [:]
     private var episodeCache: [String: TvEpisodeDetailsDto] = [:]
     private var memoryWarningToken: Any?
 
@@ -34,6 +35,7 @@ class MoviesRepository: ObservableObject {
         popularCache.removeAll()
         topMoviesCache.removeAll()
         topTvCache.removeAll()
+        cartoonsCache.removeAll()
         episodeCache.removeAll()
         detailsMemory.removeAll()
         Task {
@@ -80,6 +82,19 @@ class MoviesRepository: ObservableObject {
         let results = response.data?.results ?? []
         topTvCache[page] = results
         await listDiskCache.save(results, key: "topTv_\(page)")
+        return results
+    }
+
+    func getCartoons(page: Int = 1) async throws -> [MediaDto] {
+        if let cached = cartoonsCache[page] { return cached }
+        if let diskCached = await listDiskCache.load(key: "cartoons_\(page)") {
+            cartoonsCache[page] = diskCached
+            return diskCached
+        }
+        let response = try await MoviesApi.shared.getCartoons(page: page)
+        let results = response.data?.results ?? []
+        cartoonsCache[page] = results
+        await listDiskCache.save(results, key: "cartoons_\(page)")
         return results
     }
 
