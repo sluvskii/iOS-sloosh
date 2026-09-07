@@ -247,15 +247,115 @@ class MoviesRepository: ObservableObject {
             // Fallback for search
         }
         
-        // If collection endpoint is not ready yet, fallback to searching by studio brand name
+        // If collection endpoint is not ready yet, fallback to searching by curated studio franchises
         if let brand = StudioBrand.find(by: id) {
-            let searchRes = try await searchMoviesResponse(query: brand.name, page: page)
-            let rawItems = searchRes.results ?? []
-            let cleaned = rawItems.filter { isQualityStudioItem($0, for: brand) }
-            return (cleaned, searchRes.effectiveTotalPages)
+            if !brand.searchFranchises.isEmpty {
+                let chunkSize = 4
+                let totalFranchises = brand.searchFranchises.count
+                let totalPages = max(1, (totalFranchises + chunkSize - 1) / chunkSize)
+                
+                let startIndex = (page - 1) * chunkSize
+                guard startIndex < totalFranchises else {
+                    return ([], totalPages)
+                }
+                let endIndex = min(startIndex + chunkSize, totalFranchises)
+                let currentQueries = Array(brand.searchFranchises[startIndex..<endIndex])
+                
+                let fetchedItems = await withTaskGroup(of: [MediaDto].self, returning: [MediaDto].self) { group in
+                    for query in currentQueries {
+                        group.addTask {
+                            do {
+                                let res = try await self.searchMoviesResponse(query: query, page: 1)
+                                let list = res.results ?? []
+                                return list.filter { item in
+                                    self.isQualityStudioItem(item, for: brand) &&
+                                    self.matchesStudio(item: item, brand: brand, query: query)
+                                }
+                            } catch {
+                                return []
+                            }
+                        }
+                    }
+                    
+                    var collected: [MediaDto] = []
+                    for await subList in group {
+                        collected.append(contentsOf: subList)
+                    }
+                    return collected
+                }
+                
+                // Deduplicate by ID and title
+                var seenIds = Set<String>()
+                var seenTitles = Set<String>()
+                var uniqueItems: [MediaDto] = []
+                for item in fetchedItems {
+                    let key = item.id.replacingOccurrences(of: "kp_", with: "")
+                    let titleKey = item.displayTitle.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !seenIds.contains(key) && !seenTitles.contains(titleKey) {
+                        seenIds.insert(key)
+                        seenTitles.insert(titleKey)
+                        uniqueItems.append(item)
+                    }
+                }
+                
+                // Sort by rating descending
+                uniqueItems.sort { ($0.rating ?? 0.0) > ($1.rating ?? 0.0) }
+                return (uniqueItems, totalPages)
+            } else {
+                let searchRes = try await searchMoviesResponse(query: brand.name, page: page)
+                let rawItems = searchRes.results ?? []
+                let cleaned = rawItems.filter {
+                    self.isQualityStudioItem($0, for: brand) &&
+                    self.matchesStudio(item: $0, brand: brand, query: brand.name)
+                }
+                return (cleaned, searchRes.effectiveTotalPages)
+            }
         }
         
         return ([], 1)
+    }
+
+    private func matchesStudio(item: MediaDto, brand: StudioBrand, query: String) -> Bool {
+        let title = (item.displayTitle).lowercased()
+        let origTitle = (item.originalTitle ?? "").lowercased()
+        let combined = "\(title) \(origTitle)"
+        
+        // 1. Strict exclusion check
+        for excluded in brand.excludedKeywords {
+            let lowerExcluded = excluded.lowercased()
+            if lowerExcluded.count <= 3 {
+                let pattern = "(^|[^a-zA-Z0-9а-яА-ЯёЁ])" + NSRegularExpression.escapedPattern(for: lowerExcluded) + "([^a-zA-Z0-9а-яА-ЯёЁ]|$)"
+                if combined.range(of: pattern, options: .regularExpression) != nil {
+                    return false
+                }
+            } else {
+                if combined.contains(lowerExcluded) {
+                    return false
+                }
+            }
+        }
+        
+        // 2. Query relevance check
+        let lowerQuery = query.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        if lowerQuery.count <= 3 {
+            let pattern = "(^|[^a-zA-Z0-9а-яА-ЯёЁ])" + NSRegularExpression.escapedPattern(for: lowerQuery) + "([^a-zA-Z0-9а-яА-ЯёЁ]|$)"
+            if combined.range(of: pattern, options: .regularExpression) == nil {
+                return false
+            }
+        } else {
+            let words = lowerQuery.components(separatedBy: " ").filter { $0.count > 2 }
+            if !words.isEmpty {
+                if !combined.contains(lowerQuery) && !words.allSatisfy({ combined.contains($0) }) {
+                    return false
+                }
+            } else {
+                if !combined.contains(lowerQuery) {
+                    return false
+                }
+            }
+        }
+        
+        return true
     }
 
     private func isQualityStudioItem(_ item: MediaDto, for brand: StudioBrand? = nil) -> Bool {
