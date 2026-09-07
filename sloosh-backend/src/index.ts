@@ -1,4 +1,4 @@
-﻿import { Hono } from "hono"
+import { Hono } from "hono"
 import { cors } from "hono/cors"
 import { logger } from "hono/logger"
 import { config } from "./config"
@@ -42,7 +42,9 @@ app.get("/health", (c) => c.json({ status: "ok" }))
 
 // Mount Routers
 app.route("/api/v1", mediaRouter)
+app.route("/api/v2", mediaRouter)
 app.route("/api/v1", categoriesRouter)
+app.route("/api/v2", categoriesRouter)
 
 // Backward compatible Image Redirection
 app.get("/api/v1/images/logos/:id/original", async (c) => {
