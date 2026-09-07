@@ -289,19 +289,17 @@ struct MovieDetailsNavigationLink<Label: View>: View {
     let movieId: String
     let transitionID: String
     let navigationTransition: Namespace.ID
-    var initialStudio: StudioBrand? = nil
     @ViewBuilder let label: () -> Label
 
-    init(movieId: String, transitionID: String? = nil, navigationTransition: Namespace.ID, initialStudio: StudioBrand? = nil, @ViewBuilder label: @escaping () -> Label) {
+    init(movieId: String, transitionID: String? = nil, navigationTransition: Namespace.ID, @ViewBuilder label: @escaping () -> Label) {
         self.movieId = movieId
         self.transitionID = transitionID ?? "movie-card-\(movieId)"
         self.navigationTransition = navigationTransition
-        self.initialStudio = initialStudio
         self.label = label
     }
 
-    init(movie: MediaDto, navigationTransition: Namespace.ID, initialStudio: StudioBrand? = nil) where Label == MoviePosterCard {
-        self.init(movieId: movie.id, navigationTransition: navigationTransition, initialStudio: initialStudio) {
+    init(movie: MediaDto, navigationTransition: Namespace.ID) where Label == MoviePosterCard {
+        self.init(movieId: movie.id, navigationTransition: navigationTransition) {
             MoviePosterCard(movie: movie)
         }
     }
@@ -311,8 +309,7 @@ struct MovieDetailsNavigationLink<Label: View>: View {
             destination: DetailsView(
                 movieId: movieId,
                 navigationTransitionID: transitionID,
-                navigationTransitionNamespace: navigationTransition,
-                initialStudio: initialStudio
+                navigationTransitionNamespace: navigationTransition
             )
             .navigationBarBackButtonHidden(true)
         ) {
