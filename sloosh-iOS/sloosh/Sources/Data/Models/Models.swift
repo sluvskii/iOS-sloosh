@@ -16,6 +16,28 @@ struct MediaResponse: Codable {
     let total_results: Int?
     let totalPages: Int?
     let totalResults: Int?
+
+    init(
+        page: Int? = nil,
+        results: [MediaDto]? = nil,
+        items: [MediaDto]? = nil,
+        pages: Int? = nil,
+        total: Int? = nil,
+        total_pages: Int? = nil,
+        total_results: Int? = nil,
+        totalPages: Int? = nil,
+        totalResults: Int? = nil
+    ) {
+        self.page = page
+        self.results = results
+        self.items = items
+        self.pages = pages
+        self.total = total
+        self.total_pages = total_pages
+        self.total_results = total_results
+        self.totalPages = totalPages
+        self.totalResults = totalResults
+    }
     
     var allItems: [MediaDto] {
         return items ?? results ?? []
@@ -415,6 +437,26 @@ struct RelatedStudioResponse: Codable {
     let totalResults: Int?
     let total_pages: Int?
     let total_results: Int?
+
+    init(
+        items: [MediaDto]? = nil,
+        results: [MediaDto]? = nil,
+        label: String? = nil,
+        page: Int? = nil,
+        totalPages: Int? = nil,
+        totalResults: Int? = nil,
+        total_pages: Int? = nil,
+        total_results: Int? = nil
+    ) {
+        self.items = items
+        self.results = results
+        self.label = label
+        self.page = page
+        self.totalPages = totalPages ?? total_pages
+        self.totalResults = totalResults ?? total_results
+        self.total_pages = total_pages ?? totalPages
+        self.total_results = total_results ?? totalResults
+    }
     
     var allItems: [MediaDto] {
         return items ?? results ?? []
