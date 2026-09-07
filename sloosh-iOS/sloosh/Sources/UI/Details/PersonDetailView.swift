@@ -8,6 +8,8 @@ struct PersonDetailView: View {
     @StateObject private var viewModel: PersonDetailViewModel
     @State private var dominantColor: UIColor? = nil
     @State private var isTitleAtTop: Bool = false
+    @State private var showPhotoGallery: Bool = false
+    @State private var selectedPhotoIndex: Int = 0
     @Environment(\.dismiss) private var dismiss
 
     init(personId: Int, initialName: String? = nil) {
@@ -22,6 +24,21 @@ struct PersonDetailView: View {
         } else {
             return Color(red: 0.05, green: 0.05, blue: 0.05)
         }
+    }
+
+    private var allPhotos: [String] {
+        var list: [String] = []
+        if let primary = viewModel.details?.photo, !primary.isEmpty {
+            list.append(primary)
+        }
+        if let additional = viewModel.details?.photos {
+            for p in additional {
+                if !list.contains(p) && !p.isEmpty {
+                    list.append(p)
+                }
+            }
+        }
+        return list
     }
 
     private func preloadDominantColor(from photoUrl: String?) async {
@@ -39,6 +56,48 @@ struct PersonDetailView: View {
                 }
             }
         } catch { }
+    }
+
+    private func savePhotoToLibrary(_ urlString: String) async {
+        guard let url = URL(string: urlString) else { return }
+        do {
+            let (data, _) = try await URLSession.shared.data(from: url)
+            guard let image = UIImage(data: data) else {
+                ToastManager.shared.show(title: "Не удалось загрузить фото", icon: "xmark.circle")
+                return
+            }
+            let status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
+            guard status == .authorized || status == .limited else {
+                ToastManager.shared.show(title: "Нет доступа к Фото", icon: "lock")
+                return
+            }
+            try await PHPhotoLibrary.shared().performChanges {
+                PHAssetChangeRequest.creationRequestForAsset(from: image)
+            }
+            ToastManager.shared.show(title: "Сохранено в Фото", icon: "checkmark.circle.fill")
+        } catch {
+            ToastManager.shared.show(title: "Ошибка при сохранении", icon: "xmark.circle")
+        }
+    }
+
+    private func sharePhotoUrl(_ urlString: String) {
+        guard let url = URL(string: urlString) else { return }
+        var items: [Any] = []
+        if let data = URLCache.shared.cachedResponse(for: URLRequest(url: url))?.data,
+           let img = UIImage(data: data) {
+            items.append(img)
+        } else {
+            items.append(url)
+        }
+        let av = UIActivityViewController(activityItems: items, applicationActivities: nil)
+        if let windowScene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene }).first,
+           let rootVC = windowScene.windows.first(where: { $0.isKeyWindow })?.rootViewController {
+            var topVC = rootVC
+            while let presented = topVC.presentedViewController { topVC = presented }
+            av.popoverPresentationController?.sourceView = topVC.view
+            topVC.present(av, animated: true)
+        }
     }
 
     var body: some View {
@@ -112,6 +171,9 @@ struct PersonDetailView: View {
                 .animation(.easeInOut(duration: 0.4), value: effectiveBackgroundColor)
                 .ignoresSafeArea()
         }
+        .fullScreenCover(isPresented: $showPhotoGallery) {
+            PersonPhotoGalleryView(photos: allPhotos, selectedIndex: selectedPhotoIndex)
+        }
         .task {
             await viewModel.loadDetails()
             if let photo = viewModel.details?.photo {
@@ -145,6 +207,35 @@ struct PersonDetailView: View {
                 height: height
             )
             .offset(y: offset)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                if !allPhotos.isEmpty {
+                    selectedPhotoIndex = 0
+                    showPhotoGallery = true
+                }
+            }
+            .contextMenu {
+                if !allPhotos.isEmpty {
+                    Button {
+                        selectedPhotoIndex = 0
+                        showPhotoGallery = true
+                    } label: {
+                        Label("Открыть фото", systemImage: "arrow.up.left.and.arrow.down.right")
+                    }
+                }
+                if let photo = details.photo {
+                    Button {
+                        Task { await savePhotoToLibrary(photo) }
+                    } label: {
+                        Label("Сохранить в Фото", systemImage: "photo.badge.arrow.down")
+                    }
+                    Button {
+                        sharePhotoUrl(photo)
+                    } label: {
+                        Label("Поделиться", systemImage: "square.and.arrow.up")
+                    }
+                }
+            }
         }
         .frame(height: baseHeight)
 
@@ -217,7 +308,20 @@ struct PersonDetailView: View {
 
             // Additional Photos (if present)
             if let photos = details.photos, photos.count > 1 {
-                PersonPhotosSection(photos: photos)
+                PersonPhotosSection(
+                    photos: photos,
+                    allPhotos: allPhotos,
+                    onSelect: { idx in
+                        selectedPhotoIndex = idx
+                        showPhotoGallery = true
+                    },
+                    onSave: { url in
+                        Task { await savePhotoToLibrary(url) }
+                    },
+                    onShare: { url in
+                        sharePhotoUrl(url)
+                    }
+                )
             }
 
             // Filmography
@@ -550,6 +654,10 @@ private struct ParsedBiography {
 
 private struct PersonPhotosSection: View {
     let photos: [String]
+    let allPhotos: [String]
+    let onSelect: (Int) -> Void
+    let onSave: (String) -> Void
+    let onShare: (String) -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -560,29 +668,275 @@ private struct PersonPhotosSection: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(spacing: 12) {
                     ForEach(photos, id: \.self) { photoUrl in
-                        AsyncCachedImage(url: URL(string: photoUrl)) {
-                            RoundedRectangle(cornerRadius: 14)
-                                .fill(Color.white.opacity(0.08))
-                                .frame(width: 120, height: 160)
-                                .shimmer()
-                        } content: { img in
-                            Image(uiImage: img)
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                                .frame(width: 120, height: 160)
-                                .clipShape(RoundedRectangle(cornerRadius: 14))
-                        } fallback: {
-                            RoundedRectangle(cornerRadius: 14)
-                                .fill(Color.white.opacity(0.08))
-                                .frame(width: 120, height: 160)
+                        let idx = allPhotos.firstIndex(of: photoUrl) ?? 0
+
+                        Button {
+                            onSelect(idx)
+                        } label: {
+                            AsyncCachedImage(url: URL(string: photoUrl)) {
+                                RoundedRectangle(cornerRadius: 14)
+                                    .fill(Color.white.opacity(0.08))
+                                    .frame(width: 120, height: 160)
+                                    .shimmer()
+                            } content: { img in
+                                Image(uiImage: img)
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fill)
+                                    .frame(width: 120, height: 160)
+                                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                            } fallback: {
+                                RoundedRectangle(cornerRadius: 14)
+                                    .fill(Color.white.opacity(0.08))
+                                    .frame(width: 120, height: 160)
+                            }
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14)
+                                    .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+                            )
                         }
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 14)
-                                .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
-                        )
+                        .buttonStyle(.plain)
+                        .contextMenu {
+                            Button {
+                                onSelect(idx)
+                            } label: {
+                                Label("Открыть фото", systemImage: "arrow.up.left.and.arrow.down.right")
+                            }
+                            Button {
+                                onSave(photoUrl)
+                            } label: {
+                                Label("Сохранить в Фото", systemImage: "photo.badge.arrow.down")
+                            }
+                            Button {
+                                onShare(photoUrl)
+                            } label: {
+                                Label("Поделиться", systemImage: "square.and.arrow.up")
+                            }
+                        }
                     }
                 }
                 .padding(.horizontal, 16)
+            }
+        }
+    }
+}
+
+// MARK: - Full-Screen Photo Gallery Viewer
+
+struct PersonPhotoGalleryView: View {
+    let photos: [String]
+    @State var selectedIndex: Int
+    @Environment(\.dismiss) private var dismiss
+    @State private var dragOffset: CGFloat = 0
+
+    var body: some View {
+        ZStack {
+            Color.black
+                .ignoresSafeArea()
+                .opacity(max(0.4, 1.0 - Double(abs(dragOffset) / 300)))
+
+            TabView(selection: $selectedIndex) {
+                ForEach(photos.indices, id: \.self) { idx in
+                    ZoomablePhotoView(urlString: photos[idx])
+                        .tag(idx)
+                }
+            }
+            .tabViewStyle(.page(indexDisplayMode: .never))
+            .offset(y: dragOffset)
+            .gesture(
+                DragGesture()
+                    .onChanged { value in
+                        if value.translation.height > 0 {
+                            dragOffset = value.translation.height
+                        }
+                    }
+                    .onEnded { value in
+                        if value.translation.height > 120 || value.predictedEndTranslation.height > 250 {
+                            dismiss()
+                        } else {
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                dragOffset = 0
+                            }
+                        }
+                    }
+            )
+
+            // Top Bar
+            VStack {
+                HStack {
+                    TelegramGlassIconButton(systemName: "xmark") {
+                        dismiss()
+                    }
+
+                    Spacer()
+
+                    if photos.count > 1 {
+                        Text("\(selectedIndex + 1) из \(photos.count)")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 6)
+                            .glassEffect(.regular, in: Capsule())
+                    }
+
+                    Spacer()
+
+                    TelegramGlassIconButton(systemName: "square.and.arrow.up") {
+                        sharePhoto(at: selectedIndex)
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+
+                Spacer()
+
+                // Bottom Save Button
+                Button {
+                    Task { await savePhoto(at: selectedIndex) }
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "arrow.down.circle.fill")
+                            .font(.system(size: 18, weight: .semibold))
+                        Text("Сохранить в Фото")
+                            .font(.system(size: 15, weight: .semibold))
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 22)
+                    .padding(.vertical, 12)
+                    .glassEffect(.regular.interactive(), in: Capsule())
+                    .shadow(color: .black.opacity(0.35), radius: 10, x: 0, y: 5)
+                }
+                .buttonStyle(.plain)
+                .padding(.bottom, 24)
+            }
+        }
+        .environment(\.colorScheme, .dark)
+    }
+
+    private func savePhoto(at index: Int) async {
+        guard photos.indices.contains(index), let url = URL(string: photos[index]) else { return }
+        do {
+            let (data, _) = try await URLSession.shared.data(from: url)
+            guard let image = UIImage(data: data) else {
+                ToastManager.shared.show(title: "Не удалось загрузить фото", icon: "xmark.circle")
+                return
+            }
+            let status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
+            guard status == .authorized || status == .limited else {
+                ToastManager.shared.show(title: "Нет доступа к Фото", icon: "lock")
+                return
+            }
+            try await PHPhotoLibrary.shared().performChanges {
+                PHAssetChangeRequest.creationRequestForAsset(from: image)
+            }
+            ToastManager.shared.show(title: "Сохранено в Фото", icon: "checkmark.circle.fill")
+        } catch {
+            ToastManager.shared.show(title: "Ошибка: фото не сохранено", icon: "xmark.circle")
+        }
+    }
+
+    private func sharePhoto(at index: Int) {
+        guard photos.indices.contains(index), let url = URL(string: photos[index]) else { return }
+        var items: [Any] = []
+        if let data = URLCache.shared.cachedResponse(for: URLRequest(url: url))?.data,
+           let img = UIImage(data: data) {
+            items.append(img)
+        } else {
+            items.append(url)
+        }
+        let av = UIActivityViewController(activityItems: items, applicationActivities: nil)
+        if let windowScene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene }).first,
+           let rootVC = windowScene.windows.first(where: { $0.isKeyWindow })?.rootViewController {
+            var topVC = rootVC
+            while let presented = topVC.presentedViewController { topVC = presented }
+            av.popoverPresentationController?.sourceView = topVC.view
+            topVC.present(av, animated: true)
+        }
+    }
+}
+
+// MARK: - Zoomable Photo View
+
+private struct ZoomablePhotoView: View {
+    let urlString: String
+    @State private var scale: CGFloat = 1.0
+    @State private var lastScale: CGFloat = 1.0
+    @State private var offset: CGSize = .zero
+    @State private var lastOffset: CGSize = .zero
+
+    var body: some View {
+        GeometryReader { geo in
+            AsyncCachedImage(url: URL(string: urlString)) {
+                ZStack {
+                    Color.black
+                    ProgressView()
+                        .tint(.white)
+                }
+                .frame(width: geo.size.width, height: geo.size.height)
+            } content: { image in
+                Image(uiImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .scaleEffect(scale)
+                    .offset(offset)
+                    .gesture(
+                        MagnificationGesture()
+                            .onChanged { value in
+                                let delta = value / lastScale
+                                lastScale = value
+                                scale = min(max(scale * delta, 1.0), 4.0)
+                            }
+                            .onEnded { _ in
+                                lastScale = 1.0
+                                if scale < 1.0 {
+                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                        scale = 1.0
+                                        offset = .zero
+                                    }
+                                }
+                            }
+                    )
+                    .simultaneousGesture(
+                        DragGesture()
+                            .onChanged { value in
+                                if scale > 1.0 {
+                                    offset = CGSize(
+                                        width: lastOffset.width + value.translation.width,
+                                        height: lastOffset.height + value.translation.height
+                                    )
+                                }
+                            }
+                            .onEnded { _ in
+                                if scale > 1.0 {
+                                    lastOffset = offset
+                                } else {
+                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                                        offset = .zero
+                                        lastOffset = .zero
+                                    }
+                                }
+                            }
+                    )
+                    .onTapGesture(count: 2) {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                            if scale > 1.0 {
+                                scale = 1.0
+                                offset = .zero
+                                lastOffset = .zero
+                            } else {
+                                scale = 2.5
+                            }
+                        }
+                    }
+                    .frame(width: geo.size.width, height: geo.size.height)
+            } fallback: {
+                ZStack {
+                    Color.black
+                    Image(systemName: "photo")
+                        .font(.system(size: 48))
+                        .foregroundStyle(Color.white.opacity(0.3))
+                }
+                .frame(width: geo.size.width, height: geo.size.height)
             }
         }
     }
