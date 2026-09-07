@@ -1234,56 +1234,49 @@ private struct DetailsInfoSection: View {
 
             let companies = details.productionCompanies ?? []
             let networks = details.networks ?? []
-            if !companies.isEmpty || !networks.isEmpty {
+            let identified = details.identifiedStudio
+            if !companies.isEmpty || !networks.isEmpty || identified != nil {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text(details.type == "tv" ? "Студии и платформы" : "Студии производства")
+                    Text(details.type == "tv" ? "Платформа" : "Студия")
                         .font(.system(size: 18, weight: .bold))
 
                     FlowLayout(spacing: 8) {
-                        ForEach(companies) { company in
-                            let brand = StudioBrand.find(by: company.name)
-                            NavigationLink(destination: StudioCatalogView(studioId: brand?.id ?? String(company.id), studioName: company.name)) {
-                                HStack(spacing: 6) {
-                                    if let brand = brand {
-                                        Image(systemName: brand.systemIcon)
-                                            .font(.system(size: 13, weight: .semibold))
-                                            .foregroundStyle(brand.accentColor)
-                                    } else {
-                                        Image(systemName: "film.fill")
-                                            .font(.system(size: 12, weight: .semibold))
-                                            .foregroundStyle(.secondary)
-                                    }
+                        if !companies.isEmpty {
+                            ForEach(companies) { company in
+                                let brand = StudioBrand.find(by: company.name)
+                                NavigationLink(destination: StudioCatalogView(studioId: brand?.id ?? String(company.id), studioName: company.name)) {
                                     Text(company.name)
                                         .font(.system(size: 14, weight: .semibold))
                                         .foregroundColor(.primary)
+                                        .padding(.horizontal, 14)
+                                        .padding(.vertical, 8)
+                                        .glassEffect(.regular.interactive(), in: Capsule())
                                 }
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 8)
-                                .glassEffect(.regular.interactive(), in: Capsule())
+                                .buttonStyle(.plain)
                             }
-                            .buttonStyle(.plain)
                         }
-
-                        ForEach(networks) { net in
-                            let brand = StudioBrand.find(by: net.name)
-                            NavigationLink(destination: StudioCatalogView(studioId: brand?.id ?? String(net.id), studioName: net.name)) {
-                                HStack(spacing: 6) {
-                                    if let brand = brand {
-                                        Image(systemName: brand.systemIcon)
-                                            .font(.system(size: 13, weight: .semibold))
-                                            .foregroundStyle(brand.accentColor)
-                                    } else {
-                                        Image(systemName: "tv.fill")
-                                            .font(.system(size: 12, weight: .semibold))
-                                            .foregroundStyle(.secondary)
-                                    }
+                        if !networks.isEmpty {
+                            ForEach(networks) { net in
+                                let brand = StudioBrand.find(by: net.name)
+                                NavigationLink(destination: StudioCatalogView(studioId: brand?.id ?? String(net.id), studioName: net.name)) {
                                     Text(net.name)
                                         .font(.system(size: 14, weight: .semibold))
                                         .foregroundColor(.primary)
+                                        .padding(.horizontal, 14)
+                                        .padding(.vertical, 8)
+                                        .glassEffect(.regular.interactive(), in: Capsule())
                                 }
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 8)
-                                .glassEffect(.regular.interactive(), in: Capsule())
+                                .buttonStyle(.plain)
+                            }
+                        }
+                        if companies.isEmpty && networks.isEmpty, let brand = identified {
+                            NavigationLink(destination: StudioCatalogView(studioId: brand.id, studioName: brand.name)) {
+                                Text(brand.name)
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundColor(.primary)
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 8)
+                                    .glassEffect(.regular.interactive(), in: Capsule())
                             }
                             .buttonStyle(.plain)
                         }
@@ -2197,8 +2190,9 @@ class DetailsViewModel: ObservableObject {
             }
 
             if let type = details?.type {
+                let studio = details?.identifiedStudio
                 Task {
-                    await self.fetchRelatedByStudio(type: type, id: id)
+                    await self.fetchRelatedByStudio(type: type, id: id, studio: studio)
                 }
             }
             if details?.type != "tv" {
@@ -2211,10 +2205,33 @@ class DetailsViewModel: ObservableObject {
         }
     }
 
-    func fetchRelatedByStudio(type: String, id: String) async {
+    func fetchRelatedByStudio(type: String, id: String, studio: StudioBrand? = nil) async {
         isFetchingRelatedStudio = true
         defer { isFetchingRelatedStudio = false }
-        self.relatedStudio = await MoviesRepository.shared.getRelatedByStudio(type: type, id: id)
+        
+        if let apiResult = await MoviesRepository.shared.getRelatedByStudio(type: type, id: id),
+           let items = apiResult.items, !items.isEmpty {
+            self.relatedStudio = apiResult
+            return
+        }
+        
+        if let brand = studio {
+            do {
+                let collection = try await MoviesRepository.shared.getCollection(id: brand.id, page: 1)
+                let otherMovies = collection.items.filter { $0.id != id }
+                if !otherMovies.isEmpty {
+                    self.relatedStudio = RelatedStudioResponse(
+                        items: otherMovies,
+                        label: brand.name,
+                        page: 1,
+                        totalPages: collection.totalPages,
+                        totalResults: otherMovies.count
+                    )
+                }
+            } catch {
+                // Ignore fallback error
+            }
+        }
     }
 
     func fetchMovieCollection(id: String) async {
@@ -2377,19 +2394,12 @@ private struct RelatedStudioSection: View {
                     if let label = response.label, !label.isEmpty {
                         let brand = StudioBrand.find(by: label)
                         NavigationLink(destination: StudioCatalogView(studioId: brand?.id ?? label, studioName: label)) {
-                            HStack(spacing: 5) {
-                                if let brand = brand {
-                                    Image(systemName: brand.systemIcon)
-                                        .font(.system(size: 11, weight: .semibold))
-                                        .foregroundStyle(brand.accentColor)
-                                }
-                                Text(label)
-                                    .font(.system(size: 12, weight: .semibold))
-                                    .foregroundStyle(.primary)
-                            }
-                            .padding(.horizontal, 10)
-                            .padding(.vertical, 5)
-                            .glassEffect(.regular.interactive(), in: Capsule())
+                            Text(label)
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundStyle(.primary)
+                                .padding(.horizontal, 12)
+                                .padding(.vertical, 6)
+                                .glassEffect(.regular.interactive(), in: Capsule())
                         }
                         .buttonStyle(.plain)
                     }

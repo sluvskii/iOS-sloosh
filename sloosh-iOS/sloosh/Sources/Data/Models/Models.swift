@@ -252,6 +252,53 @@ struct MediaDetailsDto: Codable {
         guard let validId = id?.replacingOccurrences(of: "kp_", with: ""), !validId.isEmpty else { return nil }
         return "https://api.neome.uk/api/v1/images/logos/\(validId)/original"
     }
+
+    var identifiedStudio: StudioBrand? {
+        if let companies = productionCompanies {
+            for c in companies {
+                if let brand = StudioBrand.find(by: c.name) {
+                    return brand
+                }
+            }
+        }
+        if let nets = networks {
+            for n in nets {
+                if let brand = StudioBrand.find(by: n.name) {
+                    return brand
+                }
+            }
+        }
+        
+        let text = " \(title ?? "") \(originalTitle ?? "") \(description ?? "") ".lowercased()
+        
+        for brand in StudioBrand.all {
+            let brandLower = brand.name.lowercased()
+            if brand.id == "dc" {
+                if text.contains(" dc ") || text.contains("dc comics") || text.contains("диси") {
+                    return brand
+                }
+            } else if brand.id == "a24" {
+                if text.contains("a24") {
+                    return brand
+                }
+            } else if brand.id == "apple-tv-plus" {
+                if text.contains("apple tv") || text.contains("apple+") {
+                    return brand
+                }
+            } else if brand.id == "prime-video" {
+                if text.contains("prime video") || text.contains("amazon prime") {
+                    return brand
+                }
+            } else if brand.id == "20th-century-studios" {
+                if text.contains("20th century") || text.contains("двадцатый век") {
+                    return brand
+                }
+            } else if text.contains(brandLower) {
+                return brand
+            }
+        }
+        return nil
+    }
 }
 
 public struct GenreDto: Codable {
@@ -393,31 +440,29 @@ struct StudioBrand: Identifiable, Hashable {
     let id: String
     let name: String
     let slug: String
-    let systemIcon: String
-    let accentColor: Color
     let isNetwork: Bool
     
     static let all: [StudioBrand] = [
-        StudioBrand(id: "marvel", name: "Marvel", slug: "marvel", systemIcon: "bolt.shield.fill", accentColor: .red, isNetwork: false),
-        StudioBrand(id: "dc", name: "DC", slug: "dc", systemIcon: "shield.fill", accentColor: .blue, isNetwork: false),
-        StudioBrand(id: "a24", name: "A24", slug: "a24", systemIcon: "sparkles.tv", accentColor: .white, isNetwork: false),
-        StudioBrand(id: "pixar", name: "Pixar", slug: "pixar", systemIcon: "sparkles", accentColor: .cyan, isNetwork: false),
-        StudioBrand(id: "disney", name: "Disney", slug: "disney", systemIcon: "wand.and.stars", accentColor: .indigo, isNetwork: false),
-        StudioBrand(id: "warner-bros", name: "Warner Bros.", slug: "warner-bros", systemIcon: "film.stack", accentColor: .blue, isNetwork: false),
-        StudioBrand(id: "universal", name: "Universal", slug: "universal", systemIcon: "globe.americas.fill", accentColor: .teal, isNetwork: false),
-        StudioBrand(id: "paramount", name: "Paramount", slug: "paramount", systemIcon: "mountain.2.fill", accentColor: .blue, isNetwork: false),
-        StudioBrand(id: "20th-century-studios", name: "20th Century", slug: "20th-century-studios", systemIcon: "film.fill", accentColor: .orange, isNetwork: false),
-        StudioBrand(id: "sony-pictures", name: "Sony Pictures", slug: "sony-pictures", systemIcon: "video.fill", accentColor: .mint, isNetwork: false),
-        StudioBrand(id: "dreamworks", name: "DreamWorks", slug: "dreamworks", systemIcon: "moon.stars.fill", accentColor: .blue, isNetwork: false),
+        StudioBrand(id: "marvel", name: "Marvel", slug: "marvel", isNetwork: false),
+        StudioBrand(id: "dc", name: "DC", slug: "dc", isNetwork: false),
+        StudioBrand(id: "a24", name: "A24", slug: "a24", isNetwork: false),
+        StudioBrand(id: "pixar", name: "Pixar", slug: "pixar", isNetwork: false),
+        StudioBrand(id: "disney", name: "Disney", slug: "disney", isNetwork: false),
+        StudioBrand(id: "warner-bros", name: "Warner Bros.", slug: "warner-bros", isNetwork: false),
+        StudioBrand(id: "universal", name: "Universal", slug: "universal", isNetwork: false),
+        StudioBrand(id: "paramount", name: "Paramount", slug: "paramount", isNetwork: false),
+        StudioBrand(id: "20th-century-studios", name: "20th Century", slug: "20th-century-studios", isNetwork: false),
+        StudioBrand(id: "sony-pictures", name: "Sony Pictures", slug: "sony-pictures", isNetwork: false),
+        StudioBrand(id: "dreamworks", name: "DreamWorks", slug: "dreamworks", isNetwork: false),
         
         // Networks / Streamings
-        StudioBrand(id: "netflix", name: "Netflix", slug: "netflix", systemIcon: "play.tv.fill", accentColor: .red, isNetwork: true),
-        StudioBrand(id: "hbo", name: "HBO", slug: "hbo", systemIcon: "tv.fill", accentColor: .purple, isNetwork: true),
-        StudioBrand(id: "apple-tv-plus", name: "Apple TV+", slug: "apple-tv-plus", systemIcon: "apple.logo", accentColor: .white, isNetwork: true),
-        StudioBrand(id: "prime-video", name: "Prime Video", slug: "prime-video", systemIcon: "cart.fill", accentColor: .cyan, isNetwork: true),
-        StudioBrand(id: "hulu", name: "Hulu", slug: "hulu", systemIcon: "play.circle.fill", accentColor: .green, isNetwork: true),
-        StudioBrand(id: "cartoon-network", name: "Cartoon Network", slug: "cartoon-network", systemIcon: "square.grid.2x2.fill", accentColor: .white, isNetwork: true),
-        StudioBrand(id: "adult-swim", name: "Adult Swim", slug: "adult-swim", systemIcon: "water.waves", accentColor: .white, isNetwork: true),
+        StudioBrand(id: "netflix", name: "Netflix", slug: "netflix", isNetwork: true),
+        StudioBrand(id: "hbo", name: "HBO", slug: "hbo", isNetwork: true),
+        StudioBrand(id: "apple-tv-plus", name: "Apple TV+", slug: "apple-tv-plus", isNetwork: true),
+        StudioBrand(id: "prime-video", name: "Prime Video", slug: "prime-video", isNetwork: true),
+        StudioBrand(id: "hulu", name: "Hulu", slug: "hulu", isNetwork: true),
+        StudioBrand(id: "cartoon-network", name: "Cartoon Network", slug: "cartoon-network", isNetwork: true),
+        StudioBrand(id: "adult-swim", name: "Adult Swim", slug: "adult-swim", isNetwork: true),
     ]
     
     static func find(by nameOrId: String) -> StudioBrand? {

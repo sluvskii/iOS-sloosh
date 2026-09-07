@@ -102,7 +102,7 @@ struct StudioCatalogView: View {
                     .padding(padding)
                 } else if viewModel.items.isEmpty {
                     AppEmptyStateView(
-                        icon: brand?.systemIcon ?? "film.stack",
+                        icon: "film.stack",
                         title: "Ничего не найдено",
                         description: "В каталоге студии «\(studioName)» пока нет доступных релизов"
                     )
@@ -175,17 +175,11 @@ struct StudioCatalogView: View {
     }
 
     private var studioHeaderBadge: some View {
-        HStack(spacing: 10) {
-            Image(systemName: brand?.systemIcon ?? "film.fill")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(brand?.accentColor ?? Color.slooshAccent)
-            
-            Text(brand?.isNetwork == true ? "Стриминговая сеть" : "Киностудия")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.secondary)
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 8)
-        .glassEffect(.regular.interactive(), in: .capsule)
+        Text(brand?.isNetwork == true ? "Стриминговый сервис" : "Киностудия")
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .glassEffect(.regular.interactive(), in: .capsule)
     }
 }
