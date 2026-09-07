@@ -240,7 +240,7 @@ class MoviesRepository: ObservableObject {
             let items = response.data?.results ?? []
             let totalPages = response.data?.effectiveTotalPages ?? 1
             if !items.isEmpty {
-                let cleaned = items.filter { isQualityStudioItem($0) }
+                let cleaned = items.filter { Self.isQualityStudioItem($0) }
                 return (cleaned.isEmpty ? items : cleaned, totalPages)
             }
         } catch {
@@ -265,11 +265,11 @@ class MoviesRepository: ObservableObject {
                     for query in currentQueries {
                         group.addTask {
                             do {
-                                let res = try await self.searchMoviesResponse(query: query, page: 1)
-                                let list = res.results ?? []
+                                let res = try await MoviesApi.shared.searchMovies(query: query, page: 1)
+                                let list = res.data?.results ?? []
                                 return list.filter { item in
-                                    self.isQualityStudioItem(item, for: brand) &&
-                                    self.matchesStudio(item: item, brand: brand, query: query)
+                                    Self.isQualityStudioItem(item, for: brand) &&
+                                    Self.matchesStudio(item: item, brand: brand, query: query)
                                 }
                             } catch {
                                 return []
@@ -305,8 +305,8 @@ class MoviesRepository: ObservableObject {
                 let searchRes = try await searchMoviesResponse(query: brand.name, page: page)
                 let rawItems = searchRes.results ?? []
                 let cleaned = rawItems.filter {
-                    self.isQualityStudioItem($0, for: brand) &&
-                    self.matchesStudio(item: $0, brand: brand, query: brand.name)
+                    Self.isQualityStudioItem($0, for: brand) &&
+                    Self.matchesStudio(item: $0, brand: brand, query: brand.name)
                 }
                 return (cleaned, searchRes.effectiveTotalPages)
             }
@@ -315,7 +315,7 @@ class MoviesRepository: ObservableObject {
         return ([], 1)
     }
 
-    private func matchesStudio(item: MediaDto, brand: StudioBrand, query: String) -> Bool {
+    nonisolated private static func matchesStudio(item: MediaDto, brand: StudioBrand, query: String) -> Bool {
         let title = (item.displayTitle).lowercased()
         let origTitle = (item.originalTitle ?? "").lowercased()
         let combined = "\(title) \(origTitle)"
@@ -358,7 +358,7 @@ class MoviesRepository: ObservableObject {
         return true
     }
 
-    private func isQualityStudioItem(_ item: MediaDto, for brand: StudioBrand? = nil) -> Bool {
+    nonisolated private static func isQualityStudioItem(_ item: MediaDto, for brand: StudioBrand? = nil) -> Bool {
         // 1. Poster check: must have a real poster and not be a placeholder
         let rawPoster = item.posterUrl ?? item.poster_path ?? ""
         if rawPoster.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || rawPoster.contains("no-poster") {
