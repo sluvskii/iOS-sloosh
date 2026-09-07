@@ -107,7 +107,7 @@ struct StudioCatalogView: View {
                     let padding: CGFloat = cardDensity == .compact ? 12 : 16
                     LazyVGrid(columns: columns, spacing: spacing) {
                         ForEach(viewModel.items) { movie in
-                            MovieDetailsNavigationLink(movie: movie, navigationTransition: navigationTransition)
+                            MovieDetailsNavigationLink(movie: movie, navigationTransition: navigationTransition, studio: brand)
                                 .contextMenu {
                                     Group {
                                         Button {
@@ -116,7 +116,7 @@ struct StudioCatalogView: View {
                                             Label("Смотреть", systemImage: "play.fill")
                                         }
                                         
-                                        NavigationLink(destination: DetailsView(movieId: movie.id, navigationTransitionID: nil, navigationTransitionNamespace: nil).navigationBarBackButtonHidden(true)) {
+                                        NavigationLink(destination: DetailsView(movieId: movie.id, navigationTransitionID: nil, navigationTransitionNamespace: nil, initialStudio: brand).navigationBarBackButtonHidden(true)) {
                                             Label("Подробнее", systemImage: "info.circle")
                                         }
                                     }
