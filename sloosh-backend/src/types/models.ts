@@ -71,6 +71,7 @@ export interface MediaDto {
   backdropUrl?: string
   backdrop_path?: string
   genres?: Array<{ id: string | number; name: string }>
+  countries?: string[]
   externalIds?: {
     kp?: number
     tmdb?: number
