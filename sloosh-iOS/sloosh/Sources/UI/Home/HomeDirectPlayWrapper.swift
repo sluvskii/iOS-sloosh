@@ -17,6 +17,7 @@ struct PlayerConfig: Identifiable {
 
 struct HomeDirectPlayWrapper: View {
     let movieId: String
+    var mediaType: String? = nil
     let fallbackTitle: String
     var initialKpId: Int? = nil
     let onPlay: (PlayerConfig) -> Void
@@ -62,8 +63,9 @@ struct HomeDirectPlayWrapper: View {
             if let initialKpId = initialKpId, initialKpId > 0 {
                 await viewModel.fetchSources(kpId: initialKpId, title: fallbackTitle)
             } else {
-                await viewModel.loadDetails(id: movieId)
-                if let kpId = viewModel.details?.ids?.kp {
+                await viewModel.loadDetails(id: movieId, type: mediaType)
+                let resolvedKpId = viewModel.details?.ids?.kp ?? viewModel.details?.externalIds?.kp
+                if let kpId = resolvedKpId {
                     await viewModel.fetchSources(kpId: kpId, title: viewModel.details?.title ?? fallbackTitle)
                 } else if let numericKp = Int(movieId.replacingOccurrences(of: "kp_", with: "")) {
                     await viewModel.fetchSources(kpId: numericKp, title: fallbackTitle)

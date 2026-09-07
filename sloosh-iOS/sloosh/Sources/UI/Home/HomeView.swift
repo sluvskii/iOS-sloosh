@@ -152,6 +152,7 @@ struct HomeView: View {
             }) { movie in
                 HomeDirectPlayWrapper(
                     movieId: movie.id,
+                    mediaType: movie.type,
                     fallbackTitle: movie.title ?? movie.name ?? movie.originalTitle ?? "",
                     initialKpId: movie.externalIds?.kp
                 ) { config in
@@ -229,7 +230,7 @@ struct HomeCategoryContentView: View {
                                         } label: {
                                             Label("Смотреть", systemImage: "play.fill")
                                         }
-                                        NavigationLink(destination: DetailsView(movieId: movie.id, navigationTransitionID: nil, navigationTransitionNamespace: nil)) {
+                                        NavigationLink(destination: DetailsView(movieId: movie.id, mediaType: movie.type, navigationTransitionID: nil, navigationTransitionNamespace: nil)) {
                                             Label("Подробнее", systemImage: "info.circle")
                                         }
                                     }
@@ -287,13 +288,15 @@ struct HomeCategoryContentView: View {
 
 struct MovieDetailsNavigationLink<Label: View>: View {
     let movieId: String
+    let mediaType: String?
     let transitionID: String
     let navigationTransition: Namespace.ID
     let studio: StudioBrand?
     @ViewBuilder let label: () -> Label
 
-    init(movieId: String, transitionID: String? = nil, navigationTransition: Namespace.ID, studio: StudioBrand? = nil, @ViewBuilder label: @escaping () -> Label) {
+    init(movieId: String, mediaType: String? = nil, transitionID: String? = nil, navigationTransition: Namespace.ID, studio: StudioBrand? = nil, @ViewBuilder label: @escaping () -> Label) {
         self.movieId = movieId
+        self.mediaType = mediaType
         self.transitionID = transitionID ?? "movie-card-\(movieId)"
         self.navigationTransition = navigationTransition
         self.studio = studio
@@ -301,7 +304,7 @@ struct MovieDetailsNavigationLink<Label: View>: View {
     }
 
     init(movie: MediaDto, navigationTransition: Namespace.ID, studio: StudioBrand? = nil) where Label == MoviePosterCard {
-        self.init(movieId: movie.id, navigationTransition: navigationTransition, studio: studio) {
+        self.init(movieId: movie.id, mediaType: movie.type, navigationTransition: navigationTransition, studio: studio) {
             MoviePosterCard(movie: movie)
         }
     }
@@ -310,6 +313,7 @@ struct MovieDetailsNavigationLink<Label: View>: View {
         NavigationLink(
             destination: DetailsView(
                 movieId: movieId,
+                mediaType: mediaType,
                 navigationTransitionID: transitionID,
                 navigationTransitionNamespace: navigationTransition,
                 initialStudio: studio

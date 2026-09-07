@@ -1,6 +1,6 @@
 import { Hono } from "hono"
 import { tmdb } from "../services/tmdb"
-import { resolveAlloha, resolveTmdbIdByKp } from "../services/alloha"
+import { resolveAlloha, resolveTmdbInfoByKp } from "../services/alloha"
 import { listCache, detailsCache, getCached, setCached } from "../services/cache"
 import type { MediaDetailsDto, MediaResponse } from "../types/models"
 
@@ -119,7 +119,7 @@ mediaRouter.get("/cartoons", async (c) => {
 
 // GET /api/v1/tv/:id/season/:season/episode/:episode
 mediaRouter.get("/tv/:id/season/:season/episode/:episode", async (c) => {
-  const rawId = c.req.param("id").replace(/^(tmdb_|kp_)/, "")
+  const rawId = c.req.param("id").replace(/^(tmdb_|kp_|tv_|movie_)/, "")
   const id = parseInt(rawId, 10)
   const season = parseInt(c.req.param("season"), 10)
   const episode = parseInt(c.req.param("episode"), 10)
@@ -136,107 +136,148 @@ mediaRouter.get("/tv/:id/season/:season/episode/:episode", async (c) => {
   }
 })
 
-// GET /api/v1/movie/:id
+// Helper to attach Alloha streams & normalized IDs
+async function attachAllohaAndIds(details: MediaDetailsDto, tmdbId: number) {
+  const allohaInfo = await resolveAlloha(tmdbId)
+  if (allohaInfo.kpId || allohaInfo.imdbId) {
+    details.alloha = allohaInfo
+    if (!details.externalIds) details.externalIds = {}
+    if (allohaInfo.kpId) details.externalIds.kp = allohaInfo.kpId
+    if (allohaInfo.imdbId) details.externalIds.imdb = allohaInfo.imdbId
+  }
+  details.ids = {
+    tmdb: details.externalIds?.tmdb || tmdbId,
+    imdb: details.externalIds?.imdb || undefined,
+    kp: details.externalIds?.kp || undefined,
+  }
+}
+
+async function handleTvDetails(id: number, isKp: boolean): Promise<MediaDetailsDto> {
+  const cacheKey = `tv:${id}`
+  const cached = getCached<MediaDetailsDto>(detailsCache, cacheKey)
+  if (cached) return cached
+
+  let tmdbId = id
+  if (isKp) {
+    const info = await resolveTmdbInfoByKp(id)
+    if (info?.tmdbId) tmdbId = info.tmdbId
+  }
+
+  let details: MediaDetailsDto
+  try {
+    details = await tmdb.getTvDetails(tmdbId)
+  } catch (lookupErr) {
+    // If TV lookup failed, fallback to movie lookup
+    try {
+      details = await tmdb.getMovieDetails(tmdbId)
+    } catch {
+      throw lookupErr
+    }
+  }
+
+  await attachAllohaAndIds(details, tmdbId)
+  setCached(detailsCache, cacheKey, details)
+  return details
+}
+
+async function handleMovieDetails(id: number, isKp: boolean): Promise<MediaDetailsDto> {
+  const cacheKey = `movie:${id}`
+  const cached = getCached<MediaDetailsDto>(detailsCache, cacheKey)
+  if (cached) return cached
+
+  let tmdbId = id
+  let isTv = false
+  if (isKp) {
+    const info = await resolveTmdbInfoByKp(id)
+    if (info?.tmdbId) {
+      tmdbId = info.tmdbId
+      isTv = info.isTv
+    }
+  }
+
+  // If Alloha specifically flagged this KP entry as a TV serial (category 2), resolve TV details!
+  if (isTv) {
+    return handleTvDetails(tmdbId, false)
+  }
+
+  let details: MediaDetailsDto
+  try {
+    details = await tmdb.getMovieDetails(tmdbId)
+  } catch (lookupErr) {
+    // If movie lookup failed (e.g. 404), fallback to TV lookup!
+    try {
+      details = await tmdb.getTvDetails(tmdbId)
+    } catch {
+      throw lookupErr
+    }
+  }
+
+  await attachAllohaAndIds(details, tmdbId)
+  setCached(detailsCache, cacheKey, details)
+  return details
+}
+
+// GET /api/v1/movie/:id & /api/v2/movie/:id
 mediaRouter.get("/movie/:id", async (c) => {
   const origId = c.req.param("id")
+  const isTvParam = c.req.query("type") === "tv" || origId.startsWith("tv_")
   const isKp = origId.startsWith("kp_")
-  const rawId = origId.replace(/^(tmdb_|kp_)/, "")
-  let id = parseInt(rawId, 10)
+  const rawId = origId.replace(/^(tmdb_|kp_|tv_|movie_)/, "")
+  const id = parseInt(rawId, 10)
   if (isNaN(id)) {
     return c.json({ status: "error", message: "Invalid movie ID" }, 400)
   }
 
-  if (isKp) {
-    const resolved = await resolveTmdbIdByKp(id)
-    if (resolved) {
-      id = resolved
-    }
-  }
-
-  const cacheKey = `movie:${id}`
-  const cached = getCached<MediaDetailsDto>(detailsCache, cacheKey)
-  if (cached) {
-    return c.json({ status: "success", data: cached })
-  }
-
   try {
-    let details: MediaDetailsDto
-    try {
-      details = await tmdb.getMovieDetails(id)
-    } catch (lookupErr) {
-      const resolved = await resolveTmdbIdByKp(id)
-      if (resolved && resolved !== id) {
-        id = resolved
-        details = await tmdb.getMovieDetails(id)
-      } else {
-        throw lookupErr
-      }
-    }
-    
-    // In parallel, resolve Alloha streams
-    const allohaInfo = await resolveAlloha(id)
-    if (allohaInfo.kpId || allohaInfo.imdbId) {
-      details.alloha = allohaInfo
-      if (!details.externalIds) details.externalIds = {}
-      if (allohaInfo.kpId) details.externalIds.kp = allohaInfo.kpId
-      if (allohaInfo.imdbId) details.externalIds.imdb = allohaInfo.imdbId
-    }
-
-    setCached(detailsCache, cacheKey, details)
+    const details = isTvParam ? await handleTvDetails(id, isKp) : await handleMovieDetails(id, isKp)
     return c.json({ status: "success", data: details })
   } catch (err: any) {
     return c.json({ status: "error", message: err.message || "Failed to fetch movie details" }, 500)
   }
 })
 
-// GET /api/v1/tv/:id
+// GET /api/v1/tv/:id & /api/v2/tv/:id
 mediaRouter.get("/tv/:id", async (c) => {
   const origId = c.req.param("id")
+  const isMovieParam = c.req.query("type") === "movie" || origId.startsWith("movie_")
   const isKp = origId.startsWith("kp_")
-  const rawId = origId.replace(/^(tmdb_|kp_)/, "")
-  let id = parseInt(rawId, 10)
+  const rawId = origId.replace(/^(tmdb_|kp_|tv_|movie_)/, "")
+  const id = parseInt(rawId, 10)
   if (isNaN(id)) {
     return c.json({ status: "error", message: "Invalid TV ID" }, 400)
   }
 
-  if (isKp) {
-    const resolved = await resolveTmdbIdByKp(id)
-    if (resolved) {
-      id = resolved
-    }
+  try {
+    const details = isMovieParam ? await handleMovieDetails(id, isKp) : await handleTvDetails(id, isKp)
+    return c.json({ status: "success", data: details })
+  } catch (err: any) {
+    return c.json({ status: "error", message: err.message || "Failed to fetch TV details" }, 500)
   }
+})
 
-  const cacheKey = `tv:${id}`
-  const cached = getCached<MediaDetailsDto>(detailsCache, cacheKey)
-  if (cached) {
-    return c.json({ status: "success", data: cached })
+// GET /api/v1/media/:id & /api/v2/media/:id
+mediaRouter.get("/media/:id", async (c) => {
+  const origId = c.req.param("id")
+  const isTvParam = c.req.query("type") === "tv" || origId.startsWith("tv_")
+  const isMovieParam = c.req.query("type") === "movie" || origId.startsWith("movie_")
+  const isKp = origId.startsWith("kp_")
+  const rawId = origId.replace(/^(tmdb_|kp_|tv_|movie_)/, "")
+  const id = parseInt(rawId, 10)
+  if (isNaN(id)) {
+    return c.json({ status: "error", message: "Invalid media ID" }, 400)
   }
 
   try {
     let details: MediaDetailsDto
-    try {
-      details = await tmdb.getTvDetails(id)
-    } catch (lookupErr) {
-      const resolved = await resolveTmdbIdByKp(id)
-      if (resolved && resolved !== id) {
-        id = resolved
-        details = await tmdb.getTvDetails(id)
-      } else {
-        throw lookupErr
-      }
+    if (isTvParam) {
+      details = await handleTvDetails(id, isKp)
+    } else if (isMovieParam) {
+      details = await handleMovieDetails(id, isKp)
+    } else {
+      details = await handleMovieDetails(id, isKp)
     }
-
-    const allohaInfo = await resolveAlloha(id)
-    if (allohaInfo.kpId || allohaInfo.imdbId) {
-      details.alloha = allohaInfo
-      if (!details.externalIds) details.externalIds = {}
-      if (allohaInfo.kpId) details.externalIds.kp = allohaInfo.kpId
-      if (allohaInfo.imdbId) details.externalIds.imdb = allohaInfo.imdbId
-    }
-
-    setCached(detailsCache, cacheKey, details)
     return c.json({ status: "success", data: details })
   } catch (err: any) {
-    return c.json({ status: "error", message: err.message || "Failed to fetch TV details" }, 500)
+    return c.json({ status: "error", message: err.message || "Failed to fetch media details" }, 500)
   }
 })
