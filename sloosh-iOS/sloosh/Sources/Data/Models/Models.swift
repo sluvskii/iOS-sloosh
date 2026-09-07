@@ -728,6 +728,60 @@ struct CastMemberDto: Codable, Identifiable, Hashable {
     }
 }
 
+struct PersonDetailsDto: Codable, Identifiable {
+    let id: Int
+    let name: String
+    let originalName: String?
+    let biography: String?
+    let birthday: String?
+    let deathday: String?
+    let placeOfBirth: String?
+    let photo: String?
+    let knownForDepartment: String?
+    let department: String?
+    let gender: Int?
+    let filmography: [MediaDto]?
+    let photos: [String]?
+
+    var age: Int? {
+        guard let birthday = birthday, !birthday.isEmpty else { return nil }
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        guard let birthDate = formatter.date(from: birthday) else { return nil }
+        let calendar = Calendar.current
+        let now = Date()
+        let ageComponents = calendar.dateComponents([.year], from: birthDate, to: now)
+        return ageComponents.year
+    }
+
+    var formattedBirthdayWithAge: String? {
+        guard let birthday = birthday, !birthday.isEmpty else { return nil }
+        let inputFormatter = DateFormatter()
+        inputFormatter.dateFormat = "yyyy-MM-dd"
+        guard let date = inputFormatter.date(from: birthday) else { return birthday }
+        let outputFormatter = DateFormatter()
+        outputFormatter.locale = Locale(identifier: "ru_RU")
+        outputFormatter.dateFormat = "d MMMM yyyy"
+        let dateStr = outputFormatter.string(from: date)
+        if let age = age {
+            let suffix: String
+            let lastDigit = age % 10
+            let lastTwoDigits = age % 100
+            if lastTwoDigits >= 11 && lastTwoDigits <= 19 {
+                suffix = "лет"
+            } else if lastDigit == 1 {
+                suffix = "год"
+            } else if lastDigit >= 2 && lastDigit <= 4 {
+                suffix = "года"
+            } else {
+                suffix = "лет"
+            }
+            return "\(dateStr) (\(age) \(suffix))"
+        }
+        return dateStr
+    }
+}
+
 struct TrailerVideoDto: Codable, Identifiable, Hashable {
     let id: String
     let name: String

@@ -320,3 +320,26 @@ mediaRouter.get("/media/:id", async (c) => {
     return c.json({ status: "error", message: err.message || "Failed to fetch media details" }, 500)
   }
 })
+
+// GET /api/v1/person/:id & /api/v2/person/:id
+mediaRouter.get("/person/:id", async (c) => {
+  const rawId = c.req.param("id").replace(/\D/g, "")
+  const id = parseInt(rawId, 10)
+  if (isNaN(id) || id <= 0) {
+    return c.json({ status: "error", message: "Invalid Person ID" }, 400)
+  }
+
+  const cacheKey = `person:${id}`
+  const cached = getCached<any>(detailsCache, cacheKey)
+  if (cached) {
+    return c.json({ status: "success", data: cached })
+  }
+
+  try {
+    const details = await tmdb.getPersonDetails(id)
+    setCached(detailsCache, cacheKey, details)
+    return c.json({ status: "success", data: details })
+  } catch (err: any) {
+    return c.json({ status: "error", message: err.message || "Failed to fetch person details" }, 500)
+  }
+})
