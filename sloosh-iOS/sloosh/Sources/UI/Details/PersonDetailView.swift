@@ -1,5 +1,6 @@
 import SwiftUI
 import Photos
+import UIKit
 
 struct PersonDetailView: View {
     let personId: Int
@@ -173,6 +174,8 @@ struct PersonDetailView: View {
         }
         .fullScreenCover(isPresented: $showPhotoGallery) {
             PersonPhotoGalleryView(photos: allPhotos, selectedIndex: selectedPhotoIndex)
+                .ignoresSafeArea()
+                .presentationBackground(.clear)
         }
         .task {
             await viewModel.loadDetails()
@@ -726,42 +729,33 @@ struct PersonPhotoGalleryView: View {
     let photos: [String]
     @State var selectedIndex: Int
     @Environment(\.dismiss) private var dismiss
-    @State private var dragOffset: CGFloat = 0
+    @State private var showControls: Bool = true
 
     var body: some View {
         ZStack {
-            Color.black
-                .ignoresSafeArea()
-                .opacity(max(0.4, 1.0 - Double(abs(dragOffset) / 300)))
-
-            TabView(selection: $selectedIndex) {
-                ForEach(photos.indices, id: \.self) { idx in
-                    ZoomablePhotoView(urlString: photos[idx])
-                        .tag(idx)
+            // Native UIKit Pager with UIScrollView per page & interactive pull-down-to-dismiss
+            PhotoGalleryPagerRepresentable(
+                photos: photos,
+                currentIndex: $selectedIndex,
+                onSingleTap: {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        showControls.toggle()
+                    }
+                },
+                onDismiss: {
+                    dismiss()
+                },
+                onControlsVisibilityChange: { visible in
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        showControls = visible
+                    }
                 }
-            }
-            .tabViewStyle(.page(indexDisplayMode: .never))
-            .offset(y: dragOffset)
-            .gesture(
-                DragGesture()
-                    .onChanged { value in
-                        if value.translation.height > 0 {
-                            dragOffset = value.translation.height
-                        }
-                    }
-                    .onEnded { value in
-                        if value.translation.height > 120 || value.predictedEndTranslation.height > 250 {
-                            dismiss()
-                        } else {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                                dragOffset = 0
-                            }
-                        }
-                    }
             )
+            .ignoresSafeArea()
 
-            // Top Bar
+            // Floating Controls Overlay
             VStack {
+                // Top Bar
                 HStack {
                     TelegramGlassIconButton(systemName: "xmark") {
                         dismiss()
@@ -808,14 +802,24 @@ struct PersonPhotoGalleryView: View {
                 .buttonStyle(.plain)
                 .padding(.bottom, 24)
             }
+            .safeAreaPadding(.top)
+            .safeAreaPadding(.bottom)
+            .opacity(showControls ? 1.0 : 0.0)
+            .allowsHitTesting(showControls)
+            .animation(.easeInOut(duration: 0.2), value: showControls)
         }
         .environment(\.colorScheme, .dark)
+        .statusBarHidden(!showControls)
+        .persistentSystemOverlays(showControls ? .visible : .hidden)
     }
 
     private func savePhoto(at index: Int) async {
         guard photos.indices.contains(index), let url = URL(string: photos[index]) else { return }
+        let effectiveUrl = resolveEffectiveUrl(url)
         do {
-            let (data, _) = try await URLSession.shared.data(from: url)
+            var request = URLRequest(url: effectiveUrl, cachePolicy: .returnCacheDataElseLoad)
+            request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15", forHTTPHeaderField: "User-Agent")
+            let (data, _) = try await URLSession.shared.data(for: request)
             guard let image = UIImage(data: data) else {
                 ToastManager.shared.show(title: "Не удалось загрузить фото", icon: "xmark.circle")
                 return
@@ -836,12 +840,15 @@ struct PersonPhotoGalleryView: View {
 
     private func sharePhoto(at index: Int) {
         guard photos.indices.contains(index), let url = URL(string: photos[index]) else { return }
+        let effectiveUrl = resolveEffectiveUrl(url)
         var items: [Any] = []
-        if let data = URLCache.shared.cachedResponse(for: URLRequest(url: url))?.data,
-           let img = UIImage(data: data) {
+        if let cached = ImageCache.shared.image(forKey: effectiveUrl.absoluteString) {
+            items.append(cached)
+        } else if let data = URLCache.shared.cachedResponse(for: URLRequest(url: effectiveUrl))?.data,
+                  let img = UIImage(data: data) {
             items.append(img)
         } else {
-            items.append(url)
+            items.append(effectiveUrl)
         }
         let av = UIActivityViewController(activityItems: items, applicationActivities: nil)
         if let windowScene = UIApplication.shared.connectedScenes
@@ -853,90 +860,481 @@ struct PersonPhotoGalleryView: View {
             topVC.present(av, animated: true)
         }
     }
+
+    private func resolveEffectiveUrl(_ targetUrl: URL) -> URL {
+        let str = targetUrl.absoluteString
+        if str.contains("image.tmdb.org/t/p/") {
+            let proxied = str.replacingOccurrences(of: "https://image.tmdb.org/t/p/", with: "https://api-sloosh.vercel.app/api/v1/images/tmdb/")
+            return URL(string: proxied) ?? targetUrl
+        }
+        return targetUrl
+    }
 }
 
-// MARK: - Zoomable Photo View
+// MARK: - Native UIKit Photo Pager Representable
 
-private struct ZoomablePhotoView: View {
-    let urlString: String
-    @State private var scale: CGFloat = 1.0
-    @State private var lastScale: CGFloat = 1.0
-    @State private var offset: CGSize = .zero
-    @State private var lastOffset: CGSize = .zero
+private struct PhotoGalleryPagerRepresentable: UIViewControllerRepresentable {
+    let photos: [String]
+    @Binding var currentIndex: Int
+    let onSingleTap: () -> Void
+    let onDismiss: () -> Void
+    let onControlsVisibilityChange: (Bool) -> Void
 
-    var body: some View {
-        GeometryReader { geo in
-            AsyncCachedImage(url: URL(string: urlString)) {
-                ZStack {
-                    Color.black
-                    ProgressView()
-                        .tint(.white)
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+
+    func makeUIViewController(context: Context) -> PhotoGalleryContainerViewController {
+        let vc = PhotoGalleryContainerViewController(
+            photos: photos,
+            initialIndex: currentIndex
+        )
+        vc.onIndexChanged = { newIndex in
+            context.coordinator.parent.currentIndex = newIndex
+        }
+        vc.onSingleTap = onSingleTap
+        vc.onDismiss = onDismiss
+        vc.onControlsVisibilityChange = onControlsVisibilityChange
+        return vc
+    }
+
+    func updateUIViewController(_ uiViewController: PhotoGalleryContainerViewController, context: Context) {
+        if uiViewController.currentIndex != currentIndex {
+            uiViewController.goTo(index: currentIndex, animated: true)
+        }
+    }
+
+    class Coordinator {
+        var parent: PhotoGalleryPagerRepresentable
+        init(_ parent: PhotoGalleryPagerRepresentable) {
+            self.parent = parent
+        }
+    }
+}
+
+// MARK: - Photo Gallery Container View Controller
+
+private final class PhotoGalleryContainerViewController: UIViewController, UIPageViewControllerDataSource, UIPageViewControllerDelegate, UIGestureRecognizerDelegate {
+    let photos: [String]
+    var currentIndex: Int
+    var onIndexChanged: ((Int) -> Void)?
+    var onSingleTap: (() -> Void)?
+    var onDismiss: (() -> Void)?
+    var onControlsVisibilityChange: ((Bool) -> Void)?
+
+    private let dimmingView = UIView()
+    private var pageViewController: UIPageViewController!
+    private var panGesture: UIPanGestureRecognizer!
+
+    init(photos: [String], initialIndex: Int) {
+        self.photos = photos
+        self.currentIndex = initialIndex
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .clear
+
+        // Dimming backdrop
+        dimmingView.backgroundColor = .black
+        dimmingView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(dimmingView)
+        NSLayoutConstraint.activate([
+            dimmingView.topAnchor.constraint(equalTo: view.topAnchor),
+            dimmingView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            dimmingView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            dimmingView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
+
+        // Page view controller with 20pt inter-page spacing
+        pageViewController = UIPageViewController(
+            transitionStyle: .scroll,
+            navigationOrientation: .horizontal,
+            options: [.interPageSpacing: 20]
+        )
+        pageViewController.dataSource = self
+        pageViewController.delegate = self
+
+        addChild(pageViewController)
+        pageViewController.view.backgroundColor = .clear
+        pageViewController.view.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(pageViewController.view)
+        NSLayoutConstraint.activate([
+            pageViewController.view.topAnchor.constraint(equalTo: view.topAnchor),
+            pageViewController.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            pageViewController.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            pageViewController.view.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
+        pageViewController.didMove(toParent: self)
+
+        if photos.indices.contains(currentIndex) {
+            let initialVC = makePhotoPageVC(index: currentIndex)
+            pageViewController.setViewControllers([initialVC], direction: .forward, animated: false)
+        }
+
+        // Pull-down-to-dismiss gesture
+        panGesture = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
+        panGesture.delegate = self
+        view.addGestureRecognizer(panGesture)
+    }
+
+    var currentPhotoVC: PhotoPageViewController? {
+        return pageViewController.viewControllers?.first as? PhotoPageViewController
+    }
+
+    func goTo(index: Int, animated: Bool) {
+        guard photos.indices.contains(index) else { return }
+        if let current = currentPhotoVC, current.pageIndex == index {
+            self.currentIndex = index
+            return
+        }
+        let direction: UIPageViewController.NavigationDirection = index >= currentIndex ? .forward : .reverse
+        currentIndex = index
+        let vc = makePhotoPageVC(index: index)
+        pageViewController.setViewControllers([vc], direction: direction, animated: animated)
+    }
+
+    private func makePhotoPageVC(index: Int) -> PhotoPageViewController {
+        let vc = PhotoPageViewController(photoUrl: photos[index], pageIndex: index)
+        vc.onSingleTap = { [weak self] in
+            self?.onSingleTap?()
+        }
+        return vc
+    }
+
+    // MARK: - UIPageViewControllerDataSource
+
+    func pageViewController(_ pageViewController: UIPageViewController, viewControllerBefore viewController: UIViewController) -> UIViewController? {
+        guard let current = viewController as? PhotoPageViewController else { return nil }
+        let targetIndex = current.pageIndex - 1
+        guard targetIndex >= 0, targetIndex < photos.count else { return nil }
+        return makePhotoPageVC(index: targetIndex)
+    }
+
+    func pageViewController(_ pageViewController: UIPageViewController, viewControllerAfter viewController: UIViewController) -> UIViewController? {
+        guard let current = viewController as? PhotoPageViewController else { return nil }
+        let targetIndex = current.pageIndex + 1
+        guard targetIndex >= 0, targetIndex < photos.count else { return nil }
+        return makePhotoPageVC(index: targetIndex)
+    }
+
+    // MARK: - UIPageViewControllerDelegate
+
+    func pageViewController(_ pageViewController: UIPageViewController, didFinishAnimating finished: Bool, previousViewControllers: [UIViewController], transitionCompleted completed: Bool) {
+        if completed, let current = pageViewController.viewControllers?.first as? PhotoPageViewController {
+            currentIndex = current.pageIndex
+            onIndexChanged?(current.pageIndex)
+        }
+    }
+
+    // MARK: - UIGestureRecognizerDelegate
+
+    func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
+        if gestureRecognizer == panGesture {
+            // Only pull-to-dismiss if the photo is NOT zoomed in
+            guard let current = currentPhotoVC, !current.isZoomed else { return false }
+            let velocity = panGesture.velocity(in: view)
+            // Dominantly vertical downward gesture (at least 1.5x more vertical than horizontal)
+            return velocity.y > 0 && abs(velocity.y) > abs(velocity.x) * 1.5
+        }
+        return true
+    }
+
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+        return false
+    }
+
+    // MARK: - Pull Down to Dismiss Handler
+
+    @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
+        let translation = gesture.translation(in: view)
+        let velocity = gesture.velocity(in: view)
+
+        switch gesture.state {
+        case .began:
+            onControlsVisibilityChange?(false)
+        case .changed:
+            if translation.y > 0 {
+                let progress = min(translation.y / view.bounds.height, 1.0)
+                let scale = max(0.82, 1.0 - progress * 0.22)
+                pageViewController.view.transform = CGAffineTransform(translationX: translation.x * 0.15, y: translation.y)
+                    .scaledBy(x: scale, y: scale)
+
+                let alpha = max(0.0, 1.0 - Double(translation.y / 350.0))
+                dimmingView.alpha = CGFloat(alpha)
+            } else {
+                pageViewController.view.transform = .identity
+                dimmingView.alpha = 1.0
+            }
+        case .ended:
+            if translation.y > 90 || velocity.y > 600 {
+                // Smooth dismiss animation
+                UIView.animate(withDuration: 0.25, delay: 0, options: [.curveEaseOut]) {
+                    self.pageViewController.view.transform = CGAffineTransform(translationX: 0, y: self.view.bounds.height)
+                    self.dimmingView.alpha = 0
+                } completion: { _ in
+                    self.onDismiss?()
                 }
-                .frame(width: geo.size.width, height: geo.size.height)
-            } content: { image in
-                Image(uiImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: .fit)
-                    .scaleEffect(scale)
-                    .offset(offset)
-                    .gesture(
-                        MagnificationGesture()
-                            .onChanged { value in
-                                let delta = value / lastScale
-                                lastScale = value
-                                scale = min(max(scale * delta, 1.0), 4.0)
-                            }
-                            .onEnded { _ in
-                                lastScale = 1.0
-                                if scale < 1.0 {
-                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                                        scale = 1.0
-                                        offset = .zero
-                                    }
-                                }
-                            }
-                    )
-                    .simultaneousGesture(
-                        DragGesture()
-                            .onChanged { value in
-                                if scale > 1.0 {
-                                    offset = CGSize(
-                                        width: lastOffset.width + value.translation.width,
-                                        height: lastOffset.height + value.translation.height
-                                    )
-                                }
-                            }
-                            .onEnded { _ in
-                                if scale > 1.0 {
-                                    lastOffset = offset
-                                } else {
-                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                                        offset = .zero
-                                        lastOffset = .zero
-                                    }
-                                }
-                            }
-                    )
-                    .onTapGesture(count: 2) {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                            if scale > 1.0 {
-                                scale = 1.0
-                                offset = .zero
-                                lastOffset = .zero
-                            } else {
-                                scale = 2.5
-                            }
-                        }
+            } else {
+                // Elastic snap back
+                UIView.animate(withDuration: 0.35, delay: 0, usingSpringWithDamping: 0.85, initialSpringVelocity: 0.5, options: []) {
+                    self.pageViewController.view.transform = .identity
+                    self.dimmingView.alpha = 1.0
+                } completion: { _ in
+                    self.onControlsVisibilityChange?(true)
+                }
+            }
+        case .cancelled:
+            UIView.animate(withDuration: 0.3) {
+                self.pageViewController.view.transform = .identity
+                self.dimmingView.alpha = 1.0
+            }
+            self.onControlsVisibilityChange?(true)
+        default:
+            break
+        }
+    }
+}
+
+// MARK: - Photo Page View Controller (Zoomable & Padded Edge-to-Edge)
+
+private final class PhotoPageViewController: UIViewController, UIScrollViewDelegate {
+    let photoUrl: String
+    let pageIndex: Int
+    var onSingleTap: (() -> Void)?
+
+    private let scrollView = UIScrollView()
+    private let imageView = UIImageView()
+    private let spinner = UIActivityIndicatorView(style: .large)
+    private var loadTask: Task<Void, Never>?
+
+    var isZoomed: Bool {
+        return scrollView.zoomScale > 1.05
+    }
+
+    init(photoUrl: String, pageIndex: Int) {
+        self.photoUrl = photoUrl
+        self.pageIndex = pageIndex
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .clear
+
+        // True edge-to-edge full-screen scroll view
+        scrollView.frame = view.bounds
+        scrollView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        scrollView.delegate = self
+        scrollView.minimumZoomScale = 1.0
+        scrollView.maximumZoomScale = 4.0
+        scrollView.bouncesZoom = true
+        scrollView.alwaysBounceVertical = false
+        scrollView.alwaysBounceHorizontal = false
+        scrollView.showsVerticalScrollIndicator = false
+        scrollView.showsHorizontalScrollIndicator = false
+        scrollView.contentInsetAdjustmentBehavior = .never
+        scrollView.backgroundColor = .clear
+        view.addSubview(scrollView)
+
+        imageView.contentMode = .scaleAspectFit
+        imageView.clipsToBounds = true
+        scrollView.addSubview(imageView)
+
+        spinner.color = .white
+        spinner.hidesWhenStopped = true
+        spinner.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(spinner)
+        NSLayoutConstraint.activate([
+            spinner.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+            spinner.centerYAnchor.constraint(equalTo: view.centerYAnchor)
+        ])
+
+        setupGestures()
+        loadImage()
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        if scrollView.zoomScale <= 1.01 {
+            updateImageLayout()
+        }
+    }
+
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        if scrollView.zoomScale > 1.0 {
+            scrollView.zoomScale = 1.0
+            centerImage()
+            scrollView.panGestureRecognizer.isEnabled = false
+        }
+    }
+
+    deinit {
+        loadTask?.cancel()
+    }
+
+    private func setupGestures() {
+        let doubleTap = UITapGestureRecognizer(target: self, action: #selector(handleDoubleTap(_:)))
+        doubleTap.numberOfTapsRequired = 2
+
+        let singleTap = UITapGestureRecognizer(target: self, action: #selector(handleSingleTap(_:)))
+        singleTap.numberOfTapsRequired = 1
+        singleTap.require(toFail: doubleTap)
+
+        view.addGestureRecognizer(doubleTap)
+        view.addGestureRecognizer(singleTap)
+    }
+
+    @objc private func handleSingleTap(_ gesture: UITapGestureRecognizer) {
+        onSingleTap?()
+    }
+
+    @objc private func handleDoubleTap(_ gesture: UITapGestureRecognizer) {
+        if scrollView.zoomScale > 1.05 {
+            scrollView.setZoomScale(1.0, animated: true)
+            scrollView.panGestureRecognizer.isEnabled = false
+        } else {
+            scrollView.panGestureRecognizer.isEnabled = true
+            let touchPoint = gesture.location(in: imageView)
+            let targetScale: CGFloat = 2.5
+            let targetW = scrollView.bounds.width / targetScale
+            let targetH = scrollView.bounds.height / targetScale
+            let zoomRect = CGRect(
+                x: touchPoint.x - targetW / 2,
+                y: touchPoint.y - targetH / 2,
+                width: targetW,
+                height: targetH
+            )
+            scrollView.zoom(to: zoomRect, animated: true)
+        }
+    }
+
+    // MARK: - UIScrollViewDelegate
+
+    func viewForZooming(in scrollView: UIScrollView) -> UIView? {
+        return imageView
+    }
+
+    func scrollViewDidZoom(_ scrollView: UIScrollView) {
+        centerImage()
+    }
+
+    func scrollViewWillBeginZooming(_ scrollView: UIScrollView, with view: UIView?) {
+        scrollView.panGestureRecognizer.isEnabled = true
+    }
+
+    func scrollViewDidEndZooming(_ scrollView: UIScrollView, with view: UIView?, atScale scale: CGFloat) {
+        if scale <= 1.01 {
+            scrollView.zoomScale = 1.0
+            centerImage()
+            scrollView.panGestureRecognizer.isEnabled = false
+        } else {
+            scrollView.panGestureRecognizer.isEnabled = true
+        }
+    }
+
+    private func centerImage() {
+        let boundsSize = scrollView.bounds.size
+        var frameToCenter = imageView.frame
+
+        if frameToCenter.size.width < boundsSize.width {
+            frameToCenter.origin.x = (boundsSize.width - frameToCenter.size.width) / 2
+        } else {
+            frameToCenter.origin.x = 0
+        }
+
+        if frameToCenter.size.height < boundsSize.height {
+            frameToCenter.origin.y = (boundsSize.height - frameToCenter.size.height) / 2
+        } else {
+            frameToCenter.origin.y = 0
+        }
+
+        imageView.frame = frameToCenter
+    }
+
+    private func updateImageLayout() {
+        guard let image = imageView.image else { return }
+        let boundsSize = view.bounds.size
+        guard boundsSize.width > 0, boundsSize.height > 0 else { return }
+
+        let imgSize = image.size
+        guard imgSize.width > 0, imgSize.height > 0 else { return }
+
+        scrollView.zoomScale = 1.0
+        let scale = min(boundsSize.width / imgSize.width, boundsSize.height / imgSize.height)
+        let fitW = imgSize.width * scale
+        let fitH = imgSize.height * scale
+
+        imageView.frame = CGRect(x: 0, y: 0, width: fitW, height: fitH)
+        scrollView.contentSize = CGSize(width: fitW, height: fitH)
+        centerImage()
+        scrollView.panGestureRecognizer.isEnabled = false
+    }
+
+    private func resolveEffectiveUrl(_ targetUrl: URL) -> URL {
+        let str = targetUrl.absoluteString
+        if str.contains("image.tmdb.org/t/p/") {
+            let proxied = str.replacingOccurrences(of: "https://image.tmdb.org/t/p/", with: "https://api-sloosh.vercel.app/api/v1/images/tmdb/")
+            return URL(string: proxied) ?? targetUrl
+        }
+        return targetUrl
+    }
+
+    private func loadImage() {
+        guard let url = URL(string: photoUrl) else { return }
+        let effectiveUrl = resolveEffectiveUrl(url)
+
+        if let cached = ImageCache.shared.image(forKey: effectiveUrl.absoluteString) {
+            imageView.image = cached
+            updateImageLayout()
+            return
+        }
+
+        var request = URLRequest(url: effectiveUrl, cachePolicy: .returnCacheDataElseLoad)
+        request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15", forHTTPHeaderField: "User-Agent")
+
+        if let cachedResponse = URLCache.shared.cachedResponse(for: request),
+           let img = UIImage(data: cachedResponse.data) {
+            ImageCache.shared.insertImage(img, forKey: effectiveUrl.absoluteString)
+            imageView.image = img
+            updateImageLayout()
+            return
+        }
+
+        spinner.startAnimating()
+        loadTask = Task { [weak self] in
+            do {
+                let (data, response) = try await URLSession.shared.data(for: request)
+                guard !Task.isCancelled else { return }
+                guard let http = response as? HTTPURLResponse, http.statusCode == 200,
+                      let img = UIImage(data: data) else {
+                    await MainActor.run {
+                        self?.spinner.stopAnimating()
                     }
-                    .frame(width: geo.size.width, height: geo.size.height)
-            } fallback: {
-                ZStack {
-                    Color.black
-                    Image(systemName: "photo")
-                        .font(.system(size: 48))
-                        .foregroundStyle(Color.white.opacity(0.3))
+                    return
                 }
-                .frame(width: geo.size.width, height: geo.size.height)
+                ImageCache.shared.insertImage(img, forKey: effectiveUrl.absoluteString)
+                await MainActor.run {
+                    self?.spinner.stopAnimating()
+                    self?.imageView.image = img
+                    self?.updateImageLayout()
+                }
+            } catch {
+                if !Task.isCancelled {
+                    await MainActor.run {
+                        self?.spinner.stopAnimating()
+                    }
+                }
             }
         }
     }
