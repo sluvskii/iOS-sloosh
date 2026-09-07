@@ -192,10 +192,7 @@ struct DetailsView: View {
             )
             .environment(\.colorScheme, .dark)
             .ignoresSafeArea(edges: .top)
-            .navigationTitle("")
-            .navigationBarBackButtonHidden(true)
-            .toolbarVisibility(.hidden, for: .navigationBar)
-            .toolbar(.hidden, for: .navigationBar)
+            .hideNavigationBarWithRestore()
             .safeAreaInset(edge: .top, spacing: 0) {
                 ZStack {
                     if let details = viewModel.details, isLogoAtTop {
@@ -281,10 +278,6 @@ struct DetailsView: View {
                         .allowsHitTesting(false)
                 )
             }
-            .navigationTitle("")
-            .navigationBarBackButtonHidden(true)
-            .toolbarVisibility(.hidden, for: .navigationBar)
-            .toolbar(.hidden, for: .navigationBar)
             .task {
                 await viewModel.loadDetails(id: movieId, studio: initialStudio)
             }
