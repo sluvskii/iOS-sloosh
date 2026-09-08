@@ -5,6 +5,7 @@ import type {
   MediaDetailsDto,
   MediaResponse,
   CastMemberDto,
+  CrewMemberDto,
   TrailerVideoDto,
   MovieCollectionDto,
   CollectionPartDto,
@@ -237,6 +238,111 @@ export function mapRawTv(t: any): MediaDto {
     externalIds: {
       tmdb: t.id,
     },
+  }
+}
+
+export function extractCrew(data: any, isTv: boolean = false): {
+  directors: CrewMemberDto[]
+  writers: CrewMemberDto[]
+  crew: CrewMemberDto[]
+} {
+  const crewList: any[] = data.credits?.crew || []
+  const createdByList: any[] = data.created_by || []
+
+  const directorsMap = new Map<number, CrewMemberDto>()
+  const writersMap = new Map<number, CrewMemberDto>()
+  const creatorsMap = new Map<number, CrewMemberDto>()
+
+  // 1. TV created_by
+  for (const c of createdByList) {
+    if (!c.id || !c.name) continue
+    const creatorDto: CrewMemberDto = {
+      id: c.id,
+      name: c.name || c.original_name,
+      originalName: c.original_name || c.name,
+      role: "Создатель",
+      photo: formatImageUrl(c.profile_path, "w500") || null,
+    }
+    creatorsMap.set(c.id, creatorDto)
+    if (isTv && !directorsMap.has(c.id)) {
+      directorsMap.set(c.id, creatorDto)
+    }
+  }
+
+  // 2. Directors from crew
+  for (const c of crewList) {
+    if (!c.id || !c.name) continue
+    if (c.job === "Director") {
+      if (!directorsMap.has(c.id)) {
+        directorsMap.set(c.id, {
+          id: c.id,
+          name: c.name || c.original_name,
+          originalName: c.original_name || c.name,
+          role: "Режиссёр",
+          photo: formatImageUrl(c.profile_path, "w500") || null,
+        })
+      }
+    }
+  }
+
+  // 3. Writers from crew
+  const writerJobs = new Set([
+    "Screenplay", "Writer", "Story", "Author", "Co-Writer", "Comic Book", 
+    "Novel", "Characters", "Head Writer", "Scenario"
+  ])
+  for (const c of crewList) {
+    if (!c.id || !c.name) continue
+    if (c.department === "Writing" || writerJobs.has(c.job)) {
+      if (!writersMap.has(c.id)) {
+        let role = "Сценарист"
+        if (c.job === "Novel" || c.job === "Author") role = "Автор книги"
+        else if (c.job === "Characters") role = "Персонажи"
+        else if (c.job === "Story") role = "Автор сюжета"
+        writersMap.set(c.id, {
+          id: c.id,
+          name: c.name || c.original_name,
+          originalName: c.original_name || c.name,
+          role,
+          photo: formatImageUrl(c.profile_path, "w500") || null,
+        })
+      }
+    }
+  }
+
+  // 4. Combined unified crew (deduplicated by id, combining roles)
+  const unifiedMap = new Map<number, CrewMemberDto>()
+
+  // Start with creators (for TV)
+  for (const [id, m] of creatorsMap) {
+    unifiedMap.set(id, { ...m })
+  }
+
+  // Merge directors
+  for (const [id, m] of directorsMap) {
+    if (unifiedMap.has(id)) {
+      const existing = unifiedMap.get(id)!
+      existing.role = `${existing.role}, режиссёр`
+    } else {
+      unifiedMap.set(id, { ...m })
+    }
+  }
+
+  // Merge writers
+  for (const [id, m] of writersMap) {
+    if (unifiedMap.has(id)) {
+      const existing = unifiedMap.get(id)!
+      if (!existing.role.includes("сценарист") && !existing.role.includes("Сценарист")) {
+        existing.role = `${existing.role}, сценарист`
+      }
+    } else {
+      unifiedMap.set(id, { ...m })
+    }
+  }
+
+  return {
+    directors: Array.from(directorsMap.values()).slice(0, 10),
+    writers: Array.from(writersMap.values()).slice(0, 10),
+    crew: Array.from(unifiedMap.values()).slice(0, 15),
   }
 }
 
@@ -515,6 +621,9 @@ export class TMDBService {
       photo: formatImageUrl(c.profile_path, "w500") || null,
     }))
 
+    // Directors, Writers, Crew
+    const { directors, writers, crew } = extractCrew(data, false)
+
     // Trailers
     const trailers: TrailerVideoDto[] = (data.videos?.results || [])
       .filter((v: any) => v.site === "YouTube" && (v.type === "Trailer" || v.type === "Teaser"))
@@ -639,6 +748,9 @@ export class TMDBService {
       countries: (data.production_countries || []).map(localizeCountry).filter(Boolean),
       logo: logoUrl,
       cast,
+      directors,
+      writers,
+      crew,
       trailers,
       collection,
       productionCompanies,
@@ -667,6 +779,9 @@ export class TMDBService {
       character: c.character || "",
       photo: formatImageUrl(c.profile_path, "w500") || null,
     }))
+
+    // Directors, Writers, Crew
+    const { directors, writers, crew } = extractCrew(data, true)
 
     // Trailers
     const trailers: TrailerVideoDto[] = (data.videos?.results || [])
@@ -754,6 +869,9 @@ export class TMDBService {
       countries: (data.origin_country || (data.production_countries ? data.production_countries.map((c: any) => c.iso_3166_1 || c.name) : [])).map(localizeCountry).filter(Boolean),
       logo: logoUrl,
       cast,
+      directors,
+      writers,
+      crew,
       trailers,
       networks,
       similar: similarTv,
@@ -822,7 +940,10 @@ export class TMDBService {
       .map((img: any) => formatImageUrl(img.file_path, "original"))
       .filter(Boolean) as string[]
 
-    const rawCredits: any[] = data.combined_credits?.cast || []
+    const rawCredits: any[] = [
+      ...(data.combined_credits?.cast || []),
+      ...(data.combined_credits?.crew || []),
+    ]
     const seenIds = new Set<string>()
     const filmography: MediaDto[] = []
 

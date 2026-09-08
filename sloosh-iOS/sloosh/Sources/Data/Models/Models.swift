@@ -312,6 +312,9 @@ struct MediaDetailsDto: Codable {
     let backdrop: String?
     let logo: String?
     let cast: [CastMemberDto]?
+    let directors: [CrewMemberDto]?
+    let writers: [CrewMemberDto]?
+    let crew: [CrewMemberDto]?
     let trailers: [TrailerVideoDto]?
     let ratings: RatingsV2Dto?
     let ids: IdsDto?
@@ -323,7 +326,7 @@ struct MediaDetailsDto: Codable {
     
     enum CodingKeys: String, CodingKey {
         case id, title, originalTitle, description, type, year, releaseDate
-        case genres, countries, duration, poster, backdrop, logo, cast, trailers
+        case genres, countries, duration, poster, backdrop, logo, cast, directors, writers, crew, trailers
         case ratings, ids, externalIds, productionCompanies, networks, collection, similar
     }
 
@@ -342,6 +345,9 @@ struct MediaDetailsDto: Codable {
         backdrop: String? = nil,
         logo: String? = nil,
         cast: [CastMemberDto]? = nil,
+        directors: [CrewMemberDto]? = nil,
+        writers: [CrewMemberDto]? = nil,
+        crew: [CrewMemberDto]? = nil,
         trailers: [TrailerVideoDto]? = nil,
         ratings: RatingsV2Dto? = nil,
         ids: IdsDto? = nil,
@@ -365,6 +371,9 @@ struct MediaDetailsDto: Codable {
         self.backdrop = backdrop
         self.logo = logo
         self.cast = cast
+        self.directors = directors
+        self.writers = writers
+        self.crew = crew
         self.trailers = trailers
         self.ratings = ratings
         self.ids = ids
@@ -419,6 +428,9 @@ struct MediaDetailsDto: Codable {
         self.backdrop = try? container.decodeIfPresent(String.self, forKey: .backdrop)
         self.logo = try? container.decodeIfPresent(String.self, forKey: .logo)
         self.cast = try? container.decodeIfPresent([CastMemberDto].self, forKey: .cast)
+        self.directors = try? container.decodeIfPresent([CrewMemberDto].self, forKey: .directors)
+        self.writers = try? container.decodeIfPresent([CrewMemberDto].self, forKey: .writers)
+        self.crew = try? container.decodeIfPresent([CrewMemberDto].self, forKey: .crew)
         self.trailers = try? container.decodeIfPresent([TrailerVideoDto].self, forKey: .trailers)
         self.ratings = try? container.decodeIfPresent(RatingsV2Dto.self, forKey: .ratings)
         
@@ -728,6 +740,22 @@ struct CastMemberDto: Codable, Identifiable, Hashable {
         self.name = name
         self.originalName = originalName
         self.character = character
+        self.photo = photo
+    }
+}
+
+struct CrewMemberDto: Codable, Identifiable, Hashable {
+    let id: Int
+    let name: String
+    let originalName: String?
+    let role: String?
+    let photo: String?
+    
+    init(id: Int, name: String, originalName: String? = nil, role: String? = nil, photo: String? = nil) {
+        self.id = id
+        self.name = name
+        self.originalName = originalName
+        self.role = role
         self.photo = photo
     }
 }

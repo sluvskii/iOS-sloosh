@@ -201,6 +201,7 @@ struct DetailsView: View {
     @State private var isLogoAtTop: Bool = false
     @State private var isSavingImage: Bool = false
     @Namespace private var actorTransitionNamespace
+    @Namespace private var crewTransitionNamespace
     
     var body: some View {
         ZStack {
@@ -810,6 +811,11 @@ struct DetailsView: View {
                             .padding(.top, 20)
                             .padding(.horizontal)
 
+                        if let crew = details.crew, !crew.isEmpty {
+                            CrewSection(crew: crew, namespace: crewTransitionNamespace)
+                                .padding(.top, 16)
+                        }
+
                         if let cast = details.cast, !cast.isEmpty {
                             ActorsSection(cast: cast, namespace: actorTransitionNamespace)
                                 .padding(.top, 16)
@@ -963,6 +969,11 @@ struct DetailsView: View {
                             }
                             .frame(maxWidth: 550)
                             .frame(maxWidth: .infinity, alignment: .center)
+
+                            if let crew = details.crew, !crew.isEmpty {
+                                CrewSection(crew: crew, namespace: crewTransitionNamespace)
+                                    .padding(.top, 16)
+                            }
 
                             if let cast = details.cast, !cast.isEmpty {
                                 ActorsSection(cast: cast, namespace: actorTransitionNamespace)
@@ -1344,6 +1355,65 @@ private struct DetailsInfoSection: View {
                                 .padding(.horizontal, 14)
                                 .padding(.vertical, 8)
                                 .glassEffect(.regular.interactive(), in: Capsule())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+            }
+
+            let directors = details.directors ?? []
+            if !directors.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    let title = details.type == "tv"
+                        ? (directors.count == 1 ? "Создатель" : "Создатели")
+                        : (directors.count == 1 ? "Режиссёр" : "Режиссёры")
+                    Text(title)
+                        .font(.system(size: 18, weight: .bold))
+
+                    FlowLayout(spacing: 8) {
+                        ForEach(directors) { director in
+                            NavigationLink(
+                                destination: PersonDetailView(
+                                    personId: director.id,
+                                    initialName: director.name
+                                )
+                                .navigationBarBackButtonHidden(true)
+                            ) {
+                                Text(director.name)
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundColor(.primary)
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 8)
+                                    .glassEffect(.regular.interactive(), in: Capsule())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                }
+            }
+
+            let writers = details.writers ?? []
+            if !writers.isEmpty {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(writers.count == 1 ? "Сценарист" : "Сценаристы")
+                        .font(.system(size: 18, weight: .bold))
+
+                    FlowLayout(spacing: 8) {
+                        ForEach(writers) { writer in
+                            NavigationLink(
+                                destination: PersonDetailView(
+                                    personId: writer.id,
+                                    initialName: writer.name
+                                )
+                                .navigationBarBackButtonHidden(true)
+                            ) {
+                                Text(writer.name)
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundColor(.primary)
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 8)
+                                    .glassEffect(.regular.interactive(), in: Capsule())
                             }
                             .buttonStyle(.plain)
                         }
@@ -2480,6 +2550,109 @@ class DetailsViewModel: ObservableObject {
     private func preferredAllohaTranslation(from movie: AllohaMovie) -> AllohaTranslation? {
         let savedName = UserDefaults.standard.string(forKey: allohaTranslationPreferenceKey)
         return movie.translations.first(where: { $0.name == savedName }) ?? movie.translations.first
+    }
+}
+
+// MARK: - Crew / Creators Section
+
+private struct CrewSection: View {
+    let crew: [CrewMemberDto]
+    var namespace: Namespace.ID? = nil
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Создатели")
+                .font(.system(size: 18, weight: .bold))
+                .padding(.horizontal)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(alignment: .top, spacing: 14) {
+                    ForEach(crew) { member in
+                        let transitionID = "crew_\(member.id)"
+                        NavigationLink(
+                            destination: PersonDetailView(
+                                personId: member.id,
+                                initialName: member.name,
+                                navigationTransitionID: transitionID,
+                                navigationTransitionNamespace: namespace
+                            )
+                            .navigationBarBackButtonHidden(true)
+                        ) {
+                            if let namespace {
+                                CrewCardView(member: member)
+                                    .matchedTransitionSource(id: transitionID, in: namespace)
+                            } else {
+                                CrewCardView(member: member)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.horizontal)
+            }
+        }
+    }
+}
+
+private struct CrewCardView: View {
+    let member: CrewMemberDto
+
+    var body: some View {
+        VStack(spacing: 8) {
+            ZStack {
+                Circle()
+                    .fill(Color.white.opacity(0.08))
+                    .frame(width: 74, height: 74)
+
+                if let photo = member.photo, let url = URL(string: photo) {
+                    AsyncCachedImage(url: url) {
+                        Circle()
+                            .fill(Color.white.opacity(0.08))
+                            .frame(width: 74, height: 74)
+                            .shimmer()
+                    } content: { image in
+                        Image(uiImage: image)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: 74, height: 74)
+                            .clipShape(Circle())
+                    } fallback: {
+                        placeholder
+                    }
+                } else {
+                    placeholder
+                }
+            }
+            .overlay(
+                Circle()
+                    .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+            )
+            .shadow(color: .black.opacity(0.25), radius: 6, x: 0, y: 3)
+
+            VStack(spacing: 2) {
+                Text(member.name)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.center)
+
+                if let role = member.role, !role.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Text(role)
+                        .font(.system(size: 11, weight: .regular))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.center)
+                }
+            }
+            .frame(width: 86)
+        }
+    }
+
+    private var placeholder: some View {
+        Image(systemName: "person.fill")
+            .font(.system(size: 28))
+            .foregroundStyle(Color.white.opacity(0.35))
+            .frame(width: 74, height: 74)
     }
 }
 
