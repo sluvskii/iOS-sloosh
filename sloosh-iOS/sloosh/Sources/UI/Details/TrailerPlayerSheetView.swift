@@ -40,25 +40,27 @@ struct TrailerPlayerSheetView: View {
             .navigationTitle("Трейлер")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                // Кнопка закрытия (крупная иконка как в плеере)
+                // Кнопка закрытия как на других экранах (стандартный нативный размер)
                 ToolbarItem(placement: .cancellationAction) {
                     Button(action: { dismiss() }) {
                         Image(systemName: "xmark")
-                            .font(.system(size: 20, weight: .semibold))
-                            .foregroundStyle(.white)
+                            .symbolRenderingMode(.monochrome)
+                            .foregroundStyle(.primary)
                     }
-                    .tint(.white)
+                    .tint(.primary)
+                    .buttonStyle(.plain)
                 }
 
-                // Кнопка «Поделиться» сверху в шапке
+                // Кнопка «Поделиться» сверху в шапке (стандартный нативный размер)
                 ToolbarItem(placement: .primaryAction) {
                     if let webUrl = trailer.youtubeWebUrl {
                         ShareLink(item: webUrl) {
                             Image(systemName: "square.and.arrow.up")
-                                .font(.system(size: 20, weight: .semibold))
-                                .foregroundStyle(.white)
+                                .symbolRenderingMode(.monochrome)
+                                .foregroundStyle(.primary)
                         }
-                        .tint(.white)
+                        .tint(.primary)
+                        .buttonStyle(.plain)
                     }
                 }
             }
