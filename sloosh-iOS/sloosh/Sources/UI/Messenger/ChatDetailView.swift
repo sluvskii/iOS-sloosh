@@ -114,19 +114,7 @@ public struct ChatDetailView: View {
         .fullScreenCover(item: $activePlayerConfig, onDismiss: {
             activePlayerConfig = nil
         }) { config in
-            PlayerView(
-                iframeUrl: config.iframeUrl,
-                fallbackTitle: config.title,
-                kpId: config.kpId,
-                season: config.season,
-                episode: config.episode,
-                selectedVoiceover: config.voiceover,
-                directStreamUrl: config.streamUrl,
-                voices: config.voices,
-                subtitles: config.subtitles,
-                initialQuality: config.quality,
-                seriesResult: config.seriesResult
-            )
+            PlayerView(config: config)
         }
         .task {
             let chatId = repo.getOrCreateChatId(peerUserId: peerUser.id)

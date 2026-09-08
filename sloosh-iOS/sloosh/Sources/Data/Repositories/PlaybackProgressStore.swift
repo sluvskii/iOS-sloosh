@@ -6,8 +6,10 @@ import Combine
 public struct PlaybackProgressRecord: Identifiable, Codable {
     public let mediaId: String
     public let kpId: Int
+    public var tmdbId: Int?
     public let season: Int?
     public let episode: Int?
+    public var voiceover: String?
     public var positionSec: Double
     public var durationSec: Double
     public var watched: Bool
@@ -19,16 +21,36 @@ public struct PlaybackProgressRecord: Identifiable, Codable {
         season != nil && episode != nil
     }
 
+    public var rootMediaKey: String {
+        if let sRange = mediaId.range(of: "_s\\d+_e\\d+", options: .regularExpression) {
+            return String(mediaId[..<sRange.lowerBound])
+        }
+        return mediaId
+    }
+
     public var progressFraction: Double {
         guard durationSec.isFinite, durationSec > 0, positionSec.isFinite else { return 0 }
         return max(0, min(positionSec / durationSec, 0.999))
     }
 
-    public init(mediaId: String, kpId: Int, season: Int? = nil, episode: Int? = nil, positionSec: Double = 0, durationSec: Double = 0, watched: Bool = false, updatedAtMs: Int = Int(Date().timeIntervalSince1970 * 1000)) {
+    public init(
+        mediaId: String,
+        kpId: Int,
+        tmdbId: Int? = nil,
+        season: Int? = nil,
+        episode: Int? = nil,
+        voiceover: String? = nil,
+        positionSec: Double = 0,
+        durationSec: Double = 0,
+        watched: Bool = false,
+        updatedAtMs: Int = Int(Date().timeIntervalSince1970 * 1000)
+    ) {
         self.mediaId = mediaId
         self.kpId = kpId
+        self.tmdbId = tmdbId
         self.season = season
         self.episode = episode
+        self.voiceover = voiceover
         self.positionSec = positionSec
         self.durationSec = durationSec
         self.watched = watched
@@ -38,21 +60,35 @@ public struct PlaybackProgressRecord: Identifiable, Codable {
 
 public struct PlaybackMediaMetadata: Codable {
     public let kpId: Int
+    public let tmdbId: Int?
     public let detailsId: String
     public let title: String
     public let type: String?
     public let posterUrl: String?
     public let backdropUrl: String?
     public let logoUrl: String?
+    public let mediaKey: String?
 
-    public init(kpId: Int, detailsId: String, title: String, type: String? = nil, posterUrl: String? = nil, backdropUrl: String? = nil, logoUrl: String? = nil) {
+    public init(
+        kpId: Int,
+        tmdbId: Int? = nil,
+        detailsId: String,
+        title: String,
+        type: String? = nil,
+        posterUrl: String? = nil,
+        backdropUrl: String? = nil,
+        logoUrl: String? = nil,
+        mediaKey: String? = nil
+    ) {
         self.kpId = kpId
+        self.tmdbId = tmdbId
         self.detailsId = detailsId
         self.title = title
         self.type = type
         self.posterUrl = posterUrl
         self.backdropUrl = backdropUrl
         self.logoUrl = logoUrl
+        self.mediaKey = mediaKey
     }
 }
 
@@ -63,8 +99,9 @@ public final class PlaybackProgressStore: ObservableObject {
     private var context: ModelContext { AppDatabase.shared.container.mainContext }
     private var cancellables = Set<AnyCancellable>()
 
-    private static let episodeRegex = try! NSRegularExpression(pattern: "^kp_(\\d+)_s(\\d+)_e(\\d+)$")
-    private static let movieRegex   = try! NSRegularExpression(pattern: "^kp_(\\d+)$")
+    private static let episodeRegex = try! NSRegularExpression(pattern: "^(.+)_s(\\d+)_e(\\d+)$")
+    private static let kpMovieRegex = try! NSRegularExpression(pattern: "^kp_(\\d+)$")
+    private static let tmdbMovieRegex = try! NSRegularExpression(pattern: "^tmdb_(\\d+)$")
 
     public var currentUserId: String {
         guard let user = AuthRepository.shared.currentUser, !user.isAnonymous else {
@@ -120,8 +157,10 @@ public final class PlaybackProgressStore: ObservableObject {
         return PlaybackProgressRecord(
             mediaId: model.mediaId,
             kpId: model.kpId,
+            tmdbId: model.tmdbId,
             season: model.season,
             episode: model.episode,
+            voiceover: model.voiceover,
             positionSec: model.positionSec,
             durationSec: model.durationSec,
             watched: model.watched,
@@ -142,13 +181,19 @@ public final class PlaybackProgressStore: ObservableObject {
             model.durationSec = record.durationSec
             model.watched = record.watched
             model.updatedAtMs = record.updatedAtMs
+            if let v = record.voiceover { model.voiceover = v }
+            if let t = record.tmdbId { model.tmdbId = t }
+            if let s = record.season { model.season = s }
+            if let e = record.episode { model.episode = e }
         } else {
             let newModel = ProgressRecordModel(
                 userId: activeUserId,
                 mediaId: record.mediaId,
                 kpId: record.kpId,
+                tmdbId: record.tmdbId,
                 season: record.season,
                 episode: record.episode,
+                voiceover: record.voiceover,
                 positionSec: record.positionSec,
                 durationSec: record.durationSec,
                 watched: record.watched,
@@ -158,13 +203,12 @@ public final class PlaybackProgressStore: ObservableObject {
         }
 
         let now = Date()
-        if forceDiskSave || now.timeIntervalSince(lastDiskSaveDate) >= 15.0 {
+        if forceDiskSave || now.timeIntervalSince(lastDiskSaveDate) >= 5.0 {
             lastDiskSaveDate = now
             try? context.save()
             scheduleCloudProgressPush()
         }
     }
-
 
     private var lastCloudProgressPushDate: Date?
 
@@ -186,28 +230,44 @@ public final class PlaybackProgressStore: ObservableObject {
     private func createDefaultRecord(mediaId: String) -> PlaybackProgressRecord {
         let range = NSRange(mediaId.startIndex..., in: mediaId)
         var kpId = 0
+        var tmdbId: Int? = nil
         var season: Int? = nil
         var episode: Int? = nil
 
         if let match = Self.episodeRegex.firstMatch(in: mediaId, range: range) {
-            if let kpRange = Range(match.range(at: 1), in: mediaId),
+            if let rootRange = Range(match.range(at: 1), in: mediaId),
                let seasonRange = Range(match.range(at: 2), in: mediaId),
                let episodeRange = Range(match.range(at: 3), in: mediaId) {
-                kpId = Int(mediaId[kpRange]) ?? 0
+                let rootStr = String(mediaId[rootRange])
                 season = Int(mediaId[seasonRange])
                 episode = Int(mediaId[episodeRange])
+                if rootStr.hasPrefix("kp_") {
+                    kpId = Int(rootStr.dropFirst(3)) ?? 0
+                } else if rootStr.hasPrefix("tmdb_") {
+                    tmdbId = Int(rootStr.dropFirst(5))
+                } else if let intVal = Int(rootStr) {
+                    tmdbId = intVal
+                }
             }
-        } else if let match = Self.movieRegex.firstMatch(in: mediaId, range: range) {
+        } else if let match = Self.kpMovieRegex.firstMatch(in: mediaId, range: range) {
             if let kpRange = Range(match.range(at: 1), in: mediaId) {
                 kpId = Int(mediaId[kpRange]) ?? 0
             }
+        } else if let match = Self.tmdbMovieRegex.firstMatch(in: mediaId, range: range) {
+            if let tmdbRange = Range(match.range(at: 1), in: mediaId) {
+                tmdbId = Int(mediaId[tmdbRange])
+            }
+        } else if let intVal = Int(mediaId) {
+            tmdbId = intVal
         }
 
         return PlaybackProgressRecord(
             mediaId: mediaId,
             kpId: kpId,
+            tmdbId: tmdbId,
             season: season,
             episode: episode,
+            voiceover: nil,
             positionSec: 0,
             durationSec: 0,
             watched: false,
@@ -215,22 +275,40 @@ public final class PlaybackProgressStore: ObservableObject {
         )
     }
 
-    public func save(mediaId: String, positionSec: Double, durationSec: Double? = nil, forceDiskSave: Bool = false) {
+    public func save(
+        mediaId: String,
+        positionSec: Double,
+        durationSec: Double? = nil,
+        voiceover: String? = nil,
+        forceDiskSave: Bool = false
+    ) {
         guard !mediaId.isEmpty, positionSec.isFinite, positionSec >= 0 else { return }
         mutateRecord(mediaId: mediaId, forceDiskSave: forceDiskSave) { record in
             record.positionSec = positionSec
+            if let v = voiceover, !v.isEmpty {
+                record.voiceover = v
+            }
             if let dur = durationSec, dur > 0, dur.isFinite {
                 record.durationSec = dur
-                if positionSec / dur >= 0.9 {
+                if positionSec / dur >= 0.95 {
                     record.watched = true
                 }
             }
         }
     }
 
+    public func save(mediaId: String, positionSec: Double, durationSec: Double? = nil, forceDiskSave: Bool = false) {
+        save(mediaId: mediaId, positionSec: positionSec, durationSec: durationSec, voiceover: nil, forceDiskSave: forceDiskSave)
+    }
+
     public func load(mediaId: String) -> Double {
         guard !mediaId.isEmpty else { return 0 }
         return getRecord(mediaId: mediaId)?.positionSec ?? 0
+    }
+
+    public func loadVoiceover(mediaId: String) -> String? {
+        guard !mediaId.isEmpty else { return nil }
+        return getRecord(mediaId: mediaId)?.voiceover
     }
 
     public func loadDuration(mediaId: String) -> Double {
@@ -266,7 +344,6 @@ public final class PlaybackProgressStore: ObservableObject {
         }
     }
 
-
     public func loadUpdatedAtMs(mediaId: String) -> Int {
         guard !mediaId.isEmpty else { return 0 }
         return getRecord(mediaId: mediaId)?.updatedAtMs ?? 0
@@ -281,23 +358,28 @@ public final class PlaybackProgressStore: ObservableObject {
     }
 
     public func saveMetadata(
-        kpId: Int,
+        kpId: Int = 0,
+        tmdbId: Int? = nil,
         detailsId: String,
         title: String,
         type: String?,
         posterUrl: String?,
         backdropUrl: String?,
-        logoUrl: String?
+        logoUrl: String?,
+        mediaKey: String? = nil
     ) {
-        guard kpId > 0, !detailsId.isEmpty, !title.isEmpty else { return }
+        guard !detailsId.isEmpty, !title.isEmpty else { return }
         let activeUserId = currentUserId
-        let compositeKey = "\(activeUserId)_\(kpId)"
+        let resolvedKey = mediaKey ?? (kpId > 0 ? "kp_\(kpId)" : (detailsId.isEmpty ? "tmdb_\(tmdbId ?? 0)" : detailsId))
+        let compositeKey = "\(activeUserId)_\(resolvedKey)"
 
         let descriptor = FetchDescriptor<PlaybackMetadataModel>(predicate: #Predicate { $0.userKpIdKey == compositeKey })
         if let model = try? context.fetch(descriptor).first {
             model.detailsId = detailsId
             model.title = title
             model.type = type
+            model.kpId = kpId
+            if let t = tmdbId { model.tmdbId = t }
             model.posterUrl = posterUrl
             model.backdropUrl = backdropUrl
             model.logoUrl = logoUrl
@@ -305,12 +387,14 @@ public final class PlaybackProgressStore: ObservableObject {
             let model = PlaybackMetadataModel(
                 userId: activeUserId,
                 kpId: kpId,
+                tmdbId: tmdbId,
                 detailsId: detailsId,
                 title: title,
                 type: type,
                 posterUrl: posterUrl,
                 backdropUrl: backdropUrl,
-                logoUrl: logoUrl
+                logoUrl: logoUrl,
+                mediaKey: resolvedKey
             )
             context.insert(model)
         }
@@ -324,38 +408,85 @@ public final class PlaybackProgressStore: ObservableObject {
         }
     }
 
-    func saveMetadata(details: MediaDetailsDto) {
-        guard let kpId = details.ids?.kp else { return }
+    public func saveMetadata(
+        kpId: Int,
+        detailsId: String,
+        title: String,
+        type: String?,
+        posterUrl: String?,
+        backdropUrl: String?,
+        logoUrl: String?
+    ) {
+        saveMetadata(
+            kpId: kpId,
+            tmdbId: nil,
+            detailsId: detailsId,
+            title: title,
+            type: type,
+            posterUrl: posterUrl,
+            backdropUrl: backdropUrl,
+            logoUrl: logoUrl,
+            mediaKey: kpId > 0 ? "kp_\(kpId)" : detailsId
+        )
+    }
 
-        let detailsId = details.id ?? String(kpId)
+    func saveMetadata(details: MediaDetailsDto) {
+        let kpId = details.ids?.kp ?? details.externalIds?.kp ?? 0
+        let tmdbId = details.externalIds?.tmdb ?? details.ids?.tmdb ?? Int(details.id ?? "")
+        let detailsId = details.id ?? (kpId > 0 ? "kp_\(kpId)" : String(tmdbId ?? 0))
         let title = details.title ?? details.originalTitle ?? "Без названия"
 
         saveMetadata(
             kpId: kpId,
+            tmdbId: tmdbId,
             detailsId: detailsId,
             title: title,
             type: details.type,
             posterUrl: details.displayPosterUrl,
             backdropUrl: details.displayBackdropUrl ?? details.displayPosterUrl,
-            logoUrl: details.displayLogoUrl
+            logoUrl: details.displayLogoUrl,
+            mediaKey: kpId > 0 ? "kp_\(kpId)" : (details.id ?? "tmdb_\(tmdbId ?? 0)")
         )
     }
 
-    public func loadMetadata(kpId: Int) -> PlaybackMediaMetadata? {
-        guard kpId > 0 else { return nil }
+    public func loadMetadata(mediaKey: String) -> PlaybackMediaMetadata? {
+        guard !mediaKey.isEmpty else { return nil }
         let activeUserId = currentUserId
-        let compositeKey = "\(activeUserId)_\(kpId)"
+        let compositeKey = "\(activeUserId)_\(mediaKey)"
         let descriptor = FetchDescriptor<PlaybackMetadataModel>(predicate: #Predicate { $0.userKpIdKey == compositeKey })
-        guard let model = try? context.fetch(descriptor).first else { return nil }
+        if let model = try? context.fetch(descriptor).first {
+            return PlaybackMediaMetadata(
+                kpId: model.kpId,
+                tmdbId: model.tmdbId,
+                detailsId: model.detailsId,
+                title: model.title,
+                type: model.type,
+                posterUrl: model.posterUrl,
+                backdropUrl: model.backdropUrl,
+                logoUrl: model.logoUrl,
+                mediaKey: mediaKey
+            )
+        }
+        let altDescriptor = FetchDescriptor<PlaybackMetadataModel>(
+            predicate: #Predicate { $0.userId == activeUserId && $0.detailsId == mediaKey }
+        )
+        guard let model = try? context.fetch(altDescriptor).first else { return nil }
         return PlaybackMediaMetadata(
             kpId: model.kpId,
+            tmdbId: model.tmdbId,
             detailsId: model.detailsId,
             title: model.title,
             type: model.type,
             posterUrl: model.posterUrl,
             backdropUrl: model.backdropUrl,
-            logoUrl: model.logoUrl
+            logoUrl: model.logoUrl,
+            mediaKey: mediaKey
         )
+    }
+
+    public func loadMetadata(kpId: Int) -> PlaybackMediaMetadata? {
+        guard kpId > 0 else { return nil }
+        return loadMetadata(mediaKey: "kp_\(kpId)")
     }
 
     public func listAllMetadata() -> [PlaybackMediaMetadata] {
@@ -365,17 +496,19 @@ public final class PlaybackProgressStore: ObservableObject {
         return models.map {
             PlaybackMediaMetadata(
                 kpId: $0.kpId,
+                tmdbId: $0.tmdbId,
                 detailsId: $0.detailsId,
                 title: $0.title,
                 type: $0.type,
                 posterUrl: $0.posterUrl,
                 backdropUrl: $0.backdropUrl,
-                logoUrl: $0.logoUrl
+                logoUrl: $0.logoUrl,
+                mediaKey: $0.kpId > 0 ? "kp_\($0.kpId)" : $0.detailsId
             )
         }
     }
 
-    public func listProgressRecords(kpId: Int? = nil) -> [PlaybackProgressRecord] {
+    public func listProgressRecords(kpId: Int? = nil, mediaKey: String? = nil) -> [PlaybackProgressRecord] {
         let activeUserId = currentUserId
         let descriptor = FetchDescriptor<ProgressRecordModel>(
             predicate: #Predicate { $0.userId == activeUserId },
@@ -384,15 +517,28 @@ public final class PlaybackProgressStore: ObservableObject {
         let allModels = (try? context.fetch(descriptor)) ?? []
         
         var results: [PlaybackProgressRecord] = []
-        var seriesKpIds = Set<Int>()
+        var seriesRootKeys = Set<String>()
         
         // Episodes first
         for model in allModels {
             let isEpisode = model.season != nil && model.episode != nil
             if isEpisode {
                 if let filterKpId = kpId, model.kpId != filterKpId { continue }
-                seriesKpIds.insert(model.kpId)
-                results.append(PlaybackProgressRecord(mediaId: model.mediaId, kpId: model.kpId, season: model.season, episode: model.episode, positionSec: model.positionSec, durationSec: model.durationSec, watched: model.watched, updatedAtMs: model.updatedAtMs))
+                let rootKey = model.mediaId.components(separatedBy: "_s")[0]
+                if let filterKey = mediaKey, rootKey != filterKey { continue }
+                seriesRootKeys.insert(rootKey)
+                results.append(PlaybackProgressRecord(
+                    mediaId: model.mediaId,
+                    kpId: model.kpId,
+                    tmdbId: model.tmdbId,
+                    season: model.season,
+                    episode: model.episode,
+                    voiceover: model.voiceover,
+                    positionSec: model.positionSec,
+                    durationSec: model.durationSec,
+                    watched: model.watched,
+                    updatedAtMs: model.updatedAtMs
+                ))
             }
         }
         
@@ -401,26 +547,41 @@ public final class PlaybackProgressStore: ObservableObject {
             let isEpisode = model.season != nil && model.episode != nil
             if !isEpisode {
                 if let filterKpId = kpId, model.kpId != filterKpId { continue }
-                if seriesKpIds.contains(model.kpId) { continue }
-                results.append(PlaybackProgressRecord(mediaId: model.mediaId, kpId: model.kpId, season: model.season, episode: model.episode, positionSec: model.positionSec, durationSec: model.durationSec, watched: model.watched, updatedAtMs: model.updatedAtMs))
+                let rootKey = model.mediaId
+                if let filterKey = mediaKey, rootKey != filterKey { continue }
+                if seriesRootKeys.contains(rootKey) { continue }
+                results.append(PlaybackProgressRecord(
+                    mediaId: model.mediaId,
+                    kpId: model.kpId,
+                    tmdbId: model.tmdbId,
+                    season: model.season,
+                    episode: model.episode,
+                    voiceover: model.voiceover,
+                    positionSec: model.positionSec,
+                    durationSec: model.durationSec,
+                    watched: model.watched,
+                    updatedAtMs: model.updatedAtMs
+                ))
             }
         }
         
         return results.sorted { $0.updatedAtMs > $1.updatedAtMs }
     }
 
-    public func saveLastVoiceover(kpId: Int, source: String, voiceover: String?) {
+    public func saveLastVoiceover(mediaKey: String, source: String = "alloha", voiceover: String?) {
+        guard !mediaKey.isEmpty else { return }
         let activeUserId = currentUserId
-        let key = "neomovies.\(source).lastVoiceover.kp_\(kpId)"
+        let key = "\(source).lastVoiceover.\(mediaKey)"
         let compositeKey = "\(activeUserId)_\(key)"
         let descriptor = FetchDescriptor<LastPlayedVoiceoverModel>(predicate: #Predicate { $0.userSourceKey == compositeKey })
         
-        if let v = voiceover {
+        if let v = voiceover, !v.isEmpty {
             if let model = try? context.fetch(descriptor).first {
                 model.voiceover = v
             } else {
                 context.insert(LastPlayedVoiceoverModel(userId: activeUserId, key: key, source: source, voiceover: v))
             }
+            UserDefaults.standard.set(v, forKey: "alloha_last_translation_name")
         } else {
             if let model = try? context.fetch(descriptor).first {
                 context.delete(model)
@@ -429,39 +590,70 @@ public final class PlaybackProgressStore: ObservableObject {
         try? context.save()
     }
 
-    public func loadLastVoiceover(kpId: Int, source: String) -> String? {
+    public func loadLastVoiceover(mediaKey: String, source: String = "alloha") -> String? {
+        guard !mediaKey.isEmpty else { return nil }
         let activeUserId = currentUserId
-        let key = "neomovies.\(source).lastVoiceover.kp_\(kpId)"
+        let key = "\(source).lastVoiceover.\(mediaKey)"
         let compositeKey = "\(activeUserId)_\(key)"
         let descriptor = FetchDescriptor<LastPlayedVoiceoverModel>(predicate: #Predicate { $0.userSourceKey == compositeKey })
         return try? context.fetch(descriptor).first?.voiceover
     }
 
-    public func saveLastPlayed(kpId: Int, season: Int?, episode: Int?) {
+    public func saveLastVoiceover(kpId: Int, source: String = "alloha", voiceover: String?) {
+        if kpId > 0 {
+            saveLastVoiceover(mediaKey: "kp_\(kpId)", source: source, voiceover: voiceover)
+        }
+    }
+
+    public func loadLastVoiceover(kpId: Int, source: String = "alloha") -> String? {
+        guard kpId > 0 else { return nil }
+        return loadLastVoiceover(mediaKey: "kp_\(kpId)", source: source)
+    }
+
+    public func saveLastPlayed(mediaKey: String, season: Int?, episode: Int?) {
+        guard !mediaKey.isEmpty else { return }
         let activeUserId = currentUserId
-        let compositeKey = "\(activeUserId)_\(kpId)"
+        let compositeKey = "\(activeUserId)_\(mediaKey)"
         let descriptor = FetchDescriptor<LastPlayedEpisodeModel>(predicate: #Predicate { $0.userKpIdKey == compositeKey })
         if let model = try? context.fetch(descriptor).first {
             if let s = season { model.season = s }
             if let e = episode { model.episode = e }
         } else {
-            context.insert(LastPlayedEpisodeModel(userId: activeUserId, kpId: kpId, season: season, episode: episode))
+            context.insert(LastPlayedEpisodeModel(userId: activeUserId, kpId: 0, mediaKey: mediaKey, season: season, episode: episode))
         }
         try? context.save()
     }
 
-    public func loadLastSeason(kpId: Int) -> Int? {
+    public func loadLastSeason(mediaKey: String) -> Int? {
+        guard !mediaKey.isEmpty else { return nil }
         let activeUserId = currentUserId
-        let compositeKey = "\(activeUserId)_\(kpId)"
+        let compositeKey = "\(activeUserId)_\(mediaKey)"
         let descriptor = FetchDescriptor<LastPlayedEpisodeModel>(predicate: #Predicate { $0.userKpIdKey == compositeKey })
         return try? context.fetch(descriptor).first?.season
     }
 
-    public func loadLastEpisode(kpId: Int) -> Int? {
+    public func loadLastEpisode(mediaKey: String) -> Int? {
+        guard !mediaKey.isEmpty else { return nil }
         let activeUserId = currentUserId
-        let compositeKey = "\(activeUserId)_\(kpId)"
+        let compositeKey = "\(activeUserId)_\(mediaKey)"
         let descriptor = FetchDescriptor<LastPlayedEpisodeModel>(predicate: #Predicate { $0.userKpIdKey == compositeKey })
         return try? context.fetch(descriptor).first?.episode
+    }
+
+    public func saveLastPlayed(kpId: Int, season: Int?, episode: Int?) {
+        if kpId > 0 {
+            saveLastPlayed(mediaKey: "kp_\(kpId)", season: season, episode: episode)
+        }
+    }
+
+    public func loadLastSeason(kpId: Int) -> Int? {
+        guard kpId > 0 else { return nil }
+        return loadLastSeason(mediaKey: "kp_\(kpId)")
+    }
+
+    public func loadLastEpisode(kpId: Int) -> Int? {
+        guard kpId > 0 else { return nil }
+        return loadLastEpisode(mediaKey: "kp_\(kpId)")
     }
 
     private func syncRemoteProgressToLocal(_ remoteRecords: [PlaybackProgressRecord], userId: String) async {
@@ -477,8 +669,10 @@ public final class PlaybackProgressStore: ObservableObject {
                 userId: userId,
                 mediaId: record.mediaId,
                 kpId: record.kpId,
+                tmdbId: record.tmdbId,
                 season: record.season,
                 episode: record.episode,
+                voiceover: record.voiceover,
                 positionSec: record.positionSec,
                 durationSec: record.durationSec,
                 watched: record.watched,
@@ -502,12 +696,14 @@ public final class PlaybackProgressStore: ObservableObject {
             let model = PlaybackMetadataModel(
                 userId: userId,
                 kpId: item.kpId,
+                tmdbId: item.tmdbId,
                 detailsId: item.detailsId,
                 title: item.title,
                 type: item.type,
                 posterUrl: item.posterUrl,
                 backdropUrl: item.backdropUrl,
-                logoUrl: item.logoUrl
+                logoUrl: item.logoUrl,
+                mediaKey: item.mediaKey ?? (item.kpId > 0 ? "kp_\(item.kpId)" : item.detailsId)
             )
             context.insert(model)
         }
