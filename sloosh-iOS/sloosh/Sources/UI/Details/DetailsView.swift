@@ -342,7 +342,7 @@ struct DetailsView: View {
                               let result = wrapper.allohaResult {
                         SourceSelectionView(mode: sourceSheetMode, result: result, kpId: wrapper.kpId, details: viewModel.details) { translation, season, episode, quality in
                             if sourceSheetMode == .play {
-                                let effectiveKp = (wrapper.kpId > 0 ? wrapper.kpId : nil)
+                                let effectiveKp = ((wrapper.kpId ?? 0) > 0 ? wrapper.kpId : nil)
                                     ?? viewModel.details?.ids?.kp
                                     ?? viewModel.details?.externalIds?.kp
                                 let effectiveTmdb = viewModel.details?.externalIds?.tmdb
