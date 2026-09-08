@@ -811,13 +811,13 @@ struct DetailsView: View {
                             .padding(.top, 20)
                             .padding(.horizontal)
 
-                        if let crew = details.crew, !crew.isEmpty {
-                            CrewSection(crew: crew, namespace: crewTransitionNamespace)
+                        if let cast = details.cast, !cast.isEmpty {
+                            ActorsSection(cast: cast, namespace: actorTransitionNamespace)
                                 .padding(.top, 16)
                         }
 
-                        if let cast = details.cast, !cast.isEmpty {
-                            ActorsSection(cast: cast, namespace: actorTransitionNamespace)
+                        if let crew = details.crew, !crew.isEmpty {
+                            CrewSection(crew: crew, namespace: crewTransitionNamespace)
                                 .padding(.top, 16)
                         }
 
@@ -970,13 +970,13 @@ struct DetailsView: View {
                             .frame(maxWidth: 550)
                             .frame(maxWidth: .infinity, alignment: .center)
 
-                            if let crew = details.crew, !crew.isEmpty {
-                                CrewSection(crew: crew, namespace: crewTransitionNamespace)
+                            if let cast = details.cast, !cast.isEmpty {
+                                ActorsSection(cast: cast, namespace: actorTransitionNamespace)
                                     .padding(.top, 16)
                             }
 
-                            if let cast = details.cast, !cast.isEmpty {
-                                ActorsSection(cast: cast, namespace: actorTransitionNamespace)
+                            if let crew = details.crew, !crew.isEmpty {
+                                CrewSection(crew: crew, namespace: crewTransitionNamespace)
                                     .padding(.top, 16)
                             }
 
@@ -1355,65 +1355,6 @@ private struct DetailsInfoSection: View {
                                 .padding(.horizontal, 14)
                                 .padding(.vertical, 8)
                                 .glassEffect(.regular.interactive(), in: Capsule())
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                }
-            }
-
-            let directors = details.directors ?? []
-            if !directors.isEmpty {
-                VStack(alignment: .leading, spacing: 10) {
-                    let title = details.type == "tv"
-                        ? (directors.count == 1 ? "Создатель" : "Создатели")
-                        : (directors.count == 1 ? "Режиссёр" : "Режиссёры")
-                    Text(title)
-                        .font(.system(size: 18, weight: .bold))
-
-                    FlowLayout(spacing: 8) {
-                        ForEach(directors) { director in
-                            NavigationLink(
-                                destination: PersonDetailView(
-                                    personId: director.id,
-                                    initialName: director.name
-                                )
-                                .navigationBarBackButtonHidden(true)
-                            ) {
-                                Text(director.name)
-                                    .font(.system(size: 14, weight: .semibold))
-                                    .foregroundColor(.primary)
-                                    .padding(.horizontal, 14)
-                                    .padding(.vertical, 8)
-                                    .glassEffect(.regular.interactive(), in: Capsule())
-                            }
-                            .buttonStyle(.plain)
-                        }
-                    }
-                }
-            }
-
-            let writers = details.writers ?? []
-            if !writers.isEmpty {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text(writers.count == 1 ? "Сценарист" : "Сценаристы")
-                        .font(.system(size: 18, weight: .bold))
-
-                    FlowLayout(spacing: 8) {
-                        ForEach(writers) { writer in
-                            NavigationLink(
-                                destination: PersonDetailView(
-                                    personId: writer.id,
-                                    initialName: writer.name
-                                )
-                                .navigationBarBackButtonHidden(true)
-                            ) {
-                                Text(writer.name)
-                                    .font(.system(size: 14, weight: .semibold))
-                                    .foregroundColor(.primary)
-                                    .padding(.horizontal, 14)
-                                    .padding(.vertical, 8)
-                                    .glassEffect(.regular.interactive(), in: Capsule())
                             }
                             .buttonStyle(.plain)
                         }
