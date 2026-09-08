@@ -13,8 +13,7 @@ struct PersonDetailView: View {
     @State private var isTitleAtTop: Bool = false
     @State private var showPhotoGallery: Bool = false
     @State private var selectedPhotoIndex: Int = 0
-    @State private var selectedPhotoTransitionId: String? = nil
-    @Namespace private var photoGalleryNamespace
+    @State private var selectedPhotoSourceRect: CGRect = .zero
     @Namespace private var filmographyTransitionNamespace
     @Environment(\.dismiss) private var dismiss
 
@@ -186,13 +185,13 @@ struct PersonDetailView: View {
                 .ignoresSafeArea()
         }
         .fullScreenCover(isPresented: $showPhotoGallery) {
-            PersonPhotoGalleryView(photos: allPhotos, selectedIndex: $selectedPhotoIndex)
-                .ignoresSafeArea()
-                .presentationBackground(.clear)
-                .optionalZoomTransition(sourceID: selectedPhotoTransitionId, in: photoGalleryNamespace)
-        }
-        .onChange(of: selectedPhotoIndex) { _, newIndex in
-            selectedPhotoTransitionId = "person_photo_\(newIndex)"
+            PersonPhotoGalleryView(
+                photos: allPhotos,
+                selectedIndex: $selectedPhotoIndex,
+                sourceRect: selectedPhotoSourceRect
+            )
+            .ignoresSafeArea()
+            .presentationBackground(.clear)
         }
         .task {
             await viewModel.loadDetails()
@@ -212,7 +211,7 @@ struct PersonDetailView: View {
 
     @ViewBuilder
     private func personContent(details: PersonDetailsDto) -> some View {
-        let baseHeight: CGFloat = 380
+        let baseHeight: CGFloat = 430
 
         // Stretchy Parallax Hero Header (edge-to-edge top, softly fading downward)
         GeometryReader { geometry in
@@ -226,13 +225,12 @@ struct PersonDetailView: View {
                 width: geometry.size.width,
                 height: height
             )
-            .matchedTransitionSource(id: "person_photo_0", in: photoGalleryNamespace)
             .offset(y: offset)
             .contentShape(Rectangle())
             .onTapGesture {
                 if !allPhotos.isEmpty {
                     selectedPhotoIndex = 0
-                    selectedPhotoTransitionId = "person_photo_0"
+                    selectedPhotoSourceRect = geometry.frame(in: .global)
                     showPhotoGallery = true
                 }
             }
@@ -240,6 +238,7 @@ struct PersonDetailView: View {
                 if !allPhotos.isEmpty {
                     Button {
                         selectedPhotoIndex = 0
+                        selectedPhotoSourceRect = geometry.frame(in: .global)
                         showPhotoGallery = true
                     } label: {
                         Label("Открыть фото", systemImage: "arrow.up.left.and.arrow.down.right")
@@ -333,10 +332,9 @@ struct PersonDetailView: View {
                 PersonPhotosSection(
                     photos: photos,
                     allPhotos: allPhotos,
-                    namespace: photoGalleryNamespace,
-                    onSelect: { idx, transitionId in
+                    onSelect: { idx, rect in
                         selectedPhotoIndex = idx
-                        selectedPhotoTransitionId = transitionId
+                        selectedPhotoSourceRect = rect
                         showPhotoGallery = true
                     },
                     onSave: { url in
@@ -357,7 +355,7 @@ struct PersonDetailView: View {
                 .padding(.top, 4)
                 .padding(.bottom, 36)
         }
-        .offset(y: -25)
+        .offset(y: -40)
     }
 }
 
@@ -378,7 +376,7 @@ private struct PersonHeroHeaderView: View {
             Image(uiImage: image)
                 .resizable()
                 .aspectRatio(contentMode: .fill)
-                .frame(width: width, height: height)
+                .frame(width: width, height: height, alignment: .top)
                 .clipped()
         } fallback: {
             ZStack {
@@ -392,11 +390,15 @@ private struct PersonHeroHeaderView: View {
         .mask(
             LinearGradient(
                 gradient: Gradient(stops: [
-                    .init(color: .black, location: 0.0),
-                    .init(color: .black, location: 0.55),
-                    .init(color: .black.opacity(0.85), location: 0.70),
-                    .init(color: .black.opacity(0.50), location: 0.82),
-                    .init(color: .black.opacity(0.18), location: 0.92),
+                    .init(color: .clear, location: 0.0),
+                    .init(color: .black.opacity(0.4), location: 0.06),
+                    .init(color: .black.opacity(0.85), location: 0.12),
+                    .init(color: .black, location: 0.18),
+                    .init(color: .black, location: 0.35),
+                    .init(color: .black.opacity(0.8), location: 0.50),
+                    .init(color: .black.opacity(0.45), location: 0.68),
+                    .init(color: .black.opacity(0.2), location: 0.82),
+                    .init(color: .black.opacity(0.06), location: 0.93),
                     .init(color: .clear, location: 1.0)
                 ]),
                 startPoint: .top,
@@ -683,8 +685,7 @@ private struct ParsedBiography {
 private struct PersonPhotosSection: View {
     let photos: [String]
     let allPhotos: [String]
-    let namespace: Namespace.ID
-    let onSelect: (Int, String) -> Void
+    let onSelect: (Int, CGRect) -> Void
     let onSave: (String) -> Void
     let onShare: (String) -> Void
 
@@ -698,51 +699,52 @@ private struct PersonPhotosSection: View {
                 LazyHStack(spacing: 12) {
                     ForEach(photos, id: \.self) { photoUrl in
                         let idx = allPhotos.firstIndex(of: photoUrl) ?? 0
-                        let transitionId = "person_photo_\(idx)"
 
-                        Button {
-                            onSelect(idx, transitionId)
-                        } label: {
-                            AsyncCachedImage(url: URL(string: photoUrl)) {
-                                RoundedRectangle(cornerRadius: 14)
-                                    .fill(Color.white.opacity(0.08))
-                                    .frame(width: 120, height: 160)
-                                    .shimmer()
-                            } content: { img in
-                                Image(uiImage: img)
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fill)
-                                    .frame(width: 120, height: 160)
-                                    .clipShape(RoundedRectangle(cornerRadius: 14))
-                            } fallback: {
-                                RoundedRectangle(cornerRadius: 14)
-                                    .fill(Color.white.opacity(0.08))
-                                    .frame(width: 120, height: 160)
+                        GeometryReader { geo in
+                            Button {
+                                onSelect(idx, geo.frame(in: .global))
+                            } label: {
+                                AsyncCachedImage(url: URL(string: photoUrl)) {
+                                    RoundedRectangle(cornerRadius: 14)
+                                        .fill(Color.white.opacity(0.08))
+                                        .frame(width: 120, height: 160)
+                                        .shimmer()
+                                } content: { img in
+                                    Image(uiImage: img)
+                                        .resizable()
+                                        .aspectRatio(contentMode: .fill)
+                                        .frame(width: 120, height: 160)
+                                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                                } fallback: {
+                                    RoundedRectangle(cornerRadius: 14)
+                                        .fill(Color.white.opacity(0.08))
+                                        .frame(width: 120, height: 160)
+                                }
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 14)
+                                        .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+                                )
                             }
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 14)
-                                    .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
-                            )
-                            .matchedTransitionSource(id: transitionId, in: namespace)
+                            .buttonStyle(.plain)
+                            .contextMenu {
+                                Button {
+                                    onSelect(idx, geo.frame(in: .global))
+                                } label: {
+                                    Label("Открыть фото", systemImage: "arrow.up.left.and.arrow.down.right")
+                                }
+                                Button {
+                                    onSave(photoUrl)
+                                } label: {
+                                    Label("Сохранить в Фото", systemImage: "photo.badge.arrow.down")
+                                }
+                                Button {
+                                    onShare(photoUrl)
+                                } label: {
+                                    Label("Поделиться", systemImage: "square.and.arrow.up")
+                                }
+                            }
                         }
-                        .buttonStyle(.plain)
-                        .contextMenu {
-                            Button {
-                                onSelect(idx, transitionId)
-                            } label: {
-                                Label("Открыть фото", systemImage: "arrow.up.left.and.arrow.down.right")
-                            }
-                            Button {
-                                onSave(photoUrl)
-                            } label: {
-                                Label("Сохранить в Фото", systemImage: "photo.badge.arrow.down")
-                            }
-                            Button {
-                                onShare(photoUrl)
-                            } label: {
-                                Label("Поделиться", systemImage: "square.and.arrow.up")
-                            }
-                        }
+                        .frame(width: 120, height: 160)
                     }
                 }
                 .padding(.horizontal, 16)
@@ -756,30 +758,10 @@ private struct PersonPhotosSection: View {
 struct PersonPhotoGalleryView: View {
     let photos: [String]
     @Binding var selectedIndex: Int
+    var sourceRect: CGRect = .zero
     @Environment(\.dismiss) private var dismiss
     @State private var showControls: Bool = true
-
-    private var safeAreaInsets: UIEdgeInsets {
-        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
-        for scene in scenes {
-            for window in scene.windows {
-                if window.safeAreaInsets.top > 0 {
-                    return window.safeAreaInsets
-                }
-            }
-        }
-        return UIEdgeInsets(top: 54, left: 0, bottom: 34, right: 0)
-    }
-
-    private var topPadding: CGFloat {
-        let top = safeAreaInsets.top
-        return max(top, 47) + 16
-    }
-
-    private var bottomPadding: CGFloat {
-        let bottom = safeAreaInsets.bottom
-        return max(bottom, 34) + 20
-    }
+    @State private var controlsOpacity: CGFloat = 0.0
 
     var body: some View {
         ZStack {
@@ -787,6 +769,7 @@ struct PersonPhotoGalleryView: View {
             PhotoGalleryPagerRepresentable(
                 photos: photos,
                 currentIndex: $selectedIndex,
+                sourceRect: sourceRect,
                 onSingleTap: {
                     withAnimation(.easeInOut(duration: 0.2)) {
                         showControls.toggle()
@@ -802,63 +785,68 @@ struct PersonPhotoGalleryView: View {
                 }
             )
             .ignoresSafeArea()
-
-            // Floating Controls Overlay
-            VStack {
-                // Top Bar
-                HStack {
-                    TelegramGlassIconButton(systemName: "xmark") {
-                        dismiss()
-                    }
-
-                    Spacer()
-
-                    if photos.count > 1 {
-                        Text("\(selectedIndex + 1) из \(photos.count)")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 6)
-                            .glassEffect(.regular, in: Capsule())
-                    }
-
-                    Spacer()
-
-                    TelegramGlassIconButton(systemName: "square.and.arrow.up") {
-                        sharePhoto(at: selectedIndex)
-                    }
+        }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            // Top Bar (matching standard DetailsView and PersonDetailView top offset)
+            HStack {
+                TelegramGlassIconButton(systemName: "xmark") {
+                    NotificationCenter.default.post(name: .dismissPhotoGallery, object: nil)
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, topPadding)
 
                 Spacer()
 
-                // Bottom Save Button
-                Button {
-                    Task { await savePhoto(at: selectedIndex) }
-                } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: "arrow.down.circle.fill")
-                            .font(.system(size: 18, weight: .semibold))
-                        Text("Сохранить в Фото")
-                            .font(.system(size: 15, weight: .semibold))
-                    }
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 22)
-                    .padding(.vertical, 12)
-                    .glassEffect(.regular.interactive(), in: Capsule())
-                    .shadow(color: .black.opacity(0.35), radius: 10, x: 0, y: 5)
+                if photos.count > 1 {
+                    Text("\(selectedIndex + 1) из \(photos.count)")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 6)
+                        .glassEffect(.regular, in: Capsule())
                 }
-                .buttonStyle(.plain)
-                .padding(.bottom, bottomPadding)
+
+                Spacer()
+
+                TelegramGlassIconButton(systemName: "square.and.arrow.up") {
+                    sharePhoto(at: selectedIndex)
+                }
             }
-            .opacity(showControls ? 1.0 : 0.0)
-            .allowsHitTesting(showControls)
+            .padding(.horizontal, 16)
+            .padding(.bottom, 8)
+            .opacity(showControls ? controlsOpacity : 0.0)
+            .allowsHitTesting(showControls && controlsOpacity > 0.5)
+            .animation(.easeInOut(duration: 0.2), value: showControls)
+        }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            // Bottom Save Button
+            Button {
+                Task { await savePhoto(at: selectedIndex) }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "arrow.down.circle.fill")
+                        .font(.system(size: 18, weight: .semibold))
+                    Text("Сохранить в Фото")
+                        .font(.system(size: 15, weight: .semibold))
+                }
+                .foregroundStyle(.white)
+                .padding(.horizontal, 22)
+                .padding(.vertical, 12)
+                .glassEffect(.regular.interactive(), in: Capsule())
+                .shadow(color: .black.opacity(0.35), radius: 10, x: 0, y: 5)
+            }
+            .buttonStyle(.plain)
+            .padding(.bottom, 12)
+            .opacity(showControls ? controlsOpacity : 0.0)
+            .allowsHitTesting(showControls && controlsOpacity > 0.5)
             .animation(.easeInOut(duration: 0.2), value: showControls)
         }
         .environment(\.colorScheme, .dark)
         .statusBarHidden(!showControls)
         .persistentSystemOverlays(showControls ? .visible : .hidden)
+        .onAppear {
+            withAnimation(.easeIn(duration: 0.22).delay(0.1)) {
+                controlsOpacity = 1.0
+            }
+        }
     }
 
     private func savePhoto(at index: Int) async {
@@ -919,11 +907,16 @@ struct PersonPhotoGalleryView: View {
     }
 }
 
+private extension Notification.Name {
+    static let dismissPhotoGallery = Notification.Name("sloosh.dismissPhotoGallery")
+}
+
 // MARK: - Native UIKit Photo Pager Representable
 
 private struct PhotoGalleryPagerRepresentable: UIViewControllerRepresentable {
     let photos: [String]
     @Binding var currentIndex: Int
+    var sourceRect: CGRect = .zero
     let onSingleTap: () -> Void
     let onDismiss: () -> Void
     let onControlsVisibilityChange: (Bool) -> Void
@@ -935,7 +928,8 @@ private struct PhotoGalleryPagerRepresentable: UIViewControllerRepresentable {
     func makeUIViewController(context: Context) -> PhotoGalleryContainerViewController {
         let vc = PhotoGalleryContainerViewController(
             photos: photos,
-            initialIndex: currentIndex
+            initialIndex: currentIndex,
+            sourceRect: sourceRect
         )
         vc.onIndexChanged = { newIndex in
             context.coordinator.parent.currentIndex = newIndex
@@ -965,6 +959,9 @@ private struct PhotoGalleryPagerRepresentable: UIViewControllerRepresentable {
 private final class PhotoGalleryContainerViewController: UIViewController, UIPageViewControllerDataSource, UIPageViewControllerDelegate, UIGestureRecognizerDelegate {
     let photos: [String]
     var currentIndex: Int
+    let initialIndex: Int
+    let sourceRect: CGRect
+    private var isFirstAppear: Bool = true
     var onIndexChanged: ((Int) -> Void)?
     var onSingleTap: (() -> Void)?
     var onDismiss: (() -> Void)?
@@ -974,9 +971,11 @@ private final class PhotoGalleryContainerViewController: UIViewController, UIPag
     private var pageViewController: UIPageViewController!
     private var panGesture: UIPanGestureRecognizer!
 
-    init(photos: [String], initialIndex: Int) {
+    init(photos: [String], initialIndex: Int, sourceRect: CGRect = .zero) {
         self.photos = photos
         self.currentIndex = initialIndex
+        self.initialIndex = initialIndex
+        self.sourceRect = sourceRect
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -984,12 +983,17 @@ private final class PhotoGalleryContainerViewController: UIViewController, UIPag
         fatalError("init(coder:) has not been implemented")
     }
 
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .clear
 
-        // Dimming backdrop
+        // Dimming backdrop (starts invisible, fades in during zoom-in transition)
         dimmingView.backgroundColor = .black
+        dimmingView.alpha = 0.0
         dimmingView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(dimmingView)
         NSLayoutConstraint.activate([
@@ -1025,10 +1029,58 @@ private final class PhotoGalleryContainerViewController: UIViewController, UIPag
             pageViewController.setViewControllers([initialVC], direction: .forward, animated: false)
         }
 
+        // Initially hidden until viewDidAppear triggers the spring zoom-in
+        pageViewController.view.alpha = 0.0
+
         // Pull-down-to-dismiss gesture
         panGesture = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
         panGesture.delegate = self
         view.addGestureRecognizer(panGesture)
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleDismissNotification),
+            name: .dismissPhotoGallery,
+            object: nil
+        )
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        guard isFirstAppear else { return }
+        isFirstAppear = false
+
+        if sourceRect != .zero && sourceRect.width > 0 && sourceRect.height > 0 {
+            let scaleX = sourceRect.width / view.bounds.width
+            let scaleY = sourceRect.height / view.bounds.height
+            let scale = max(0.2, min(scaleX, scaleY))
+            let deltaX = sourceRect.midX - view.center.x
+            let deltaY = sourceRect.midY - view.center.y
+
+            pageViewController.view.transform = CGAffineTransform(translationX: deltaX, y: deltaY)
+                .scaledBy(x: scale, y: scale)
+            pageViewController.view.alpha = 1.0
+
+            UIView.animate(
+                withDuration: 0.38,
+                delay: 0,
+                usingSpringWithDamping: 0.88,
+                initialSpringVelocity: 0.2,
+                options: [.curveEaseOut]
+            ) {
+                self.pageViewController.view.transform = .identity
+                self.dimmingView.alpha = 1.0
+            }
+        } else {
+            pageViewController.view.transform = CGAffineTransform(scaleX: 0.90, y: 0.90)
+            pageViewController.view.alpha = 0.0
+
+            UIView.animate(withDuration: 0.28, delay: 0, options: [.curveEaseOut]) {
+                self.pageViewController.view.transform = .identity
+                self.pageViewController.view.alpha = 1.0
+                self.dimmingView.alpha = 1.0
+            }
+        }
     }
 
     var currentPhotoVC: PhotoPageViewController? {
@@ -1097,7 +1149,28 @@ private final class PhotoGalleryContainerViewController: UIViewController, UIPag
         return false
     }
 
-    // MARK: - Pull Down to Dismiss Handler
+    // MARK: - Dismiss Handlers
+
+    @objc private func handleDismissNotification() {
+        onControlsVisibilityChange?(false)
+        UIView.animate(withDuration: 0.28, delay: 0, options: [.curveEaseInOut]) {
+            if self.sourceRect != .zero && self.currentIndex == self.initialIndex {
+                let scaleX = self.sourceRect.width / self.view.bounds.width
+                let scaleY = self.sourceRect.height / self.view.bounds.height
+                let scale = max(0.2, min(scaleX, scaleY))
+                let deltaX = self.sourceRect.midX - self.view.center.x
+                let deltaY = self.sourceRect.midY - self.view.center.y
+                self.pageViewController.view.transform = CGAffineTransform(translationX: deltaX, y: deltaY)
+                    .scaledBy(x: scale, y: scale)
+            } else {
+                self.pageViewController.view.transform = CGAffineTransform(scaleX: 0.85, y: 0.85)
+            }
+            self.pageViewController.view.alpha = 0
+            self.dimmingView.alpha = 0
+        } completion: { _ in
+            self.onDismiss?()
+        }
+    }
 
     @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
         let translation = gesture.translation(in: view)
@@ -1109,28 +1182,40 @@ private final class PhotoGalleryContainerViewController: UIViewController, UIPag
         case .changed:
             if translation.y > 0 {
                 let progress = min(translation.y / view.bounds.height, 1.0)
-                let scale = max(0.82, 1.0 - progress * 0.22)
-                pageViewController.view.transform = CGAffineTransform(translationX: translation.x * 0.15, y: translation.y)
+                let scale = max(0.68, 1.0 - progress * 0.32)
+                pageViewController.view.transform = CGAffineTransform(translationX: translation.x * 0.25, y: translation.y)
                     .scaledBy(x: scale, y: scale)
 
-                let alpha = max(0.0, 1.0 - Double(translation.y / 350.0))
+                let alpha = max(0.0, 1.0 - Double(translation.y / 320.0))
                 dimmingView.alpha = CGFloat(alpha)
             } else {
                 pageViewController.view.transform = .identity
                 dimmingView.alpha = 1.0
             }
         case .ended:
-            if translation.y > 90 || velocity.y > 600 {
-                // Smooth dismiss animation
+            if translation.y > 80 || velocity.y > 500 {
+                // Smooth dismiss animation towards origin or fading away
                 UIView.animate(withDuration: 0.25, delay: 0, options: [.curveEaseOut]) {
-                    self.pageViewController.view.transform = CGAffineTransform(translationX: 0, y: self.view.bounds.height)
+                    if self.sourceRect != .zero && self.currentIndex == self.initialIndex {
+                        let scaleX = self.sourceRect.width / self.view.bounds.width
+                        let scaleY = self.sourceRect.height / self.view.bounds.height
+                        let scale = max(0.2, min(scaleX, scaleY))
+                        let deltaX = self.sourceRect.midX - self.view.center.x
+                        let deltaY = self.sourceRect.midY - self.view.center.y
+                        self.pageViewController.view.transform = CGAffineTransform(translationX: deltaX, y: deltaY)
+                            .scaledBy(x: scale, y: scale)
+                    } else {
+                        self.pageViewController.view.transform = CGAffineTransform(translationX: translation.x * 0.25, y: self.view.bounds.height * 0.8)
+                            .scaledBy(x: 0.65, y: 0.65)
+                    }
+                    self.pageViewController.view.alpha = 0
                     self.dimmingView.alpha = 0
                 } completion: { _ in
                     self.onDismiss?()
                 }
             } else {
                 // Elastic snap back
-                UIView.animate(withDuration: 0.35, delay: 0, usingSpringWithDamping: 0.85, initialSpringVelocity: 0.5, options: []) {
+                UIView.animate(withDuration: 0.32, delay: 0, usingSpringWithDamping: 0.86, initialSpringVelocity: 0.4, options: []) {
                     self.pageViewController.view.transform = .identity
                     self.dimmingView.alpha = 1.0
                 } completion: { _ in
@@ -1138,7 +1223,7 @@ private final class PhotoGalleryContainerViewController: UIViewController, UIPag
                 }
             }
         case .cancelled:
-            UIView.animate(withDuration: 0.3) {
+            UIView.animate(withDuration: 0.28) {
                 self.pageViewController.view.transform = .identity
                 self.dimmingView.alpha = 1.0
             }
