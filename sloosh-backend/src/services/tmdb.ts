@@ -466,6 +466,7 @@ export class TMDBService {
     const data = await tmdbFetch<any>(`/movie/${id}`, {
       append_to_response: "credits,videos,images,recommendations,similar,external_ids",
       include_image_language: "ru,en,null",
+      include_video_language: "ru,en,null",
     })
 
     const base = mapRawMovie(data)
@@ -577,6 +578,7 @@ export class TMDBService {
     const data = await tmdbFetch<any>(`/tv/${id}`, {
       append_to_response: "credits,videos,images,recommendations,similar,external_ids",
       include_image_language: "ru,en,null",
+      include_video_language: "ru,en,null",
     })
 
     const base = mapRawTv(data)

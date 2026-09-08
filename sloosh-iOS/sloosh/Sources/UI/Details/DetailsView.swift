@@ -140,6 +140,7 @@ struct DetailsView: View {
     @State private var directPlaybackMovie: MediaDto? = nil
     @State private var pendingDirectPlayerConfig: PlayerConfig? = nil
     @State private var directPlaybackTitle: String? = nil
+    @State private var selectedTrailer: TrailerVideoDto? = nil
 
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Environment(\.dismiss) private var dismiss
@@ -426,6 +427,9 @@ struct DetailsView: View {
                 ShareToFriendSheet(movie: details)
             }
         }
+        .sheet(item: $selectedTrailer) { trailer in
+            TrailerPlayerSheetView(trailer: trailer)
+        }
         .sheet(item: $directPlaybackMovie, onDismiss: {
             if let pending = pendingDirectPlayerConfig {
                 pendingDirectPlayerConfig = nil
@@ -508,8 +512,29 @@ struct DetailsView: View {
         HStack(spacing: 8) {
             playButton(for: details)
                 .tooltip(text: "Нажмите для выбора перевода", isVisible: $showTooltip, isTailTop: false)
+            if let trailers = details.trailers, let firstTrailer = trailers.first {
+                trailerButton(for: firstTrailer)
+            }
             downloadButton(for: details)
         }
+    }
+
+    private func trailerButton(for trailer: TrailerVideoDto) -> some View {
+        Button {
+            let generator = UIImpactFeedbackGenerator(style: .medium)
+            generator.prepare()
+            generator.impactOccurred()
+            selectedTrailer = trailer
+        } label: {
+            Image(systemName: "film.stack")
+                .font(.system(size: 20, weight: .medium))
+                .foregroundColor(.primary)
+                .frame(width: 50, height: 50)
+                .glassEffect(.regular.interactive(), in: .circle)
+                .shadow(color: .black.opacity(0.15), radius: 8, x: 0, y: 4)
+        }
+        .buttonStyle(.glassPress)
+        .accessibilityLabel("Трейлер")
     }
 
 
@@ -805,6 +830,13 @@ struct DetailsView: View {
                                 .padding(.top, 16)
                         }
 
+                        if let trailers = details.trailers, !trailers.isEmpty {
+                            TrailersSection(trailers: trailers) { trailer in
+                                selectedTrailer = trailer
+                            }
+                            .padding(.top, 16)
+                        }
+
                         if details.type == "tv" {
                             InlineEpisodesSection(viewModel: viewModel, details: details) { season, episode in
                                 handleEpisodeSelection(details: details, season: season, episode: episode)
@@ -938,6 +970,13 @@ struct DetailsView: View {
                             if let cast = details.cast, !cast.isEmpty {
                                 ActorsSection(cast: cast, namespace: actorTransitionNamespace)
                                     .padding(.top, 16)
+                            }
+
+                            if let trailers = details.trailers, !trailers.isEmpty {
+                                TrailersSection(trailers: trailers) { trailer in
+                                    selectedTrailer = trailer
+                                }
+                                .padding(.top, 16)
                             }
 
                             if details.type == "tv" {
@@ -2521,6 +2560,119 @@ private struct ActorCardView: View {
             .font(.system(size: 28))
             .foregroundStyle(Color.white.opacity(0.35))
             .frame(width: 74, height: 74)
+    }
+}
+
+// MARK: - Trailers Section
+
+private struct TrailersSection: View {
+    let trailers: [TrailerVideoDto]
+    let onSelect: (TrailerVideoDto) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Трейлеры и тизеры")
+                .font(.system(size: 18, weight: .bold))
+                .padding(.horizontal)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(alignment: .top, spacing: 14) {
+                    ForEach(trailers) { trailer in
+                        Button {
+                            onSelect(trailer)
+                        } label: {
+                            TrailerCardView(trailer: trailer)
+                        }
+                        .buttonStyle(.glassPress)
+                    }
+                }
+                .padding(.horizontal)
+            }
+        }
+    }
+}
+
+private struct TrailerCardView: View {
+    let trailer: TrailerVideoDto
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ZStack(alignment: .center) {
+                if let url = trailer.thumbnailUrl {
+                    AsyncCachedImage(url: url) {
+                        Rectangle()
+                            .fill(Color.white.opacity(0.08))
+                            .frame(width: 220, height: 124)
+                            .shimmer()
+                    } content: { image in
+                        Image(uiImage: image)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: 220, height: 124)
+                            .clipped()
+                    } fallback: {
+                        fallbackThumbnail
+                    }
+                } else {
+                    fallbackThumbnail
+                }
+
+                // Subtle bottom gradient for readability
+                LinearGradient(
+                    colors: [.clear, .black.opacity(0.45)],
+                    startPoint: .center,
+                    endPoint: .bottom
+                )
+
+                // Centered Liquid Glass Play Badge
+                Image(systemName: "play.fill")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 42, height: 42)
+                    .glassEffect(.regular.interactive(), in: Circle())
+                    .shadow(color: Color.black.opacity(0.35), radius: 6, x: 0, y: 3)
+
+                // Top-left type tag badge
+                VStack {
+                    HStack {
+                        Text(trailer.typeTag)
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3)
+                            .glassEffect(.regular.interactive(), in: Capsule())
+                        Spacer()
+                    }
+                    Spacer()
+                }
+                .padding(8)
+            }
+            .frame(width: 220, height: 124)
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+            )
+            .shadow(color: Color.black.opacity(0.2), radius: 6, x: 0, y: 3)
+
+            Text(trailer.name)
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.primary)
+                .lineLimit(2)
+                .multilineTextAlignment(.leading)
+                .frame(width: 220, alignment: .leading)
+        }
+    }
+
+    private var fallbackThumbnail: some View {
+        ZStack {
+            Rectangle()
+                .fill(Color.white.opacity(0.08))
+                .frame(width: 220, height: 124)
+            Image(systemName: "film")
+                .font(.system(size: 28))
+                .foregroundStyle(Color.white.opacity(0.35))
+        }
     }
 }
 
