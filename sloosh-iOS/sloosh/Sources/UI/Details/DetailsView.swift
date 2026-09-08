@@ -471,7 +471,9 @@ struct DetailsView: View {
         generator.prepare()
         generator.impactOccurred()
 
-        guard let kpId = details.ids?.kp else { return }
+        let kpId = details.ids?.kp ?? details.externalIds?.kp ?? 0
+        let tmdbId = details.externalIds?.tmdb ?? details.ids?.tmdb ?? Int(details.id ?? "")
+        guard kpId > 0 || (tmdbId ?? 0) > 0 else { return }
 
         sourceSheetSourceID = "playBtn"
         sourceSheetTitle = details.title ?? details.originalTitle ?? ""
@@ -482,15 +484,17 @@ struct DetailsView: View {
 
         sourceFetchTask?.cancel()
         sourceFetchTask = Task {
-            await viewModel.fetchSources(kpId: kpId, title: sourceSheetTitle)
+            await viewModel.fetchSources(kpId: kpId, tmdbId: tmdbId, title: sourceSheetTitle)
         }
     }
 
     private func handleEpisodeSelection(details: MediaDetailsDto, season: Int, episode: Int) {
-        guard let kpId = details.ids?.kp else { return }
+        let kpId = details.ids?.kp ?? details.externalIds?.kp ?? 0
+        let tmdbId = details.externalIds?.tmdb ?? details.ids?.tmdb ?? Int(details.id ?? "")
+        guard kpId > 0 || (tmdbId ?? 0) > 0 else { return }
 
         PlaybackProgressStore.shared.saveLastPlayed(
-            kpId: kpId,
+            kpId: kpId > 0 ? kpId : (tmdbId ?? 0),
             season: season,
             episode: episode
         )
@@ -504,7 +508,7 @@ struct DetailsView: View {
 
         sourceFetchTask?.cancel()
         sourceFetchTask = Task {
-            await viewModel.fetchSources(kpId: kpId, title: sourceSheetTitle)
+            await viewModel.fetchSources(kpId: kpId, tmdbId: tmdbId, title: sourceSheetTitle)
         }
     }
 
@@ -609,7 +613,9 @@ struct DetailsView: View {
     }
 
     private func startDownloadWithPreferredTranslation(details: MediaDetailsDto, season: Int?, episode: Int?) {
-        guard let kpId = details.ids?.kp else { return }
+        let kpId = details.ids?.kp ?? details.externalIds?.kp ?? 0
+        let tmdbId = details.externalIds?.tmdb ?? details.ids?.tmdb ?? Int(details.id ?? "")
+        guard kpId > 0 || (tmdbId ?? 0) > 0 else { return }
         
         sourceSheetTitle = details.title ?? details.originalTitle ?? ""
         sourceSheetDetent = .medium
@@ -619,7 +625,7 @@ struct DetailsView: View {
 
         sourceFetchTask?.cancel()
         sourceFetchTask = Task {
-            await viewModel.fetchSources(kpId: kpId, title: sourceSheetTitle)
+            await viewModel.fetchSources(kpId: kpId, tmdbId: tmdbId, title: sourceSheetTitle)
         }
     }
 
@@ -838,6 +844,18 @@ struct DetailsView: View {
                             .padding(.top, 16)
                             .padding(.bottom, 20)
                         }
+
+                        if let similar = details.similar, !similar.isEmpty {
+                            SimilarMediaSection(
+                                title: details.type == "tv" ? "Похожие сериалы" : "Похожие фильмы",
+                                items: similar,
+                                onDirectPlay: { movie in
+                                    directPlaybackMovie = movie
+                                }
+                            )
+                            .padding(.top, 16)
+                            .padding(.bottom, 20)
+                        }
                     }
                     .offset(y: -25)
                     .transition(.opacity)
@@ -982,6 +1000,18 @@ struct DetailsView: View {
                                 RelatedStudioSection(response: relatedStudio, onDirectPlay: { movie in
                                     directPlaybackMovie = movie
                                 })
+                                .padding(.top, 16)
+                                .padding(.bottom, 20)
+                            }
+
+                            if let similar = details.similar, !similar.isEmpty {
+                                SimilarMediaSection(
+                                    title: details.type == "tv" ? "Похожие сериалы" : "Похожие фильмы",
+                                    items: similar,
+                                    onDirectPlay: { movie in
+                                        directPlaybackMovie = movie
+                                    }
+                                )
                                 .padding(.top, 16)
                                 .padding(.bottom, 20)
                             }
@@ -1678,7 +1708,8 @@ struct EpisodeDetailsSheet: View {
     private func startDownload(kpId: Int, details: MediaDetailsDto) {
         Task {
             let title = details.title ?? details.originalTitle ?? ""
-            await viewModel.fetchSources(kpId: kpId, title: title)
+            let tmdbId = details.externalIds?.tmdb ?? details.ids?.tmdb ?? Int(details.id ?? "")
+            await viewModel.fetchSources(kpId: kpId, tmdbId: tmdbId, title: title)
             guard let result = viewModel.sourceResultWrapper?.allohaResult else { return }
             
             let savedVoiceover = PlaybackProgressStore.shared.loadLastVoiceover(kpId: kpId, source: "alloha")
@@ -2282,9 +2313,10 @@ class DetailsViewModel: ObservableObject {
 
             let isTv = details?.type == "tv" || inferredType == "tv"
             let effectiveKpId = details?.ids?.kp ?? details?.externalIds?.kp ?? (id.hasPrefix("kp_") ? Int(id.replacingOccurrences(of: "kp_", with: "")) : nil)
+            let tmdbId = details?.externalIds?.tmdb ?? details?.ids?.tmdb ?? Int(details?.id ?? "")
 
-            if isTv, let kpId = effectiveKpId {
-                await fetchInlineSeasons(kpId: kpId)
+            if isTv, ((effectiveKpId ?? 0) > 0 || (tmdbId ?? 0) > 0) {
+                await fetchInlineSeasons(kpId: effectiveKpId ?? 0, tmdbId: tmdbId)
             }
 
             let studioToFetch = details?.identifiedStudio ?? studio
@@ -2358,14 +2390,15 @@ class DetailsViewModel: ObservableObject {
         self.movieCollection = await MoviesRepository.shared.getMovieCollection(id: id)
     }
 
-    func fetchInlineSeasons(kpId: Int) async {
+    func fetchInlineSeasons(kpId: Int, tmdbId: Int? = nil) async {
         isFetchingInlineSeasons = true
         defer { isFetchingInlineSeasons = false }
 
+        let effectiveTmdbId = tmdbId ?? details?.externalIds?.tmdb ?? details?.ids?.tmdb ?? Int(details?.id ?? "")
         do {
-            let result = try await AllohaRepository.shared.fetchByKpId(kpId: kpId)
+            let result = try await AllohaRepository.shared.fetchByKpId(kpId: kpId, tmdbId: effectiveTmdbId)
             if result.isSerial {
-                self.inlineSourceWrapper = SourceResultWrapper(allohaResult: result, kpId: kpId)
+                self.inlineSourceWrapper = SourceResultWrapper(allohaResult: result, kpId: kpId > 0 ? kpId : (effectiveTmdbId ?? 0))
             }
         } catch {
             print("Error fetching inline seasons: \(error)")
@@ -2375,7 +2408,11 @@ class DetailsViewModel: ObservableObject {
     func checkFavoriteStatus() {
         guard let details = details else { return }
         guard let (mediaId, mediaType) = favoriteKey(for: details) else { return }
-        isFavorite = FavoritesRepository.shared.isFavorite(mediaId: mediaId, mediaType: mediaType)
+        var fav = FavoritesRepository.shared.isFavorite(mediaId: mediaId, mediaType: mediaType)
+        if !fav, let kpId = details.ids?.kp?.description {
+            fav = FavoritesRepository.shared.isFavorite(mediaId: kpId, mediaType: mediaType)
+        }
+        isFavorite = fav
     }
 
     func toggleFavorite() {
@@ -2387,6 +2424,9 @@ class DetailsViewModel: ObservableObject {
 
         if isFavorite {
             FavoritesRepository.shared.removeFromFavorites(mediaId: mediaId, mediaType: mediaType)
+            if let kpId = details.ids?.kp?.description {
+                FavoritesRepository.shared.removeFromFavorites(mediaId: kpId, mediaType: mediaType)
+            }
             generator.notificationOccurred(.warning)
             ToastManager.shared.show(title: "Удалено из избранного", icon: "heart.slash.fill", iconColor: .primary, duration: 2.0)
         } else {
@@ -2395,7 +2435,7 @@ class DetailsViewModel: ObservableObject {
                 mediaType: mediaType,
                 title: details.title ?? details.originalTitle,
                 posterUrl: details.poster ?? details.backdrop,
-                rating: details.ratings?.kp,
+                rating: details.ratings?.tmdb ?? details.ratings?.kp,
                 year: details.year?.description,
                 genres: details.genres?.compactMap { GenreDto(id: $0.lowercased(), name: $0) }
             )
@@ -2406,15 +2446,17 @@ class DetailsViewModel: ObservableObject {
     }
 
     private func favoriteKey(for details: MediaDetailsDto) -> (String, String)? {
-        let mediaId = details.ids?.kp?.description ?? details.id
-        guard let validId = mediaId, !validId.isEmpty else { return nil }
+        guard let mediaId = details.id, !mediaId.isEmpty else { return nil }
         let type = (details.type?.lowercased() == "tv" || details.type?.lowercased() == "series") ? "tv" : "movie"
-        return (validId.replacingOccurrences(of: "kp_", with: ""), type)
+        return (mediaId, type)
     }
 
-    func fetchSources(kpId: Int, title: String) async {
+    func fetchSources(kpId: Int, tmdbId: Int? = nil, title: String) async {
+        let effectiveTmdbId = tmdbId ?? details?.externalIds?.tmdb ?? details?.ids?.tmdb ?? Int(details?.id ?? "")
+        let cacheKey = kpId > 0 ? kpId : (effectiveTmdbId ?? 0)
+
         // Кэш на 5 минут — повторный тап «Смотреть» возвращает результат мгновенно
-        if let cached = sourcesCache[kpId], cached.expiresAt > Date() {
+        if cacheKey > 0, let cached = sourcesCache[cacheKey], cached.expiresAt > Date() {
             sourceResultWrapper = cached.wrapper
             return
         }
@@ -2424,9 +2466,11 @@ class DetailsViewModel: ObservableObject {
         defer { isFetchingSources = false }
 
         do {
-            let result = try await AllohaRepository.shared.fetchByKpId(kpId: kpId)
-            let wrapper = SourceResultWrapper(allohaResult: result, kpId: kpId)
-            sourcesCache[kpId] = (wrapper: wrapper, expiresAt: Date().addingTimeInterval(sourcesCacheTtl))
+            let result = try await AllohaRepository.shared.fetchByKpId(kpId: kpId, tmdbId: effectiveTmdbId)
+            let wrapper = SourceResultWrapper(allohaResult: result, kpId: kpId > 0 ? kpId : (effectiveTmdbId ?? 0))
+            if cacheKey > 0 {
+                sourcesCache[cacheKey] = (wrapper: wrapper, expiresAt: Date().addingTimeInterval(sourcesCacheTtl))
+            }
             self.sourceResultWrapper = wrapper
         } catch {
             print("Error fetching sources: \(error)")
@@ -2741,6 +2785,48 @@ private struct RelatedStudioSection: View {
                     }
                     .padding(.horizontal)
                 }
+            }
+        }
+    }
+}
+
+// MARK: - Similar Media Section
+
+private struct SimilarMediaSection: View {
+    let title: String
+    let items: [MediaDto]
+    var onDirectPlay: ((MediaDto) -> Void)? = nil
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title)
+                .font(.system(size: 18, weight: .bold))
+                .padding(.horizontal)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(alignment: .top, spacing: 14) {
+                    ForEach(items) { item in
+                        NavigationLink(destination: DetailsView(movieId: item.id, mediaType: item.type, navigationTransitionID: nil, navigationTransitionNamespace: nil).navigationBarBackButtonHidden(true)) {
+                            MoviePosterCard(movie: item)
+                                .frame(width: 120)
+                        }
+                        .buttonStyle(.plain)
+                        .contextMenu {
+                            Group {
+                                Button {
+                                    onDirectPlay?(item)
+                                } label: {
+                                    Label("Смотреть", systemImage: "play.fill")
+                                }
+                                NavigationLink(destination: DetailsView(movieId: item.id, mediaType: item.type, navigationTransitionID: nil, navigationTransitionNamespace: nil).navigationBarBackButtonHidden(true)) {
+                                    Label("Подробнее", systemImage: "info.circle")
+                                }
+                            }
+                            .tint(nil)
+                        }
+                    }
+                }
+                .padding(.horizontal)
             }
         }
     }

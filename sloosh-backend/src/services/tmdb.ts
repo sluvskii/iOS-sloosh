@@ -135,7 +135,7 @@ export function resolveGenreIds(genres: string, isTv: boolean = false): string {
     "детский": 10762, "kids": 10762,
     "новости": 10763, "news": 10763,
     "реалити-шоу": 10764, "reality": 10764,
-    "научная фантастика и фэнтези": 10765, "фантастика": 10765, "фэнтези": 10765, "sci-fi": 10765, "fantasy": 10765,
+    "научная фантастика и фэнтези": 10765, "фантастика": 10765, "фэнтези": 10765, "нф и фэнтези": 10765, "sci-fi": 10765, "fantasy": 10765,
     "мыльная опера": 10766, "soap": 10766,
     "ток-шоу": 10767, "talk": 10767,
     "война и политика": 10768, "военный": 10768, "война": 10768, "war": 10768,
@@ -356,8 +356,31 @@ export class TMDBService {
       page: String(page),
       include_adult: "false",
     })
-    const results: MediaDto[] = (data.results || [])
-      .filter((item: any) => item.media_type === "movie" || item.media_type === "tv")
+
+    const rawItems: any[] = []
+    const seenKeys = new Set<string>()
+
+    for (const item of (data.results || [])) {
+      if (item.media_type === "movie" || item.media_type === "tv") {
+        const key = `${item.media_type}_${item.id}`
+        if (!seenKeys.has(key)) {
+          seenKeys.add(key)
+          rawItems.push(item)
+        }
+      } else if (item.media_type === "person" && Array.isArray(item.known_for)) {
+        for (const kf of item.known_for) {
+          if (kf.media_type === "movie" || kf.media_type === "tv") {
+            const key = `${kf.media_type}_${kf.id}`
+            if (!seenKeys.has(key)) {
+              seenKeys.add(key)
+              rawItems.push(kf)
+            }
+          }
+        }
+      }
+    }
+
+    const results: MediaDto[] = rawItems
       .map((item: any) => item.media_type === "tv" ? mapRawTv(item) : mapRawMovie(item))
       .filter((item: MediaDto) => item.poster && item.title.trim().length > 0)
 
@@ -403,11 +426,23 @@ export class TMDBService {
 
     // Sorting Order
     const order = (options.order || "").trim()
+    const todayISO = new Date().toISOString().split("T")[0]
+
     if (order === "RATING" || order === "vote_average.desc") {
       params.sort_by = "vote_average.desc"
       params["vote_count.gte"] = "50"
     } else if (order === "YEAR" || order === "release_date.desc") {
       params.sort_by = isTv ? "first_air_date.desc" : "primary_release_date.desc"
+      if (!options.yearTo && !options.year) {
+        if (isTv) {
+          params["first_air_date.lte"] = todayISO
+        } else {
+          params["primary_release_date.lte"] = todayISO
+        }
+      }
+      if (!params["vote_count.gte"]) {
+        params["vote_count.gte"] = "5"
+      }
     } else if (order === "NUM_VOTE" || order === "vote_count.desc") {
       params.sort_by = "vote_count.desc"
     } else {
@@ -556,6 +591,23 @@ export class TMDBService {
 
     const genreNames = (data.genres || []).map((g: any) => g.name || TMDB_GENRES[g.id] || "").filter(Boolean)
 
+    // Similar / Recommended Media
+    const rawSimilar = [
+      ...(data.recommendations?.results || []),
+      ...(data.similar?.results || []),
+    ]
+    const seenSimilarIds = new Set<string>()
+    const similar: MediaDto[] = []
+
+    for (const item of rawSimilar) {
+      const idStr = String(item.id)
+      if (idStr !== String(id) && !seenSimilarIds.has(idStr) && item.poster_path && (item.title || item.original_title)) {
+        seenSimilarIds.add(idStr)
+        similar.push(mapRawMovie(item))
+        if (similar.length >= 15) break
+      }
+    }
+
     return {
       ...base,
       genres: (genreNames.length > 0 ? genreNames : (base.genres || []).map((g: any) => g.name).filter(Boolean)) as any,
@@ -567,6 +619,7 @@ export class TMDBService {
       trailers,
       collection,
       productionCompanies,
+      similar,
       externalIds: {
         tmdb: data.id,
         imdb: data.external_ids?.imdb_id || data.imdb_id,
@@ -628,16 +681,36 @@ export class TMDBService {
 
     const tvGenreNames = (data.genres || []).map((g: any) => g.name || TMDB_GENRES[g.id] || "").filter(Boolean)
 
+    // Similar / Recommended TV Series
+    const rawTvSimilar = [
+      ...(data.recommendations?.results || []),
+      ...(data.similar?.results || []),
+    ]
+    const seenTvSimilarIds = new Set<string>()
+    const similarTv: MediaDto[] = []
+
+    for (const item of rawTvSimilar) {
+      const idStr = String(item.id)
+      if (idStr !== String(id) && !seenTvSimilarIds.has(idStr) && item.poster_path && (item.name || item.original_name)) {
+        seenTvSimilarIds.add(idStr)
+        similarTv.push(mapRawTv(item))
+        if (similarTv.length >= 15) break
+      }
+    }
+
+    const duration = data.episode_run_time?.[0] || data.last_episode_to_air?.runtime || undefined
+
     return {
       ...base,
       genres: (tvGenreNames.length > 0 ? tvGenreNames : (base.genres || []).map((g: any) => g.name).filter(Boolean)) as any,
       backdrop: base.backdrop || base.poster,
-      duration: data.episode_run_time?.[0] || undefined,
+      duration,
       countries: (data.origin_country || (data.production_countries ? data.production_countries.map((c: any) => c.iso_3166_1 || c.name) : [])).map(localizeCountry).filter(Boolean),
       logo: logoUrl,
       cast,
       trailers,
       networks,
+      similar: similarTv,
       externalIds: {
         tmdb: data.id,
         imdb: data.external_ids?.imdb_id,

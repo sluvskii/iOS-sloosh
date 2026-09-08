@@ -312,15 +312,46 @@ final class AllohaRepository: @unchecked Sendable {
         return URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
     }()
     
-    func fetchByKpId(kpId: Int) async throws -> AllohaApiResult {
-        let cached = cacheQueue.sync { catalogCache[kpId] }
+    func fetchByKpId(kpId: Int, tmdbId: Int? = nil) async throws -> AllohaApiResult {
+        let cacheKey = kpId > 0 ? kpId : (tmdbId ?? 0)
+        let cached = cacheQueue.sync { catalogCache[cacheKey] }
         if let cached = cached, cached.expiresAt > Date() {
             return cached.result
         }
 
+        // Try KP ID first if positive
+        if kpId > 0 {
+            do {
+                let result = try await performAllohaQuery(param: "kp", value: String(kpId))
+                cacheQueue.async(flags: .barrier) { [weak self] in
+                    guard let self = self else { return }
+                    self.catalogCache[cacheKey] = (result: result, expiresAt: Date().addingTimeInterval(self.cacheTtl))
+                }
+                return result
+            } catch {
+                if tmdbId == nil || tmdbId == 0 {
+                    throw error
+                }
+            }
+        }
+
+        // Fallback to TMDB ID if available
+        if let tmdb = tmdbId, tmdb > 0 {
+            let result = try await performAllohaQuery(param: "tmdb", value: String(tmdb))
+            cacheQueue.async(flags: .barrier) { [weak self] in
+                guard let self = self else { return }
+                self.catalogCache[cacheKey] = (result: result, expiresAt: Date().addingTimeInterval(self.cacheTtl))
+            }
+            return result
+        }
+
+        throw URLError(.badURL)
+    }
+
+    private func performAllohaQuery(param: String, value: String) async throws -> AllohaApiResult {
         guard let encodedToken = token.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
-              let encodedKp = String(kpId).addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
-              let url = URL(string: "https://api.alloha.tv/?token=\(encodedToken)&kp=\(encodedKp)") else {
+              let encodedVal = value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+              let url = URL(string: "https://api.alloha.tv/?token=\(encodedToken)&\(param)=\(encodedVal)") else {
             throw URLError(.badURL)
         }
         
@@ -410,11 +441,7 @@ final class AllohaRepository: @unchecked Sendable {
             
             parsedSeasons.sort { $0.season < $1.season }
             
-            let result = AllohaApiResult(title: title, isSerial: true, movie: nil, seasons: parsedSeasons)
-            cacheQueue.async(flags: .barrier) {
-                self.catalogCache[kpId] = (result: result, expiresAt: Date().addingTimeInterval(self.cacheTtl))
-            }
-            return result
+            return AllohaApiResult(title: title, isSerial: true, movie: nil, seasons: parsedSeasons)
         } else {
             var parsedTrans: [AllohaTranslation] = []
             
@@ -554,13 +581,7 @@ final class AllohaRepository: @unchecked Sendable {
                 movie = AllohaMovie(title: title, iframeUrl: movieIframe, translations: parsedTrans)
             }
             
-            let result = AllohaApiResult(title: title, isSerial: false, movie: movie, seasons: [])
-            
-            let finalResult = result
-            cacheQueue.async(flags: .barrier) {
-                self.catalogCache[kpId] = (result: finalResult, expiresAt: Date().addingTimeInterval(self.cacheTtl))
-            }
-            return finalResult
+            return AllohaApiResult(title: title, isSerial: false, movie: movie, seasons: [])
         }
     }
 }

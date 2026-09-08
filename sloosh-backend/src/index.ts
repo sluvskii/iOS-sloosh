@@ -41,6 +41,21 @@ app.get("/", (c) => c.json({
 
 app.get("/health", (c) => c.json({ status: "ok" }))
 
+// Edge CDN Caching Middleware for sub-50ms responses & rate-limit protection
+app.use("/api/*", async (c, next) => {
+  await next()
+  if (c.req.method === "GET" && c.res.status === 200 && !c.res.headers.has("Cache-Control")) {
+    const path = c.req.path
+    if (path.includes("/movie/") || path.includes("/tv/") || path.includes("/person/") || path.includes("/collection/")) {
+      c.header("Cache-Control", "public, max-age=300, s-maxage=86400, stale-while-revalidate=604800")
+    } else if (path.includes("/search") || path.includes("/discover")) {
+      c.header("Cache-Control", "public, max-age=60, s-maxage=600, stale-while-revalidate=3600")
+    } else {
+      c.header("Cache-Control", "public, max-age=120, s-maxage=1800, stale-while-revalidate=86400")
+    }
+  }
+})
+
 // Mount Routers
 app.route("/api/v1", mediaRouter)
 app.route("/api/v2", mediaRouter)

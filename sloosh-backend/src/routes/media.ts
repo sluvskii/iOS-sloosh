@@ -210,6 +210,12 @@ async function handleTvDetails(id: number, isKp: boolean): Promise<MediaDetailsD
     try {
       details = await tmdb.getMovieDetails(tmdbId)
     } catch {
+      if (!isKp) {
+        const kpInfo = await resolveTmdbInfoByKp(id)
+        if (kpInfo?.tmdbId && kpInfo.tmdbId !== id) {
+          return kpInfo.isTv ? handleTvDetails(kpInfo.tmdbId, false) : handleMovieDetails(kpInfo.tmdbId, false)
+        }
+      }
       throw lookupErr
     }
   }
@@ -247,6 +253,12 @@ async function handleMovieDetails(id: number, isKp: boolean): Promise<MediaDetai
     try {
       details = await tmdb.getTvDetails(tmdbId)
     } catch {
+      if (!isKp) {
+        const kpInfo = await resolveTmdbInfoByKp(id)
+        if (kpInfo?.tmdbId && kpInfo.tmdbId !== id) {
+          return kpInfo.isTv ? handleTvDetails(kpInfo.tmdbId, false) : handleMovieDetails(kpInfo.tmdbId, false)
+        }
+      }
       throw lookupErr
     }
   }
