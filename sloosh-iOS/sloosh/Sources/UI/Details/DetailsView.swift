@@ -801,7 +801,7 @@ struct DetailsView: View {
                             .padding(.horizontal)
 
                         if let cast = details.cast, !cast.isEmpty {
-                            ActorsSection(cast: cast)
+                            ActorsSection(cast: cast, namespace: actorTransitionNamespace)
                                 .padding(.top, 16)
                         }
 
@@ -2425,7 +2425,7 @@ class DetailsViewModel: ObservableObject {
 
 private struct ActorsSection: View {
     let cast: [CastMemberDto]
-    let namespace: Namespace.ID
+    var namespace: Namespace.ID? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -2446,8 +2446,12 @@ private struct ActorsSection: View {
                             )
                             .navigationBarBackButtonHidden(true)
                         ) {
-                            ActorCardView(actor: actor)
-                                .matchedTransitionSource(id: transitionID, in: namespace)
+                            if let namespace {
+                                ActorCardView(actor: actor)
+                                    .matchedTransitionSource(id: transitionID, in: namespace)
+                            } else {
+                                ActorCardView(actor: actor)
+                            }
                         }
                         .buttonStyle(.plain)
                     }
