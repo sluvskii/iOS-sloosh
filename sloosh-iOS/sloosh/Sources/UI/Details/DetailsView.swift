@@ -512,29 +512,8 @@ struct DetailsView: View {
         HStack(spacing: 8) {
             playButton(for: details)
                 .tooltip(text: "Нажмите для выбора перевода", isVisible: $showTooltip, isTailTop: false)
-            if let trailers = details.trailers, let firstTrailer = trailers.first {
-                trailerButton(for: firstTrailer)
-            }
             downloadButton(for: details)
         }
-    }
-
-    private func trailerButton(for trailer: TrailerVideoDto) -> some View {
-        Button {
-            let generator = UIImpactFeedbackGenerator(style: .medium)
-            generator.prepare()
-            generator.impactOccurred()
-            selectedTrailer = trailer
-        } label: {
-            Image(systemName: "film.stack")
-                .font(.system(size: 20, weight: .medium))
-                .foregroundColor(.primary)
-                .frame(width: 50, height: 50)
-                .glassEffect(.regular.interactive(), in: .circle)
-                .shadow(color: .black.opacity(0.15), radius: 8, x: 0, y: 4)
-        }
-        .buttonStyle(.glassPress)
-        .accessibilityLabel("Трейлер")
     }
 
 
