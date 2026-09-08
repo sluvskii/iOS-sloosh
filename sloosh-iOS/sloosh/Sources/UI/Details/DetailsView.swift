@@ -125,6 +125,8 @@ struct DetailsView: View {
     @State private var sourceSheetSourceID: String = "playBtn"
     
     @State private var playerKpId: Int?
+    @State private var playerTmdbId: Int?
+    @State private var playerMediaKey: String?
     @State private var playerSeason: Int?
     @State private var playerEpisode: Int?
     @State private var playerVoiceover: String?
@@ -340,7 +342,17 @@ struct DetailsView: View {
                               let result = wrapper.allohaResult {
                         SourceSelectionView(mode: sourceSheetMode, result: result, kpId: wrapper.kpId, details: viewModel.details) { translation, season, episode, quality in
                             if sourceSheetMode == .play {
-                                playerKpId = wrapper.kpId
+                                let effectiveKp = (wrapper.kpId > 0 ? wrapper.kpId : nil)
+                                    ?? viewModel.details?.ids?.kp
+                                    ?? viewModel.details?.externalIds?.kp
+                                let effectiveTmdb = viewModel.details?.externalIds?.tmdb
+                                    ?? viewModel.details?.ids?.tmdb
+                                    ?? Int(viewModel.details?.id ?? "")
+                                let resolvedKey = (effectiveKp ?? 0) > 0 ? "kp_\(effectiveKp!)" : (viewModel.details?.id ?? "tmdb_\(effectiveTmdb ?? 0)")
+
+                                playerKpId = effectiveKp
+                                playerTmdbId = effectiveTmdb
+                                playerMediaKey = resolvedKey
                                 playerSeason = season
                                 playerEpisode = episode
                                 playerQuality = quality
@@ -379,6 +391,8 @@ struct DetailsView: View {
                 selectedIframeUrl = nil
                 directPlaybackTitle = nil
                 playerKpId = nil
+                playerTmdbId = nil
+                playerMediaKey = nil
                 playerSeason = nil
                 playerEpisode = nil
                 playerVoiceover = nil
@@ -391,9 +405,37 @@ struct DetailsView: View {
                 if let details = viewModel.details {
                     let fallbackTitle = directPlaybackTitle ?? details.title ?? details.originalTitle ?? ""
                     if let iframeUrl = selectedIframeUrl {
-                        PlayerView(iframeUrl: iframeUrl, fallbackTitle: fallbackTitle, kpId: playerKpId, season: playerSeason, episode: playerEpisode, selectedVoiceover: playerVoiceover, directStreamUrl: playerStreamUrl, voices: playerVoices, subtitles: playerSubtitles, initialQuality: playerQuality, seriesResult: playerSeriesResult)
+                        PlayerView(
+                            iframeUrl: iframeUrl,
+                            fallbackTitle: fallbackTitle,
+                            kpId: playerKpId,
+                            season: playerSeason,
+                            episode: playerEpisode,
+                            selectedVoiceover: playerVoiceover,
+                            directStreamUrl: playerStreamUrl,
+                            voices: playerVoices,
+                            subtitles: playerSubtitles,
+                            initialQuality: playerQuality,
+                            seriesResult: playerSeriesResult,
+                            mediaKey: playerMediaKey,
+                            tmdbId: playerTmdbId
+                        )
                     } else if let streamUrl = playerStreamUrl {
-                        PlayerView(iframeUrl: "", fallbackTitle: fallbackTitle, kpId: playerKpId, season: playerSeason, episode: playerEpisode, selectedVoiceover: playerVoiceover, directStreamUrl: streamUrl, voices: playerVoices, subtitles: playerSubtitles, initialQuality: playerQuality, seriesResult: playerSeriesResult)
+                        PlayerView(
+                            iframeUrl: "",
+                            fallbackTitle: fallbackTitle,
+                            kpId: playerKpId,
+                            season: playerSeason,
+                            episode: playerEpisode,
+                            selectedVoiceover: playerVoiceover,
+                            directStreamUrl: streamUrl,
+                            voices: playerVoices,
+                            subtitles: playerSubtitles,
+                            initialQuality: playerQuality,
+                            seriesResult: playerSeriesResult,
+                            mediaKey: playerMediaKey,
+                            tmdbId: playerTmdbId
+                        )
                     } else {
                         ZStack {
                             Color.black.ignoresSafeArea()
@@ -438,6 +480,8 @@ struct DetailsView: View {
                     directPlaybackTitle = pending.title
                     selectedIframeUrl = pending.iframeUrl
                     playerKpId = pending.kpId
+                    playerTmdbId = pending.tmdbId
+                    playerMediaKey = pending.mediaKey
                     playerSeason = pending.season
                     playerEpisode = pending.episode
                     playerVoiceover = pending.voiceover
@@ -2477,7 +2521,12 @@ class DetailsViewModel: ObservableObject {
         defer { isFetchingSources = false }
 
         do {
-            let result = try await AllohaRepository.shared.fetchByKpId(kpId: kpId, tmdbId: effectiveTmdbId)
+            let result: AllohaApiResult
+            if kpId > 0 || (effectiveTmdbId ?? 0) > 0 {
+                result = try await AllohaRepository.shared.fetchByKpId(kpId: kpId, tmdbId: effectiveTmdbId)
+            } else {
+                result = try await AllohaRepository.shared.fetchMedia(kpId: nil, tmdbId: nil, title: title)
+            }
             let wrapper = SourceResultWrapper(allohaResult: result, kpId: kpId > 0 ? kpId : (effectiveTmdbId ?? 0))
             if cacheKey > 0 {
                 sourcesCache[cacheKey] = (wrapper: wrapper, expiresAt: Date().addingTimeInterval(sourcesCacheTtl))
