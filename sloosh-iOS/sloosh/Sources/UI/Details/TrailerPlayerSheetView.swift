@@ -69,7 +69,7 @@ struct TrailerPlayerSheetView: View {
                 youtubeBottomButton
             }
         }
-        .presentationDetents([.height(440), .large])
+        .presentationDetents([.height(440)])
         .presentationDragIndicator(.visible)
         .presentationBackground { Color.clear.glassEffect(in: .rect) }
     }
