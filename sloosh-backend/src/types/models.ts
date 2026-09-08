@@ -6,6 +6,14 @@ export interface CastMemberDto {
   photo: string | null
 }
 
+export interface CrewMemberDto {
+  id: number
+  name: string
+  originalName: string
+  role: string
+  photo: string | null
+}
+
 export interface TrailerVideoDto {
   id: string
   name: string
@@ -89,6 +97,9 @@ export interface MediaDetailsDto extends MediaDto {
   countries?: string[]
   logo?: string | null
   cast?: CastMemberDto[]
+  directors?: CrewMemberDto[]
+  writers?: CrewMemberDto[]
+  crew?: CrewMemberDto[]
   trailers?: TrailerVideoDto[]
   collection?: MovieCollectionDto | null
   productionCompanies?: ProductionCompanyDto[]

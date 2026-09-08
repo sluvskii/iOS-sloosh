@@ -1486,7 +1486,7 @@ final class PersonDetailViewModel: ObservableObject {
             self.details = result
             self.isLoading = false
         } catch {
-            self.errorMessage = "Не удалось загрузить данные об актёре"
+            self.errorMessage = "Не удалось загрузить данные"
             self.isLoading = false
         }
     }
