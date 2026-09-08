@@ -764,17 +764,6 @@ struct PersonPhotoGalleryView: View {
     @State private var showControls: Bool = true
     @State private var isTransitionFinished: Bool = false
 
-    private var windowSafeAreaInsets: UIEdgeInsets {
-        guard let windowScene = UIApplication.shared.connectedScenes
-            .compactMap({ $0 as? UIWindowScene })
-            .first(where: { $0.activationState == .foregroundActive }) ??
-              UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first,
-              let window = windowScene.windows.first(where: { $0.isKeyWindow }) ?? windowScene.windows.first else {
-            return UIEdgeInsets(top: 54, left: 0, bottom: 34, right: 0)
-        }
-        return window.safeAreaInsets
-    }
-
     var body: some View {
         ZStack {
             // Native UIKit Pager with edge-to-edge images and pinch-to-zoom
@@ -789,7 +778,7 @@ struct PersonPhotoGalleryView: View {
             )
             .ignoresSafeArea()
 
-            // Floating Controls Overlay (strictly fixed at natural safe area)
+            // Floating Controls Overlay (aligned with standard screen navigation)
             VStack(spacing: 0) {
                 // Top Bar
                 HStack {
@@ -819,7 +808,6 @@ struct PersonPhotoGalleryView: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.bottom, 8)
-                .padding(.top, windowSafeAreaInsets.top)
 
                 Spacer()
 
@@ -840,7 +828,7 @@ struct PersonPhotoGalleryView: View {
                     .shadow(color: .black.opacity(0.35), radius: 10, x: 0, y: 5)
                 }
                 .buttonStyle(.plain)
-                .padding(.bottom, windowSafeAreaInsets.bottom + 16)
+                .padding(.bottom, 12)
             }
             .opacity((isTransitionFinished && showControls) ? 1.0 : 0.0)
             .allowsHitTesting(isTransitionFinished && showControls)
