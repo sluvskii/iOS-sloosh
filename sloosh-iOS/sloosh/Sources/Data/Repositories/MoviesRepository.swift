@@ -18,6 +18,7 @@ class MoviesRepository: ObservableObject {
     private var personMemory: [Int: PersonDetailsDto] = [:]
     private let detailsDiskCache = MediaDetailsDiskCache()
     private let listDiskCache = MediaListDiskCache()
+    private let personDiskCache = PersonDetailsDiskCache()
 
     private init() {
         memoryWarningToken = NotificationCenter.default.addObserver(
@@ -43,16 +44,19 @@ class MoviesRepository: ObservableObject {
         Task {
             await detailsDiskCache.cleanUpExpired()
             await listDiskCache.cleanUpExpired()
+            await personDiskCache.cleanUpExpired()
         }
     }
 
     // MARK: - Lists
 
-    func getPopularMovies(page: Int = 1) async throws -> [MediaDto] {
-        if let cached = popularCache[page] { return cached }
-        if let diskCached = await listDiskCache.load(key: "popular_\(page)") {
-            popularCache[page] = diskCached
-            return diskCached
+    func getPopularMovies(page: Int = 1, force: Bool = false) async throws -> [MediaDto] {
+        if !force {
+            if let cached = popularCache[page] { return cached }
+            if let diskCached = await listDiskCache.load(key: "popular_\(page)") {
+                popularCache[page] = diskCached
+                return diskCached
+            }
         }
         let response = try await MoviesApi.shared.getPopularMovies(page: page)
         let results = response.data?.results ?? []
@@ -61,11 +65,13 @@ class MoviesRepository: ObservableObject {
         return results
     }
 
-    func getTopMovies(page: Int = 1) async throws -> [MediaDto] {
-        if let cached = topMoviesCache[page] { return cached }
-        if let diskCached = await listDiskCache.load(key: "topMovies_\(page)") {
-            topMoviesCache[page] = diskCached
-            return diskCached
+    func getTopMovies(page: Int = 1, force: Bool = false) async throws -> [MediaDto] {
+        if !force {
+            if let cached = topMoviesCache[page] { return cached }
+            if let diskCached = await listDiskCache.load(key: "topMovies_\(page)") {
+                topMoviesCache[page] = diskCached
+                return diskCached
+            }
         }
         let response = try await MoviesApi.shared.getTopMovies(page: page)
         let results = response.data?.results ?? []
@@ -74,11 +80,13 @@ class MoviesRepository: ObservableObject {
         return results
     }
 
-    func getTopTv(page: Int = 1) async throws -> [MediaDto] {
-        if let cached = topTvCache[page] { return cached }
-        if let diskCached = await listDiskCache.load(key: "topTv_\(page)") {
-            topTvCache[page] = diskCached
-            return diskCached
+    func getTopTv(page: Int = 1, force: Bool = false) async throws -> [MediaDto] {
+        if !force {
+            if let cached = topTvCache[page] { return cached }
+            if let diskCached = await listDiskCache.load(key: "topTv_\(page)") {
+                topTvCache[page] = diskCached
+                return diskCached
+            }
         }
         let response = try await MoviesApi.shared.getTopTv(page: page)
         let results = response.data?.results ?? []
@@ -87,11 +95,13 @@ class MoviesRepository: ObservableObject {
         return results
     }
 
-    func getCartoons(page: Int = 1) async throws -> [MediaDto] {
-        if let cached = cartoonsCache[page] { return cached }
-        if let diskCached = await listDiskCache.load(key: "cartoons_\(page)") {
-            cartoonsCache[page] = diskCached
-            return diskCached
+    func getCartoons(page: Int = 1, force: Bool = false) async throws -> [MediaDto] {
+        if !force {
+            if let cached = cartoonsCache[page] { return cached }
+            if let diskCached = await listDiskCache.load(key: "cartoons_\(page)") {
+                cartoonsCache[page] = diskCached
+                return diskCached
+            }
         }
         let response = try await MoviesApi.shared.getCartoons(page: page)
         let results = response.data?.results ?? []
@@ -146,9 +156,14 @@ class MoviesRepository: ObservableObject {
 
     func getPersonDetails(id: Int) async throws -> PersonDetailsDto? {
         if let hit = personMemory[id] { return hit }
+        if let diskHit = await personDiskCache.load(id: id) {
+            personMemory[id] = diskHit
+            return diskHit
+        }
         let response = try await MoviesApi.shared.getPersonDetails(id: id)
         if let details = response.data {
             personMemory[id] = details
+            await personDiskCache.save(details, id: id)
             return details
         }
         return response.data
@@ -571,6 +586,65 @@ actor MediaListDiskCache {
     func save(_ items: [MediaDto], key: String) {
         guard let url = fileURL(for: key) else { return }
         let entry = Entry(savedAt: Date(), items: items)
+        guard let data = try? JSONEncoder().encode(entry) else { return }
+        try? data.write(to: url, options: .atomic)
+    }
+
+    func cleanUpExpired() {
+        guard let dir = cacheDir, let files = try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.contentModificationDateKey]) else { return }
+        let now = Date()
+        for file in files {
+            if let values = try? file.resourceValues(forKeys: [.contentModificationDateKey]),
+               let modDate = values.contentModificationDate {
+                if now.timeIntervalSince(modDate) >= ttl {
+                    try? FileManager.default.removeItem(at: file)
+                }
+            }
+        }
+    }
+}
+
+// MARK: - PersonDetailsDiskCache
+
+/// Кэширует PersonDetailsDto на диске (Library/Caches) с TTL 24 часа.
+actor PersonDetailsDiskCache {
+    private let ttl: TimeInterval = 24 * 60 * 60
+
+    private struct Entry: Codable {
+        let savedAt: Date
+        let details: PersonDetailsDto
+    }
+
+    private let cacheDir: URL?
+
+    init() {
+        if let base = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask).first {
+            let dir = base.appendingPathComponent("sloosh.persondetails.v1", isDirectory: true)
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            self.cacheDir = dir
+        } else {
+            self.cacheDir = nil
+        }
+    }
+
+    private func fileURL(for id: Int) -> URL? {
+        return cacheDir?.appendingPathComponent("\(id).json")
+    }
+
+    func load(id: Int) -> PersonDetailsDto? {
+        guard let url = fileURL(for: id) else { return nil }
+        guard let data = try? Data(contentsOf: url) else { return nil }
+        guard let entry = try? JSONDecoder().decode(Entry.self, from: data) else { return nil }
+        guard Date().timeIntervalSince(entry.savedAt) < ttl else {
+            try? FileManager.default.removeItem(at: url)
+            return nil
+        }
+        return entry.details
+    }
+
+    func save(_ details: PersonDetailsDto, id: Int) {
+        guard let url = fileURL(for: id) else { return }
+        let entry = Entry(savedAt: Date(), details: details)
         guard let data = try? JSONEncoder().encode(entry) else { return }
         try? data.write(to: url, options: .atomic)
     }
