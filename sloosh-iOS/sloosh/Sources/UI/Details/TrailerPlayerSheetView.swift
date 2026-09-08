@@ -86,23 +86,22 @@ struct TrailerPlayerSheetView: View {
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "arrow.up.right.video.fill")
-                        .font(.system(size: 16, weight: .semibold))
+                        .font(.system(size: 15, weight: .semibold))
                     Text("Открыть в YouTube")
-                        .font(.system(size: 16, weight: .bold))
+                        .font(.system(size: 15, weight: .semibold))
                 }
                 .foregroundStyle(.white)
                 .frame(maxWidth: .infinity)
-                .frame(height: 50)
+                .frame(height: 44)
                 .background(
                     Capsule()
                         .fill(Color(red: 0.90, green: 0.12, blue: 0.12).opacity(0.88))
                 )
                 .glassEffect(.regular.interactive(), in: .capsule)
-                .shadow(color: Color(red: 0.90, green: 0.12, blue: 0.12).opacity(0.4), radius: 10, x: 0, y: 4)
             }
             .buttonStyle(.glassPress)
-            .padding(.horizontal, 14)
-            .padding(.bottom, 14)
+            .padding(.horizontal, 28)
+            .padding(.bottom, 8)
         }
     }
 }
