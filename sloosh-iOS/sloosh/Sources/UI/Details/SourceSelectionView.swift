@@ -141,40 +141,54 @@ struct SourceSelectionView: View {
         }
     }
     
+    var mediaKey: String {
+        let validKp = (kpId ?? 0) > 0 ? (kpId ?? 0) : (details?.ids?.kp ?? details?.externalIds?.kp ?? 0)
+        if validKp > 0 {
+            return "kp_\(validKp)"
+        }
+        if let detailsId = details?.id, !detailsId.isEmpty {
+            return detailsId.hasPrefix("kp_") || detailsId.hasPrefix("tmdb_") ? detailsId : "tmdb_\(detailsId)"
+        }
+        if let tmdb = details?.externalIds?.tmdb ?? details?.ids?.tmdb, tmdb > 0 {
+            return "tmdb_\(tmdb)"
+        }
+        return "unknown"
+    }
+
     private func setupInitialSelection() {
-        let savedVoiceover = kpId.flatMap {
-            PlaybackProgressStore.shared.loadLastVoiceover(kpId: $0, source: "alloha")
-        } ?? UserDefaults.standard.string(forKey: "alloha_last_translation_name")
+        let currentKey = mediaKey
+        let savedVoiceover = PlaybackProgressStore.shared.loadLastVoiceover(mediaKey: currentKey) ??
+            (kpId.flatMap { $0 > 0 ? PlaybackProgressStore.shared.loadLastVoiceover(kpId: $0, source: "alloha") : nil }) ??
+            UserDefaults.standard.string(forKey: "alloha_last_translation_name")
 
         if result.isSerial {
             var initialSeason = result.seasons.first?.season
             var initialEpisode: Int? = nil
             
-            if let kpId = kpId {
-                if let lastSeason = PlaybackProgressStore.shared.loadLastSeason(kpId: kpId),
-                   result.seasons.contains(where: { $0.season == lastSeason }) {
-                    initialSeason = lastSeason
-                }
+            if let lastSeason = PlaybackProgressStore.shared.loadLastSeason(mediaKey: currentKey) ?? (kpId.flatMap { $0 > 0 ? PlaybackProgressStore.shared.loadLastSeason(kpId: $0) : nil }),
+               result.seasons.contains(where: { $0.season == lastSeason }) {
+                initialSeason = lastSeason
+            }
+            
+            if let lastEpisode = PlaybackProgressStore.shared.loadLastEpisode(mediaKey: currentKey) ?? (kpId.flatMap { $0 > 0 ? PlaybackProgressStore.shared.loadLastEpisode(kpId: $0) : nil }) {
+                initialEpisode = lastEpisode
                 
-                if let lastEpisode = PlaybackProgressStore.shared.loadLastEpisode(kpId: kpId) {
-                    initialEpisode = lastEpisode
-                    
-                    // If the user fully watched this episode, auto-select the next one!
-                    let mediaId = "kp_\(kpId)_s\(initialSeason ?? 1)_e\(lastEpisode)"
-                    if PlaybackProgressStore.shared.loadWatched(mediaId: mediaId) {
-                        let allEpisodes = result.seasons
-                            .flatMap { s in s.episodes.map { (s.season, $0.episode) } }
-                            .sorted {
-                                if $0.0 != $1.0 { return $0.0 < $1.0 }
-                                return $0.1 < $1.1
-                            }
-                        
-                        if let currentIdx = allEpisodes.firstIndex(where: { $0.0 == initialSeason && $0.1 == lastEpisode }),
-                           currentIdx + 1 < allEpisodes.count {
-                            let nextEp = allEpisodes[currentIdx + 1]
-                            initialSeason = nextEp.0
-                            initialEpisode = nextEp.1
+                // If the user fully watched this episode, auto-select the next one!
+                let sNum = initialSeason ?? 1
+                let mediaId = "\(currentKey)_s\(sNum)_e\(lastEpisode)"
+                if PlaybackProgressStore.shared.loadWatched(mediaId: mediaId) {
+                    let allEpisodes = result.seasons
+                        .flatMap { s in s.episodes.map { (s.season, $0.episode) } }
+                        .sorted {
+                            if $0.0 != $1.0 { return $0.0 < $1.0 }
+                            return $0.1 < $1.1
                         }
+                    
+                    if let currentIdx = allEpisodes.firstIndex(where: { $0.0 == initialSeason && $0.1 == lastEpisode }),
+                       currentIdx + 1 < allEpisodes.count {
+                        let nextEp = allEpisodes[currentIdx + 1]
+                        initialSeason = nextEp.0
+                        initialEpisode = nextEp.1
                     }
                 }
             }
@@ -205,15 +219,20 @@ struct SourceSelectionView: View {
     }
     
     func finishAction(quality: VideoQualityPreference) {
+        let currentKey = mediaKey
         if result.isSerial {
             guard let s = selectedSeason, let e = selectedEpisode, let tName = selectedTranslationName else { return }
             guard let seasonObj = result.seasons.first(where: { $0.season == s }),
                   let epObj = seasonObj.episodes.first(where: { $0.episode == e }),
                   let translation = epObj.translations.first(where: { allohaTranslationNamesMatch($0.name, tName, exactOnly: true) }) else { return }
             
-            if mode == .play, let kpId = kpId {
-                PlaybackProgressStore.shared.saveLastPlayed(kpId: kpId, season: s, episode: e)
-                PlaybackProgressStore.shared.saveLastVoiceover(kpId: kpId, source: "alloha", voiceover: translation.name)
+            if mode == .play {
+                PlaybackProgressStore.shared.saveLastPlayed(mediaKey: currentKey, season: s, episode: e)
+                PlaybackProgressStore.shared.saveLastVoiceover(mediaKey: currentKey, source: "alloha", voiceover: translation.name)
+                if let kpId = kpId, kpId > 0 {
+                    PlaybackProgressStore.shared.saveLastPlayed(kpId: kpId, season: s, episode: e)
+                    PlaybackProgressStore.shared.saveLastVoiceover(kpId: kpId, source: "alloha", voiceover: translation.name)
+                }
             }
             
             onAction(translation, s, e, quality)
@@ -222,9 +241,13 @@ struct SourceSelectionView: View {
             guard let tName = selectedTranslationName,
                   let translation = movie.translations.first(where: { $0.name == tName }) else { return }
             
-            if mode == .play, let kpId = kpId {
-                PlaybackProgressStore.shared.saveLastPlayed(kpId: kpId, season: nil, episode: nil)
-                PlaybackProgressStore.shared.saveLastVoiceover(kpId: kpId, source: "alloha", voiceover: translation.name)
+            if mode == .play {
+                PlaybackProgressStore.shared.saveLastPlayed(mediaKey: currentKey, season: nil, episode: nil)
+                PlaybackProgressStore.shared.saveLastVoiceover(mediaKey: currentKey, source: "alloha", voiceover: translation.name)
+                if let kpId = kpId, kpId > 0 {
+                    PlaybackProgressStore.shared.saveLastPlayed(kpId: kpId, season: nil, episode: nil)
+                    PlaybackProgressStore.shared.saveLastVoiceover(kpId: kpId, source: "alloha", voiceover: translation.name)
+                }
             }
             
             onAction(translation, nil, nil, quality)

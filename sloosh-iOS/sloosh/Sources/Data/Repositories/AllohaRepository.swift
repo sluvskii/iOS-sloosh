@@ -348,6 +348,25 @@ final class AllohaRepository: @unchecked Sendable {
         throw URLError(.badURL)
     }
 
+    func fetchMedia(kpId: Int?, tmdbId: Int?, title: String? = nil) async throws -> AllohaApiResult {
+        let validKp = (kpId ?? 0) > 0 ? (kpId ?? 0) : 0
+        let validTmdb = (tmdbId ?? 0) > 0 ? tmdbId : nil
+        if validKp > 0 || validTmdb != nil {
+            do {
+                return try await fetchByKpId(kpId: validKp, tmdbId: validTmdb)
+            } catch {
+                if let title = title, !title.isEmpty, !title.hasPrefix("Без названия") {
+                    return try await performAllohaQuery(param: "name", value: title)
+                }
+                throw error
+            }
+        }
+        if let title = title, !title.isEmpty, !title.hasPrefix("Без названия") {
+            return try await performAllohaQuery(param: "name", value: title)
+        }
+        throw URLError(.badURL)
+    }
+
     private func performAllohaQuery(param: String, value: String) async throws -> AllohaApiResult {
         guard let encodedToken = token.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
               let encodedVal = value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),

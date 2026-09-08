@@ -7,20 +7,24 @@ final class ProgressRecordModel {
     var userId: String
     var mediaId: String
     var kpId: Int
+    var tmdbId: Int?
     var season: Int?
     var episode: Int?
+    var voiceover: String?
     var positionSec: Double
     var durationSec: Double
     var watched: Bool
     var updatedAtMs: Int
 
-    init(userId: String = "guest", mediaId: String, kpId: Int, season: Int? = nil, episode: Int? = nil, positionSec: Double = 0, durationSec: Double = 0, watched: Bool = false, updatedAtMs: Int) {
+    init(userId: String = "guest", mediaId: String, kpId: Int, tmdbId: Int? = nil, season: Int? = nil, episode: Int? = nil, voiceover: String? = nil, positionSec: Double = 0, durationSec: Double = 0, watched: Bool = false, updatedAtMs: Int) {
         self.userId = userId
         self.mediaId = mediaId
         self.userMediaIdKey = "\(userId)_\(mediaId)"
         self.kpId = kpId
+        self.tmdbId = tmdbId
         self.season = season
         self.episode = episode
+        self.voiceover = voiceover
         self.positionSec = positionSec
         self.durationSec = durationSec
         self.watched = watched
@@ -30,9 +34,10 @@ final class ProgressRecordModel {
 
 @Model
 final class PlaybackMetadataModel {
-    @Attribute(.unique) var userKpIdKey: String // composite key: "<userId>_<kpId>"
+    @Attribute(.unique) var userKpIdKey: String // composite key: "<userId>_<mediaKey>"
     var userId: String
     var kpId: Int
+    var tmdbId: Int?
     var detailsId: String
     var title: String
     var type: String?
@@ -40,10 +45,12 @@ final class PlaybackMetadataModel {
     var backdropUrl: String?
     var logoUrl: String?
 
-    init(userId: String = "guest", kpId: Int, detailsId: String, title: String, type: String? = nil, posterUrl: String? = nil, backdropUrl: String? = nil, logoUrl: String? = nil) {
+    init(userId: String = "guest", kpId: Int, tmdbId: Int? = nil, detailsId: String, title: String, type: String? = nil, posterUrl: String? = nil, backdropUrl: String? = nil, logoUrl: String? = nil, mediaKey: String? = nil) {
         self.userId = userId
         self.kpId = kpId
-        self.userKpIdKey = "\(userId)_\(kpId)"
+        self.tmdbId = tmdbId
+        let resolvedKey = mediaKey ?? (kpId > 0 ? "kp_\(kpId)" : (detailsId.isEmpty ? "tmdb_\(tmdbId ?? 0)" : detailsId))
+        self.userKpIdKey = "\(userId)_\(resolvedKey)"
         self.detailsId = detailsId
         self.title = title
         self.type = type
@@ -72,16 +79,19 @@ final class LastPlayedVoiceoverModel {
 
 @Model
 final class LastPlayedEpisodeModel {
-    @Attribute(.unique) var userKpIdKey: String // composite key: "<userId>_<kpId>"
+    @Attribute(.unique) var userKpIdKey: String // composite key: "<userId>_<mediaKey>"
     var userId: String
     var kpId: Int
+    var mediaKey: String?
     var season: Int?
     var episode: Int?
     
-    init(userId: String = "guest", kpId: Int, season: Int? = nil, episode: Int? = nil) {
+    init(userId: String = "guest", kpId: Int, mediaKey: String? = nil, season: Int? = nil, episode: Int? = nil) {
         self.userId = userId
         self.kpId = kpId
-        self.userKpIdKey = "\(userId)_\(kpId)"
+        let resolvedKey = mediaKey ?? (kpId > 0 ? "kp_\(kpId)" : "media_\(kpId)")
+        self.mediaKey = resolvedKey
+        self.userKpIdKey = "\(userId)_\(resolvedKey)"
         self.season = season
         self.episode = episode
     }

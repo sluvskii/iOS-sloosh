@@ -13,6 +13,38 @@ struct PlayerConfig: Identifiable {
     let subtitles: [PlaybackSubtitle]
     let quality: VideoQualityPreference?
     let seriesResult: AllohaApiResult?
+    let mediaKey: String?
+    let tmdbId: Int?
+
+    init(
+        iframeUrl: String?,
+        title: String,
+        kpId: Int?,
+        season: Int?,
+        episode: Int?,
+        voiceover: String?,
+        streamUrl: String?,
+        voices: [String],
+        subtitles: [PlaybackSubtitle],
+        quality: VideoQualityPreference?,
+        seriesResult: AllohaApiResult?,
+        mediaKey: String? = nil,
+        tmdbId: Int? = nil
+    ) {
+        self.iframeUrl = iframeUrl
+        self.title = title
+        self.kpId = kpId
+        self.season = season
+        self.episode = episode
+        self.voiceover = voiceover
+        self.streamUrl = streamUrl
+        self.voices = voices
+        self.subtitles = subtitles
+        self.quality = quality
+        self.seriesResult = seriesResult
+        self.mediaKey = mediaKey
+        self.tmdbId = tmdbId
+    }
 }
 
 struct HomeDirectPlayWrapper: View {
@@ -33,6 +65,9 @@ struct HomeDirectPlayWrapper: View {
             } else if let wrapper = viewModel.sourceResultWrapper,
                       let result = wrapper.allohaResult {
                 SourceSelectionView(mode: .play, result: result, kpId: wrapper.kpId, details: viewModel.details) { translation, season, episode, quality in
+                    let tmdb = viewModel.details?.externalIds?.tmdb ?? viewModel.details?.ids?.tmdb ?? Int(viewModel.details?.id ?? "")
+                    let kp = (wrapper.kpId ?? 0) > 0 ? wrapper.kpId! : (viewModel.details?.ids?.kp ?? 0)
+                    let resolvedKey = kp > 0 ? "kp_\(kp)" : (viewModel.details?.id ?? "tmdb_\(tmdb ?? 0)")
                     let config = PlayerConfig(
                         iframeUrl: translation.iframeUrl,
                         title: viewModel.details?.title ?? fallbackTitle,
@@ -44,7 +79,9 @@ struct HomeDirectPlayWrapper: View {
                         voices: result.allTranslationNames,
                         subtitles: [],
                         quality: quality,
-                        seriesResult: result
+                        seriesResult: result,
+                        mediaKey: resolvedKey,
+                        tmdbId: tmdb
                     )
                     onPlay(config)
                 }
@@ -64,12 +101,14 @@ struct HomeDirectPlayWrapper: View {
                 await viewModel.fetchSources(kpId: initialKpId, title: fallbackTitle)
             } else {
                 await viewModel.loadDetails(id: movieId, type: mediaType)
-                let resolvedKpId = viewModel.details?.ids?.kp ?? viewModel.details?.externalIds?.kp
-                if let kpId = resolvedKpId {
-                    await viewModel.fetchSources(kpId: kpId, title: viewModel.details?.title ?? fallbackTitle)
-                } else if let numericKp = Int(movieId.replacingOccurrences(of: "kp_", with: "")) {
-                    await viewModel.fetchSources(kpId: numericKp, title: fallbackTitle)
-                }
+                let resolvedKpId = viewModel.details?.ids?.kp ?? viewModel.details?.externalIds?.kp ?? (movieId.hasPrefix("kp_") ? Int(movieId.replacingOccurrences(of: "kp_", with: "")) : nil) ?? 0
+                let resolvedTmdbId = viewModel.details?.externalIds?.tmdb ?? viewModel.details?.ids?.tmdb ?? (movieId.hasPrefix("tmdb_") ? Int(movieId.replacingOccurrences(of: "tmdb_", with: "")) : Int(movieId))
+                let resolvedTitle = viewModel.details?.title ?? fallbackTitle
+                await viewModel.fetchSources(
+                    kpId: resolvedKpId,
+                    tmdbId: resolvedTmdbId,
+                    title: resolvedTitle
+                )
             }
             fetchAttempted = true
         }

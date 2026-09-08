@@ -190,11 +190,12 @@ struct DownloadsView: View {
         }) { item in
             PlayerView(
                 fallbackTitle: item.title,
-                kpId: item.kpId,
+                kpId: item.kpId > 0 ? item.kpId : nil,
                 season: item.season,
                 episode: item.episode,
                 selectedVoiceover: item.translationName,
-                directStreamUrl: item.localPlayableUrl?.absoluteString
+                directStreamUrl: item.localPlayableUrl?.absoluteString,
+                mediaKey: item.kpId > 0 ? "kp_\(item.kpId)" : item.id
             )
         }
     }

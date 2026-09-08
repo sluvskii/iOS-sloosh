@@ -81,7 +81,9 @@ struct ContinueView: View {
                         voices: playback.voices,
                         subtitles: [],
                         initialQuality: playback.initialQuality,
-                        seriesResult: playback.seriesResult
+                        seriesResult: playback.seriesResult,
+                        mediaKey: playback.mediaKey,
+                        tmdbId: playback.tmdbId
                     )
                 } else {
                     ZStack {
@@ -122,7 +124,11 @@ private struct ContinueWatchingItem: Identifiable {
 
     var id: String { record.mediaId }
 
+    var rootMediaKey: String { record.rootMediaKey }
+
     var kpId: Int { record.kpId }
+
+    var tmdbId: Int? { record.tmdbId ?? metadata?.tmdbId }
 
     var title: String {
         metadata?.title ?? "Без названия"
@@ -195,7 +201,9 @@ private struct ContinueWatchingItem: Identifiable {
 
     @MainActor
     var voiceover: String? {
-        PlaybackProgressStore.shared.loadLastVoiceover(kpId: record.kpId, source: "alloha") ??
+        record.voiceover ??
+        PlaybackProgressStore.shared.loadLastVoiceover(mediaKey: record.rootMediaKey) ??
+        (record.kpId > 0 ? PlaybackProgressStore.shared.loadLastVoiceover(kpId: record.kpId, source: "alloha") : nil) ??
         UserDefaults.standard.string(forKey: "alloha_last_translation_name")
     }
 }
@@ -210,7 +218,7 @@ private final class ContinueViewModel: ObservableObject {
     @Published var launchErrorMessage: String?
 
     private let store = PlaybackProgressStore.shared
-    private var metadataBackfillAttempted = Set<Int>()
+    private var metadataBackfillAttempted = Set<String>()
 
     func reload(forceMetadataRefresh: Bool = false) async {
         if isLoading { return }
@@ -219,20 +227,20 @@ private final class ContinueViewModel: ObservableObject {
         defer { isLoading = false }
 
         let records = filteredRecords()
-        let (initialItems, missingMetadataKpIds) = makeItems(from: records)
+        let (initialItems, missingMetadataKeys) = makeItems(from: records)
         items = initialItems
 
-        let kpIdsToRefresh: Set<Int>
+        let keysToRefresh: Set<String>
         if forceMetadataRefresh {
-            kpIdsToRefresh = Set(initialItems.map(\.kpId))
+            keysToRefresh = Set(initialItems.map(\.rootMediaKey))
         } else {
-            kpIdsToRefresh = missingMetadataKpIds.subtracting(metadataBackfillAttempted)
+            keysToRefresh = missingMetadataKeys.subtracting(metadataBackfillAttempted)
         }
 
-        guard !kpIdsToRefresh.isEmpty else { return }
-        metadataBackfillAttempted.formUnion(kpIdsToRefresh)
+        guard !keysToRefresh.isEmpty else { return }
+        metadataBackfillAttempted.formUnion(keysToRefresh)
 
-        await backfillMetadata(for: kpIdsToRefresh)
+        await backfillMetadata(for: keysToRefresh)
 
         let (refreshedItems, _) = makeItems(from: records)
         items = refreshedItems
@@ -241,13 +249,13 @@ private final class ContinueViewModel: ObservableObject {
     private func filteredRecords() -> [PlaybackProgressRecord] {
         store.listProgressRecords()
             .filter { $0.updatedAtMs > 0 }
-            .filter { $0.durationSec >= 60 }
+            .filter { $0.positionSec >= 15 || $0.watched }
             .sorted { $0.updatedAtMs > $1.updatedAtMs }
     }
 
-    private func makeItems(from records: [PlaybackProgressRecord]) -> ([ContinueWatchingItem], Set<Int>) {
-        let grouped = Dictionary(grouping: records, by: \.kpId)
-        var missingMetadataKpIds = Set<Int>()
+    private func makeItems(from records: [PlaybackProgressRecord]) -> ([ContinueWatchingItem], Set<String>) {
+        let grouped = Dictionary(grouping: records, by: \.rootMediaKey)
+        var missingMetadataKeys = Set<String>()
 
         let items = grouped.values.compactMap { group -> ContinueWatchingItem? in
             // Берём запись, которую нужно показать пользователю.
@@ -261,19 +269,19 @@ private final class ContinueViewModel: ObservableObject {
             } else if latestRecord.watched && latestRecord.isEpisode {
                 // Досмотрен и следующего эпизода в истории нет — создаём виртуальную запись для следующего
                 displayRecord = virtualNextEpisodeRecord(after: latestRecord) ?? latestRecord
-            } else if !latestRecord.watched && latestRecord.positionSec >= 30 && latestRecord.progressFraction >= 0.03 {
+            } else if !latestRecord.watched && latestRecord.positionSec >= 15 {
                 displayRecord = latestRecord
             } else if latestRecord.watched {
-                // Фильм досмотрен — не показываем
+                // Фильм досмотрен (>= 95%) — скрываем из «Продолжить»
                 return nil
             } else {
-                // Мало просмотрено — не показываем
+                // Меньше 15 секунд — не показываем
                 return nil
             }
 
-            let metadata = store.loadMetadata(kpId: latestRecord.kpId)
+            let metadata = store.loadMetadata(mediaKey: latestRecord.rootMediaKey) ?? (latestRecord.kpId > 0 ? store.loadMetadata(kpId: latestRecord.kpId) : nil)
             if metadata == nil {
-                missingMetadataKpIds.insert(latestRecord.kpId)
+                missingMetadataKeys.insert(latestRecord.rootMediaKey)
             }
             return ContinueWatchingItem(
                 record: displayRecord,
@@ -283,7 +291,7 @@ private final class ContinueViewModel: ObservableObject {
         }
         .sorted { $0.record.updatedAtMs > $1.record.updatedAtMs }
 
-        return (items, missingMetadataKpIds)
+        return (items, missingMetadataKeys)
     }
 
     /// Ищет запись следующего эпизода в уже просмотренной истории (пользователь открывал его).
@@ -296,7 +304,7 @@ private final class ContinueViewModel: ObservableObject {
         // Ищем в истории запись, которая идёт хронологически следующей после current
         return group
             .filter { !$0.watched }
-            .filter { $0.positionSec >= 30 && $0.progressFraction >= 0.03 && $0.durationSec >= 60 }
+            .filter { $0.positionSec >= 15 }
             .filter { record in
                 guard let s = record.season, let e = record.episode else { return false }
                 return (s == currentSeason && e > currentEpisode) || s > currentSeason
@@ -313,12 +321,14 @@ private final class ContinueViewModel: ObservableObject {
     private func virtualNextEpisodeRecord(after current: PlaybackProgressRecord) -> PlaybackProgressRecord? {
         guard let season = current.season, let episode = current.episode else { return nil }
         let nextEpisode = episode + 1
-        let nextMediaId = "kp_\(current.kpId)_s\(season)_e\(nextEpisode)"
+        let nextMediaId = "\(current.rootMediaKey)_s\(season)_e\(nextEpisode)"
         return PlaybackProgressRecord(
             mediaId: nextMediaId,
             kpId: current.kpId,
+            tmdbId: current.tmdbId,
             season: season,
             episode: nextEpisode,
+            voiceover: current.voiceover,
             positionSec: 0,
             durationSec: 0,
             watched: false,
@@ -326,15 +336,18 @@ private final class ContinueViewModel: ObservableObject {
         )
     }
 
-    private func backfillMetadata(for kpIds: Set<Int>) async {
-        for kpId in kpIds.sorted(by: >) {
+    private func backfillMetadata(for keys: Set<String>) async {
+        for key in keys {
+            let queryId: String
+            if key.hasPrefix("kp_") {
+                queryId = key
+            } else if key.hasPrefix("tmdb_") {
+                queryId = String(key.dropFirst(5))
+            } else {
+                queryId = key
+            }
             do {
-                if let details = try await MoviesRepository.shared.getDetails(id: String(kpId)) {
-                    store.saveMetadata(details: details)
-                    continue
-                }
-
-                if let details = try await MoviesRepository.shared.getDetails(id: "kp_\(kpId)") {
+                if let details = try await MoviesRepository.shared.getDetails(id: queryId) {
                     store.saveMetadata(details: details)
                 }
             } catch {
@@ -350,8 +363,9 @@ private final class ContinueViewModel: ObservableObject {
         launchingTitle = item.title
         launchErrorMessage = nil
         
+        let presId = abs(item.rootMediaKey.hashValue)
         // Показываем загрузочный экран плеера моментально
-        activePresentation = ContinuePresentation(id: item.kpId, isReady: false, title: item.title, route: nil)
+        activePresentation = ContinuePresentation(id: presId, isReady: false, title: item.title, route: nil)
         
         defer {
             isLaunching = false
@@ -359,7 +373,11 @@ private final class ContinueViewModel: ObservableObject {
         }
 
         do {
-            let result = try await AllohaRepository.shared.fetchByKpId(kpId: item.kpId)
+            let result = try await AllohaRepository.shared.fetchMedia(
+                kpId: item.kpId > 0 ? item.kpId : nil,
+                tmdbId: item.tmdbId,
+                title: item.title
+            )
             guard let route = makePlaybackRoute(for: item, result: result) else {
                 activePresentation = nil
                 launchErrorMessage = "Не удалось подобрать источник для продолжения просмотра."
@@ -367,7 +385,7 @@ private final class ContinueViewModel: ObservableObject {
             }
 
             // Обновляем презентацию In-Place (ID тот же, поэтому SwiftUI просто обновит содержимое модального окна)
-            activePresentation = ContinuePresentation(id: item.kpId, isReady: true, title: item.title, route: route)
+            activePresentation = ContinuePresentation(id: presId, isReady: true, title: item.title, route: route)
         } catch {
             activePresentation = nil
             launchErrorMessage = "Не удалось загрузить источник. Попробуй еще раз."
@@ -380,12 +398,15 @@ private final class ContinueViewModel: ObservableObject {
 
         if result.isSerial {
             let targetSeason = item.record.season
-                ?? store.loadLastSeason(kpId: item.kpId)
+                ?? store.loadLastSeason(mediaKey: item.rootMediaKey)
+                ?? (item.kpId > 0 ? store.loadLastSeason(kpId: item.kpId) : nil)
                 ?? result.seasons.first?.season
 
             guard let targetSeason else { return nil }
 
-            let targetEpisode = item.record.episode ?? store.loadLastEpisode(kpId: item.kpId)
+            let targetEpisode = item.record.episode
+                ?? store.loadLastEpisode(mediaKey: item.rootMediaKey)
+                ?? (item.kpId > 0 ? store.loadLastEpisode(kpId: item.kpId) : nil)
 
             var chosenSeason = result.seasons.first(where: { $0.season == targetSeason })
             var chosenEpisode = targetEpisode.flatMap { epNum in
@@ -435,8 +456,12 @@ private final class ContinueViewModel: ObservableObject {
 
             guard let translation else { return nil }
 
-            store.saveLastPlayed(kpId: item.kpId, season: finalSeason.season, episode: finalEpisode.episode)
-            store.saveLastVoiceover(kpId: item.kpId, source: "alloha", voiceover: translation.name)
+            store.saveLastPlayed(mediaKey: item.rootMediaKey, season: finalSeason.season, episode: finalEpisode.episode)
+            store.saveLastVoiceover(mediaKey: item.rootMediaKey, source: "alloha", voiceover: translation.name)
+            if item.kpId > 0 {
+                store.saveLastPlayed(kpId: item.kpId, season: finalSeason.season, episode: finalEpisode.episode)
+                store.saveLastVoiceover(kpId: item.kpId, source: "alloha", voiceover: translation.name)
+            }
 
             return ContinuePlaybackRoute(
                 iframeUrl: translation.iframeUrl,
@@ -448,7 +473,9 @@ private final class ContinueViewModel: ObservableObject {
                 streamUrl: translation.streamUrl,
                 voices: result.allTranslationNames,
                 initialQuality: preferredQuality,
-                seriesResult: result
+                seriesResult: result,
+                mediaKey: item.rootMediaKey,
+                tmdbId: item.tmdbId
             )
         }
 
@@ -460,8 +487,12 @@ private final class ContinueViewModel: ObservableObject {
             return nil
         }
 
-        store.saveLastPlayed(kpId: item.kpId, season: nil, episode: nil)
-        store.saveLastVoiceover(kpId: item.kpId, source: "alloha", voiceover: translation.name)
+        store.saveLastPlayed(mediaKey: item.rootMediaKey, season: nil, episode: nil)
+        store.saveLastVoiceover(mediaKey: item.rootMediaKey, source: "alloha", voiceover: translation.name)
+        if item.kpId > 0 {
+            store.saveLastPlayed(kpId: item.kpId, season: nil, episode: nil)
+            store.saveLastVoiceover(kpId: item.kpId, source: "alloha", voiceover: translation.name)
+        }
 
         return ContinuePlaybackRoute(
             iframeUrl: translation.iframeUrl,
@@ -473,7 +504,9 @@ private final class ContinueViewModel: ObservableObject {
             streamUrl: translation.streamUrl,
             voices: result.allTranslationNames,
             initialQuality: preferredQuality,
-            seriesResult: result
+            seriesResult: result,
+            mediaKey: item.rootMediaKey,
+            tmdbId: item.tmdbId
         )
     }
 
@@ -525,6 +558,8 @@ private struct ContinuePlaybackRoute: Identifiable {
     let voices: [String]
     let initialQuality: VideoQualityPreference?
     let seriesResult: AllohaApiResult?
+    let mediaKey: String
+    let tmdbId: Int?
 }
 
 private struct ContinuePresentation: Identifiable {

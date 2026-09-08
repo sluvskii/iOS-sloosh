@@ -64,6 +64,8 @@ struct PlayerView: View {
     let subtitles: [PlaybackSubtitle]
     let initialQuality: VideoQualityPreference?
     let seriesResult: AllohaApiResult?
+    let mediaKey: String?
+    let tmdbId: Int?
 
     @StateObject private var viewModel = PlayerViewModel()
     @Environment(\.dismiss) private var dismissEnv
@@ -79,7 +81,9 @@ struct PlayerView: View {
         voices: [String] = [],
         subtitles: [PlaybackSubtitle] = [],
         initialQuality: VideoQualityPreference? = nil,
-        seriesResult: AllohaApiResult? = nil
+        seriesResult: AllohaApiResult? = nil,
+        mediaKey: String? = nil,
+        tmdbId: Int? = nil
     ) {
         self.iframeUrl = iframeUrl
         self.fallbackTitle = fallbackTitle
@@ -92,6 +96,8 @@ struct PlayerView: View {
         self.subtitles = subtitles
         self.initialQuality = initialQuality
         self.seriesResult = seriesResult
+        self.mediaKey = mediaKey
+        self.tmdbId = tmdbId
     }
 
     init(config: PlayerConfig) {
@@ -106,7 +112,9 @@ struct PlayerView: View {
             voices: config.voices,
             subtitles: config.subtitles,
             initialQuality: config.quality,
-            seriesResult: config.seriesResult
+            seriesResult: config.seriesResult,
+            mediaKey: config.mediaKey,
+            tmdbId: config.tmdbId
         )
     }
 
@@ -121,6 +129,8 @@ struct PlayerView: View {
             viewModel.fallbackTitle = fallbackTitle
             viewModel.targetQualityPreference = initialQuality
             viewModel.seriesResult = seriesResult
+            viewModel.mediaKey = mediaKey
+            viewModel.tmdbId = tmdbId
 
             if iframeUrl != nil || directStreamUrl != nil {
                 viewModel.load(
@@ -131,7 +141,9 @@ struct PlayerView: View {
                     selectedVoiceover: selectedVoiceover,
                     directStreamUrl: directStreamUrl,
                     voices: voices,
-                    subtitles: subtitles
+                    subtitles: subtitles,
+                    mediaKey: mediaKey,
+                    tmdbId: tmdbId
                 )
             } else {
                 viewModel.error = "Нет URL для воспроизведения"
@@ -306,6 +318,8 @@ class PlayerViewModel: ObservableObject {
     private var currentPlaybackSourceURL: URL?
 
     private(set) var currentKpId: Int?
+    var mediaKey: String?
+    var tmdbId: Int?
     @Published private(set) var currentSeason: Int?
     @Published private(set) var currentEpisode: Int?
     private var targetVoiceover: String?
@@ -317,14 +331,38 @@ class PlayerViewModel: ObservableObject {
     /// Все audioVariants из последнего resolve. Нужны для мгновенного переключения озвучки без re-resolve.
     private var resolvedAudioVariants: [[String: Any]] = []
 
+    var rootMediaKey: String? {
+        if let key = mediaKey, !key.isEmpty {
+            return key
+        }
+        if let kpId = currentKpId, kpId > 0 {
+            return "kp_\(kpId)"
+        }
+        if let tmdbId = tmdbId, tmdbId > 0 {
+            return "tmdb_\(tmdbId)"
+        }
+        return nil
+    }
+
+    var currentMediaId: String? {
+        guard let root = rootMediaKey else { return nil }
+        if let season = currentSeason, let episode = currentEpisode {
+            return "\(root)_s\(season)_e\(episode)"
+        } else {
+            return root
+        }
+    }
+
     var targetQualityPreference: VideoQualityPreference?
     var seriesResult: AllohaApiResult?
     private var hasStartedLoading = false
     private var hasRetriedPlayback = false
 
     var displayLogoUrl: URL? {
-        guard let kpId = currentKpId, kpId > 0 else { return nil }
-        return URL(string: "https://api-sloosh.vercel.app/api/v1/images/logos/\(kpId)/original")
+        if let kpId = currentKpId, kpId > 0 {
+            return URL(string: "https://api-sloosh.vercel.app/api/v1/images/logos/\(kpId)/original")
+        }
+        return nil
     }
 
     private var autoplayNextEpisodeEnabled: Bool {
@@ -340,11 +378,33 @@ class PlayerViewModel: ObservableObject {
         return host == "127.0.0.1" || host == "localhost"
     }
     
-    func load(iframeUrl: String?, kpId: Int?, season: Int?, episode: Int?, selectedVoiceover: String?, directStreamUrl: String? = nil, voices: [String] = [], subtitles: [PlaybackSubtitle] = []) {
+    func load(
+        iframeUrl: String?,
+        kpId: Int?,
+        season: Int?,
+        episode: Int?,
+        selectedVoiceover: String?,
+        directStreamUrl: String? = nil,
+        voices: [String] = [],
+        subtitles: [PlaybackSubtitle] = [],
+        mediaKey: String? = nil,
+        tmdbId: Int? = nil
+    ) {
         if hasStartedLoading { return } // Защита от двойного вызова
         hasStartedLoading = true
-        logDebug("load called with iframeUrl=\(iframeUrl ?? "nil"), selectedVoiceover=\(selectedVoiceover ?? "nil"), directStreamUrl=\(directStreamUrl ?? "nil")")
-        beginLoad(iframeUrl: iframeUrl, kpId: kpId, season: season, episode: episode, selectedVoiceover: selectedVoiceover, directStreamUrl: directStreamUrl, voices: voices, subtitles: subtitles)
+        logDebug("load called with iframeUrl=\(iframeUrl ?? "nil"), selectedVoiceover=\(selectedVoiceover ?? "nil"), directStreamUrl=\(directStreamUrl ?? "nil"), mediaKey=\(mediaKey ?? "nil")")
+        beginLoad(
+            iframeUrl: iframeUrl,
+            kpId: kpId,
+            season: season,
+            episode: episode,
+            selectedVoiceover: selectedVoiceover,
+            directStreamUrl: directStreamUrl,
+            voices: voices,
+            subtitles: subtitles,
+            mediaKey: mediaKey,
+            tmdbId: tmdbId
+        )
     }
 
     /// Повторная попытка воспроизведения после ошибки. Пробует сначала через originalStreamURL (мгновенно),
@@ -361,7 +421,7 @@ class PlayerViewModel: ObservableObject {
                 headers: currentHeaders,
                 voices: [],
                 subtitles: availableSubtitles,
-                mediaId: currentKpId.map { "kp_\($0)" } ?? "unknown"
+                mediaId: currentMediaId ?? (currentKpId.map { "kp_\($0)" } ?? "unknown")
             )
             reloadPlayback(to: url, preferredPeakBitRate: player?.currentItem?.preferredPeakBitRate)
         } else {
@@ -372,7 +432,18 @@ class PlayerViewModel: ObservableObject {
         }
     }
 
-    private func beginLoad(iframeUrl: String?, kpId: Int?, season: Int?, episode: Int?, selectedVoiceover: String?, directStreamUrl: String? = nil, voices: [String] = [], subtitles: [PlaybackSubtitle] = []) {
+    private func beginLoad(
+        iframeUrl: String?,
+        kpId: Int?,
+        season: Int?,
+        episode: Int?,
+        selectedVoiceover: String?,
+        directStreamUrl: String? = nil,
+        voices: [String] = [],
+        subtitles: [PlaybackSubtitle] = [],
+        mediaKey: String? = nil,
+        tmdbId: Int? = nil
+    ) {
         // Отменяем незаконченные задачи предыдущего эпизода
         resolveTask?.cancel()
         resolveTask = nil
@@ -394,6 +465,12 @@ class PlayerViewModel: ObservableObject {
         self.currentKpId = kpId
         self.currentSeason = season
         self.currentEpisode = episode
+        if let mediaKey, !mediaKey.isEmpty {
+            self.mediaKey = mediaKey
+        }
+        if let tmdbId, tmdbId > 0 {
+            self.tmdbId = tmdbId
+        }
         if self.targetVoiceover == nil {
             self.targetVoiceover = selectedVoiceover
         }
@@ -429,7 +506,7 @@ class PlayerViewModel: ObservableObject {
             self.availableVoiceovers = movie.translations.map { $0.name }
         }
 
-        if kpId != nil, let selectedVoiceover, !selectedVoiceover.isEmpty {
+        if (kpId != nil || self.rootMediaKey != nil), let selectedVoiceover, !selectedVoiceover.isEmpty {
             if let pref = targetVoiceover, allohaTranslationNamesMatch(selectedVoiceover, pref) {
                 persistVoiceoverSelection(selectedVoiceover)
             } else if targetVoiceover == nil {
@@ -1003,20 +1080,16 @@ class PlayerViewModel: ObservableObject {
 
     /// Сохраняет текущую позицию воспроизведения. Вызывается и по таймеру, и при сворачивании приложения.
     private func saveCurrentProgress() {
-        guard let player = player, let currentKpId = currentKpId else { return }
-        let mediaId: String
-        if let season = currentSeason, let episode = currentEpisode {
-            mediaId = "kp_\(currentKpId)_s\(season)_e\(episode)"
-        } else {
-            mediaId = "kp_\(currentKpId)"
-        }
+        guard let player = player, let mediaId = currentMediaId else { return }
         let pos = player.currentTime().seconds
         guard pos.isFinite, !pos.isNaN else { return }
         let duration = player.currentItem?.duration.seconds
+        let dur = duration?.isFinite == true && duration?.isNaN == false ? duration : nil
         PlaybackProgressStore.shared.save(
             mediaId: mediaId,
             positionSec: pos,
-            durationSec: duration?.isFinite == true && duration?.isNaN == false ? duration : nil,
+            durationSec: dur,
+            voiceover: _currentTranslationName,
             forceDiskSave: true
         )
     }
@@ -1300,16 +1373,7 @@ class PlayerViewModel: ObservableObject {
                 return
             }
 
-            let mediaId: String
-            if let kpId = currentKpId {
-                if let season = currentSeason, let episode = currentEpisode {
-                    mediaId = "kp_\(kpId)_s\(season)_e\(episode)"
-                } else {
-                    mediaId = "kp_\(kpId)"
-                }
-            } else {
-                mediaId = "unknown"
-            }
+            let mediaId = currentMediaId ?? (currentKpId.map { "kp_\($0)" } ?? "unknown")
 
             HlsProxyServer.shared.start(
                 headers: headers,
@@ -1426,11 +1490,11 @@ class PlayerViewModel: ObservableObject {
                             } else {
                                 // Still no alternatives — perform a clean reload
                                 self.logDebug("setupPlayerItemObservers: No alternative quality found, retrying stream URL")
-                                HlsProxyServer.shared.start(
+                                 HlsProxyServer.shared.start(
                                     headers: self.currentHeaders,
                                     voices: [],
                                     subtitles: self.availableSubtitles,
-                                    mediaId: self.currentKpId.map { "kp_\($0)" } ?? "unknown"
+                                    mediaId: self.currentMediaId ?? (self.currentKpId.map { "kp_\($0)" } ?? "unknown")
                                 )
                                 self.reloadPlayback(to: url, preferredPeakBitRate: nil)
                             }
@@ -1447,7 +1511,7 @@ class PlayerViewModel: ObservableObject {
                                 headers: self.currentHeaders,
                                 voices: [],
                                 subtitles: self.availableSubtitles,
-                                mediaId: self.currentKpId.map { "kp_\($0)" } ?? "unknown"
+                                mediaId: self.currentMediaId ?? (self.currentKpId.map { "kp_\($0)" } ?? "unknown")
                             )
                             self.reloadPlayback(to: origUrl, preferredPeakBitRate: self.player?.currentItem?.preferredPeakBitRate)
                         } else {
@@ -1507,16 +1571,7 @@ class PlayerViewModel: ObservableObject {
             timeObserver = nil
         }
 
-        let mediaId: String
-        if let kpId = currentKpId {
-            if let season = currentSeason, let episode = currentEpisode {
-                mediaId = "kp_\(kpId)_s\(season)_e\(episode)"
-            } else {
-                mediaId = "kp_\(kpId)"
-            }
-        } else {
-            return
-        }
+        guard let mediaId = currentMediaId else { return }
 
         // Ждём .readyToPlay перед seek к сохранённой позиции.
         // Это предотвращает гонку с applyInitialQuality → reloadPlayback,
@@ -1539,15 +1594,7 @@ class PlayerViewModel: ObservableObject {
                     Task { @MainActor [weak self, weak player] in
                         guard let self, let player else { return }
                         // Убеждаемся что mediaId не изменился (пользователь не переключил серию снова)
-                        let currentMediaId: String
-                        if let kpId = self.currentKpId {
-                            if let s = self.currentSeason, let e = self.currentEpisode {
-                                currentMediaId = "kp_\(kpId)_s\(s)_e\(e)"
-                            } else {
-                                currentMediaId = "kp_\(kpId)"
-                            }
-                        } else { return }
-                        guard currentMediaId == capturedMediaId else { return }
+                        guard let current = self.currentMediaId, current == capturedMediaId else { return }
                         player.seek(to: CMTime(seconds: capturedSavedPosition, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
                         self.currentTime = capturedSavedPosition
                     }
@@ -1604,7 +1651,8 @@ class PlayerViewModel: ObservableObject {
                 PlaybackProgressStore.shared.save(
                     mediaId: mediaId,
                     positionSec: t,
-                    durationSec: dur
+                    durationSec: dur,
+                    voiceover: self._currentTranslationName
                 )
             }
         }
@@ -1783,13 +1831,7 @@ class PlayerViewModel: ObservableObject {
               !isAdvancingToNextEpisode,
               hasNextEpisode else {
             // Если нет следующей серии — отмечаем текущую как просмотренную
-            if let kpId = currentKpId {
-                let mediaId: String
-                if let season = currentSeason, let episode = currentEpisode {
-                    mediaId = "kp_\(kpId)_s\(season)_e\(episode)"
-                } else {
-                    mediaId = "kp_\(kpId)"
-                }
+            if let mediaId = currentMediaId {
                 PlaybackProgressStore.shared.markAsWatched(mediaId: mediaId)
             }
             return
@@ -1799,13 +1841,7 @@ class PlayerViewModel: ObservableObject {
         defer { isAdvancingToNextEpisode = false }
 
         // Отмечаем текущую серию как просмотренную
-        if let kpId = currentKpId {
-            let mediaId: String
-            if let season = currentSeason, let episode = currentEpisode {
-                mediaId = "kp_\(kpId)_s\(season)_e\(episode)"
-            } else {
-                mediaId = "kp_\(kpId)"
-            }
+        if let mediaId = currentMediaId {
             PlaybackProgressStore.shared.markAsWatched(mediaId: mediaId)
         }
 
@@ -1851,7 +1887,9 @@ class PlayerViewModel: ObservableObject {
             persistVoiceoverSelection(episode.translation.name)
         }
 
-        if let kpId = currentKpId {
+        if let root = rootMediaKey {
+            PlaybackProgressStore.shared.saveLastPlayed(mediaKey: root, season: episode.season, episode: episode.episode)
+        } else if let kpId = currentKpId, kpId > 0 {
             PlaybackProgressStore.shared.saveLastPlayed(kpId: kpId, season: episode.season, episode: episode.episode)
         }
 
@@ -1860,7 +1898,9 @@ class PlayerViewModel: ObservableObject {
             kpId: currentKpId,
             season: episode.season,
             episode: episode.episode,
-            selectedVoiceover: episode.translation.name
+            selectedVoiceover: episode.translation.name,
+            mediaKey: rootMediaKey,
+            tmdbId: tmdbId
         )
     }
 
@@ -1924,7 +1964,13 @@ class PlayerViewModel: ObservableObject {
             return match
         }
 
-        if let kpId = currentKpId,
+        if let root = rootMediaKey,
+           let saved = PlaybackProgressStore.shared.loadLastVoiceover(mediaKey: root, source: "alloha"),
+           let match = episode.translations.first(where: { allohaTranslationNamesMatch($0.name, saved) }) {
+            return match
+        }
+
+        if let kpId = currentKpId, kpId > 0,
            let saved = PlaybackProgressStore.shared.loadLastVoiceover(kpId: kpId, source: "alloha"),
            let match = episode.translations.first(where: { allohaTranslationNamesMatch($0.name, saved) }) {
             return match
@@ -2209,14 +2255,21 @@ class PlayerViewModel: ObservableObject {
     }
 
     private func persistVoiceoverSelection(_ name: String?) {
-        guard let kpId = currentKpId else { return }
         let normalized = normalizedAllohaTranslationName(name)
         let finalName = normalized.isEmpty ? name : normalized
-        PlaybackProgressStore.shared.saveLastVoiceover(
-            kpId: kpId,
-            source: "alloha",
-            voiceover: finalName
-        )
+        if let root = rootMediaKey {
+            PlaybackProgressStore.shared.saveLastVoiceover(
+                mediaKey: root,
+                source: "alloha",
+                voiceover: finalName
+            )
+        } else if let kpId = currentKpId, kpId > 0 {
+            PlaybackProgressStore.shared.saveLastVoiceover(
+                kpId: kpId,
+                source: "alloha",
+                voiceover: finalName
+            )
+        }
         if let finalName, !finalName.isEmpty {
             UserDefaults.standard.set(finalName, forKey: "alloha_last_translation_name")
         }
