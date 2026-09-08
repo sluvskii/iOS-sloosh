@@ -2571,7 +2571,7 @@ private struct TrailersSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("Трейлеры и тизеры")
+            Text("Трейлеры")
                 .font(.system(size: 18, weight: .bold))
                 .padding(.horizontal)
 
@@ -2631,21 +2631,6 @@ private struct TrailerCardView: View {
                     .frame(width: 42, height: 42)
                     .glassEffect(.regular.interactive(), in: Circle())
                     .shadow(color: Color.black.opacity(0.35), radius: 6, x: 0, y: 3)
-
-                // Top-left type tag badge
-                VStack {
-                    HStack {
-                        Text(trailer.typeTag)
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 3)
-                            .glassEffect(.regular.interactive(), in: Capsule())
-                        Spacer()
-                    }
-                    Spacer()
-                }
-                .padding(8)
             }
             .frame(width: 220, height: 124)
             .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
