@@ -93,6 +93,7 @@ export interface MediaDetailsDto extends MediaDto {
   collection?: MovieCollectionDto | null
   productionCompanies?: ProductionCompanyDto[]
   networks?: NetworkDto[]
+  similar?: MediaDto[]
   alloha?: {
     kpId: number | null
     imdbId: string | null

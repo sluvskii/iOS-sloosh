@@ -319,11 +319,12 @@ struct MediaDetailsDto: Codable {
     let productionCompanies: [ProductionCompanyDto]?
     let networks: [NetworkDto]?
     let collection: MovieCollectionDto?
+    let similar: [MediaDto]?
     
     enum CodingKeys: String, CodingKey {
         case id, title, originalTitle, description, type, year, releaseDate
         case genres, countries, duration, poster, backdrop, logo, cast, trailers
-        case ratings, ids, externalIds, productionCompanies, networks, collection
+        case ratings, ids, externalIds, productionCompanies, networks, collection, similar
     }
 
     init(
@@ -347,7 +348,8 @@ struct MediaDetailsDto: Codable {
         externalIds: ExternalIdsDto? = nil,
         productionCompanies: [ProductionCompanyDto]? = nil,
         networks: [NetworkDto]? = nil,
-        collection: MovieCollectionDto? = nil
+        collection: MovieCollectionDto? = nil,
+        similar: [MediaDto]? = nil
     ) {
         self.id = id
         self.title = title
@@ -370,6 +372,7 @@ struct MediaDetailsDto: Codable {
         self.productionCompanies = productionCompanies
         self.networks = networks
         self.collection = collection
+        self.similar = similar
     }
 
     init(from decoder: Decoder) throws {
@@ -435,6 +438,7 @@ struct MediaDetailsDto: Codable {
         self.productionCompanies = try? container.decodeIfPresent([ProductionCompanyDto].self, forKey: .productionCompanies)
         self.networks = try? container.decodeIfPresent([NetworkDto].self, forKey: .networks)
         self.collection = try? container.decodeIfPresent(MovieCollectionDto.self, forKey: .collection)
+        self.similar = try? container.decodeIfPresent([MediaDto].self, forKey: .similar)
     }
     
     var displayPosterUrl: String? {

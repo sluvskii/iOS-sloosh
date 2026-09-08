@@ -749,7 +749,7 @@ class HomeViewModel: ObservableObject {
             return
         }
 
-        await loadData(for: selectedCategory)
+        await loadData(for: selectedCategory, force: force)
     }
     
     private func initialCursor(for key: HomeCacheKey) -> InfiniteCursor {
@@ -770,7 +770,7 @@ class HomeViewModel: ObservableObject {
         }
     }
 
-    func loadData(for category: HomeCategory? = nil) async {
+    func loadData(for category: HomeCategory? = nil, force: Bool = false) async {
         let cat = category ?? selectedCategory
         let key = HomeCacheKey(category: cat, filter: selectedFilter, searchFilters: searchFilters)
 
@@ -799,7 +799,7 @@ class HomeViewModel: ObservableObject {
             var canLoad = currentCanLoadMore
 
             while newItems.isEmpty && canLoad {
-                let fetched = try await fetchPage(cursor, category: cat, filter: selectedFilter)
+                let fetched = try await fetchPage(cursor, category: cat, filter: selectedFilter, force: force && cursor.page == 1)
                 
                 if fetched.isEmpty {
                     if !advanceCursor(&cursor, key: key) {
@@ -850,20 +850,20 @@ class HomeViewModel: ObservableObject {
         }
     }
 
-    private func fetchPage(_ cursor: InfiniteCursor, category: HomeCategory, filter: HomeFilter) async throws -> [MediaDto] {
+    private func fetchPage(_ cursor: InfiniteCursor, category: HomeCategory, filter: HomeFilter, force: Bool = false) async throws -> [MediaDto] {
         if cursor.phase == .original {
             switch category {
             case .all, .movies:
                 switch filter {
                 case .popular:
-                    return try await MoviesRepository.shared.getPopularMovies(page: cursor.page)
+                    return try await MoviesRepository.shared.getPopularMovies(page: cursor.page, force: force)
                 case .topRated:
-                    return try await MoviesRepository.shared.getTopMovies(page: cursor.page)
+                    return try await MoviesRepository.shared.getTopMovies(page: cursor.page, force: force)
                 }
             case .tvShows:
-                return try await MoviesRepository.shared.getTopTv(page: cursor.page)
+                return try await MoviesRepository.shared.getTopTv(page: cursor.page, force: force)
             case .cartoons:
-                return try await MoviesRepository.shared.getCartoons(page: cursor.page)
+                return try await MoviesRepository.shared.getCartoons(page: cursor.page, force: force)
             }
         } else {
             var mergedFilters = searchFilters
