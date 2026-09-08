@@ -13,26 +13,13 @@ struct PersonDetailView: View {
     @State private var isTitleAtTop: Bool = false
     @State private var showPhotoGallery: Bool = false
     @State private var selectedPhotoIndex: Int = 0
-    @State private var photoSourceRects: [Int: CGRect] = [:]
+    @Namespace private var photoGalleryNamespace
     @Namespace private var filmographyTransitionNamespace
     @Environment(\.dismiss) private var dismiss
 
-    private func openPhotoGallery(at index: Int, rect: CGRect) {
+    private func openPhotoGallery(at index: Int) {
         selectedPhotoIndex = index
-        photoSourceRects[index] = rect
-        var transaction = Transaction()
-        transaction.disablesAnimations = true
-        withTransaction(transaction) {
-            showPhotoGallery = true
-        }
-    }
-
-    private func closePhotoGallery() {
-        var transaction = Transaction()
-        transaction.disablesAnimations = true
-        withTransaction(transaction) {
-            showPhotoGallery = false
-        }
+        showPhotoGallery = true
     }
 
     init(
@@ -205,14 +192,12 @@ struct PersonDetailView: View {
         .fullScreenCover(isPresented: $showPhotoGallery) {
             PersonPhotoGalleryView(
                 photos: allPhotos,
-                initialIndex: selectedPhotoIndex,
-                sourceRects: photoSourceRects,
+                currentIndex: $selectedPhotoIndex,
                 onDismiss: {
-                    closePhotoGallery()
+                    showPhotoGallery = false
                 }
             )
-            .presentationBackground(.clear)
-            .ignoresSafeArea()
+            .navigationTransition(.zoom(sourceID: "person_photo_\(selectedPhotoIndex)", in: photoGalleryNamespace))
         }
         .task {
             await viewModel.loadDetails()
@@ -248,18 +233,16 @@ struct PersonDetailView: View {
             )
             .offset(y: offset)
             .contentShape(Rectangle())
+            .matchedTransitionSource(id: "person_photo_0", in: photoGalleryNamespace)
             .onTapGesture {
                 if !allPhotos.isEmpty {
-                    openPhotoGallery(at: 0, rect: geometry.frame(in: .global))
+                    openPhotoGallery(at: 0)
                 }
-            }
-            .onAppear {
-                photoSourceRects[0] = geometry.frame(in: .global)
             }
             .contextMenu {
                 if !allPhotos.isEmpty {
                     Button {
-                        openPhotoGallery(at: 0, rect: geometry.frame(in: .global))
+                        openPhotoGallery(at: 0)
                     } label: {
                         Label("Открыть фото", systemImage: "arrow.up.left.and.arrow.down.right")
                     }
@@ -352,11 +335,9 @@ struct PersonDetailView: View {
                 PersonPhotosSection(
                     photos: photos,
                     allPhotos: allPhotos,
-                    onSelect: { idx, rect in
-                        openPhotoGallery(at: idx, rect: rect)
-                    },
-                    onRegisterRect: { idx, rect in
-                        photoSourceRects[idx] = rect
+                    namespace: photoGalleryNamespace,
+                    onSelect: { idx in
+                        openPhotoGallery(at: idx)
                     },
                     onSave: { url in
                         Task { await savePhotoToLibrary(url) }
@@ -706,8 +687,8 @@ private struct ParsedBiography {
 private struct PersonPhotosSection: View {
     let photos: [String]
     let allPhotos: [String]
-    let onSelect: (Int, CGRect) -> Void
-    let onRegisterRect: (Int, CGRect) -> Void
+    let namespace: Namespace.ID
+    let onSelect: (Int) -> Void
     let onSave: (String) -> Void
     let onShare: (String) -> Void
 
@@ -722,54 +703,49 @@ private struct PersonPhotosSection: View {
                     ForEach(photos, id: \.self) { photoUrl in
                         let idx = allPhotos.firstIndex(of: photoUrl) ?? 0
 
-                        GeometryReader { geo in
+                        Button {
+                            onSelect(idx)
+                        } label: {
+                            AsyncCachedImage(url: URL(string: photoUrl)) {
+                                RoundedRectangle(cornerRadius: 14)
+                                    .fill(Color.white.opacity(0.08))
+                                    .frame(width: 120, height: 160)
+                                    .shimmer()
+                            } content: { img in
+                                Image(uiImage: img)
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fill)
+                                    .frame(width: 120, height: 160)
+                                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                            } fallback: {
+                                RoundedRectangle(cornerRadius: 14)
+                                    .fill(Color.white.opacity(0.08))
+                                    .frame(width: 120, height: 160)
+                            }
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 14)
+                                    .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
+                            )
+                            .matchedTransitionSource(id: "person_photo_\(idx)", in: namespace)
+                        }
+                        .buttonStyle(.plain)
+                        .contextMenu {
                             Button {
-                                onSelect(idx, geo.frame(in: .global))
+                                onSelect(idx)
                             } label: {
-                                AsyncCachedImage(url: URL(string: photoUrl)) {
-                                    RoundedRectangle(cornerRadius: 14)
-                                        .fill(Color.white.opacity(0.08))
-                                        .frame(width: 120, height: 160)
-                                        .shimmer()
-                                } content: { img in
-                                    Image(uiImage: img)
-                                        .resizable()
-                                        .aspectRatio(contentMode: .fill)
-                                        .frame(width: 120, height: 160)
-                                        .clipShape(RoundedRectangle(cornerRadius: 14))
-                                } fallback: {
-                                    RoundedRectangle(cornerRadius: 14)
-                                        .fill(Color.white.opacity(0.08))
-                                        .frame(width: 120, height: 160)
-                                }
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 14)
-                                        .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
-                                )
+                                Label("Открыть фото", systemImage: "arrow.up.left.and.arrow.down.right")
                             }
-                            .buttonStyle(.plain)
-                            .onAppear {
-                                onRegisterRect(idx, geo.frame(in: .global))
+                            Button {
+                                onSave(photoUrl)
+                            } label: {
+                                Label("Сохранить в Фото", systemImage: "photo.badge.arrow.down")
                             }
-                            .contextMenu {
-                                Button {
-                                    onSelect(idx, geo.frame(in: .global))
-                                } label: {
-                                    Label("Открыть фото", systemImage: "arrow.up.left.and.arrow.down.right")
-                                }
-                                Button {
-                                    onSave(photoUrl)
-                                } label: {
-                                    Label("Сохранить в Фото", systemImage: "photo.badge.arrow.down")
-                                }
-                                Button {
-                                    onShare(photoUrl)
-                                } label: {
-                                    Label("Поделиться", systemImage: "square.and.arrow.up")
-                                }
+                            Button {
+                                onShare(photoUrl)
+                            } label: {
+                                Label("Поделиться", systemImage: "square.and.arrow.up")
                             }
                         }
-                        .frame(width: 120, height: 160)
                     }
                 }
                 .padding(.horizontal, 16)
@@ -782,21 +758,11 @@ private struct PersonPhotosSection: View {
 
 struct PersonPhotoGalleryView: View {
     let photos: [String]
-    let initialIndex: Int
-    let sourceRects: [Int: CGRect]
+    @Binding var currentIndex: Int
     let onDismiss: () -> Void
 
-    @State private var currentIndex: Int
     @State private var showControls: Bool = true
-    @State private var controlsOpacity: CGFloat = 0.0
-
-    init(photos: [String], initialIndex: Int, sourceRects: [Int: CGRect], onDismiss: @escaping () -> Void) {
-        self.photos = photos
-        self.initialIndex = initialIndex
-        self.sourceRects = sourceRects
-        self.onDismiss = onDismiss
-        _currentIndex = State(initialValue: initialIndex)
-    }
+    @State private var isTransitionFinished: Bool = false
 
     private var windowSafeAreaInsets: UIEdgeInsets {
         guard let windowScene = UIApplication.shared.connectedScenes
@@ -811,30 +777,27 @@ struct PersonPhotoGalleryView: View {
 
     var body: some View {
         ZStack {
-            // Native UIKit Pager with isolated photo transform animations
+            // Native UIKit Pager with edge-to-edge images and pinch-to-zoom
             PhotoGalleryPagerRepresentable(
                 photos: photos,
                 currentIndex: $currentIndex,
-                initialIndex: initialIndex,
-                sourceRects: sourceRects,
                 onSingleTap: {
                     withAnimation(.easeInOut(duration: 0.2)) {
                         showControls.toggle()
                     }
-                },
-                onDismiss: onDismiss,
-                onControlsAlphaChange: { alpha in
-                    controlsOpacity = alpha
                 }
             )
             .ignoresSafeArea()
 
-            // Floating Controls Overlay (strictly fixed at natural safe area, never moving with photo)
+            // Floating Controls Overlay (strictly fixed at natural safe area)
             VStack(spacing: 0) {
                 // Top Bar
                 HStack {
                     TelegramGlassIconButton(systemName: "chevron.left") {
-                        NotificationCenter.default.post(name: .requestPhotoGalleryDismiss, object: nil)
+                        withAnimation(.easeOut(duration: 0.15)) {
+                            isTransitionFinished = false
+                        }
+                        onDismiss()
                     }
 
                     Spacer()
@@ -879,14 +842,20 @@ struct PersonPhotoGalleryView: View {
                 .buttonStyle(.plain)
                 .padding(.bottom, windowSafeAreaInsets.bottom + 16)
             }
-            .opacity(showControls ? controlsOpacity : 0.0)
-            .allowsHitTesting(showControls && controlsOpacity > 0.5)
+            .opacity((isTransitionFinished && showControls) ? 1.0 : 0.0)
+            .allowsHitTesting(isTransitionFinished && showControls)
             .animation(.easeInOut(duration: 0.2), value: showControls)
+            .animation(.easeInOut(duration: 0.25), value: isTransitionFinished)
         }
         .environment(\.colorScheme, .dark)
         .statusBarHidden(!showControls)
         .persistentSystemOverlays(showControls ? .visible : .hidden)
-        .ignoresSafeArea()
+        .presentationBackground(Color.black.opacity(isTransitionFinished ? 1.0 : 0.0))
+        .onAppear {
+            withAnimation(.easeIn(duration: 0.28).delay(0.06)) {
+                isTransitionFinished = true
+            }
+        }
     }
 
     private func savePhoto(at index: Int) async {
@@ -947,20 +916,12 @@ struct PersonPhotoGalleryView: View {
     }
 }
 
-private extension Notification.Name {
-    static let requestPhotoGalleryDismiss = Notification.Name("sloosh.requestPhotoGalleryDismiss")
-}
-
 // MARK: - Native UIKit Photo Pager Representable
 
 private struct PhotoGalleryPagerRepresentable: UIViewControllerRepresentable {
     let photos: [String]
     @Binding var currentIndex: Int
-    let initialIndex: Int
-    let sourceRects: [Int: CGRect]
     let onSingleTap: () -> Void
-    let onDismiss: () -> Void
-    let onControlsAlphaChange: (CGFloat) -> Void
 
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
@@ -969,20 +930,16 @@ private struct PhotoGalleryPagerRepresentable: UIViewControllerRepresentable {
     func makeUIViewController(context: Context) -> PhotoGalleryContainerViewController {
         let vc = PhotoGalleryContainerViewController(
             photos: photos,
-            initialIndex: initialIndex,
-            sourceRects: sourceRects
+            initialIndex: currentIndex
         )
         vc.onIndexChanged = { newIndex in
             context.coordinator.parent.currentIndex = newIndex
         }
         vc.onSingleTap = onSingleTap
-        vc.onDismiss = onDismiss
-        vc.onControlsAlphaChange = onControlsAlphaChange
         return vc
     }
 
     func updateUIViewController(_ uiViewController: PhotoGalleryContainerViewController, context: Context) {
-        uiViewController.sourceRects = sourceRects
         if uiViewController.currentIndex != currentIndex {
             uiViewController.goTo(index: currentIndex, animated: true)
         }
@@ -998,27 +955,20 @@ private struct PhotoGalleryPagerRepresentable: UIViewControllerRepresentable {
 
 // MARK: - Photo Gallery Container View Controller
 
-private final class PhotoGalleryContainerViewController: UIViewController, UIPageViewControllerDataSource, UIPageViewControllerDelegate, UIGestureRecognizerDelegate {
+private final class PhotoGalleryContainerViewController: UIViewController, UIPageViewControllerDataSource, UIPageViewControllerDelegate {
     let photos: [String]
     var currentIndex: Int
     let initialIndex: Int
-    var sourceRects: [Int: CGRect]
-    private var isFirstAppear: Bool = true
 
     var onIndexChanged: ((Int) -> Void)?
     var onSingleTap: (() -> Void)?
-    var onDismiss: (() -> Void)?
-    var onControlsAlphaChange: ((CGFloat) -> Void)?
 
-    private let dimmingView = UIView()
     private var pageViewController: UIPageViewController!
-    private var panGesture: UIPanGestureRecognizer!
 
-    init(photos: [String], initialIndex: Int, sourceRects: [Int: CGRect]) {
+    init(photos: [String], initialIndex: Int) {
         self.photos = photos
         self.currentIndex = initialIndex
         self.initialIndex = initialIndex
-        self.sourceRects = sourceRects
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -1026,24 +976,9 @@ private final class PhotoGalleryContainerViewController: UIViewController, UIPag
         fatalError("init(coder:) has not been implemented")
     }
 
-    deinit {
-        NotificationCenter.default.removeObserver(self)
-    }
-
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .clear
-
-        dimmingView.backgroundColor = .black
-        dimmingView.alpha = 0.0
-        dimmingView.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(dimmingView)
-        NSLayoutConstraint.activate([
-            dimmingView.topAnchor.constraint(equalTo: view.topAnchor),
-            dimmingView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            dimmingView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            dimmingView.bottomAnchor.constraint(equalTo: view.bottomAnchor)
-        ])
 
         pageViewController = UIPageViewController(
             transitionStyle: .scroll,
@@ -1068,78 +1003,6 @@ private final class PhotoGalleryContainerViewController: UIViewController, UIPag
         if photos.indices.contains(currentIndex) {
             let initialVC = makePhotoPageVC(index: currentIndex)
             pageViewController.setViewControllers([initialVC], direction: .forward, animated: false)
-        }
-
-        panGesture = UIPanGestureRecognizer(target: self, action: #selector(handlePan(_:)))
-        panGesture.delegate = self
-        view.addGestureRecognizer(panGesture)
-
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleDismissNotification),
-            name: .requestPhotoGalleryDismiss,
-            object: nil
-        )
-    }
-
-    override func viewDidAppear(_ animated: Bool) {
-        super.viewDidAppear(animated)
-        guard isFirstAppear else { return }
-        isFirstAppear = false
-
-        view.layoutIfNeeded()
-        currentPhotoVC?.view.layoutIfNeeded()
-        currentPhotoVC?.updateImageLayout()
-
-        animateOpen()
-    }
-
-    private func animateOpen() {
-        guard let currentVC = currentPhotoVC else {
-            UIView.animate(withDuration: 0.25) {
-                self.dimmingView.alpha = 1.0
-                self.onControlsAlphaChange?(1.0)
-            }
-            return
-        }
-
-        let sourceRect = sourceRects[initialIndex] ?? .zero
-        let currentImgView = currentVC.imageView
-        let naturalW = currentImgView.bounds.width
-        let naturalH = currentImgView.bounds.height
-
-        if sourceRect != .zero && naturalW > 0 && naturalH > 0 {
-            let scaleX = sourceRect.width / naturalW
-            let scaleY = sourceRect.height / naturalH
-            let scale = max(scaleX, scaleY)
-            let currentCenter = currentVC.view.convert(currentImgView.center, to: view)
-            let deltaX = sourceRect.midX - currentCenter.x
-            let deltaY = sourceRect.midY - currentCenter.y
-
-            // ONLY transform the imageView!
-            currentImgView.transform = CGAffineTransform(translationX: deltaX, y: deltaY).scaledBy(x: scale, y: scale)
-
-            UIView.animate(
-                withDuration: 0.36,
-                delay: 0,
-                usingSpringWithDamping: 0.86,
-                initialSpringVelocity: 0.2,
-                options: [.curveEaseOut]
-            ) {
-                self.dimmingView.alpha = 1.0
-                currentImgView.transform = .identity
-                self.onControlsAlphaChange?(1.0)
-            }
-        } else {
-            currentImgView.transform = CGAffineTransform(scaleX: 0.90, y: 0.90)
-            currentImgView.alpha = 0.0
-
-            UIView.animate(withDuration: 0.26, delay: 0, options: [.curveEaseOut]) {
-                self.dimmingView.alpha = 1.0
-                currentImgView.transform = .identity
-                currentImgView.alpha = 1.0
-                self.onControlsAlphaChange?(1.0)
-            }
         }
     }
 
@@ -1189,139 +1052,6 @@ private final class PhotoGalleryContainerViewController: UIViewController, UIPag
         if completed, let current = pageViewController.viewControllers?.first as? PhotoPageViewController {
             currentIndex = current.pageIndex
             onIndexChanged?(current.pageIndex)
-        }
-    }
-
-    // MARK: - UIGestureRecognizerDelegate
-
-    func gestureRecognizerShouldBegin(_ gestureRecognizer: UIGestureRecognizer) -> Bool {
-        if gestureRecognizer == panGesture {
-            guard let current = currentPhotoVC, !current.isZoomed else { return false }
-            let velocity = panGesture.velocity(in: view)
-            return velocity.y > 0 && abs(velocity.y) > abs(velocity.x) * 1.5
-        }
-        return true
-    }
-
-    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
-        return false
-    }
-
-    // MARK: - Dismiss Handlers
-
-    @objc private func handleDismissNotification() {
-        dismissGallery()
-    }
-
-    private func dismissGallery() {
-        guard let currentVC = currentPhotoVC else {
-            UIView.animate(withDuration: 0.25) {
-                self.onControlsAlphaChange?(0.0)
-                self.dimmingView.alpha = 0.0
-            } completion: { _ in
-                self.onDismiss?()
-            }
-            return
-        }
-
-        let targetSourceRect = sourceRects[currentIndex] ?? .zero
-        let currentImgView = currentVC.imageView
-        let naturalW = currentImgView.bounds.width
-        let naturalH = currentImgView.bounds.height
-
-        UIView.animate(withDuration: 0.28, delay: 0, options: [.curveEaseInOut]) {
-            self.onControlsAlphaChange?(0.0)
-            self.dimmingView.alpha = 0.0
-
-            if targetSourceRect != .zero && naturalW > 0 && naturalH > 0 {
-                let scaleX = targetSourceRect.width / naturalW
-                let scaleY = targetSourceRect.height / naturalH
-                let scale = max(scaleX, scaleY)
-                let currentCenter = currentVC.view.convert(currentImgView.center, to: self.view)
-                let deltaX = targetSourceRect.midX - currentCenter.x
-                let deltaY = targetSourceRect.midY - currentCenter.y
-                currentImgView.transform = CGAffineTransform(translationX: deltaX, y: deltaY).scaledBy(x: scale, y: scale)
-                currentImgView.alpha = 0.3
-            } else {
-                currentImgView.transform = CGAffineTransform(scaleX: 0.85, y: 0.85)
-                currentImgView.alpha = 0.0
-            }
-        } completion: { _ in
-            self.onDismiss?()
-        }
-    }
-
-    @objc private func handlePan(_ gesture: UIPanGestureRecognizer) {
-        let translation = gesture.translation(in: view)
-        let velocity = gesture.velocity(in: view)
-        guard let currentVC = currentPhotoVC else { return }
-        let currentImgView = currentVC.imageView
-        let naturalW = currentImgView.bounds.width
-        let naturalH = currentImgView.bounds.height
-
-        switch gesture.state {
-        case .began:
-            onControlsAlphaChange?(0.0)
-        case .changed:
-            if translation.y > 0 {
-                let progress = min(translation.y / view.bounds.height, 1.0)
-                let scale = max(0.65, 1.0 - progress * 0.35)
-
-                // ONLY transform the photo!
-                currentImgView.transform = CGAffineTransform(
-                    translationX: translation.x * 0.25,
-                    y: translation.y
-                ).scaledBy(x: scale, y: scale)
-
-                // Dimming backdrop only fades!
-                let alpha = max(0.0, 1.0 - Double(translation.y / 320.0))
-                dimmingView.alpha = CGFloat(alpha)
-            } else {
-                currentImgView.transform = .identity
-                dimmingView.alpha = 1.0
-            }
-        case .ended:
-            if translation.y > 80 || velocity.y > 500 {
-                let targetSourceRect = sourceRects[currentIndex] ?? .zero
-
-                UIView.animate(withDuration: 0.28, delay: 0, options: [.curveEaseOut]) {
-                    self.dimmingView.alpha = 0.0
-                    self.onControlsAlphaChange?(0.0)
-
-                    if targetSourceRect != .zero && naturalW > 0 && naturalH > 0 {
-                        let scaleX = targetSourceRect.width / naturalW
-                        let scaleY = targetSourceRect.height / naturalH
-                        let scale = max(scaleX, scaleY)
-                        let currentCenter = currentVC.view.convert(currentImgView.center, to: self.view)
-                        let deltaX = targetSourceRect.midX - currentCenter.x
-                        let deltaY = targetSourceRect.midY - currentCenter.y
-                        currentImgView.transform = CGAffineTransform(translationX: deltaX, y: deltaY).scaledBy(x: scale, y: scale)
-                        currentImgView.alpha = 0.3
-                    } else {
-                        currentImgView.transform = CGAffineTransform(
-                            translationX: translation.x * 0.25,
-                            y: self.view.bounds.height * 0.75
-                        ).scaledBy(x: 0.6, y: 0.6)
-                        currentImgView.alpha = 0.0
-                    }
-                } completion: { _ in
-                    self.onDismiss?()
-                }
-            } else {
-                UIView.animate(withDuration: 0.32, delay: 0, usingSpringWithDamping: 0.86, initialSpringVelocity: 0.4, options: []) {
-                    currentImgView.transform = .identity
-                    self.dimmingView.alpha = 1.0
-                    self.onControlsAlphaChange?(1.0)
-                }
-            }
-        case .cancelled:
-            UIView.animate(withDuration: 0.28) {
-                currentImgView.transform = .identity
-                self.dimmingView.alpha = 1.0
-                self.onControlsAlphaChange?(1.0)
-            }
-        default:
-            break
         }
     }
 }
