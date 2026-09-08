@@ -608,6 +608,29 @@ export class TMDBService {
       }
     }
 
+    // Smart Fallback: if TMDB recommendations/similar yielded fewer than 6 items, fill with discover by primary genre
+    if (similar.length < 6 && data.genres && data.genres.length > 0) {
+      try {
+        const genreId = data.genres[0].id
+        const disc = await tmdbFetch<any>("/discover/movie", {
+          with_genres: String(genreId),
+          sort_by: "popularity.desc",
+          "vote_count.gte": "50",
+          page: "1",
+        })
+        for (const item of (disc.results || [])) {
+          const idStr = String(item.id)
+          if (idStr !== String(id) && !seenSimilarIds.has(idStr) && item.poster_path && (item.title || item.original_title)) {
+            seenSimilarIds.add(idStr)
+            similar.push(mapRawMovie(item))
+            if (similar.length >= 15) break
+          }
+        }
+      } catch {
+        // Ignore fallback error
+      }
+    }
+
     return {
       ...base,
       genres: (genreNames.length > 0 ? genreNames : (base.genres || []).map((g: any) => g.name).filter(Boolean)) as any,
@@ -695,6 +718,29 @@ export class TMDBService {
         seenTvSimilarIds.add(idStr)
         similarTv.push(mapRawTv(item))
         if (similarTv.length >= 15) break
+      }
+    }
+
+    // Smart Fallback: if TMDB recommendations/similar yielded fewer than 6 items, fill with discover by primary genre
+    if (similarTv.length < 6 && data.genres && data.genres.length > 0) {
+      try {
+        const genreId = data.genres[0].id
+        const disc = await tmdbFetch<any>("/discover/tv", {
+          with_genres: String(genreId),
+          sort_by: "popularity.desc",
+          "vote_count.gte": "20",
+          page: "1",
+        })
+        for (const item of (disc.results || [])) {
+          const idStr = String(item.id)
+          if (idStr !== String(id) && !seenTvSimilarIds.has(idStr) && item.poster_path && (item.name || item.original_name)) {
+            seenTvSimilarIds.add(idStr)
+            similarTv.push(mapRawTv(item))
+            if (similarTv.length >= 15) break
+          }
+        }
+      } catch {
+        // Ignore fallback error
       }
     }
 
