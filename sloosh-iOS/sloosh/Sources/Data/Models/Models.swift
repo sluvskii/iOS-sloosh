@@ -799,6 +799,53 @@ struct TrailerVideoDto: Codable, Identifiable, Hashable {
         self.site = site
         self.url = url
     }
+
+    var isYouTube: Bool {
+        site.lowercased() == "youtube"
+    }
+
+    var thumbnailUrl: URL? {
+        if isYouTube {
+            return URL(string: "https://img.youtube.com/vi/\(key)/hqdefault.jpg")
+        }
+        return nil
+    }
+
+    var maxResThumbnailUrl: URL? {
+        if isYouTube {
+            return URL(string: "https://img.youtube.com/vi/\(key)/maxresdefault.jpg")
+        }
+        return nil
+    }
+
+    var embedUrl: URL? {
+        if isYouTube {
+            return URL(string: "https://www.youtube-nocookie.com/embed/\(key)?autoplay=1&playsinline=1&rel=0&modestbranding=1&iv_load_policy=3")
+        }
+        return URL(string: url)
+    }
+
+    var youtubeWebUrl: URL? {
+        if isYouTube {
+            return URL(string: "https://www.youtube.com/watch?v=\(key)")
+        }
+        return URL(string: url)
+    }
+
+    var youtubeAppUrl: URL? {
+        if isYouTube {
+            return URL(string: "youtube://watch?v=\(key)")
+        }
+        return nil
+    }
+
+    var typeTag: String {
+        let lower = name.lowercased()
+        if lower.contains("тизер") || lower.contains("teaser") {
+            return "Тизер"
+        }
+        return "Трейлер"
+    }
 }
 
 struct MovieCollectionDto: Codable, Identifiable {
