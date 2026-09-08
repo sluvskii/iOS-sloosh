@@ -760,21 +760,25 @@ struct PersonPhotoGalleryView: View {
     @State private var showControls: Bool = true
 
     private var safeAreaInsets: UIEdgeInsets {
-        if let windowScene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first,
-           let keyWindow = windowScene.windows.first(where: { $0.isKeyWindow }) {
-            return keyWindow.safeAreaInsets
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        for scene in scenes {
+            for window in scene.windows {
+                if window.safeAreaInsets.top > 0 {
+                    return window.safeAreaInsets
+                }
+            }
         }
         return UIEdgeInsets(top: 54, left: 0, bottom: 34, right: 0)
     }
 
     private var topPadding: CGFloat {
         let top = safeAreaInsets.top
-        return max(top, 50) + 12
+        return max(top, 47) + 16
     }
 
     private var bottomPadding: CGFloat {
         let bottom = safeAreaInsets.bottom
-        return max(bottom, 34) + 16
+        return max(bottom, 34) + 20
     }
 
     var body: some View {
