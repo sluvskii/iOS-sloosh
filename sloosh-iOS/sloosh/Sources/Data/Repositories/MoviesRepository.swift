@@ -494,8 +494,9 @@ actor MediaDetailsDiskCache {
             try? FileManager.default.removeItem(at: base.appendingPathComponent("sloosh.mediadetails", isDirectory: true))
             try? FileManager.default.removeItem(at: base.appendingPathComponent("sloosh.mediadetails.v3", isDirectory: true))
             try? FileManager.default.removeItem(at: base.appendingPathComponent("sloosh.mediadetails.v4", isDirectory: true))
+            try? FileManager.default.removeItem(at: base.appendingPathComponent("sloosh.mediadetails.v5", isDirectory: true))
             
-            let dir = base.appendingPathComponent("sloosh.mediadetails.v5", isDirectory: true)
+            let dir = base.appendingPathComponent("sloosh.mediadetails.v6", isDirectory: true)
             try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             self.cacheDir = dir
         } else {
@@ -513,6 +514,11 @@ actor MediaDetailsDiskCache {
         guard let data = try? Data(contentsOf: url) else { return nil }
         guard let entry = try? JSONDecoder().decode(Entry.self, from: data) else { return nil }
         guard Date().timeIntervalSince(entry.savedAt) < ttl else {
+            try? FileManager.default.removeItem(at: url)
+            return nil
+        }
+        // If entry has no similar media (from older build before similar was added), treat as cache miss
+        if entry.details.similar == nil {
             try? FileManager.default.removeItem(at: url)
             return nil
         }

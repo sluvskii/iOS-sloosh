@@ -837,14 +837,6 @@ struct DetailsView: View {
                             .padding(.top, 16)
                         }
 
-                        if let relatedStudio = viewModel.relatedStudio, let items = relatedStudio.items, !items.isEmpty {
-                            RelatedStudioSection(response: relatedStudio, onDirectPlay: { movie in
-                                directPlaybackMovie = movie
-                            })
-                            .padding(.top, 16)
-                            .padding(.bottom, 20)
-                        }
-
                         if let similar = details.similar, !similar.isEmpty {
                             SimilarMediaSection(
                                 title: details.type == "tv" ? "Похожие сериалы" : "Похожие фильмы",
@@ -853,6 +845,14 @@ struct DetailsView: View {
                                     directPlaybackMovie = movie
                                 }
                             )
+                            .padding(.top, 16)
+                            .padding(.bottom, 20)
+                        }
+
+                        if let relatedStudio = viewModel.relatedStudio, let items = relatedStudio.items, !items.isEmpty {
+                            RelatedStudioSection(response: relatedStudio, onDirectPlay: { movie in
+                                directPlaybackMovie = movie
+                            })
                             .padding(.top, 16)
                             .padding(.bottom, 20)
                         }
@@ -996,14 +996,6 @@ struct DetailsView: View {
                                 .padding(.top, 16)
                             }
 
-                            if let relatedStudio = viewModel.relatedStudio, let items = relatedStudio.items, !items.isEmpty {
-                                RelatedStudioSection(response: relatedStudio, onDirectPlay: { movie in
-                                    directPlaybackMovie = movie
-                                })
-                                .padding(.top, 16)
-                                .padding(.bottom, 20)
-                            }
-
                             if let similar = details.similar, !similar.isEmpty {
                                 SimilarMediaSection(
                                     title: details.type == "tv" ? "Похожие сериалы" : "Похожие фильмы",
@@ -1012,6 +1004,14 @@ struct DetailsView: View {
                                         directPlaybackMovie = movie
                                     }
                                 )
+                                .padding(.top, 16)
+                                .padding(.bottom, 20)
+                            }
+
+                            if let relatedStudio = viewModel.relatedStudio, let items = relatedStudio.items, !items.isEmpty {
+                                RelatedStudioSection(response: relatedStudio, onDirectPlay: { movie in
+                                    directPlaybackMovie = movie
+                                })
                                 .padding(.top, 16)
                                 .padding(.bottom, 20)
                             }
