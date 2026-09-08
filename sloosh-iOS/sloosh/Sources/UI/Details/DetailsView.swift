@@ -199,6 +199,7 @@ struct DetailsView: View {
     
     @State private var isLogoAtTop: Bool = false
     @State private var isSavingImage: Bool = false
+    @Namespace private var actorTransitionNamespace
     
     var body: some View {
         ZStack {
@@ -935,7 +936,7 @@ struct DetailsView: View {
                             .frame(maxWidth: .infinity, alignment: .center)
 
                             if let cast = details.cast, !cast.isEmpty {
-                                ActorsSection(cast: cast)
+                                ActorsSection(cast: cast, namespace: actorTransitionNamespace)
                                     .padding(.top, 16)
                             }
 
@@ -2424,6 +2425,7 @@ class DetailsViewModel: ObservableObject {
 
 private struct ActorsSection: View {
     let cast: [CastMemberDto]
+    let namespace: Namespace.ID
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -2434,11 +2436,18 @@ private struct ActorsSection: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(alignment: .top, spacing: 14) {
                     ForEach(cast) { actor in
+                        let transitionID = "actor_\(actor.id)"
                         NavigationLink(
-                            destination: PersonDetailView(personId: actor.id, initialName: actor.name)
-                                .navigationBarBackButtonHidden(true)
+                            destination: PersonDetailView(
+                                personId: actor.id,
+                                initialName: actor.name,
+                                navigationTransitionID: transitionID,
+                                navigationTransitionNamespace: namespace
+                            )
+                            .navigationBarBackButtonHidden(true)
                         ) {
                             ActorCardView(actor: actor)
+                                .matchedTransitionSource(id: transitionID, in: namespace)
                         }
                         .buttonStyle(.plain)
                     }

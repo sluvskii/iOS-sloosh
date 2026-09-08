@@ -5,17 +5,29 @@ import UIKit
 struct PersonDetailView: View {
     let personId: Int
     let initialName: String?
+    let navigationTransitionID: String?
+    let navigationTransitionNamespace: Namespace.ID?
 
     @StateObject private var viewModel: PersonDetailViewModel
     @State private var dominantColor: UIColor? = nil
     @State private var isTitleAtTop: Bool = false
     @State private var showPhotoGallery: Bool = false
     @State private var selectedPhotoIndex: Int = 0
+    @State private var selectedPhotoTransitionId: String? = nil
+    @Namespace private var photoGalleryNamespace
+    @Namespace private var filmographyTransitionNamespace
     @Environment(\.dismiss) private var dismiss
 
-    init(personId: Int, initialName: String? = nil) {
+    init(
+        personId: Int,
+        initialName: String? = nil,
+        navigationTransitionID: String? = nil,
+        navigationTransitionNamespace: Namespace.ID? = nil
+    ) {
         self.personId = personId
         self.initialName = initialName
+        self.navigationTransitionID = navigationTransitionID
+        self.navigationTransitionNamespace = navigationTransitionNamespace
         _viewModel = StateObject(wrappedValue: PersonDetailViewModel(personId: personId))
     }
 
@@ -137,6 +149,7 @@ struct PersonDetailView: View {
         .ignoresSafeArea(edges: .top)
         .hideNavigationBarWithRestore()
         .fullWidthSwipeBack()
+        .optionalZoomTransition(sourceID: navigationTransitionID, in: navigationTransitionNamespace)
         .safeAreaInset(edge: .top, spacing: 0) {
             ZStack {
                 if isTitleAtTop {
@@ -173,9 +186,13 @@ struct PersonDetailView: View {
                 .ignoresSafeArea()
         }
         .fullScreenCover(isPresented: $showPhotoGallery) {
-            PersonPhotoGalleryView(photos: allPhotos, selectedIndex: selectedPhotoIndex)
+            PersonPhotoGalleryView(photos: allPhotos, selectedIndex: $selectedPhotoIndex)
                 .ignoresSafeArea()
                 .presentationBackground(.clear)
+                .optionalZoomTransition(sourceID: selectedPhotoTransitionId, in: photoGalleryNamespace)
+        }
+        .onChange(of: selectedPhotoIndex) { _, newIndex in
+            selectedPhotoTransitionId = "person_photo_\(newIndex)"
         }
         .task {
             await viewModel.loadDetails()
@@ -209,11 +226,13 @@ struct PersonDetailView: View {
                 width: geometry.size.width,
                 height: height
             )
+            .matchedTransitionSource(id: "person_photo_0", in: photoGalleryNamespace)
             .offset(y: offset)
             .contentShape(Rectangle())
             .onTapGesture {
                 if !allPhotos.isEmpty {
                     selectedPhotoIndex = 0
+                    selectedPhotoTransitionId = "person_photo_0"
                     showPhotoGallery = true
                 }
             }
@@ -314,8 +333,10 @@ struct PersonDetailView: View {
                 PersonPhotosSection(
                     photos: photos,
                     allPhotos: allPhotos,
-                    onSelect: { idx in
+                    namespace: photoGalleryNamespace,
+                    onSelect: { idx, transitionId in
                         selectedPhotoIndex = idx
+                        selectedPhotoTransitionId = transitionId
                         showPhotoGallery = true
                     },
                     onSave: { url in
@@ -328,7 +349,11 @@ struct PersonDetailView: View {
             }
 
             // Filmography
-            PersonFilmographySection(viewModel: viewModel, details: details)
+            PersonFilmographySection(
+                viewModel: viewModel,
+                details: details,
+                namespace: filmographyTransitionNamespace
+            )
                 .padding(.top, 4)
                 .padding(.bottom, 36)
         }
@@ -658,7 +683,8 @@ private struct ParsedBiography {
 private struct PersonPhotosSection: View {
     let photos: [String]
     let allPhotos: [String]
-    let onSelect: (Int) -> Void
+    let namespace: Namespace.ID
+    let onSelect: (Int, String) -> Void
     let onSave: (String) -> Void
     let onShare: (String) -> Void
 
@@ -672,9 +698,10 @@ private struct PersonPhotosSection: View {
                 LazyHStack(spacing: 12) {
                     ForEach(photos, id: \.self) { photoUrl in
                         let idx = allPhotos.firstIndex(of: photoUrl) ?? 0
+                        let transitionId = "person_photo_\(idx)"
 
                         Button {
-                            onSelect(idx)
+                            onSelect(idx, transitionId)
                         } label: {
                             AsyncCachedImage(url: URL(string: photoUrl)) {
                                 RoundedRectangle(cornerRadius: 14)
@@ -696,11 +723,12 @@ private struct PersonPhotosSection: View {
                                 RoundedRectangle(cornerRadius: 14)
                                     .strokeBorder(Color.white.opacity(0.12), lineWidth: 1)
                             )
+                            .matchedTransitionSource(id: transitionId, in: namespace)
                         }
                         .buttonStyle(.plain)
                         .contextMenu {
                             Button {
-                                onSelect(idx)
+                                onSelect(idx, transitionId)
                             } label: {
                                 Label("Открыть фото", systemImage: "arrow.up.left.and.arrow.down.right")
                             }
@@ -727,9 +755,27 @@ private struct PersonPhotosSection: View {
 
 struct PersonPhotoGalleryView: View {
     let photos: [String]
-    @State var selectedIndex: Int
+    @Binding var selectedIndex: Int
     @Environment(\.dismiss) private var dismiss
     @State private var showControls: Bool = true
+
+    private var safeAreaInsets: UIEdgeInsets {
+        if let windowScene = UIApplication.shared.connectedScenes.compactMap({ $0 as? UIWindowScene }).first,
+           let keyWindow = windowScene.windows.first(where: { $0.isKeyWindow }) {
+            return keyWindow.safeAreaInsets
+        }
+        return UIEdgeInsets(top: 54, left: 0, bottom: 34, right: 0)
+    }
+
+    private var topPadding: CGFloat {
+        let top = safeAreaInsets.top
+        return max(top, 50) + 12
+    }
+
+    private var bottomPadding: CGFloat {
+        let bottom = safeAreaInsets.bottom
+        return max(bottom, 34) + 16
+    }
 
     var body: some View {
         ZStack {
@@ -779,7 +825,7 @@ struct PersonPhotoGalleryView: View {
                     }
                 }
                 .padding(.horizontal, 16)
-                .padding(.top, 8)
+                .padding(.top, topPadding)
 
                 Spacer()
 
@@ -800,10 +846,8 @@ struct PersonPhotoGalleryView: View {
                     .shadow(color: .black.opacity(0.35), radius: 10, x: 0, y: 5)
                 }
                 .buttonStyle(.plain)
-                .padding(.bottom, 24)
+                .padding(.bottom, bottomPadding)
             }
-            .safeAreaPadding(.top)
-            .safeAreaPadding(.bottom)
             .opacity(showControls ? 1.0 : 0.0)
             .allowsHitTesting(showControls)
             .animation(.easeInOut(duration: 0.2), value: showControls)
@@ -1345,6 +1389,7 @@ private final class PhotoPageViewController: UIViewController, UIScrollViewDeleg
 private struct PersonFilmographySection: View {
     @ObservedObject var viewModel: PersonDetailViewModel
     let details: PersonDetailsDto
+    let namespace: Namespace.ID
 
     private let columns = [
         GridItem(.flexible(), spacing: 12),
@@ -1412,15 +1457,17 @@ private struct PersonFilmographySection: View {
             } else {
                 LazyVGrid(columns: columns, spacing: 16) {
                     ForEach(items) { movie in
+                        let transitionID = "filmography_\(movie.id)"
                         NavigationLink(
                             destination: DetailsView(
                                 movieId: movie.id,
                                 mediaType: movie.type,
-                                navigationTransitionID: nil,
-                                navigationTransitionNamespace: nil
+                                navigationTransitionID: transitionID,
+                                navigationTransitionNamespace: namespace
                             ).navigationBarBackButtonHidden(true)
                         ) {
                             MoviePosterCard(movie: movie)
+                                .matchedTransitionSource(id: transitionID, in: namespace)
                         }
                         .buttonStyle(.plain)
                         .contextMenu {
@@ -1428,8 +1475,8 @@ private struct PersonFilmographySection: View {
                                 destination: DetailsView(
                                     movieId: movie.id,
                                     mediaType: movie.type,
-                                    navigationTransitionID: nil,
-                                    navigationTransitionNamespace: nil
+                                    navigationTransitionID: transitionID,
+                                    navigationTransitionNamespace: namespace
                                 ).navigationBarBackButtonHidden(true)
                             ) {
                                 Label("Подробнее", systemImage: "info.circle")
@@ -1540,3 +1587,26 @@ final class PersonDetailViewModel: ObservableObject {
         }
     }
 }
+
+// MARK: - Zoom Navigation Transition Modifier
+
+private struct OptionalZoomTransitionModifier: ViewModifier {
+    let sourceID: String?
+    let namespace: Namespace.ID?
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if let sourceID, let namespace {
+            content.navigationTransition(.zoom(sourceID: sourceID, in: namespace))
+        } else {
+            content
+        }
+    }
+}
+
+private extension View {
+    func optionalZoomTransition(sourceID: String?, in namespace: Namespace.ID?) -> some View {
+        modifier(OptionalZoomTransitionModifier(sourceID: sourceID, namespace: namespace))
+    }
+}
+
