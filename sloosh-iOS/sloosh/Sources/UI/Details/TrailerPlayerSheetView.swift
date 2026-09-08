@@ -10,8 +10,8 @@ struct TrailerPlayerSheetView: View {
     var body: some View {
         NavigationStack {
             ScrollView(showsIndicators: false) {
-                VStack(alignment: .leading, spacing: 16) {
-                    // Video Player Container (16:9 ratio, immediately full width)
+                VStack(alignment: .leading, spacing: 14) {
+                    // Video Player Container (16:9 ratio, full width)
                     ZStack {
                         Color.black
 
@@ -26,52 +26,25 @@ struct TrailerPlayerSheetView: View {
                     )
                     .shadow(color: Color.black.opacity(0.35), radius: 12, x: 0, y: 6)
                     .padding(.horizontal, 16)
-                    .padding(.top, 12)
+                    .padding(.top, 8)
 
-                    // Trailer Title (Clean, symmetrical, uniform 16pt padding)
+                    // Trailer Title (No line limit, multiline)
                     Text(trailer.name)
                         .font(.system(size: 18, weight: .semibold))
                         .foregroundStyle(.primary)
-                        .lineLimit(2)
                         .multilineTextAlignment(.leading)
                         .padding(.horizontal, 16)
-
-                    // Primary Action Button: Open in YouTube
-                    if let appUrl = trailer.youtubeAppUrl, let webUrl = trailer.youtubeWebUrl {
-                        Button {
-                            if UIApplication.shared.canOpenURL(appUrl) {
-                                UIApplication.shared.open(appUrl)
-                            } else {
-                                UIApplication.shared.open(webUrl)
-                            }
-                        } label: {
-                            HStack(spacing: 8) {
-                                Image(systemName: "arrow.up.right.video.fill")
-                                    .font(.system(size: 15, weight: .semibold))
-                                Text("Открыть в YouTube")
-                                    .font(.system(size: 15, weight: .semibold))
-                            }
-                            .foregroundStyle(.white)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 48)
-                            .glassEffect(.regular.interactive(), in: Capsule())
-                        }
-                        .buttonStyle(.plain)
-                        .padding(.horizontal, 16)
-                    }
                 }
-                .padding(.bottom, 24)
+                .padding(.bottom, 16)
             }
             .navigationTitle("Трейлер")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                // Кнопка закрытия (без вложенного glassEffect, чтобы не двоилась)
+                // Кнопка закрытия (крупная иконка как в плеере)
                 ToolbarItem(placement: .cancellationAction) {
-                    Button {
-                        dismiss()
-                    } label: {
+                    Button(action: { dismiss() }) {
                         Image(systemName: "xmark")
-                            .font(.system(size: 14, weight: .bold))
+                            .font(.system(size: 20, weight: .semibold))
                             .foregroundStyle(.white)
                     }
                     .tint(.white)
@@ -82,17 +55,55 @@ struct TrailerPlayerSheetView: View {
                     if let webUrl = trailer.youtubeWebUrl {
                         ShareLink(item: webUrl) {
                             Image(systemName: "square.and.arrow.up")
-                                .font(.system(size: 16, weight: .semibold))
+                                .font(.system(size: 20, weight: .semibold))
                                 .foregroundStyle(.white)
                         }
                         .tint(.white)
                     }
                 }
             }
+            // Закрепленная снизу плавающая кнопка «Открыть в YouTube» (красная, Liquid Glass)
+            .safeAreaInset(edge: .bottom) {
+                youtubeBottomButton
+            }
         }
-        .presentationDetents([.height(420), .large])
+        .presentationDetents([.height(440), .large])
         .presentationDragIndicator(.visible)
         .presentationBackground { Color.clear.glassEffect(in: .rect) }
+    }
+
+    // MARK: - Floating Red YouTube Button
+
+    @ViewBuilder
+    private var youtubeBottomButton: some View {
+        if let appUrl = trailer.youtubeAppUrl, let webUrl = trailer.youtubeWebUrl {
+            Button {
+                if UIApplication.shared.canOpenURL(appUrl) {
+                    UIApplication.shared.open(appUrl)
+                } else {
+                    UIApplication.shared.open(webUrl)
+                }
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "arrow.up.right.video.fill")
+                        .font(.system(size: 16, weight: .semibold))
+                    Text("Открыть в YouTube")
+                        .font(.system(size: 16, weight: .bold))
+                }
+                .foregroundStyle(.white)
+                .frame(maxWidth: .infinity)
+                .frame(height: 50)
+                .background(
+                    Capsule()
+                        .fill(Color(red: 0.90, green: 0.12, blue: 0.12).opacity(0.88))
+                )
+                .glassEffect(.regular.interactive(), in: .capsule)
+                .shadow(color: Color(red: 0.90, green: 0.12, blue: 0.12).opacity(0.4), radius: 10, x: 0, y: 4)
+            }
+            .buttonStyle(.glassPress)
+            .padding(.horizontal, 14)
+            .padding(.bottom, 14)
+        }
     }
 }
 
