@@ -523,7 +523,15 @@ struct MoviePosterCard: View {
             ZStack(alignment: .topLeading) {
                 RemotePosterView(url: url)
                 
-                if let rating = movie.rating, rating > 0 {
+                if movie.isUnreleased {
+                    Text("Скоро")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                        .padding(8)
+                } else if let rating = movie.rating, rating > 0 {
                     Text(String(format: "%.1f", rating))
                         .font(.system(size: 13, weight: .heavy))
                         .foregroundColor(.white)
@@ -627,7 +635,21 @@ struct MoviePosterCard: View {
                 .padding(.bottom, 8)
                 
                 // Rating overlay on top-left of the poster
-                if let rating = movie.rating, rating > 0 {
+                if movie.isUnreleased {
+                    VStack {
+                        HStack {
+                            Text("Скоро")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 3)
+                                .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                                .padding(8)
+                            Spacer()
+                        }
+                        Spacer()
+                    }
+                } else if let rating = movie.rating, rating > 0 {
                     VStack {
                         HStack {
                             Text(String(format: "%.1f", rating))

@@ -156,6 +156,44 @@ mediaRouter.get("/cartoons", async (c) => {
   }
 })
 
+// GET /api/v1/tv/:id/season/:season
+mediaRouter.get("/tv/:id/season/:season", async (c) => {
+  const origId = c.req.param("id")
+  const isKp = origId.startsWith("kp_")
+  const rawId = origId.replace(/^(tmdb_|kp_|tv_|movie_)/, "")
+  let id = parseInt(rawId, 10)
+  const season = parseInt(c.req.param("season"), 10)
+
+  if (isNaN(id) || isNaN(season)) {
+    return c.json({ status: "error", message: "Invalid parameters" }, 400)
+  }
+
+  if (isKp) {
+    try {
+      const info = await resolveTmdbInfoByKp(id)
+      if (info?.tmdbId) id = info.tmdbId
+    } catch {
+      // Continue with id as fallback
+    }
+  }
+
+  const cacheKey = `tv_season:${id}:${season}`
+  const cached = getCached<any>(detailsCache, cacheKey)
+  if (cached) {
+    c.header("Cache-Control", "public, s-maxage=86400, stale-while-revalidate=43200")
+    return c.json({ status: "success", data: cached })
+  }
+
+  try {
+    const seasonDetails = await tmdb.getSeasonDetails(id, season)
+    setCached(detailsCache, cacheKey, seasonDetails)
+    c.header("Cache-Control", "public, s-maxage=86400, stale-while-revalidate=43200")
+    return c.json({ status: "success", data: seasonDetails })
+  } catch (err: any) {
+    return c.json({ status: "error", message: err.message || "Season details not found" }, 500)
+  }
+})
+
 // GET /api/v1/tv/:id/season/:season/episode/:episode
 mediaRouter.get("/tv/:id/season/:season/episode/:episode", async (c) => {
   const rawId = c.req.param("id").replace(/^(tmdb_|kp_|tv_|movie_)/, "")

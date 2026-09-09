@@ -104,12 +104,48 @@ export interface MediaDetailsDto extends MediaDto {
   collection?: MovieCollectionDto | null
   productionCompanies?: ProductionCompanyDto[]
   networks?: NetworkDto[]
+  budget?: number
+  revenue?: number
+  ageRating?: string
+  status?: string
+  nextEpisodeToAir?: TvNextEpisodeDto | null
   similar?: MediaDto[]
   alloha?: {
     kpId: number | null
     imdbId: string | null
     iframeUrl: string | null
   }
+}
+
+export interface TvNextEpisodeDto {
+  id: number
+  name: string
+  overview: string
+  airDate: string
+  episodeNumber: number
+  seasonNumber: number
+}
+
+export interface TvSeasonEpisodeDto {
+  id: number
+  name: string
+  overview: string
+  airDate: string
+  episodeNumber: number
+  seasonNumber: number
+  stillPath: string | null
+  voteAverage: number
+  duration?: number
+}
+
+export interface TvSeasonDto {
+  id: number
+  name: string
+  overview: string
+  seasonNumber: number
+  poster: string | null
+  airDate: string | null
+  episodes: TvSeasonEpisodeDto[]
 }
 
 export interface MediaResponse {
