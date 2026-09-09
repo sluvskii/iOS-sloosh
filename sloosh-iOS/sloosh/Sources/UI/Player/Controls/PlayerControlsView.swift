@@ -174,18 +174,27 @@ struct PlayerTitleInfoView: View {
         }
         guard let r = raw, !r.isEmpty else { return nil }
         
-        // Ищем каноническое название в списке (как делает пикер), чтобы не показывать
-        // технические HLS-теги вроде "MVO LostFilm" вместо "Многоголосый LostFilm"
-        let canonical: String
-        if let matched = vm.availableVoiceovers.first(where: { allohaTranslationNamesMatch($0, r, exactOnly: true) })
-            ?? vm.availableVoiceovers.first(where: { allohaTranslationNamesMatch($0, r, exactOnly: false) }) {
-            canonical = matched
+        let matchIdx: Int? = {
+            if let idx = vm.availableVoiceovers.firstIndex(of: r) {
+                return idx
+            }
+            if let idx = vm.availableVoiceovers.firstIndex(where: { allohaTranslationNamesMatch($0, r, exactOnly: true) }) {
+                return idx
+            }
+            if let idx = vm.availableVoiceovers.firstIndex(where: { allohaTranslationNamesMatch($0, r, exactOnly: false) }) {
+                return idx
+            }
+            return nil
+        }()
+
+        let formatted: String
+        if let idx = matchIdx {
+            formatted = displayTranslationName(vm.availableVoiceovers[idx], at: idx, in: vm.availableVoiceovers)
         } else {
-            canonical = r
+            formatted = cleanTranslationName(r)
         }
         
-        let cleaned = cleanTranslationName(canonical)
-        return stripLeadingEmoji(cleaned)
+        return stripLeadingEmoji(formatted)
     }
     
     private func stripLeadingEmoji(_ s: String) -> String {
