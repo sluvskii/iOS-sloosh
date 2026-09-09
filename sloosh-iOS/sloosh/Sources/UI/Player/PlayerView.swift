@@ -355,6 +355,7 @@ class PlayerViewModel: ObservableObject {
     private var statusObserver: NSKeyValueObservation?
     private var bufferObserver: NSKeyValueObservation?
     private var playbackEndObserver: NSObjectProtocol?
+    private var failedToEndObserver: NSObjectProtocol?
     private var resignActiveObserver: NSObjectProtocol?
     private var foregroundObserver: NSObjectProtocol?
     private var audioInterruptionObserver: NSObjectProtocol?
@@ -469,28 +470,60 @@ class PlayerViewModel: ObservableObject {
         )
     }
 
-    /// Повторная попытка воспроизведения после ошибки. Пробует сначала через originalStreamURL (мгновенно),
-    /// и только если его нет — перезапускает полный resolve через iframe.
+    /// Честный повтор: инвалидирует кеши и перезапрашивает свежий поток у Alloha с сохранением позиции.
     func retryPlayback() {
         error = nil
         isLoading = true
         hasRetriedPlayback = false
 
-        if let url = originalStreamURL {
-            // Оригинальный URL известен — переподключаемся без re-resolve
-            print("retryPlayback: reloading from originalStreamURL")
-            HlsProxyServer.shared.start(
-                headers: currentHeaders,
+        // Сохраняем текущую позицию, чтобы после переподключения продолжить с неё
+        saveCurrentProgress()
+
+        if let iframeUrl = currentIframeUrl, !iframeUrl.isEmpty {
+            AllohaRuntimeResolver.invalidateCache(for: iframeUrl)
+        }
+        AllohaRepository.shared.invalidateCache()
+
+        originalStreamURL = nil
+        currentPlaybackSourceURL = nil
+
+        if let iframeUrl = currentIframeUrl, !iframeUrl.isEmpty {
+            print("retryPlayback: full fresh re-resolve via currentIframeUrl")
+            hasStartedLoading = false
+            beginLoad(
+                iframeUrl: iframeUrl,
+                kpId: currentKpId,
+                season: currentSeason,
+                episode: currentEpisode,
+                selectedVoiceover: targetVoiceover ?? _currentTranslationName,
+                directStreamUrl: nil,
                 voices: [],
                 subtitles: availableSubtitles,
-                mediaId: currentMediaId ?? (currentKpId.map { "kp_\($0)" } ?? "unknown")
+                mediaKey: mediaKey,
+                tmdbId: tmdbId
             )
-            reloadPlayback(to: url, preferredPeakBitRate: player?.currentItem?.preferredPeakBitRate)
+        } else if let kpId = currentKpId, kpId > 0 {
+            print("retryPlayback: fetching fresh media via kpId \(kpId)")
+            hasStartedLoading = false
+            load(
+                iframeUrl: nil,
+                kpId: kpId,
+                season: currentSeason,
+                episode: currentEpisode,
+                selectedVoiceover: targetVoiceover ?? _currentTranslationName,
+                directStreamUrl: nil,
+                voices: [],
+                subtitles: availableSubtitles,
+                mediaKey: mediaKey,
+                tmdbId: tmdbId,
+                posterUrl: posterUrl,
+                backdropUrl: backdropUrl,
+                logoUrl: logoUrl
+            )
         } else {
-            // URL неизвестен — нужен полный перезапуск (например первичная ошибка resolve)
             hasStartedLoading = false
             isLoading = false
-            error = "Не удалось восстановить воспроизведение. Закройте плеер и откройте заново."
+            error = "Не удалось восстановить видеопоток. Закройте плеер и откройте заново."
         }
     }
 
@@ -931,6 +964,10 @@ class PlayerViewModel: ObservableObject {
         if let playbackEndObserver {
             NotificationCenter.default.removeObserver(playbackEndObserver)
             self.playbackEndObserver = nil
+        }
+        if let failedToEndObserver {
+            NotificationCenter.default.removeObserver(failedToEndObserver)
+            self.failedToEndObserver = nil
         }
         if let resignActiveObserver {
             NotificationCenter.default.removeObserver(resignActiveObserver)
@@ -1597,6 +1634,26 @@ class PlayerViewModel: ObservableObject {
             NotificationCenter.default.removeObserver(playbackEndObserver)
             self.playbackEndObserver = nil
         }
+        if let failedToEndObserver {
+            NotificationCenter.default.removeObserver(failedToEndObserver)
+            self.failedToEndObserver = nil
+        }
+
+        failedToEndObserver = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemFailedToPlayToEndTime,
+            object: playerItem,
+            queue: .main
+        ) { [weak self] notif in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                guard playerItem === self.player?.currentItem else { return }
+                let err = notif.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? NSError
+                self.logDebug("setupPlayerItemObservers: item failedToPlayToEndTime: \(err?.localizedDescription ?? "unknown")")
+                self.error = "Воспроизведение было прервано. Нажмите «Попробовать снова»."
+                self.isLoading = false
+                self.isBuffering = false
+            }
+        }
 
         statusObserver = playerItem.observe(\.status, options: [.new]) { [weak self] item, _ in
             Task { @MainActor [weak self] in
@@ -1662,8 +1719,9 @@ class PlayerViewModel: ObservableObject {
                         return
                     } // end -11848
 
-                    // General retry for non-11848 errors
+                    // General retry for non-11848 errors: делаем максимум ОДИН тихий ретрай
                     if !self.hasRetriedPlayback, let url = self.originalStreamURL ?? self.currentPlaybackSourceURL {
+                        self.hasRetriedPlayback = true
                         print("Auto-retrying playback after failure with originalStreamURL...")
                         // Перезапускаем прокси перед retry, так как именно он мог упасть
                         if let origUrl = self.originalStreamURL {
@@ -1686,6 +1744,7 @@ class PlayerViewModel: ObservableObject {
                             self.error = "Не удалось воспроизвести видео. Проверьте подключение к сети."
                         }
                         self.isLoading = false
+                        self.isBuffering = false
                     }
                 } else if item.status == .readyToPlay {
                     self.isLoading = false
