@@ -36,6 +36,17 @@ public final class ImageCache {
     public func clear() {
         cache.removeAllObjects()
     }
+
+    public static func resolveEffectiveUrl(_ targetUrl: URL?) -> URL? {
+        guard let original = targetUrl else { return nil }
+        let str = original.absoluteString
+        if str.contains("image.tmdb.org/t/p/") {
+            let proxied = str.replacingOccurrences(of: "https://image.tmdb.org/t/p/", with: "https://api-sloosh.vercel.app/api/v1/images/tmdb/")
+                .replacingOccurrences(of: "http://image.tmdb.org/t/p/", with: "https://api-sloosh.vercel.app/api/v1/images/tmdb/")
+            return URL(string: proxied) ?? original
+        }
+        return original
+    }
 }
 
 public struct AsyncCachedImage<Placeholder: View, Content: View, Fallback: View>: View {
@@ -48,8 +59,8 @@ public struct AsyncCachedImage<Placeholder: View, Content: View, Fallback: View>
     public var isExternalLoading: Binding<Bool>? = nil
     
     @State private var image: UIImage?
-    @State private var isLoading = false
-    @State private var hasError = false
+    @State private var isLoading: Bool = true
+    @State private var hasError: Bool = false
     
     public init(
         url: URL?,
@@ -69,7 +80,7 @@ public struct AsyncCachedImage<Placeholder: View, Content: View, Fallback: View>
         self.fallback = fallback
         
         // Try synchronously loading from in-memory cache first to avoid flashing
-        let effectiveUrl = Self.resolveEffectiveUrl(url)
+        let effectiveUrl = ImageCache.resolveEffectiveUrl(url)
         var initialImage: UIImage? = nil
         if let url = url {
             if let cached = ImageCache.shared.image(forKey: url.absoluteString) {
@@ -111,19 +122,9 @@ public struct AsyncCachedImage<Placeholder: View, Content: View, Fallback: View>
             isExternalLoading?.wrappedValue = newValue
         }
     }
-    
-    public static func resolveEffectiveUrl(_ targetUrl: URL?) -> URL? {
-        guard let original = targetUrl else { return nil }
-        let str = original.absoluteString
-        if str.contains("image.tmdb.org/t/p/") {
-            let proxied = str.replacingOccurrences(of: "https://image.tmdb.org/t/p/", with: "https://api-sloosh.vercel.app/api/v1/images/tmdb/")
-            return URL(string: proxied) ?? original
-        }
-        return original
-    }
 
     private func loadImage() async {
-        guard let rawUrl = url, let url = Self.resolveEffectiveUrl(rawUrl) else {
+        guard let rawUrl = url, let url = ImageCache.resolveEffectiveUrl(rawUrl) else {
             await loadFallbackImage()
             return
         }
@@ -195,8 +196,8 @@ public struct AsyncCachedImage<Placeholder: View, Content: View, Fallback: View>
     
     private func loadFallbackImage() async {
         // Handle fallback URL if provided
-        if let rawFallback = fallbackUrl, let fallbackUrl = resolveEffectiveUrl(rawFallback) {
-            if let cachedFallback = ImageCache.shared.image(forKey: fallbackUrl.absoluteString) {
+        if let rawFallback = fallbackUrl, let fallbackUrl = ImageCache.resolveEffectiveUrl(rawFallback) {
+            if let cachedFallback = ImageCache.shared.image(forKey: fallbackUrl.absoluteString) ?? ImageCache.shared.image(forKey: rawFallback.absoluteString) {
                 await MainActor.run {
                     self.image = cachedFallback
                     self.isLoading = false
@@ -214,6 +215,7 @@ public struct AsyncCachedImage<Placeholder: View, Content: View, Fallback: View>
                 
                 if let uiImg = uiImg {
                     ImageCache.shared.insertImage(uiImg, forKey: fallbackUrl.absoluteString)
+                    ImageCache.shared.insertImage(uiImg, forKey: rawFallback.absoluteString)
                     await MainActor.run {
                         self.image = uiImg
                         self.isLoading = false
@@ -229,11 +231,16 @@ public struct AsyncCachedImage<Placeholder: View, Content: View, Fallback: View>
                 if let httpResponse = response as? HTTPURLResponse {
                     isSuccessful = httpResponse.statusCode == 200
                 } else {
-                    isSuccessful = true // For file:// URLs
+                    isSuccessful = true
                 }
                 
-                if isSuccessful, let uiImg = UIImage(data: data) {
+                let uiImg = await Task.detached(priority: .userInitiated) {
+                    UIImage(data: data)
+                }.value
+                
+                if isSuccessful, let uiImg {
                     ImageCache.shared.insertImage(uiImg, forKey: fallbackUrl.absoluteString)
+                    ImageCache.shared.insertImage(uiImg, forKey: rawFallback.absoluteString)
                     await MainActor.run {
                         self.image = uiImg
                         self.isLoading = false
