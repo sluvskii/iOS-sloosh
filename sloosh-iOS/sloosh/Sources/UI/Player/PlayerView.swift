@@ -470,7 +470,7 @@ class PlayerViewModel: ObservableObject {
     }
 
     /// Повторная попытка воспроизведения после ошибки. Пробует сначала через originalStreamURL (мгновенно),
-    /// и только если его нет — перезапускает полный resolve через iframe.
+    /// затем через currentIframeUrl (полный re-resolve), и только если нет ни того ни другого — показывает ошибку.
     func retryPlayback() {
         error = nil
         isLoading = true
@@ -486,8 +486,23 @@ class PlayerViewModel: ObservableObject {
                 mediaId: currentMediaId ?? (currentKpId.map { "kp_\($0)" } ?? "unknown")
             )
             reloadPlayback(to: url, preferredPeakBitRate: player?.currentItem?.preferredPeakBitRate)
+        } else if let iframeUrl = currentIframeUrl {
+            // URL сброшен (протухший токен) — запускаем полный re-resolve через iframe
+            print("retryPlayback: full re-resolve via currentIframeUrl")
+            beginLoad(
+                iframeUrl: iframeUrl,
+                kpId: currentKpId,
+                season: currentSeason,
+                episode: currentEpisode,
+                selectedVoiceover: targetVoiceover,
+                directStreamUrl: nil,
+                voices: [],
+                subtitles: availableSubtitles,
+                mediaKey: mediaKey,
+                tmdbId: tmdbId
+            )
         } else {
-            // URL неизвестен — нужен полный перезапуск (например первичная ошибка resolve)
+            // Нет ни URL ни iframe — полный перезапуск невозможен без выхода
             hasStartedLoading = false
             isLoading = false
             error = "Не удалось восстановить воспроизведение. Закройте плеер и откройте заново."
@@ -1874,6 +1889,7 @@ class PlayerViewModel: ObservableObject {
                 let status = self.player?.timeControlStatus
                 let wasPlaying = status == .playing || status == .waitingToPlayAtSpecifiedRate
                 UserDefaults.standard.set(wasPlaying, forKey: "sloosh_was_playing_before_bg")
+                UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: "sloosh_bg_enter_time")
                 self.saveCurrentProgress()
             }
         }
@@ -1901,9 +1917,27 @@ class PlayerViewModel: ObservableObject {
                     UIApplication.shared.isIdleTimerDisabled = true
                 }
 
-                // 4. Возобновляем воспроизведение если играло до ухода в фон
+                // 4. Проверяем сколько времени провели в фоне
+                let bgEnterTime = UserDefaults.standard.double(forKey: "sloosh_bg_enter_time")
+                let bgDuration = bgEnterTime > 0 ? Date().timeIntervalSince1970 - bgEnterTime : 0
+                // Alloha CDN токены живут ~30–60 мин. Если в фоне > 20 мин — URL протух.
+                let streamIsStale = bgDuration > 20 * 60
+
                 let wasPlaying = UserDefaults.standard.bool(forKey: "sloosh_was_playing_before_bg")
-                if wasPlaying && self.player?.timeControlStatus != .playing {
+
+                if streamIsStale, let iframeUrl = self.currentIframeUrl {
+                    // Токен протух: инвалидируем кеш runtime-резолвера и перезапрашиваем
+                    // свежий поток с нуля (Alloha выдаст новый подписанный CDN URL).
+                    self.logDebug("foreground: stream stale after \(Int(bgDuration / 60))min bg, full re-resolve")
+                    AllohaRuntimeResolver.invalidateCache(for: iframeUrl)
+                    AllohaRepository.shared.invalidateCache()
+                    // Сбрасываем оригинальный URL чтобы retryPlayback запустил полный re-resolve
+                    // через iframe, а не переиспользовал протухший CDN токен
+                    self.originalStreamURL = nil
+                    self.hasRetriedPlayback = false
+                    self.retryPlayback()
+                } else if wasPlaying && self.player?.timeControlStatus != .playing {
+                    // Короткий фон — просто возобновляем
                     self.player?.play()
                 }
 
