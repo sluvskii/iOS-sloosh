@@ -15,6 +15,9 @@ struct PlayerConfig: Identifiable {
     let seriesResult: AllohaApiResult?
     let mediaKey: String?
     let tmdbId: Int?
+    let posterUrl: String?
+    let backdropUrl: String?
+    let logoUrl: String?
 
     init(
         iframeUrl: String?,
@@ -29,7 +32,10 @@ struct PlayerConfig: Identifiable {
         quality: VideoQualityPreference?,
         seriesResult: AllohaApiResult?,
         mediaKey: String? = nil,
-        tmdbId: Int? = nil
+        tmdbId: Int? = nil,
+        posterUrl: String? = nil,
+        backdropUrl: String? = nil,
+        logoUrl: String? = nil
     ) {
         self.iframeUrl = iframeUrl
         self.title = title
@@ -44,6 +50,9 @@ struct PlayerConfig: Identifiable {
         self.seriesResult = seriesResult
         self.mediaKey = mediaKey
         self.tmdbId = tmdbId
+        self.posterUrl = posterUrl
+        self.backdropUrl = backdropUrl
+        self.logoUrl = logoUrl
     }
 }
 
@@ -81,7 +90,10 @@ struct HomeDirectPlayWrapper: View {
                         quality: quality,
                         seriesResult: result,
                         mediaKey: resolvedKey,
-                        tmdbId: tmdb
+                        tmdbId: tmdb,
+                        posterUrl: viewModel.details?.displayPosterUrl,
+                        backdropUrl: viewModel.details?.displayBackdropUrl ?? viewModel.details?.displayPosterUrl,
+                        logoUrl: viewModel.details?.displayLogoUrl
                     )
                     onPlay(config)
                 }
