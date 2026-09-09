@@ -42,15 +42,33 @@ struct PlayerPresenter: UIViewControllerRepresentable {
         func dismissPlayer() {
             guard !dismissCalled else { return }
             dismissCalled = true
-            vm.cleanup()
-            onDismiss()
+            if Thread.isMainThread {
+                MainActor.assumeIsolated {
+                    vm.cleanup()
+                    onDismiss()
+                }
+            } else {
+                Task { @MainActor in
+                    self.vm.cleanup()
+                    self.onDismiss()
+                }
+            }
         }
 
         func didDismiss() {
             guard !dismissCalled else { return }
             dismissCalled = true
-            vm.cleanup()
-            onDismiss()
+            if Thread.isMainThread {
+                MainActor.assumeIsolated {
+                    vm.cleanup()
+                    onDismiss()
+                }
+            } else {
+                Task { @MainActor in
+                    self.vm.cleanup()
+                    self.onDismiss()
+                }
+            }
         }
     }
 }
