@@ -2551,7 +2551,7 @@ private struct CrewSection: View {
                 .padding(.horizontal)
 
             ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(alignment: .top, spacing: 14) {
+                LazyHStack(alignment: .top, spacing: 10) {
                     ForEach(crew) { member in
                         let transitionID = "crew_\(member.id)"
                         NavigationLink(
@@ -2583,23 +2583,23 @@ private struct CrewCardView: View {
     let member: CrewMemberDto
 
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 6) {
             ZStack {
                 Circle()
                     .fill(Color.white.opacity(0.08))
-                    .frame(width: 74, height: 74)
+                    .frame(width: 76, height: 76)
 
                 if let photo = member.photo, let url = URL(string: photo) {
                     AsyncCachedImage(url: url) {
                         Circle()
                             .fill(Color.white.opacity(0.08))
-                            .frame(width: 74, height: 74)
+                            .frame(width: 76, height: 76)
                             .shimmer()
                     } content: { image in
                         Image(uiImage: image)
                             .resizable()
                             .aspectRatio(contentMode: .fill)
-                            .frame(width: 74, height: 74)
+                            .frame(width: 76, height: 76)
                             .clipShape(Circle())
                     } fallback: {
                         placeholder
@@ -2616,9 +2616,11 @@ private struct CrewCardView: View {
 
             VStack(spacing: 2) {
                 Text(member.name)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: 12.5, weight: .semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(2)
+                    .allowsTightening(true)
+                    .minimumScaleFactor(0.85)
                     .multilineTextAlignment(.center)
 
                 if let role = member.role, !role.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -2626,18 +2628,21 @@ private struct CrewCardView: View {
                         .font(.system(size: 11, weight: .regular))
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
+                        .allowsTightening(true)
+                        .minimumScaleFactor(0.85)
                         .multilineTextAlignment(.center)
                 }
             }
-            .frame(width: 86)
+            .frame(width: 76)
         }
+        .frame(width: 76)
     }
 
     private var placeholder: some View {
         Image(systemName: "person.fill")
             .font(.system(size: 28))
             .foregroundStyle(Color.white.opacity(0.35))
-            .frame(width: 74, height: 74)
+            .frame(width: 76, height: 76)
     }
 }
 
@@ -2654,7 +2659,7 @@ private struct ActorsSection: View {
                 .padding(.horizontal)
 
             ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(alignment: .top, spacing: 14) {
+                LazyHStack(alignment: .top, spacing: 10) {
                     ForEach(cast) { actor in
                         let transitionID = "actor_\(actor.id)"
                         NavigationLink(
@@ -2686,23 +2691,23 @@ private struct ActorCardView: View {
     let actor: CastMemberDto
 
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 6) {
             ZStack {
                 Circle()
                     .fill(Color.white.opacity(0.08))
-                    .frame(width: 74, height: 74)
+                    .frame(width: 76, height: 76)
 
                 if let photo = actor.photo, let url = URL(string: photo) {
                     AsyncCachedImage(url: url) {
                         Circle()
                             .fill(Color.white.opacity(0.08))
-                            .frame(width: 74, height: 74)
+                            .frame(width: 76, height: 76)
                             .shimmer()
                     } content: { image in
                         Image(uiImage: image)
                             .resizable()
                             .aspectRatio(contentMode: .fill)
-                            .frame(width: 74, height: 74)
+                            .frame(width: 76, height: 76)
                             .clipShape(Circle())
                     } fallback: {
                         placeholder
@@ -2719,9 +2724,11 @@ private struct ActorCardView: View {
 
             VStack(spacing: 2) {
                 Text(actor.name)
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(.system(size: 12.5, weight: .semibold))
                     .foregroundStyle(.primary)
                     .lineLimit(2)
+                    .allowsTightening(true)
+                    .minimumScaleFactor(0.85)
                     .multilineTextAlignment(.center)
 
                 if let character = actor.character, !character.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -2729,18 +2736,21 @@ private struct ActorCardView: View {
                         .font(.system(size: 11, weight: .regular))
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
+                        .allowsTightening(true)
+                        .minimumScaleFactor(0.85)
                         .multilineTextAlignment(.center)
                 }
             }
-            .frame(width: 86)
+            .frame(width: 76)
         }
+        .frame(width: 76)
     }
 
     private var placeholder: some View {
         Image(systemName: "person.fill")
             .font(.system(size: 28))
             .foregroundStyle(Color.white.opacity(0.35))
-            .frame(width: 74, height: 74)
+            .frame(width: 76, height: 76)
     }
 }
 
