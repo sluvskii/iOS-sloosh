@@ -952,7 +952,10 @@ class PlayerViewModel: ObservableObject {
         rateObserver = nil
 
         clearNowPlaying()
-        
+
+        // Возвращаем возможность автоблокировки экрана (плеер закрыт)
+        UIApplication.shared.isIdleTimerDisabled = false
+
         // Вежливо освобождаем аудиосессию, чтобы возобновилась фоновая музыка пользователя
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [.mixWithOthers])
@@ -1487,6 +1490,9 @@ class PlayerViewModel: ObservableObject {
         logDebug("playVideo: starting playback, url=\(url.absoluteString)")
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
         try? AVAudioSession.sharedInstance().setActive(true)
+        // Запрещаем автоблокировку экрана во время воспроизведения:
+        // без этого экран гаснет через 5 минут, iOS замораживает процесс и прокси падает
+        UIApplication.shared.isIdleTimerDisabled = true
         // Сохраняем оригинальный URL ДО проксирования — нужен для перезапуска после фона
         originalStreamURL = url.absoluteURL
         currentHeaders = headers
@@ -1548,8 +1554,8 @@ class PlayerViewModel: ObservableObject {
             self.scrubPreviewImage = nil
             self.thumbnailCache.removeAll()
         }
-        
-        if self.player == nil { 
+
+        if self.player == nil {
             let newPlayer = AVPlayer()
             self.player = newPlayer
         }
@@ -1567,7 +1573,11 @@ class PlayerViewModel: ObservableObject {
                 let status = player.timeControlStatus
                 self.isPlaying = (status == .playing)
                 self.isBuffering = (status == .waitingToPlayAtSpecifiedRate)
-                
+
+                // Управляем блокировкой экрана: включена во время воспроизведения/буферизации,
+                // выключена при паузе (разрешаем экрану гаснуть когда пользователь поставил на паузу)
+                UIApplication.shared.isIdleTimerDisabled = (status == .playing || status == .waitingToPlayAtSpecifiedRate)
+
                 self.updateNowPlaying()
             }
         }
@@ -1878,34 +1888,30 @@ class PlayerViewModel: ObservableObject {
         ) { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self else { return }
-                
+
                 // 1. Восстанавливаем аудиосессию
                 try? AVAudioSession.sharedInstance().setActive(true)
-                
-                // 2. Пинаем прокси
+
+                // 2. Пинаем прокси (восстановит слушатель если упал)
                 HlsProxyServer.shared.appWillEnterForeground()
-                
-                // 3. Возобновляем воспроизведение
+
+                // 3. Восстанавливаем блокировку экрана для активного плеера
+                if let status = self.player?.timeControlStatus,
+                   status == .playing || status == .waitingToPlayAtSpecifiedRate {
+                    UIApplication.shared.isIdleTimerDisabled = true
+                }
+
+                // 4. Возобновляем воспроизведение если играло до ухода в фон
                 let wasPlaying = UserDefaults.standard.bool(forKey: "sloosh_was_playing_before_bg")
                 if wasPlaying && self.player?.timeControlStatus != .playing {
                     self.player?.play()
                 }
-                
-                // 4. Умный Watchdog: если через 4 секунды после возврата из фона плеер все еще висит
-                // в состоянии буферизации (скорее всего сокет прокси сервера умер), мы мягко
-                // пересоздаем AVPlayerItem. Это не затронет обычные паузы или поиск, 
-                // так как срабатывает только при возврате из фона.
-                let currentItem = self.player?.currentItem
-                try? await Task.sleep(nanoseconds: 4_000_000_000)
-                
-                guard let player = self.player, player.currentItem == currentItem else { return }
-                
-                if player.timeControlStatus == .waitingToPlayAtSpecifiedRate {
-                    self.logDebug("Foreground watchdog: player stuck buffering. Reloading stream.")
-                    if let url = self.originalStreamURL ?? self.currentPlaybackSourceURL {
-                        self.reloadPlayback(to: url, preferredPeakBitRate: player.currentItem?.preferredPeakBitRate)
-                    }
-                }
+
+                // ВАЖНО: watchdog по таймеру УДАЛЁН.
+                // Любой реальный сбой потока (item.status == .failed) обрабатывает
+                // statusObserver (setupPlayerItemObservers), который делает корректный
+                // reloadPlayback. Таймер 4с вызывал ложные перезагрузки при обычной
+                // буферизации на медленной сети.
             }
         }
         
