@@ -689,6 +689,17 @@ public final class PlaybackProgressStore: ObservableObject {
                 context.insert(LastPlayedVoiceoverModel(userId: activeUserId, key: key, source: source, voiceover: v))
             }
             UserDefaults.standard.set(v, forKey: "alloha_last_translation_name")
+
+            // Keep existing ProgressRecordModel.voiceover in sync with latest selection
+            let recDesc = FetchDescriptor<ProgressRecordModel>(predicate: #Predicate { $0.userId == activeUserId })
+            if let records = try? context.fetch(recDesc) {
+                for rec in records {
+                    let root = rec.mediaId.components(separatedBy: "_s")[0]
+                    if root == mediaKey || rec.mediaId == mediaKey {
+                        rec.voiceover = v
+                    }
+                }
+            }
         } else {
             if let model = try? context.fetch(descriptor).first {
                 context.delete(model)

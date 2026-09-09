@@ -83,9 +83,15 @@ struct SourceSelectionView: View {
     func preferredTranslation(in translations: [AllohaTranslation], preferredName: String?) -> AllohaTranslation? {
         guard !translations.isEmpty else { return nil }
         
-        // 1. Try specified voiceover (per-show preference)
+        // 1. Try specified voiceover (per-show preference) - exact match
         if let preferredName,
            let match = translations.first(where: { allohaTranslationNamesMatch($0.name, preferredName, exactOnly: true) }) {
+            return match
+        }
+
+        // 1b. Try specified voiceover (per-show preference) - fuzzy/studio match
+        if let preferredName,
+           let match = translations.first(where: { allohaTranslationNamesMatch($0.name, preferredName, exactOnly: false) }) {
             return match
         }
         
