@@ -1368,11 +1368,6 @@ private struct DetailsPrimaryMetadataRow: View {
 
             if let ageRating = details.ageRating, !ageRating.isEmpty {
                 Text(ageRating)
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundColor(.secondary)
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 2)
-                    .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
             }
 
             if let year = details.year, year > 0 {
@@ -2213,6 +2208,16 @@ struct InlineEpisodesSection: View {
         details.ids?.kp?.description ?? details.id?.replacingOccurrences(of: "kp_", with: "") ?? ""
     }
 
+    var tvSeriesId: String {
+        if let tmdb = details.externalIds?.tmdb ?? details.ids?.tmdb, tmdb > 0 {
+            return String(tmdb)
+        }
+        if let kp = details.ids?.kp ?? details.externalIds?.kp, kp > 0 {
+            return "kp_\(kp)"
+        }
+        return details.id ?? rawId
+    }
+
     var episodesForSelectedSeason: [Int] {
         if let season = viewModel.inlineSourceWrapper?.allohaResult?.seasons.first(where: { $0.season == selectedSeason }) {
             return season.episodes.map { $0.episode }.sorted()
@@ -2225,9 +2230,10 @@ struct InlineEpisodesSection: View {
     }
 
     private func loadCurrentSeason() {
+        let idToFetch = tvSeriesId
         Task {
             do {
-                currentSeasonData = try await MoviesRepository.shared.getSeason(id: rawId, season: selectedSeason)
+                currentSeasonData = try await MoviesRepository.shared.getSeason(id: idToFetch, season: selectedSeason)
             } catch {
                 currentSeasonData = nil
             }
@@ -2413,7 +2419,7 @@ struct InlineEpisodesSection: View {
                                 }
                             )
                             .environmentObject(viewModel)
-                            .id(redrawTrigger)
+                            .id("\(selectedSeason)-\(episode)-\(seasonEpisode?.id ?? 0)-\(redrawTrigger)")
                         }
                         .buttonStyle(.plain)
                         .id("\(selectedSeason)-\(episode)")
