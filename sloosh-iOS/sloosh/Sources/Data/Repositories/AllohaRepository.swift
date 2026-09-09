@@ -446,13 +446,6 @@ final class AllohaRepository: @unchecked Sendable {
     private let cacheTtl: TimeInterval = 5 * 60 // 5 minutes
     private let cacheQueue = DispatchQueue(label: "ru.sloosh.alloharepo.cache", attributes: .concurrent)
 
-    /// Сбрасывает локальный кеш (вызывается при возврате из долгого фона, когда CDN-токены протухли)
-    func invalidateCache() {
-        cacheQueue.async(flags: .barrier) { [weak self] in
-            self?.catalogCache.removeAll()
-        }
-    }
-
     // Create a URLSession that ignores SSL certificate errors
     private lazy var session: URLSession = {
         let configuration = URLSessionConfiguration.default
