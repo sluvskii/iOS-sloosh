@@ -1368,6 +1368,8 @@ private struct DetailsPrimaryMetadataRow: View {
 
             if let ageRating = details.ageRating, !ageRating.isEmpty {
                 Text(ageRating)
+                    .fontWeight(.bold)
+                    .foregroundColor(Color.ageRating(ageRating))
             }
 
             if let year = details.year, year > 0 {
