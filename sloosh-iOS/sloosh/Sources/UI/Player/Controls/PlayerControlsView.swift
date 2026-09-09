@@ -190,8 +190,8 @@ struct PlayerTitleInfoView: View {
     
     private func stripLeadingEmoji(_ s: String) -> String {
         var result = s
-        if let first = result.unicodeScalars.first,
-           first.properties.isEmoji && first.value > 0x2000 {
+        while let first = result.unicodeScalars.first,
+              (first.properties.isEmoji && first.value > 0x2000) || first.value == 0x20 || first.value == 0xFE0F {
             result = String(result.dropFirst()).trimmingCharacters(in: .whitespaces)
         }
         return result

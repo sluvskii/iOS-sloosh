@@ -537,9 +537,15 @@ private final class ContinueViewModel: ObservableObject {
     private func preferredTranslation(in translations: [AllohaTranslation], preferredVoiceover: String?) -> AllohaTranslation? {
         guard !translations.isEmpty else { return nil }
 
-        // 1. Try specified voiceover (per-show preference)
+        // 1. Try specified voiceover (per-show preference) - exact match
         if let preferredVoiceover,
            let translation = translations.first(where: { allohaTranslationNamesMatch($0.name, preferredVoiceover, exactOnly: true) }) {
+            return translation
+        }
+
+        // 1b. Try specified voiceover (per-show preference) - fuzzy/studio match
+        if let preferredVoiceover,
+           let translation = translations.first(where: { allohaTranslationNamesMatch($0.name, preferredVoiceover, exactOnly: false) }) {
             return translation
         }
 
