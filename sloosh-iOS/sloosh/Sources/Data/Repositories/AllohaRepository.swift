@@ -81,7 +81,7 @@ func normalizedAllohaTranslationName(_ raw: String?) -> String {
         .replacingOccurrences(of: "(?i)@\\s*\\d+\\s*(?:kbps|kbit|кбит/с|кб/с)?", with: "", options: .regularExpression)
         .replacingOccurrences(of: "(?i)\\b\\d+\\s*(?:kbps|kbit|кбит/с|кб/с)\\b", with: "", options: .regularExpression)
         .replacingOccurrences(of: "(?i)\\b(?:Blu-ray(?:\\s*CEE)?|BDRip|WEB-DL|HDTV|Line)\\b", with: "", options: .regularExpression)
-        .replacingOccurrences(of: "\\(Russian\\)", with: "")
+        .replacingOccurrences(of: "(?i)\\((?:Russian|Ukrainian|Kazakh|English|Uzbek|Turkish|Georgian|Japanese|Korean|Chinese)\\)", with: "", options: .regularExpression)
         .replacingOccurrences(of: "(?i)\\bDUB\\b", with: "Дубляж", options: .regularExpression)
         .replacingOccurrences(of: "(?i)\\bMVO\\b", with: "Многоголосый", options: .regularExpression)
         .replacingOccurrences(of: "(?i)\\bDVO\\b", with: "Двухголосый", options: .regularExpression)
@@ -111,7 +111,7 @@ func normalizedAllohaTranslationName(_ raw: String?) -> String {
     return value
 }
 
-private func detectLanguageTag(in text: String) -> String? {
+func detectLanguageTag(in text: String) -> String? {
     let lower = text.lowercased()
     if lower.contains("украин") || lower.contains("ukrain") || lower.contains("укр") || lower.contains("ukr") {
         return "ukr"
@@ -122,7 +122,7 @@ private func detectLanguageTag(in text: String) -> String? {
     if lower.contains("узбек") || lower.contains("uzbek") || lower.contains("узб") || lower.contains("uzb") {
         return "uzb"
     }
-    if lower.contains("оригинал") || lower.contains("original") || lower.contains("english") || lower.contains("английск") || lower.contains("eng") {
+    if lower.contains("оригинал") || lower.contains("original") || lower.contains("english") || lower.contains("английск") || lower.contains("eng") || lower == "en" {
         return "eng"
     }
     if lower.contains("грузин") || lower.contains("georgian") || lower.contains("geo") {
@@ -146,26 +146,51 @@ private func detectLanguageTag(in text: String) -> String? {
     return nil
 }
 
+func isTranslationNoiseWord(_ word: String) -> Bool {
+    let noise: Set<String> = [
+        "studio", "студия", "дубляж", "дублированный", "дублирование", "полное",
+        "многоголосый", "двухголосый", "одноголосый", "авторский", "закадровый", "озвучка",
+        "профессиональный", "проф", "любительский", "люб", "production", "films", "film",
+        "team", "voice", "line", "перевод", "голос", "звук", "чистый", "версия", "театральная",
+        "расширенная", "режиссерская", "режиссёрская"
+    ]
+    return noise.contains(word.lowercased())
+}
+
 func allohaTranslationNamesMatch(_ lhs: String?, _ rhs: String?, exactOnly: Bool = false) -> Bool {
-    guard let lhs = lhs?.trimmingCharacters(in: .whitespacesAndNewlines), !lhs.isEmpty,
-          let rhs = rhs?.trimmingCharacters(in: .whitespacesAndNewlines), !rhs.isEmpty else {
+    guard let lhsRaw = lhs?.trimmingCharacters(in: .whitespacesAndNewlines), !lhsRaw.isEmpty,
+          let rhsRaw = rhs?.trimmingCharacters(in: .whitespacesAndNewlines), !rhsRaw.isEmpty else {
         return false
     }
     
-    let left = normalizedAllohaTranslationName(lhs).lowercased()
-    let right = normalizedAllohaTranslationName(rhs).lowercased()
+    let left = normalizedAllohaTranslationName(lhsRaw).lowercased()
+    let right = normalizedAllohaTranslationName(rhsRaw).lowercased()
     
     if left == right {
         return true
     }
     
-    // Strict language mismatch check
-    let langLeft = detectLanguageTag(in: left)
-    let langRight = detectLanguageTag(in: right)
+    // Strict language mismatch check on raw strings
+    let langLeft = detectLanguageTag(in: lhsRaw)
+    let langRight = detectLanguageTag(in: rhsRaw)
+    
+    // If one side specifies a non-Russian language (e.g. Ukrainian, Kazakh, English),
+    // the other side MUST specify the exact same language!
+    if let langLeft, langLeft != "rus" {
+        if langRight != langLeft { return false }
+    }
+    if let langRight, langRight != "rus" {
+        if langLeft != langRight { return false }
+    }
     if let langLeft, let langRight, langLeft != langRight {
         return false
     }
     
+    // Both are Ukrainian, Kazakh, Uzbek or another non-Russian regional language:
+    if let langLeft, let langRight, langLeft == langRight && langLeft != "rus" {
+        return true
+    }
+
     let isOriginalOrEnglish: (String) -> Bool = { name in
         let n = name.lowercased()
         return n.contains("original") || n.contains("оригинал") || n.contains("english") || n.contains("английский") || n.contains("eng") || n == "en"
@@ -180,7 +205,11 @@ func allohaTranslationNamesMatch(_ lhs: String?, _ rhs: String?, exactOnly: Bool
     }
     
     // Check for specific studio names
-    let studios = ["red head sound", "rhs", "flarrow", "lostfilm", "tvshows", "newstudio", "newcomers", "alexfilm", "кубик", "hdrezka", "rezka", "baibako", "jaskier", "vsi", "iron voice"]
+    let studios = [
+        "red head sound", "rhs", "flarrow", "lostfilm", "tvshows", "newstudio", "newcomers",
+        "alexfilm", "кубик", "hdrezka", "rezka", "baibako", "jaskier", "vsi", "iron voice",
+        "кураж бамбей", "лостфильм", "ньюстудио"
+    ]
     let leftStudios = studios.filter { left.contains($0) }
     let rightStudios = studios.filter { right.contains($0) }
     
@@ -198,8 +227,11 @@ func allohaTranslationNamesMatch(_ lhs: String?, _ rhs: String?, exactOnly: Bool
         return true
     }
     
-    // If one specifies an exclusive third-party studio (like RHS or Flarrow) and the other doesn't, they don't match
-    let exclusiveStudios = ["red head sound", "rhs", "flarrow", "lostfilm", "tvshows", "newstudio", "newcomers", "alexfilm", "кубик", "baibako", "jaskier", "vsi", "iron voice"]
+    // If one specifies an exclusive third-party studio and the other doesn't, they don't match
+    let exclusiveStudios = [
+        "red head sound", "rhs", "flarrow", "lostfilm", "tvshows", "newstudio", "newcomers",
+        "alexfilm", "кубик", "baibako", "jaskier", "vsi", "iron voice", "кураж бамбей"
+    ]
     let leftHasExclusive = exclusiveStudios.contains(where: { left.contains($0) })
     let rightHasExclusive = exclusiveStudios.contains(where: { right.contains($0) })
     if leftHasExclusive != rightHasExclusive {
@@ -211,17 +243,28 @@ func allohaTranslationNamesMatch(_ lhs: String?, _ rhs: String?, exactOnly: Bool
     let rightHasDub = right.contains("дубл")
     
     if leftHasDub && rightHasDub {
-        return langLeft == langRight
+        if let langLeft, let langRight {
+            return langLeft == langRight
+        }
+        return true
     }
     
     // Helper to strip generic studio/dub noise words
+    let noiseWords = [
+        "studio", "студия", "дубляж", "дублированный", "дублирование", "полное",
+        "многоголосый", "двухголосый", "одноголосый", "авторский", "закадровый", "озвучка",
+        "профессиональный", "проф", "любительский", "люб", "production", "films", "film",
+        "team", "voice", "line", "перевод", "голос", "звук", "чистый", "версия", "театральная",
+        "расширенная", "режиссерская", "режиссёрская"
+    ]
     let stripNoise: (String) -> String = { name in
         var n = name.lowercased()
-        let noise = ["studio", "студия", "дубляж", "дублированный", "многоголосый", "двухголосый", "озвучка", "production", "films", "film", "team", "voice"]
-        for word in noise {
+        for word in noiseWords {
             n = n.replacingOccurrences(of: "(?i)\\b\(word)\\b", with: "", options: .regularExpression)
         }
-        return n.replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression).trimmingCharacters(in: .whitespacesAndNewlines)
+        return n.replacingOccurrences(of: "[-–—,]", with: " ", options: .regularExpression)
+            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
     }
     
     let leftCore = stripNoise(left)
@@ -231,7 +274,99 @@ func allohaTranslationNamesMatch(_ lhs: String?, _ rhs: String?, exactOnly: Bool
         return true
     }
     
+    // Distinctive author / studio word matching (e.g. "Есарев", "Сербин", "Гаврилов")
+    let extractDistinctiveWords: (String) -> [String] = { s in
+        s.lowercased()
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { $0.count >= 4 && !isTranslationNoiseWord($0) }
+    }
+    
+    let rightWords = extractDistinctiveWords(right)
+    let leftWords = extractDistinctiveWords(left)
+    
+    if !rightWords.isEmpty {
+        let hasSharedDistinctive = rightWords.contains { rw in
+            leftWords.contains { lw in lw == rw || lw.contains(rw) || rw.contains(lw) }
+        }
+        if hasSharedDistinctive {
+            return true
+        }
+    }
+    
+    // Substring check on core if long enough
+    if leftCore.count >= 4 && rightCore.count >= 4 {
+        if leftCore.contains(rightCore) || rightCore.contains(leftCore) {
+            return true
+        }
+    }
+    
     return false
+}
+
+/// Находит наиболее подходящий вариант аудиодорожки из audioVariants для заданной целевой озвучки
+func findMatchingAudioVariant(
+    in audioVariants: [[String: Any]],
+    for targetVoice: String?,
+    isDedicatedIframe: Bool = false
+) -> [String: Any]? {
+    guard !audioVariants.isEmpty else { return nil }
+    guard let target = targetVoice?.trimmingCharacters(in: .whitespacesAndNewlines), !target.isEmpty else {
+        return audioVariants.first(where: { (($0["url"] as? String) ?? "").isEmpty == false })
+    }
+
+    // 1. Точное совпадение по названию
+    if let match = audioVariants.first(where: { allohaTranslationNamesMatch($0["title"] as? String, target, exactOnly: true) }) {
+        return match
+    }
+
+    // 2. Нестрогое / студийное / авторское совпадение
+    if let match = audioVariants.first(where: { allohaTranslationNamesMatch($0["title"] as? String, target, exactOnly: false) }) {
+        return match
+    }
+
+    // 3. Совпадение по языковому тегу (Украинский, Казахский, Английский и т.д.)
+    if let targetLang = detectLanguageTag(in: target) {
+        if let match = audioVariants.first(where: {
+            guard let title = $0["title"] as? String else { return false }
+            return detectLanguageTag(in: title) == targetLang
+        }) {
+            return match
+        }
+    }
+
+    // 4. Поиск по значимым словам (фамилия автора/студии: «Есарев», «Сербин», «Гаврилов»)
+    let targetWords = target
+        .lowercased()
+        .components(separatedBy: CharacterSet.alphanumerics.inverted)
+        .filter { $0.count >= 4 && !isTranslationNoiseWord($0) }
+    if !targetWords.isEmpty {
+        for word in targetWords {
+            if let match = audioVariants.first(where: {
+                let t = (($0["title"] as? String) ?? "").lowercased()
+                return t.contains(word)
+            }) {
+                return match
+            }
+        }
+    }
+
+    // 5. Для выделенного iframe (загруженного под конкретную озвучку translation=ID):
+    // Если целевая озвучка — НЕ русский дубляж, но вариант 0 — русский дубляж,
+    // а в iframe есть вариант 1 — выбираем вариант 1 (это именно та озвучка, под которую создан iframe!)
+    if isDedicatedIframe && audioVariants.count > 1 {
+        let isTargetDub = target.lowercased().contains("дубл")
+        if !isTargetDub {
+            if let nonDub = audioVariants.first(where: {
+                let t = (($0["title"] as? String) ?? "").lowercased()
+                return !t.contains("дубл") && !t.contains("dub")
+            }) {
+                return nonDub
+            }
+            return audioVariants[1]
+        }
+    }
+
+    return nil
 }
 
 

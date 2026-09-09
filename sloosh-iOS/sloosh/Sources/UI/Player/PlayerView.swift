@@ -1119,12 +1119,14 @@ class PlayerViewModel: ObservableObject {
                         let audioVariants = (resolved["audioVariants"] as? [[String: Any]]) ?? []
                         self.resolvedAudioVariants = audioVariants
 
-                        if let matchingVariant = audioVariants.first(where: { variant in
-                            let title = (variant["title"] as? String) ?? ""
-                            return allohaTranslationNamesMatch(title, translation.name)
-                        }), let variantUrl = (matchingVariant["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !variantUrl.isEmpty {
+                        let matchedVariant = findMatchingAudioVariant(in: audioVariants, for: translation.name, isDedicatedIframe: true)
+                        if let matchedVariant,
+                           let variantUrl = (matchedVariant["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                           !variantUrl.isEmpty {
                             resolvedUrlString = variantUrl
-                            logDebug("switchVoiceover: matched audioVariant '\(matchingVariant["title"] ?? "")' -> \(variantUrl)")
+                            logDebug("switchVoiceover: matched audioVariant '\(matchedVariant["title"] ?? "")' -> \(variantUrl)")
+                        } else {
+                            logDebug("switchVoiceover: no audioVariant matched for '\(translation.name)', available variants: \(audioVariants.compactMap { $0["title"] as? String })")
                         }
 
                         guard let resolvedUrl = URL(string: resolvedUrlString) else {
@@ -1154,7 +1156,8 @@ class PlayerViewModel: ObservableObject {
                         self.availableQualities = self.makeResolvedQualityOptions(
                             resolvedUrl: resolvedUrl,
                             qualityVariants: qualityVariants,
-                            audioVariants: audioVariants
+                            audioVariants: audioVariants,
+                            preferredAudioVariant: matchedVariant
                         )
 
                         self.currentTime = savedTime
@@ -1173,21 +1176,7 @@ class PlayerViewModel: ObservableObject {
 
         // 3. Быстрое переключение через resolvedAudioVariants (прямые HLS ссылки внутри текущего iframe)
         if !resolvedAudioVariants.isEmpty {
-            var targetVariant: [String: Any]?
-            
-            if let match = resolvedAudioVariants.first(where: { variant in
-                let title = (variant["title"] as? String) ?? ""
-                return allohaTranslationNamesMatch(title, name, exactOnly: true)
-            }) {
-                targetVariant = match
-            } else if let match = resolvedAudioVariants.first(where: { variant in
-                let title = (variant["title"] as? String) ?? ""
-                return allohaTranslationNamesMatch(title, name, exactOnly: false)
-            }) {
-                targetVariant = match
-            }
-            
-            if let variant = targetVariant,
+            if let variant = findMatchingAudioVariant(in: resolvedAudioVariants, for: name, isDedicatedIframe: false),
                let variantUrlString = (variant["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
                let variantUrl = URL(string: variantUrlString) {
                 logDebug("switchVoiceover: fast switching to audioVariant '\(canonicalName)' -> \(variantUrlString)")
@@ -1200,7 +1189,8 @@ class PlayerViewModel: ObservableObject {
                 self.availableQualities = self.makeResolvedQualityOptions(
                     resolvedUrl: variantUrl,
                     qualityVariants: (variant["qualityVariants"] as? [[String: Any]]) ?? [],
-                    audioVariants: resolvedAudioVariants
+                    audioVariants: resolvedAudioVariants,
+                    preferredAudioVariant: variant
                 )
                 
                 let (targetPlaybackUrl, activeBitrate) = self.selectPreservedPlaybackTarget(fallbackUrl: variantUrl)
@@ -1436,18 +1426,29 @@ class PlayerViewModel: ObservableObject {
     private func makeResolvedQualityOptions(
         resolvedUrl: URL,
         qualityVariants: [[String: Any]],
-        audioVariants: [[String: Any]]
+        audioVariants: [[String: Any]],
+        preferredAudioVariant: [String: Any]? = nil
     ) -> [PlaybackQualityOption] {
-        var qualities = [makeAutoQualityOption(url: resolvedUrl)]
-        var seenKeys = Set<String>(["Авто"])
-
         let targetVoice = targetVoiceover ?? _currentTranslationName
-        let selectedAudioVariant: [String: Any]? = {
-            if let target = targetVoice, !target.isEmpty {
-                return audioVariants.first(where: { allohaTranslationNamesMatch($0["title"] as? String, target) })
+        let selectedAudioVariant: [String: Any]? = preferredAudioVariant
+            ?? {
+                if let target = targetVoice, !target.isEmpty {
+                    return findMatchingAudioVariant(in: audioVariants, for: target, isDedicatedIframe: currentIframeUrl != nil)
+                }
+                return nil
+            }()
+            ?? audioVariants.first(where: { (($0["url"] as? String) ?? "").isEmpty == false })
+
+        let activeUrl: URL = {
+            if let variantUrlString = selectedAudioVariant?["url"] as? String,
+               let variantUrl = URL(string: variantUrlString.trimmingCharacters(in: .whitespacesAndNewlines)) {
+                return variantUrl
             }
-            return nil
-        }() ?? audioVariants.first(where: { (($0["url"] as? String) ?? "").isEmpty == false })
+            return resolvedUrl
+        }()
+
+        var qualities = [makeAutoQualityOption(url: activeUrl)]
+        var seenKeys = Set<String>(["Авто"])
 
         if let selectedAudio = selectedAudioVariant,
            let nestedQualityVariants = selectedAudio["qualityVariants"] as? [[String: Any]],
@@ -2184,10 +2185,8 @@ class PlayerViewModel: ObservableObject {
             // Check if audioVariants contains a track specifically matching our targetVoiceover or selectedVoiceover
             let targetVoice = targetVoiceover ?? _currentTranslationName
             if let target = targetVoice, !target.isEmpty {
-                if let matchingVariant = audioVariants.first(where: { variant in
-                    let title = (variant["title"] as? String) ?? ""
-                    return allohaTranslationNamesMatch(title, target)
-                }), let variantUrl = (matchingVariant["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !variantUrl.isEmpty {
+                if let matchingVariant = findMatchingAudioVariant(in: audioVariants, for: target, isDedicatedIframe: currentIframeUrl != nil),
+                   let variantUrl = (matchingVariant["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !variantUrl.isEmpty {
                     resolvedUrlString = variantUrl
                     let rawTitle = (matchingVariant["title"] as? String) ?? ""
                     let cleanTitle = self.availableVoiceovers.first(where: { allohaTranslationNamesMatch($0, rawTitle, exactOnly: true) })
@@ -2238,13 +2237,14 @@ class PlayerViewModel: ObservableObject {
             self.availableVoiceovers = voices
         }
 
-
         let qualityVariants = (resolved["qualityVariants"] as? [[String: Any]]) ?? []
+        let matchedInitialVariant = findMatchingAudioVariant(in: audioVariants, for: targetVoiceover ?? _currentTranslationName, isDedicatedIframe: currentIframeUrl != nil)
 
         availableQualities = makeResolvedQualityOptions(
             resolvedUrl: resolvedUrl,
             qualityVariants: qualityVariants,
-            audioVariants: audioVariants
+            audioVariants: audioVariants,
+            preferredAudioVariant: matchedInitialVariant
         )
         let (initialPlaybackUrl, initialBitrate) = selectPreservedPlaybackTarget(fallbackUrl: resolvedUrl)
         playVideo(url: initialPlaybackUrl, headers: headers, voices: voices, subtitles: resolvedSubtitles)
