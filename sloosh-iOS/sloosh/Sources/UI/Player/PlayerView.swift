@@ -359,8 +359,6 @@ class PlayerViewModel: ObservableObject {
     private var foregroundObserver: NSObjectProtocol?
     private var audioInterruptionObserver: NSObjectProtocol?
     private var rateObserver: NSKeyValueObservation?
-    /// Watchdog-задача после возврата из фона: если поток не запускается 10 сек — делаем re-resolve.
-    private var foregroundStallTask: Task<Void, Never>?
     /// Оригинальный upstream URL стрима (без 127.0.0.1 прокси). Используется для перезапуска после фона.
     private var originalStreamURL: URL?
     /// Проксированный URL который дали в AVPlayer (может быть 127.0.0.1).
@@ -472,7 +470,7 @@ class PlayerViewModel: ObservableObject {
     }
 
     /// Повторная попытка воспроизведения после ошибки. Пробует сначала через originalStreamURL (мгновенно),
-    /// затем через currentIframeUrl (полный re-resolve), и только если нет ни того ни другого — показывает ошибку.
+    /// и только если его нет — перезапускает полный resolve через iframe.
     func retryPlayback() {
         error = nil
         isLoading = true
@@ -488,52 +486,11 @@ class PlayerViewModel: ObservableObject {
                 mediaId: currentMediaId ?? (currentKpId.map { "kp_\($0)" } ?? "unknown")
             )
             reloadPlayback(to: url, preferredPeakBitRate: player?.currentItem?.preferredPeakBitRate)
-        } else if let iframeUrl = currentIframeUrl {
-            // URL сброшен (протухший токен) — запускаем полный re-resolve через iframe
-            print("retryPlayback: full re-resolve via currentIframeUrl")
-            beginLoad(
-                iframeUrl: iframeUrl,
-                kpId: currentKpId,
-                season: currentSeason,
-                episode: currentEpisode,
-                selectedVoiceover: targetVoiceover,
-                directStreamUrl: nil,
-                voices: [],
-                subtitles: availableSubtitles,
-                mediaKey: mediaKey,
-                tmdbId: tmdbId
-            )
         } else {
-            // Нет ни URL ни iframe — полный перезапуск невозможен без выхода
+            // URL неизвестен — нужен полный перезапуск (например первичная ошибка resolve)
             hasStartedLoading = false
             isLoading = false
             error = "Не удалось восстановить воспроизведение. Закройте плеер и откройте заново."
-        }
-    }
-
-    /// Запускает watchdog после возврата из фона.
-    /// Ждёт 10 сек — если плеер так и не запустился (реальное зависание, протухший токен,
-    /// упавший прокси) — делает полный re-resolve через iframe. Отменяется автоматически
-    /// когда плеер начинает играть (см. rateObserver в playVideo).
-    @MainActor
-    private func scheduleForegroundStallWatchdog() {
-        foregroundStallTask?.cancel()
-        foregroundStallTask = Task { @MainActor [weak self] in
-            // Ждём 10 секунд — достаточно чтобы отличить реальное зависание от буферизации
-            try? await Task.sleep(nanoseconds: 10_000_000_000)
-            guard let self, !Task.isCancelled else { return }
-
-            // Если плеер нормально играет — всё ок, выходим
-            guard self.player?.timeControlStatus == .waitingToPlayAtSpecifiedRate else { return }
-
-            // Плеер всё ещё ждёт — значит поток реально мёртв (протухший токен или упавший прокси)
-            guard let iframeUrl = self.currentIframeUrl else { return }
-            self.logDebug("foreground watchdog: player still stalled after 10s, re-resolving stream")
-            AllohaRuntimeResolver.invalidateCache(for: iframeUrl)
-            AllohaRepository.shared.invalidateCache()
-            self.originalStreamURL = nil
-            self.hasRetriedPlayback = false
-            self.retryPlayback()
         }
     }
 
@@ -971,8 +928,6 @@ class PlayerViewModel: ObservableObject {
             player?.removeTimeObserver(observer)
             timeObserver = nil
         }
-        foregroundStallTask?.cancel()
-        foregroundStallTask = nil
         if let playbackEndObserver {
             NotificationCenter.default.removeObserver(playbackEndObserver)
             self.playbackEndObserver = nil
@@ -1619,12 +1574,6 @@ class PlayerViewModel: ObservableObject {
                 self.isPlaying = (status == .playing)
                 self.isBuffering = (status == .waitingToPlayAtSpecifiedRate)
 
-                // Когда плеер начал воспроизведение — watchdog после возврата из фона больше не нужен
-                if status == .playing {
-                    self.foregroundStallTask?.cancel()
-                    self.foregroundStallTask = nil
-                }
-
                 // Управляем блокировкой экрана: включена во время воспроизведения/буферизации,
                 // выключена при паузе (разрешаем экрану гаснуть когда пользователь поставил на паузу)
                 UIApplication.shared.isIdleTimerDisabled = (status == .playing || status == .waitingToPlayAtSpecifiedRate)
@@ -1925,7 +1874,6 @@ class PlayerViewModel: ObservableObject {
                 let status = self.player?.timeControlStatus
                 let wasPlaying = status == .playing || status == .waitingToPlayAtSpecifiedRate
                 UserDefaults.standard.set(wasPlaying, forKey: "sloosh_was_playing_before_bg")
-                UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: "sloosh_bg_enter_time")
                 self.saveCurrentProgress()
             }
         }
@@ -1953,20 +1901,17 @@ class PlayerViewModel: ObservableObject {
                     UIApplication.shared.isIdleTimerDisabled = true
                 }
 
-                // 4. Возобновляем воспроизведение как обычно — без предположений о состоянии потока
+                // 4. Возобновляем воспроизведение если играло до ухода в фон
                 let wasPlaying = UserDefaults.standard.bool(forKey: "sloosh_was_playing_before_bg")
                 if wasPlaying && self.player?.timeControlStatus != .playing {
                     self.player?.play()
                 }
 
-                // 5. Watchdog на реальное зависание: запускаем только если плеер должен был играть.
-                // Если поток живой — он запустится за несколько секунд и watchdog отменится.
-                // Если поток мёртв (протухший CDN-токен, упавший прокси и т.д.) — плеер
-                // останется в waitingToPlayAtSpecifiedRate, и мы сделаем полный re-resolve.
-                // Порог 10 сек достаточен чтобы отличить реальное зависание от обычной буферизации.
-                if wasPlaying {
-                    self.scheduleForegroundStallWatchdog()
-                }
+                // ВАЖНО: watchdog по таймеру УДАЛЁН.
+                // Любой реальный сбой потока (item.status == .failed) обрабатывает
+                // statusObserver (setupPlayerItemObservers), который делает корректный
+                // reloadPlayback. Таймер 4с вызывал ложные перезагрузки при обычной
+                // буферизации на медленной сети.
             }
         }
         
