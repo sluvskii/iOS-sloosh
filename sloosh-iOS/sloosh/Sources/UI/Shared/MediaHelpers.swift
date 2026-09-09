@@ -64,6 +64,13 @@ func cleanTranslationName(_ rawName: String) -> String {
         let range = NSRange(location: 0, length: name.utf16.count)
         name = regex.stringByReplacingMatches(in: name, options: [], range: range, withTemplate: "").trimmingCharacters(in: .whitespacesAndNewlines)
     }
+
+    // 1b. Убираем аудио-кодеки, каналы и битрейты (DD 51 @ 448 kbps, AC3 5.1 @ 640 kbps, AAC 2.0 и т.д.)
+    name = name.replacingOccurrences(of: "(?i)\\b(?:AC3|E-AC3|EAC3|DDP|DD|DTS-HD|DTS|TrueHD|AAC|FLAC|MP3|PCM|LPCM)\\s*(?:5[.]?1|7[.]?1|2[.]?0|51)?(?:\\s*@\\s*\\d+\\s*(?:kbps|kbit|кбит/с|кб/с)?)?", with: "", options: .regularExpression)
+    name = name.replacingOccurrences(of: "(?i)@\\s*\\d+\\s*(?:kbps|kbit|кбит/с|кб/с)?", with: "", options: .regularExpression)
+    name = name.replacingOccurrences(of: "(?i)\\b\\d+\\s*(?:kbps|kbit|кбит/с|кб/с)\\b", with: "", options: .regularExpression)
+    name = name.replacingOccurrences(of: "(?i)\\b(?:Blu-ray(?:\\s*CEE)?|BDRip|WEB-DL|HDTV|Line)\\b", with: "", options: .regularExpression)
+    name = name.replacingOccurrences(of: "(?i)\\b(?:5[.]?1|7[.]?1|2[.]?0)\\b", with: "", options: .regularExpression)
     
     // 2. Субтитры
     if name.localizedCaseInsensitiveContains("субтитр") || name.localizedCaseInsensitiveContains("subtitle") {
@@ -145,6 +152,41 @@ func cleanTranslationName(_ rawName: String) -> String {
         .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
         .trimmingCharacters(in: .whitespacesAndNewlines)
     
+    // Очищаем тире и префиксы вида "Многоголосый - " при наличии названия студии
+    cleanRemainder = cleanRemainder
+        .replacingOccurrences(of: "\\s*[–—-]\\s*", with: " - ", options: .regularExpression)
+        .trimmingCharacters(in: .whitespacesAndNewlines)
+
+    if let dashRange = cleanRemainder.range(of: " - ") {
+        let prefix = String(cleanRemainder[..<dashRange.lowerBound]).trimmingCharacters(in: .whitespaces)
+        let suffix = String(cleanRemainder[dashRange.upperBound...]).trimmingCharacters(in: .whitespaces)
+        let lowerPrefix = prefix.lowercased()
+        if lowerPrefix.contains("многоголос") || lowerPrefix.contains("дубл") || lowerPrefix.contains("двухголос") || lowerPrefix.contains("закадр") || lowerPrefix.contains("проф") || lowerPrefix.contains("люб") {
+            if !suffix.isEmpty {
+                cleanRemainder = suffix
+            }
+        }
+    } else {
+        let prefixPattern = "(?i)^(?:профессиональный\\s+|проф[.]\\s+|любительский\\s+|люб[.]\\s+)?(?:многоголосый|двухголосый|одноголосый|закадровый|дублированный|дубляж)[:\\s-]+(.+)$"
+        if let regex = try? NSRegularExpression(pattern: prefixPattern, options: []) {
+            let range = NSRange(location: 0, length: cleanRemainder.utf16.count)
+            if let match = regex.firstMatch(in: cleanRemainder, options: [], range: range),
+               let groupRange = Range(match.range(at: 1), in: cleanRemainder) {
+                let studioPart = String(cleanRemainder[groupRange]).trimmingCharacters(in: .whitespaces)
+                if !studioPart.isEmpty {
+                    cleanRemainder = studioPart
+                }
+            }
+        }
+    }
+
+    while cleanRemainder.hasPrefix("-") || cleanRemainder.hasPrefix(",") || cleanRemainder.hasPrefix("–") || cleanRemainder.hasPrefix("—") {
+        cleanRemainder = String(cleanRemainder.dropFirst()).trimmingCharacters(in: .whitespaces)
+    }
+    while cleanRemainder.hasSuffix("-") || cleanRemainder.hasSuffix(",") || cleanRemainder.hasSuffix("–") || cleanRemainder.hasSuffix("—") {
+        cleanRemainder = String(cleanRemainder.dropLast()).trimmingCharacters(in: .whitespaces)
+    }
+
     let flag = detectedFlag ?? "🇷🇺"
     
     // Если осталась только цифра дорожки (например "(English) 8" -> "8") или строка пуста

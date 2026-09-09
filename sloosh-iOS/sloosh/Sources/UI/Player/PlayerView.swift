@@ -1006,6 +1006,13 @@ class PlayerViewModel: ObservableObject {
     func switchVoiceover(to name: String, at index: Int? = nil) {
         logDebug("switchVoiceover: switching to '\(name)' at index \(index ?? -1)")
         let savedTime = self.player?.currentTime().seconds ?? self.currentTime
+        let canonicalName: String = {
+            if let matched = self.availableVoiceovers.first(where: { allohaTranslationNamesMatch($0, name, exactOnly: true) })
+                ?? self.availableVoiceovers.first(where: { allohaTranslationNamesMatch($0, name, exactOnly: false) }) {
+                return matched
+            }
+            return cleanTranslationName(name)
+        }()
 
         // 1. Быстрое переключение через resolvedAudioVariants (прямые HLS ссылки от текущего Alloha плеера)
         if !resolvedAudioVariants.isEmpty {
@@ -1028,11 +1035,11 @@ class PlayerViewModel: ObservableObject {
             if let variant = targetVariant,
                let variantUrlString = (variant["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
                let variantUrl = URL(string: variantUrlString) {
-                let trackTitle = (variant["title"] as? String) ?? name
-                logDebug("switchVoiceover: fast switching to audioVariant '\(trackTitle)' -> \(variantUrlString)")
-                _currentTranslationName = trackTitle
-                targetVoiceover = trackTitle
-                persistVoiceoverSelection(trackTitle)
+                logDebug("switchVoiceover: fast switching to audioVariant '\(canonicalName)' -> \(variantUrlString)")
+                _currentTranslationName = canonicalName
+                targetVoiceover = canonicalName
+                persistVoiceoverSelection(canonicalName)
+                saveCurrentProgress()
                 
                 self.currentTime = savedTime
                 self.availableQualities = self.makeResolvedQualityOptions(
@@ -1084,10 +1091,14 @@ class PlayerViewModel: ObservableObject {
         }
 
         if let translation = targetTranslation {
-            logDebug("switchVoiceover: matched targetTranslation='\(translation.name)', iframeUrl='\(translation.iframeUrl)'")
-            _currentTranslationName = translation.name
-            targetVoiceover = translation.name
-            persistVoiceoverSelection(translation.name)
+            let matchedCanonical = self.availableVoiceovers.first(where: { allohaTranslationNamesMatch($0, translation.name, exactOnly: true) })
+                ?? self.availableVoiceovers.first(where: { allohaTranslationNamesMatch($0, translation.name, exactOnly: false) })
+                ?? canonicalName
+            logDebug("switchVoiceover: matched targetTranslation='\(matchedCanonical)', iframeUrl='\(translation.iframeUrl)'")
+            _currentTranslationName = matchedCanonical
+            targetVoiceover = matchedCanonical
+            persistVoiceoverSelection(matchedCanonical)
+            saveCurrentProgress()
 
             // Если уже есть прямой pre-resolved стрим
             if let streamUrlString = translation.streamUrl, let streamUrl = URL(string: streamUrlString) {
@@ -1185,9 +1196,10 @@ class PlayerViewModel: ObservableObject {
         }
 
         // 3. Фолбэк: если это мульти-аудио HLS стрим без отдельных iframe, переключаем нативную аудиодорожку
-        _currentTranslationName = name
-        targetVoiceover = name
-        persistVoiceoverSelection(name)
+        _currentTranslationName = canonicalName
+        targetVoiceover = canonicalName
+        persistVoiceoverSelection(canonicalName)
+        saveCurrentProgress()
         selectAudioTrackInPlayer(named: name)
     }
 
@@ -2162,9 +2174,15 @@ class PlayerViewModel: ObservableObject {
                     return allohaTranslationNamesMatch(title, target)
                 }), let variantUrl = (matchingVariant["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !variantUrl.isEmpty {
                     resolvedUrlString = variantUrl
-                    if let title = matchingVariant["title"] as? String, !title.isEmpty {
-                        _currentTranslationName = title
-                        targetVoiceover = title
+                    let rawTitle = (matchingVariant["title"] as? String) ?? ""
+                    let cleanTitle = self.availableVoiceovers.first(where: { allohaTranslationNamesMatch($0, rawTitle, exactOnly: true) })
+                        ?? self.availableVoiceovers.first(where: { allohaTranslationNamesMatch($0, rawTitle, exactOnly: false) })
+                        ?? cleanTranslationName(rawTitle)
+                    if _currentTranslationName == nil || _currentTranslationName?.isEmpty == true {
+                        _currentTranslationName = cleanTitle
+                    }
+                    if targetVoiceover == nil || targetVoiceover?.isEmpty == true {
+                        targetVoiceover = cleanTitle
                     }
                     logDebug("applyResolvedAllohaStream: matched audioVariant '\(matchingVariant["title"] ?? "")' -> \(variantUrl)")
                 }
@@ -2198,10 +2216,10 @@ class PlayerViewModel: ObservableObject {
 
         // Заполняем список вариантов стримов из audioVariants (нужны для переключения озвучки)
         self.resolvedAudioVariants = audioVariants
-        // Вычисляем реальные аудиодорожки из стрима Alloha и обновляем availableVoiceovers,
-        // чтобы пользователь видел точные студийные названия (например "Дубляж HDRezka", а не просто "Дублированный").
+        // Вычисляем реальные аудиодорожки из стрима Alloha и обновляем availableVoiceovers ТОЛЬКО если
+        // у нас ещё не было аутентичного списка озвучек из каталога / страницы выбора.
         let voices = resolvedVoiceovers(from: resolved)
-        if !voices.isEmpty {
+        if !voices.isEmpty && self.availableVoiceovers.count <= 1 {
             self.availableVoiceovers = voices
         }
 
@@ -2301,13 +2319,18 @@ class PlayerViewModel: ObservableObject {
             return
         }
         
+        let canonicalName = self.availableVoiceovers.first(where: { allohaTranslationNamesMatch($0, name, exactOnly: true) })
+            ?? self.availableVoiceovers.first(where: { allohaTranslationNamesMatch($0, name, exactOnly: false) })
+            ?? cleanTranslationName(name)
+        
         let options = group.options
         logDebug("selectAudioTrackInPlayer: target='\(name)', options=\(options.map { $0.displayName })")
         
         // Exact match
         if let option = options.first(where: { allohaTranslationNamesMatch($0.displayName, name, exactOnly: true) }) {
             item.select(option, in: group)
-            persistVoiceoverSelection(name)
+            persistVoiceoverSelection(canonicalName)
+            saveCurrentProgress()
             logDebug("selectAudioTrackInPlayer: selected exact match option='\(option.displayName)'")
             return
         }
@@ -2315,7 +2338,8 @@ class PlayerViewModel: ObservableObject {
         // Fuzzy match
         if let option = options.first(where: { allohaTranslationNamesMatch($0.displayName, name, exactOnly: false) }) {
             item.select(option, in: group)
-            persistVoiceoverSelection(name)
+            persistVoiceoverSelection(canonicalName)
+            saveCurrentProgress()
             logDebug("selectAudioTrackInPlayer: selected fuzzy match option='\(option.displayName)'")
             return
         }
@@ -2341,7 +2365,8 @@ class PlayerViewModel: ObservableObject {
                 $0.locale?.identifier.lowercased().hasPrefix(targetLang) == true 
             }) {
                 item.select(option, in: group)
-                persistVoiceoverSelection(name)
+                persistVoiceoverSelection(canonicalName)
+                saveCurrentProgress()
                 logDebug("selectAudioTrackInPlayer: selected by language tag '\(targetLang)', option='\(option.displayName)'")
                 return
             }
@@ -2349,7 +2374,8 @@ class PlayerViewModel: ObservableObject {
         
         if let targetIndex = extractAudioIndex(from: name), targetIndex < options.count {
             item.select(options[targetIndex], in: group)
-            persistVoiceoverSelection(name)
+            persistVoiceoverSelection(canonicalName)
+            saveCurrentProgress()
             logDebug("selectAudioTrackInPlayer: selected by index \(targetIndex), option='\(options[targetIndex].displayName)'")
             return
         }

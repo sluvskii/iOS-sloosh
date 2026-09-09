@@ -77,17 +77,19 @@ func normalizedAllohaTranslationName(_ raw: String?) -> String {
     }
 
     value = value
+        .replacingOccurrences(of: "(?i)\\b(?:AC3|E-AC3|EAC3|DDP|DD|DTS-HD|DTS|TrueHD|AAC|FLAC|MP3|PCM|LPCM)\\s*(?:5[.]?1|7[.]?1|2[.]?0|51)?(?:\\s*@\\s*\\d+\\s*(?:kbps|kbit|кбит/с|кб/с)?)?", with: "", options: .regularExpression)
+        .replacingOccurrences(of: "(?i)@\\s*\\d+\\s*(?:kbps|kbit|кбит/с|кб/с)?", with: "", options: .regularExpression)
+        .replacingOccurrences(of: "(?i)\\b\\d+\\s*(?:kbps|kbit|кбит/с|кб/с)\\b", with: "", options: .regularExpression)
+        .replacingOccurrences(of: "(?i)\\b(?:Blu-ray(?:\\s*CEE)?|BDRip|WEB-DL|HDTV|Line)\\b", with: "", options: .regularExpression)
         .replacingOccurrences(of: "\\(Russian\\)", with: "")
-        .replacingOccurrences(of: "AC3 51 @ 640 kbps - Blu-ray CEE", with: "")
-        .replacingOccurrences(of: "AC3 5.1 @ 640 kbps", with: "")
-        .replacingOccurrences(of: "DUB", with: "Дубляж")
-        .replacingOccurrences(of: "MVO", with: "Многоголосый")
-        .replacingOccurrences(of: "DVO", with: "Двухголосый")
-        .replacingOccurrences(of: "AVO", with: "Авторский")
-        .replacingOccurrences(of: "ПМ", with: "Проф. многоголосый")
-        .replacingOccurrences(of: "ПД", with: "Проф. двухголосый")
-        .replacingOccurrences(of: "ЛМ", with: "Люб. многоголосый")
-        .replacingOccurrences(of: "ЛД", with: "Люб. двухголосый")
+        .replacingOccurrences(of: "(?i)\\bDUB\\b", with: "Дубляж", options: .regularExpression)
+        .replacingOccurrences(of: "(?i)\\bMVO\\b", with: "Многоголосый", options: .regularExpression)
+        .replacingOccurrences(of: "(?i)\\bDVO\\b", with: "Двухголосый", options: .regularExpression)
+        .replacingOccurrences(of: "(?i)\\bAVO\\b", with: "Авторский", options: .regularExpression)
+        .replacingOccurrences(of: "(?i)\\bПМ\\b", with: "Проф. многоголосый", options: .regularExpression)
+        .replacingOccurrences(of: "(?i)\\bПД\\b", with: "Проф. двухголосый", options: .regularExpression)
+        .replacingOccurrences(of: "(?i)\\bЛМ\\b", with: "Люб. многоголосый", options: .regularExpression)
+        .replacingOccurrences(of: "(?i)\\bЛД\\b", with: "Люб. двухголосый", options: .regularExpression)
         .replacingOccurrences(of: "[", with: " ")
         .replacingOccurrences(of: "]", with: " ")
         .replacingOccurrences(of: "(", with: " ")
@@ -95,11 +97,10 @@ func normalizedAllohaTranslationName(_ raw: String?) -> String {
         .replacingOccurrences(of: "|", with: " ")
         .trimmingCharacters(in: .whitespacesAndNewlines)
 
-
-    while value.hasPrefix("-") || value.hasPrefix(",") {
+    while value.hasPrefix("-") || value.hasPrefix(",") || value.hasPrefix("–") || value.hasPrefix("—") {
         value = String(value.dropFirst()).trimmingCharacters(in: .whitespaces)
     }
-    while value.hasSuffix("-") || value.hasSuffix(",") {
+    while value.hasSuffix("-") || value.hasSuffix(",") || value.hasSuffix("–") || value.hasSuffix("—") {
         value = String(value.dropLast()).trimmingCharacters(in: .whitespaces)
     }
 
