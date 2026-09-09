@@ -203,7 +203,7 @@ public final class PlaybackProgressStore: ObservableObject {
         }
 
         let now = Date()
-        if forceDiskSave || now.timeIntervalSince(lastDiskSaveDate) >= 5.0 {
+        if forceDiskSave || now.timeIntervalSince(lastDiskSaveDate) >= 2.0 {
             lastDiskSaveDate = now
             try? context.save()
             scheduleCloudProgressPush()
@@ -245,6 +245,10 @@ public final class PlaybackProgressStore: ObservableObject {
                     kpId = Int(rootStr.dropFirst(3)) ?? 0
                 } else if rootStr.hasPrefix("tmdb_") {
                     tmdbId = Int(rootStr.dropFirst(5))
+                } else if rootStr.hasPrefix("movie_") {
+                    tmdbId = Int(rootStr.dropFirst(6))
+                } else if rootStr.hasPrefix("tv_") {
+                    tmdbId = Int(rootStr.dropFirst(3))
                 } else if let intVal = Int(rootStr) {
                     tmdbId = intVal
                 }
@@ -257,6 +261,10 @@ public final class PlaybackProgressStore: ObservableObject {
             if let tmdbRange = Range(match.range(at: 1), in: mediaId) {
                 tmdbId = Int(mediaId[tmdbRange])
             }
+        } else if mediaId.hasPrefix("movie_") {
+            tmdbId = Int(mediaId.dropFirst(6))
+        } else if mediaId.hasPrefix("tv_") {
+            tmdbId = Int(mediaId.dropFirst(3))
         } else if let intVal = Int(mediaId) {
             tmdbId = intVal
         }
@@ -284,14 +292,19 @@ public final class PlaybackProgressStore: ObservableObject {
     ) {
         guard !mediaId.isEmpty, positionSec.isFinite, positionSec >= 0 else { return }
         mutateRecord(mediaId: mediaId, forceDiskSave: forceDiskSave) { record in
-            record.positionSec = positionSec
+            // Protect against zeroing out valid non-zero progress
+            if positionSec > 1 || record.positionSec <= 1 {
+                record.positionSec = positionSec
+            }
             if let v = voiceover, !v.isEmpty {
                 record.voiceover = v
             }
-            if let dur = durationSec, dur > 0, dur.isFinite {
+            if let dur = durationSec, dur >= 120, dur.isFinite {
                 record.durationSec = dur
-                if positionSec / dur >= 0.95 {
+                if dur >= 180 && record.positionSec >= 120 && ((record.positionSec / dur >= 0.93) || (dur - record.positionSec <= 90)) {
                     record.watched = true
+                } else if dur >= 180 && record.positionSec < dur * 0.90 && (dur - record.positionSec > 120) {
+                    record.watched = false
                 }
             }
         }
@@ -470,18 +483,68 @@ public final class PlaybackProgressStore: ObservableObject {
         let altDescriptor = FetchDescriptor<PlaybackMetadataModel>(
             predicate: #Predicate { $0.userId == activeUserId && $0.detailsId == mediaKey }
         )
-        guard let model = try? context.fetch(altDescriptor).first else { return nil }
-        return PlaybackMediaMetadata(
-            kpId: model.kpId,
-            tmdbId: model.tmdbId,
-            detailsId: model.detailsId,
-            title: model.title,
-            type: model.type,
-            posterUrl: model.posterUrl,
-            backdropUrl: model.backdropUrl,
-            logoUrl: model.logoUrl,
-            mediaKey: mediaKey
-        )
+        if let model = try? context.fetch(altDescriptor).first {
+            return PlaybackMediaMetadata(
+                kpId: model.kpId,
+                tmdbId: model.tmdbId,
+                detailsId: model.detailsId,
+                title: model.title,
+                type: model.type,
+                posterUrl: model.posterUrl,
+                backdropUrl: model.backdropUrl,
+                logoUrl: model.logoUrl,
+                mediaKey: mediaKey
+            )
+        }
+
+        // Secondary fallback by kpId or tmdbId
+        if mediaKey.hasPrefix("kp_"), let kp = Int(mediaKey.dropFirst(3)) {
+            let kpDesc = FetchDescriptor<PlaybackMetadataModel>(predicate: #Predicate { $0.userId == activeUserId && $0.kpId == kp })
+            if let model = try? context.fetch(kpDesc).first {
+                return PlaybackMediaMetadata(
+                    kpId: model.kpId,
+                    tmdbId: model.tmdbId,
+                    detailsId: model.detailsId,
+                    title: model.title,
+                    type: model.type,
+                    posterUrl: model.posterUrl,
+                    backdropUrl: model.backdropUrl,
+                    logoUrl: model.logoUrl,
+                    mediaKey: mediaKey
+                )
+            }
+        } else if mediaKey.hasPrefix("tmdb_"), let tmdb = Int(mediaKey.dropFirst(5)) {
+            let tmdbDesc = FetchDescriptor<PlaybackMetadataModel>(predicate: #Predicate { $0.userId == activeUserId && $0.tmdbId == tmdb })
+            if let model = try? context.fetch(tmdbDesc).first {
+                return PlaybackMediaMetadata(
+                    kpId: model.kpId,
+                    tmdbId: model.tmdbId,
+                    detailsId: model.detailsId,
+                    title: model.title,
+                    type: model.type,
+                    posterUrl: model.posterUrl,
+                    backdropUrl: model.backdropUrl,
+                    logoUrl: model.logoUrl,
+                    mediaKey: mediaKey
+                )
+            }
+        } else if let intVal = Int(mediaKey) {
+            let intDesc = FetchDescriptor<PlaybackMetadataModel>(predicate: #Predicate { $0.userId == activeUserId && ($0.kpId == intVal || $0.tmdbId == intVal) })
+            if let model = try? context.fetch(intDesc).first {
+                return PlaybackMediaMetadata(
+                    kpId: model.kpId,
+                    tmdbId: model.tmdbId,
+                    detailsId: model.detailsId,
+                    title: model.title,
+                    type: model.type,
+                    posterUrl: model.posterUrl,
+                    backdropUrl: model.backdropUrl,
+                    logoUrl: model.logoUrl,
+                    mediaKey: mediaKey
+                )
+            }
+        }
+        return nil
     }
 
     public func loadMetadata(kpId: Int) -> PlaybackMediaMetadata? {
@@ -514,7 +577,26 @@ public final class PlaybackProgressStore: ObservableObject {
             predicate: #Predicate { $0.userId == activeUserId },
             sortBy: [SortDescriptor(\.updatedAtMs, order: .reverse)]
         )
-        let allModels = (try? context.fetch(descriptor)) ?? []
+        var allModels = (try? context.fetch(descriptor)) ?? []
+
+        // If active user is authenticated, migrate any guest records seamlessly
+        if activeUserId != "guest" {
+            let guestDesc = FetchDescriptor<ProgressRecordModel>(predicate: #Predicate { $0.userId == "guest" })
+            if let guestModels = try? context.fetch(guestDesc), !guestModels.isEmpty {
+                var hasMigrated = false
+                for g in guestModels {
+                    if !allModels.contains(where: { $0.mediaId == g.mediaId }) {
+                        g.userId = activeUserId
+                        g.userMediaIdKey = "\(activeUserId)_\(g.mediaId)"
+                        allModels.append(g)
+                        hasMigrated = true
+                    }
+                }
+                if hasMigrated {
+                    try? context.save()
+                }
+            }
+        }
         
         var results: [PlaybackProgressRecord] = []
         var seriesRootKeys = Set<String>()
@@ -657,55 +739,97 @@ public final class PlaybackProgressStore: ObservableObject {
     }
 
     private func syncRemoteProgressToLocal(_ remoteRecords: [PlaybackProgressRecord], userId: String) async {
+        guard !userId.isEmpty else { return }
         let predicate = #Predicate<ProgressRecordModel> { $0.userId == userId }
-        if let existing = try? context.fetch(FetchDescriptor<ProgressRecordModel>(predicate: predicate)) {
-            for model in existing {
-                context.delete(model)
+        let existing = (try? context.fetch(FetchDescriptor<ProgressRecordModel>(predicate: predicate))) ?? []
+        var existingByMediaId: [String: ProgressRecordModel] = [:]
+        for model in existing {
+            existingByMediaId[model.mediaId] = model
+        }
+
+        var shouldPushBack = false
+
+        for remote in remoteRecords {
+            if let local = existingByMediaId[remote.mediaId] {
+                if remote.updatedAtMs > local.updatedAtMs {
+                    local.positionSec = remote.positionSec
+                    local.durationSec = remote.durationSec
+                    local.watched = remote.watched
+                    local.updatedAtMs = remote.updatedAtMs
+                    if let v = remote.voiceover { local.voiceover = v }
+                    if let t = remote.tmdbId { local.tmdbId = t }
+                    if let s = remote.season { local.season = s }
+                    if let e = remote.episode { local.episode = e }
+                } else if local.updatedAtMs > remote.updatedAtMs {
+                    shouldPushBack = true
+                }
+            } else {
+                let model = ProgressRecordModel(
+                    userId: userId,
+                    mediaId: remote.mediaId,
+                    kpId: remote.kpId,
+                    tmdbId: remote.tmdbId,
+                    season: remote.season,
+                    episode: remote.episode,
+                    voiceover: remote.voiceover,
+                    positionSec: remote.positionSec,
+                    durationSec: remote.durationSec,
+                    watched: remote.watched,
+                    updatedAtMs: remote.updatedAtMs
+                )
+                context.insert(model)
             }
         }
 
-        for record in remoteRecords {
-            let model = ProgressRecordModel(
-                userId: userId,
-                mediaId: record.mediaId,
-                kpId: record.kpId,
-                tmdbId: record.tmdbId,
-                season: record.season,
-                episode: record.episode,
-                voiceover: record.voiceover,
-                positionSec: record.positionSec,
-                durationSec: record.durationSec,
-                watched: record.watched,
-                updatedAtMs: record.updatedAtMs
-            )
-            context.insert(model)
+        // If local had records not in remote, or if remote was empty and local had items:
+        if existing.count > remoteRecords.count || (remoteRecords.isEmpty && !existing.isEmpty) {
+            shouldPushBack = true
         }
 
         try? context.save()
+
+        if shouldPushBack, AuthRepository.shared.isAuthenticated, let user = AuthRepository.shared.currentUser, user.id == userId {
+            let all = self.listProgressRecords()
+            Task {
+                await CloudSyncService.shared.pushRemoteProgress(all, userId: userId, idToken: user.idToken)
+            }
+        }
     }
 
     private func syncRemoteMetadataToLocal(_ remoteMetadata: [PlaybackMediaMetadata], userId: String) async {
+        guard !userId.isEmpty else { return }
         let predicate = #Predicate<PlaybackMetadataModel> { $0.userId == userId }
-        if let existing = try? context.fetch(FetchDescriptor<PlaybackMetadataModel>(predicate: predicate)) {
-            for model in existing {
-                context.delete(model)
-            }
+        let existing = (try? context.fetch(FetchDescriptor<PlaybackMetadataModel>(predicate: predicate))) ?? []
+        var existingByKey: [String: PlaybackMetadataModel] = [:]
+        for model in existing {
+            let key = model.mediaKey ?? (model.kpId > 0 ? "kp_\(model.kpId)" : model.detailsId)
+            existingByKey[key] = model
         }
 
         for item in remoteMetadata {
-            let model = PlaybackMetadataModel(
-                userId: userId,
-                kpId: item.kpId,
-                tmdbId: item.tmdbId,
-                detailsId: item.detailsId,
-                title: item.title,
-                type: item.type,
-                posterUrl: item.posterUrl,
-                backdropUrl: item.backdropUrl,
-                logoUrl: item.logoUrl,
-                mediaKey: item.mediaKey ?? (item.kpId > 0 ? "kp_\(item.kpId)" : item.detailsId)
-            )
-            context.insert(model)
+            let key = item.mediaKey ?? (item.kpId > 0 ? "kp_\(item.kpId)" : item.detailsId)
+            if let local = existingByKey[key] {
+                local.title = item.title
+                local.type = item.type
+                local.posterUrl = item.posterUrl
+                local.backdropUrl = item.backdropUrl
+                local.logoUrl = item.logoUrl
+                if let t = item.tmdbId { local.tmdbId = t }
+            } else {
+                let model = PlaybackMetadataModel(
+                    userId: userId,
+                    kpId: item.kpId,
+                    tmdbId: item.tmdbId,
+                    detailsId: item.detailsId,
+                    title: item.title,
+                    type: item.type,
+                    posterUrl: item.posterUrl,
+                    backdropUrl: item.backdropUrl,
+                    logoUrl: item.logoUrl,
+                    mediaKey: key
+                )
+                context.insert(model)
+            }
         }
 
         try? context.save()

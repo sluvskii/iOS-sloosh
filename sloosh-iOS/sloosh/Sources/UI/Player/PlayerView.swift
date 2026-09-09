@@ -26,24 +26,30 @@ struct PlayerPresenter: UIViewControllerRepresentable {
         // vm обновляется через @ObservedObject, перерисовка SwiftUI-view автоматическая
     }
 
-    func makeCoordinator() -> Coordinator { Coordinator(onDismiss: onDismiss) }
+    func makeCoordinator() -> Coordinator { Coordinator(vm: vm, onDismiss: onDismiss) }
 
     class Coordinator {
         weak var hostingController: UIViewController?
+        private let vm: PlayerViewModel
         private let onDismiss: () -> Void
         private var dismissCalled = false
 
-        init(onDismiss: @escaping () -> Void) { self.onDismiss = onDismiss }
+        init(vm: PlayerViewModel, onDismiss: @escaping () -> Void) {
+            self.vm = vm
+            self.onDismiss = onDismiss
+        }
 
         func dismissPlayer() {
             guard !dismissCalled else { return }
             dismissCalled = true
+            vm.cleanup()
             onDismiss()
         }
 
         func didDismiss() {
             guard !dismissCalled else { return }
             dismissCalled = true
+            vm.cleanup()
             onDismiss()
         }
     }
@@ -123,6 +129,9 @@ struct PlayerView: View {
             dismissEnv()
         }
         .ignoresSafeArea()
+        .onDisappear {
+            viewModel.cleanup()
+        }
         .onAppear {
             guard viewModel.player == nil else { return }
             viewModel.player = AVPlayer()
@@ -330,6 +339,9 @@ class PlayerViewModel: ObservableObject {
     private var currentIframeUrl: String?
     /// Все audioVariants из последнего resolve. Нужны для мгновенного переключения озвучки без re-resolve.
     private var resolvedAudioVariants: [[String: Any]] = []
+    private var seekObservation: NSKeyValueObservation?
+    private var isInitialSeekPending = false
+    private var pendingSeekPosition: Double?
 
     var rootMediaKey: String? {
         if let key = mediaKey, !key.isEmpty {
@@ -340,6 +352,9 @@ class PlayerViewModel: ObservableObject {
         }
         if let tmdbId = tmdbId, tmdbId > 0 {
             return "tmdb_\(tmdbId)"
+        }
+        if !fallbackTitle.isEmpty {
+            return "title_\(abs(fallbackTitle.hashValue))"
         }
         return nil
     }
@@ -470,6 +485,19 @@ class PlayerViewModel: ObservableObject {
         }
         if let tmdbId, tmdbId > 0 {
             self.tmdbId = tmdbId
+        }
+        if let root = self.rootMediaKey, !self.fallbackTitle.isEmpty {
+            PlaybackProgressStore.shared.saveMetadata(
+                kpId: kpId ?? 0,
+                tmdbId: tmdbId,
+                detailsId: root,
+                title: self.fallbackTitle,
+                type: (season != nil && episode != nil) ? "tv" : "movie",
+                posterUrl: nil,
+                backdropUrl: nil,
+                logoUrl: self.displayLogoUrl?.absoluteString,
+                mediaKey: root
+            )
         }
         if self.targetVoiceover == nil {
             self.targetVoiceover = selectedVoiceover
@@ -775,9 +803,16 @@ class PlayerViewModel: ObservableObject {
     }
     
     func cleanup() {
+        // 1. Финальное сохранение текущего прогресса ПЕРЕД остановкой плеера и сбросом обсерверов
+        saveCurrentProgress()
+
         hasStartedLoading = false
         currentPlaybackSourceURL = nil
         originalStreamURL = nil
+        isInitialSeekPending = false
+        seekObservation?.invalidate()
+        seekObservation = nil
+
         if let observer = timeObserver {
             player?.removeTimeObserver(observer)
             timeObserver = nil
@@ -807,8 +842,6 @@ class PlayerViewModel: ObservableObject {
         rateObserver?.invalidate()
         rateObserver = nil
 
-        // Final progress save before cleanup
-        saveCurrentProgress()
         clearNowPlaying()
         
         // Вежливо освобождаем аудиосессию, чтобы возобновилась фоновая музыка пользователя
@@ -832,6 +865,7 @@ class PlayerViewModel: ObservableObject {
             player.pause()
             isPlaying = false
             isBuffering = false
+            saveCurrentProgress()
         } else {
             player.play()
             isPlaying = true
@@ -859,12 +893,14 @@ class PlayerViewModel: ObservableObject {
         guard let player else { return }
         let time = CMTime(seconds: seconds, preferredTimescale: 600)
         isUserSeeking = true
+        currentTime = seconds
         player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
             MainActor.assumeIsolated {
-                self?.isUserSeeking = false
+                guard let self else { return }
+                self.isUserSeeking = false
+                self.saveCurrentProgress()
             }
         }
-        currentTime = seconds
         updateNowPlaying()
     }
 
@@ -1078,13 +1114,17 @@ class PlayerViewModel: ObservableObject {
     }
 
 
-    /// Сохраняет текущую позицию воспроизведения. Вызывается и по таймеру, и при сворачивании приложения.
+    /// Сохраняет текущую позицию воспроизведения. Вызывается и по таймеру, и при закрытии/сворачивании приложения.
     private func saveCurrentProgress() {
-        guard let player = player, let mediaId = currentMediaId else { return }
-        let pos = player.currentTime().seconds
-        guard pos.isFinite, !pos.isNaN else { return }
-        let duration = player.currentItem?.duration.seconds
-        let dur = duration?.isFinite == true && duration?.isNaN == false ? duration : nil
+        guard !isInitialSeekPending else { return }
+        guard let mediaId = currentMediaId else { return }
+        let playerPos = player?.currentTime().seconds ?? 0
+        let pos = (playerPos.isFinite && !playerPos.isNaN && playerPos > 0) ? playerPos : currentTime
+        guard pos.isFinite, !pos.isNaN, pos > 1 else { return }
+
+        let playerDur = player?.currentItem?.duration.seconds ?? 0
+        let rawDur = (playerDur.isFinite && !playerDur.isNaN && playerDur > 0) ? playerDur : currentDuration
+        let dur = (rawDur.isFinite && !rawDur.isNaN && rawDur >= 120) ? rawDur : nil
         PlaybackProgressStore.shared.save(
             mediaId: mediaId,
             positionSec: pos,
@@ -1564,6 +1604,59 @@ class PlayerViewModel: ObservableObject {
         observePlaybackCompletion(for: playerItem)
     }
     
+    private func applyInitialSeekIfNeeded(for player: AVPlayer, mediaId: String) {
+        let savedPosition = PlaybackProgressStore.shared.load(mediaId: mediaId)
+        guard savedPosition > 2 else {
+            isInitialSeekPending = false
+            return
+        }
+
+        isInitialSeekPending = true
+        pendingSeekPosition = savedPosition
+
+        let performSeek = { [weak self, weak player] in
+            guard let self, let player else { return }
+            guard let current = self.currentMediaId, current == mediaId else {
+                self.isInitialSeekPending = false
+                return
+            }
+            player.seek(
+                to: CMTime(seconds: savedPosition, preferredTimescale: 600),
+                toleranceBefore: .zero,
+                toleranceAfter: .zero
+            ) { [weak self] finished in
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    self.isInitialSeekPending = false
+                    if finished {
+                        self.currentTime = savedPosition
+                    }
+                }
+            }
+        }
+
+        if let item = player.currentItem, item.status == .readyToPlay {
+            performSeek()
+        } else {
+            seekObservation?.invalidate()
+            seekObservation = player.currentItem?.observe(\.status, options: [.new]) { [weak self] item, _ in
+                guard item.status == .readyToPlay else { return }
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    self.seekObservation?.invalidate()
+                    self.seekObservation = nil
+                    performSeek()
+                }
+            }
+
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .seconds(3))
+                guard let self, self.isInitialSeekPending else { return }
+                self.isInitialSeekPending = false
+            }
+        }
+    }
+
     private func startTrackingProgress() {
         guard let player = player else { return }
         if let observer = timeObserver {
@@ -1573,34 +1666,7 @@ class PlayerViewModel: ObservableObject {
 
         guard let mediaId = currentMediaId else { return }
 
-        // Ждём .readyToPlay перед seek к сохранённой позиции.
-        // Это предотвращает гонку с applyInitialQuality → reloadPlayback,
-        // которая читает self.currentTime и могла перемотать к позиции ПРЕДЫДУЩЕЙ серии.
-        let savedPosition = PlaybackProgressStore.shared.load(mediaId: mediaId)
-        if savedPosition > 1 {
-            // Подождём готовности item перед seek
-            if let item = player.currentItem, item.status == .readyToPlay {
-                player.seek(to: CMTime(seconds: savedPosition, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
-                currentTime = savedPosition
-            } else {
-                // item ещё не готов — ждём через KVO
-                let capturedMediaId = mediaId
-                let capturedSavedPosition = savedPosition
-                var seekObservation: NSKeyValueObservation?
-                seekObservation = player.currentItem?.observe(\.status, options: [.new]) { [weak self, weak player] item, _ in
-                    guard item.status == .readyToPlay else { return }
-                    seekObservation?.invalidate()
-                    seekObservation = nil
-                    Task { @MainActor [weak self, weak player] in
-                        guard let self, let player else { return }
-                        // Убеждаемся что mediaId не изменился (пользователь не переключил серию снова)
-                        guard let current = self.currentMediaId, current == capturedMediaId else { return }
-                        player.seek(to: CMTime(seconds: capturedSavedPosition, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
-                        self.currentTime = capturedSavedPosition
-                    }
-                }
-            }
-        }
+        applyInitialSeekIfNeeded(for: player, mediaId: mediaId)
 
         timeObserver = player.addPeriodicTimeObserver(
             forInterval: CMTime(seconds: 0.5, preferredTimescale: 600),
@@ -1645,9 +1711,9 @@ class PlayerViewModel: ObservableObject {
                 }
             }
             
-            // Сохраняем прогресс каждые 5 секунд (только если позиция > 1 секунды, чтобы избежать сброса в ноль)
-            if Int(t) % 5 == 0 && t > 1 {
-                let dur = self.currentDuration > 0 ? self.currentDuration : nil
+            // Сохраняем прогресс каждые 5 секунд (только если не висит начальный seek и позиция > 2 секунд)
+            if !self.isInitialSeekPending && Int(t) % 5 == 0 && t > 2 {
+                let dur = self.currentDuration >= 120 ? self.currentDuration : nil
                 PlaybackProgressStore.shared.save(
                     mediaId: mediaId,
                     positionSec: t,
