@@ -36,17 +36,22 @@ struct AllohaApiResult: Codable, Hashable, Equatable {
 extension AllohaApiResult {
     var allTranslationNames: [String] {
         if isSerial {
-            var names = Set<String>()
+            // Берём порядок из первого эпизода первого сезона (Alloha возвращает популярные первыми)
+            // затем добавляем любые дополнительные имена из других эпизодов
+            var names: [String] = []
+            var seen = Set<String>()
             for season in seasons {
                 for episode in season.episodes {
                     for t in episode.translations {
-                        names.insert(t.name)
+                        if seen.insert(t.name).inserted {
+                            names.append(t.name)
+                        }
                     }
                 }
             }
-            return Array(names).sorted()
+            return names
         } else if let movie = movie {
-            return movie.translations.map { $0.name }.sorted()
+            return movie.translations.map { $0.name }
         }
         return []
     }
@@ -582,7 +587,7 @@ final class AllohaRepository: @unchecked Sendable {
                         }
                     }
                     
-                    parsedTrans.sort { $0.name < $1.name }
+                    // Порядок озвучек сохраняем как отдаёт Alloha (популярные первыми)
                     if !parsedTrans.isEmpty {
                         parsedEpisodes.append(AllohaEpisode(season: seasonNum, episode: episodeNum, translations: parsedTrans))
                     }
@@ -630,7 +635,7 @@ final class AllohaRepository: @unchecked Sendable {
                         parsedTrans.append(AllohaTranslation(id: tKey, name: cleanTitle, iframeUrl: iframe, streamUrl: nil))
                     }
                 }
-                parsedTrans.sort { $0.name < $1.name }
+                // Порядок озвучек сохраняем как отдаёт Alloha (популярные первыми)
             } else if let transIframeArray = dataObj["translation_iframe"] as? [[String: Any]] {
                 for (index, tDict) in transIframeArray.enumerated() {
                     guard var iframe = tDict["iframe"] as? String ?? tDict["url"] as? String, !iframe.isEmpty else { continue }
@@ -647,7 +652,7 @@ final class AllohaRepository: @unchecked Sendable {
                         parsedTrans.append(AllohaTranslation(id: translationId, name: cleanTitle, iframeUrl: iframe, streamUrl: nil))
                     }
                 }
-                parsedTrans.sort { $0.name < $1.name }
+                // Порядок озвучек сохраняем как отдаёт Alloha (популярные первыми)
             }
             
             // 2. Если translation_iframe не дал результатов, проверяем translation и translations
@@ -666,7 +671,7 @@ final class AllohaRepository: @unchecked Sendable {
                             parsedTrans.append(AllohaTranslation(id: tKey, name: cleanTitle, iframeUrl: iframe, streamUrl: nil))
                         }
                     }
-                    parsedTrans.sort { $0.name < $1.name }
+                    // Порядок озвучек сохраняем как отдаёт Alloha (популярные первыми)
                 } else if let transArray = transSource as? [[String: Any]] {
                     for (index, tDict) in transArray.enumerated() {
                         guard var iframe = tDict["iframe"] as? String, !iframe.isEmpty else { continue }
@@ -683,7 +688,7 @@ final class AllohaRepository: @unchecked Sendable {
                             parsedTrans.append(AllohaTranslation(id: translationId, name: cleanTitle, iframeUrl: iframe, streamUrl: nil))
                         }
                     }
-                    parsedTrans.sort { $0.name < $1.name }
+                    // Порядок озвучек сохраняем как отдаёт Alloha (популярные первыми)
                 } else if let transStr = transSource as? String {
                     var iframe = dataObj["iframe"] as? String ?? ""
                     if iframe.hasPrefix("//") { iframe = "https:" + iframe }
