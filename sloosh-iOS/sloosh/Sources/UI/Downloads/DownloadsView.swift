@@ -195,7 +195,8 @@ struct DownloadsView: View {
                 episode: item.episode,
                 selectedVoiceover: item.translationName,
                 directStreamUrl: item.localPlayableUrl?.absoluteString,
-                mediaKey: item.kpId > 0 ? "kp_\(item.kpId)" : item.id
+                mediaKey: item.kpId > 0 ? "kp_\(item.kpId)" : item.id,
+                posterUrl: item.posterUrl
             )
         }
     }

@@ -387,17 +387,41 @@ public final class PlaybackProgressStore: ObservableObject {
         let compositeKey = "\(activeUserId)_\(resolvedKey)"
 
         let descriptor = FetchDescriptor<PlaybackMetadataModel>(predicate: #Predicate { $0.userKpIdKey == compositeKey })
-        if let model = try? context.fetch(descriptor).first {
+        let existingModel: PlaybackMetadataModel? = (try? context.fetch(descriptor).first) ?? {
+            let altDescriptor = FetchDescriptor<PlaybackMetadataModel>(
+                predicate: #Predicate { $0.userId == activeUserId && $0.detailsId == resolvedKey }
+            )
+            return try? context.fetch(altDescriptor).first
+        }()
+
+        if let model = existingModel {
             model.detailsId = detailsId
-            model.title = title
-            model.type = type
-            model.kpId = kpId
-            if let t = tmdbId { model.tmdbId = t }
-            model.posterUrl = posterUrl
-            model.backdropUrl = backdropUrl
-            model.logoUrl = logoUrl
+            if (!title.isEmpty && title != "Без названия") || model.title.isEmpty || model.title == "Без названия" {
+                model.title = title
+            }
+            if let type = type, !type.isEmpty {
+                model.type = type
+            }
+            if kpId > 0 { model.kpId = kpId }
+            if let t = tmdbId, t > 0 { model.tmdbId = t }
+            if let p = posterUrl, !p.isEmpty { model.posterUrl = p }
+            if let b = backdropUrl, !b.isEmpty { model.backdropUrl = b }
+            if let l = logoUrl, !l.isEmpty { model.logoUrl = l }
             model.mediaKey = resolvedKey
+            model.userKpIdKey = compositeKey
         } else {
+            var finalPoster = (posterUrl?.isEmpty == false) ? posterUrl : nil
+            var finalBackdrop = (backdropUrl?.isEmpty == false) ? backdropUrl : nil
+            var finalLogo = (logoUrl?.isEmpty == false) ? logoUrl : nil
+
+            if finalPoster == nil || finalBackdrop == nil || finalLogo == nil {
+                if let fallback = (kpId > 0 ? self.loadMetadata(kpId: kpId) : nil) ?? self.loadMetadata(mediaKey: resolvedKey) {
+                    if finalPoster == nil { finalPoster = fallback.posterUrl }
+                    if finalBackdrop == nil { finalBackdrop = fallback.backdropUrl }
+                    if finalLogo == nil { finalLogo = fallback.logoUrl }
+                }
+            }
+
             let model = PlaybackMetadataModel(
                 userId: activeUserId,
                 kpId: kpId,
@@ -405,9 +429,9 @@ public final class PlaybackProgressStore: ObservableObject {
                 detailsId: detailsId,
                 title: title,
                 type: type,
-                posterUrl: posterUrl,
-                backdropUrl: backdropUrl,
-                logoUrl: logoUrl,
+                posterUrl: finalPoster,
+                backdropUrl: finalBackdrop,
+                logoUrl: finalLogo,
                 mediaKey: resolvedKey
             )
             context.insert(model)
