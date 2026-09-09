@@ -12,6 +12,24 @@ extension Color {
         default:         return Color(red: 0.50, green: 0.55, blue: 0.60)
         }
     }
+
+    /// Цвет возрастного ограничения (ГОСТ / РФ классификация):
+    /// 18+ — красный, 16+ — оранжевый, 12+ — янтарный/жёлтый, 6+ — синий/голубой, 0+ — зелёный.
+    static func ageRating(_ rating: String) -> Color {
+        let clean = rating.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if clean.contains("18") || clean == "r" || clean == "nc-17" {
+            return Color(red: 0.95, green: 0.24, blue: 0.24) // Красный (18+)
+        } else if clean.contains("16") || clean == "tv-ma" {
+            return Color(red: 1.0, green: 0.55, blue: 0.0)   // Оранжевый (16+)
+        } else if clean.contains("12") || clean == "pg-13" || clean == "tv-14" {
+            return Color(red: 1.0, green: 0.76, blue: 0.03)  // Янтарный/Жёлтый (12+)
+        } else if clean.contains("6") || clean == "pg" || clean == "tv-pg" {
+            return Color(red: 0.15, green: 0.60, blue: 0.98)  // Синий/Голубой (6+)
+        } else if clean.contains("0") || clean == "g" || clean == "tv-g" || clean == "tv-y" {
+            return Color(red: 0.18, green: 0.80, blue: 0.44)  // Зелёный (0+)
+        }
+        return .secondary
+    }
 }
 
 // MARK: - Cartoon Detection
