@@ -44,12 +44,14 @@ final class PlaybackMetadataModel {
     var posterUrl: String?
     var backdropUrl: String?
     var logoUrl: String?
+    var mediaKey: String?
 
     init(userId: String = "guest", kpId: Int, tmdbId: Int? = nil, detailsId: String, title: String, type: String? = nil, posterUrl: String? = nil, backdropUrl: String? = nil, logoUrl: String? = nil, mediaKey: String? = nil) {
         self.userId = userId
         self.kpId = kpId
         self.tmdbId = tmdbId
         let resolvedKey = mediaKey ?? (kpId > 0 ? "kp_\(kpId)" : (detailsId.isEmpty ? "tmdb_\(tmdbId ?? 0)" : detailsId))
+        self.mediaKey = resolvedKey
         self.userKpIdKey = "\(userId)_\(resolvedKey)"
         self.detailsId = detailsId
         self.title = title
