@@ -33,6 +33,7 @@ class MoviesApi {
     private let baseURL = "https://api-sloosh.vercel.app"
     
     private let session: URLSession
+    private let decoder = JSONDecoder()
     
     private init() {
         let config = URLSessionConfiguration.default
@@ -84,8 +85,7 @@ class MoviesApi {
                     continue
                 }
                 
-                let decoder = JSONDecoder()
-                return try decoder.decode(T.self, from: data)
+                return try self.decoder.decode(T.self, from: data)
             } catch let error as NetworkError {
                 // Наши собственные ошибки — пробрасываем немедленно (4xx, invalidURL)
                 throw error
