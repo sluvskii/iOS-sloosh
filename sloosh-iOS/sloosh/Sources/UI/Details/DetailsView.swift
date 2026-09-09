@@ -876,8 +876,7 @@ struct DetailsView: View {
                             InlineEpisodesSection(viewModel: viewModel, details: details) { season, episode in
                                 handleEpisodeSelection(details: details, season: season, episode: episode)
                             }
-                            .padding(.top, 8)
-                            .padding(.bottom, 20)
+                            .padding(.top, 16)
                         }
 
                         if let collection = viewModel.movieCollection ?? details.collection {
@@ -896,7 +895,6 @@ struct DetailsView: View {
                                 }
                             )
                             .padding(.top, 16)
-                            .padding(.bottom, 20)
                         }
 
                         if let relatedStudio = viewModel.relatedStudio, let items = relatedStudio.items, !items.isEmpty {
@@ -904,10 +902,10 @@ struct DetailsView: View {
                                 directPlaybackMovie = movie
                             })
                             .padding(.top, 16)
-                            .padding(.bottom, 20)
                         }
                     }
                     .offset(y: -25)
+                    .padding(.bottom, 28)
                     .transition(.opacity)
                 } else {
                     Text("Не удалось загрузить данные.")
@@ -1040,8 +1038,7 @@ struct DetailsView: View {
                                 ) { season, episode in
                                     handleEpisodeSelection(details: details, season: season, episode: episode)
                                 }
-                                .padding(.top, 8)
-                                .padding(.bottom, 40)
+                                .padding(.top, 16)
                             }
 
                             if let collection = viewModel.movieCollection ?? details.collection {
@@ -1060,7 +1057,6 @@ struct DetailsView: View {
                                     }
                                 )
                                 .padding(.top, 16)
-                                .padding(.bottom, 20)
                             }
 
                             if let relatedStudio = viewModel.relatedStudio, let items = relatedStudio.items, !items.isEmpty {
@@ -1068,11 +1064,10 @@ struct DetailsView: View {
                                     directPlaybackMovie = movie
                                 })
                                 .padding(.top, 16)
-                                .padding(.bottom, 20)
                             }
                         }
                         .offset(y: -60)
-                        .padding(.bottom, 24)
+                        .padding(.bottom, 28)
                     }
                 }
             }
