@@ -79,7 +79,7 @@ struct PersonDetailView: View {
         }
 
         // 2. Проверяем наличие UIImage в оперативной памяти (мгновенно, без сети!)
-        let effectiveUrl = AsyncCachedImage<EmptyView, EmptyView, EmptyView>.resolveEffectiveUrl(url)
+        let effectiveUrl = ImageCache.resolveEffectiveUrl(url)
         if let ramImage = ImageCache.shared.image(forKey: key) ?? effectiveUrl.flatMap({ ImageCache.shared.image(forKey: $0.absoluteString) }),
            let color = ramImage.averageColor {
             Self.dominantColorCacheLock.withLock {
