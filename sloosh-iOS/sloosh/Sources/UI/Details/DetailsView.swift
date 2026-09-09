@@ -373,7 +373,7 @@ struct DetailsView: View {
                                 let effectiveTmdb = viewModel.details?.externalIds?.tmdb
                                     ?? viewModel.details?.ids?.tmdb
                                     ?? Int(viewModel.details?.id ?? "")
-                                let resolvedKey = (effectiveKp ?? 0) > 0 ? "kp_\(effectiveKp!)" : (viewModel.details?.id ?? "tmdb_\(effectiveTmdb ?? 0)")
+                                let resolvedKey = (effectiveKp.flatMap { $0 > 0 ? "kp_\($0)" : nil }) ?? (viewModel.details?.id ?? "tmdb_\(effectiveTmdb ?? 0)")
 
                                 playerKpId = effectiveKp
                                 playerTmdbId = effectiveTmdb
