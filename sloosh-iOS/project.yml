@@ -13,9 +13,9 @@ targets:
         ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS: YES
         ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES: "AppIcon-Cyrillic AppIcon-Glyph AppIcon-Cinema"
         TARGETED_DEVICE_FAMILY: 1
-        MARKETING_VERSION: "1.5"
+        MARKETING_VERSION: "2.0"
         CURRENT_PROJECT_VERSION: "890"
-        INFOPLIST_KEY_CFBundleShortVersionString: "1.5"
+        INFOPLIST_KEY_CFBundleShortVersionString: "2.0"
         INFOPLIST_KEY_CFBundleVersion: "890"
         CODESIGN_ENTITLEMENTS: sloosh/sloosh.entitlements
     sources:
@@ -26,7 +26,7 @@ targets:
     info:
       path: sloosh/Info.plist
       properties:
-        CFBundleShortVersionString: "1.5"
+        CFBundleShortVersionString: "2.0"
         CFBundleVersion: "890"
         UILaunchScreen: {}
         UIApplicationSceneManifest:
