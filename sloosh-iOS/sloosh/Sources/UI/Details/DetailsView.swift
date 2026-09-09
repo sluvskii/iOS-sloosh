@@ -362,12 +362,9 @@ struct DetailsView: View {
                 }
             }) {
                 ZStack {
-                    if viewModel.isFetchingSources {
-                        SourceSelectionLoadingView(
-                            title: sourceSheetTitle
-                        )
-                    } else if let wrapper = viewModel.sourceResultWrapper,
-                              let result = wrapper.allohaResult {
+                    if let wrapper = viewModel.sourceResultWrapper,
+                       let result = wrapper.allohaResult,
+                       (!result.seasons.isEmpty || result.movie != nil) {
                         SourceSelectionView(mode: sourceSheetMode, result: result, kpId: wrapper.kpId, details: viewModel.details) { translation, season, episode, quality in
                             if sourceSheetMode == .play {
                                 let effectiveKp = ((wrapper.kpId ?? 0) > 0 ? wrapper.kpId : nil)
@@ -407,6 +404,10 @@ struct DetailsView: View {
                                 showSourceSheet = false
                             }
                         }
+                    } else if viewModel.isFetchingSources || !viewModel.hasFinishedSourceFetch {
+                        SourceSelectionLoadingView(
+                            title: sourceSheetTitle
+                        )
                     } else {
                         SourceSelectionEmptyView(title: sourceSheetTitle)
                     }
@@ -558,7 +559,7 @@ struct DetailsView: View {
         sourceSheetTitle = details.title ?? details.originalTitle ?? ""
         sourceSheetDetent = .medium
         sourceSheetMode = .play
-        viewModel.resetSourceSheet()
+        viewModel.prepareSourceSheet(kpId: kpId, tmdbId: tmdbId)
         showSourceSheet = true
 
         sourceFetchTask?.cancel()
@@ -582,7 +583,7 @@ struct DetailsView: View {
         sourceSheetTitle = details.title ?? details.originalTitle ?? ""
         sourceSheetDetent = .medium
         sourceSheetMode = .play
-        viewModel.resetSourceSheet()
+        viewModel.prepareSourceSheet(kpId: kpId, tmdbId: tmdbId)
         showSourceSheet = true
 
         sourceFetchTask?.cancel()
@@ -725,7 +726,7 @@ struct DetailsView: View {
         sourceSheetTitle = details.title ?? details.originalTitle ?? ""
         sourceSheetDetent = .medium
         sourceSheetMode = .download
-        viewModel.resetSourceSheet()
+        viewModel.prepareSourceSheet(kpId: kpId, tmdbId: tmdbId)
         showSourceSheet = true
 
         sourceFetchTask?.cancel()
@@ -2587,6 +2588,7 @@ class DetailsViewModel: ObservableObject {
     @Published var isLoading = true
 
     @Published var isFetchingSources = false
+    @Published var hasFinishedSourceFetch = false
     @Published var sourceResultWrapper: SourceResultWrapper?
 
     @Published var inlineSourceWrapper: SourceResultWrapper?
@@ -2606,8 +2608,25 @@ class DetailsViewModel: ObservableObject {
     private var sourcesCache: [Int: (wrapper: SourceResultWrapper, expiresAt: Date)] = [:]
     private let sourcesCacheTtl: TimeInterval = 5 * 60
 
+    func prepareSourceSheet(kpId: Int, tmdbId: Int? = nil) {
+        let effectiveTmdbId = tmdbId ?? details?.externalIds?.tmdb ?? details?.ids?.tmdb ?? Int(details?.id ?? "")
+        let cacheKey = kpId > 0 ? kpId : (effectiveTmdbId ?? 0)
+
+        if cacheKey > 0, let cached = sourcesCache[cacheKey], cached.expiresAt > Date() {
+            sourceResultWrapper = cached.wrapper
+            isFetchingSources = false
+            hasFinishedSourceFetch = true
+        } else {
+            sourceResultWrapper = nil
+            isFetchingSources = true
+            hasFinishedSourceFetch = false
+        }
+    }
+
     func resetSourceSheet() {
         sourceResultWrapper = nil
+        isFetchingSources = false
+        hasFinishedSourceFetch = false
     }
 
     func saveAllohaTranslation(_ name: String?) {
@@ -2778,12 +2797,18 @@ class DetailsViewModel: ObservableObject {
         // Кэш на 5 минут — повторный тап «Смотреть» возвращает результат мгновенно
         if cacheKey > 0, let cached = sourcesCache[cacheKey], cached.expiresAt > Date() {
             sourceResultWrapper = cached.wrapper
+            isFetchingSources = false
+            hasFinishedSourceFetch = true
             return
         }
 
         sourceResultWrapper = nil
         isFetchingSources = true
-        defer { isFetchingSources = false }
+        hasFinishedSourceFetch = false
+        defer {
+            isFetchingSources = false
+            hasFinishedSourceFetch = true
+        }
 
         do {
             let result: AllohaApiResult
