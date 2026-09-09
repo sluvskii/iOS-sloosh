@@ -168,16 +168,17 @@ mediaRouter.get("/tv/:id/season/:season", async (c) => {
     return c.json({ status: "error", message: "Invalid parameters" }, 400)
   }
 
+  let tmdbId = id
   if (isKp) {
     try {
       const info = await resolveTmdbInfoByKp(id)
-      if (info?.tmdbId) id = info.tmdbId
+      if (info?.tmdbId) tmdbId = info.tmdbId
     } catch {
       // Continue with id as fallback
     }
   }
 
-  const cacheKey = `tv_season:${id}:${season}`
+  const cacheKey = `tv_season:v3:${tmdbId}:${season}`
   const cached = getCached<any>(detailsCache, cacheKey)
   if (cached) {
     c.header("Cache-Control", "public, s-maxage=86400, stale-while-revalidate=43200")
@@ -185,7 +186,22 @@ mediaRouter.get("/tv/:id/season/:season", async (c) => {
   }
 
   try {
-    const seasonDetails = await tmdb.getSeasonDetails(id, season)
+    let seasonDetails: any
+    try {
+      seasonDetails = await tmdb.getSeasonDetails(tmdbId, season)
+    } catch (firstErr) {
+      if (!isKp) {
+        const kpInfo = await resolveTmdbInfoByKp(id)
+        if (kpInfo?.tmdbId && kpInfo.tmdbId !== id) {
+          tmdbId = kpInfo.tmdbId
+          seasonDetails = await tmdb.getSeasonDetails(tmdbId, season)
+        } else {
+          throw firstErr
+        }
+      } else {
+        throw firstErr
+      }
+    }
     setCached(detailsCache, cacheKey, seasonDetails)
     c.header("Cache-Control", "public, s-maxage=86400, stale-while-revalidate=43200")
     return c.json({ status: "success", data: seasonDetails })
@@ -196,8 +212,10 @@ mediaRouter.get("/tv/:id/season/:season", async (c) => {
 
 // GET /api/v1/tv/:id/season/:season/episode/:episode
 mediaRouter.get("/tv/:id/season/:season/episode/:episode", async (c) => {
-  const rawId = c.req.param("id").replace(/^(tmdb_|kp_|tv_|movie_)/, "")
-  const id = parseInt(rawId, 10)
+  const origId = c.req.param("id")
+  const isKp = origId.startsWith("kp_")
+  const rawId = origId.replace(/^(tmdb_|kp_|tv_|movie_)/, "")
+  let id = parseInt(rawId, 10)
   const season = parseInt(c.req.param("season"), 10)
   const episode = parseInt(c.req.param("episode"), 10)
 
@@ -205,8 +223,32 @@ mediaRouter.get("/tv/:id/season/:season/episode/:episode", async (c) => {
     return c.json({ status: "error", message: "Invalid parameters" }, 400)
   }
 
+  let tmdbId = id
+  if (isKp) {
+    try {
+      const info = await resolveTmdbInfoByKp(id)
+      if (info?.tmdbId) tmdbId = info.tmdbId
+    } catch {
+      // Continue
+    }
+  }
+
   try {
-    const epDetails = await tmdb.getEpisodeDetails(id, season, episode)
+    let epDetails: any
+    try {
+      epDetails = await tmdb.getEpisodeDetails(tmdbId, season, episode)
+    } catch (firstErr) {
+      if (!isKp) {
+        const kpInfo = await resolveTmdbInfoByKp(id)
+        if (kpInfo?.tmdbId && kpInfo.tmdbId !== id) {
+          epDetails = await tmdb.getEpisodeDetails(kpInfo.tmdbId, season, episode)
+        } else {
+          throw firstErr
+        }
+      } else {
+        throw firstErr
+      }
+    }
     return c.json({ status: "success", data: epDetails })
   } catch (err: any) {
     return c.json({ status: "error", message: err.message || "Episode details not found" }, 500)
@@ -230,7 +272,7 @@ async function attachAllohaAndIds(details: MediaDetailsDto, tmdbId: number) {
 }
 
 async function handleTvDetails(id: number, isKp: boolean): Promise<MediaDetailsDto> {
-  const cacheKey = `tv:${id}`
+  const cacheKey = `tv:v3:${isKp ? "kp_" : ""}${id}`
   const cached = getCached<MediaDetailsDto>(detailsCache, cacheKey)
   if (cached) return cached
 
@@ -264,7 +306,7 @@ async function handleTvDetails(id: number, isKp: boolean): Promise<MediaDetailsD
 }
 
 async function handleMovieDetails(id: number, isKp: boolean): Promise<MediaDetailsDto> {
-  const cacheKey = `movie:${id}`
+  const cacheKey = `movie:v3:${isKp ? "kp_" : ""}${id}`
   const cached = getCached<MediaDetailsDto>(detailsCache, cacheKey)
   if (cached) return cached
 

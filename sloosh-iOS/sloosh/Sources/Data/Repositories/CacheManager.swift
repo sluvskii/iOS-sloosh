@@ -139,7 +139,7 @@ public final class CacheManager: ObservableObject {
                     }
                 }
                 // Re-create necessary directories for MoviesRepository
-                try? fm.createDirectory(at: cacheDir.appendingPathComponent("sloosh.mediadetails"), withIntermediateDirectories: true)
+                try? fm.createDirectory(at: cacheDir.appendingPathComponent("sloosh.mediadetails.v8"), withIntermediateDirectories: true)
                 try? fm.createDirectory(at: cacheDir.appendingPathComponent("sloosh.medialist"), withIntermediateDirectories: true)
             }
 
