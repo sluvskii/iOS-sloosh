@@ -145,17 +145,27 @@ public final class FavoritesRepository: ObservableObject {
     }
 
     private func syncRemoteFavoritesToLocal(_ remoteFavorites: [FavoriteDto], userId: String) async {
+        guard !userId.isEmpty else { return }
         let predicate = #Predicate<FavoriteModel> { $0.userId == userId }
-        if let existing = try? context.fetch(FetchDescriptor<FavoriteModel>(predicate: predicate)) {
-            for model in existing {
-                context.delete(model)
-            }
+        let existing = (try? context.fetch(FetchDescriptor<FavoriteModel>(predicate: predicate))) ?? []
+        var existingByMediaId: [String: FavoriteModel] = [:]
+        for model in existing {
+            existingByMediaId[model.mediaId] = model
         }
-        
+
+        var shouldPushBack = false
+
         for dto in remoteFavorites {
             let mediaId = dto.mediaId ?? ""
             let type = dto.type ?? ""
-            if !mediaId.isEmpty, !type.isEmpty {
+            guard !mediaId.isEmpty, !type.isEmpty else { continue }
+
+            if let local = existingByMediaId[mediaId] {
+                if let t = dto.title { local.title = t }
+                if let p = dto.posterUrl { local.posterUrl = p }
+                if let r = dto.rating { local.rating = r }
+                if let y = dto.year { local.year = y }
+            } else {
                 let genresRaw = try? String(data: JSONEncoder().encode(dto.genres), encoding: .utf8)
                 let model = FavoriteModel(
                     userId: userId,
@@ -170,9 +180,20 @@ public final class FavoritesRepository: ObservableObject {
                 context.insert(model)
             }
         }
-        
+
+        if existing.count > remoteFavorites.count || (remoteFavorites.isEmpty && !existing.isEmpty) {
+            shouldPushBack = true
+        }
+
         try? context.save()
         reloadFromDb()
+
+        if shouldPushBack, AuthRepository.shared.isAuthenticated, let user = AuthRepository.shared.currentUser, user.id == userId {
+            let currentFavs = self.favorites
+            Task {
+                await CloudSyncService.shared.pushRemoteFavorites(currentFavs, userId: user.id, idToken: user.idToken)
+            }
+        }
     }
 
     public func refreshMissingMetadataIfNeeded() {

@@ -1846,7 +1846,8 @@ struct EpisodeDetailsSheet: View {
             }
         }
         .onAppear {
-            let progressKey = "kp_\(item.movieId)_s\(item.season)_e\(item.episode)"
+            let root = item.movieId.hasPrefix("kp_") || item.movieId.hasPrefix("tmdb_") ? item.movieId : "kp_\(item.movieId)"
+            let progressKey = "\(root)_s\(item.season)_e\(item.episode)"
             let progressFraction = PlaybackProgressStore.shared.normalizedProgress(mediaId: progressKey)
             isWatched = PlaybackProgressStore.shared.loadWatched(mediaId: progressKey) || (progressFraction ?? 0) >= 0.9
         }
@@ -1950,13 +1951,24 @@ struct EpisodeCellView: View {
     }
     
     private var progressKey: String {
-        "kp_\(movieId)_s\(season)_e\(episode)"
+        let root: String
+        if let kp = viewModel.details?.ids?.kp ?? viewModel.details?.externalIds?.kp, kp > 0 {
+            root = "kp_\(kp)"
+        } else if movieId.hasPrefix("kp_") || movieId.hasPrefix("tmdb_") {
+            root = movieId
+        } else if let intVal = Int(movieId) {
+            root = "kp_\(intVal)"
+        } else {
+            root = movieId
+        }
+        return "\(root)_s\(season)_e\(episode)"
     }
     
     private var isLastPlayed: Bool {
-        guard let kpId = viewModel.details?.ids?.kp else { return false }
-        let lastSeason = PlaybackProgressStore.shared.loadLastSeason(kpId: kpId)
-        let lastEpisode = PlaybackProgressStore.shared.loadLastEpisode(kpId: kpId)
+        let effectiveKp = viewModel.details?.ids?.kp ?? viewModel.details?.externalIds?.kp ?? (movieId.hasPrefix("kp_") ? Int(movieId.dropFirst(3)) : nil)
+        let rootKey = effectiveKp.map { "kp_\($0)" } ?? (movieId.hasPrefix("tmdb_") ? movieId : "tmdb_\(movieId)")
+        let lastSeason = PlaybackProgressStore.shared.loadLastSeason(mediaKey: rootKey) ?? (effectiveKp.flatMap { PlaybackProgressStore.shared.loadLastSeason(kpId: $0) })
+        let lastEpisode = PlaybackProgressStore.shared.loadLastEpisode(mediaKey: rootKey) ?? (effectiveKp.flatMap { PlaybackProgressStore.shared.loadLastEpisode(kpId: $0) })
         return lastSeason == season && lastEpisode == episode
     }
 
