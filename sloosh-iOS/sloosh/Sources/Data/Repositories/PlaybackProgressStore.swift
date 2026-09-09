@@ -804,14 +804,15 @@ public final class PlaybackProgressStore: ObservableObject {
         var existingByKey: [String: PlaybackMetadataModel] = [:]
         for model in existing {
             let key = (model.mediaKey?.isEmpty == false ? model.mediaKey : nil) ?? (model.kpId > 0 ? "kp_\(model.kpId)" : (model.detailsId.isEmpty ? "tmdb_\(model.tmdbId ?? 0)" : model.detailsId))
-            if let k = key, !k.isEmpty {
-                existingByKey[k] = model
+            if !key.isEmpty {
+                existingByKey[key] = model
             }
         }
 
         for item in remoteMetadata {
             let key = (item.mediaKey?.isEmpty == false ? item.mediaKey : nil) ?? (item.kpId > 0 ? "kp_\(item.kpId)" : (item.detailsId.isEmpty ? "tmdb_\(item.tmdbId ?? 0)" : item.detailsId))
-            if let k = key, !k.isEmpty, let local = existingByKey[k] {
+            guard !key.isEmpty else { continue }
+            if let local = existingByKey[key] {
                 local.title = item.title
                 local.type = item.type
                 local.posterUrl = item.posterUrl
