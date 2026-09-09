@@ -16,24 +16,44 @@ class HlsProxyServer {
     private var mediaId: String = ""
     private var preferredVoiceName: String? = nil
     private var currentMasterUrl: URL?
-    
+
+    // Фоновая задача iOS: не даёт системе заморозить процесс пока прокси активен в фоне
+    private var backgroundTaskId: UIBackgroundTaskIdentifier = .invalid
+
     var port: NWEndpoint.Port = 8181
     var fixedMasterUrl: String { "http://127.0.0.1:\(port.rawValue)/master.m3u8" }
-    
+
+    /// Публичное свойство для проверки живости прокси из PlayerView
+    var isAlive: Bool { stateLock.withLock { isListenerAlive && listener != nil } }
+
     // We use a custom delegate to bypass SSL issues like in Android's buildTrustingClient
     private lazy var session: URLSession = {
         let config = URLSessionConfiguration.ephemeral
         config.httpMaximumConnectionsPerHost = 20
-        config.timeoutIntervalForRequest = 15
+        config.timeoutIntervalForRequest = 30  // Увеличен с 15 до 30 с
+        config.timeoutIntervalForResource = 90 // Общий таймаут ресурса 90 с
         let delegate = TrustAllSessionDelegate()
         return URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
     }()
-    
+
     private init() {
         NotificationCenter.default.addObserver(self, selector: #selector(appWillEnterForeground), name: UIApplication.willEnterForegroundNotification, object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(appDidEnterBackground), name: UIApplication.didEnterBackgroundNotification, object: nil)
     }
-    
+
+    // MARK: - Background task management
+
+    @objc private func appDidEnterBackground() {
+        // Запускаем фоновую задачу только если идёт активное воспроизведение
+        let hasActiveSession = stateLock.withLock { !self.mediaId.isEmpty && self.isListenerAlive }
+        guard hasActiveSession else { return }
+        beginBackgroundTaskIfNeeded()
+    }
+
     @objc func appWillEnterForeground() {
+        // Завершаем фоновую задачу при возврате в активный режим
+        endBackgroundTaskIfNeeded()
+
         let params: (headers: [String: String], voices: [String], subtitles: [PlaybackSubtitle], mediaId: String)? = stateLock.withLock {
             // Перезапускаем если mediaId есть, но слушатель мёртв (nil или упавший)
             if !self.mediaId.isEmpty && !self.isListenerAlive {
@@ -41,7 +61,7 @@ class HlsProxyServer {
             }
             return nil
         }
-        
+
         if let p = params {
             print("HlsProxyServer: restarting listener on foreground (was dead)")
             // Очищаем мёртвый listener перед перезапуском
@@ -53,7 +73,24 @@ class HlsProxyServer {
             start(headers: p.headers, voices: p.voices, subtitles: p.subtitles, mediaId: p.mediaId)
         }
     }
-    
+
+    private func beginBackgroundTaskIfNeeded() {
+        guard backgroundTaskId == .invalid else { return }
+        backgroundTaskId = UIApplication.shared.beginBackgroundTask(withName: "HlsProxyServer") { [weak self] in
+            // Истёк лимит фонового времени — завершаем задачу
+            self?.endBackgroundTaskIfNeeded()
+        }
+    }
+
+    private func endBackgroundTaskIfNeeded() {
+        let taskId = backgroundTaskId
+        guard taskId != .invalid else { return }
+        backgroundTaskId = .invalid
+        UIApplication.shared.endBackgroundTask(taskId)
+    }
+
+    // MARK: - Lifecycle
+
     func start(headers: [String: String] = [:], voices: [String] = [], subtitles: [PlaybackSubtitle] = [], mediaId: String = "", preferredVoiceName: String? = nil) {
         let isAlreadyRunning = stateLock.withLock {
             self.headers = headers
@@ -63,14 +100,13 @@ class HlsProxyServer {
             if let preferredVoiceName, !preferredVoiceName.isEmpty {
                 self.preferredVoiceName = preferredVoiceName
             }
-            // Блокируем повторный запуск если listener уже есть (пусть даже ещё не .ready)
-            // или уже .ready. Это предотвращает двойное создание на одном порту.
-            return self.isListenerAlive || self.listener != nil
+            // Блокируем повторный запуск ТОЛЬКО если listener уже создан И живой.
+            // Это исправляет баг: упавший listener (isListenerAlive=false, listener=nil) больше не блокирует запуск.
+            return self.isListenerAlive && self.listener != nil
         }
 
-        
         if isAlreadyRunning { return }
-        
+
         do {
             let parameters = NWParameters.tcp
             parameters.allowLocalEndpointReuse = true
@@ -90,6 +126,8 @@ class HlsProxyServer {
                         self.listener = nil
                         self.isListenerAlive = false
                     }
+                    // Самовосстановление: перезапускаем если есть активная сессия
+                    self.scheduleListenerRestart()
                 case .cancelled:
                     print("HlsProxyServer listener cancelled")
                     self.stateLock.withLock {
@@ -105,10 +143,25 @@ class HlsProxyServer {
                 self.isListenerAlive = false // станет true только когда state == .ready
             }
             newListener.start(queue: queue)
-            
+
             print("HlsProxyServer started on port \(port)")
         } catch {
             print("Failed to start HlsProxyServer: \(error)")
+        }
+    }
+
+    /// Планирует автоматический перезапуск слушателя через 300 мс при обнаружении сбоя
+    private func scheduleListenerRestart() {
+        let hasActiveSession = stateLock.withLock { !self.mediaId.isEmpty }
+        guard hasActiveSession else { return }
+        print("HlsProxyServer: scheduling self-healing restart in 300ms")
+        queue.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            guard let self else { return }
+            let (headers, voices, subtitles, mediaId) = self.stateLock.withLock {
+                (self.headers, self.voices, self.subtitles, self.mediaId)
+            }
+            guard !mediaId.isEmpty else { return }
+            self.start(headers: headers, voices: voices, subtitles: subtitles, mediaId: mediaId)
         }
     }
 
@@ -125,6 +178,7 @@ class HlsProxyServer {
     }
     
     func stop() {
+        endBackgroundTaskIfNeeded()
         stateLock.withLock {
             listener?.cancel()
             listener = nil
@@ -294,7 +348,7 @@ class HlsProxyServer {
         }
 
         var request = URLRequest(url: realUrl)
-        
+
         for (k, v) in currentHeaders {
             request.setValue(v, forHTTPHeaderField: k)
         }
@@ -307,26 +361,27 @@ class HlsProxyServer {
         if request.value(forHTTPHeaderField: "Accept") == nil {
             request.setValue("*/*", forHTTPHeaderField: "Accept")
         }
-        
+
         do {
             if isPlaylist {
                 let (data, response) = try await session.data(for: request)
                 guard !Task.isCancelled else { return }
                 guard let httpResponse = response as? HTTPURLResponse else {
                     AppDiagnostics.shared.log("HlsProxyServer fetchAndServe: invalid response for \(realUrl)")
-                    self.send404(on: connection)
+                    // 503 вместо 404: плеер повторит запрос позже, а не убьёт поток
+                    self.send503(on: connection)
                     return
                 }
-                
+
                 let statusCode = httpResponse.statusCode
                 AppDiagnostics.shared.log("HlsProxyServer fetchAndServe: \(realUrl) returned \(statusCode)")
-                
+
                 guard statusCode >= 200 && statusCode < 300 else {
                     AppDiagnostics.shared.log("HlsProxyServer fetchAndServe: HTTP error \(statusCode) for \(realUrl)")
                     self.sendResponse(data: data, statusCode: statusCode, contentType: httpResponse.mimeType ?? "text/plain", contentRange: nil, connection: connection)
                     return
                 }
-                
+
                 if let content = String(data: data, encoding: .utf8), content.contains("#EXT") {
                     let finalUrl = httpResponse.url ?? realUrl
                     let rewritten: String
@@ -337,15 +392,15 @@ class HlsProxyServer {
                             subtitles: currentSubtitles,
                             mediaId: currentMediaId
                         )
-                        
+
                         AppDiagnostics.shared.log("HlsProxyServer: rewritten master playlist:\n\(playlistRewritten)")
-                        
+
                         rewritten = self.rewriteM3u8(content: playlistRewritten, baseUrl: finalUrl)
                     } else {
                         AppDiagnostics.shared.log("HlsProxyServer: playlist fallback:\n\(content)")
                         rewritten = self.rewriteM3u8(content: content, baseUrl: finalUrl)
                     }
-                    
+
                     let rewrittenData = rewritten.data(using: .utf8) ?? Data()
                     guard !Task.isCancelled else { return }
                     self.sendResponse(data: rewrittenData, statusCode: 200, contentType: "application/vnd.apple.mpegurl", contentRange: nil, connection: connection)
@@ -354,23 +409,40 @@ class HlsProxyServer {
                     self.sendResponse(data: data, statusCode: statusCode, contentType: "application/vnd.apple.mpegurl", contentRange: nil, connection: connection)
                 }
             } else {
-                let (data, response) = try await session.data(for: request)
+                // Для медиа-сегментов (.m4s/.ts/.mp4): один автоматический ретрай при сетевой ошибке
+                let (data, response): (Data, URLResponse) = await {
+                    do {
+                        return try await self.session.data(for: request)
+                    } catch {
+                        guard !Task.isCancelled else { return (Data(), HTTPURLResponse()) }
+                        AppDiagnostics.shared.log("HlsProxyServer segment fetch attempt 1 failed: \(error), retrying...")
+                        try? await Task.sleep(nanoseconds: 500_000_000) // 500 мс
+                        guard !Task.isCancelled else { return (Data(), HTTPURLResponse()) }
+                        if let result = try? await self.session.data(for: request) {
+                            return result
+                        }
+                        return (Data(), HTTPURLResponse())
+                    }
+                }()
                 guard !Task.isCancelled else { return }
-                guard let httpResponse = response as? HTTPURLResponse else {
-                    self.send404(on: connection)
+                guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode > 0 else {
+                    AppDiagnostics.shared.log("HlsProxyServer segment fetch failed completely for \(realUrl)")
+                    // 503 вместо 404: AVPlayer получит сигнал "временно недоступно" и повторит запрос
+                    self.send503(on: connection)
                     return
                 }
-                
+
                 let statusCode = httpResponse.statusCode
                 let contentType = resolveContentType(for: realUrl, httpResponse: httpResponse)
                 let contentRange = httpResponse.value(forHTTPHeaderField: "Content-Range")
-                
+
                 self.sendResponse(data: data, statusCode: statusCode, contentType: contentType, contentRange: contentRange, connection: connection)
             }
         } catch {
             if Task.isCancelled { return }
             AppDiagnostics.shared.log("HlsProxyServer fetch failed: \(error)")
-            self.send404(on: connection)
+            // 503 вместо 404: даём AVPlayer шанс повторить запрос через 1 секунду
+            self.send503(on: connection)
         }
     }
     
@@ -525,6 +597,17 @@ class HlsProxyServer {
     
     private func send404(on connection: NWConnection) {
         let response = "HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+        guard let data = response.data(using: .utf8) else { connection.cancel(); return }
+        connection.send(content: data, completion: .contentProcessed({ _ in
+            connection.cancel()
+        }))
+    }
+
+    /// Возвращает 503 Service Unavailable с Retry-After: 1.
+    /// AVPlayer по стандарту HLS при получении 5xx повторяет запрос через указанное время,
+    /// что позволяет сегменту загрузиться после восстановления прокси — без прерывания потока.
+    private func send503(on connection: NWConnection) {
+        let response = "HTTP/1.1 503 Service Unavailable\r\nContent-Length: 0\r\nRetry-After: 1\r\nConnection: close\r\n\r\n"
         guard let data = response.data(using: .utf8) else { connection.cancel(); return }
         connection.send(content: data, completion: .contentProcessed({ _ in
             connection.cancel()
