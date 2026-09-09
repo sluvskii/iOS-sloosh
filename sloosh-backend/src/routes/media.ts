@@ -238,13 +238,13 @@ mediaRouter.get("/tv/:id/season/:season/episode/:episode", async (c) => {
     try {
       let tvDetails: any
       try {
-        tvDetails = await tmdb.getDetails(tmdbId, "tv")
+        tvDetails = await tmdb.getTvDetails(tmdbId)
       } catch (firstErr) {
         if (!isKp) {
           const kpInfo = await resolveTmdbInfoByKp(id)
           if (kpInfo?.tmdbId && kpInfo.tmdbId !== id) {
             tmdbId = kpInfo.tmdbId
-            tvDetails = await tmdb.getDetails(tmdbId, "tv")
+            tvDetails = await tmdb.getTvDetails(tmdbId)
           } else {
             throw firstErr
           }
