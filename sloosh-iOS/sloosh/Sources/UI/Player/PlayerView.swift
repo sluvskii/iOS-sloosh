@@ -1802,7 +1802,7 @@ class PlayerViewModel: ObservableObject {
             MPNowPlayingInfoPropertyMediaType: MPNowPlayingInfoMediaType.video.rawValue
         ]
         if let season = currentSeason, let episode = currentEpisode {
-            info[MPMediaItemPropertyArtist] = "Сезон \(season), Серия \(episode)"
+            info[MPMediaItemPropertyArtist] = episode == 0 ? "Сезон \(season), Пилотная серия" : "Сезон \(season), Серия \(episode)"
         } else if let voiceover = _currentTranslationName, !voiceover.isEmpty {
             info[MPMediaItemPropertyArtist] = voiceover
         }

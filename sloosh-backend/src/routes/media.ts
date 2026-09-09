@@ -233,6 +233,47 @@ mediaRouter.get("/tv/:id/season/:season/episode/:episode", async (c) => {
     }
   }
 
+  // Handle episode 0 gracefully (pilot / prologue)
+  if (episode === 0) {
+    try {
+      let tvDetails: any
+      try {
+        tvDetails = await tmdb.getDetails(tmdbId, "tv")
+      } catch (firstErr) {
+        if (!isKp) {
+          const kpInfo = await resolveTmdbInfoByKp(id)
+          if (kpInfo?.tmdbId && kpInfo.tmdbId !== id) {
+            tmdbId = kpInfo.tmdbId
+            tvDetails = await tmdb.getDetails(tmdbId, "tv")
+          } else {
+            throw firstErr
+          }
+        } else {
+          throw firstErr
+        }
+      }
+
+      const seasonData = await tmdb.getSeasonDetails(tmdbId, season).catch(() => null)
+      c.header("Cache-Control", "public, s-maxage=86400, stale-while-revalidate=43200")
+      return c.json({
+        status: "success",
+        data: {
+          id: 0,
+          name: "Пилотная серия",
+          overview: tvDetails.description || "Пилотный выпуск сериала.",
+          airDate: seasonData?.airDate || tvDetails.releaseDate || "",
+          episodeNumber: 0,
+          seasonNumber: season,
+          stillPath: tvDetails.backdrop || tvDetails.poster || null,
+          voteAverage: 0,
+          duration: seasonData?.episodes?.[0]?.duration || undefined,
+        }
+      })
+    } catch (err: any) {
+      return c.json({ status: "error", message: err.message || "Pilot episode not found" }, 500)
+    }
+  }
+
   try {
     let epDetails: any
     try {
