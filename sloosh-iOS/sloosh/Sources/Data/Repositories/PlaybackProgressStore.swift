@@ -396,6 +396,7 @@ public final class PlaybackProgressStore: ObservableObject {
             model.posterUrl = posterUrl
             model.backdropUrl = backdropUrl
             model.logoUrl = logoUrl
+            model.mediaKey = resolvedKey
         } else {
             let model = PlaybackMetadataModel(
                 userId: activeUserId,
@@ -802,13 +803,15 @@ public final class PlaybackProgressStore: ObservableObject {
         let existing = (try? context.fetch(FetchDescriptor<PlaybackMetadataModel>(predicate: predicate))) ?? []
         var existingByKey: [String: PlaybackMetadataModel] = [:]
         for model in existing {
-            let key = model.mediaKey ?? (model.kpId > 0 ? "kp_\(model.kpId)" : model.detailsId)
-            existingByKey[key] = model
+            let key = (model.mediaKey?.isEmpty == false ? model.mediaKey : nil) ?? (model.kpId > 0 ? "kp_\(model.kpId)" : (model.detailsId.isEmpty ? "tmdb_\(model.tmdbId ?? 0)" : model.detailsId))
+            if let k = key, !k.isEmpty {
+                existingByKey[k] = model
+            }
         }
 
         for item in remoteMetadata {
-            let key = item.mediaKey ?? (item.kpId > 0 ? "kp_\(item.kpId)" : item.detailsId)
-            if let local = existingByKey[key] {
+            let key = (item.mediaKey?.isEmpty == false ? item.mediaKey : nil) ?? (item.kpId > 0 ? "kp_\(item.kpId)" : (item.detailsId.isEmpty ? "tmdb_\(item.tmdbId ?? 0)" : item.detailsId))
+            if let k = key, !k.isEmpty, let local = existingByKey[k] {
                 local.title = item.title
                 local.type = item.type
                 local.posterUrl = item.posterUrl
