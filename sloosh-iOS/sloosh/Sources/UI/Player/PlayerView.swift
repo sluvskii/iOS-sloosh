@@ -333,7 +333,6 @@ class PlayerViewModel: ObservableObject {
     private var timeObserver: Any?
     private var statusObserver: NSKeyValueObservation?
     private var bufferObserver: NSKeyValueObservation?
-    private var itemObservation: NSKeyValueObservation?
     private var playbackEndObserver: NSObjectProtocol?
     private var resignActiveObserver: NSObjectProtocol?
     private var foregroundObserver: NSObjectProtocol?
@@ -357,9 +356,9 @@ class PlayerViewModel: ObservableObject {
     private var currentIframeUrl: String?
     /// Все audioVariants из последнего resolve. Нужны для мгновенного переключения озвучки без re-resolve.
     private var resolvedAudioVariants: [[String: Any]] = []
-    private var seekObservation: NSKeyValueObservation?
     private var isInitialSeekPending = false
     private var pendingSeekPosition: Double?
+    private var wasPlayingBeforeReload: Bool = false
 
     var rootMediaKey: String? {
         if let key = mediaKey, !key.isEmpty {
@@ -524,10 +523,32 @@ class PlayerViewModel: ObservableObject {
         self.targetDirectStreamUrl = directStreamUrl
         self.isAdvancingToNextEpisode = false
         self.hasRetriedPlayback = false
-        // ВАЖНО: сбрасываем currentTime и currentDuration при смене эпизода,
-        // чтобы reloadPlayback не перемотал новый эпизод к позиции старого.
-        self.currentTime = 0
+        self.wasPlayingBeforeReload = true
+        if let mediaId = self.currentMediaId {
+            let saved = PlaybackProgressStore.shared.load(mediaId: mediaId)
+            if saved > 2 {
+                self.pendingSeekPosition = saved
+                self.isInitialSeekPending = true
+                self.currentTime = saved
+                logDebug("beginLoad: initialized with saved progress \(saved)s for \(mediaId)")
+            } else {
+                self.pendingSeekPosition = nil
+                self.isInitialSeekPending = false
+                self.currentTime = 0
+            }
+        } else {
+            self.pendingSeekPosition = nil
+            self.isInitialSeekPending = false
+            self.currentTime = 0
+        }
         self.currentDuration = 0
+
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(8))
+            guard let self, self.isInitialSeekPending else { return }
+            self.isInitialSeekPending = false
+            self.pendingSeekPosition = nil
+        }
         // Сохраняем iframeUrl — нужен для переключения озвучки внутри плеера
         if let iframeUrl, !iframeUrl.isEmpty {
             self.currentIframeUrl = iframeUrl
@@ -828,8 +849,7 @@ class PlayerViewModel: ObservableObject {
         currentPlaybackSourceURL = nil
         originalStreamURL = nil
         isInitialSeekPending = false
-        seekObservation?.invalidate()
-        seekObservation = nil
+        pendingSeekPosition = nil
 
         if let observer = timeObserver {
             player?.removeTimeObserver(observer)
@@ -851,8 +871,6 @@ class PlayerViewModel: ObservableObject {
             NotificationCenter.default.removeObserver(audioInterruptionObserver)
             self.audioInterruptionObserver = nil
         }
-        itemObservation?.invalidate()
-        itemObservation = nil
         statusObserver?.invalidate()
         statusObserver = nil
         bufferObserver?.invalidate()
@@ -1183,8 +1201,28 @@ class PlayerViewModel: ObservableObject {
 
     private func reloadPlayback(to sourceURL: URL, preferredPeakBitRate: Double?) {
         logDebug("reloadPlayback: called with sourceURL=\(sourceURL.absoluteString), preferredPeakBitRate=\(preferredPeakBitRate ?? -1)")
-        let savedTime = self.currentTime
+        let savedTime: Double = {
+            if self.isInitialSeekPending, let pending = self.pendingSeekPosition, pending > 2 {
+                return pending
+            }
+            if self.currentTime > 2 {
+                return self.currentTime
+            }
+            if let mediaId = self.currentMediaId {
+                let s = PlaybackProgressStore.shared.load(mediaId: mediaId)
+                if s > 2 { return s }
+            }
+            return 0
+        }()
         let wasPlaying = player?.timeControlStatus == .playing || player?.timeControlStatus == .waitingToPlayAtSpecifiedRate
+        self.wasPlayingBeforeReload = wasPlaying
+
+        if savedTime > 2 {
+            self.isInitialSeekPending = true
+            self.pendingSeekPosition = savedTime
+            self.currentTime = savedTime
+            logDebug("reloadPlayback: preserving seek target \(savedTime)s")
+        }
 
         // Обновляем originalStreamURL если пришёл не прокси-URL
         if !isLocalProxyUrl(sourceURL) {
@@ -1221,23 +1259,6 @@ class PlayerViewModel: ObservableObject {
 
         self.player?.replaceCurrentItem(with: playerItem)
         setupPlayerItemObservers(for: playerItem)
-
-        // Дожидаемся готовности перед seek и play
-        itemObservation = playerItem.observe(\.status, options: [.new]) { [weak self] item, _ in
-            Task { @MainActor [weak self] in
-                guard let self = self else { return }
-                if item.status == .readyToPlay {
-                    self.itemObservation?.invalidate()
-                    self.itemObservation = nil
-                    
-                    self.player?.seek(to: CMTime(seconds: savedTime, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero) { _ in
-                        if wasPlaying {
-                            self.player?.play()
-                        }
-                    }
-                }
-            }
-        }
     }
 
     private func proxiedPlaybackURL(for sourceURL: URL) -> URL? {
@@ -1483,13 +1504,14 @@ class PlayerViewModel: ObservableObject {
 
         self.isLoading = false
         self.startTrackingProgress()
-        self.player?.play()
+        if !self.isInitialSeekPending {
+            self.player?.play()
+        }
     }
     
     private func setupPlayerItemObservers(for playerItem: AVPlayerItem) {
         statusObserver?.invalidate()
         bufferObserver?.invalidate()
-        itemObservation?.invalidate()
         
         if let playbackEndObserver {
             NotificationCenter.default.removeObserver(playbackEndObserver)
@@ -1588,6 +1610,7 @@ class PlayerViewModel: ObservableObject {
                 } else if item.status == .readyToPlay {
                     self.isLoading = false
                     self.logDebug("setupPlayerItemObservers: playerItem is readyToPlay")
+                    self.applySeekIfNeeded(for: item)
                     Task {
                         do {
                             _ = try await item.asset.loadMediaSelectionGroup(for: .audible)
@@ -1620,57 +1643,69 @@ class PlayerViewModel: ObservableObject {
         }
 
         observePlaybackCompletion(for: playerItem)
+
+        if playerItem.status == .readyToPlay {
+            self.applySeekIfNeeded(for: playerItem)
+        }
     }
     
-    private func applyInitialSeekIfNeeded(for player: AVPlayer, mediaId: String) {
-        let savedPosition = PlaybackProgressStore.shared.load(mediaId: mediaId)
-        guard savedPosition > 2 else {
-            isInitialSeekPending = false
+    private func applySeekIfNeeded(for item: AVPlayerItem) {
+        guard let player = self.player else { return }
+        guard item === player.currentItem else { return }
+
+        let targetSeek: Double = {
+            if self.isInitialSeekPending, let pending = self.pendingSeekPosition, pending > 2 {
+                return pending
+            }
+            if self.currentTime > 2 {
+                return self.currentTime
+            }
+            if let mediaId = self.currentMediaId {
+                let s = PlaybackProgressStore.shared.load(mediaId: mediaId)
+                if s > 2 { return s }
+            }
+            return 0
+        }()
+
+        guard targetSeek > 2 else {
+            self.isInitialSeekPending = false
+            self.pendingSeekPosition = nil
+            if self.wasPlayingBeforeReload || self.isPlaying {
+                self.player?.play()
+            }
             return
         }
 
-        isInitialSeekPending = true
-        pendingSeekPosition = savedPosition
-
-        let performSeek = { [weak self, weak player] in
-            guard let self, let player else { return }
-            guard let current = self.currentMediaId, current == mediaId else {
-                self.isInitialSeekPending = false
-                return
+        let currentPos = player.currentTime().seconds
+        if currentPos.isFinite && abs(currentPos - targetSeek) < 1.0 {
+            self.isInitialSeekPending = false
+            self.pendingSeekPosition = nil
+            if self.wasPlayingBeforeReload || self.isPlaying {
+                self.player?.play()
             }
-            player.seek(
-                to: CMTime(seconds: savedPosition, preferredTimescale: 600),
-                toleranceBefore: .zero,
-                toleranceAfter: .zero
-            ) { [weak self] finished in
-                Task { @MainActor [weak self] in
-                    guard let self else { return }
-                    self.isInitialSeekPending = false
-                    if finished {
-                        self.currentTime = savedPosition
-                    }
-                }
-            }
+            return
         }
 
-        if let item = player.currentItem, item.status == .readyToPlay {
-            performSeek()
-        } else {
-            seekObservation?.invalidate()
-            seekObservation = player.currentItem?.observe(\.status, options: [.new]) { [weak self] item, _ in
-                guard item.status == .readyToPlay else { return }
-                Task { @MainActor [weak self] in
-                    guard let self else { return }
-                    self.seekObservation?.invalidate()
-                    self.seekObservation = nil
-                    performSeek()
-                }
-            }
-
+        self.isInitialSeekPending = true
+        self.pendingSeekPosition = targetSeek
+        self.logDebug("applySeekIfNeeded: seeking to \(targetSeek)s for \(self.currentMediaId ?? "")")
+        player.seek(
+            to: CMTime(seconds: targetSeek, preferredTimescale: 600),
+            toleranceBefore: .zero,
+            toleranceAfter: .zero
+        ) { [weak self] finished in
             Task { @MainActor [weak self] in
-                try? await Task.sleep(for: .seconds(3))
-                guard let self, self.isInitialSeekPending else { return }
+                guard let self else { return }
                 self.isInitialSeekPending = false
+                self.pendingSeekPosition = nil
+                if finished {
+                    self.currentTime = targetSeek
+                    self.logDebug("applySeekIfNeeded: seek to \(targetSeek)s completed successfully")
+                }
+                if self.wasPlayingBeforeReload || self.isPlaying {
+                    self.player?.play()
+                }
+                self.updateNowPlaying()
             }
         }
     }
@@ -1684,14 +1719,12 @@ class PlayerViewModel: ObservableObject {
 
         guard let mediaId = currentMediaId else { return }
 
-        applyInitialSeekIfNeeded(for: player, mediaId: mediaId)
-
         timeObserver = player.addPeriodicTimeObserver(
             forInterval: CMTime(seconds: 0.5, preferredTimescale: 600),
             queue: .main
         ) { [weak self, weak player] time in
             guard let self, let player else { return }
-            if self.isUserSeeking { return }
+            if self.isUserSeeking || self.isInitialSeekPending { return }
             let t = player.currentTime().seconds
             if t.isFinite && !t.isNaN && t >= 0 {
                 self.currentTime = t
