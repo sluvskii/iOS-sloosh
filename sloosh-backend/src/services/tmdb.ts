@@ -10,6 +10,9 @@ import type {
   MovieCollectionDto,
   CollectionPartDto,
   PersonDetailsDto,
+  TvSeasonDto,
+  TvSeasonEpisodeDto,
+  TvNextEpisodeDto,
 } from "../types/models"
 
 export interface DiscoverOptions {
@@ -100,6 +103,55 @@ export const TMDB_GENRES: Record<number, string> = {
   10766: "мыльная опера",
   10767: "ток-шоу",
   10768: "война и политика",
+}
+
+export function parseMovieAgeRating(releaseDates: any): string | undefined {
+  if (!releaseDates?.results || !Array.isArray(releaseDates.results)) return undefined
+  const ru = releaseDates.results.find((r: any) => r.iso_3166_1 === "RU")
+  const ruCert = ru?.release_dates?.find((d: any) => d.certification && d.certification.trim())?.certification?.trim()
+  if (ruCert) {
+    if (ruCert.includes("18")) return "18+"
+    if (ruCert.includes("16")) return "16+"
+    if (ruCert.includes("12")) return "12+"
+    if (ruCert.includes("6")) return "6+"
+    if (ruCert.includes("0")) return "0+"
+    return ruCert
+  }
+  const us = releaseDates.results.find((r: any) => r.iso_3166_1 === "US")
+  const usCert = us?.release_dates?.find((d: any) => d.certification && d.certification.trim())?.certification?.trim()
+  if (usCert) {
+    const c = usCert.toUpperCase()
+    if (c === "NC-17" || c === "R") return "18+"
+    if (c === "PG-13") return "16+"
+    if (c === "PG") return "12+"
+    if (c === "G") return "6+"
+    return usCert
+  }
+  return undefined
+}
+
+export function parseTvAgeRating(contentRatings: any): string | undefined {
+  if (!contentRatings?.results || !Array.isArray(contentRatings.results)) return undefined
+  const ru = contentRatings.results.find((r: any) => r.iso_3166_1 === "RU")?.rating?.trim()
+  if (ru) {
+    if (ru.includes("18")) return "18+"
+    if (ru.includes("16")) return "16+"
+    if (ru.includes("12")) return "12+"
+    if (ru.includes("6")) return "6+"
+    if (ru.includes("0")) return "0+"
+    return ru
+  }
+  const us = contentRatings.results.find((r: any) => r.iso_3166_1 === "US")?.rating?.trim()
+  if (us) {
+    const r = us.toUpperCase()
+    if (r === "TV-MA") return "18+"
+    if (r === "TV-14") return "16+"
+    if (r === "TV-PG") return "12+"
+    if (r === "TV-G" || r === "TV-Y7") return "6+"
+    if (r === "TV-Y") return "0+"
+    return us
+  }
+  return undefined
 }
 
 export function resolveGenreIds(genres: string, isTv: boolean = false): string {
@@ -605,7 +657,7 @@ export class TMDBService {
 
   async getMovieDetails(id: number): Promise<MediaDetailsDto> {
     const data = await tmdbFetch<any>(`/movie/${id}`, {
-      append_to_response: "credits,videos,images,recommendations,similar,external_ids",
+      append_to_response: "credits,videos,images,recommendations,similar,external_ids,release_dates",
       include_image_language: "ru,en,null",
       include_video_language: "ru,en,null",
     })
@@ -700,6 +752,12 @@ export class TMDBService {
 
     const genreNames = (data.genres || []).map((g: any) => g.name || TMDB_GENRES[g.id] || "").filter(Boolean)
 
+    // Financials & Rating
+    const budget = typeof data.budget === "number" && data.budget > 0 ? data.budget : undefined
+    const revenue = typeof data.revenue === "number" && data.revenue > 0 ? data.revenue : undefined
+    const status = data.status || undefined
+    const ageRating = parseMovieAgeRating(data.release_dates)
+
     // Similar / Recommended Media
     const rawSimilar = [
       ...(data.recommendations?.results || []),
@@ -754,6 +812,10 @@ export class TMDBService {
       trailers,
       collection,
       productionCompanies,
+      budget,
+      revenue,
+      ageRating,
+      status,
       similar,
       externalIds: {
         tmdb: data.id,
@@ -764,7 +826,7 @@ export class TMDBService {
 
   async getTvDetails(id: number): Promise<MediaDetailsDto> {
     const data = await tmdbFetch<any>(`/tv/${id}`, {
-      append_to_response: "credits,videos,images,recommendations,similar,external_ids",
+      append_to_response: "credits,videos,images,recommendations,similar,external_ids,content_ratings",
       include_image_language: "ru,en,null",
       include_video_language: "ru,en,null",
     })
@@ -818,6 +880,22 @@ export class TMDBService {
     }))
 
     const tvGenreNames = (data.genres || []).map((g: any) => g.name || TMDB_GENRES[g.id] || "").filter(Boolean)
+
+    const ageRating = parseTvAgeRating(data.content_ratings)
+    const status = data.status || undefined
+
+    let nextEpisodeToAir: TvNextEpisodeDto | null = null
+    if (data.next_episode_to_air) {
+      const n = data.next_episode_to_air
+      nextEpisodeToAir = {
+        id: n.id,
+        name: n.name || `Серия ${n.episode_number}`,
+        overview: n.overview || "",
+        airDate: n.air_date || "",
+        episodeNumber: n.episode_number,
+        seasonNumber: n.season_number,
+      }
+    }
 
     // Similar / Recommended TV Series
     const rawTvSimilar = [
@@ -874,6 +952,9 @@ export class TMDBService {
       crew,
       trailers,
       networks,
+      ageRating,
+      status,
+      nextEpisodeToAir,
       similar: similarTv,
       externalIds: {
         tmdb: data.id,
@@ -926,6 +1007,34 @@ export class TMDBService {
       episodeNumber: data.episode_number,
       stillPath: formatImageUrl(data.still_path, "original"),
       voteAverage: data.vote_average,
+    }
+  }
+
+  async getSeasonDetails(tvId: number, seasonNumber: number): Promise<TvSeasonDto> {
+    const data = await tmdbFetch<any>(`/tv/${tvId}/season/${seasonNumber}`, {
+      language: "ru-RU",
+    })
+
+    const episodes: TvSeasonEpisodeDto[] = (data.episodes || []).map((ep: any) => ({
+      id: ep.id,
+      name: ep.name || `Серия ${ep.episode_number}`,
+      overview: ep.overview || "",
+      airDate: ep.air_date || "",
+      episodeNumber: ep.episode_number,
+      seasonNumber: ep.season_number ?? seasonNumber,
+      stillPath: formatImageUrl(ep.still_path, "w500") || null,
+      voteAverage: ep.vote_average ? Math.round(ep.vote_average * 10) / 10 : 0,
+      duration: ep.runtime || undefined,
+    }))
+
+    return {
+      id: data.id,
+      name: data.name || `${seasonNumber} сезон`,
+      overview: data.overview || "",
+      seasonNumber: data.season_number ?? seasonNumber,
+      poster: formatImageUrl(data.poster_path, "w500") || null,
+      airDate: data.air_date || null,
+      episodes,
     }
   }
 

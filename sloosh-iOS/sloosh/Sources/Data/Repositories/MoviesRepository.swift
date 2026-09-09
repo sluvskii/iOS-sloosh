@@ -11,6 +11,7 @@ class MoviesRepository: ObservableObject {
     private var topTvCache: [Int: [MediaDto]] = [:]
     private var cartoonsCache: [Int: [MediaDto]] = [:]
     private var episodeCache: [String: TvEpisodeDetailsDto] = [:]
+    private var seasonCache: [String: TvSeasonDto] = [:]
     private var memoryWarningToken: Any?
 
     // MARK: - Details cache (memory + disk, 24h TTL)
@@ -39,6 +40,7 @@ class MoviesRepository: ObservableObject {
         topTvCache.removeAll()
         cartoonsCache.removeAll()
         episodeCache.removeAll()
+        seasonCache.removeAll()
         detailsMemory.removeAll()
         personMemory.removeAll()
         Task {
@@ -140,7 +142,17 @@ class MoviesRepository: ObservableObject {
         return response.data
     }
 
-    // MARK: - Episodes
+    // MARK: - Seasons & Episodes
+
+    func getSeason(id: String, season: Int) async throws -> TvSeasonDto? {
+        let cacheKey = "\(id)-\(season)"
+        if let cached = seasonCache[cacheKey] { return cached }
+        let response = try await MoviesApi.shared.getSeason(id: id, season: season)
+        if let data = response.data {
+            seasonCache[cacheKey] = data
+        }
+        return response.data
+    }
 
     func getEpisodeDetails(id: String, season: Int, episode: Int) async throws -> TvEpisodeDetailsDto? {
         let cacheKey = "\(id)-\(season)-\(episode)"

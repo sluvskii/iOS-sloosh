@@ -109,6 +109,7 @@ struct MediaDto: Codable, Identifiable {
     let title: String?
     let originalTitle: String?
     let year: AnyCodableValue?
+    let releaseDate: String?
     let rating: Double?
     let ratings: RatingsV2Dto?
     let poster: String?
@@ -124,7 +125,7 @@ struct MediaDto: Codable, Identifiable {
     
     enum CodingKeys: String, CodingKey {
         case originalId = "id"
-        case title, originalTitle, year, rating, ratings, poster, posterUrl, description, type, genres, externalIds, name, poster_path, backdrop, backdrop_path
+        case title, originalTitle, year, releaseDate, rating, ratings, poster, posterUrl, description, type, genres, externalIds, name, poster_path, backdrop, backdrop_path
     }
 
     init(
@@ -132,6 +133,7 @@ struct MediaDto: Codable, Identifiable {
         title: String? = nil,
         originalTitle: String? = nil,
         year: AnyCodableValue? = nil,
+        releaseDate: String? = nil,
         rating: Double? = nil,
         ratings: RatingsV2Dto? = nil,
         poster: String? = nil,
@@ -149,6 +151,7 @@ struct MediaDto: Codable, Identifiable {
         self.title = title
         self.originalTitle = originalTitle
         self.year = year
+        self.releaseDate = releaseDate
         self.rating = rating
         self.ratings = ratings
         self.poster = poster
@@ -206,6 +209,23 @@ struct MediaDto: Codable, Identifiable {
             return normalizeImageUrl(path: path, id: originalId?.stringValue) ?? (path.hasPrefix("http") ? path : "https://api-sloosh.vercel.app/api/v1/images/tmdb/original\(path)")
         }
         return displayPosterUrl
+    }
+
+    var isUnreleased: Bool {
+        if let releaseDate = releaseDate, !releaseDate.isEmpty {
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withFullDate]
+            if let date = formatter.date(from: releaseDate) {
+                return date > Date()
+            }
+        }
+        if let yearInt = year?.intValue {
+            let currentYear = Calendar.current.component(.year, from: Date())
+            if yearInt > currentYear {
+                return true
+            }
+        }
+        return false
     }
 }
 
@@ -323,11 +343,17 @@ struct MediaDetailsDto: Codable {
     let networks: [NetworkDto]?
     let collection: MovieCollectionDto?
     let similar: [MediaDto]?
+    let budget: Int?
+    let revenue: Int?
+    let ageRating: String?
+    let status: String?
+    let nextEpisodeToAir: TvNextEpisodeDto?
     
     enum CodingKeys: String, CodingKey {
         case id, title, originalTitle, description, type, year, releaseDate
         case genres, countries, duration, poster, backdrop, logo, cast, directors, writers, crew, trailers
         case ratings, ids, externalIds, productionCompanies, networks, collection, similar
+        case budget, revenue, ageRating, status, nextEpisodeToAir
     }
 
     init(
@@ -355,7 +381,12 @@ struct MediaDetailsDto: Codable {
         productionCompanies: [ProductionCompanyDto]? = nil,
         networks: [NetworkDto]? = nil,
         collection: MovieCollectionDto? = nil,
-        similar: [MediaDto]? = nil
+        similar: [MediaDto]? = nil,
+        budget: Int? = nil,
+        revenue: Int? = nil,
+        ageRating: String? = nil,
+        status: String? = nil,
+        nextEpisodeToAir: TvNextEpisodeDto? = nil
     ) {
         self.id = id
         self.title = title
@@ -382,6 +413,11 @@ struct MediaDetailsDto: Codable {
         self.networks = networks
         self.collection = collection
         self.similar = similar
+        self.budget = budget
+        self.revenue = revenue
+        self.ageRating = ageRating
+        self.status = status
+        self.nextEpisodeToAir = nextEpisodeToAir
     }
 
     init(from decoder: Decoder) throws {
@@ -451,8 +487,87 @@ struct MediaDetailsDto: Codable {
         self.networks = try? container.decodeIfPresent([NetworkDto].self, forKey: .networks)
         self.collection = try? container.decodeIfPresent(MovieCollectionDto.self, forKey: .collection)
         self.similar = try? container.decodeIfPresent([MediaDto].self, forKey: .similar)
+        
+        if let b = try? container.decodeIfPresent(Int.self, forKey: .budget) {
+            self.budget = b
+        } else if let bDbl = try? container.decodeIfPresent(Double.self, forKey: .budget) {
+            self.budget = Int(bDbl)
+        } else {
+            self.budget = nil
+        }
+        
+        if let r = try? container.decodeIfPresent(Int.self, forKey: .revenue) {
+            self.revenue = r
+        } else if let rDbl = try? container.decodeIfPresent(Double.self, forKey: .revenue) {
+            self.revenue = Int(rDbl)
+        } else {
+            self.revenue = nil
+        }
+
+        self.ageRating = try? container.decodeIfPresent(String.self, forKey: .ageRating)
+        self.status = try? container.decodeIfPresent(String.self, forKey: .status)
+        self.nextEpisodeToAir = try? container.decodeIfPresent(TvNextEpisodeDto.self, forKey: .nextEpisodeToAir)
     }
     
+    var isUnreleased: Bool {
+        if let status = status?.lowercased() {
+            if ["planned", "in production", "post production", "rumored", "upcoming"].contains(status) {
+                return true
+            }
+        }
+        if let releaseDate = releaseDate, !releaseDate.isEmpty {
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withFullDate]
+            if let date = formatter.date(from: releaseDate) {
+                return date > Date()
+            }
+        }
+        if let year = year {
+            let currentYear = Calendar.current.component(.year, from: Date())
+            if year > currentYear {
+                return true
+            }
+        }
+        return false
+    }
+
+    var formattedReleaseDate: String? {
+        guard let releaseDate = releaseDate, !releaseDate.isEmpty else { return nil }
+        let inputFormatter = DateFormatter()
+        inputFormatter.locale = Locale(identifier: "en_US_POSIX")
+        inputFormatter.dateFormat = "yyyy-MM-dd"
+        guard let date = inputFormatter.date(from: releaseDate) else { return releaseDate }
+        
+        let outputFormatter = DateFormatter()
+        outputFormatter.locale = Locale(identifier: "ru_RU")
+        outputFormatter.dateFormat = "d MMMM yyyy"
+        return outputFormatter.string(from: date)
+    }
+
+    static func formatMoney(_ amount: Int?) -> String? {
+        guard let amount = amount, amount > 0 else { return nil }
+        if amount >= 1_000_000_000 {
+            let val = Double(amount) / 1_000_000_000.0
+            return String(format: "$%.1f млрд", val).replacingOccurrences(of: ".0", with: "")
+        } else if amount >= 1_000_000 {
+            let val = Double(amount) / 1_000_000.0
+            return String(format: "$%.1f млн", val).replacingOccurrences(of: ".0", with: "")
+        } else if amount >= 1_000 {
+            let val = Double(amount) / 1_000.0
+            return String(format: "$%.0f тыс.", val)
+        } else {
+            return "$\(amount)"
+        }
+    }
+
+    var formattedBudget: String? {
+        Self.formatMoney(budget)
+    }
+
+    var formattedRevenue: String? {
+        Self.formatMoney(revenue)
+    }
+
     var displayPosterUrl: String? {
         normalizeImageUrl(path: poster, id: id)
     }
@@ -690,6 +805,37 @@ struct TvEpisodeDetailsDto: Codable {
     let stillPath: String?
     let language: String?
     let ratings: EpisodeRatingsDto?
+}
+
+struct TvNextEpisodeDto: Codable {
+    let id: Int?
+    let name: String?
+    let overview: String?
+    let airDate: String?
+    let episodeNumber: Int?
+    let seasonNumber: Int?
+}
+
+struct TvSeasonEpisodeDto: Codable, Identifiable {
+    let id: Int?
+    let name: String?
+    let overview: String?
+    let airDate: String?
+    let episodeNumber: Int?
+    let seasonNumber: Int?
+    let stillPath: String?
+    let voteAverage: Double?
+    let duration: Int?
+}
+
+struct TvSeasonDto: Codable {
+    let id: Int?
+    let name: String?
+    let overview: String?
+    let seasonNumber: Int?
+    let poster: String?
+    let airDate: String?
+    let episodes: [TvSeasonEpisodeDto]?
 }
 
 struct EpisodeRatingsDto: Codable {

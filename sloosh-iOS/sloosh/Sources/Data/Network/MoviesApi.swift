@@ -148,6 +148,10 @@ class MoviesApi {
         return try await performRequest(endpoint: endpoint, queryItems: queryItems)
     }
     
+    func getSeason(id: String, season: Int) async throws -> ApiEnvelope<TvSeasonDto> {
+        return try await performRequest(endpoint: "api/v1/tv/\(id)/season/\(season)")
+    }
+    
     func getEpisodeDetails(id: String, season: Int, episode: Int) async throws -> ApiEnvelope<TvEpisodeDetailsDto> {
         return try await performRequest(endpoint: "api/v1/tv/\(id)/season/\(season)/episode/\(episode)")
     }
