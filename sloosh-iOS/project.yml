@@ -35,6 +35,8 @@ targets:
         NSAppTransportSecurity:
           NSAllowsArbitraryLoads: true
         NSPhotoLibraryAddUsageDescription: "Sloosh сохранит постер или логотип фильма в вашу Медиатеку."
+        UIBackgroundModes:
+          - audio
         CFBundleURLTypes:
           - CFBundleTypeRole: Editor
             CFBundleURLName: com.sloosh.ios
