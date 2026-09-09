@@ -228,7 +228,9 @@ private final class ContinueViewModel: ObservableObject {
 
         let records = filteredRecords()
         let (initialItems, missingMetadataKeys) = makeItems(from: records)
-        items = initialItems
+        if !initialItems.isEmpty || items.isEmpty {
+            items = initialItems
+        }
 
         let keysToRefresh: Set<String>
         if forceMetadataRefresh {
@@ -242,14 +244,17 @@ private final class ContinueViewModel: ObservableObject {
 
         await backfillMetadata(for: keysToRefresh)
 
-        let (refreshedItems, _) = makeItems(from: records)
-        items = refreshedItems
+        let freshRecords = filteredRecords()
+        let (refreshedItems, _) = makeItems(from: freshRecords)
+        if !refreshedItems.isEmpty || freshRecords.isEmpty {
+            items = refreshedItems
+        }
     }
 
     private func filteredRecords() -> [PlaybackProgressRecord] {
         store.listProgressRecords()
             .filter { $0.updatedAtMs > 0 }
-            .filter { $0.positionSec >= 15 || $0.watched }
+            .filter { $0.positionSec >= 5 || $0.watched }
             .sorted { $0.updatedAtMs > $1.updatedAtMs }
     }
 
@@ -269,13 +274,13 @@ private final class ContinueViewModel: ObservableObject {
             } else if latestRecord.watched && latestRecord.isEpisode {
                 // Досмотрен и следующего эпизода в истории нет — создаём виртуальную запись для следующего
                 displayRecord = virtualNextEpisodeRecord(after: latestRecord) ?? latestRecord
-            } else if !latestRecord.watched && latestRecord.positionSec >= 15 {
+            } else if !latestRecord.watched && latestRecord.positionSec >= 5 {
                 displayRecord = latestRecord
             } else if latestRecord.watched {
                 // Фильм досмотрен (>= 95%) — скрываем из «Продолжить»
                 return nil
             } else {
-                // Меньше 15 секунд — не показываем
+                // Меньше 5 секунд — не показываем
                 return nil
             }
 
@@ -511,7 +516,7 @@ private final class ContinueViewModel: ObservableObject {
     }
 
     func markAsWatched(_ item: ContinueWatchingItem) {
-        store.save(mediaId: item.record.mediaId, positionSec: item.record.durationSec, durationSec: item.record.durationSec)
+        store.markAsWatched(mediaId: item.record.mediaId)
         Task { await reload() }
     }
 
