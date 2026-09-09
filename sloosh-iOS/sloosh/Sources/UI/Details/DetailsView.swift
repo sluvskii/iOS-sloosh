@@ -418,7 +418,10 @@ struct DetailsView: View {
                             initialQuality: playerQuality,
                             seriesResult: playerSeriesResult,
                             mediaKey: playerMediaKey,
-                            tmdbId: playerTmdbId
+                            tmdbId: playerTmdbId,
+                            posterUrl: details.displayPosterUrl,
+                            backdropUrl: details.displayBackdropUrl ?? details.displayPosterUrl,
+                            logoUrl: details.displayLogoUrl
                         )
                     } else if let streamUrl = playerStreamUrl {
                         PlayerView(
@@ -434,7 +437,10 @@ struct DetailsView: View {
                             initialQuality: playerQuality,
                             seriesResult: playerSeriesResult,
                             mediaKey: playerMediaKey,
-                            tmdbId: playerTmdbId
+                            tmdbId: playerTmdbId,
+                            posterUrl: details.displayPosterUrl,
+                            backdropUrl: details.displayBackdropUrl ?? details.displayPosterUrl,
+                            logoUrl: details.displayLogoUrl
                         )
                     } else {
                         ZStack {

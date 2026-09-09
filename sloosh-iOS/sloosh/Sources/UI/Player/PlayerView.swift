@@ -90,6 +90,9 @@ struct PlayerView: View {
     let seriesResult: AllohaApiResult?
     let mediaKey: String?
     let tmdbId: Int?
+    let posterUrl: String?
+    let backdropUrl: String?
+    let logoUrl: String?
 
     @StateObject private var viewModel = PlayerViewModel()
     @Environment(\.dismiss) private var dismissEnv
@@ -107,7 +110,10 @@ struct PlayerView: View {
         initialQuality: VideoQualityPreference? = nil,
         seriesResult: AllohaApiResult? = nil,
         mediaKey: String? = nil,
-        tmdbId: Int? = nil
+        tmdbId: Int? = nil,
+        posterUrl: String? = nil,
+        backdropUrl: String? = nil,
+        logoUrl: String? = nil
     ) {
         self.iframeUrl = iframeUrl
         self.fallbackTitle = fallbackTitle
@@ -122,6 +128,9 @@ struct PlayerView: View {
         self.seriesResult = seriesResult
         self.mediaKey = mediaKey
         self.tmdbId = tmdbId
+        self.posterUrl = posterUrl
+        self.backdropUrl = backdropUrl
+        self.logoUrl = logoUrl
     }
 
     init(config: PlayerConfig) {
@@ -138,7 +147,10 @@ struct PlayerView: View {
             initialQuality: config.quality,
             seriesResult: config.seriesResult,
             mediaKey: config.mediaKey,
-            tmdbId: config.tmdbId
+            tmdbId: config.tmdbId,
+            posterUrl: config.posterUrl,
+            backdropUrl: config.backdropUrl,
+            logoUrl: config.logoUrl
         )
     }
 
@@ -158,6 +170,9 @@ struct PlayerView: View {
             viewModel.seriesResult = seriesResult
             viewModel.mediaKey = mediaKey
             viewModel.tmdbId = tmdbId
+            viewModel.posterUrl = posterUrl
+            viewModel.backdropUrl = backdropUrl
+            viewModel.logoUrl = logoUrl
 
             if iframeUrl != nil || directStreamUrl != nil {
                 viewModel.load(
@@ -170,7 +185,10 @@ struct PlayerView: View {
                     voices: voices,
                     subtitles: subtitles,
                     mediaKey: mediaKey,
-                    tmdbId: tmdbId
+                    tmdbId: tmdbId,
+                    posterUrl: posterUrl,
+                    backdropUrl: backdropUrl,
+                    logoUrl: logoUrl
                 )
             } else {
                 viewModel.error = "Нет URL для воспроизведения"
@@ -326,6 +344,9 @@ class PlayerViewModel: ObservableObject {
 
     // MARK: - Meta
     var fallbackTitle: String = ""
+    var posterUrl: String?
+    var backdropUrl: String?
+    var logoUrl: String?
 
     private var resolver: AllohaRuntimeResolver?
     private var resolveTask: Task<Void, Never>?
@@ -391,6 +412,9 @@ class PlayerViewModel: ObservableObject {
     private var hasRetriedPlayback = false
 
     var displayLogoUrl: URL? {
+        if let logo = logoUrl, let url = URL(string: logo) {
+            return url
+        }
         if let kpId = currentKpId, kpId > 0 {
             return URL(string: "https://api-sloosh.vercel.app/api/v1/images/logos/\(kpId)/original")
         }
@@ -420,10 +444,16 @@ class PlayerViewModel: ObservableObject {
         voices: [String] = [],
         subtitles: [PlaybackSubtitle] = [],
         mediaKey: String? = nil,
-        tmdbId: Int? = nil
+        tmdbId: Int? = nil,
+        posterUrl: String? = nil,
+        backdropUrl: String? = nil,
+        logoUrl: String? = nil
     ) {
         if hasStartedLoading { return } // Защита от двойного вызова
         hasStartedLoading = true
+        if let posterUrl, !posterUrl.isEmpty { self.posterUrl = posterUrl }
+        if let backdropUrl, !backdropUrl.isEmpty { self.backdropUrl = backdropUrl }
+        if let logoUrl, !logoUrl.isEmpty { self.logoUrl = logoUrl }
         logDebug("load called with iframeUrl=\(iframeUrl ?? "nil"), selectedVoiceover=\(selectedVoiceover ?? "nil"), directStreamUrl=\(directStreamUrl ?? "nil"), mediaKey=\(mediaKey ?? "nil")")
         beginLoad(
             iframeUrl: iframeUrl,
@@ -504,15 +534,27 @@ class PlayerViewModel: ObservableObject {
             self.tmdbId = tmdbId
         }
         if let root = self.rootMediaKey, !self.fallbackTitle.isEmpty {
+            let existing = PlaybackProgressStore.shared.loadMetadata(mediaKey: root)
+                ?? (kpId.flatMap { $0 > 0 ? PlaybackProgressStore.shared.loadMetadata(kpId: $0) : nil })
+            let finalPoster = self.posterUrl ?? existing?.posterUrl
+            let finalBackdrop = self.backdropUrl ?? existing?.backdropUrl ?? finalPoster
+            let finalLogo = self.logoUrl ?? existing?.logoUrl ?? self.displayLogoUrl?.absoluteString
+            let finalTitle = (existing?.title.isEmpty == false && existing?.title != "Без названия") ? (existing?.title ?? self.fallbackTitle) : self.fallbackTitle
+            let finalType = (season != nil && episode != nil) ? "tv" : (existing?.type ?? "movie")
+
+            if self.posterUrl == nil { self.posterUrl = finalPoster }
+            if self.backdropUrl == nil { self.backdropUrl = finalBackdrop }
+            if self.logoUrl == nil { self.logoUrl = finalLogo }
+
             PlaybackProgressStore.shared.saveMetadata(
-                kpId: kpId ?? 0,
-                tmdbId: tmdbId,
+                kpId: kpId ?? existing?.kpId ?? 0,
+                tmdbId: tmdbId ?? existing?.tmdbId,
                 detailsId: root,
-                title: self.fallbackTitle,
-                type: (season != nil && episode != nil) ? "tv" : "movie",
-                posterUrl: nil,
-                backdropUrl: nil,
-                logoUrl: self.displayLogoUrl?.absoluteString,
+                title: finalTitle,
+                type: finalType,
+                posterUrl: finalPoster,
+                backdropUrl: finalBackdrop,
+                logoUrl: finalLogo,
                 mediaKey: root
             )
         }

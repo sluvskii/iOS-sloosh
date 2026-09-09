@@ -83,7 +83,10 @@ struct ContinueView: View {
                         initialQuality: playback.initialQuality,
                         seriesResult: playback.seriesResult,
                         mediaKey: playback.mediaKey,
-                        tmdbId: playback.tmdbId
+                        tmdbId: playback.tmdbId,
+                        posterUrl: playback.posterUrl,
+                        backdropUrl: playback.backdropUrl,
+                        logoUrl: playback.logoUrl
                     )
                 } else {
                     ZStack {
@@ -285,7 +288,7 @@ private final class ContinueViewModel: ObservableObject {
             }
 
             let metadata = store.loadMetadata(mediaKey: latestRecord.rootMediaKey) ?? (latestRecord.kpId > 0 ? store.loadMetadata(kpId: latestRecord.kpId) : nil)
-            if metadata == nil {
+            if metadata == nil || (metadata?.posterUrl == nil && metadata?.backdropUrl == nil) {
                 missingMetadataKeys.insert(latestRecord.rootMediaKey)
             }
             return ContinueWatchingItem(
@@ -480,7 +483,10 @@ private final class ContinueViewModel: ObservableObject {
                 initialQuality: preferredQuality,
                 seriesResult: result,
                 mediaKey: item.rootMediaKey,
-                tmdbId: item.tmdbId
+                tmdbId: item.tmdbId,
+                posterUrl: item.posterUrl,
+                backdropUrl: item.backdropUrl,
+                logoUrl: item.logoUrl
             )
         }
 
@@ -511,7 +517,10 @@ private final class ContinueViewModel: ObservableObject {
             initialQuality: preferredQuality,
             seriesResult: result,
             mediaKey: item.rootMediaKey,
-            tmdbId: item.tmdbId
+            tmdbId: item.tmdbId,
+            posterUrl: item.posterUrl,
+            backdropUrl: item.backdropUrl,
+            logoUrl: item.logoUrl
         )
     }
 
@@ -565,6 +574,9 @@ private struct ContinuePlaybackRoute: Identifiable {
     let seriesResult: AllohaApiResult?
     let mediaKey: String
     let tmdbId: Int?
+    let posterUrl: String?
+    let backdropUrl: String?
+    let logoUrl: String?
 }
 
 private struct ContinuePresentation: Identifiable {
