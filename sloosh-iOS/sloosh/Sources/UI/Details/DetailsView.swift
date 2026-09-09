@@ -557,12 +557,38 @@ struct DetailsView: View {
         }
     }
 
+    @ViewBuilder
     private func playAndDownloadRow(for details: MediaDetailsDto) -> some View {
-        HStack(spacing: 8) {
-            playButton(for: details)
-                .tooltip(text: "Нажмите для выбора перевода", isVisible: $showTooltip, isTailTop: false)
-            downloadButton(for: details)
+        if details.isUnreleased {
+            unreleasedButton(for: details)
+        } else {
+            HStack(spacing: 8) {
+                playButton(for: details)
+                    .tooltip(text: "Нажмите для выбора перевода", isVisible: $showTooltip, isTailTop: false)
+                downloadButton(for: details)
+            }
         }
+    }
+
+    private func unreleasedButton(for details: MediaDetailsDto) -> some View {
+        let labelText: String = {
+            if let dateStr = details.formattedReleaseDate {
+                return "Премьера: \(dateStr)"
+            }
+            return "Скоро в кино"
+        }()
+        
+        return HStack(spacing: 8) {
+            Image(systemName: "calendar.badge.clock")
+                .font(.system(size: 17, weight: .semibold))
+            Text(labelText)
+                .font(.system(size: 16, weight: .bold))
+        }
+        .foregroundStyle(Color.primary.opacity(0.85))
+        .padding(.horizontal, 22)
+        .frame(height: 50)
+        .glassEffect(.regular, in: .capsule)
+        .shadow(color: Color.black.opacity(0.12), radius: 8, x: 0, y: 3)
     }
 
 
@@ -1340,6 +1366,15 @@ private struct DetailsPrimaryMetadataRow: View {
                     .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
             }
 
+            if let ageRating = details.ageRating, !ageRating.isEmpty {
+                Text(ageRating)
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(.secondary)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 2)
+                    .glassEffect(.regular, in: RoundedRectangle(cornerRadius: 5, style: .continuous))
+            }
+
             if let year = details.year, year > 0 {
                 Text(String(year))
             }
@@ -1455,6 +1490,39 @@ private struct DetailsInfoSection: View {
                         }
                         .buttonStyle(.plain)
                     }
+                }
+            }
+
+            let budget = details.formattedBudget
+            let revenue = details.formattedRevenue
+            if budget != nil || revenue != nil {
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(budget != nil && revenue != nil ? "Бюджет и сборы" : (budget != nil ? "Бюджет" : "Сборы"))
+                        .font(.system(size: 18, weight: .bold))
+
+                    HStack(spacing: 8) {
+                        if let b = budget {
+                            HStack(spacing: 4) {
+                                Text("Бюджет:")
+                                    .foregroundColor(.secondary)
+                                Text(b)
+                                    .fontWeight(.semibold)
+                            }
+                        }
+                        if budget != nil && revenue != nil {
+                            Text("•")
+                                .foregroundColor(.secondary.opacity(0.6))
+                        }
+                        if let r = revenue {
+                            HStack(spacing: 4) {
+                                Text("Сборы:")
+                                    .foregroundColor(.secondary)
+                                Text(r)
+                                    .fontWeight(.semibold)
+                            }
+                        }
+                    }
+                    .font(.system(size: 14))
                 }
             }
 
@@ -1575,7 +1643,24 @@ struct EpisodeDetailsSheetItem: Identifiable {
     let season: Int
     let episode: Int
     let meta: TvEpisodeDetailsDto?
+    let seasonEpisode: TvSeasonEpisodeDto?
     let fallbackTitle: String
+
+    init(
+        movieId: String,
+        season: Int,
+        episode: Int,
+        meta: TvEpisodeDetailsDto? = nil,
+        seasonEpisode: TvSeasonEpisodeDto? = nil,
+        fallbackTitle: String = "Серия"
+    ) {
+        self.movieId = movieId
+        self.season = season
+        self.episode = episode
+        self.meta = meta
+        self.seasonEpisode = seasonEpisode
+        self.fallbackTitle = fallbackTitle
+    }
 }
 
 struct EpisodeDetailsSheet: View {
@@ -1593,7 +1678,16 @@ struct EpisodeDetailsSheet: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
                     // Still Image (Edge-to-edge)
-                    let previewUrl = URL(string: "https://api-sloosh.vercel.app/api/v1/images/screens/\(item.movieId)/\(item.season)/\(item.episode)/large")
+                    let previewUrl: URL? = {
+                        if let still = item.seasonEpisode?.stillPath ?? item.meta?.stillPath, !still.isEmpty {
+                            if still.hasPrefix("http") {
+                                return URL(string: still)
+                            } else {
+                                return URL(string: "https://api-sloosh.vercel.app/api/v1/images/tmdb/w500\(still)")
+                            }
+                        }
+                        return nil
+                    }()
                     
                     AsyncCachedImage(url: previewUrl) {
                         Rectangle()
@@ -1620,14 +1714,19 @@ struct EpisodeDetailsSheet: View {
                     // Content
                     VStack(alignment: .leading, spacing: 14) {
                         // Title
-                        let title = item.meta?.name ?? item.fallbackTitle
+                        let title = item.seasonEpisode?.name ?? item.meta?.name ?? item.fallbackTitle
                         Text(title)
                             .font(.system(size: 22, weight: .bold))
                             .foregroundColor(.primary)
                         
                         // Metadata: Rating & Date
                         HStack(spacing: 12) {
-                            if let rating = item.meta?.ratings?.tmdb ?? item.meta?.ratings?.imdb, rating > 0 {
+                            let ratingVal: Double? = {
+                                if let v = item.seasonEpisode?.voteAverage, v > 0 { return v }
+                                if let v = item.meta?.ratings?.tmdb ?? item.meta?.ratings?.imdb, v > 0 { return v }
+                                return nil
+                            }()
+                            if let rating = ratingVal {
                                 Text(String(format: "%.1f", rating))
                                     .font(.system(size: 12, weight: .heavy))
                                     .foregroundColor(.white)
@@ -1637,8 +1736,15 @@ struct EpisodeDetailsSheet: View {
                                     .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                             }
                             
-                            if let airDate = item.meta?.airDate, !airDate.isEmpty {
+                            let airDate = item.seasonEpisode?.airDate ?? item.meta?.airDate
+                            if let airDate = airDate, !airDate.isEmpty {
                                 Text(formatAirDate(airDate))
+                                    .font(.system(size: 14, weight: .medium))
+                                    .foregroundColor(.secondary)
+                            }
+
+                            if let duration = item.seasonEpisode?.duration, duration > 0 {
+                                Text("\(duration) мин")
                                     .font(.system(size: 14, weight: .medium))
                                     .foregroundColor(.secondary)
                             }
@@ -1646,7 +1752,8 @@ struct EpisodeDetailsSheet: View {
                         .padding(.bottom, 2)
                         
                         // Description / Overview
-                        if let overview = item.meta?.overview, !overview.isEmpty {
+                        let overview = item.seasonEpisode?.overview ?? item.meta?.overview
+                        if let overview = overview, !overview.isEmpty {
                             VStack(alignment: .leading, spacing: 8) {
                                 Text("Описание серии")
                                     .font(.system(size: 16, weight: .bold))
@@ -1789,9 +1896,10 @@ struct EpisodeCellView: View {
     let season: Int
     let episode: Int
     let fallbackTitle: String
+    var seasonEpisode: TvSeasonEpisodeDto? = nil
     let onPlayTap: () -> Void
     let onUpdate: () -> Void
-    let onInfoTap: (TvEpisodeDetailsDto?) -> Void
+    let onInfoTap: (TvEpisodeDetailsDto?, TvSeasonEpisodeDto?) -> Void
     
     @State private var meta: TvEpisodeDetailsDto?
     @State private var isLoading = false
@@ -1803,7 +1911,14 @@ struct EpisodeCellView: View {
     @ObservedObject private var downloadManager = DownloadManager.shared
     
     var previewUrl: URL? {
-        URL(string: "https://api-sloosh.vercel.app/api/v1/images/screens/\(movieId)/\(season)/\(episode)/large")
+        if let still = seasonEpisode?.stillPath ?? meta?.stillPath, !still.isEmpty {
+            if still.hasPrefix("http") {
+                return URL(string: still)
+            } else {
+                return URL(string: "https://api-sloosh.vercel.app/api/v1/images/tmdb/w500\(still)")
+            }
+        }
+        return nil
     }
     
     private var progressKey: String {
@@ -1895,7 +2010,12 @@ struct EpisodeCellView: View {
                 }
                 
                 // Rating overlay on top-left of the card (Unified with design system)
-                if let rating = meta?.ratings?.tmdb ?? meta?.ratings?.imdb, rating > 0 {
+                let ratingVal: Double? = {
+                    if let v = seasonEpisode?.voteAverage, v > 0 { return v }
+                    if let v = meta?.ratings?.tmdb ?? meta?.ratings?.imdb, v > 0 { return v }
+                    return nil
+                }()
+                if let rating = ratingVal {
                     VStack {
                         HStack {
                             Text(String(format: "%.1f", rating))
@@ -1977,7 +2097,7 @@ struct EpisodeCellView: View {
                 }
                 
                 Button {
-                    onInfoTap(meta)
+                    onInfoTap(meta, seasonEpisode)
                 } label: {
                     Label("О серии", systemImage: "info.circle")
                 }
@@ -2003,7 +2123,7 @@ struct EpisodeCellView: View {
                 }
             }
             
-            let title = meta?.name ?? fallbackTitle
+            let title = seasonEpisode?.name ?? meta?.name ?? fallbackTitle
             let displayTitle = title.hasPrefix("\(episode).") ? title : "\(episode). \(title)"
             
             HStack(alignment: .top, spacing: 4) {
@@ -2013,7 +2133,8 @@ struct EpisodeCellView: View {
                         .foregroundColor(.primary)
                         .lineLimit(1)
                     
-                    if let airDate = meta?.airDate, !airDate.isEmpty {
+                    let airDate = seasonEpisode?.airDate ?? meta?.airDate
+                    if let airDate = airDate, !airDate.isEmpty {
                         Text(formatEpisodeAirDate(airDate))
                             .font(.system(size: 11, weight: .medium))
                             .foregroundColor(.secondary)
@@ -2025,7 +2146,7 @@ struct EpisodeCellView: View {
                     let generator = UIImpactFeedbackGenerator(style: .light)
                     generator.prepare()
                     generator.impactOccurred()
-                    onInfoTap(meta)
+                    onInfoTap(meta, seasonEpisode)
                 } label: {
                     Image(systemName: "info.circle")
                         .font(.system(size: 15))
@@ -2039,6 +2160,7 @@ struct EpisodeCellView: View {
         .animation(.easeInOut(duration: 0.25), value: isLoading)
         .task(id: "\(season)-\(episode)") {
             updateProgressState()
+            if seasonEpisode != nil { return }
             if isLoading { return }
             isLoading = true
             meta = nil
@@ -2081,6 +2203,7 @@ struct InlineEpisodesSection: View {
     @State private var selectedEpisodeForSheet: EpisodeDetailsSheetItem? = nil
     @State private var fullyWatchedSeasons: Set<Int> = []
     @State private var redrawTrigger: Bool = false
+    @State private var currentSeasonData: TvSeasonDto? = nil
 
     var allSeasons: [Int] {
         viewModel.inlineSourceWrapper?.allohaResult?.seasons.map { $0.season }.sorted() ?? []
@@ -2099,6 +2222,16 @@ struct InlineEpisodesSection: View {
 
     private func episodesCount(for seasonNum: Int) -> Int {
         viewModel.inlineSourceWrapper?.allohaResult?.seasons.first(where: { $0.season == seasonNum })?.episodes.count ?? 0
+    }
+
+    private func loadCurrentSeason() {
+        Task {
+            do {
+                currentSeasonData = try await MoviesRepository.shared.getSeason(id: rawId, season: selectedSeason)
+            } catch {
+                currentSeasonData = nil
+            }
+        }
     }
 
     private func updateWatchedSeasons() {
@@ -2141,19 +2274,27 @@ struct InlineEpisodesSection: View {
         }
         .onAppear {
             updateWatchedSeasons()
-            guard let kpId = details.ids?.kp else { return }
+            guard let kpId = details.ids?.kp else {
+                loadCurrentSeason()
+                return
+            }
             let lastSeason = PlaybackProgressStore.shared.loadLastSeason(kpId: kpId)
             if let lastSeason, allSeasons.contains(lastSeason) {
                 selectedSeason = lastSeason
             } else if let firstSeason = allSeasons.first {
                 selectedSeason = firstSeason
             }
+            loadCurrentSeason()
+        }
+        .onChange(of: selectedSeason) { _, _ in
+            loadCurrentSeason()
         }
         .onChange(of: allSeasons) { _, newSeasons in
             updateWatchedSeasons()
             if !newSeasons.contains(selectedSeason), let first = newSeasons.first {
                 selectedSeason = first
             }
+            loadCurrentSeason()
         }
         .sheet(item: $selectedEpisodeForSheet) { item in
             EpisodeDetailsSheet(
@@ -2240,6 +2381,7 @@ struct InlineEpisodesSection: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12) {
                     ForEach(episodesForSelectedSeason, id: \.self) { episode in
+                        let seasonEpisode = currentSeasonData?.episodes?.first(where: { $0.episodeNumber == episode })
                         Button(action: {
                             let generator = UIImpactFeedbackGenerator(style: .medium)
                             generator.prepare()
@@ -2251,6 +2393,7 @@ struct InlineEpisodesSection: View {
                                 season: selectedSeason,
                                 episode: episode,
                                 fallbackTitle: "Серия",
+                                seasonEpisode: seasonEpisode,
                                 onPlayTap: { () -> Void in
                                     onEpisodeTap(selectedSeason, episode)
                                 },
@@ -2258,12 +2401,13 @@ struct InlineEpisodesSection: View {
                                     updateWatchedSeasons()
                                     redrawTrigger.toggle()
                                 },
-                                onInfoTap: { (fetchedMeta: TvEpisodeDetailsDto?) -> Void in
+                                onInfoTap: { (fetchedMeta: TvEpisodeDetailsDto?, epData: TvSeasonEpisodeDto?) -> Void in
                                     selectedEpisodeForSheet = EpisodeDetailsSheetItem(
                                         movieId: rawId,
                                         season: selectedSeason,
                                         episode: episode,
                                         meta: fetchedMeta,
+                                        seasonEpisode: epData ?? seasonEpisode,
                                         fallbackTitle: "Серия"
                                     )
                                 }
