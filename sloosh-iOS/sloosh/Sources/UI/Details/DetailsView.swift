@@ -1681,6 +1681,13 @@ struct EpisodeDetailsSheet: View {
                                 return URL(string: "https://api-sloosh.vercel.app/api/v1/images/tmdb/w500\(still)")
                             }
                         }
+                        if let backdrop = viewModel.details?.previewBackdropUrl ?? viewModel.details?.displayBackdropUrl ?? viewModel.details?.backdrop, !backdrop.isEmpty {
+                            if backdrop.hasPrefix("http") {
+                                return URL(string: backdrop)
+                            } else {
+                                return URL(string: "https://api-sloosh.vercel.app/api/v1/images/tmdb/w500\(backdrop)")
+                            }
+                        }
                         return nil
                     }()
                     
@@ -1695,10 +1702,14 @@ struct EpisodeDetailsSheet: View {
                             .aspectRatio(contentMode: .fill)
                     } fallback: {
                         ZStack {
-                            Color(UIColor.secondarySystemBackground)
-                            Image(systemName: "photo")
-                                .font(.system(size: 30))
-                                .foregroundColor(.secondary)
+                            LinearGradient(
+                                colors: [Color(white: 0.16), Color(white: 0.10)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            )
+                            Image(systemName: "play.circle.fill")
+                                .font(.system(size: 36))
+                                .foregroundColor(.white.opacity(0.35))
                         }
                         .aspectRatio(16/9, contentMode: .fill)
                     }
@@ -1709,7 +1720,13 @@ struct EpisodeDetailsSheet: View {
                     // Content
                     VStack(alignment: .leading, spacing: 14) {
                         // Title
-                        let title = item.seasonEpisode?.name ?? item.meta?.name ?? item.fallbackTitle
+                        let rawTitle = item.seasonEpisode?.name ?? item.meta?.name ?? (item.episode == 0 ? "Пилотная серия" : item.fallbackTitle)
+                        let title: String = {
+                            if item.episode == 0 {
+                                return rawTitle
+                            }
+                            return rawTitle.hasPrefix("\(item.episode).") ? rawTitle : "\(item.episode). \(rawTitle)"
+                        }()
                         Text(title)
                             .font(.system(size: 22, weight: .bold))
                             .foregroundColor(.primary)
@@ -1729,9 +1746,16 @@ struct EpisodeDetailsSheet: View {
                                     .padding(.vertical, 3)
                                     .background(Color.rating(rating))
                                     .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                            } else if item.episode == 0 {
+                                Text("Пилот")
+                                    .font(.system(size: 12, weight: .bold))
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 4)
+                                    .background(Color.clear.glassEffect(in: RoundedRectangle(cornerRadius: 8, style: .continuous)))
                             }
                             
-                            let airDate = item.seasonEpisode?.airDate ?? item.meta?.airDate
+                            let airDate = item.seasonEpisode?.airDate ?? item.meta?.airDate ?? (item.episode == 0 ? (viewModel.details?.releaseDate) : nil)
                             if let airDate = airDate, !airDate.isEmpty {
                                 Text(formatAirDate(airDate))
                                     .font(.system(size: 14, weight: .medium))
@@ -1747,7 +1771,7 @@ struct EpisodeDetailsSheet: View {
                         .padding(.bottom, 2)
                         
                         // Description / Overview
-                        let overview = item.seasonEpisode?.overview ?? item.meta?.overview
+                        let overview = item.seasonEpisode?.overview ?? item.meta?.overview ?? (item.episode == 0 ? (viewModel.details?.description ?? "Пилотный выпуск сериала.") : nil)
                         if let overview = overview, !overview.isEmpty {
                             VStack(alignment: .leading, spacing: 8) {
                                 Text("Описание серии")
@@ -1913,6 +1937,13 @@ struct EpisodeCellView: View {
                 return URL(string: "https://api-sloosh.vercel.app/api/v1/images/tmdb/w500\(still)")
             }
         }
+        if let backdrop = viewModel.details?.previewBackdropUrl ?? viewModel.details?.displayBackdropUrl ?? viewModel.details?.backdrop, !backdrop.isEmpty {
+            if backdrop.hasPrefix("http") {
+                return URL(string: backdrop)
+            } else {
+                return URL(string: "https://api-sloosh.vercel.app/api/v1/images/tmdb/w500\(backdrop)")
+            }
+        }
         return nil
     }
     
@@ -1964,10 +1995,14 @@ struct EpisodeCellView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                 } fallback: {
                     ZStack {
-                        Color(UIColor.tertiarySystemFill)
-                        Image(systemName: "photo")
-                            .font(.system(size: 20))
-                            .foregroundColor(.secondary)
+                        LinearGradient(
+                            colors: [Color(white: 0.16), Color(white: 0.10)],
+                            startPoint: .topLeading,
+                            endPoint: .bottomTrailing
+                        )
+                        Image(systemName: "play.circle.fill")
+                            .font(.system(size: 24))
+                            .foregroundColor(.white.opacity(0.35))
                     }
                     .frame(width: 160, height: 90)
                     .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -2020,6 +2055,20 @@ struct EpisodeCellView: View {
                                 .padding(.vertical, 3)
                                 .background(Color.rating(rating))
                                 .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                                .padding(6)
+                            Spacer()
+                        }
+                        Spacer()
+                    }
+                } else if episode == 0 {
+                    VStack {
+                        HStack {
+                            Text("Пилот")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 3)
+                                .background(Color.clear.glassEffect(in: RoundedRectangle(cornerRadius: 6, style: .continuous)))
                                 .padding(6)
                             Spacer()
                         }
@@ -2118,8 +2167,13 @@ struct EpisodeCellView: View {
                 }
             }
             
-            let title = seasonEpisode?.name ?? meta?.name ?? fallbackTitle
-            let displayTitle = title.hasPrefix("\(episode).") ? title : "\(episode). \(title)"
+            let rawTitle = seasonEpisode?.name ?? meta?.name ?? (episode == 0 ? "Пилотная серия" : fallbackTitle)
+            let displayTitle: String = {
+                if episode == 0 {
+                    return rawTitle
+                }
+                return rawTitle.hasPrefix("\(episode).") ? rawTitle : "\(episode). \(rawTitle)"
+            }()
             
             HStack(alignment: .top, spacing: 4) {
                 VStack(alignment: .leading, spacing: 3) {
@@ -2128,7 +2182,7 @@ struct EpisodeCellView: View {
                         .foregroundColor(.primary)
                         .lineLimit(1)
                     
-                    let airDate = seasonEpisode?.airDate ?? meta?.airDate
+                    let airDate = seasonEpisode?.airDate ?? meta?.airDate ?? (episode == 0 ? (viewModel.details?.releaseDate) : nil)
                     if let airDate = airDate, !airDate.isEmpty {
                         Text(formatEpisodeAirDate(airDate))
                             .font(.system(size: 11, weight: .medium))
@@ -2387,7 +2441,25 @@ struct InlineEpisodesSection: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12) {
                     ForEach(episodesForSelectedSeason, id: \.self) { episode in
-                        let seasonEpisode = currentSeasonData?.episodes?.first(where: { $0.episodeNumber == episode })
+                        let seasonEpisode: TvSeasonEpisodeDto? = {
+                            if let found = currentSeasonData?.episodes?.first(where: { $0.episodeNumber == episode }) {
+                                return found
+                            }
+                            if episode == 0 {
+                                return TvSeasonEpisodeDto(
+                                    id: 0,
+                                    name: "Пилотная серия",
+                                    overview: viewModel.details?.description ?? "Пилотный выпуск сериала.",
+                                    airDate: currentSeasonData?.airDate ?? viewModel.details?.releaseDate ?? "",
+                                    episodeNumber: 0,
+                                    seasonNumber: selectedSeason,
+                                    stillPath: viewModel.details?.previewBackdropUrl ?? viewModel.details?.displayBackdropUrl ?? viewModel.details?.backdrop,
+                                    voteAverage: 0,
+                                    duration: currentSeasonData?.episodes?.first?.duration
+                                )
+                            }
+                            return nil
+                        }()
                         Button(action: {
                             let generator = UIImpactFeedbackGenerator(style: .medium)
                             generator.prepare()
