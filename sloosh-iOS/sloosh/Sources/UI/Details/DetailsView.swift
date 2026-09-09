@@ -167,17 +167,45 @@ struct DetailsView: View {
         }
     }
 
+    private static var dominantColorCache: [String: UIColor] = [:]
+    private static let dominantColorCacheLock = NSLock()
+
     private func fetchAverageColor(from url: URL?) async -> UIColor? {
         guard let url else { return nil }
+        let key = url.absoluteString
+
+        // 1. Проверяем кеш уже вычисленных цветов
+        let cachedColor: UIColor? = Self.dominantColorCacheLock.withLock {
+            Self.dominantColorCache[key]
+        }
+        if let cachedColor { return cachedColor }
+
+        // 2. Проверяем наличие UIImage в оперативной памяти (мгновенно, без сети!)
+        let effectiveUrl = AsyncCachedImage<EmptyView, EmptyView, EmptyView>.resolveEffectiveUrl(url)
+        if let ramImage = ImageCache.shared.image(forKey: key) ?? effectiveUrl.flatMap({ ImageCache.shared.image(forKey: $0.absoluteString) }) {
+            if let avg = ramImage.averageColor {
+                Self.dominantColorCacheLock.withLock {
+                    Self.dominantColorCache[key] = avg
+                }
+                return avg
+            }
+        }
+
+        // 3. Если изображения нет в памяти — загружаем из кеша URLSession
         return await Task.detached(priority: .userInitiated) {
             do {
-                let request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad)
+                let targetUrl = effectiveUrl ?? url
+                let request = URLRequest(url: targetUrl, cachePolicy: .returnCacheDataElseLoad)
                 let (data, response) = try await URLSession.shared.data(for: request)
                 guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200,
-                      let image = UIImage(data: data) else {
+                      let image = UIImage(data: data),
+                      let avg = image.averageColor else {
                     return nil
                 }
-                return image.averageColor
+                Self.dominantColorCacheLock.withLock {
+                    Self.dominantColorCache[key] = avg
+                }
+                return avg
             } catch {
                 return nil
             }

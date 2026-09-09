@@ -168,7 +168,34 @@ struct SearchDiscoveryView: View {
                     }
                 }
 
-                // 2. Studios and Networks
+                // 2. Popular Genres
+                VStack(alignment: .leading, spacing: 14) {
+                    Text("Жанры")
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundColor(.primary)
+                        .padding(.horizontal, 16)
+                    
+                    FlowLayout(spacing: 8) {
+                        ForEach([
+                            "Боевик", "Комедия", "Драма", "Фантастика", "Триллер",
+                            "Ужасы", "Детектив", "Мелодрама", "Приключения", "Фэнтези",
+                            "Мультфильм", "Криминал", "Семейный", "Аниме"
+                        ], id: \.self) { genre in
+                            NavigationLink(destination: GenreCatalogView(genre: genre)) {
+                                Text(genre)
+                                    .font(.system(size: 14, weight: .semibold))
+                                    .foregroundColor(.primary)
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 9)
+                                    .glassEffect(.regular.interactive(), in: Capsule())
+                            }
+                            .buttonStyle(.plain)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                }
+
+                // 3. Studios and Networks
                 VStack(alignment: .leading, spacing: 14) {
                     Text("Студии и стриминги")
                         .font(.system(size: 18, weight: .bold))

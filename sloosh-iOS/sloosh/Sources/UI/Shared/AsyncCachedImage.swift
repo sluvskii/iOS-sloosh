@@ -69,8 +69,18 @@ public struct AsyncCachedImage<Placeholder: View, Content: View, Fallback: View>
         self.fallback = fallback
         
         // Try synchronously loading from in-memory cache first to avoid flashing
-        if let url = url, let cached = ImageCache.shared.image(forKey: url.absoluteString) {
-            _image = State(initialValue: cached)
+        let effectiveUrl = Self.resolveEffectiveUrl(url)
+        var initialImage: UIImage? = nil
+        if let url = url {
+            if let cached = ImageCache.shared.image(forKey: url.absoluteString) {
+                initialImage = cached
+            } else if let effective = effectiveUrl, let cached = ImageCache.shared.image(forKey: effective.absoluteString) {
+                initialImage = cached
+            }
+        }
+        
+        if let initialImage = initialImage {
+            _image = State(initialValue: initialImage)
             _isLoading = State(initialValue: false)
             _hasError = State(initialValue: false)
         } else if url == nil {
@@ -102,7 +112,7 @@ public struct AsyncCachedImage<Placeholder: View, Content: View, Fallback: View>
         }
     }
     
-    private func resolveEffectiveUrl(_ targetUrl: URL?) -> URL? {
+    public static func resolveEffectiveUrl(_ targetUrl: URL?) -> URL? {
         guard let original = targetUrl else { return nil }
         let str = original.absoluteString
         if str.contains("image.tmdb.org/t/p/") {
@@ -113,13 +123,13 @@ public struct AsyncCachedImage<Placeholder: View, Content: View, Fallback: View>
     }
 
     private func loadImage() async {
-        guard let rawUrl = url, let url = resolveEffectiveUrl(rawUrl) else {
+        guard let rawUrl = url, let url = Self.resolveEffectiveUrl(rawUrl) else {
             await loadFallbackImage()
             return
         }
         
         // Check in-memory cache again (e.g. if loaded while task was scheduled)
-        if let cached = ImageCache.shared.image(forKey: url.absoluteString) {
+        if let cached = ImageCache.shared.image(forKey: url.absoluteString) ?? ImageCache.shared.image(forKey: rawUrl.absoluteString) {
             await MainActor.run {
                 self.image = cached
                 self.isLoading = false
@@ -138,6 +148,7 @@ public struct AsyncCachedImage<Placeholder: View, Content: View, Fallback: View>
             
             if let uiImg = uiImg {
                 ImageCache.shared.insertImage(uiImg, forKey: url.absoluteString)
+                ImageCache.shared.insertImage(uiImg, forKey: rawUrl.absoluteString)
                 await MainActor.run {
                     self.image = uiImg
                     self.isLoading = false
@@ -167,6 +178,7 @@ public struct AsyncCachedImage<Placeholder: View, Content: View, Fallback: View>
             
             if isSuccessful, let uiImg {
                 ImageCache.shared.insertImage(uiImg, forKey: url.absoluteString)
+                ImageCache.shared.insertImage(uiImg, forKey: rawUrl.absoluteString)
                 await MainActor.run {
                     self.image = uiImg
                     self.isLoading = false

@@ -10,6 +10,7 @@ class AppDiagnostics: ObservableObject {
     private let logsFileURL: URL
     private let crashFileURL: URL
     private let ioQueue = DispatchQueue(label: "ru.sloosh.appdiagnostics.io", qos: .utility)
+    private static let dateFormatter = ISO8601DateFormatter()
     
     private init() {
         let paths = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)
@@ -29,7 +30,7 @@ class AppDiagnostics: ObservableObject {
     /// Записывает сообщение в скрытый файл логов.
     func log(_ message: String, file: String = #file, function: String = #function, line: Int = #line) {
         let fileName = (file as NSString).lastPathComponent
-        let timestamp = ISO8601DateFormatter().string(from: Date())
+        let timestamp = Self.dateFormatter.string(from: Date())
         let logMessage = "[\(timestamp)] [\(fileName):\(line)] \(function) -> \(message)\n"
         
         #if DEBUG
@@ -65,7 +66,7 @@ class AppDiagnostics: ObservableObject {
     func startCrashMonitoring() {
         NSSetUncaughtExceptionHandler { exception in
             let stack = exception.callStackSymbols.joined(separator: "\n")
-            let timestamp = ISO8601DateFormatter().string(from: Date())
+            let timestamp = AppDiagnostics.dateFormatter.string(from: Date())
             let crashMessage = """
             --- CRASH REPORT ---
             Time: \(timestamp)
