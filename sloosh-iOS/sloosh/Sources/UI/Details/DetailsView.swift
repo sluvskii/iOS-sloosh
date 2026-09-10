@@ -1677,6 +1677,7 @@ struct EpisodeDetailsSheetItem: Identifiable {
     let meta: TvEpisodeDetailsDto?
     let seasonEpisode: TvSeasonEpisodeDto?
     let fallbackTitle: String
+    let isAvailable: Bool
 
     init(
         movieId: String,
@@ -1684,7 +1685,8 @@ struct EpisodeDetailsSheetItem: Identifiable {
         episode: Int,
         meta: TvEpisodeDetailsDto? = nil,
         seasonEpisode: TvSeasonEpisodeDto? = nil,
-        fallbackTitle: String = "Серия"
+        fallbackTitle: String = "Серия",
+        isAvailable: Bool = true
     ) {
         self.movieId = movieId
         self.season = season
@@ -1692,6 +1694,7 @@ struct EpisodeDetailsSheetItem: Identifiable {
         self.meta = meta
         self.seasonEpisode = seasonEpisode
         self.fallbackTitle = fallbackTitle
+        self.isAvailable = isAvailable
     }
 }
 
@@ -1744,7 +1747,7 @@ struct EpisodeDetailsSheet: View {
                                 startPoint: .topLeading,
                                 endPoint: .bottomTrailing
                             )
-                            Image(systemName: "play.circle.fill")
+                            Image(systemName: item.isAvailable ? "play.circle.fill" : "calendar.badge.clock")
                                 .font(.system(size: 36))
                                 .foregroundColor(.white.opacity(0.35))
                         }
@@ -1826,27 +1829,57 @@ struct EpisodeDetailsSheet: View {
                                 .italic()
                         }
                         
-                        // Buttons at the bottom of scroll content (flying)
-                        HStack(spacing: 12) {
-                            Button(action: {
-                                dismiss()
-                                onPlay()
-                            }) {
-                                HStack {
-                                    Image(systemName: "play.fill")
-                                    Text("Смотреть серию")
+                        // Bottom action: Play button or Release status
+                        if item.isAvailable {
+                            HStack(spacing: 12) {
+                                Button(action: {
+                                    dismiss()
+                                    onPlay()
+                                }) {
+                                    HStack {
+                                        Image(systemName: "play.fill")
+                                        Text("Смотреть серию")
+                                    }
+                                    .font(.system(size: 17, weight: .bold))
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 4)
                                 }
-                                .font(.system(size: 17, weight: .bold))
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 4)
+                                .buttonStyle(.borderedProminent)
+                                .controlSize(.large)
+                                .buttonBorderShape(.capsule)
+                                .tint(.primary)
+                                .foregroundStyle(Color(UIColor.systemBackground))
                             }
-                            .buttonStyle(.borderedProminent)
-                            .controlSize(.large)
-                            .buttonBorderShape(.capsule)
-                            .tint(.primary)
-                            .foregroundStyle(Color(UIColor.systemBackground))
+                            .padding(.top, 8)
+                        } else {
+                            HStack(spacing: 12) {
+                                Image(systemName: "calendar.badge.clock")
+                                    .font(.system(size: 22, weight: .semibold))
+                                    .foregroundColor(Color.slooshAccent)
+                                
+                                VStack(alignment: .leading, spacing: 3) {
+                                    Text("Ожидается премьера")
+                                        .font(.system(size: 16, weight: .semibold))
+                                        .foregroundColor(.primary)
+                                    
+                                    let airDate = item.seasonEpisode?.airDate ?? item.meta?.airDate
+                                    if let airDate = airDate, !airDate.isEmpty {
+                                        Text("Дата выхода: \(formatAirDate(airDate))")
+                                            .font(.system(size: 13, weight: .medium))
+                                            .foregroundColor(.secondary)
+                                    } else {
+                                        Text("Дата выхода пока не объявлена")
+                                            .font(.system(size: 13, weight: .medium))
+                                            .foregroundColor(.secondary)
+                                    }
+                                }
+                                Spacer()
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 14)
+                            .background(Color.clear.glassEffect(in: RoundedRectangle(cornerRadius: 16, style: .continuous)))
+                            .padding(.top, 8)
                         }
-                        .padding(.top, 8)
                     }
                     .padding(20)
                 }
@@ -1865,22 +1898,25 @@ struct EpisodeDetailsSheet: View {
                     .buttonStyle(.plain)
                 }
                 
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        let generator = UIImpactFeedbackGenerator(style: .light)
-                        generator.prepare()
-                        generator.impactOccurred()
-                        isWatched.toggle()
-                        onWatchedToggle(isWatched)
-                    } label: {
-                        Image(systemName: isWatched ? "checkmark.circle.fill" : "checkmark.circle")
-                            .font(.system(size: 17, weight: .medium))
-                            .foregroundStyle(isWatched ? Color.slooshAccent : .primary)
+                if item.isAvailable {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button {
+                            let generator = UIImpactFeedbackGenerator(style: .light)
+                            generator.prepare()
+                            generator.impactOccurred()
+                            isWatched.toggle()
+                            onWatchedToggle(isWatched)
+                        } label: {
+                            Image(systemName: isWatched ? "checkmark.circle.fill" : "checkmark.circle")
+                                .font(.system(size: 17, weight: .medium))
+                                .foregroundStyle(isWatched ? Color.slooshAccent : .primary)
+                        }
                     }
                 }
             }
         }
         .onAppear {
+            guard item.isAvailable else { return }
             let root = item.movieId.hasPrefix("kp_") || item.movieId.hasPrefix("tmdb_") ? item.movieId : "kp_\(item.movieId)"
             let progressKey = "\(root)_s\(item.season)_e\(item.episode)"
             let progressFraction = PlaybackProgressStore.shared.normalizedProgress(mediaId: progressKey)
@@ -1954,6 +1990,7 @@ struct EpisodeCellView: View {
     let episode: Int
     let fallbackTitle: String
     var seasonEpisode: TvSeasonEpisodeDto? = nil
+    var isAvailable: Bool = true
     let onPlayTap: () -> Void
     let onUpdate: () -> Void
     let onInfoTap: (TvEpisodeDetailsDto?, TvSeasonEpisodeDto?) -> Void
@@ -2008,6 +2045,7 @@ struct EpisodeCellView: View {
     }
 
     private func updateProgressState() {
+        guard isAvailable else { return }
         progressFractionState = PlaybackProgressStore.shared.normalizedProgress(mediaId: progressKey)
         isWatchedState = PlaybackProgressStore.shared.loadWatched(mediaId: progressKey) || (progressFractionState ?? 0) >= 0.9
     }
@@ -2019,6 +2057,16 @@ struct EpisodeCellView: View {
         
         formatter.locale = Locale(identifier: "ru_RU")
         formatter.dateFormat = "d MMMM yyyy"
+        return formatter.string(from: date)
+    }
+
+    private func formatShortAirDate(_ dateStr: String) -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd"
+        guard let date = formatter.date(from: dateStr) else { return dateStr }
+        
+        formatter.locale = Locale(identifier: "ru_RU")
+        formatter.dateFormat = "d MMM"
         return formatter.string(from: date)
     }
 
@@ -2042,6 +2090,7 @@ struct EpisodeCellView: View {
                         .aspectRatio(contentMode: .fill)
                         .frame(width: 160, height: 90)
                         .clipShape(RoundedRectangle(cornerRadius: 12))
+                        .opacity(isAvailable ? 1.0 : 0.85)
                 } fallback: {
                     ZStack {
                         LinearGradient(
@@ -2049,7 +2098,7 @@ struct EpisodeCellView: View {
                             startPoint: .topLeading,
                             endPoint: .bottomTrailing
                         )
-                        Image(systemName: "play.circle.fill")
+                        Image(systemName: isAvailable ? "play.circle.fill" : "calendar.badge.clock")
                             .font(.system(size: 24))
                             .foregroundColor(.white.opacity(0.35))
                     }
@@ -2071,8 +2120,8 @@ struct EpisodeCellView: View {
                 .clipShape(RoundedRectangle(cornerRadius: 12))
                 .allowsHitTesting(false)
                 
-                // Progress Bar (Bottom Aligned)
-                if let progress = progressFractionState, progress > 0.02 {
+                // Progress Bar (Bottom Aligned, only if available)
+                if isAvailable, let progress = progressFractionState, progress > 0.02 {
                     VStack {
                         Spacer()
                         ZStack(alignment: .leading) {
@@ -2088,45 +2137,67 @@ struct EpisodeCellView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
                 
-                // Rating overlay on top-left of the card (Unified with design system)
-                let ratingVal: Double? = {
-                    if let v = seasonEpisode?.voteAverage, v > 0 { return v }
-                    if let v = meta?.ratings?.tmdb ?? meta?.ratings?.imdb, v > 0 { return v }
-                    return nil
-                }()
-                if let rating = ratingVal {
-                    VStack {
-                        HStack {
-                            Text(String(format: "%.1f", rating))
-                                .font(.system(size: 10, weight: .heavy))
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 5)
-                                .padding(.vertical, 3)
-                                .background(Color.rating(rating))
-                                .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                                .padding(6)
+                // Rating overlay on top-left of the card (Unified with design system, only if available)
+                if isAvailable {
+                    let ratingVal: Double? = {
+                        if let v = seasonEpisode?.voteAverage, v > 0 { return v }
+                        if let v = meta?.ratings?.tmdb ?? meta?.ratings?.imdb, v > 0 { return v }
+                        return nil
+                    }()
+                    if let rating = ratingVal {
+                        VStack {
+                            HStack {
+                                Text(String(format: "%.1f", rating))
+                                    .font(.system(size: 10, weight: .heavy))
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 5)
+                                    .padding(.vertical, 3)
+                                    .background(Color.rating(rating))
+                                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+                                    .padding(6)
+                                Spacer()
+                            }
                             Spacer()
                         }
-                        Spacer()
+                    } else if episode == 0 {
+                        VStack {
+                            HStack {
+                                Text("Пилот")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundColor(.white)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 3)
+                                    .background(Color.clear.glassEffect(in: RoundedRectangle(cornerRadius: 6, style: .continuous)))
+                                    .padding(6)
+                                Spacer()
+                            }
+                            Spacer()
+                        }
                     }
-                } else if episode == 0 {
+                } else {
+                    // Unreleased badge on top-left of the card
                     VStack {
                         HStack {
-                            Text("Пилот")
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 3)
-                                .background(Color.clear.glassEffect(in: RoundedRectangle(cornerRadius: 6, style: .continuous)))
-                                .padding(6)
+                            HStack(spacing: 4) {
+                                Image(systemName: "calendar")
+                                    .font(.system(size: 9, weight: .semibold))
+                                let rawDate = seasonEpisode?.airDate ?? meta?.airDate
+                                Text(rawDate.map { formatShortAirDate($0) } ?? "Скоро")
+                                    .font(.system(size: 10, weight: .bold))
+                            }
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(Color.clear.glassEffect(in: RoundedRectangle(cornerRadius: 6, style: .continuous)))
+                            .padding(6)
                             Spacer()
                         }
                         Spacer()
                     }
                 }
                 
-                // Watched Checkmark Badge (Top-Right)
-                if isWatchedState {
+                // Watched Checkmark Badge (Top-Right, only if available)
+                if isAvailable && isWatchedState {
                     VStack {
                         HStack {
                             Spacer()
@@ -2140,8 +2211,8 @@ struct EpisodeCellView: View {
                     }
                 }
                 
-                // Download Badge (Top-Right, shifted left if watched is present)
-                if let kpIdInt = Int(movieId) {
+                // Download Badge (Top-Right, shifted left if watched is present, only if available)
+                if isAvailable, let kpIdInt = Int(movieId) {
                     let downloadItem = downloadManager.getDownloadItem(kpId: kpIdInt, season: season, episode: episode)
                     if let dlItem = downloadItem {
                         VStack {
@@ -2175,18 +2246,20 @@ struct EpisodeCellView: View {
                     }
                 }
 
-                // Last Played Border (Centered, matches size, no clipping)
-                if isLastPlayed {
+                // Last Played Border (Centered, matches size, no clipping, only if available)
+                if isAvailable && isLastPlayed {
                     RoundedRectangle(cornerRadius: 12)
                         .strokeBorder(Color.slooshAccent, lineWidth: 2)
                 }
             }
             .frame(width: 160, height: 90)
             .contextMenu {
-                Button {
-                    onPlayTap()
-                } label: {
-                    Label("Смотреть", systemImage: "play.fill")
+                if isAvailable {
+                    Button {
+                        onPlayTap()
+                    } label: {
+                        Label("Смотреть", systemImage: "play.fill")
+                    }
                 }
                 
                 Button {
@@ -2195,23 +2268,25 @@ struct EpisodeCellView: View {
                     Label("О серии", systemImage: "info.circle")
                 }
                 
-                Divider()
-                
-                if isWatchedState {
-                    Button(role: .destructive) {
-                        PlaybackProgressStore.shared.setWatched(mediaId: progressKey, watched: false)
-                        updateProgressState()
-                        onUpdate()
-                    } label: {
-                        Label("Сбросить прогресс", systemImage: "arrow.counterclockwise")
-                    }
-                } else {
-                    Button {
-                        PlaybackProgressStore.shared.markAsWatched(mediaId: progressKey)
-                        updateProgressState()
-                        onUpdate()
-                    } label: {
-                        Label("Отметить как просмотренную", systemImage: "checkmark.circle")
+                if isAvailable {
+                    Divider()
+                    
+                    if isWatchedState {
+                        Button(role: .destructive) {
+                            PlaybackProgressStore.shared.setWatched(mediaId: progressKey, watched: false)
+                            updateProgressState()
+                            onUpdate()
+                        } label: {
+                            Label("Сбросить прогресс", systemImage: "arrow.counterclockwise")
+                        }
+                    } else {
+                        Button {
+                            PlaybackProgressStore.shared.markAsWatched(mediaId: progressKey)
+                            updateProgressState()
+                            onUpdate()
+                        } label: {
+                            Label("Отметить как просмотренную", systemImage: "checkmark.circle")
+                        }
                     }
                 }
             }
@@ -2304,7 +2379,10 @@ struct InlineEpisodesSection: View {
     @State private var currentSeasonData: TvSeasonDto? = nil
 
     var allSeasons: [Int] {
-        viewModel.inlineSourceWrapper?.allohaResult?.seasons.map { $0.season }.sorted() ?? []
+        let streamSeasons = viewModel.inlineSourceWrapper?.allohaResult?.seasons.map { $0.season } ?? []
+        let metaSeasons = details.seasons?.compactMap { $0.seasonNumber }.filter { $0 > 0 } ?? []
+        let combined = Array(Set(streamSeasons + metaSeasons)).sorted()
+        return combined.isEmpty ? streamSeasons : combined
     }
 
     var rawId: String {
@@ -2322,14 +2400,23 @@ struct InlineEpisodesSection: View {
     }
 
     var episodesForSelectedSeason: [Int] {
-        if let season = viewModel.inlineSourceWrapper?.allohaResult?.seasons.first(where: { $0.season == selectedSeason }) {
-            return season.episodes.map { $0.episode }.sorted()
+        let streamEpisodes = viewModel.inlineSourceWrapper?.allohaResult?.seasons.first(where: { $0.season == selectedSeason })?.episodes.map { $0.episode } ?? []
+        let metaEpisodes = currentSeasonData?.episodes?.compactMap { $0.episodeNumber } ?? []
+        let combined = Array(Set(streamEpisodes + metaEpisodes)).sorted()
+        return combined.isEmpty ? streamEpisodes : combined
+    }
+
+    private func isEpisodeAvailable(_ episode: Int) -> Bool {
+        guard let seasonObj = viewModel.inlineSourceWrapper?.allohaResult?.seasons.first(where: { $0.season == selectedSeason }) else {
+            return false
         }
-        return []
+        return seasonObj.episodes.contains(where: { $0.episode == episode })
     }
 
     private func episodesCount(for seasonNum: Int) -> Int {
-        viewModel.inlineSourceWrapper?.allohaResult?.seasons.first(where: { $0.season == seasonNum })?.episodes.count ?? 0
+        let streamCount = viewModel.inlineSourceWrapper?.allohaResult?.seasons.first(where: { $0.season == seasonNum })?.episodes.count ?? 0
+        if streamCount > 0 { return streamCount }
+        return details.seasons?.first(where: { $0.seasonNumber == seasonNum })?.episodeCount ?? 0
     }
 
     private func loadCurrentSeason() {
@@ -2369,7 +2456,7 @@ struct InlineEpisodesSection: View {
                 .font(.system(size: 18, weight: .bold))
                 .padding(.horizontal, horizontalPadding)
 
-            if viewModel.isFetchingInlineSeasons {
+            if viewModel.isFetchingInlineSeasons && allSeasons.isEmpty {
                 loadingView
             } else if allSeasons.isEmpty {
                 Text("Эпизоды не найдены")
@@ -2490,6 +2577,7 @@ struct InlineEpisodesSection: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 12) {
                     ForEach(episodesForSelectedSeason, id: \.self) { episode in
+                        let isAvailable = isEpisodeAvailable(episode)
                         let seasonEpisode: TvSeasonEpisodeDto? = {
                             if let found = currentSeasonData?.episodes?.first(where: { $0.episodeNumber == episode }) {
                                 return found
@@ -2510,10 +2598,22 @@ struct InlineEpisodesSection: View {
                             return nil
                         }()
                         Button(action: {
-                            let generator = UIImpactFeedbackGenerator(style: .medium)
+                            let generator = UIImpactFeedbackGenerator(style: isAvailable ? .medium : .light)
                             generator.prepare()
                             generator.impactOccurred()
-                            onEpisodeTap(selectedSeason, episode)
+                            if isAvailable {
+                                onEpisodeTap(selectedSeason, episode)
+                            } else {
+                                selectedEpisodeForSheet = EpisodeDetailsSheetItem(
+                                    movieId: rawId,
+                                    season: selectedSeason,
+                                    episode: episode,
+                                    meta: nil,
+                                    seasonEpisode: seasonEpisode,
+                                    fallbackTitle: "Серия",
+                                    isAvailable: false
+                                )
+                            }
                         }) {
                             EpisodeCellView(
                                 movieId: rawId,
@@ -2521,8 +2621,11 @@ struct InlineEpisodesSection: View {
                                 episode: episode,
                                 fallbackTitle: "Серия",
                                 seasonEpisode: seasonEpisode,
+                                isAvailable: isAvailable,
                                 onPlayTap: { () -> Void in
-                                    onEpisodeTap(selectedSeason, episode)
+                                    if isAvailable {
+                                        onEpisodeTap(selectedSeason, episode)
+                                    }
                                 },
                                 onUpdate: { () -> Void in
                                     updateWatchedSeasons()
@@ -2535,12 +2638,13 @@ struct InlineEpisodesSection: View {
                                         episode: episode,
                                         meta: fetchedMeta,
                                         seasonEpisode: epData ?? seasonEpisode,
-                                        fallbackTitle: "Серия"
+                                        fallbackTitle: "Серия",
+                                        isAvailable: isAvailable
                                     )
                                 }
                             )
                             .environmentObject(viewModel)
-                            .id("\(selectedSeason)-\(episode)-\(seasonEpisode?.id ?? 0)-\(redrawTrigger)")
+                            .id("\(selectedSeason)-\(episode)-\(seasonEpisode?.id ?? 0)-\(isAvailable)-\(redrawTrigger)")
                         }
                         .buttonStyle(.plain)
                         .id("\(selectedSeason)-\(episode)")
