@@ -128,6 +128,14 @@ class MoviesApi {
     func getCartoons(page: Int = 1) async throws -> ApiEnvelope<MediaResponse> {
         return try await performRequest(endpoint: "api/v1/cartoons", queryItems: [URLQueryItem(name: "page", value: String(page))])
     }
+
+    func getAnime(page: Int = 1, order: String? = nil) async throws -> ApiEnvelope<MediaResponse> {
+        var queryItems = [URLQueryItem(name: "page", value: String(page))]
+        if let order = order, !order.isEmpty {
+            queryItems.append(URLQueryItem(name: "order", value: order))
+        }
+        return try await performRequest(endpoint: "api/v1/anime", queryItems: queryItems)
+    }
     
     func getDetails(id: String, type: String? = nil) async throws -> ApiEnvelope<MediaDetailsDto> {
         let cleanId = id.replacingOccurrences(of: "tv_", with: "").replacingOccurrences(of: "movie_", with: "")

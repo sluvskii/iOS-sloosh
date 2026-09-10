@@ -32,7 +32,34 @@ extension Color {
     }
 }
 
-// MARK: - Cartoon Detection
+// MARK: - Anime & Cartoon Detection
+
+/// Определяет, является ли медиа аниме (японская анимация).
+func isAnime(_ item: MediaDto) -> Bool {
+    let genreIds = item.genres?.compactMap { $0.id?.lowercased() } ?? []
+    let genreNames = item.genres?.compactMap { $0.name?.lowercased() } ?? []
+    
+    if genreIds.contains("anime") || genreIds.contains("аниме") ||
+       genreNames.contains("аниме") || genreNames.contains("anime") {
+        return true
+    }
+    
+    let countries = item.countries?.compactMap { $0.lowercased() } ?? []
+    let isJapan = countries.contains { c in
+        c.contains("япония") || c.contains("japan") || c.contains("jp")
+    }
+    
+    let hasAnimation = genreIds.contains("16") || genreIds.contains("мультфильм") ||
+                       genreNames.contains("мультфильм") || genreNames.contains("animation")
+    return hasAnimation && isJapan
+}
+
+/// Облегчённая версия определения аниме по названию.
+func isAnimeByTitle(_ title: String?) -> Bool {
+    guard let t = title?.lowercased() else { return false }
+    let words = t.components(separatedBy: .punctuationCharacters.union(.whitespaces))
+    return words.contains("аниме") || words.contains("anime")
+}
 
 /// Определяет, является ли медиа мультфильмом/анимацией по жанрам и названию.
 func isCartoon(_ item: MediaDto) -> Bool {
