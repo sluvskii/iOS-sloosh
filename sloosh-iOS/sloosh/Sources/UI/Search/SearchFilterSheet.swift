@@ -98,17 +98,13 @@ struct SearchFilterSheet: View {
             }
             .padding(.horizontal, 4)
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 8) {
-                    typeCapsule(title: "Все", tag: nil)
-                    typeCapsule(title: "Фильмы", tag: "FILM")
-                    typeCapsule(title: "Сериалы", tag: "TV_SERIES")
-                    typeCapsule(title: "Мульты", tag: "CARTOON")
-                    typeCapsule(title: "Аниме", tag: "ANIME")
-                }
-                .padding(.horizontal, 2)
+            HStack(spacing: 6) {
+                typeCapsule(title: "Все", tag: nil)
+                typeCapsule(title: "Фильмы", tag: "FILM")
+                typeCapsule(title: "Сериалы", tag: "TV_SERIES")
+                typeCapsule(title: "Мульты", tag: "CARTOON")
+                typeCapsule(title: "Аниме", tag: "ANIME")
             }
-            .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
         }
     }
 
@@ -124,7 +120,9 @@ struct SearchFilterSheet: View {
         } label: {
             Text(title)
                 .font(.system(size: 13, weight: .semibold))
-                .padding(.horizontal, 14)
+                .lineLimit(1)
+                .minimumScaleFactor(0.85)
+                .frame(maxWidth: .infinity)
                 .padding(.vertical, 8)
                 .background(
                     Capsule()
