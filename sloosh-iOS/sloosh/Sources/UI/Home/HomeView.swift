@@ -98,7 +98,8 @@ struct HomeView: View {
                 HomeCategoryTextTabs(
                     selectedCategory: $viewModel.selectedCategory,
                     selectedFilter: $viewModel.selectedFilter,
-                    isFilterCollapsed: $isFilterCollapsed
+                    isFilterCollapsed: $isFilterCollapsed,
+                    showFilters: $viewModel.showFilters
                 )
                 .padding(.top, 4)
                 .padding(.bottom, 2) // Уменьшенный отступ до контента
@@ -342,6 +343,7 @@ private struct HomeCategoryTextTabs: View {
     @Binding var selectedCategory: HomeCategory
     @Binding var selectedFilter: HomeFilter
     @Binding var isFilterCollapsed: Bool
+    @Binding var showFilters: Bool
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.colorScheme) private var colorScheme
     @ScaledMetric(relativeTo: .headline) private var titleSize: CGFloat = 28 // Увеличенный размер шрифта
@@ -415,8 +417,18 @@ private struct HomeCategoryTextTabs: View {
                         .padding(.vertical, 2)
                         .id(category)
                         .accessibilityAddTraits(isSelected ? .isSelected : [])
+                        .accessibilityHint("Нажмите для перехода. Удерживайте для открытия фильтров.")
                         .padding(.leading, isFirst ? edgeContentInset : 0)
                         .padding(.trailing, isLast ? edgeContentInset : 0)
+                        .simultaneousGesture(
+                            LongPressGesture(minimumDuration: 0.45).onEnded { _ in
+                                let generator = UIImpactFeedbackGenerator(style: .medium)
+                                generator.prepare()
+                                generator.impactOccurred()
+                                selectedCategory = category
+                                showFilters = true
+                            }
+                        )
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
