@@ -10,6 +10,8 @@ class MoviesRepository: ObservableObject {
     private var topMoviesCache: [Int: [MediaDto]] = [:]
     private var topTvCache: [Int: [MediaDto]] = [:]
     private var cartoonsCache: [Int: [MediaDto]] = [:]
+    private var popularAnimeCache: [Int: [MediaDto]] = [:]
+    private var topAnimeCache: [Int: [MediaDto]] = [:]
     private var episodeCache: [String: TvEpisodeDetailsDto] = [:]
     private var seasonCache: [String: TvSeasonDto] = [:]
     private var memoryWarningToken: Any?
@@ -39,6 +41,8 @@ class MoviesRepository: ObservableObject {
         topMoviesCache.removeAll()
         topTvCache.removeAll()
         cartoonsCache.removeAll()
+        popularAnimeCache.removeAll()
+        topAnimeCache.removeAll()
         episodeCache.removeAll()
         seasonCache.removeAll()
         detailsMemory.removeAll()
@@ -109,6 +113,36 @@ class MoviesRepository: ObservableObject {
         let results = response.data?.results ?? []
         cartoonsCache[page] = results
         await listDiskCache.save(results, key: "cartoons_\(page)")
+        return results
+    }
+
+    func getPopularAnime(page: Int = 1, force: Bool = false) async throws -> [MediaDto] {
+        if !force {
+            if let cached = popularAnimeCache[page] { return cached }
+            if let diskCached = await listDiskCache.load(key: "anime_popular_\(page)") {
+                popularAnimeCache[page] = diskCached
+                return diskCached
+            }
+        }
+        let response = try await MoviesApi.shared.getAnime(page: page, order: "popular")
+        let results = response.data?.results ?? []
+        popularAnimeCache[page] = results
+        await listDiskCache.save(results, key: "anime_popular_\(page)")
+        return results
+    }
+
+    func getTopAnime(page: Int = 1, force: Bool = false) async throws -> [MediaDto] {
+        if !force {
+            if let cached = topAnimeCache[page] { return cached }
+            if let diskCached = await listDiskCache.load(key: "anime_top_\(page)") {
+                topAnimeCache[page] = diskCached
+                return diskCached
+            }
+        }
+        let response = try await MoviesApi.shared.getAnime(page: page, order: "top")
+        let results = response.data?.results ?? []
+        topAnimeCache[page] = results
+        await listDiskCache.save(results, key: "anime_top_\(page)")
         return results
     }
 
@@ -256,9 +290,10 @@ class MoviesRepository: ObservableObject {
             // Дополнительная клиентская фильтрация (например, по точному порогу рейтинга или года)
             if let rawResults = data.results {
                 let filteredResults = applyFilters(rawResults, filters: filters)
+                let finalResults = (filteredResults.isEmpty && !rawResults.isEmpty && filters.genres != nil) ? rawResults : filteredResults
                 return MediaResponse(
                     page: data.page,
-                    results: filteredResults,
+                    results: finalResults,
                     pages: data.pages,
                     total: data.total,
                     total_pages: data.total_pages,
@@ -432,11 +467,13 @@ class MoviesRepository: ObservableObject {
             if let type = filters.type {
                 switch type {
                 case "FILM", "movie":
-                    if item.type != "movie" || isCartoon(item) { return false }
+                    if item.type != "movie" || (isCartoon(item) && !isAnime(item)) { return false }
                 case "TV_SERIES", "tv":
-                    if item.type != "tv" || isCartoon(item) { return false }
+                    if item.type != "tv" || (isCartoon(item) && !isAnime(item)) { return false }
                 case "CARTOON", "cartoon":
-                    if !isCartoon(item) { return false }
+                    if !isCartoon(item) || isAnime(item) { return false }
+                case "ANIME", "anime":
+                    if !isAnime(item) { return false }
                 default:
                     break
                 }
@@ -471,14 +508,32 @@ class MoviesRepository: ObservableObject {
             
             // Фильтр по жанру
             if let targetGenre = filters.genres?.lowercased().trimmingCharacters(in: .whitespacesAndNewlines), !targetGenre.isEmpty {
-                let itemGenres = item.genres?.compactMap { genreDto -> String? in
-                    return genreDto.name?.lowercased() ?? genreDto.id?.lowercased()
-                } ?? []
-                if !itemGenres.isEmpty {
-                    let matches = itemGenres.contains { g in
-                        g.contains(targetGenre) || targetGenre.contains(g)
+                let isSciFiFantasy = targetGenre.contains("нф") || targetGenre.contains("фантастик") || targetGenre.contains("фэнтези") || targetGenre.contains("sci-fi")
+                let isAnimeGenre = targetGenre.contains("аниме") || targetGenre.contains("anime")
+
+                if isAnimeGenre {
+                    if !isAnime(item) {
+                        let itemGenres = item.genres?.compactMap { $0.name?.lowercased() ?? $0.id?.lowercased() } ?? []
+                        if !itemGenres.contains(where: { $0.contains("аниме") || $0.contains("anime") }) {
+                            return false
+                        }
                     }
-                    if !matches { return false }
+                } else if isSciFiFantasy {
+                    let itemGenres = item.genres?.compactMap { $0.name?.lowercased() ?? $0.id?.lowercased() } ?? []
+                    let matches = itemGenres.contains { g in
+                        g.contains("нф") || g.contains("фантастик") || g.contains("фэнтези") || g.contains("sci-fi") || g.contains("fantasy") || g == "10765" || g == "878" || g == "14"
+                    }
+                    if !matches && !itemGenres.isEmpty { return false }
+                } else {
+                    let itemGenres = item.genres?.compactMap { genreDto -> String? in
+                        return genreDto.name?.lowercased() ?? genreDto.id?.lowercased()
+                    } ?? []
+                    if !itemGenres.isEmpty {
+                        let matches = itemGenres.contains { g in
+                            g.contains(targetGenre) || targetGenre.contains(g)
+                        }
+                        if !matches { return false }
+                    }
                 }
             }
             

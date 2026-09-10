@@ -6,6 +6,7 @@ enum HomeCategory: String, CaseIterable {
     case movies = "Фильмы"
     case tvShows = "Сериалы"
     case cartoons = "Мультфильмы"
+    case anime = "Аниме"
 
     var title: String { rawValue }
 
@@ -19,6 +20,8 @@ enum HomeCategory: String, CaseIterable {
             return "Сериалы"
         case .cartoons:
             return "Мульты"
+        case .anime:
+            return "Аниме"
         }
     }
 }
@@ -867,6 +870,8 @@ class HomeViewModel: ObservableObject {
                     _ = try? await MoviesRepository.shared.getTopTv(page: 1)
                 case .cartoons:
                     _ = try? await MoviesRepository.shared.getTopMovies(page: 1)
+                case .anime:
+                    _ = try? await MoviesRepository.shared.getPopularAnime(page: 1)
                 }
             }
         }
@@ -886,6 +891,13 @@ class HomeViewModel: ObservableObject {
                 return try await MoviesRepository.shared.getTopTv(page: cursor.page, force: force)
             case .cartoons:
                 return try await MoviesRepository.shared.getCartoons(page: cursor.page, force: force)
+            case .anime:
+                switch filter {
+                case .popular:
+                    return try await MoviesRepository.shared.getPopularAnime(page: cursor.page, force: force)
+                case .topRated:
+                    return try await MoviesRepository.shared.getTopAnime(page: cursor.page, force: force)
+                }
             }
         } else {
             var mergedFilters = searchFilters
@@ -902,6 +914,8 @@ class HomeViewModel: ObservableObject {
                     mergedFilters.type = "TV_SERIES"
                 case .cartoons:
                     mergedFilters.type = "CARTOON"
+                case .anime:
+                    mergedFilters.type = "ANIME"
                 case .all:
                     break
                 }
@@ -933,7 +947,9 @@ class HomeViewModel: ObservableObject {
         case .tvShows:
             return items.filter { $0.type == "tv" && !isCartoon($0) }
         case .cartoons:
-            return items.filter { isCartoon($0) }
+            return items.filter { isCartoon($0) && !isAnime($0) }
+        case .anime:
+            return items.filter { isAnime($0) }
         }
     }
 

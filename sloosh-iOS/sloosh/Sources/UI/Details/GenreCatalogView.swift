@@ -21,6 +21,14 @@ struct GenreCatalogView: View {
         return [GridItem(.adaptive(minimum: minWidth), spacing: spacing)]
     }
 
+    private var displayTitle: String {
+        let lower = genre.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        if lower == "нф и фэнтези" || lower == "научная фантастика и фэнтези" {
+            return "НФ и фэнтези"
+        }
+        return genre.capitalized
+    }
+
     var body: some View {
         ScrollView {
             LazyVStack(spacing: 0) {
@@ -37,7 +45,7 @@ struct GenreCatalogView: View {
                     AppEmptyStateView(
                         icon: "film",
                         title: "Ничего не найдено",
-                        description: "В категории «\(genre.capitalized)» пока нет доступных фильмов"
+                        description: "В категории «\(displayTitle)» пока нет доступных фильмов"
                     )
                     .padding(.top, 60)
                 } else {
@@ -82,7 +90,7 @@ struct GenreCatalogView: View {
         .refreshable {
             await viewModel.loadInitial(force: true)
         }
-        .navigationTitle(genre.capitalized)
+        .navigationTitle(displayTitle)
         .navigationBarTitleDisplayMode(.large)
         .fullWidthSwipeBack()
         .sheet(item: $viewModel.directPlaybackMovie, onDismiss: {

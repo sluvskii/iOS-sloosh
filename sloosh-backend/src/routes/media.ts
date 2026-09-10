@@ -156,6 +156,26 @@ mediaRouter.get("/cartoons", async (c) => {
   }
 })
 
+// GET /api/v1/anime
+mediaRouter.get("/anime", async (c) => {
+  const page = parseInt(c.req.query("page") || "1", 10)
+  const order = (c.req.query("order") === "top" ? "top" : "popular") as "popular" | "top"
+
+  const cacheKey = `anime:${order}:${page}`
+  const cached = getCached<MediaResponse>(listCache, cacheKey)
+  if (cached) {
+    return c.json({ status: "success", data: cached })
+  }
+
+  try {
+    const results = await tmdb.getAnime(page, order)
+    setCached(listCache, cacheKey, results)
+    return c.json({ status: "success", data: results })
+  } catch (err: any) {
+    return c.json({ status: "error", message: err.message }, 500)
+  }
+})
+
 // GET /api/v1/tv/:id/season/:season
 mediaRouter.get("/tv/:id/season/:season", async (c) => {
   const origId = c.req.param("id")
