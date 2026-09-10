@@ -204,6 +204,14 @@ class MoviesApi {
         if let countries = filters.countries, !countries.isEmpty {
             queryItems.append(URLQueryItem(name: "countries", value: countries))
         }
+
+        if let ratingFrom = filters.ratingFrom, ratingFrom > 1.0 {
+            queryItems.append(URLQueryItem(name: "ratingFrom", value: String(format: "%.1f", ratingFrom)))
+        }
+
+        if let yearFrom = filters.yearFrom, yearFrom > 1980 {
+            queryItems.append(URLQueryItem(name: "yearFrom", value: String(yearFrom)))
+        }
         
         // api/v2/search — серверный движок каталога с поддержкой параметров фильтров
         return try await performRequest(endpoint: "api/v2/search", queryItems: queryItems)
