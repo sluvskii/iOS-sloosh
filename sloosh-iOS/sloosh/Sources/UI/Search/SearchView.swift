@@ -4,6 +4,7 @@ import Combine
 struct SearchView: View {
     @StateObject private var viewModel = SearchViewModel()
     @State private var pendingPlayerConfig: PlayerConfig? = nil
+    @State private var showFilters = false
     @Namespace private var navigationTransition
     @AppStorage("cardDensity") private var cardDensity: CardDensity = .regular
 
@@ -16,7 +17,7 @@ struct SearchView: View {
     var body: some View {
         NavigationStack {
             Group {
-                if viewModel.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                if viewModel.searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && viewModel.searchFilters.isEmpty {
                     SearchDiscoveryView(viewModel: viewModel)
                 } else if viewModel.isLoading && viewModel.results.isEmpty {
                     ProgressView("Ищем...")
@@ -90,6 +91,20 @@ struct SearchView: View {
             }
             .navigationTitle("Поиск")
             .searchable(text: $viewModel.searchQuery, prompt: "Фильмы и сериалы...")
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showFilters = true
+                    } label: {
+                        Image(systemName: viewModel.searchFilters.isEmpty ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
+                            .font(.system(size: 19))
+                            .foregroundColor(viewModel.searchFilters.isEmpty ? .secondary : Color.slooshAccent)
+                    }
+                }
+            }
+            .sheet(isPresented: $showFilters) {
+                SearchFilterSheet(filters: $viewModel.searchFilters, context: .search)
+            }
             .sheet(item: $viewModel.directPlaybackMovie, onDismiss: {
                 if let pending = pendingPlayerConfig {
                     pendingPlayerConfig = nil
@@ -240,6 +255,7 @@ struct SearchEmptyState: View {
 @MainActor
 class SearchViewModel: ObservableObject {
     @Published var searchQuery = ""
+    @Published var searchFilters = SearchFilters()
     @Published var results: [MediaDto] = []
     @Published var history: [String] = []
     @Published var isLoading = false
@@ -258,10 +274,9 @@ class SearchViewModel: ObservableObject {
     init() {
         loadHistory()
         
-        $searchQuery
+        Publishers.CombineLatest($searchQuery, $searchFilters)
             .dropFirst()
             .debounce(for: .milliseconds(300), scheduler: RunLoop.main)
-            .removeDuplicates()
             .sink { [weak self] _ in
                 guard let self = self else { return }
                 Task {
@@ -307,7 +322,7 @@ class SearchViewModel: ObservableObject {
         searchTask?.cancel()
 
         let trimmedQuery = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedQuery.isEmpty else {
+        guard !trimmedQuery.isEmpty || !searchFilters.isEmpty else {
             results = []
             error = nil
             isLoading = false
@@ -331,7 +346,7 @@ class SearchViewModel: ObservableObject {
                 }
                 error = nil
 
-                let response = try await MoviesRepository.shared.searchMoviesResponse(query: trimmedQuery, page: page)
+                let response = try await MoviesRepository.shared.searchMoviesResponse(query: trimmedQuery, page: page, filters: searchFilters)
                 if !Task.isCancelled {
                     let rawResults = response.results ?? []
                     // Filter invalid items like Android does

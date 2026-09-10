@@ -99,7 +99,8 @@ struct HomeView: View {
                     selectedCategory: $viewModel.selectedCategory,
                     selectedFilter: $viewModel.selectedFilter,
                     isFilterCollapsed: $isFilterCollapsed,
-                    showFilters: $viewModel.showFilters
+                    showFilters: $viewModel.showFilters,
+                    isFiltersActive: !viewModel.searchFilters.isEmpty
                 )
                 .padding(.top, 4)
                 .padding(.bottom, 2) // Уменьшенный отступ до контента
@@ -344,6 +345,7 @@ private struct HomeCategoryTextTabs: View {
     @Binding var selectedFilter: HomeFilter
     @Binding var isFilterCollapsed: Bool
     @Binding var showFilters: Bool
+    var isFiltersActive: Bool = false
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.colorScheme) private var colorScheme
     @ScaledMetric(relativeTo: .headline) private var titleSize: CGFloat = 28 // Увеличенный размер шрифта
@@ -385,65 +387,79 @@ private struct HomeCategoryTextTabs: View {
     }
 
     var body: some View {
-        ScrollViewReader { scrollProxy in
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(alignment: .top, spacing: tabSpacing) {
-                    ForEach(Array(HomeCategory.allCases.enumerated()), id: \.element) { index, category in
-                        let isSelected = selectedCategory == category
-                        let isFirst = index == 0
-                        let isLast = index == HomeCategory.allCases.count - 1
+        HStack(spacing: 8) {
+            ScrollViewReader { scrollProxy in
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(alignment: .top, spacing: tabSpacing) {
+                        ForEach(Array(HomeCategory.allCases.enumerated()), id: \.element) { index, category in
+                            let isSelected = selectedCategory == category
+                            let isFirst = index == 0
+                            let isLast = index == HomeCategory.allCases.count - 1
 
-                        Button {
-                            withAnimation(tabScrollAnimation) {
-                                isFilterCollapsed = false
+                            Button {
+                                withAnimation(tabScrollAnimation) {
+                                    isFilterCollapsed = false
 
-                                guard !isSelected else { return }
-                                selectedCategory = category
+                                    guard !isSelected else { return }
+                                    selectedCategory = category
+                                }
+                            } label: {
+                                layeredText(
+                                    category.segmentedTitle,
+                                    size: titleSize,
+                                    weight: isSelected ? .bold : .semibold,
+                                    isSelected: isSelected
+                                )
+                                .lineLimit(1)
+                                .fixedSize(horizontal: true, vertical: false)
+                                .frame(height: titleHeight, alignment: .center)
+                                .contentShape(Rectangle())
                             }
-                        } label: {
-                            layeredText(
-                                category.segmentedTitle,
-                                size: titleSize,
-                                weight: isSelected ? .bold : .semibold,
-                                isSelected: isSelected
+                            .buttonStyle(TabScaleButtonStyle())
+                            .padding(.horizontal, 4)
+                            .padding(.vertical, 2)
+                            .id(category)
+                            .accessibilityAddTraits(isSelected ? .isSelected : [])
+                            .accessibilityHint("Нажмите для перехода. Удерживайте для выбора фильтра.")
+                            .padding(.leading, isFirst ? edgeContentInset : 0)
+                            .padding(.trailing, isLast ? 8 : 0)
+                            .simultaneousGesture(
+                                LongPressGesture(minimumDuration: 0.5).onEnded { _ in
+                                    selectedCategory = category
+                                    showFilters = true
+                                }
                             )
-                            .lineLimit(1)
-                            .fixedSize(horizontal: true, vertical: false)
-                            .frame(height: titleHeight, alignment: .center)
-                            .contentShape(Rectangle())
                         }
-                        .buttonStyle(TabScaleButtonStyle())
-                        .padding(.horizontal, 4)
-                        .padding(.vertical, 2)
-                        .id(category)
-                        .accessibilityAddTraits(isSelected ? .isSelected : [])
-                        .accessibilityHint("Нажмите для перехода. Удерживайте для выбора фильтра.")
-                        .padding(.leading, isFirst ? edgeContentInset : 0)
-                        .padding(.trailing, isLast ? edgeContentInset : 0)
-                        .simultaneousGesture(
-                            LongPressGesture(minimumDuration: 0.5).onEnded { _ in
-                                selectedCategory = category
-                                showFilters = true
-                            }
-                        )
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .scrollTargetLayout()
+                }
+                .frame(height: titleHeight + 4, alignment: .topLeading)
+                .scrollClipDisabled()
+                .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+                .animation(tabScrollAnimation, value: selectedCategory)
+                .animation(tabScrollAnimation, value: isFilterCollapsed)
+                .onAppear {
+                    scrollProxy.scrollTo(selectedCategory, anchor: .center)
+                }
+                .onChange(of: selectedCategory) { _, newCategory in
+                    withAnimation(tabScrollAnimation) {
+                        scrollProxy.scrollTo(newCategory, anchor: .center)
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .scrollTargetLayout()
             }
-            .frame(height: titleHeight + 4, alignment: .topLeading)
-            .scrollClipDisabled()
-            .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
-            .animation(tabScrollAnimation, value: selectedCategory)
-            .animation(tabScrollAnimation, value: isFilterCollapsed)
-            .onAppear {
-                scrollProxy.scrollTo(selectedCategory, anchor: .center)
+
+            Button {
+                showFilters = true
+            } label: {
+                Image(systemName: isFiltersActive ? "line.3.horizontal.decrease.circle.fill" : "slider.horizontal.3")
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(isFiltersActive ? Color.slooshAccent : .secondary)
+                    .frame(width: titleHeight, height: titleHeight)
+                    .glassEffect(.regular.interactive(), in: Circle())
             }
-            .onChange(of: selectedCategory) { _, newCategory in
-                withAnimation(tabScrollAnimation) {
-                    scrollProxy.scrollTo(newCategory, anchor: .center)
-                }
-            }
+            .buttonStyle(TabScaleButtonStyle())
+            .padding(.trailing, edgeContentInset)
         }
         .sensoryFeedback(.selection, trigger: selectedCategory)
         .sensoryFeedback(.selection, trigger: selectedFilter)

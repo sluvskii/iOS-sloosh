@@ -38,7 +38,7 @@ const handleSearchOrDiscover = async (c: any) => {
 
   // 2. Discover if filters are provided (e.g. genre chips, country, type, order)
   if (genres || countries || type || order || ratingFrom || yearFrom) {
-    const cacheKey = `discover:${type || "all"}:${genres || ""}:${countries || ""}:${order || ""}:${page}`
+    const cacheKey = `discover:${type || "all"}:${genres || ""}:${countries || ""}:${order || ""}:${ratingFrom ?? ""}:${yearFrom ?? ""}:${page}`
     const cached = getCached<MediaResponse>(listCache, cacheKey)
     if (cached) {
       return c.json({ status: "success", data: cached })
