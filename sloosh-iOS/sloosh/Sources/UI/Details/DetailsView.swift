@@ -1700,13 +1700,13 @@ struct EpisodeDetailsSheetItem: Identifiable {
 
 struct EpisodeDetailsSheet: View {
     let item: EpisodeDetailsSheetItem
+    var details: MediaDetailsDto? = nil
     let onPlay: () -> Void
     let onWatchedToggle: (Bool) -> Void
     
     @State private var isWatched: Bool = false
     @Environment(\.dismiss) private var dismiss
     @ObservedObject private var downloadManager = DownloadManager.shared
-    @EnvironmentObject private var viewModel: DetailsViewModel
     
     var body: some View {
         NavigationStack {
@@ -1721,7 +1721,7 @@ struct EpisodeDetailsSheet: View {
                                 return URL(string: "https://api-sloosh.vercel.app/api/v1/images/tmdb/w500\(still)")
                             }
                         }
-                        if let backdrop = viewModel.details?.previewBackdropUrl ?? viewModel.details?.displayBackdropUrl ?? viewModel.details?.backdrop, !backdrop.isEmpty {
+                        if let backdrop = details?.previewBackdropUrl ?? details?.displayBackdropUrl ?? details?.backdrop, !backdrop.isEmpty {
                             if backdrop.hasPrefix("http") {
                                 return URL(string: backdrop)
                             } else {
@@ -1795,7 +1795,7 @@ struct EpisodeDetailsSheet: View {
                                     .background(Color.clear.glassEffect(in: RoundedRectangle(cornerRadius: 8, style: .continuous)))
                             }
                             
-                            let airDate = item.seasonEpisode?.airDate ?? item.meta?.airDate ?? (item.episode == 0 ? (viewModel.details?.releaseDate) : nil)
+                            let airDate = item.seasonEpisode?.airDate ?? item.meta?.airDate ?? (item.episode == 0 ? (details?.releaseDate) : nil)
                             if let airDate = airDate, !airDate.isEmpty {
                                 Text(formatAirDate(airDate))
                                     .font(.system(size: 14, weight: .medium))
@@ -1811,7 +1811,7 @@ struct EpisodeDetailsSheet: View {
                         .padding(.bottom, 2)
                         
                         // Description / Overview
-                        let overview = item.seasonEpisode?.overview ?? item.meta?.overview ?? (item.episode == 0 ? (viewModel.details?.description ?? "Пилотный выпуск сериала.") : nil)
+                        let overview = item.seasonEpisode?.overview ?? item.meta?.overview ?? (item.episode == 0 ? (details?.description ?? "Пилотный выпуск сериала.") : nil)
                         if let overview = overview, !overview.isEmpty {
                             VStack(alignment: .leading, spacing: 8) {
                                 Text("Описание серии")
@@ -1990,6 +1990,7 @@ struct EpisodeCellView: View {
     let episode: Int
     let fallbackTitle: String
     var seasonEpisode: TvSeasonEpisodeDto? = nil
+    var details: MediaDetailsDto? = nil
     var isAvailable: Bool = true
     let onPlayTap: () -> Void
     let onUpdate: () -> Void
@@ -2001,7 +2002,6 @@ struct EpisodeCellView: View {
     @State private var progressFractionState: Double?
     @State private var isWatchedState: Bool = false
     
-    @EnvironmentObject private var viewModel: DetailsViewModel
     @ObservedObject private var downloadManager = DownloadManager.shared
     
     var previewUrl: URL? {
@@ -2012,7 +2012,8 @@ struct EpisodeCellView: View {
                 return URL(string: "https://api-sloosh.vercel.app/api/v1/images/tmdb/w500\(still)")
             }
         }
-        if let backdrop = viewModel.details?.previewBackdropUrl ?? viewModel.details?.displayBackdropUrl ?? viewModel.details?.backdrop, !backdrop.isEmpty {
+        let backdrop = details?.previewBackdropUrl ?? details?.displayBackdropUrl ?? details?.backdrop
+        if let backdrop = backdrop, !backdrop.isEmpty {
             if backdrop.hasPrefix("http") {
                 return URL(string: backdrop)
             } else {
@@ -2024,7 +2025,8 @@ struct EpisodeCellView: View {
     
     private var progressKey: String {
         let root: String
-        if let kp = viewModel.details?.ids?.kp ?? viewModel.details?.externalIds?.kp, kp > 0 {
+        let effectiveDetails = details
+        if let kp = effectiveDetails?.ids?.kp ?? effectiveDetails?.externalIds?.kp, kp > 0 {
             root = "kp_\(kp)"
         } else if movieId.hasPrefix("kp_") || movieId.hasPrefix("tmdb_") {
             root = movieId
@@ -2037,7 +2039,8 @@ struct EpisodeCellView: View {
     }
     
     private var isLastPlayed: Bool {
-        let effectiveKp = viewModel.details?.ids?.kp ?? viewModel.details?.externalIds?.kp ?? (movieId.hasPrefix("kp_") ? Int(movieId.dropFirst(3)) : nil)
+        let effectiveDetails = details
+        let effectiveKp = effectiveDetails?.ids?.kp ?? effectiveDetails?.externalIds?.kp ?? (movieId.hasPrefix("kp_") ? Int(movieId.dropFirst(3)) : nil)
         let rootKey = effectiveKp.map { "kp_\($0)" } ?? (movieId.hasPrefix("tmdb_") ? movieId : "tmdb_\(movieId)")
         let lastSeason = PlaybackProgressStore.shared.loadLastSeason(mediaKey: rootKey) ?? (effectiveKp.flatMap { PlaybackProgressStore.shared.loadLastSeason(kpId: $0) })
         let lastEpisode = PlaybackProgressStore.shared.loadLastEpisode(mediaKey: rootKey) ?? (effectiveKp.flatMap { PlaybackProgressStore.shared.loadLastEpisode(kpId: $0) })
@@ -2306,7 +2309,7 @@ struct EpisodeCellView: View {
                         .foregroundColor(.primary)
                         .lineLimit(1)
                     
-                    let airDate = seasonEpisode?.airDate ?? meta?.airDate ?? (episode == 0 ? (viewModel.details?.releaseDate) : nil)
+                    let airDate = seasonEpisode?.airDate ?? meta?.airDate ?? (episode == 0 ? (details?.releaseDate) : nil)
                     if let airDate = airDate, !airDate.isEmpty {
                         Text(formatEpisodeAirDate(airDate))
                             .font(.system(size: 11, weight: .medium))
@@ -2495,6 +2498,7 @@ struct InlineEpisodesSection: View {
         .sheet(item: $selectedEpisodeForSheet) { item in
             EpisodeDetailsSheet(
                 item: item,
+                details: details,
                 onPlay: { () -> Void in
                     onEpisodeTap(item.season, item.episode)
                 },
@@ -2509,6 +2513,7 @@ struct InlineEpisodesSection: View {
                     redrawTrigger.toggle()
                 }
             )
+            .environmentObject(viewModel)
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
         }
@@ -2621,6 +2626,7 @@ struct InlineEpisodesSection: View {
                                 episode: episode,
                                 fallbackTitle: "Серия",
                                 seasonEpisode: seasonEpisode,
+                                details: details,
                                 isAvailable: isAvailable,
                                 onPlayTap: { () -> Void in
                                     if isAvailable {
