@@ -55,6 +55,7 @@ struct SearchFilterSheet: View {
                             filters = SearchFilters()
                         }
                     }
+                    .foregroundColor(filters.isEmpty ? .secondary : .primary)
                     .disabled(filters.isEmpty)
                 }
 
@@ -63,7 +64,7 @@ struct SearchFilterSheet: View {
                         dismiss()
                     }
                     .bold()
-                    .foregroundStyle(Color.slooshAccent)
+                    .foregroundColor(.primary)
                 }
             }
             .background(Color.clear)
@@ -76,10 +77,19 @@ struct SearchFilterSheet: View {
     // MARK: - Content Type Section
     private var typeSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label("Тип контента", systemImage: "play.rectangle.on.rectangle")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundColor(.secondary)
-                .padding(.horizontal, 4)
+            HStack(spacing: 8) {
+                Image(systemName: "play.rectangle.on.rectangle")
+                    .font(.system(size: 14, weight: .semibold))
+                    .frame(width: 24, height: 24, alignment: .center)
+                    .foregroundColor(.secondary)
+
+                Text("Тип контента")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.secondary)
+
+                Spacer()
+            }
+            .padding(.horizontal, 4)
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
@@ -109,13 +119,14 @@ struct SearchFilterSheet: View {
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 8)
-            .foregroundColor(isSelected ? .white : .primary)
+            .foregroundColor(isSelected ? Color(UIColor.systemBackground) : .primary)
             .background {
                 if isSelected {
-                    Capsule().fill(Color.slooshAccent)
+                    Capsule().fill(Color.primary)
+                } else {
+                    Capsule().fill(Color(UIColor.secondarySystemGroupedBackground).opacity(0.7))
                 }
             }
-            .glassEffect(.regular.interactive(), in: Capsule())
         }
         .buttonStyle(.plain)
     }
@@ -124,8 +135,13 @@ struct SearchFilterSheet: View {
     private var pickersCard: some View {
         VStack(spacing: 0) {
             // Sort
-            HStack {
-                Label("Сортировка", systemImage: "arrow.up.arrow.down")
+            HStack(spacing: 12) {
+                Image(systemName: "arrow.up.arrow.down")
+                    .font(.system(size: 15, weight: .semibold))
+                    .frame(width: 24, height: 24, alignment: .center)
+                    .foregroundColor(.secondary)
+
+                Text("Сортировка")
                     .font(.system(size: 15, weight: .medium))
                     .foregroundColor(.primary)
 
@@ -151,19 +167,25 @@ struct SearchFilterSheet: View {
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
-                    .foregroundColor(filters.order == nil ? .primary : Color.slooshAccent)
-                    .glassEffect(.regular.interactive(), in: Capsule())
+                    .foregroundColor(.primary)
+                    .background(Color(UIColor.systemFill))
+                    .clipShape(Capsule())
                 }
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 13)
 
             Divider()
-                .padding(.leading, 48)
+                .padding(.leading, 52)
 
             // Genre
-            HStack {
-                Label("Жанр", systemImage: "theatermasks")
+            HStack(spacing: 12) {
+                Image(systemName: "theatermasks")
+                    .font(.system(size: 15, weight: .semibold))
+                    .frame(width: 24, height: 24, alignment: .center)
+                    .foregroundColor(.secondary)
+
+                Text("Жанр")
                     .font(.system(size: 15, weight: .medium))
                     .foregroundColor(.primary)
 
@@ -187,19 +209,25 @@ struct SearchFilterSheet: View {
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
-                    .foregroundColor(filters.genres == nil ? .primary : Color.slooshAccent)
-                    .glassEffect(.regular.interactive(), in: Capsule())
+                    .foregroundColor(.primary)
+                    .background(Color(UIColor.systemFill))
+                    .clipShape(Capsule())
                 }
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 13)
 
             Divider()
-                .padding(.leading, 48)
+                .padding(.leading, 52)
 
             // Country
-            HStack {
-                Label("Страна", systemImage: "globe")
+            HStack(spacing: 12) {
+                Image(systemName: "globe")
+                    .font(.system(size: 15, weight: .semibold))
+                    .frame(width: 24, height: 24, alignment: .center)
+                    .foregroundColor(.secondary)
+
+                Text("Страна")
                     .font(.system(size: 15, weight: .medium))
                     .foregroundColor(.primary)
 
@@ -223,14 +251,16 @@ struct SearchFilterSheet: View {
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
-                    .foregroundColor(filters.countries == nil ? .primary : Color.slooshAccent)
-                    .glassEffect(.regular.interactive(), in: Capsule())
+                    .foregroundColor(.primary)
+                    .background(Color(UIColor.systemFill))
+                    .clipShape(Capsule())
                 }
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 13)
         }
-        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .background(Color(UIColor.secondarySystemGroupedBackground).opacity(0.7))
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 
     private var currentSortTitle: String {
@@ -256,8 +286,13 @@ struct SearchFilterSheet: View {
     // MARK: - Rating Slider Card
     private var ratingSliderCard: some View {
         VStack(spacing: 12) {
-            HStack {
-                Label("Минимальный рейтинг", systemImage: "star.fill")
+            HStack(spacing: 12) {
+                Image(systemName: "star.fill")
+                    .font(.system(size: 15, weight: .semibold))
+                    .frame(width: 24, height: 24, alignment: .center)
+                    .foregroundColor(.secondary)
+
+                Text("Минимальный рейтинг")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundColor(.primary)
 
@@ -271,7 +306,7 @@ struct SearchFilterSheet: View {
                             Text(String(format: "%.1f+", rating))
                                 .font(.system(size: 13, weight: .bold, design: .rounded))
                         }
-                        .foregroundColor(Color.slooshAccent)
+                        .foregroundColor(.primary)
 
                         Button {
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
@@ -291,11 +326,12 @@ struct SearchFilterSheet: View {
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 5)
-                .glassEffect(.regular.interactive(), in: Capsule())
+                .background(Color(UIColor.systemFill))
+                .clipShape(Capsule())
             }
 
             HStack(spacing: 10) {
-                Text("1.0")
+                Text(verbatim: "1.0")
                     .font(.system(size: 12, weight: .medium, design: .rounded))
                     .foregroundColor(.secondary)
                     .frame(width: 36, alignment: .leading)
@@ -310,9 +346,9 @@ struct SearchFilterSheet: View {
                     in: 1.0...10.0,
                     step: 0.5
                 )
-                .tint(Color.slooshAccent)
+                .tint(Color.primary)
 
-                Text("10.0")
+                Text(verbatim: "10.0")
                     .font(.system(size: 12, weight: .medium, design: .rounded))
                     .foregroundColor(.secondary)
                     .frame(width: 36, alignment: .trailing)
@@ -320,14 +356,20 @@ struct SearchFilterSheet: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
-        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .background(Color(UIColor.secondarySystemGroupedBackground).opacity(0.7))
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 
     // MARK: - Year Slider Card
     private var yearSliderCard: some View {
         VStack(spacing: 12) {
-            HStack {
-                Label("Год выпуска", systemImage: "calendar")
+            HStack(spacing: 12) {
+                Image(systemName: "calendar")
+                    .font(.system(size: 15, weight: .semibold))
+                    .frame(width: 24, height: 24, alignment: .center)
+                    .foregroundColor(.secondary)
+
+                Text("Год выпуска")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundColor(.primary)
 
@@ -338,10 +380,10 @@ struct SearchFilterSheet: View {
                         HStack(spacing: 3) {
                             Image(systemName: "calendar")
                                 .font(.system(size: 10))
-                            Text("от \(String(year)) г.")
+                            Text(verbatim: "от \(year) г.")
                                 .font(.system(size: 13, weight: .bold, design: .rounded))
                         }
-                        .foregroundColor(Color.slooshAccent)
+                        .foregroundColor(.primary)
 
                         Button {
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
@@ -361,11 +403,12 @@ struct SearchFilterSheet: View {
                 }
                 .padding(.horizontal, 10)
                 .padding(.vertical, 5)
-                .glassEffect(.regular.interactive(), in: Capsule())
+                .background(Color(UIColor.systemFill))
+                .clipShape(Capsule())
             }
 
             HStack(spacing: 10) {
-                Text("1980")
+                Text(verbatim: "1980")
                     .font(.system(size: 12, weight: .medium, design: .rounded))
                     .foregroundColor(.secondary)
                     .frame(width: 36, alignment: .leading)
@@ -381,9 +424,9 @@ struct SearchFilterSheet: View {
                     in: 1980.0...Double(currentYear),
                     step: 1.0
                 )
-                .tint(Color.slooshAccent)
+                .tint(Color.primary)
 
-                Text("\(currentYear)")
+                Text(verbatim: "\(currentYear)")
                     .font(.system(size: 12, weight: .medium, design: .rounded))
                     .foregroundColor(.secondary)
                     .frame(width: 36, alignment: .trailing)
@@ -391,6 +434,7 @@ struct SearchFilterSheet: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 14)
-        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .background(Color(UIColor.secondarySystemGroupedBackground).opacity(0.7))
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 }
