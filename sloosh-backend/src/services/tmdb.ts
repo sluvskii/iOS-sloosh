@@ -158,7 +158,7 @@ export function parseTvAgeRating(contentRatings: any): string | undefined {
 
 export function resolveGenreIds(genres: string, isTv: boolean = false): string {
   if (!genres) return ""
-  const tokens = genres.split(",").map(t => t.trim().toLowerCase()).filter(Boolean)
+  const tokens = genres.split(/[,|]/).map(t => t.trim().toLowerCase()).filter(Boolean)
   const result: string[] = []
 
   const movieMap: Record<string, string> = {
