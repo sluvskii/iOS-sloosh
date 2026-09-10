@@ -11,6 +11,7 @@ import type {
   CollectionPartDto,
   PersonDetailsDto,
   TvSeasonDto,
+  TvSeasonSummaryDto,
   TvSeasonEpisodeDto,
   TvNextEpisodeDto,
 } from "../types/models"
@@ -897,6 +898,17 @@ export class TMDBService {
       }
     }
 
+    const seasons: TvSeasonSummaryDto[] = (data.seasons || [])
+      .filter((s: any) => (s.season_number ?? 0) > 0)
+      .map((s: any) => ({
+        id: s.id,
+        seasonNumber: s.season_number,
+        name: s.name || `${s.season_number} сезон`,
+        episodeCount: s.episode_count || 0,
+        airDate: s.air_date || null,
+        poster: formatImageUrl(s.poster_path, "w500") || null,
+      }))
+
     // Similar / Recommended TV Series
     const rawTvSimilar = [
       ...(data.recommendations?.results || []),
@@ -955,6 +967,7 @@ export class TMDBService {
       ageRating,
       status,
       nextEpisodeToAir,
+      seasons,
       similar: similarTv,
       externalIds: {
         tmdb: data.id,
