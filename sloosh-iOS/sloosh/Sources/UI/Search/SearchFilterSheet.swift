@@ -48,8 +48,10 @@ struct SearchFilterSheet: View {
                     ratingAndYearWheelCard
                 }
                 .padding(.horizontal, 16)
-                .padding(.vertical, 12)
+                .padding(.top, 12)
+                .padding(.bottom, 16)
             }
+            .scrollBounceBehavior(.basedOnSize)
             .scrollIndicators(.hidden)
             .navigationTitle("Фильтры")
             .navigationBarTitleDisplayMode(.inline)
@@ -74,7 +76,7 @@ struct SearchFilterSheet: View {
             }
             .background(Color.clear)
         }
-        .presentationDetents(context == .search ? [.fraction(0.56), .large] : [.fraction(0.46), .large])
+        .presentationDetents(context == .search ? [.fraction(0.62), .large] : [.fraction(0.52), .large])
         .presentationBackground { Color.clear.glassEffect(in: .rect) }
         .presentationDragIndicator(.visible)
     }
