@@ -98,7 +98,7 @@ struct SearchView: View {
                     } label: {
                         Image(systemName: viewModel.searchFilters.isEmpty ? "line.3.horizontal.decrease.circle" : "line.3.horizontal.decrease.circle.fill")
                             .font(.system(size: 19))
-                            .foregroundColor(viewModel.searchFilters.isEmpty ? .secondary : Color.slooshAccent)
+                            .foregroundColor(viewModel.searchFilters.isEmpty ? .secondary : .primary)
                     }
                 }
             }
