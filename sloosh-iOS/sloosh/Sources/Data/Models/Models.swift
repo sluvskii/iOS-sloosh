@@ -117,6 +117,7 @@ struct MediaDto: Codable, Identifiable {
     let description: String?
     let type: String?
     let genres: [GenreDto]?
+    let countries: [String]?
     let externalIds: ExternalIdsDto?
     let name: String?
     let poster_path: String?
@@ -125,7 +126,7 @@ struct MediaDto: Codable, Identifiable {
     
     enum CodingKeys: String, CodingKey {
         case originalId = "id"
-        case title, originalTitle, year, releaseDate, rating, ratings, poster, posterUrl, description, type, genres, externalIds, name, poster_path, backdrop, backdrop_path
+        case title, originalTitle, year, releaseDate, rating, ratings, poster, posterUrl, description, type, genres, countries, externalIds, name, poster_path, backdrop, backdrop_path
     }
 
     init(
@@ -141,6 +142,7 @@ struct MediaDto: Codable, Identifiable {
         description: String? = nil,
         type: String? = nil,
         genres: [GenreDto]? = nil,
+        countries: [String]? = nil,
         externalIds: ExternalIdsDto? = nil,
         name: String? = nil,
         poster_path: String? = nil,
@@ -159,6 +161,7 @@ struct MediaDto: Codable, Identifiable {
         self.description = description
         self.type = type
         self.genres = genres
+        self.countries = countries
         self.externalIds = externalIds
         self.name = name
         self.poster_path = poster_path
