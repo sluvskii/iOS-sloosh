@@ -100,7 +100,7 @@ export const TMDB_GENRES: Record<number, string> = {
   10762: "детский",
   10763: "новости",
   10764: "реалити-шоу",
-  10765: "научная фантастика и фэнтези",
+  10765: "НФ и фэнтези",
   10766: "мыльная опера",
   10767: "ток-шоу",
   10768: "война и политика",
@@ -133,14 +133,15 @@ export function parseMovieAgeRating(releaseDates: any): string | undefined {
 
 export function parseTvAgeRating(contentRatings: any): string | undefined {
   if (!contentRatings?.results || !Array.isArray(contentRatings.results)) return undefined
-  const ru = contentRatings.results.find((r: any) => r.iso_3166_1 === "RU")?.rating?.trim()
-  if (ru) {
-    if (ru.includes("18")) return "18+"
-    if (ru.includes("16")) return "16+"
-    if (ru.includes("12")) return "12+"
-    if (ru.includes("6")) return "6+"
-    if (ru.includes("0")) return "0+"
-    return ru
+  const ru = contentRatings.results.find((r: any) => r.iso_3166_1 === "RU")
+  const rating = ru?.rating?.trim()
+  if (rating) {
+    if (rating.includes("18")) return "18+"
+    if (rating.includes("16")) return "16+"
+    if (rating.includes("12")) return "12+"
+    if (rating.includes("6")) return "6+"
+    if (rating.includes("0")) return "0+"
+    return rating
   }
   const us = contentRatings.results.find((r: any) => r.iso_3166_1 === "US")?.rating?.trim()
   if (us) {
@@ -158,59 +159,67 @@ export function parseTvAgeRating(contentRatings: any): string | undefined {
 export function resolveGenreIds(genres: string, isTv: boolean = false): string {
   if (!genres) return ""
   const tokens = genres.split(",").map(t => t.trim().toLowerCase()).filter(Boolean)
-  const ids: number[] = []
+  const result: string[] = []
 
-  const movieMap: Record<string, number> = {
-    "боевик": 28, "боевики": 28, "action": 28,
-    "приключения": 12, "приключение": 12, "adventure": 12,
-    "мультфильм": 16, "мультфильмы": 16, "анимация": 16, "аниме": 16, "animation": 16, "anime": 16,
-    "комедия": 35, "комедии": 35, "comedy": 35,
-    "криминал": 80, "криминальный": 80, "crime": 80,
-    "документальный": 99, "документалка": 99, "documentary": 99,
-    "драма": 18, "драмы": 18, "drama": 18,
-    "семейный": 10751, "семейное": 10751, "семья": 10751, "family": 10751,
-    "фэнтези": 14, "fantasy": 14,
-    "история": 36, "исторический": 36, "history": 36,
-    "ужасы": 27, "ужас": 27, "хоррор": 27, "horror": 27,
-    "музыка": 10402, "мюзикл": 10402, "музыкальный": 10402, "music": 10402,
-    "детектив": 9648, "детективы": 9648, "mystery": 9648,
-    "мелодрама": 10749, "мелодрамы": 10749, "романтика": 10749, "romance": 10749,
-    "фантастика": 878, "sci-fi": 878,
-    "телефильм": 10770,
-    "триллер": 53, "триллеры": 53, "thriller": 53,
-    "военный": 10752, "война": 10752, "war": 10752,
-    "вестерн": 37, "вестерны": 37, "western": 37,
-    "детский": 10751, "детские": 10751, "kids": 10751,
+  const movieMap: Record<string, string> = {
+    "боевик": "28", "боевики": "28", "action": "28",
+    "приключения": "12", "приключение": "12", "adventure": "12",
+    "мультфильм": "16", "мультфильмы": "16", "анимация": "16", "animation": "16",
+    "аниме": "16", "anime": "16",
+    "комедия": "35", "комедии": "35", "comedy": "35",
+    "криминал": "80", "криминальный": "80", "crime": "80",
+    "документальный": "99", "документалка": "99", "documentary": "99",
+    "драма": "18", "драмы": "18", "drama": "18",
+    "семейный": "10751", "семейное": "10751", "семья": "10751", "family": "10751",
+    "фэнтези": "14", "fantasy": "14",
+    "история": "36", "исторический": "36", "history": "36",
+    "ужасы": "27", "ужас": "27", "хоррор": "27", "horror": "27",
+    "музыка": "10402", "мюзикл": "10402", "музыкальный": "10402", "music": "10402",
+    "детектив": "9648", "детективы": "9648", "mystery": "9648",
+    "мелодрама": "10749", "мелодрамы": "10749", "романтика": "10749", "romance": "10749",
+    "фантастика": "878", "sci-fi": "878",
+    "научная фантастика и фэнтези": "878|14", "нф и фэнтези": "878|14", "sci-fi & fantasy": "878|14",
+    "телефильм": "10770",
+    "триллер": "53", "триллеры": "53", "thriller": "53",
+    "военный": "10752", "война": "10752", "war": "10752",
+    "вестерн": "37", "вестерны": "37", "western": "37",
+    "детский": "10751", "детские": "10751", "kids": "10751",
   }
 
-  const tvMap: Record<string, number> = {
+  const tvMap: Record<string, string> = {
     ...movieMap,
-    "боевик": 10759, "боевики": 10759, "приключения": 10759, "боевик и приключения": 10759, "action": 10759, "adventure": 10759,
-    "детский": 10762, "kids": 10762,
-    "новости": 10763, "news": 10763,
-    "реалити-шоу": 10764, "reality": 10764,
-    "научная фантастика и фэнтези": 10765, "фантастика": 10765, "фэнтези": 10765, "нф и фэнтези": 10765, "sci-fi": 10765, "fantasy": 10765,
-    "мыльная опера": 10766, "soap": 10766,
-    "ток-шоу": 10767, "talk": 10767,
-    "война и политика": 10768, "военный": 10768, "война": 10768, "war": 10768,
+    "боевик": "10759", "боевики": "10759", "приключения": "10759", "боевик и приключения": "10759", "action": "10759", "adventure": "10759",
+    "детский": "10762", "kids": "10762",
+    "новости": "10763", "news": "10763",
+    "реалити-шоу": "10764", "reality": "10764",
+    "научная фантастика и фэнтези": "10765", "фантастика": "10765", "фэнтези": "10765", "нф и фэнтези": "10765", "sci-fi": "10765", "fantasy": "10765", "sci-fi & fantasy": "10765",
+    "мыльная опера": "10766", "soap": "10766",
+    "ток-шоу": "10767", "talk": "10767",
+    "война и политика": "10768", "военный": "10768", "война": "10768", "war": "10768",
   }
 
   const activeMap = isTv ? tvMap : movieMap
 
   for (const token of tokens) {
     if (/^\d+$/.test(token)) {
-      ids.push(parseInt(token, 10))
+      if (!isTv && token === "10765") {
+        result.push("878|14")
+      } else if (isTv && (token === "878" || token === "14")) {
+        result.push("10765")
+      } else {
+        result.push(token)
+      }
     } else if (activeMap[token]) {
-      ids.push(activeMap[token])
+      result.push(activeMap[token])
     } else {
       const entry = Object.entries(activeMap).find(([k]) => token.includes(k) || k.includes(token))
       if (entry) {
-        ids.push(entry[1])
+        result.push(entry[1])
       }
     }
   }
 
-  return [...new Set(ids)].join(",")
+  return [...new Set(result)].join(",")
 }
 
 export function mapRawMovie(m: any): MediaDto {
@@ -226,6 +235,12 @@ export function mapRawMovie(m: any): MediaDto {
 
   const rawCountries = m.production_countries || (m.origin_country ? m.origin_country.map((c: string) => ({ iso_3166_1: c })) : [])
   const countries = rawCountries.map(localizeCountry).filter(Boolean)
+
+  const hasAnimation = genres.some((g: any) => g.id === "16" || g.name === "мультфильм")
+  const isJapanese = (m.original_language === "ja") || (rawCountries.some((c: any) => c.iso_3166_1 === "JP" || c.name === "Japan"))
+  if (hasAnimation && isJapanese && !genres.some((g: any) => g.id === "anime" || g.name === "аниме")) {
+    genres.push({ id: "anime", name: "аниме" })
+  }
 
   return {
     id: String(m.id),
@@ -266,6 +281,12 @@ export function mapRawTv(t: any): MediaDto {
 
   const rawCountries = t.origin_country || (t.production_countries ? t.production_countries.map((c: any) => c.iso_3166_1 || c.name) : [])
   const countries = rawCountries.map(localizeCountry).filter(Boolean)
+
+  const hasAnimation = genres.some((g: any) => g.id === "16" || g.name === "мультфильм")
+  const isJapanese = (t.original_language === "ja") || (rawCountries.some((c: any) => c.iso_3166_1 === "JP" || c.name === "Japan"))
+  if (hasAnimation && isJapanese && !genres.some((g: any) => g.id === "anime" || g.name === "аниме")) {
+    genres.push({ id: "anime", name: "аниме" })
+  }
 
   return {
     id: String(t.id),
@@ -469,6 +490,51 @@ export class TMDBService {
     }
   }
 
+  async getAnime(page = 1, order: "popular" | "top" = "popular"): Promise<MediaResponse> {
+    const isTop = order === "top"
+    const tvParams: Record<string, string> = {
+      page: String(page),
+      with_genres: "16",
+      with_original_language: "ja",
+      include_adult: "false",
+      sort_by: isTop ? "vote_average.desc" : "popularity.desc",
+      "vote_count.gte": isTop ? "80" : "25",
+    }
+    const movieParams: Record<string, string> = {
+      page: String(page),
+      with_genres: "16",
+      with_original_language: "ja",
+      include_adult: "false",
+      sort_by: isTop ? "vote_average.desc" : "popularity.desc",
+      "vote_count.gte": isTop ? "80" : "25",
+    }
+    const [tvData, movieData] = await Promise.all([
+      tmdbFetch<any>("/discover/tv", tvParams),
+      tmdbFetch<any>("/discover/movie", movieParams),
+    ])
+    const tvResults = (tvData.results || []).map(mapRawTv)
+    const movieResults = (movieData.results || []).map(mapRawMovie)
+
+    // Interleave tv and movies: 2 TV, 1 Movie
+    const results: MediaDto[] = []
+    let t = 0, m = 0
+    while (t < tvResults.length || m < movieResults.length) {
+      if (t < tvResults.length) results.push(tvResults[t++])
+      if (t < tvResults.length) results.push(tvResults[t++])
+      if (m < movieResults.length) results.push(movieResults[m++])
+    }
+    const valid = results.filter((item: MediaDto) => item.poster && item.title.trim().length > 0)
+    return {
+      results: valid,
+      items: valid,
+      page,
+      total_pages: Math.max(tvData.total_pages || 1, movieData.total_pages || 1),
+      pages: Math.max(tvData.total_pages || 1, movieData.total_pages || 1),
+      total_results: (tvData.total_results || 0) + (movieData.total_results || 0),
+      total: (tvData.total_results || 0) + (movieData.total_results || 0),
+    }
+  }
+
   async getByCompany(companyId: number, page = 1): Promise<MediaResponse> {
     const data = await tmdbFetch<any>("/discover/movie", {
       page: String(page),
@@ -559,6 +625,7 @@ export class TMDBService {
     const rawType = (options.type || "").toLowerCase().trim()
     const isCartoon = rawType === "cartoon"
     const isTv = rawType === "tv" || rawType === "tv_series"
+    const isAnime = rawType === "anime" || (options.genres || "").toLowerCase().includes("аниме") || (options.genres || "").toLowerCase().includes("anime")
 
     const endpoint = isTv ? "/discover/tv" : "/discover/movie"
     const params: Record<string, string> = {
@@ -568,11 +635,15 @@ export class TMDBService {
 
     // Genres
     let genreIds = resolveGenreIds(options.genres || "", isTv)
-    if (isCartoon) {
+    if (isCartoon || isAnime) {
       genreIds = genreIds ? `${genreIds},16` : "16"
     }
     if (genreIds) {
       params.with_genres = genreIds
+    }
+
+    if (isAnime) {
+      params.with_original_language = "ja"
     }
 
     // Origin Country
@@ -589,7 +660,7 @@ export class TMDBService {
 
     if (order === "RATING" || order === "vote_average.desc") {
       params.sort_by = "vote_average.desc"
-      params["vote_count.gte"] = "50"
+      params["vote_count.gte"] = isAnime ? "30" : "50"
     } else if (order === "YEAR" || order === "release_date.desc") {
       params.sort_by = isTv ? "first_air_date.desc" : "primary_release_date.desc"
       if (!options.yearTo && !options.year) {
@@ -606,7 +677,7 @@ export class TMDBService {
       params.sort_by = "vote_count.desc"
     } else {
       params.sort_by = "popularity.desc"
-      params["vote_count.gte"] = "10"
+      params["vote_count.gte"] = isAnime ? "15" : "10"
     }
 
     // Years
@@ -638,6 +709,32 @@ export class TMDBService {
     }
     if (options.ratingTo !== undefined && options.ratingTo < 10) {
       params["vote_average.lte"] = String(options.ratingTo)
+    }
+
+    if (isAnime && (!rawType || rawType === "anime" || rawType === "all")) {
+      const [tvData, movieData] = await Promise.all([
+        tmdbFetch<any>("/discover/tv", params),
+        tmdbFetch<any>("/discover/movie", params),
+      ])
+      const tvResults = (tvData.results || []).map(mapRawTv)
+      const movieResults = (movieData.results || []).map(mapRawMovie)
+      const interleaved: MediaDto[] = []
+      let t = 0, m = 0
+      while (t < tvResults.length || m < movieResults.length) {
+        if (t < tvResults.length) interleaved.push(tvResults[t++])
+        if (t < tvResults.length) interleaved.push(tvResults[t++])
+        if (m < movieResults.length) interleaved.push(movieResults[m++])
+      }
+      const valid = interleaved.filter((item: MediaDto) => item.poster && item.title.trim().length > 0)
+      return {
+        results: valid,
+        items: valid,
+        page,
+        total_pages: Math.max(tvData.total_pages || 1, movieData.total_pages || 1),
+        pages: Math.max(tvData.total_pages || 1, movieData.total_pages || 1),
+        total_results: (tvData.total_results || 0) + (movieData.total_results || 0),
+        total: (tvData.total_results || 0) + (movieData.total_results || 0),
+      }
     }
 
     const data = await tmdbFetch<any>(endpoint, params)
@@ -752,6 +849,11 @@ export class TMDBService {
     }))
 
     const genreNames = (data.genres || []).map((g: any) => g.name || TMDB_GENRES[g.id] || "").filter(Boolean)
+    const isAnimMovie = (data.genres || []).some((g: any) => g.id === 16 || g.name === "мультфильм")
+    const isJapMovie = (data.original_language === "ja") || (data.production_countries || []).some((c: any) => c.iso_3166_1 === "JP")
+    if (isAnimMovie && isJapMovie && !genreNames.includes("аниме")) {
+      genreNames.push("аниме")
+    }
 
     // Financials & Rating
     const budget = typeof data.budget === "number" && data.budget > 0 ? data.budget : undefined
@@ -881,6 +983,11 @@ export class TMDBService {
     }))
 
     const tvGenreNames = (data.genres || []).map((g: any) => g.name || TMDB_GENRES[g.id] || "").filter(Boolean)
+    const isAnimTv = (data.genres || []).some((g: any) => g.id === 16 || g.name === "мультфильм")
+    const isJapTv = (data.original_language === "ja") || (data.origin_country || []).includes("JP") || (data.production_countries || []).some((c: any) => c.iso_3166_1 === "JP")
+    if (isAnimTv && isJapTv && !tvGenreNames.includes("аниме")) {
+      tvGenreNames.push("аниме")
+    }
 
     const ageRating = parseTvAgeRating(data.content_ratings)
     const status = data.status || undefined
