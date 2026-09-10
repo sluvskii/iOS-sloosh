@@ -348,12 +348,13 @@ struct MediaDetailsDto: Codable {
     let ageRating: String?
     let status: String?
     let nextEpisodeToAir: TvNextEpisodeDto?
+    let seasons: [TvSeasonSummaryDto]?
     
     enum CodingKeys: String, CodingKey {
         case id, title, originalTitle, description, type, year, releaseDate
         case genres, countries, duration, poster, backdrop, logo, cast, directors, writers, crew, trailers
         case ratings, ids, externalIds, productionCompanies, networks, collection, similar
-        case budget, revenue, ageRating, status, nextEpisodeToAir
+        case budget, revenue, ageRating, status, nextEpisodeToAir, seasons
     }
 
     init(
@@ -386,7 +387,8 @@ struct MediaDetailsDto: Codable {
         revenue: Int? = nil,
         ageRating: String? = nil,
         status: String? = nil,
-        nextEpisodeToAir: TvNextEpisodeDto? = nil
+        nextEpisodeToAir: TvNextEpisodeDto? = nil,
+        seasons: [TvSeasonSummaryDto]? = nil
     ) {
         self.id = id
         self.title = title
@@ -418,6 +420,7 @@ struct MediaDetailsDto: Codable {
         self.ageRating = ageRating
         self.status = status
         self.nextEpisodeToAir = nextEpisodeToAir
+        self.seasons = seasons
     }
 
     init(from decoder: Decoder) throws {
@@ -507,6 +510,7 @@ struct MediaDetailsDto: Codable {
         self.ageRating = try? container.decodeIfPresent(String.self, forKey: .ageRating)
         self.status = try? container.decodeIfPresent(String.self, forKey: .status)
         self.nextEpisodeToAir = try? container.decodeIfPresent(TvNextEpisodeDto.self, forKey: .nextEpisodeToAir)
+        self.seasons = try? container.decodeIfPresent([TvSeasonSummaryDto].self, forKey: .seasons)
     }
     
     var isUnreleased: Bool {
@@ -805,6 +809,15 @@ struct TvEpisodeDetailsDto: Codable {
     let stillPath: String?
     let language: String?
     let ratings: EpisodeRatingsDto?
+}
+
+struct TvSeasonSummaryDto: Codable, Identifiable {
+    let id: Int?
+    let seasonNumber: Int?
+    let name: String?
+    let episodeCount: Int?
+    let airDate: String?
+    let poster: String?
 }
 
 struct TvNextEpisodeDto: Codable {

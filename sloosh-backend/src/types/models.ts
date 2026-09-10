@@ -109,12 +109,22 @@ export interface MediaDetailsDto extends MediaDto {
   ageRating?: string
   status?: string
   nextEpisodeToAir?: TvNextEpisodeDto | null
+  seasons?: TvSeasonSummaryDto[]
   similar?: MediaDto[]
   alloha?: {
     kpId: number | null
     imdbId: string | null
     iframeUrl: string | null
   }
+}
+
+export interface TvSeasonSummaryDto {
+  id: number
+  seasonNumber: number
+  name: string
+  episodeCount: number
+  airDate?: string | null
+  poster?: string | null
 }
 
 export interface TvNextEpisodeDto {
