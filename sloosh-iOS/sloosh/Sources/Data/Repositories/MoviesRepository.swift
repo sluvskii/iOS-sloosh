@@ -506,34 +506,47 @@ class MoviesRepository: ObservableObject {
                 if year > maxYear { return false }
             }
             
-            // Фильтр по жанру
-            if let targetGenre = filters.genres?.lowercased().trimmingCharacters(in: .whitespacesAndNewlines), !targetGenre.isEmpty {
-                let isSciFiFantasy = targetGenre.contains("нф") || targetGenre.contains("фантастик") || targetGenre.contains("фэнтези") || targetGenre.contains("sci-fi")
-                let isAnimeGenre = targetGenre.contains("аниме") || targetGenre.contains("anime")
+            // Фильтр по жанрам
+            if let genresStr = filters.genres?.lowercased().trimmingCharacters(in: .whitespacesAndNewlines), !genresStr.isEmpty {
+                let targetGenres = genresStr.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+                let itemGenres = item.genres?.compactMap { $0.name?.lowercased() ?? $0.id?.lowercased() } ?? []
 
-                if isAnimeGenre {
-                    if !isAnime(item) {
-                        let itemGenres = item.genres?.compactMap { $0.name?.lowercased() ?? $0.id?.lowercased() } ?? []
-                        if !itemGenres.contains(where: { $0.contains("аниме") || $0.contains("anime") }) {
-                            return false
+                for targetGenre in targetGenres {
+                    let isSciFiFantasy = targetGenre.contains("нф") || targetGenre.contains("фантастик") || targetGenre.contains("фэнтези") || targetGenre.contains("sci-fi")
+                    let isAnimeGenre = targetGenre.contains("аниме") || targetGenre.contains("anime")
+
+                    if isAnimeGenre {
+                        if !isAnime(item) {
+                            if !itemGenres.contains(where: { $0.contains("аниме") || $0.contains("anime") }) {
+                                return false
+                            }
                         }
-                    }
-                } else if isSciFiFantasy {
-                    let itemGenres = item.genres?.compactMap { $0.name?.lowercased() ?? $0.id?.lowercased() } ?? []
-                    let matches = itemGenres.contains { g in
-                        g.contains("нф") || g.contains("фантастик") || g.contains("фэнтези") || g.contains("sci-fi") || g.contains("fantasy") || g == "10765" || g == "878" || g == "14"
-                    }
-                    if !matches && !itemGenres.isEmpty { return false }
-                } else {
-                    let itemGenres = item.genres?.compactMap { genreDto -> String? in
-                        return genreDto.name?.lowercased() ?? genreDto.id?.lowercased()
-                    } ?? []
-                    if !itemGenres.isEmpty {
+                    } else if isSciFiFantasy {
                         let matches = itemGenres.contains { g in
-                            g.contains(targetGenre) || targetGenre.contains(g)
+                            g.contains("нф") || g.contains("фантастик") || g.contains("фэнтези") || g.contains("sci-fi") || g.contains("fantasy") || g == "10765" || g == "878" || g == "14"
                         }
-                        if !matches { return false }
+                        if !matches && !itemGenres.isEmpty { return false }
+                    } else {
+                        if !itemGenres.isEmpty {
+                            let matches = itemGenres.contains { g in
+                                g.contains(targetGenre) || targetGenre.contains(g)
+                            }
+                            if !matches { return false }
+                        }
                     }
+                }
+            }
+            
+            // Фильтр по странам
+            if let countriesStr = filters.countries?.trimmingCharacters(in: .whitespacesAndNewlines), !countriesStr.isEmpty {
+                let targetCountries = countriesStr.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces).lowercased() }.filter { !$0.isEmpty }
+                let itemCountries = (item.countries ?? []).map { $0.lowercased() }
+
+                if !itemCountries.isEmpty {
+                    let matches = targetCountries.contains { target in
+                        itemCountries.contains { ic in ic.contains(target) || target.contains(ic) }
+                    }
+                    if !matches { return false }
                 }
             }
             

@@ -1330,6 +1330,34 @@ struct SearchFilters: Equatable, Hashable {
     var genres: String?
     var countries: String?
     
+    var selectedGenres: Set<String> {
+        get {
+            guard let genres, !genres.isEmpty else { return [] }
+            return Set(genres.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces).lowercased() }.filter { !$0.isEmpty })
+        }
+        set {
+            if newValue.isEmpty {
+                genres = nil
+            } else {
+                genres = newValue.sorted().joined(separator: ",")
+            }
+        }
+    }
+
+    var selectedCountries: Set<String> {
+        get {
+            guard let countries, !countries.isEmpty else { return [] }
+            return Set(countries.components(separatedBy: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty })
+        }
+        set {
+            if newValue.isEmpty {
+                countries = nil
+            } else {
+                countries = newValue.sorted().joined(separator: ",")
+            }
+        }
+    }
+
     var isEmpty: Bool {
         return type == nil && order == nil && ratingFrom == nil && ratingTo == nil && yearFrom == nil && yearTo == nil && genres == nil && countries == nil
     }

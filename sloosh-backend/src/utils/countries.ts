@@ -222,20 +222,30 @@ export function localizeCountry(item: any): string {
 
 export function resolveCountryCode(raw: string): string | undefined {
   if (!raw) return undefined
-  const cleaned = raw.trim()
-  const upper = cleaned.toUpperCase()
-  if (upper.length === 2 && COUNTRY_CODE_TO_RU[upper]) {
-    return upper
+  const tokens = raw.split(/[,|]/).map(t => t.trim()).filter(Boolean)
+  const codes: string[] = []
+
+  for (const token of tokens) {
+    const upper = token.toUpperCase()
+    if (upper.length === 2 && COUNTRY_CODE_TO_RU[upper]) {
+      codes.push(upper)
+      continue
+    }
+    const lower = token.toLowerCase()
+    if (RUSSIAN_COUNTRY_TO_CODE[lower]) {
+      codes.push(RUSSIAN_COUNTRY_TO_CODE[lower])
+      continue
+    }
+    if (ENGLISH_NAME_TO_RU[lower]) {
+      const ru = ENGLISH_NAME_TO_RU[lower]
+      if (RUSSIAN_COUNTRY_TO_CODE[ru.toLowerCase()]) {
+        codes.push(RUSSIAN_COUNTRY_TO_CODE[ru.toLowerCase()])
+      }
+    }
   }
-  const lower = cleaned.toLowerCase()
-  if (RUSSIAN_COUNTRY_TO_CODE[lower]) {
-    return RUSSIAN_COUNTRY_TO_CODE[lower]
-  }
-  if (ENGLISH_NAME_TO_RU[lower]) {
-    const ru = ENGLISH_NAME_TO_RU[lower]
-    return RUSSIAN_COUNTRY_TO_CODE[ru.toLowerCase()]
-  }
-  return undefined
+
+  if (codes.length === 0) return undefined
+  return [...new Set(codes)].join("|")
 }
 
 export function localizePlaceOfBirth(place: string): string {

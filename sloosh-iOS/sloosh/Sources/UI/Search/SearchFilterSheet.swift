@@ -195,17 +195,51 @@ struct SearchFilterSheet: View {
                 Spacer()
 
                 Menu {
-                    Button("Любой") { filters.genres = nil }
-                    Divider()
-                    ForEach(genresList, id: \.self) { genre in
-                        Button(genreDisplayName(genre)) {
-                            filters.genres = genre
+                    Button {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                            filters.selectedGenres = []
                         }
+                    } label: {
+                        HStack {
+                            Text("Любой")
+                            if filters.selectedGenres.isEmpty {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+
+                    Divider()
+
+                    ForEach(genresList, id: \.self) { genre in
+                        let isSelected = filters.selectedGenres.contains(genre.lowercased())
+                        Button {
+                            let generator = UIImpactFeedbackGenerator(style: .light)
+                            generator.prepare()
+                            generator.impactOccurred()
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                var current = filters.selectedGenres
+                                if isSelected {
+                                    current.remove(genre.lowercased())
+                                } else {
+                                    current.insert(genre.lowercased())
+                                }
+                                filters.selectedGenres = current
+                            }
+                        } label: {
+                            HStack {
+                                Text(genreDisplayName(genre))
+                                if isSelected {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                        .menuActionDismissBehavior(.disabled)
                     }
                 } label: {
                     HStack(spacing: 6) {
-                        Text(filters.genres.map { genreDisplayName($0) } ?? "Любой")
+                        Text(currentGenreTitle)
                             .font(.system(size: 14, weight: .semibold))
+                            .lineLimit(1)
                         Image(systemName: "chevron.up.chevron.down")
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundColor(.secondary)
@@ -237,17 +271,51 @@ struct SearchFilterSheet: View {
                 Spacer()
 
                 Menu {
-                    Button("Любая") { filters.countries = nil }
-                    Divider()
-                    ForEach(countriesList, id: \.self) { country in
-                        Button(country) {
-                            filters.countries = country
+                    Button {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                            filters.selectedCountries = []
                         }
+                    } label: {
+                        HStack {
+                            Text("Любая")
+                            if filters.selectedCountries.isEmpty {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+
+                    Divider()
+
+                    ForEach(countriesList, id: \.self) { country in
+                        let isSelected = filters.selectedCountries.contains(country)
+                        Button {
+                            let generator = UIImpactFeedbackGenerator(style: .light)
+                            generator.prepare()
+                            generator.impactOccurred()
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                var current = filters.selectedCountries
+                                if isSelected {
+                                    current.remove(country)
+                                } else {
+                                    current.insert(country)
+                                }
+                                filters.selectedCountries = current
+                            }
+                        } label: {
+                            HStack {
+                                Text(country)
+                                if isSelected {
+                                    Image(systemName: "checkmark")
+                                }
+                            }
+                        }
+                        .menuActionDismissBehavior(.disabled)
                     }
                 } label: {
                     HStack(spacing: 6) {
-                        Text(filters.countries ?? "Любая")
+                        Text(currentCountryTitle)
                             .font(.system(size: 14, weight: .semibold))
+                            .lineLimit(1)
                         Image(systemName: "chevron.up.chevron.down")
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundColor(.secondary)
@@ -264,6 +332,34 @@ struct SearchFilterSheet: View {
         }
         .background(Color(UIColor.secondarySystemGroupedBackground).opacity(0.7))
         .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+    }
+
+    private var currentGenreTitle: String {
+        let selected = filters.selectedGenres
+        if selected.isEmpty {
+            return "Любой"
+        } else if selected.count == 1, let first = selected.first {
+            return genreDisplayName(first)
+        } else if selected.count == 2 {
+            let sorted = selected.map { genreDisplayName($0) }.sorted()
+            return sorted.joined(separator: ", ")
+        } else {
+            return "Выбрано: \(selected.count)"
+        }
+    }
+
+    private var currentCountryTitle: String {
+        let selected = filters.selectedCountries
+        if selected.isEmpty {
+            return "Любая"
+        } else if selected.count == 1, let first = selected.first {
+            return first
+        } else if selected.count == 2 {
+            let sorted = Array(selected).sorted()
+            return sorted.joined(separator: ", ")
+        } else {
+            return "Выбрано: \(selected.count)"
+        }
     }
 
     private var currentSortTitle: String {
