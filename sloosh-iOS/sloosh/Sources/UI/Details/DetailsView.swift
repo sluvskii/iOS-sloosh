@@ -1701,6 +1701,7 @@ struct EpisodeDetailsSheetItem: Identifiable {
 struct EpisodeDetailsSheet: View {
     let item: EpisodeDetailsSheetItem
     var details: MediaDetailsDto? = nil
+    var viewModel: DetailsViewModel? = nil
     let onPlay: () -> Void
     let onWatchedToggle: (Bool) -> Void
     
@@ -1956,11 +1957,12 @@ struct EpisodeDetailsSheet: View {
     }
     
     private func startDownload(kpId: Int, details: MediaDetailsDto) {
+        guard let vm = viewModel else { return }
         Task {
             let title = details.title ?? details.originalTitle ?? ""
             let tmdbId = details.externalIds?.tmdb ?? details.ids?.tmdb ?? Int(details.id ?? "")
-            await viewModel.fetchSources(kpId: kpId, tmdbId: tmdbId, title: title)
-            guard let result = viewModel.sourceResultWrapper?.allohaResult else { return }
+            await vm.fetchSources(kpId: kpId, tmdbId: tmdbId, title: title)
+            guard let result = vm.sourceResultWrapper?.allohaResult else { return }
             
             let savedVoiceover = PlaybackProgressStore.shared.loadLastVoiceover(kpId: kpId, source: "alloha")
             let globalVoiceover = UserDefaults.standard.string(forKey: "alloha_last_translation_name")
@@ -2499,6 +2501,7 @@ struct InlineEpisodesSection: View {
             EpisodeDetailsSheet(
                 item: item,
                 details: details,
+                viewModel: viewModel,
                 onPlay: { () -> Void in
                     onEpisodeTap(item.season, item.episode)
                 },
