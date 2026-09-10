@@ -100,40 +100,38 @@ struct SearchFilterSheet: View {
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    typeCapsule(title: "Всё", tag: nil, icon: "sparkles")
-                    typeCapsule(title: "Фильмы", tag: "FILM", icon: "film")
-                    typeCapsule(title: "Сериалы", tag: "TV_SERIES", icon: "tv")
-                    typeCapsule(title: "Мульты", tag: "CARTOON", icon: "face.smiling")
-                    typeCapsule(title: "Аниме", tag: "ANIME", icon: "wand.and.stars")
+                    typeCapsule(title: "Все", tag: nil)
+                    typeCapsule(title: "Фильмы", tag: "FILM")
+                    typeCapsule(title: "Сериалы", tag: "TV_SERIES")
+                    typeCapsule(title: "Мульты", tag: "CARTOON")
+                    typeCapsule(title: "Аниме", tag: "ANIME")
                 }
                 .padding(.horizontal, 2)
             }
+            .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
         }
     }
 
-    private func typeCapsule(title: String, tag: String?, icon: String) -> some View {
+    private func typeCapsule(title: String, tag: String?) -> some View {
         let isSelected = filters.type == tag
         return Button {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+            let generator = UIImpactFeedbackGenerator(style: .light)
+            generator.prepare()
+            generator.impactOccurred()
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
                 filters.type = tag
             }
         } label: {
-            HStack(spacing: 6) {
-                Image(systemName: icon)
-                    .font(.system(size: 12, weight: .semibold))
-                Text(title)
-                    .font(.system(size: 14, weight: isSelected ? .bold : .medium))
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 8)
-            .foregroundColor(isSelected ? Color(UIColor.systemBackground) : .primary)
-            .background {
-                if isSelected {
-                    Capsule().fill(Color.primary)
-                } else {
-                    Capsule().fill(Color(UIColor.secondarySystemGroupedBackground).opacity(0.7))
-                }
-            }
+            Text(title)
+                .font(.system(size: 13, weight: .semibold))
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .background(
+                    Capsule()
+                        .fill(isSelected ? Color.white : Color.clear)
+                )
+                .foregroundStyle(isSelected ? Color.black : Color.white)
+                .glassEffect(isSelected ? .regular : .regular.interactive(), in: Capsule())
         }
         .buttonStyle(.plain)
     }
