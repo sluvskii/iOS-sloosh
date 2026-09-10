@@ -12,6 +12,14 @@ struct SearchFilterSheet: View {
 
     private let currentYear = Calendar.current.component(.year, from: Date())
 
+    private var ratingOptions: [Double] {
+        stride(from: 1.0, through: 9.5, by: 0.5).map { round($0 * 10) / 10 }
+    }
+
+    private var yearOptions: [Int] {
+        Array(stride(from: currentYear, through: 1980, by: -1))
+    }
+
     private let genresList = [
         "боевик", "комедия", "драма", "фантастика", "фэнтези", "нф и фэнтези",
         "триллер", "ужасы", "детектив", "мелодрама", "приключения",
@@ -36,11 +44,8 @@ struct SearchFilterSheet: View {
                     // 2. Dropdown Pickers (Сортировка, Жанр, Страна)
                     pickersCard
 
-                    // 3. Compact Rating Capsule Slider
-                    ratingSliderCard
-
-                    // 4. Compact Release Year Capsule Slider
-                    yearSliderCard
+                    // 3. Alarm Clock-style Dual Wheel Picker (Рейтинг и Год выпуска)
+                    ratingAndYearWheelCard
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 16)
@@ -260,7 +265,7 @@ struct SearchFilterSheet: View {
             .padding(.vertical, 13)
         }
         .background(Color(UIColor.secondarySystemGroupedBackground).opacity(0.7))
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
     }
 
     private var currentSortTitle: String {
@@ -283,158 +288,131 @@ struct SearchFilterSheet: View {
         return genre.capitalized
     }
 
-    // MARK: - Rating Slider Card
-    private var ratingSliderCard: some View {
-        VStack(spacing: 12) {
-            HStack(spacing: 12) {
-                Image(systemName: "star.fill")
-                    .font(.system(size: 15, weight: .semibold))
-                    .frame(width: 24, height: 24, alignment: .center)
-                    .foregroundColor(.secondary)
+    // MARK: - Rating & Year Wheel Card (Alarm Clock Style)
+    private var ratingAndYearWheelCard: some View {
+        VStack(spacing: 6) {
+            // Header: Labels & Value Badges
+            HStack {
+                // Left: Rating Header
+                HStack(spacing: 8) {
+                    Image(systemName: "star.fill")
+                        .font(.system(size: 15, weight: .semibold))
+                        .frame(width: 24, height: 24, alignment: .center)
+                        .foregroundColor(.secondary)
 
-                Text("Минимальный рейтинг")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(.primary)
-
-                Spacer()
-
-                HStack(spacing: 6) {
-                    if let rating = filters.ratingFrom {
-                        HStack(spacing: 3) {
-                            Image(systemName: "star.fill")
-                                .font(.system(size: 10))
-                            Text(String(format: "%.1f+", rating))
-                                .font(.system(size: 13, weight: .bold, design: .rounded))
-                        }
+                    Text("Рейтинг")
+                        .font(.system(size: 15, weight: .semibold))
                         .foregroundColor(.primary)
 
-                        Button {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                filters.ratingFrom = nil
+                    Spacer()
+
+                    HStack(spacing: 4) {
+                        if let rating = filters.ratingFrom {
+                            Text(String(format: "★ %.1f+", rating))
+                                .font(.system(size: 12, weight: .bold, design: .rounded))
+                                .foregroundColor(.primary)
+
+                            Button {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                    filters.ratingFrom = nil
+                                }
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
                             }
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 12))
+                            .buttonStyle(.plain)
+                        } else {
+                            Text("Любой")
+                                .font(.system(size: 12, weight: .medium, design: .rounded))
                                 .foregroundColor(.secondary)
                         }
-                        .buttonStyle(.plain)
-                    } else {
-                        Text("Любой")
-                            .font(.system(size: 13, weight: .medium, design: .rounded))
-                            .foregroundColor(.secondary)
                     }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color(UIColor.systemFill))
+                    .clipShape(Capsule())
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(Color(UIColor.systemFill))
-                .clipShape(Capsule())
-            }
+                .frame(maxWidth: .infinity)
 
-            HStack(spacing: 10) {
-                Text(verbatim: "1.0")
-                    .font(.system(size: 12, weight: .medium, design: .rounded))
-                    .foregroundColor(.secondary)
-                    .frame(width: 36, alignment: .leading)
+                Spacer(minLength: 16)
 
-                Slider(
-                    value: Binding(
-                        get: { filters.ratingFrom ?? 1.0 },
-                        set: { newValue in
-                            filters.ratingFrom = newValue <= 1.0 ? nil : (round(newValue * 10) / 10)
-                        }
-                    ),
-                    in: 1.0...10.0,
-                    step: 0.5
-                )
-                .tint(Color.primary)
+                // Right: Year Header
+                HStack(spacing: 8) {
+                    Image(systemName: "calendar")
+                        .font(.system(size: 15, weight: .semibold))
+                        .frame(width: 24, height: 24, alignment: .center)
+                        .foregroundColor(.secondary)
 
-                Text(verbatim: "10.0")
-                    .font(.system(size: 12, weight: .medium, design: .rounded))
-                    .foregroundColor(.secondary)
-                    .frame(width: 36, alignment: .trailing)
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
-        .background(Color(UIColor.secondarySystemGroupedBackground).opacity(0.7))
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-    }
-
-    // MARK: - Year Slider Card
-    private var yearSliderCard: some View {
-        VStack(spacing: 12) {
-            HStack(spacing: 12) {
-                Image(systemName: "calendar")
-                    .font(.system(size: 15, weight: .semibold))
-                    .frame(width: 24, height: 24, alignment: .center)
-                    .foregroundColor(.secondary)
-
-                Text("Год выпуска")
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(.primary)
-
-                Spacer()
-
-                HStack(spacing: 6) {
-                    if let year = filters.yearFrom {
-                        HStack(spacing: 3) {
-                            Image(systemName: "calendar")
-                                .font(.system(size: 10))
-                            Text(verbatim: "от \(year) г.")
-                                .font(.system(size: 13, weight: .bold, design: .rounded))
-                        }
+                    Text("Год")
+                        .font(.system(size: 15, weight: .semibold))
                         .foregroundColor(.primary)
 
-                        Button {
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                filters.yearFrom = nil
+                    Spacer()
+
+                    HStack(spacing: 4) {
+                        if let year = filters.yearFrom {
+                            Text(verbatim: "от \(year)")
+                                .font(.system(size: 12, weight: .bold, design: .rounded))
+                                .foregroundColor(.primary)
+
+                            Button {
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                    filters.yearFrom = nil
+                                }
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
                             }
-                        } label: {
-                            Image(systemName: "xmark.circle.fill")
-                                .font(.system(size: 12))
+                            .buttonStyle(.plain)
+                        } else {
+                            Text("Любой")
+                                .font(.system(size: 12, weight: .medium, design: .rounded))
                                 .foregroundColor(.secondary)
                         }
-                        .buttonStyle(.plain)
-                    } else {
-                        Text("Любой")
-                            .font(.system(size: 13, weight: .medium, design: .rounded))
-                            .foregroundColor(.secondary)
+                    }
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
+                    .background(Color(UIColor.systemFill))
+                    .clipShape(Capsule())
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 14)
+
+            // Dual Wheel Drum
+            HStack(spacing: 0) {
+                Picker("Рейтинг", selection: $filters.ratingFrom) {
+                    Text("Любой").tag(Double?.none)
+                    ForEach(ratingOptions, id: \.self) { val in
+                        Text(String(format: "%.1f+", val)).tag(Optional(val))
                     }
                 }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(Color(UIColor.systemFill))
-                .clipShape(Capsule())
+                .pickerStyle(.wheel)
+                .frame(maxWidth: .infinity)
+                .clipped()
+
+                Rectangle()
+                    .fill(Color(UIColor.separator).opacity(0.3))
+                    .frame(width: 1, height: 80)
+                    .padding(.horizontal, 4)
+
+                Picker("Год", selection: $filters.yearFrom) {
+                    Text("Любой").tag(Int?.none)
+                    ForEach(yearOptions, id: \.self) { year in
+                        Text(verbatim: "\(year)").tag(Optional(year))
+                    }
+                }
+                .pickerStyle(.wheel)
+                .frame(maxWidth: .infinity)
+                .clipped()
             }
-
-            HStack(spacing: 10) {
-                Text(verbatim: "1980")
-                    .font(.system(size: 12, weight: .medium, design: .rounded))
-                    .foregroundColor(.secondary)
-                    .frame(width: 36, alignment: .leading)
-
-                Slider(
-                    value: Binding(
-                        get: { Double(filters.yearFrom ?? 1980) },
-                        set: { newValue in
-                            let year = Int(newValue)
-                            filters.yearFrom = year <= 1980 ? nil : year
-                        }
-                    ),
-                    in: 1980.0...Double(currentYear),
-                    step: 1.0
-                )
-                .tint(Color.primary)
-
-                Text(verbatim: "\(currentYear)")
-                    .font(.system(size: 12, weight: .medium, design: .rounded))
-                    .foregroundColor(.secondary)
-                    .frame(width: 36, alignment: .trailing)
-            }
+            .frame(height: 125)
+            .padding(.bottom, 6)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 14)
         .background(Color(UIColor.secondarySystemGroupedBackground).opacity(0.7))
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
     }
 }
