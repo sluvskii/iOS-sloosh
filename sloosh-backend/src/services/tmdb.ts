@@ -64,6 +64,15 @@ function buildUrl(endpoint: string, params: Record<string, string> = {}): string
   return url.toString()
 }
 
+export class TmdbHttpError extends Error {
+  status: number
+  constructor(status: number, message: string) {
+    super(message)
+    this.name = "TmdbHttpError"
+    this.status = status
+  }
+}
+
 async function tmdbFetch<T>(endpoint: string, params: Record<string, string> = {}): Promise<T> {
   const url = buildUrl(endpoint, params)
   const res = await fetch(url, {
@@ -71,7 +80,7 @@ async function tmdbFetch<T>(endpoint: string, params: Record<string, string> = {
     signal: AbortSignal.timeout(8000),
   })
   if (!res.ok) {
-    throw new Error(`TMDB error ${res.status}: ${res.statusText} at ${endpoint}`)
+    throw new TmdbHttpError(res.status, `TMDB error ${res.status}: ${res.statusText} at ${endpoint}`)
   }
   return res.json() as Promise<T>
 }
@@ -621,7 +630,7 @@ export class TMDBService {
   }
 
   async discover(options: DiscoverOptions = {}): Promise<MediaResponse> {
-    const page = Math.max(1, options.page || 1)
+    const page = Math.min(Math.max(1, options.page || 1), 500)
     const rawType = (options.type || "").toLowerCase().trim()
     const isCartoon = rawType === "cartoon"
     const isTv = rawType === "tv" || rawType === "tv_series"
