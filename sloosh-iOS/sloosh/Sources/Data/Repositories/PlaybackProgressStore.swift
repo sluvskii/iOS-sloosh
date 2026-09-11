@@ -206,7 +206,7 @@ public final class PlaybackProgressStore: ObservableObject {
         if forceDiskSave || now.timeIntervalSince(lastDiskSaveDate) >= 2.0 {
             lastDiskSaveDate = now
             try? context.save()
-            scheduleCloudProgressPush()
+            scheduleCloudProgressPush(force: forceDiskSave)
         }
     }
 
@@ -216,7 +216,7 @@ public final class PlaybackProgressStore: ObservableObject {
         guard AuthRepository.shared.isAuthenticated, let user = AuthRepository.shared.currentUser else { return }
         
         let now = Date()
-        if !force, let lastPush = lastCloudProgressPushDate, now.timeIntervalSince(lastPush) < 60.0 {
+        if !force, let lastPush = lastCloudProgressPushDate, now.timeIntervalSince(lastPush) < 30.0 {
             return
         }
         
@@ -367,6 +367,28 @@ public final class PlaybackProgressStore: ObservableObject {
         if let model = getRecordModel(mediaId: mediaId) {
             context.delete(model)
             try? context.save()
+            scheduleCloudProgressPush(force: true)
+        }
+    }
+
+    public func removeHistory(for rootKey: String) {
+        guard !rootKey.isEmpty else { return }
+        let activeUserId = currentUserId
+        let predicate = #Predicate<ProgressRecordModel> { $0.userId == activeUserId }
+        let allModels = (try? context.fetch(FetchDescriptor<ProgressRecordModel>(predicate: predicate))) ?? []
+        
+        var didDelete = false
+        for model in allModels {
+            let modelRoot = (model.season != nil && model.episode != nil) ? model.mediaId.components(separatedBy: "_s")[0] : model.mediaId
+            if modelRoot == rootKey || model.mediaId == rootKey {
+                context.delete(model)
+                didDelete = true
+            }
+        }
+        
+        if didDelete {
+            try? context.save()
+            scheduleCloudProgressPush(force: true)
         }
     }
 
@@ -602,50 +624,7 @@ public final class PlaybackProgressStore: ObservableObject {
             predicate: #Predicate { $0.userId == activeUserId },
             sortBy: [SortDescriptor(\.updatedAtMs, order: .reverse)]
         )
-        var allModels = (try? context.fetch(descriptor)) ?? []
-
-        // If active user is authenticated, migrate any guest records seamlessly
-        if activeUserId != "guest" {
-            let guestDesc = FetchDescriptor<ProgressRecordModel>(predicate: #Predicate { $0.userId == "guest" })
-            if let guestModels = try? context.fetch(guestDesc), !guestModels.isEmpty {
-                var hasMigrated = false
-                for g in guestModels {
-                    if !allModels.contains(where: { $0.mediaId == g.mediaId }) {
-                        g.userId = activeUserId
-                        g.userMediaIdKey = "\(activeUserId)_\(g.mediaId)"
-                        allModels.append(g)
-                        hasMigrated = true
-                    } else {
-                        context.delete(g)
-                        hasMigrated = true
-                    }
-                }
-                if hasMigrated {
-                    try? context.save()
-                }
-            }
-
-            let guestMetaDesc = FetchDescriptor<PlaybackMetadataModel>(predicate: #Predicate { $0.userId == "guest" })
-            if let guestMetaModels = try? context.fetch(guestMetaDesc), !guestMetaModels.isEmpty {
-                var hasMetaMigrated = false
-                for gm in guestMetaModels {
-                    let key = (gm.mediaKey?.isEmpty == false ? gm.mediaKey! : nil) ?? (gm.kpId > 0 ? "kp_\(gm.kpId)" : (gm.detailsId.isEmpty ? "tmdb_\(gm.tmdbId ?? 0)" : gm.detailsId))
-                    let compositeKey = "\(activeUserId)_\(key)"
-                    let existingDesc = FetchDescriptor<PlaybackMetadataModel>(predicate: #Predicate { $0.userKpIdKey == compositeKey })
-                    if (try? context.fetch(existingDesc).first) == nil {
-                        gm.userId = activeUserId
-                        gm.userKpIdKey = compositeKey
-                        hasMetaMigrated = true
-                    } else {
-                        context.delete(gm)
-                        hasMetaMigrated = true
-                    }
-                }
-                if hasMetaMigrated {
-                    try? context.save()
-                }
-            }
-        }
+        let allModels = (try? context.fetch(descriptor)) ?? []
         
         var results: [PlaybackProgressRecord] = []
         var seriesRootKeys = Set<String>()
@@ -738,7 +717,11 @@ public final class PlaybackProgressStore: ObservableObject {
         let key = "\(source).lastVoiceover.\(mediaKey)"
         let compositeKey = "\(activeUserId)_\(key)"
         let descriptor = FetchDescriptor<LastPlayedVoiceoverModel>(predicate: #Predicate { $0.userSourceKey == compositeKey })
-        return try? context.fetch(descriptor).first?.voiceover
+        if let v = try? context.fetch(descriptor).first?.voiceover, !v.isEmpty {
+            return v
+        }
+        let records = listProgressRecords(mediaKey: mediaKey)
+        return records.first(where: { $0.voiceover != nil && !$0.voiceover!.isEmpty })?.voiceover
     }
 
     public func saveLastVoiceover(kpId: Int, source: String = "alloha", voiceover: String?) {
@@ -771,7 +754,11 @@ public final class PlaybackProgressStore: ObservableObject {
         let activeUserId = currentUserId
         let compositeKey = "\(activeUserId)_\(mediaKey)"
         let descriptor = FetchDescriptor<LastPlayedEpisodeModel>(predicate: #Predicate { $0.userKpIdKey == compositeKey })
-        return try? context.fetch(descriptor).first?.season
+        if let s = try? context.fetch(descriptor).first?.season, s > 0 {
+            return s
+        }
+        let records = listProgressRecords(mediaKey: mediaKey)
+        return records.first(where: { $0.season != nil })?.season
     }
 
     public func loadLastEpisode(mediaKey: String) -> Int? {
@@ -779,7 +766,11 @@ public final class PlaybackProgressStore: ObservableObject {
         let activeUserId = currentUserId
         let compositeKey = "\(activeUserId)_\(mediaKey)"
         let descriptor = FetchDescriptor<LastPlayedEpisodeModel>(predicate: #Predicate { $0.userKpIdKey == compositeKey })
-        return try? context.fetch(descriptor).first?.episode
+        if let e = try? context.fetch(descriptor).first?.episode, e > 0 {
+            return e
+        }
+        let records = listProgressRecords(mediaKey: mediaKey)
+        return records.first(where: { $0.episode != nil })?.episode
     }
 
     public func saveLastPlayed(kpId: Int, season: Int?, episode: Int?) {
@@ -798,7 +789,7 @@ public final class PlaybackProgressStore: ObservableObject {
         return loadLastEpisode(mediaKey: "kp_\(kpId)")
     }
 
-    private func syncRemoteProgressToLocal(_ remoteRecords: [PlaybackProgressRecord], userId: String) async {
+    public func syncRemoteProgressToLocal(_ remoteRecords: [PlaybackProgressRecord], userId: String) async {
         guard !userId.isEmpty else { return }
         let predicate = #Predicate<ProgressRecordModel> { $0.userId == userId }
         let existing = (try? context.fetch(FetchDescriptor<ProgressRecordModel>(predicate: predicate))) ?? []
@@ -807,11 +798,19 @@ public final class PlaybackProgressStore: ObservableObject {
             existingByMediaId[model.mediaId] = model
         }
 
-        var shouldPushBack = false
+        let remoteMediaIds = Set(remoteRecords.map(\.mediaId))
 
+        // 1. Удаляем локальные записи, которые были удалены пользователем на другом устройстве
+        for model in existing {
+            if !remoteMediaIds.contains(model.mediaId) {
+                context.delete(model)
+            }
+        }
+
+        // 2. Вставляем или обновляем записи из облака
         for remote in remoteRecords {
             if let local = existingByMediaId[remote.mediaId] {
-                if remote.updatedAtMs > local.updatedAtMs {
+                if remote.updatedAtMs >= local.updatedAtMs {
                     local.positionSec = remote.positionSec
                     local.durationSec = remote.durationSec
                     local.watched = remote.watched
@@ -820,8 +819,6 @@ public final class PlaybackProgressStore: ObservableObject {
                     if let t = remote.tmdbId { local.tmdbId = t }
                     if let s = remote.season { local.season = s }
                     if let e = remote.episode { local.episode = e }
-                } else if local.updatedAtMs > remote.updatedAtMs {
-                    shouldPushBack = true
                 }
             } else {
                 let model = ProgressRecordModel(
@@ -839,24 +836,35 @@ public final class PlaybackProgressStore: ObservableObject {
                 )
                 context.insert(model)
             }
-        }
 
-        // If local had records not in remote, or if remote was empty and local had items:
-        if existing.count > remoteRecords.count || (remoteRecords.isEmpty && !existing.isEmpty) {
-            shouldPushBack = true
+            // Синхронизируем последний просмотренный эпизод и озвучку для сериалов
+            if remote.isEpisode, let season = remote.season, let episode = remote.episode {
+                let root = remote.rootMediaKey
+                let lastPlayedKey = "\(userId)_\(root)"
+                let lastPlayedDesc = FetchDescriptor<LastPlayedEpisodeModel>(predicate: #Predicate { $0.userKpIdKey == lastPlayedKey })
+                if let lpModel = try? context.fetch(lastPlayedDesc).first {
+                    lpModel.season = season
+                    lpModel.episode = episode
+                } else {
+                    context.insert(LastPlayedEpisodeModel(userId: userId, kpId: remote.kpId, mediaKey: root, season: season, episode: episode))
+                }
+
+                if let voiceover = remote.voiceover, !voiceover.isEmpty {
+                    let voKey = "\(userId)_alloha.lastVoiceover.\(root)"
+                    let voDesc = FetchDescriptor<LastPlayedVoiceoverModel>(predicate: #Predicate { $0.userSourceKey == voKey })
+                    if let voModel = try? context.fetch(voDesc).first {
+                        voModel.voiceover = voiceover
+                    } else {
+                        context.insert(LastPlayedVoiceoverModel(userId: userId, key: "alloha.lastVoiceover.\(root)", source: "alloha", voiceover: voiceover))
+                    }
+                }
+            }
         }
 
         try? context.save()
-
-        if shouldPushBack, AuthRepository.shared.isAuthenticated, let user = AuthRepository.shared.currentUser, user.id == userId {
-            let all = self.listProgressRecords()
-            Task {
-                await CloudSyncService.shared.pushRemoteProgress(all, userId: userId, idToken: user.idToken)
-            }
-        }
     }
 
-    private func syncRemoteMetadataToLocal(_ remoteMetadata: [PlaybackMediaMetadata], userId: String) async {
+    public func syncRemoteMetadataToLocal(_ remoteMetadata: [PlaybackMediaMetadata], userId: String) async {
         guard !userId.isEmpty else { return }
         let predicate = #Predicate<PlaybackMetadataModel> { $0.userId == userId }
         let existing = (try? context.fetch(FetchDescriptor<PlaybackMetadataModel>(predicate: predicate))) ?? []

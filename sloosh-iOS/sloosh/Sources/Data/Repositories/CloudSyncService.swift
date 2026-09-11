@@ -16,19 +16,38 @@ public final class CloudSyncService: ObservableObject {
 
     private init() {}
 
-    /// Запускает полную синхронизацию данных при входе в аккаунт
+    /// Запускает полную синхронизацию данных при входе в аккаунт или обновлении
     public func syncAllData(force: Bool = false) {
-        guard AuthRepository.shared.isAuthenticated else { return }
+        Task {
+            await syncAllDataAsync(force: force)
+        }
+    }
+
+    public func syncAllDataAsync(force: Bool = false) async {
+        guard AuthRepository.shared.isAuthenticated, let user = AuthRepository.shared.currentUser else { return }
         let now = Date()
         if !force && now.timeIntervalSince(lastSyncAttempt) < minSyncInterval {
             return
         }
         lastSyncAttempt = now
-        FavoritesRepository.shared.handleUserChanged(force: force)
-        PlaybackProgressStore.shared.handleUserChanged(force: force)
-        Task {
-            await MessengerRepository.shared.syncCurrentUserProfile()
+
+        // 1. Синхронизируем избранное с облаком Firebase
+        if let remoteFavorites = await fetchRemoteFavorites(userId: user.id, idToken: user.idToken) {
+            await FavoritesRepository.shared.syncRemoteFavoritesToLocal(remoteFavorites, userId: user.id)
         }
+
+        // 2. Синхронизируем прогресс просмотров ("Продолжить смотреть") с облаком Firebase
+        if let remoteProgress = await fetchRemoteProgress(userId: user.id, idToken: user.idToken) {
+            await PlaybackProgressStore.shared.syncRemoteProgressToLocal(remoteProgress, userId: user.id)
+        }
+
+        // 3. Синхронизируем метаданные (постеры, названия) с облаком Firebase
+        if let remoteMetadata = await fetchRemoteMetadata(userId: user.id, idToken: user.idToken) {
+            await PlaybackProgressStore.shared.syncRemoteMetadataToLocal(remoteMetadata, userId: user.id)
+        }
+
+        // 4. Синхронизируем профиль пользователя для мессенджера
+        await MessengerRepository.shared.syncCurrentUserProfile()
     }
 
     public func makeURL(path: String, idToken: String? = nil) async -> URL? {

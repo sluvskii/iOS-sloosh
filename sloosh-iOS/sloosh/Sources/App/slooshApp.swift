@@ -116,9 +116,13 @@ struct slooshApp: App {
                     if newPhase == .background {
                         AppDiagnostics.shared.markGracefulExit()
                         UserPresenceService.shared.setOffline()
+                        PlaybackProgressStore.shared.scheduleCloudProgressPush(force: true)
                     } else if newPhase == .active {
                         AppDiagnostics.shared.markRunning()
                         UserPresenceService.shared.startHeartbeat()
+                        Task {
+                            await CloudSyncService.shared.syncAllDataAsync()
+                        }
                     }
                 }
                 .task {
