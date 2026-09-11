@@ -21,8 +21,8 @@ struct PlayerContainerView: View {
 
     enum TapSide { case left, right }
 
-    private let showAnimation: Animation = .easeInOut(duration: 0.15)
-    private let hideAnimation: Animation = .easeOut(duration: 0.25)
+    private let showAnimation: Animation = .easeInOut(duration: 0.24)
+    private let hideAnimation: Animation = .easeInOut(duration: 0.22)
 
     var body: some View {
         ZStack {
@@ -51,26 +51,21 @@ struct PlayerContainerView: View {
 
                 // 7. Контролы
                 let isSeeking = multiSeekSeconds != nil || isInteracting
-                if showControls {
-                    PlayerControlsView(
-                        vm: vm,
-                        onDismiss: onDismiss,
-                        onBackgroundTap: {
-                            withAnimation(hideAnimation) {
-                                showControls = false
-                            }
-                            hideTask?.cancel()
-                        },
-                        isInteracting: $isInteracting,
-                        isPopoverOpen: $isPopoverOpen,
-                        showControls: showControls,
-                        isSeeking: isSeeking
-                    )
-                    .transition(.asymmetric(
-                        insertion: .opacity.combined(with: .scale(scale: 0.98)),
-                        removal: .opacity.combined(with: .scale(scale: 0.98))
-                    ))
-                }
+                PlayerControlsView(
+                    vm: vm,
+                    onDismiss: onDismiss,
+                    onBackgroundTap: {
+                        withAnimation(hideAnimation) {
+                            showControls = false
+                        }
+                        hideTask?.cancel()
+                    },
+                    isInteracting: $isInteracting,
+                    isPopoverOpen: $isPopoverOpen,
+                    showControls: showControls,
+                    isSeeking: isSeeking
+                )
+                .allowsHitTesting(showControls)
             }
         }
         .onAppear { scheduleAutoHide() }
