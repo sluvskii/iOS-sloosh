@@ -46,6 +46,7 @@ struct ContinueView: View {
                     }
                     .scrollIndicators(.hidden)
                     .refreshable {
+                        await CloudSyncService.shared.syncAllDataAsync(force: true)
                         await viewModel.reload(forceMetadataRefresh: true)
                     }
                 }
@@ -59,6 +60,7 @@ struct ContinueView: View {
             }
             .onAppear {
                 Task {
+                    await CloudSyncService.shared.syncAllDataAsync()
                     await viewModel.reload()
                 }
             }
@@ -530,6 +532,7 @@ private final class ContinueViewModel: ObservableObject {
     }
 
     func removeFromHistory(_ item: ContinueWatchingItem) {
+        store.removeHistory(for: item.rootMediaKey)
         store.removeRecord(mediaId: item.record.mediaId)
         Task { await reload() }
     }

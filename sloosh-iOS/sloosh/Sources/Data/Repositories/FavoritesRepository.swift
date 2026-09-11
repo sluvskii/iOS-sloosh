@@ -69,29 +69,7 @@ public final class FavoritesRepository: ObservableObject {
             sortBy: [SortDescriptor(\FavoriteModel.addedAt, order: .reverse)]
         )
         
-        var models = (try? context.fetch(descriptor)) ?? []
-        
-        // Если пользователь авторизован, бесшовно мигрируем избранное из гостевого режима
-        if activeUserId != "guest" {
-            let guestDesc = FetchDescriptor<FavoriteModel>(predicate: #Predicate { $0.userId == "guest" })
-            if let guestModels = try? context.fetch(guestDesc), !guestModels.isEmpty {
-                var hasMigrated = false
-                for g in guestModels {
-                    if !models.contains(where: { $0.mediaId == g.mediaId && $0.type == g.type }) {
-                        g.userId = activeUserId
-                        g.userMediaIdTypeKey = "\(activeUserId)_\(g.mediaId)_\(g.type)"
-                        models.append(g)
-                        hasMigrated = true
-                    } else {
-                        context.delete(g)
-                        hasMigrated = true
-                    }
-                }
-                if hasMigrated {
-                    try? context.save()
-                }
-            }
-        }
+        let models = (try? context.fetch(descriptor)) ?? []
         
         self.favorites = models.map { model in
             var genres: [GenreDto]? = nil
@@ -166,7 +144,7 @@ public final class FavoritesRepository: ObservableObject {
         }
     }
 
-    private func syncRemoteFavoritesToLocal(_ remoteFavorites: [FavoriteDto], userId: String) async {
+    public func syncRemoteFavoritesToLocal(_ remoteFavorites: [FavoriteDto], userId: String) async {
         guard !userId.isEmpty else { return }
         let predicate = #Predicate<FavoriteModel> { $0.userId == userId }
         let existing = (try? context.fetch(FetchDescriptor<FavoriteModel>(predicate: predicate))) ?? []
@@ -175,8 +153,16 @@ public final class FavoritesRepository: ObservableObject {
             existingByMediaId[model.mediaId] = model
         }
 
-        var shouldPushBack = false
+        let remoteMediaIds = Set(remoteFavorites.compactMap { $0.mediaId }.filter { !$0.isEmpty })
 
+        // 1. Удаляем локальные элементы, которые были удалены пользователем на другом устройстве
+        for model in existing {
+            if !remoteMediaIds.contains(model.mediaId) {
+                context.delete(model)
+            }
+        }
+
+        // 2. Вставляем или обновляем элементы из облака
         for dto in remoteFavorites {
             let mediaId = dto.mediaId ?? ""
             let type = dto.type ?? ""
@@ -203,19 +189,8 @@ public final class FavoritesRepository: ObservableObject {
             }
         }
 
-        if existing.count > remoteFavorites.count || (remoteFavorites.isEmpty && !existing.isEmpty) {
-            shouldPushBack = true
-        }
-
         try? context.save()
         reloadFromDb()
-
-        if shouldPushBack, AuthRepository.shared.isAuthenticated, let user = AuthRepository.shared.currentUser, user.id == userId {
-            let currentFavs = self.favorites
-            Task {
-                await CloudSyncService.shared.pushRemoteFavorites(currentFavs, userId: user.id, idToken: user.idToken)
-            }
-        }
     }
 
     public func refreshMissingMetadataIfNeeded() {
