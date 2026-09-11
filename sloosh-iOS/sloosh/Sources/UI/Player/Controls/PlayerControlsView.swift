@@ -166,43 +166,8 @@ struct PlayerTitleInfoView: View {
     }
     
     private var displayVoiceoverText: String? {
-        let raw: String?
-        if let name = vm.currentTranslationName, !name.isEmpty {
-            raw = name
-        } else {
-            raw = vm.availableVoiceovers.first
-        }
+        let raw = vm.currentTranslationName ?? vm.availableVoiceovers.first
         guard let r = raw, !r.isEmpty else { return nil }
-        
-        let matchIdx: Int? = {
-            if let idx = vm.availableVoiceovers.firstIndex(of: r) {
-                return idx
-            }
-            if let idx = vm.availableVoiceovers.firstIndex(where: { allohaTranslationNamesMatch($0, r, exactOnly: true) }) {
-                return idx
-            }
-            if let idx = vm.availableVoiceovers.firstIndex(where: { allohaTranslationNamesMatch($0, r, exactOnly: false) }) {
-                return idx
-            }
-            return nil
-        }()
-
-        let formatted: String
-        if let idx = matchIdx {
-            formatted = displayTranslationName(vm.availableVoiceovers[idx], at: idx, in: vm.availableVoiceovers)
-        } else {
-            formatted = cleanTranslationName(r)
-        }
-        
-        return stripLeadingEmoji(formatted)
-    }
-    
-    private func stripLeadingEmoji(_ s: String) -> String {
-        var result = s
-        while let first = result.unicodeScalars.first,
-              (first.properties.isEmoji && first.value > 0x2000) || first.value == 0x20 || first.value == 0xFE0F {
-            result = String(result.dropFirst()).trimmingCharacters(in: .whitespaces)
-        }
-        return result
+        return cleanTranslationName(r)
     }
 }

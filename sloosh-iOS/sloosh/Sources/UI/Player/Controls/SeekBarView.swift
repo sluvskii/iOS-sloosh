@@ -23,24 +23,6 @@ struct SeekBarView: View {
         return isDragging ? (dragProgress * vm.currentDuration) : vm.currentTime
     }
 
-    private var previewRatio: CGFloat {
-        max(0.5, min(2.4, vm.scrubPreviewAspectRatio))
-    }
-
-    private var previewCardWidth: CGFloat { 132 }
-
-    private var previewCardHeight: CGFloat {
-        min(88, max(52, previewCardWidth / previewRatio))
-    }
-
-    private var previewCardOffset: CGFloat {
-        let rawThumbX = CGFloat(progress) * sliderWidth
-        let centerSliderX = sliderWidth / 2
-        let rawOffset = rawThumbX - centerSliderX
-        let maxAllowedOffset = max(0, (sliderWidth - previewCardWidth) / 2)
-        return max(-maxAllowedOffset, min(maxAllowedOffset, rawOffset))
-    }
-
     var body: some View {
         VStack(spacing: 12) {
             sliderBar
@@ -103,8 +85,7 @@ struct SeekBarView: View {
                         isInteracting = true
                     }
                     
-                    let screen = (UIApplication.shared.connectedScenes.first as? UIWindowScene)?.screen
-                    let trackWidth = (screen?.bounds.width ?? 393) - 32
+                    let trackWidth = max(sliderWidth, 200)
                     let startX = max(1, min(trackWidth - 1, scrubStartLocationX))
                     
                     let thumbX = (screenScrubInitialTime / vm.currentDuration) * Double(trackWidth)
@@ -114,7 +95,10 @@ struct SeekBarView: View {
                     let baseMultiplier = vm.currentDuration / Double(trackWidth)
                     let deltaSeconds = Double(value.translation.width) * baseMultiplier * speedFactor
                     
-                    vm.screenScrubTime = max(0, min(vm.currentDuration, screenScrubInitialTime + deltaSeconds))
+                    let target = max(0, min(vm.currentDuration, screenScrubInitialTime + deltaSeconds))
+                    if vm.screenScrubTime == nil || abs((vm.screenScrubTime ?? 0) - target) >= 0.25 {
+                        vm.screenScrubTime = target
+                    }
                 }
                 .onEnded { value in
                     guard isHStackScrubbing else { return }

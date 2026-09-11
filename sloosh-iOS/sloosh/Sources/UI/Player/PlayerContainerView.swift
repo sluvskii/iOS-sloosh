@@ -51,23 +51,26 @@ struct PlayerContainerView: View {
 
                 // 7. Контролы
                 let isSeeking = multiSeekSeconds != nil || isInteracting
-                PlayerControlsView(
-                    vm: vm,
-                    onDismiss: onDismiss,
-                    onBackgroundTap: {
-                        withAnimation(hideAnimation) {
-                            showControls = false
-                        }
-                        hideTask?.cancel()
-                    },
-                    isInteracting: $isInteracting,
-                    isPopoverOpen: $isPopoverOpen,
-                    showControls: showControls,
-                    isSeeking: isSeeking
-                )
-                .blur(radius: showControls ? 0 : 20)
-                .opacity(showControls ? 1 : 0)
-                .allowsHitTesting(showControls)
+                if showControls {
+                    PlayerControlsView(
+                        vm: vm,
+                        onDismiss: onDismiss,
+                        onBackgroundTap: {
+                            withAnimation(hideAnimation) {
+                                showControls = false
+                            }
+                            hideTask?.cancel()
+                        },
+                        isInteracting: $isInteracting,
+                        isPopoverOpen: $isPopoverOpen,
+                        showControls: showControls,
+                        isSeeking: isSeeking
+                    )
+                    .transition(.asymmetric(
+                        insertion: .opacity.combined(with: .scale(scale: 0.98)),
+                        removal: .opacity.combined(with: .scale(scale: 0.98))
+                    ))
+                }
             }
         }
         .onAppear { scheduleAutoHide() }
