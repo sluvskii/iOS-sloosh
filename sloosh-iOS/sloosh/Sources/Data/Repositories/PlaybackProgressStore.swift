@@ -362,8 +362,19 @@ public final class PlaybackProgressStore: ObservableObject {
         return getRecord(mediaId: mediaId)?.updatedAtMs ?? 0
     }
 
+    private var recentlyDeletedRootKeys = Set<String>()
+
+    public func pushLocalProgressToCloud() async {
+        guard AuthRepository.shared.isAuthenticated, let user = AuthRepository.shared.currentUser else { return }
+        let allRecords = self.listProgressRecords()
+        await CloudSyncService.shared.pushRemoteProgress(allRecords, userId: user.id, idToken: user.idToken)
+    }
+
     public func removeRecord(mediaId: String) {
         guard !mediaId.isEmpty else { return }
+        recentlyDeletedRootKeys.insert(mediaId)
+        let root = mediaId.components(separatedBy: "_s")[0]
+        recentlyDeletedRootKeys.insert(root)
         if let model = getRecordModel(mediaId: mediaId) {
             context.delete(model)
             try? context.save()
@@ -373,6 +384,7 @@ public final class PlaybackProgressStore: ObservableObject {
 
     public func removeHistory(for rootKey: String) {
         guard !rootKey.isEmpty else { return }
+        recentlyDeletedRootKeys.insert(rootKey)
         let activeUserId = currentUserId
         let predicate = #Predicate<ProgressRecordModel> { $0.userId == activeUserId }
         let allModels = (try? context.fetch(FetchDescriptor<ProgressRecordModel>(predicate: predicate))) ?? []
@@ -381,6 +393,7 @@ public final class PlaybackProgressStore: ObservableObject {
         for model in allModels {
             let modelRoot = (model.season != nil && model.episode != nil) ? model.mediaId.components(separatedBy: "_s")[0] : model.mediaId
             if modelRoot == rootKey || model.mediaId == rootKey {
+                recentlyDeletedRootKeys.insert(model.mediaId)
                 context.delete(model)
                 didDelete = true
             }
@@ -799,16 +812,35 @@ public final class PlaybackProgressStore: ObservableObject {
         }
 
         let remoteMediaIds = Set(remoteRecords.map(\.mediaId))
+        var hasLocalNewerOrOffline = false
+        let lastSyncMs = Int((CloudSyncService.shared.lastSyncDate?.timeIntervalSince1970 ?? 0) * 1000)
+        let oneDayAgoMs = Int((Date().timeIntervalSince1970 - 86400) * 1000)
 
-        // 1. Удаляем локальные записи, которые были удалены пользователем на другом устройстве
+        // 1. Проверяем локальные записи, которых нет в облаке
         for model in existing {
-            if !remoteMediaIds.contains(model.mediaId) {
+            let root = model.mediaId.components(separatedBy: "_s")[0]
+            if recentlyDeletedRootKeys.contains(model.mediaId) || recentlyDeletedRootKeys.contains(root) {
                 context.delete(model)
+                hasLocalNewerOrOffline = true
+            } else if !remoteMediaIds.contains(model.mediaId) {
+                // Если запись обновлена офлайн (метка свежее последней синхронизации или за последние 24ч) — сохраняем!
+                if model.updatedAtMs >= lastSyncMs || model.updatedAtMs >= oneDayAgoMs {
+                    hasLocalNewerOrOffline = true
+                } else {
+                    // Старая запись, удалённая на другом устройстве
+                    context.delete(model)
+                }
             }
         }
 
         // 2. Вставляем или обновляем записи из облака
         for remote in remoteRecords {
+            let root = remote.rootMediaKey
+            if recentlyDeletedRootKeys.contains(remote.mediaId) || recentlyDeletedRootKeys.contains(root) {
+                hasLocalNewerOrOffline = true
+                continue
+            }
+
             if let local = existingByMediaId[remote.mediaId] {
                 if remote.updatedAtMs >= local.updatedAtMs {
                     local.positionSec = remote.positionSec
@@ -819,6 +851,9 @@ public final class PlaybackProgressStore: ObservableObject {
                     if let t = remote.tmdbId { local.tmdbId = t }
                     if let s = remote.season { local.season = s }
                     if let e = remote.episode { local.episode = e }
+                } else {
+                    // Локальная запись новее облачной (смотрели офлайн)!
+                    hasLocalNewerOrOffline = true
                 }
             } else {
                 let model = ProgressRecordModel(
@@ -862,6 +897,14 @@ public final class PlaybackProgressStore: ObservableObject {
         }
 
         try? context.save()
+
+        // 3. Smart Merge: если у нас были более свежие офлайн-просмотры, выгружаем объединённый результат в облако!
+        if hasLocalNewerOrOffline, let user = AuthRepository.shared.currentUser, user.id == userId {
+            let all = self.listProgressRecords()
+            Task {
+                await CloudSyncService.shared.pushRemoteProgress(all, userId: userId, idToken: user.idToken)
+            }
+        }
     }
 
     public func syncRemoteMetadataToLocal(_ remoteMetadata: [PlaybackMediaMetadata], userId: String) async {
