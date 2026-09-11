@@ -337,6 +337,7 @@ struct DetailsView: View {
                 await preloadDominantColor(for: details)
             }
             .onAppear {
+                CloudSyncService.shared.syncAllData()
                 if !hasSeenSourceSelectionTooltip {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                         showTooltip = true

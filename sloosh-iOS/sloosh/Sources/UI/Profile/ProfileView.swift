@@ -260,6 +260,12 @@ struct ProfileView: View {
             }) { config in
                 PlayerView(config: config)
             }
+            .onAppear {
+                Task {
+                    await CloudSyncService.shared.syncAllDataAsync()
+                    favoritesRepo.reloadFromDb()
+                }
+            }
         }
     }
 }
@@ -357,6 +363,10 @@ struct ProfileCategoryContentView: View {
                 }
             }
             .padding(.bottom, 16)
+        }
+        .refreshable {
+            await CloudSyncService.shared.syncAllDataAsync(force: true)
+            favoritesRepo.reloadFromDb()
         }
         .onScrollGeometryChange(for: CGFloat.self) { geometry in
             geometry.contentOffset.y + geometry.contentInsets.top
