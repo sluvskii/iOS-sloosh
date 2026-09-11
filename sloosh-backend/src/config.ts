@@ -1,5 +1,6 @@
 export const config = {
   port: parseInt(process.env.PORT || "3000", 10),
+  defaultApiKey: "sloosh_app_sec_v1_8f93e14b2d07",
   tmdb: {
     baseUrl: "https://api.themoviedb.org/3",
     imageBaseUrl: "https://api-sloosh.vercel.app/api/v1/images/tmdb",
