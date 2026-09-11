@@ -20,6 +20,13 @@ app.use("*", cors({
   allowHeaders: ["Content-Type", "Authorization", "X-API-KEY", "X-API-Key", "x-api-key"],
 }))
 
+// Security Headers
+app.use("*", async (c, next) => {
+  await next()
+  c.header("X-Content-Type-Options", "nosniff")
+  c.header("X-Frame-Options", "DENY")
+})
+
 // Health Check
 app.get("/", (c) => c.json({
   service: "sloosh-backend",
