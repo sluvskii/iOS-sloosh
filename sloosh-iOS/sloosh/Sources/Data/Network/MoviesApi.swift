@@ -5,6 +5,7 @@ enum NetworkError: LocalizedError {
     case noData
     case decodingError
     case serverError(Int)
+    case unauthorized
     case noInternetConnection
     case timeout
     
@@ -18,6 +19,8 @@ enum NetworkError: LocalizedError {
             return "Ошибка обработки ответа сервера"
         case .serverError(let code):
             return "Ошибка сервера (\(code))"
+        case .unauthorized:
+            return "Доступ к серверу ограничен (ошибка авторизации)"
         case .noInternetConnection:
             return "Нет подключения к интернету"
         case .timeout:
@@ -31,6 +34,21 @@ class MoviesApi {
     
     // Production base URL on Vercel
     private let baseURL = "https://api-sloosh.vercel.app"
+    
+    /// Обфусцированный мастер-ключ доступа к API sloosh (защита от сканирования strings/grep в бинарнике)
+    private static let resolvedApiKey: String = {
+        let mask: UInt8 = 0x5C
+        let obf: [UInt8] = [
+            0x2F, 0x30, 0x33, 0x33, 0x2F, 0x34, 0x03, 0x3D,
+            0x2C, 0x2C, 0x03, 0x2F, 0x39, 0x3F, 0x03, 0x2A,
+            0x6D, 0x03, 0x64, 0x3A, 0x65, 0x6F, 0x39, 0x6D,
+            0x68, 0x3E, 0x6E, 0x38, 0x6C, 0x6B
+        ]
+        let bytes = obf.map { $0 ^ mask }
+        return String(bytes: bytes, encoding: .utf8) ?? ""
+    }()
+
+    public static var currentApiKey: String = resolvedApiKey
     
     private let session: URLSession
     private let decoder = JSONDecoder()
@@ -55,6 +73,9 @@ class MoviesApi {
         
         var request = URLRequest(url: url)
         request.httpMethod = method
+        if !MoviesApi.currentApiKey.isEmpty {
+            request.setValue(MoviesApi.currentApiKey, forHTTPHeaderField: "X-API-Key")
+        }
         
         let maxRetries = 3
         var lastError: Error = NetworkError.timeout
@@ -72,6 +93,11 @@ class MoviesApi {
                 guard let httpResponse = response as? HTTPURLResponse else {
                     lastError = NetworkError.serverError(500)
                     continue
+                }
+                
+                // 401 / 403 — ошибка авторизации, не ретраим
+                if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
+                    throw NetworkError.unauthorized
                 }
                 
                 // 4xx — не ретраим, это клиентская ошибка
