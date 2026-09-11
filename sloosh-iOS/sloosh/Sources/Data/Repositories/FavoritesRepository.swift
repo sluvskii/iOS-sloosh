@@ -69,7 +69,29 @@ public final class FavoritesRepository: ObservableObject {
             sortBy: [SortDescriptor(\FavoriteModel.addedAt, order: .reverse)]
         )
         
-        let models = (try? context.fetch(descriptor)) ?? []
+        var models = (try? context.fetch(descriptor)) ?? []
+        
+        // Если пользователь авторизован, бесшовно мигрируем избранное из гостевого режима
+        if activeUserId != "guest" {
+            let guestDesc = FetchDescriptor<FavoriteModel>(predicate: #Predicate { $0.userId == "guest" })
+            if let guestModels = try? context.fetch(guestDesc), !guestModels.isEmpty {
+                var hasMigrated = false
+                for g in guestModels {
+                    if !models.contains(where: { $0.mediaId == g.mediaId && $0.type == g.type }) {
+                        g.userId = activeUserId
+                        g.userMediaIdTypeKey = "\(activeUserId)_\(g.mediaId)_\(g.type)"
+                        models.append(g)
+                        hasMigrated = true
+                    } else {
+                        context.delete(g)
+                        hasMigrated = true
+                    }
+                }
+                if hasMigrated {
+                    try? context.save()
+                }
+            }
+        }
         
         self.favorites = models.map { model in
             var genres: [GenreDto]? = nil
