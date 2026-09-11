@@ -7,6 +7,7 @@ import { categoriesRouter } from "./routes/categories"
 import { tmdb } from "./services/tmdb"
 import { resolveTmdbIdByKp } from "./services/alloha"
 import { detailsCache, getCached } from "./services/cache"
+import { extractApiKey, isValidApiKey } from "./middleware/auth"
 import type { MediaDetailsDto } from "./types/models"
 
 const app = new Hono()
@@ -16,7 +17,7 @@ app.use("*", logger())
 app.use("*", cors({
   origin: "*",
   allowMethods: ["GET", "POST", "OPTIONS"],
-  allowHeaders: ["Content-Type", "Authorization", "X-API-KEY"],
+  allowHeaders: ["Content-Type", "Authorization", "X-API-KEY", "X-API-Key", "x-api-key"],
 }))
 
 // Health Check
@@ -41,17 +42,46 @@ app.get("/", (c) => c.json({
 
 app.get("/health", (c) => c.json({ status: "ok" }))
 
+// Authentication Middleware for API endpoints (protects catalog, media metadata, and streams)
+app.use("/api/*", async (c, next) => {
+  if (c.req.method === "OPTIONS") {
+    return next()
+  }
+
+  // Public image streaming proxy routes (bypasses ISP blocks, does not expose metadata)
+  if (c.req.path.startsWith("/api/v1/images/")) {
+    return next()
+  }
+
+  const apiKey = extractApiKey(c)
+  if (!isValidApiKey(apiKey)) {
+    return c.json(
+      {
+        status: "error",
+        message: "Unauthorized: Invalid or missing API key. Access to sloosh API is restricted.",
+      },
+      401
+    )
+  }
+
+  return next()
+})
+
 // Edge CDN Caching Middleware for sub-50ms responses & rate-limit protection
 app.use("/api/*", async (c, next) => {
   await next()
-  if (c.req.method === "GET" && c.res.status === 200 && !c.res.headers.has("Cache-Control")) {
-    const path = c.req.path
-    if (path.includes("/movie/") || path.includes("/tv/") || path.includes("/person/") || path.includes("/collection/")) {
-      c.header("Cache-Control", "public, max-age=300, s-maxage=86400, stale-while-revalidate=604800")
-    } else if (path.includes("/search") || path.includes("/discover")) {
-      c.header("Cache-Control", "public, max-age=60, s-maxage=600, stale-while-revalidate=3600")
-    } else {
-      c.header("Cache-Control", "public, max-age=120, s-maxage=1800, stale-while-revalidate=86400")
+  if (c.req.method === "GET" && c.res.status === 200) {
+    // Ensure CDN caches partition responses properly by auth header
+    c.header("Vary", "X-API-Key, Authorization, Accept-Encoding")
+    if (!c.res.headers.has("Cache-Control")) {
+      const path = c.req.path
+      if (path.includes("/movie/") || path.includes("/tv/") || path.includes("/person/") || path.includes("/collection/")) {
+        c.header("Cache-Control", "public, max-age=300, s-maxage=86400, stale-while-revalidate=604800")
+      } else if (path.includes("/search") || path.includes("/discover")) {
+        c.header("Cache-Control", "public, max-age=60, s-maxage=600, stale-while-revalidate=3600")
+      } else {
+        c.header("Cache-Control", "public, max-age=120, s-maxage=1800, stale-while-revalidate=86400")
+      }
     }
   }
 })
