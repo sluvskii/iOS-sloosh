@@ -15,6 +15,7 @@ struct PlayerGesturesModifier: ViewModifier {
     @State private var isDragging: Bool = false
     @State private var draggingSide: TapSide? = nil
     @State private var hideTask: Task<Void, Never>?
+    @State private var cachedScreen: UIScreen? = nil
     
     enum TapSide { case left, right }
     
@@ -34,6 +35,7 @@ struct PlayerGesturesModifier: ViewModifier {
                                     isDragging = true
                                     onInteractionBegan?()
                                     let screen = (UIApplication.shared.connectedScenes.first as? UIWindowScene)?.screen
+                                    cachedScreen = screen
                                     initialBrightness = screen?.brightness ?? 0.5
                                     initialVolume = volumeManager.currentVolume
                                     draggingSide = value.startLocation.x > (screen?.bounds.width ?? 393) / 2 ? .right : .left
@@ -42,6 +44,7 @@ struct PlayerGesturesModifier: ViewModifier {
                             }
                             .onEnded { _ in
                                 isDragging = false
+                                cachedScreen = nil
                                 onInteractionEnded?()
                                 
                                 hideTask?.cancel()
@@ -103,7 +106,9 @@ struct PlayerGesturesModifier: ViewModifier {
             }
         } else {
             let newBrightness = max(0.0, min(1.0, initialBrightness + delta))
-            (UIApplication.shared.connectedScenes.first as? UIWindowScene)?.screen.brightness = newBrightness
+            if let screen = cachedScreen, abs(Double(newBrightness) - indicatorValue) >= 0.015 {
+                screen.brightness = newBrightness
+            }
             
             indicatorIcon = newBrightness < 0.3 ? "sun.min.fill" : "sun.max.fill"
             indicatorValue = Double(newBrightness)
