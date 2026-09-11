@@ -125,9 +125,18 @@ public final class FavoritesRepository: ObservableObject {
         }
     }
     
+    private var recentlyDeletedKeys = Set<String>()
+
+    public func pushLocalFavoritesToCloud() async {
+        guard AuthRepository.shared.isAuthenticated, let user = AuthRepository.shared.currentUser else { return }
+        let currentFavs = self.favorites
+        await CloudSyncService.shared.pushRemoteFavorites(currentFavs, userId: user.id, idToken: user.idToken)
+    }
+
     public func removeFromFavorites(mediaId: String, mediaType: String) {
         let activeUserId = currentUserId
         let compositeKey = "\(activeUserId)_\(mediaId)_\(mediaType)"
+        recentlyDeletedKeys.insert(compositeKey)
         let predicate = #Predicate<FavoriteModel> { $0.userMediaIdTypeKey == compositeKey }
         if let model = try? context.fetch(FetchDescriptor<FavoriteModel>(predicate: predicate)).first {
             context.delete(model)
@@ -154,11 +163,24 @@ public final class FavoritesRepository: ObservableObject {
         }
 
         let remoteMediaIds = Set(remoteFavorites.compactMap { $0.mediaId }.filter { !$0.isEmpty })
+        var hasLocalOnlyOrDeletedItems = false
+        let lastSync = CloudSyncService.shared.lastSyncDate ?? .distantPast
 
-        // 1. Удаляем локальные элементы, которые были удалены пользователем на другом устройстве
+        // 1. Проверяем локальные элементы, которых нет в облаке
         for model in existing {
-            if !remoteMediaIds.contains(model.mediaId) {
+            let compositeKey = "\(userId)_\(model.mediaId)_\(model.type)"
+            if recentlyDeletedKeys.contains(compositeKey) {
+                // Пользователь явно удалил этот элемент локально
                 context.delete(model)
+                hasLocalOnlyOrDeletedItems = true
+            } else if !remoteMediaIds.contains(model.mediaId) {
+                // Если элемент добавлен локально после последней синхронизации (или за последние 24ч) — сохраняем (офлайн-добавление)
+                if model.addedAt >= lastSync || Date().timeIntervalSince(model.addedAt) < 86400 {
+                    hasLocalOnlyOrDeletedItems = true
+                } else {
+                    // Старый элемент, удалённый на другом девайсе
+                    context.delete(model)
+                }
             }
         }
 
@@ -167,6 +189,13 @@ public final class FavoritesRepository: ObservableObject {
             let mediaId = dto.mediaId ?? ""
             let type = dto.type ?? ""
             guard !mediaId.isEmpty, !type.isEmpty else { continue }
+
+            let compositeKey = "\(userId)_\(mediaId)_\(type)"
+            // Если фильм был явно удалён на этом девайсе во время сессии, не воскрешаем его из облака
+            if recentlyDeletedKeys.contains(compositeKey) {
+                hasLocalOnlyOrDeletedItems = true
+                continue
+            }
 
             if let local = existingByMediaId[mediaId] {
                 if let t = dto.title { local.title = t }
@@ -191,6 +220,14 @@ public final class FavoritesRepository: ObservableObject {
 
         try? context.save()
         reloadFromDb()
+
+        // 3. Smart Merge: если были локальные офлайн-добавления или свежие удаления, пушим объединённый результат в облако
+        if hasLocalOnlyOrDeletedItems, let user = AuthRepository.shared.currentUser, user.id == userId {
+            let currentFavs = self.favorites
+            Task {
+                await CloudSyncService.shared.pushRemoteFavorites(currentFavs, userId: userId, idToken: user.idToken)
+            }
+        }
     }
 
     public func refreshMissingMetadataIfNeeded() {

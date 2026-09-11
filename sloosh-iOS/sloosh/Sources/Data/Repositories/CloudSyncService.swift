@@ -7,6 +7,8 @@ public final class CloudSyncService: ObservableObject {
     public static let shared = CloudSyncService()
 
     @Published public private(set) var isSyncing: Bool = false
+    @Published public private(set) var hasPendingFavoritesPush: Bool = false
+    @Published public private(set) var hasPendingProgressPush: Bool = false
     public private(set) var lastSyncDate: Date?
 
     private var lastSyncAttempt: Date = .distantPast
@@ -15,6 +17,17 @@ public final class CloudSyncService: ObservableObject {
     private let databaseBaseURL = "https://sloosh-77434-default-rtdb.firebaseio.com/users"
 
     private init() {}
+
+    /// Умный декодер списка: поддерживает как нативный JSON-массив [T], так и словарь [String: T] (формат Firebase RTDB при разреженных ключах)
+    private func decodeFlexibleList<T: Decodable>(_ type: T.Type, from data: Data) -> [T]? {
+        if let list = try? JSONDecoder().decode([T].self, from: data) {
+            return list
+        }
+        if let dict = try? JSONDecoder().decode([String: T].self, from: data) {
+            return Array(dict.values)
+        }
+        return nil
+    }
 
     /// Запускает полную синхронизацию данных при входе в аккаунт или обновлении
     public func syncAllData(force: Bool = false) {
@@ -30,6 +43,14 @@ public final class CloudSyncService: ObservableObject {
             return
         }
         lastSyncAttempt = now
+
+        // 0. Если были неотправленные данные (офлайн/сбой сети), повторяем их выгрузку
+        if hasPendingFavoritesPush {
+            await FavoritesRepository.shared.pushLocalFavoritesToCloud()
+        }
+        if hasPendingProgressPush {
+            await PlaybackProgressStore.shared.pushLocalProgressToCloud()
+        }
 
         // 1. Синхронизируем избранное с облаком Firebase
         if let remoteFavorites = await fetchRemoteFavorites(userId: user.id, idToken: user.idToken) {
@@ -61,7 +82,7 @@ public final class CloudSyncService: ObservableObject {
         return URL(string: urlString)
     }
 
-    /// Загружает избранное аккаунта с сервера Firebase
+    /// Загружает избранное аккаунта с сервера Firebase (поддерживает как массив, так и словарь)
     public func fetchRemoteFavorites(userId: String, idToken: String? = nil) async -> [FavoriteDto]? {
         guard !userId.isEmpty, userId != "guest" else { return nil }
         guard let url = await makeURL(path: "\(userId)/favorites", idToken: idToken) else { return nil }
@@ -83,7 +104,7 @@ public final class CloudSyncService: ObservableObject {
                 return []
             }
 
-            let favorites = try? JSONDecoder().decode([FavoriteDto].self, from: data)
+            let favorites = decodeFlexibleList(FavoriteDto.self, from: data)
             lastSyncDate = Date()
             AppDiagnostics.shared.log("CloudSyncService: fetched \(favorites?.count ?? 0) remote favorites for user \(userId)")
             return favorites
@@ -111,9 +132,13 @@ public final class CloudSyncService: ObservableObject {
             let (_, response) = try await URLSession.shared.data(for: request)
             if let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) {
                 lastSyncDate = Date()
+                hasPendingFavoritesPush = false
                 AppDiagnostics.shared.log("CloudSyncService: pushed \(favorites.count) favorites to cloud for user \(userId)")
+            } else {
+                hasPendingFavoritesPush = true
             }
         } catch {
+            hasPendingFavoritesPush = true
             AppDiagnostics.shared.log("CloudSyncService push error: \(error.localizedDescription)")
         }
     }
@@ -140,7 +165,7 @@ public final class CloudSyncService: ObservableObject {
                 return []
             }
 
-            let records = try? JSONDecoder().decode([PlaybackProgressRecord].self, from: data)
+            let records = decodeFlexibleList(PlaybackProgressRecord.self, from: data)
             lastSyncDate = Date()
             AppDiagnostics.shared.log("CloudSyncService: fetched \(records?.count ?? 0) remote progress records for user \(userId)")
             return records
@@ -168,9 +193,13 @@ public final class CloudSyncService: ObservableObject {
             let (_, response) = try await URLSession.shared.data(for: request)
             if let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) {
                 lastSyncDate = Date()
+                hasPendingProgressPush = false
                 AppDiagnostics.shared.log("CloudSyncService: pushed \(records.count) progress records to cloud for user \(userId)")
+            } else {
+                hasPendingProgressPush = true
             }
         } catch {
+            hasPendingProgressPush = true
             AppDiagnostics.shared.log("CloudSyncService push progress error: \(error.localizedDescription)")
         }
     }
@@ -194,7 +223,7 @@ public final class CloudSyncService: ObservableObject {
                 return []
             }
 
-            return try? JSONDecoder().decode([PlaybackMediaMetadata].self, from: data)
+            return decodeFlexibleList(PlaybackMediaMetadata.self, from: data)
         } catch {
             return nil
         }
