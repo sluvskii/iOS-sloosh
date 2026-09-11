@@ -28,17 +28,19 @@ struct PlayerControlsView: View {
             .onTapGesture {
                 onBackgroundTap?()
             }
-            .opacity(isSeeking ? 0 : 1)
+            .opacity(showControls && !isSeeking ? 1 : 0)
+            .animation(.easeInOut(duration: 0.24), value: showControls)
             .animation(.easeInOut(duration: 0.2), value: isSeeking)
             .ignoresSafeArea()
 
             // ── Верхний и нижний блоки ───────────────────────
             VStack {
                 TopBarView(vm: vm, onDismiss: onDismiss, isInteracting: $isInteracting)
-                    .scaleEffect(showControls ? 1.0 : 0.95)
-                    .opacity(isSeeking ? 0 : 1)
-                    .animation(.easeInOut(duration: 0.2), value: isSeeking)
                     .padding(.top, 24) // Увеличенный отступ
+                    .opacity(showControls && !isSeeking ? 1 : 0)
+                    .offset(y: showControls ? 0 : -10)
+                    .animation(.easeInOut(duration: 0.24), value: showControls)
+                    .animation(.easeInOut(duration: 0.2), value: isSeeking)
 
                 Spacer()
 
@@ -119,14 +121,17 @@ struct PlayerControlsView: View {
                         .padding(.horizontal, 8)
                         .padding(.bottom, 24) // Увеличенный отступ
                 }
-                .scaleEffect(showControls ? 1.0 : 0.95)
+                .opacity(showControls ? 1 : 0)
+                .offset(y: showControls ? 0 : 10)
+                .animation(.easeInOut(duration: 0.24), value: showControls)
             }
             .ignoresSafeArea(edges: .vertical) // Игнорируем safe area для идеальной симметрии
 
             // ── Центральные кнопки (ровно по центру экрана) ───
             CenterControlsView(vm: vm)
-                .scaleEffect(showControls ? 1.0 : 0.95)
-                .opacity(isSeeking ? 0 : 1)
+                .scaleEffect(showControls ? 1.0 : 0.88)
+                .opacity(showControls && !isSeeking ? 1 : 0)
+                .animation(.easeInOut(duration: 0.24), value: showControls)
                 .animation(.easeInOut(duration: 0.2), value: isSeeking)
                 .ignoresSafeArea()
         }
