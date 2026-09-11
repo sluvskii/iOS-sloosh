@@ -31,16 +31,21 @@ public final class CloudSyncService: ObservableObject {
         }
     }
 
+    public func makeURL(path: String, idToken: String? = nil) async -> URL? {
+        let safePath = path.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? path
+        var urlString = "\(databaseBaseURL)/\(safePath).json"
+        
+        let token = await AuthRepository.shared.ensureFreshToken() ?? idToken
+        if let token = token, !token.isEmpty {
+            urlString += "?auth=\(token)"
+        }
+        return URL(string: urlString)
+    }
+
     /// Загружает избранное аккаунта с сервера Firebase
     public func fetchRemoteFavorites(userId: String, idToken: String? = nil) async -> [FavoriteDto]? {
         guard !userId.isEmpty, userId != "guest" else { return nil }
-        
-        var urlString = "\(databaseBaseURL)/\(userId)/favorites.json"
-        if let idToken = idToken, !idToken.isEmpty {
-            urlString += "?auth=\(idToken)"
-        }
-        
-        guard let url = URL(string: urlString) else { return nil }
+        guard let url = await makeURL(path: "\(userId)/favorites", idToken: idToken) else { return nil }
 
         isSyncing = true
         defer { isSyncing = false }
@@ -72,13 +77,7 @@ public final class CloudSyncService: ObservableObject {
     /// Сохраняет избранное аккаунта на сервер Firebase
     public func pushRemoteFavorites(_ favorites: [FavoriteDto], userId: String, idToken: String? = nil) async {
         guard !userId.isEmpty, userId != "guest" else { return }
-
-        var urlString = "\(databaseBaseURL)/\(userId)/favorites.json"
-        if let idToken = idToken, !idToken.isEmpty {
-            urlString += "?auth=\(idToken)"
-        }
-
-        guard let url = URL(string: urlString) else { return }
+        guard let url = await makeURL(path: "\(userId)/favorites", idToken: idToken) else { return }
 
         isSyncing = true
         defer { isSyncing = false }
@@ -103,13 +102,7 @@ public final class CloudSyncService: ObservableObject {
     /// Загружает прогресс просмотров ("Продолжить смотреть") с сервера Firebase
     public func fetchRemoteProgress(userId: String, idToken: String? = nil) async -> [PlaybackProgressRecord]? {
         guard !userId.isEmpty, userId != "guest" else { return nil }
-
-        var urlString = "\(databaseBaseURL)/\(userId)/progress.json"
-        if let idToken = idToken, !idToken.isEmpty {
-            urlString += "?auth=\(idToken)"
-        }
-
-        guard let url = URL(string: urlString) else { return nil }
+        guard let url = await makeURL(path: "\(userId)/progress", idToken: idToken) else { return nil }
 
         isSyncing = true
         defer { isSyncing = false }
@@ -141,13 +134,7 @@ public final class CloudSyncService: ObservableObject {
     /// Сохраняет прогресс просмотров ("Продолжить смотреть") на сервер Firebase
     public func pushRemoteProgress(_ records: [PlaybackProgressRecord], userId: String, idToken: String? = nil) async {
         guard !userId.isEmpty, userId != "guest" else { return }
-
-        var urlString = "\(databaseBaseURL)/\(userId)/progress.json"
-        if let idToken = idToken, !idToken.isEmpty {
-            urlString += "?auth=\(idToken)"
-        }
-
-        guard let url = URL(string: urlString) else { return }
+        guard let url = await makeURL(path: "\(userId)/progress", idToken: idToken) else { return }
 
         isSyncing = true
         defer { isSyncing = false }
@@ -172,13 +159,7 @@ public final class CloudSyncService: ObservableObject {
     /// Загружает метаданные видео (название, постер, лого) с сервера Firebase
     public func fetchRemoteMetadata(userId: String, idToken: String? = nil) async -> [PlaybackMediaMetadata]? {
         guard !userId.isEmpty, userId != "guest" else { return nil }
-
-        var urlString = "\(databaseBaseURL)/\(userId)/metadata.json"
-        if let idToken = idToken, !idToken.isEmpty {
-            urlString += "?auth=\(idToken)"
-        }
-
-        guard let url = URL(string: urlString) else { return nil }
+        guard let url = await makeURL(path: "\(userId)/metadata", idToken: idToken) else { return nil }
 
         do {
             var request = URLRequest(url: url)
@@ -203,13 +184,7 @@ public final class CloudSyncService: ObservableObject {
     /// Сохраняет метаданные видео на сервер Firebase
     public func pushRemoteMetadata(_ metadata: [PlaybackMediaMetadata], userId: String, idToken: String? = nil) async {
         guard !userId.isEmpty, userId != "guest" else { return }
-
-        var urlString = "\(databaseBaseURL)/\(userId)/metadata.json"
-        if let idToken = idToken, !idToken.isEmpty {
-            urlString += "?auth=\(idToken)"
-        }
-
-        guard let url = URL(string: urlString) else { return }
+        guard let url = await makeURL(path: "\(userId)/metadata", idToken: idToken) else { return }
 
         do {
             var request = URLRequest(url: url)

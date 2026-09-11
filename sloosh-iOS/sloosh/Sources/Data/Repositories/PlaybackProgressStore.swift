@@ -615,9 +615,33 @@ public final class PlaybackProgressStore: ObservableObject {
                         g.userMediaIdKey = "\(activeUserId)_\(g.mediaId)"
                         allModels.append(g)
                         hasMigrated = true
+                    } else {
+                        context.delete(g)
+                        hasMigrated = true
                     }
                 }
                 if hasMigrated {
+                    try? context.save()
+                }
+            }
+
+            let guestMetaDesc = FetchDescriptor<PlaybackMetadataModel>(predicate: #Predicate { $0.userId == "guest" })
+            if let guestMetaModels = try? context.fetch(guestMetaDesc), !guestMetaModels.isEmpty {
+                var hasMetaMigrated = false
+                for gm in guestMetaModels {
+                    let key = (gm.mediaKey?.isEmpty == false ? gm.mediaKey! : nil) ?? (gm.kpId > 0 ? "kp_\(gm.kpId)" : (gm.detailsId.isEmpty ? "tmdb_\(gm.tmdbId ?? 0)" : gm.detailsId))
+                    let compositeKey = "\(activeUserId)_\(key)"
+                    let existingDesc = FetchDescriptor<PlaybackMetadataModel>(predicate: #Predicate { $0.userKpIdKey == compositeKey })
+                    if (try? context.fetch(existingDesc).first) == nil {
+                        gm.userId = activeUserId
+                        gm.userKpIdKey = compositeKey
+                        hasMetaMigrated = true
+                    } else {
+                        context.delete(gm)
+                        hasMetaMigrated = true
+                    }
+                }
+                if hasMetaMigrated {
                     try? context.save()
                 }
             }
