@@ -100,6 +100,7 @@ async function streamImageFromUrl(url: string): Promise<Response | null> {
         "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15",
         "Referer": "https://www.themoviedb.org/",
       },
+      signal: AbortSignal.timeout(6000),
     })
     if (!res.ok) return null
     const contentType = res.headers.get("content-type") || "image/jpeg"

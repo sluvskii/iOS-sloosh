@@ -6,10 +6,22 @@ import type { MediaDetailsDto, MediaResponse } from "../types/models"
 
 export const mediaRouter = new Hono()
 
+function parsePage(c: any): number {
+  return Math.min(Math.max(1, parseInt(c.req.query("page") || "1", 10) || 1), 500)
+}
+
+function handleRouteError(c: any, err: any, defaultMessage: string) {
+  const isNotFound = err?.status === 404 || err?.message?.includes("404") || err?.message?.toLowerCase().includes("not found")
+  if (isNotFound) {
+    return c.json({ status: "error", message: "Медиа или ресурс не найден" }, 404)
+  }
+  return c.json({ status: "error", message: err?.message || defaultMessage }, 500)
+}
+
 // GET /api/v1/search & /api/v1/discover
 const handleSearchOrDiscover = async (c: any) => {
   const query = c.req.query("query") || c.req.query("q") || ""
-  const page = parseInt(c.req.query("page") || "1", 10)
+  const page = parsePage(c)
   const genres = c.req.query("genres")
   const countries = c.req.query("countries")
   const type = c.req.query("type")
@@ -73,7 +85,7 @@ mediaRouter.get("/discover", handleSearchOrDiscover)
 const handlePopular = (defaultType: "movie" | "tv" = "movie") => async (c: any) => {
   const queryType = c.req.query("type")
   const type = (queryType === "tv" || queryType === "movie") ? queryType : defaultType
-  const page = parseInt(c.req.query("page") || "1", 10)
+  const page = parsePage(c)
 
   const cacheKey = `popular:${type}:${page}`
   const cached = getCached<MediaResponse>(listCache, cacheKey)
@@ -97,7 +109,7 @@ mediaRouter.get("/tv/popular", handlePopular("tv"))
 const handleTopRated = (defaultType: "movie" | "tv") => async (c: any) => {
   const queryType = c.req.query("type")
   const type = (queryType === "tv" || queryType === "movie") ? queryType : defaultType
-  const page = parseInt(c.req.query("page") || "1", 10)
+  const page = parsePage(c)
 
   const cacheKey = `top:${type}:${page}`
   const cached = getCached<MediaResponse>(listCache, cacheKey)
@@ -119,7 +131,7 @@ mediaRouter.get("/tv/top-rated", handleTopRated("tv"))
 
 // GET /api/v1/trending
 mediaRouter.get("/trending", async (c) => {
-  const page = parseInt(c.req.query("page") || "1", 10)
+  const page = parsePage(c)
   const window = (c.req.query("window") === "day" ? "day" : "week") as "day" | "week"
 
   const cacheKey = `trending:${window}:${page}`
@@ -139,7 +151,7 @@ mediaRouter.get("/trending", async (c) => {
 
 // GET /api/v1/cartoons
 mediaRouter.get("/cartoons", async (c) => {
-  const page = parseInt(c.req.query("page") || "1", 10)
+  const page = parsePage(c)
 
   const cacheKey = `cartoons:${page}`
   const cached = getCached<MediaResponse>(listCache, cacheKey)
@@ -158,7 +170,7 @@ mediaRouter.get("/cartoons", async (c) => {
 
 // GET /api/v1/anime
 mediaRouter.get("/anime", async (c) => {
-  const page = parseInt(c.req.query("page") || "1", 10)
+  const page = parsePage(c)
   const order = (c.req.query("order") === "top" ? "top" : "popular") as "popular" | "top"
 
   const cacheKey = `anime:${order}:${page}`
@@ -226,7 +238,7 @@ mediaRouter.get("/tv/:id/season/:season", async (c) => {
     c.header("Cache-Control", "public, s-maxage=86400, stale-while-revalidate=43200")
     return c.json({ status: "success", data: seasonDetails })
   } catch (err: any) {
-    return c.json({ status: "error", message: err.message || "Season details not found" }, 500)
+    return handleRouteError(c, err, "Season details not found")
   }
 })
 
@@ -290,7 +302,7 @@ mediaRouter.get("/tv/:id/season/:season/episode/:episode", async (c) => {
         }
       })
     } catch (err: any) {
-      return c.json({ status: "error", message: err.message || "Pilot episode not found" }, 500)
+      return handleRouteError(c, err, "Pilot episode not found")
     }
   }
 
@@ -312,7 +324,7 @@ mediaRouter.get("/tv/:id/season/:season/episode/:episode", async (c) => {
     }
     return c.json({ status: "success", data: epDetails })
   } catch (err: any) {
-    return c.json({ status: "error", message: err.message || "Episode details not found" }, 500)
+    return handleRouteError(c, err, "Episode details not found")
   }
 })
 
@@ -424,7 +436,7 @@ mediaRouter.get("/movie/:id", async (c) => {
     const details = isTvParam ? await handleTvDetails(id, isKp) : await handleMovieDetails(id, isKp)
     return c.json({ status: "success", data: details })
   } catch (err: any) {
-    return c.json({ status: "error", message: err.message || "Failed to fetch movie details" }, 500)
+    return handleRouteError(c, err, "Failed to fetch movie details")
   }
 })
 
@@ -443,7 +455,7 @@ mediaRouter.get("/tv/:id", async (c) => {
     const details = isMovieParam ? await handleMovieDetails(id, isKp) : await handleTvDetails(id, isKp)
     return c.json({ status: "success", data: details })
   } catch (err: any) {
-    return c.json({ status: "error", message: err.message || "Failed to fetch TV details" }, 500)
+    return handleRouteError(c, err, "Failed to fetch TV details")
   }
 })
 
@@ -470,7 +482,7 @@ mediaRouter.get("/media/:id", async (c) => {
     }
     return c.json({ status: "success", data: details })
   } catch (err: any) {
-    return c.json({ status: "error", message: err.message || "Failed to fetch media details" }, 500)
+    return handleRouteError(c, err, "Failed to fetch media details")
   }
 })
 
@@ -493,6 +505,6 @@ mediaRouter.get("/person/:id", async (c) => {
     setCached(detailsCache, cacheKey, details)
     return c.json({ status: "success", data: details })
   } catch (err: any) {
-    return c.json({ status: "error", message: err.message || "Failed to fetch person details" }, 500)
+    return handleRouteError(c, err, "Failed to fetch person details")
   }
 })

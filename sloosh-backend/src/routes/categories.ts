@@ -1,4 +1,4 @@
-﻿import { Hono } from "hono"
+import { Hono } from "hono"
 import { config } from "../config"
 import { tmdb } from "../services/tmdb"
 import { listCache, getCached, setCached } from "../services/cache"
@@ -35,7 +35,7 @@ categoriesRouter.get("/categories", (c) => {
 // GET /api/v1/collection/:id
 categoriesRouter.get("/collection/:id", async (c) => {
   const idOrSlug = c.req.param("id").toLowerCase()
-  const page = parseInt(c.req.query("page") || "1", 10)
+  const page = Math.min(Math.max(1, parseInt(c.req.query("page") || "1", 10) || 1), 500)
 
   const studio = config.studios.find((s) => s.id === idOrSlug || s.slug === idOrSlug || String(s.tmdbCompanyId) === idOrSlug || String(s.tmdbNetworkId) === idOrSlug)
 
@@ -80,7 +80,7 @@ categoriesRouter.get("/media/:type/:id/related/studio", async (c) => {
   const type = c.req.param("type") === "tv" ? "tv" : "movie"
   const rawId = c.req.param("id").replace(/^(tmdb_|kp_)/, "")
   const id = parseInt(rawId, 10)
-  const page = parseInt(c.req.query("page") || "1", 10)
+  const page = Math.min(Math.max(1, parseInt(c.req.query("page") || "1", 10) || 1), 500)
 
   if (isNaN(id)) {
     return c.json({ status: "error", message: "Invalid ID" }, 400)
