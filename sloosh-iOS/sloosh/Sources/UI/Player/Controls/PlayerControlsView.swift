@@ -33,107 +33,109 @@ struct PlayerControlsView: View {
             .animation(.easeInOut(duration: 0.2), value: isSeeking)
             .ignoresSafeArea()
 
-            // ── Верхний и нижний блоки ───────────────────────
-            VStack {
-                TopBarView(vm: vm, onDismiss: onDismiss, isInteracting: $isInteracting)
-                    .padding(.top, 24) // Увеличенный отступ
-                    .opacity(showControls && !isSeeking ? 1 : 0)
-                    .offset(y: showControls ? 0 : -10)
-                    .animation(.easeInOut(duration: 0.24), value: showControls)
-                    .animation(.easeInOut(duration: 0.2), value: isSeeking)
+            // ── Элементы управления с мягким нативным блюром ──
+            ZStack {
+                // ── Верхний и нижний блоки ───────────────────────
+                VStack {
+                    TopBarView(vm: vm, onDismiss: onDismiss, isInteracting: $isInteracting)
+                        .padding(.top, 24) // Увеличенный отступ
+                        .offset(y: showControls ? 0 : -8)
+                        .opacity(isSeeking ? 0 : 1)
+                        .animation(.easeInOut(duration: 0.2), value: isSeeking)
 
-                Spacer()
+                    Spacer()
 
-                // ── Нижний блок: инфо слева + правые кнопки + seek bar ───────
-                VStack(alignment: .trailing, spacing: 8) {
-                    HStack(alignment: .bottom) {
-                        PlayerTitleInfoView(vm: vm)
-                            .padding(.leading, 8)
-                            .padding(.bottom, 4)
-                        
-                        Spacer()
-                        
-                        VStack(alignment: .trailing, spacing: 8) {
-                            if vm.showSkipIntro {
-                                Button {
-                                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                                    if let range = vm.introRange {
-                                        vm.seek(to: range.upperBound + 0.5)
-                                        vm.showSkipIntro = false
-                                        vm.introRange = nil
-                                    }
-                                } label: {
-                                    HStack(spacing: 6) {
-                                        Image(systemName: "forward.end.fill")
-                                            .font(.system(size: 13, weight: .semibold))
-                                        Text("Пропустить заставку")
-                                            .font(.system(size: 14, weight: .semibold, design: .rounded))
-                                    }
-                                    .foregroundStyle(.white)
-                                    .padding(.horizontal, 18)
-                                    .frame(height: 44)
-                                    .clipShape(Capsule())
-                                    .glassEffect(.regular.interactive(), in: .capsule)
-                                }
-                                .buttonStyle(.glassPress)
-                                .transition(.move(edge: .trailing).combined(with: .opacity))
-                            }
+                    // ── Нижний блок: инфо слева + правые кнопки + seek bar ───────
+                    VStack(alignment: .trailing, spacing: 8) {
+                        HStack(alignment: .bottom) {
+                            PlayerTitleInfoView(vm: vm)
+                                .padding(.leading, 8)
+                                .padding(.bottom, 4)
                             
-                            if vm.showSkipOutro {
-                                Button {
-                                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                                    if let range = vm.outroRange {
-                                        vm.seek(to: range.upperBound + 0.5)
-                                        vm.showSkipOutro = false
-                                        vm.outroRange = nil
-                                    }
-                                } label: {
-                                    HStack(spacing: 6) {
-                                        Image(systemName: "forward.end.fill")
-                                            .font(.system(size: 13, weight: .semibold))
-                                        Text("Пропустить титры")
-                                            .font(.system(size: 14, weight: .semibold, design: .rounded))
-                                    }
-                                    .foregroundStyle(.white)
-                                    .padding(.horizontal, 18)
-                                    .frame(height: 44)
-                                    .clipShape(Capsule())
-                                    .glassEffect(.regular.interactive(), in: .capsule)
-                                }
-                                .buttonStyle(.glassPress)
-                                .transition(.move(edge: .trailing).combined(with: .opacity))
-                            }
+                            Spacer()
                             
-                            BottomRowView(
-                                vm: vm,
-                                showVoiceoverSheet: $showVoiceoverSheet,
-                                showQualitySheet: $showQualitySheet,
-                                showSpeedSheet: $showSpeedSheet,
-                                showSubtitleSheet: $showSubtitleSheet
-                            )
+                            VStack(alignment: .trailing, spacing: 8) {
+                                if vm.showSkipIntro {
+                                    Button {
+                                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                        if let range = vm.introRange {
+                                            vm.seek(to: range.upperBound + 0.5)
+                                            vm.showSkipIntro = false
+                                            vm.introRange = nil
+                                        }
+                                    } label: {
+                                        HStack(spacing: 6) {
+                                            Image(systemName: "forward.end.fill")
+                                                .font(.system(size: 13, weight: .semibold))
+                                            Text("Пропустить заставку")
+                                                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                        }
+                                        .foregroundStyle(.white)
+                                        .padding(.horizontal, 18)
+                                        .frame(height: 44)
+                                        .clipShape(Capsule())
+                                        .glassEffect(.regular.interactive(), in: .capsule)
+                                    }
+                                    .buttonStyle(.glassPress)
+                                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                                }
+                                
+                                if vm.showSkipOutro {
+                                    Button {
+                                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                        if let range = vm.outroRange {
+                                            vm.seek(to: range.upperBound + 0.5)
+                                            vm.showSkipOutro = false
+                                            vm.outroRange = nil
+                                        }
+                                    } label: {
+                                        HStack(spacing: 6) {
+                                            Image(systemName: "forward.end.fill")
+                                                .font(.system(size: 13, weight: .semibold))
+                                            Text("Пропустить титры")
+                                                .font(.system(size: 14, weight: .semibold, design: .rounded))
+                                        }
+                                        .foregroundStyle(.white)
+                                        .padding(.horizontal, 18)
+                                        .frame(height: 44)
+                                        .clipShape(Capsule())
+                                        .glassEffect(.regular.interactive(), in: .capsule)
+                                    }
+                                    .buttonStyle(.glassPress)
+                                    .transition(.move(edge: .trailing).combined(with: .opacity))
+                                }
+                                
+                                BottomRowView(
+                                    vm: vm,
+                                    showVoiceoverSheet: $showVoiceoverSheet,
+                                    showQualitySheet: $showQualitySheet,
+                                    showSpeedSheet: $showSpeedSheet,
+                                    showSubtitleSheet: $showSubtitleSheet
+                                )
+                            }
+                            .padding(.trailing, 8)
                         }
-                        .padding(.trailing, 8)
+                        .opacity(isSeeking ? 0 : 1)
+                        .animation(.easeInOut(duration: 0.2), value: isSeeking)
+
+                        SeekBarView(vm: vm, isInteracting: $isInteracting)
+                            .padding(.horizontal, 8)
+                            .padding(.bottom, 24) // Увеличенный отступ
                     }
+                    .offset(y: showControls ? 0 : 8)
+                }
+                .ignoresSafeArea(edges: .vertical) // Игнорируем safe area для идеальной симметрии
+
+                // ── Центральные кнопки (ровно по центру экрана) ───
+                CenterControlsView(vm: vm)
+                    .scaleEffect(showControls ? 1.0 : 0.90)
                     .opacity(isSeeking ? 0 : 1)
                     .animation(.easeInOut(duration: 0.2), value: isSeeking)
-
-                    SeekBarView(vm: vm, isInteracting: $isInteracting)
-                        .padding(.horizontal, 8)
-                        .padding(.bottom, 24) // Увеличенный отступ
-                }
-                .opacity(showControls ? 1 : 0)
-                .offset(y: showControls ? 0 : 10)
-                .animation(.easeInOut(duration: 0.24), value: showControls)
+                    .ignoresSafeArea()
             }
-            .ignoresSafeArea(edges: .vertical) // Игнорируем safe area для идеальной симметрии
-
-            // ── Центральные кнопки (ровно по центру экрана) ───
-            CenterControlsView(vm: vm)
-                .scaleEffect(showControls ? 1.0 : 0.88)
-                .opacity(showControls && !isSeeking ? 1 : 0)
-                .animation(.easeInOut(duration: 0.24), value: showControls)
-                .animation(.easeInOut(duration: 0.2), value: isSeeking)
-                .ignoresSafeArea()
+            .opacity(showControls ? 1 : 0)
+            .blur(radius: showControls ? 0 : 16)
+            .animation(.easeInOut(duration: 0.24), value: showControls)
         }
         // Sheets are now popovers on BottomRowView
         .onChange(of: showVoiceoverSheet) { _, _ in isPopoverOpen = showVoiceoverSheet || showQualitySheet || showSpeedSheet || showSubtitleSheet }
