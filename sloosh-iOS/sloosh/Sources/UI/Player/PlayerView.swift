@@ -244,13 +244,13 @@ class PlayerViewModel: ObservableObject {
     @Published var scrubPreviewImage: UIImage? = nil
     @Published var scrubPreviewAspectRatio: CGFloat = 16.0 / 9.0
     private var imageGenerator: AVAssetImageGenerator?
-    private var videoOutput: AVPlayerItemVideoOutput?
     private var thumbnailTask: Task<Void, Never>?
     private var lastRequestedThumbnailTime: Double = -1
     private var thumbnailCache: [Int: (image: UIImage, ratio: CGFloat)] = [:]
+    private static let sharedCIContext = CIContext(options: [.useSoftwareRenderer: false])
     @Published var isLocalPlayback: Bool = false
 
-    func setupImageGenerator(asset: AVAsset, item: AVPlayerItem? = nil) {
+    func setupImageGenerator(asset: AVAsset) {
         let gen = AVAssetImageGenerator(asset: asset)
         gen.appliesPreferredTrackTransform = true
         gen.maximumSize = CGSize(width: 320, height: 180)
@@ -258,22 +258,13 @@ class PlayerViewModel: ObservableObject {
         gen.requestedTimeToleranceAfter = CMTime(seconds: 5, preferredTimescale: 600)
         self.imageGenerator = gen
         self.thumbnailCache.removeAll()
-        
-        if let item {
-            let pixAttrs: [String: Any] = [
-                kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_32BGRA)
-            ]
-            let output = AVPlayerItemVideoOutput(pixelBufferAttributes: pixAttrs)
-            item.add(output)
-            self.videoOutput = output
-        }
     }
 
     func generateScrubThumbnail(at seconds: Double) {
         guard seconds >= 0 else { return }
         let cacheKey = Int(seconds / 5.0) * 5
         
-        // 1. Пробуем взять мгновенный кадр из оперативного кэша
+        // 1. Пробуем взять кадр из оперативного кэша
         if let cached = thumbnailCache[cacheKey] {
             self.scrubPreviewAspectRatio = cached.ratio
             self.scrubPreviewImage = cached.image
@@ -283,32 +274,14 @@ class PlayerViewModel: ObservableObject {
         guard abs(seconds - lastRequestedThumbnailTime) > 0.15 else { return }
         lastRequestedThumbnailTime = seconds
         
-        let time = CMTime(seconds: seconds, preferredTimescale: 600)
-        
-        // 2. Пробуем взять мгновенный декодированный кадр из AVPlayerItemVideoOutput (ТОЛЬКО около текущей точки воспроизведения)
-        if abs(seconds - currentTime) < 5.0, let output = self.videoOutput, output.hasNewPixelBuffer(forItemTime: time) {
-            if let pixelBuffer = output.copyPixelBuffer(forItemTime: time, itemTimeForDisplay: nil) {
-                let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
-                let context = CIContext()
-                if let cgImage = context.createCGImage(ciImage, from: ciImage.extent) {
-                    let uiImage = UIImage(cgImage: cgImage)
-                    let ratio = CGFloat(cgImage.width) / max(1.0, CGFloat(cgImage.height))
-                    self.thumbnailCache[cacheKey] = (uiImage, ratio)
-                    self.scrubPreviewAspectRatio = ratio
-                    self.scrubPreviewImage = uiImage
-                    return
-                }
-            }
-        }
-        
-        // 3. Асинхронно извлекаем точный кадр через AVAssetImageGenerator
+        // 2. Асинхронно извлекаем точный кадр через AVAssetImageGenerator
         guard let gen = self.imageGenerator else { return }
+        let time = CMTime(seconds: seconds, preferredTimescale: 600)
         let timeValue = NSValue(time: time)
         
         gen.generateCGImagesAsynchronously(forTimes: [timeValue]) { [weak self] requestedTime, cgImage, actualTime, result, error in
             guard let self, let cgImage, result == .succeeded else { return }
             
-            // Защита от фальшивых первых секунд: проверяем, что вытащенный кадр реально соответствует запрашиваемому времени (+- 30 сек)
             let reqSec = requestedTime.seconds
             let actSec = actualTime.seconds
             guard reqSec.isFinite, actSec.isFinite, abs(reqSec - actSec) < 30.0 else { return }
@@ -317,6 +290,9 @@ class PlayerViewModel: ObservableObject {
             let ratio = CGFloat(cgImage.width) / max(1.0, CGFloat(cgImage.height))
             
             DispatchQueue.main.async {
+                if self.thumbnailCache.count > 60 {
+                    self.thumbnailCache.removeAll()
+                }
                 self.thumbnailCache[cacheKey] = (uiImage, ratio)
                 self.scrubPreviewAspectRatio = ratio
                 self.scrubPreviewImage = uiImage
@@ -1584,10 +1560,9 @@ class PlayerViewModel: ObservableObject {
         let supportsThumbnails = isLocalFile || isMp4
         self.isLocalPlayback = supportsThumbnails
         if supportsThumbnails {
-            setupImageGenerator(asset: asset, item: playerItem)
+            setupImageGenerator(asset: asset)
         } else {
             self.imageGenerator = nil
-            self.videoOutput = nil
             self.scrubPreviewImage = nil
             self.thumbnailCache.removeAll()
         }
@@ -1866,11 +1841,15 @@ class PlayerViewModel: ObservableObject {
             if self.isUserSeeking || self.isInitialSeekPending { return }
             let t = player.currentTime().seconds
             if t.isFinite && !t.isNaN && t >= 0 {
-                self.currentTime = t
+                if abs(self.currentTime - t) >= 0.25 {
+                    self.currentTime = t
+                }
             }
             let d = player.currentItem?.duration.seconds ?? 0
             if d.isFinite && !d.isNaN && d > 0 {
-                self.currentDuration = d
+                if abs(self.currentDuration - d) > 0.5 {
+                    self.currentDuration = d
+                }
             }
             
             if let intro = self.introRange, intro.contains(self.currentTime) {
