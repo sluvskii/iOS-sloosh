@@ -73,7 +73,6 @@ struct BackdropSlideItemView: View {
             content
                 .offset(x: value * 55)
                 .scaleEffect(1.0 - progress * 0.07)
-                .clipShape(RoundedRectangle(cornerRadius: progress * 14, style: .continuous))
         }
     }
 }
@@ -353,7 +352,7 @@ struct DetailsView: View {
     }
 
     private nonisolated(unsafe) static var dominantColorCache: [String: UIColor] = [:]
-    private static let dominantColorCacheLock = NSLock()
+    private nonisolated(unsafe) static let dominantColorCacheLock = NSLock()
 
     private func fetchAverageColor(from url: URL?) async -> UIColor? {
         guard let url else { return nil }
