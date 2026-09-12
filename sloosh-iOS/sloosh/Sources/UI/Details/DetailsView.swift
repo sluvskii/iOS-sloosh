@@ -50,6 +50,7 @@ struct BackdropCarouselView: View {
     @Binding var selectedIndex: Int
     var isHeaderVisible: Bool = true
     
+    @State private var scrolledId: Int? = 0
     @State private var timerTask: Task<Void, Never>? = nil
     @Environment(\.scenePhase) private var scenePhase
 
@@ -64,28 +65,42 @@ struct BackdropCarouselView: View {
                     height: height
                 )
             } else {
-                TabView(selection: $selectedIndex) {
-                    ForEach(0..<urls.count, id: \.self) { idx in
-                        AsyncCachedImage(
-                            url: URL(string: urls[idx]),
-                            fallbackUrl: fallbackUrl
-                        ) {
-                            Color.black.opacity(0.3)
-                                .frame(width: width, height: height)
-                        } content: { image in
-                            Image(uiImage: image)
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                                .frame(width: width, height: height)
-                                .clipped()
-                        } fallback: {
-                            Color.black.opacity(0.3)
-                                .frame(width: width, height: height)
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(spacing: 0) {
+                        ForEach(0..<urls.count, id: \.self) { idx in
+                            ZStack {
+                                AsyncCachedImage(
+                                    url: URL(string: urls[idx]),
+                                    fallbackUrl: fallbackUrl
+                                ) {
+                                    Color.black.opacity(0.3)
+                                        .frame(width: width, height: height)
+                                } content: { image in
+                                    Image(uiImage: image)
+                                        .resizable()
+                                        .aspectRatio(contentMode: .fill)
+                                        .frame(width: width, height: height)
+                                } fallback: {
+                                    Color.black.opacity(0.3)
+                                        .frame(width: width, height: height)
+                                }
+                            }
+                            .frame(width: width, height: height)
+                            .scrollTransition(.interactive) { content, phase in
+                                let value = CGFloat(phase.value)
+                                let progress = min(max(abs(value), 0.0), 1.0)
+                                content
+                                    .offset(x: value * 55)
+                                    .scaleEffect(1.0 - progress * 0.07)
+                                    .clipShape(RoundedRectangle(cornerRadius: progress * 14, style: .continuous))
+                            }
+                            .id(idx)
                         }
-                        .tag(idx)
                     }
+                    .scrollTargetLayout()
                 }
-                .tabViewStyle(.page(indexDisplayMode: .never))
+                .scrollTargetBehavior(.paging)
+                .scrollPosition(id: $scrolledId)
                 .mask(
                     LinearGradient(
                         gradient: Gradient(stops: [
@@ -110,13 +125,24 @@ struct BackdropCarouselView: View {
             if selectedIndex >= urls.count {
                 selectedIndex = 0
             }
+            scrolledId = selectedIndex
             ImageCache.prefetch(urls: urls.compactMap { URL(string: $0) })
             restartTimer()
         }
         .onDisappear {
             stopTimer()
         }
+        .onChange(of: scrolledId) { _, newId in
+            if let newId, newId != selectedIndex {
+                selectedIndex = newId
+            }
+        }
         .onChange(of: selectedIndex) { _, newIndex in
+            if scrolledId != newIndex {
+                withAnimation(.easeInOut(duration: 0.8)) {
+                    scrolledId = newIndex
+                }
+            }
             if urls.count > 1 {
                 let nextIndex = (newIndex + 1) % urls.count
                 if let nextUrl = URL(string: urls[nextIndex]) {
@@ -128,6 +154,7 @@ struct BackdropCarouselView: View {
         .onChange(of: urls.count) { _, count in
             if selectedIndex >= count {
                 selectedIndex = 0
+                scrolledId = 0
             }
             ImageCache.prefetch(urls: urls.compactMap { URL(string: $0) })
             restartTimer()
@@ -161,8 +188,10 @@ struct BackdropCarouselView: View {
             try? await Task.sleep(nanoseconds: 5_000_000_000)
             if Task.isCancelled { return }
             guard isHeaderVisible, scenePhase == .active, urls.count > 1 else { return }
+            let next = (selectedIndex + 1) % urls.count
             withAnimation(.easeInOut(duration: 0.8)) {
-                selectedIndex = (selectedIndex + 1) % urls.count
+                selectedIndex = next
+                scrolledId = next
             }
         }
     }
