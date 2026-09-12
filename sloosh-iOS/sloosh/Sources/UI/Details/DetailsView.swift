@@ -25,14 +25,14 @@ struct RemoteBackdropView: View {
             LinearGradient(
                 gradient: Gradient(stops: [
                     .init(color: .clear, location: 0.0),
-                    .init(color: .black.opacity(0.4), location: 0.06),
-                    .init(color: .black.opacity(0.85), location: 0.12),
-                    .init(color: .black, location: 0.18),
-                    .init(color: .black, location: 0.35),
-                    .init(color: .black.opacity(0.8), location: 0.50),
-                    .init(color: .black.opacity(0.45), location: 0.68),
-                    .init(color: .black.opacity(0.2), location: 0.82),
-                    .init(color: .black.opacity(0.06), location: 0.93),
+                    .init(color: .black.opacity(0.45), location: 0.06),
+                    .init(color: .black.opacity(0.9), location: 0.14),
+                    .init(color: .black, location: 0.24),
+                    .init(color: .black, location: 0.42),
+                    .init(color: .black.opacity(0.85), location: 0.54),
+                    .init(color: .black.opacity(0.5), location: 0.70),
+                    .init(color: .black.opacity(0.2), location: 0.84),
+                    .init(color: .black.opacity(0.06), location: 0.94),
                     .init(color: .clear, location: 1.0)
                 ]),
                 startPoint: .top,
@@ -42,7 +42,7 @@ struct RemoteBackdropView: View {
     }
 }
 
-struct BackdropSlideItemView: View {
+struct BackdropImageItem: View {
     let urlString: String
     let fallbackUrl: URL?
     let width: CGFloat
@@ -53,7 +53,7 @@ struct BackdropSlideItemView: View {
             url: URL(string: urlString),
             fallbackUrl: fallbackUrl
         ) {
-            Color.black.opacity(0.3)
+            Color.black.opacity(0.35)
                 .frame(width: width, height: height)
         } content: { image in
             Image(uiImage: image)
@@ -62,43 +62,11 @@ struct BackdropSlideItemView: View {
                 .frame(width: width, height: height)
                 .clipped()
         } fallback: {
-            Color.black.opacity(0.3)
+            Color.black.opacity(0.35)
                 .frame(width: width, height: height)
         }
         .frame(width: width, height: height)
         .clipped()
-    }
-}
-
-struct CenteredBackdropScrollTargetBehavior: ScrollTargetBehavior {
-    let itemWidth: CGFloat
-    let count: Int
-    let onSnap: (Int) -> Void
-
-    func updateTarget(_ target: inout ScrollTarget, context: TargetContext) {
-        guard count > 0 else { return }
-        let viewportWidth = context.containerSize.width
-        let centerOffset = (itemWidth - viewportWidth) / 2.0
-        
-        let velocityX = context.velocity.dx
-        let currentOffset = target.rect.origin.x - centerOffset
-        let rawIndex = currentOffset / itemWidth
-        
-        let targetIndex: Int
-        if velocityX > 0.2 {
-            targetIndex = Int(ceil(rawIndex))
-        } else if velocityX < -0.2 {
-            targetIndex = Int(floor(rawIndex))
-        } else {
-            targetIndex = Int(round(rawIndex))
-        }
-        
-        let clamped = max(0, min(count - 1, targetIndex))
-        target.rect.origin.x = CGFloat(clamped) * itemWidth + centerOffset
-        
-        DispatchQueue.main.async {
-            onSnap(clamped)
-        }
     }
 }
 
@@ -109,18 +77,31 @@ struct BackdropCarouselView: View {
     let height: CGFloat
     @Binding var selectedIndex: Int
     var isHeaderVisible: Bool = true
-    
-    @State private var isUserSnapping: Bool = false
+
+    @State private var dragOffset: CGFloat = 0
+    @State private var isDragging: Bool = false
+    @State private var isAnimatingTransition: Bool = false
     @State private var timerTask: Task<Void, Never>? = nil
+    @State private var transitionTask: Task<Void, Never>? = nil
     @Environment(\.scenePhase) private var scenePhase
 
-    private var itemWidth: CGFloat {
-        max(width, height * (16.0 / 9.0))
+    private var count: Int {
+        urls.count
+    }
+
+    private var nextIndex: Int {
+        guard count > 0 else { return 0 }
+        return (selectedIndex + 1) % count
+    }
+
+    private var prevIndex: Int {
+        guard count > 0 else { return 0 }
+        return (selectedIndex - 1 + count) % count
     }
 
     var body: some View {
         Group {
-            if urls.count <= 1 {
+            if count <= 1 {
                 let firstUrl = urls.first.flatMap { URL(string: $0) }
                 RemoteBackdropView(
                     url: firstUrl,
@@ -129,12 +110,99 @@ struct BackdropCarouselView: View {
                     height: height
                 )
             } else {
-                carouselScroll
-                    .mask(verticalFadeMask)
+                ZStack {
+                    // Previous slide (visible when dragging right)
+                    if dragOffset > 0 {
+                        BackdropImageItem(
+                            urlString: urls[prevIndex],
+                            fallbackUrl: fallbackUrl,
+                            width: width,
+                            height: height
+                        )
+                        .offset(x: -width + dragOffset)
+                    }
+
+                    // Current slide
+                    BackdropImageItem(
+                        urlString: urls[selectedIndex],
+                        fallbackUrl: fallbackUrl,
+                        width: width,
+                        height: height
+                    )
+                    .offset(x: dragOffset)
+
+                    // Next slide (visible when dragging left, during auto-transition, or at rest ready to slide in)
+                    if dragOffset <= 0 {
+                        BackdropImageItem(
+                            urlString: urls[nextIndex],
+                            fallbackUrl: fallbackUrl,
+                            width: width,
+                            height: height
+                        )
+                        .offset(x: width + dragOffset)
+                    }
+                }
+                .frame(width: width, height: height)
+                .clipped()
+                .contentShape(Rectangle())
+                .gesture(
+                    DragGesture(minimumDistance: 12)
+                        .onChanged { value in
+                            guard !isAnimatingTransition else { return }
+                            if !isDragging {
+                                let dx = abs(value.translation.width)
+                                let dy = abs(value.translation.height)
+                                if dx > dy * 1.3 && dx > 12 {
+                                    isDragging = true
+                                    stopTimer()
+                                } else {
+                                    return
+                                }
+                            }
+                            if isDragging {
+                                dragOffset = value.translation.width
+                            }
+                        }
+                        .onEnded { value in
+                            guard isDragging else { return }
+                            isDragging = false
+                            let velocity = value.predictedEndTranslation.width - value.translation.width
+                            let threshold = width * 0.2
+
+                            if value.translation.width < -threshold || velocity < -180 {
+                                transitionToNext(width: width, duration: 0.35)
+                            } else if value.translation.width > threshold || velocity > 180 {
+                                transitionToPrev(width: width, duration: 0.35)
+                            } else {
+                                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                                    dragOffset = 0
+                                }
+                                restartTimer()
+                            }
+                        }
+                )
+                .mask(
+                    LinearGradient(
+                        gradient: Gradient(stops: [
+                            .init(color: .clear, location: 0.0),
+                            .init(color: .black.opacity(0.45), location: 0.06),
+                            .init(color: .black.opacity(0.9), location: 0.14),
+                            .init(color: .black, location: 0.24),
+                            .init(color: .black, location: 0.42),
+                            .init(color: .black.opacity(0.85), location: 0.54),
+                            .init(color: .black.opacity(0.5), location: 0.70),
+                            .init(color: .black.opacity(0.2), location: 0.84),
+                            .init(color: .black.opacity(0.06), location: 0.94),
+                            .init(color: .clear, location: 1.0)
+                        ]),
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
             }
         }
         .onAppear {
-            if selectedIndex >= urls.count {
+            if selectedIndex >= count {
                 selectedIndex = 0
             }
             ImageCache.prefetch(urls: urls.compactMap { URL(string: $0) })
@@ -142,9 +210,18 @@ struct BackdropCarouselView: View {
         }
         .onDisappear {
             stopTimer()
+            transitionTask?.cancel()
         }
-        .onChange(of: urls.count) { _, count in
-            if selectedIndex >= count {
+        .onChange(of: selectedIndex) { _, newIndex in
+            if !isAnimatingTransition {
+                withAnimation(.easeInOut(duration: 0.3)) {
+                    dragOffset = 0
+                }
+                restartTimer()
+            }
+        }
+        .onChange(of: count) { _, newCount in
+            if selectedIndex >= newCount {
                 selectedIndex = 0
             }
             ImageCache.prefetch(urls: urls.compactMap { URL(string: $0) })
@@ -166,96 +243,65 @@ struct BackdropCarouselView: View {
         }
     }
 
-    private var carouselScroll: some View {
-        ScrollViewReader { proxy in
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(spacing: 0) {
-                    ForEach(0..<urls.count, id: \.self) { idx in
-                        BackdropSlideItemView(
-                            urlString: urls[idx],
-                            fallbackUrl: fallbackUrl,
-                            width: itemWidth,
-                            height: height
-                        )
-                        .id(idx)
-                    }
-                }
-                .scrollTargetLayout()
+    private func transitionToNext(width: CGFloat, duration: Double = 0.75) {
+        stopTimer()
+        transitionTask?.cancel()
+        isAnimatingTransition = true
+
+        withAnimation(.easeInOut(duration: duration)) {
+            dragOffset = -width
+        }
+
+        transitionTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: UInt64(duration * 1_000_000_000))
+            if Task.isCancelled { return }
+            selectedIndex = (selectedIndex + 1) % count
+            dragOffset = 0
+            isAnimatingTransition = false
+
+            // Prefetch upcoming images
+            let upcoming = (selectedIndex + 1) % count
+            if let url = URL(string: urls[upcoming]) {
+                ImageCache.prefetch(urls: [url])
             }
-            .scrollTargetBehavior(CenteredBackdropScrollTargetBehavior(itemWidth: itemWidth, count: urls.count) { snappedIndex in
-                if selectedIndex != snappedIndex {
-                    isUserSnapping = true
-                    selectedIndex = snappedIndex
-                }
-            })
-            .onAppear {
-                if selectedIndex < urls.count {
-                    DispatchQueue.main.async {
-                        proxy.scrollTo(selectedIndex, anchor: .center)
-                    }
-                }
-            }
-            .task {
-                try? await Task.sleep(nanoseconds: 50_000_000)
-                if selectedIndex < urls.count {
-                    proxy.scrollTo(selectedIndex, anchor: .center)
-                }
-            }
-            .onChange(of: selectedIndex) { _, newIndex in
-                if isUserSnapping {
-                    isUserSnapping = false
-                } else {
-                    withAnimation(.easeInOut(duration: 0.9)) {
-                        proxy.scrollTo(newIndex, anchor: .center)
-                    }
-                }
-                if urls.count > 1 {
-                    let nextIndex = (newIndex + 1) % urls.count
-                    if let nextUrl = URL(string: urls[nextIndex]) {
-                        ImageCache.prefetch(urls: [nextUrl])
-                    }
-                }
-                restartTimer()
-            }
+
+            restartTimer()
         }
     }
 
-    private var verticalFadeMask: some View {
-        LinearGradient(
-            stops: [
-                .init(color: .clear, location: 0.0),
-                .init(color: .black.opacity(0.4), location: 0.06),
-                .init(color: .black.opacity(0.85), location: 0.12),
-                .init(color: .black, location: 0.18),
-                .init(color: .black.opacity(0.35), location: 0.35),
-                .init(color: .black.opacity(0.8), location: 0.50),
-                .init(color: .black.opacity(0.45), location: 0.68),
-                .init(color: .black.opacity(0.2), location: 0.82),
-                .init(color: .black.opacity(0.06), location: 0.93),
-                .init(color: .clear, location: 1.0)
-            ],
-            startPoint: .top,
-            endPoint: .bottom
-        )
+    private func transitionToPrev(width: CGFloat, duration: Double = 0.75) {
+        stopTimer()
+        transitionTask?.cancel()
+        isAnimatingTransition = true
+
+        withAnimation(.easeInOut(duration: duration)) {
+            dragOffset = width
+        }
+
+        transitionTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: UInt64(duration * 1_000_000_000))
+            if Task.isCancelled { return }
+            selectedIndex = (selectedIndex - 1 + count) % count
+            dragOffset = 0
+            isAnimatingTransition = false
+            restartTimer()
+        }
     }
-    
+
     private func stopTimer() {
         timerTask?.cancel()
         timerTask = nil
     }
-    
+
     private func restartTimer() {
         stopTimer()
-        guard urls.count > 1, isHeaderVisible, scenePhase == .active else { return }
-        
+        guard count > 1, isHeaderVisible, scenePhase == .active, !isDragging, !isAnimatingTransition else { return }
+
         timerTask = Task { @MainActor in
             try? await Task.sleep(nanoseconds: 5_000_000_000)
             if Task.isCancelled { return }
-            guard isHeaderVisible, scenePhase == .active, urls.count > 1 else { return }
-            let next = (selectedIndex + 1) % urls.count
-            withAnimation(.easeInOut(duration: 0.9)) {
-                selectedIndex = next
-            }
+            guard isHeaderVisible, scenePhase == .active, count > 1, !isDragging, !isAnimatingTransition else { return }
+            transitionToNext(width: width, duration: 0.75)
         }
     }
 }
@@ -393,8 +439,8 @@ struct DetailsView: View {
         }
     }
 
-    private nonisolated(unsafe) static var dominantColorCache: [String: UIColor] = [:]
-    private nonisolated static let dominantColorCacheLock = NSLock()
+    private static var dominantColorCache: [String: UIColor] = [:]
+    private static let dominantColorCacheLock = NSLock()
 
     private func fetchAverageColor(from url: URL?) async -> UIColor? {
         guard let url else { return nil }
@@ -436,6 +482,16 @@ struct DetailsView: View {
                 return nil
             }
         }.value
+    }
+
+    private func preloadAllBackdropColors(for details: MediaDetailsDto) {
+        Task.detached(priority: .utility) {
+            for urlStr in details.displayBackdropUrls {
+                if let url = URL(string: urlStr) {
+                    _ = await self.fetchAverageColor(from: url)
+                }
+            }
+        }
     }
 
     private func preloadDominantColor(for details: MediaDetailsDto) async {
@@ -562,6 +618,7 @@ struct DetailsView: View {
                 guard let details = viewModel.details else { return }
                 selectedBackdropIndex = 0
                 ImageCache.prefetch(urls: details.displayBackdropUrls.compactMap { URL(string: $0) })
+                preloadAllBackdropColors(for: details)
                 await preloadDominantColor(for: details)
             }
             .onChange(of: selectedBackdropIndex) { _, newIndex in
