@@ -55,10 +55,37 @@ struct BackdropCarouselView: View {
     @Binding var selectedIndex: Int
     var isHeaderVisible: Bool = true
     
-    @State private var scrolledId: Int? = 0
+    private let loopMultiplier = 600
+    
+    @State private var scrolledId: Int?
     @State private var isInteracting: Bool = false
     @State private var timerTask: Task<Void, Never>? = nil
     @Environment(\.scenePhase) private var scenePhase
+
+    init(
+        urls: [String],
+        fallbackUrl: URL?,
+        width: CGFloat,
+        height: CGFloat,
+        selectedIndex: Binding<Int>,
+        isHeaderVisible: Bool = true
+    ) {
+        self.urls = urls
+        self.fallbackUrl = fallbackUrl
+        self.width = width
+        self.height = height
+        self._selectedIndex = selectedIndex
+        self.isHeaderVisible = isHeaderVisible
+        
+        let count = urls.count
+        if count > 1 {
+            let base = (600 / 2) * count
+            let initial = base + (selectedIndex.wrappedValue % count)
+            self._scrolledId = State(initialValue: initial)
+        } else {
+            self._scrolledId = State(initialValue: 0)
+        }
+    }
 
     var body: some View {
         Group {
@@ -71,12 +98,14 @@ struct BackdropCarouselView: View {
                     height: height
                 )
             } else {
+                let totalVirtualCount = urls.count * loopMultiplier
                 ScrollViewReader { proxy in
                     ScrollView(.horizontal, showsIndicators: false) {
                         LazyHStack(spacing: 0) {
-                            ForEach(0..<urls.count, id: \.self) { idx in
+                            ForEach(0..<totalVirtualCount, id: \.self) { virtualIndex in
+                                let realIndex = virtualIndex % urls.count
                                 AsyncCachedImage(
-                                    url: URL(string: urls[idx]),
+                                    url: URL(string: urls[realIndex]),
                                     fallbackUrl: fallbackUrl
                                 ) {
                                     Color.black.opacity(0.3)
@@ -93,7 +122,7 @@ struct BackdropCarouselView: View {
                                 }
                                 .frame(width: width, height: height)
                                 .mask(BackdropFadeMask())
-                                .id(idx)
+                                .id(virtualIndex)
                             }
                         }
                         .frame(height: height)
@@ -116,22 +145,36 @@ struct BackdropCarouselView: View {
                             }
                     )
                     .onChange(of: scrolledId) { _, newId in
-                        if let newId, newId != selectedIndex {
-                            selectedIndex = newId
+                        guard let newId, urls.count > 1 else { return }
+                        let count = urls.count
+                        let realIndex = ((newId % count) + count) % count
+                        if realIndex != selectedIndex {
+                            selectedIndex = realIndex
                         }
                     }
                     .onChange(of: selectedIndex) { _, newIndex in
-                        if scrolledId != newIndex {
-                            withAnimation(.easeInOut(duration: 0.5)) {
-                                scrolledId = newIndex
-                                proxy.scrollTo(newIndex)
+                        guard urls.count > 1 else { return }
+                        let count = urls.count
+                        let currentVirtual = scrolledId ?? ((loopMultiplier / 2) * count + newIndex)
+                        let currentReal = ((currentVirtual % count) + count) % count
+                        
+                        if currentReal != newIndex {
+                            var diff = newIndex - currentReal
+                            if diff > count / 2 {
+                                diff -= count
+                            } else if diff < -count / 2 {
+                                diff += count
+                            }
+                            let targetVirtual = currentVirtual + diff
+                            withAnimation(.easeInOut(duration: 0.4)) {
+                                scrolledId = targetVirtual
+                                proxy.scrollTo(targetVirtual)
                             }
                         }
-                        if urls.count > 1 {
-                            let nextIndex = (newIndex + 1) % urls.count
-                            if let nextUrl = URL(string: urls[nextIndex]) {
-                                ImageCache.prefetch(urls: [nextUrl])
-                            }
+                        
+                        let nextIndex = (newIndex + 1) % count
+                        if let nextUrl = URL(string: urls[nextIndex]) {
+                            ImageCache.prefetch(urls: [nextUrl])
                         }
                         restartTimer()
                     }
@@ -140,10 +183,14 @@ struct BackdropCarouselView: View {
         }
         .frame(width: width, height: height)
         .onAppear {
-            if selectedIndex >= urls.count {
-                selectedIndex = 0
+            let count = urls.count
+            if count > 1 {
+                let base = (loopMultiplier / 2) * count
+                let target = base + (selectedIndex % count)
+                scrolledId = target
+            } else {
+                scrolledId = 0
             }
-            scrolledId = selectedIndex
             ImageCache.prefetch(urls: urls.compactMap { URL(string: $0) })
             restartTimer()
         }
@@ -151,7 +198,11 @@ struct BackdropCarouselView: View {
             stopTimer()
         }
         .onChange(of: urls.count) { _, count in
-            if selectedIndex >= count {
+            if count > 1 {
+                let base = (loopMultiplier / 2) * count
+                let target = base + (selectedIndex % count)
+                scrolledId = target
+            } else {
                 selectedIndex = 0
                 scrolledId = 0
             }
@@ -187,9 +238,12 @@ struct BackdropCarouselView: View {
             try? await Task.sleep(nanoseconds: 5_000_000_000)
             if Task.isCancelled { return }
             guard isHeaderVisible, scenePhase == .active, urls.count > 1, !isInteracting else { return }
-            let next = (selectedIndex + 1) % urls.count
+            
+            let count = urls.count
+            let currentVirtual = scrolledId ?? ((loopMultiplier / 2) * count + selectedIndex)
+            let nextVirtual = currentVirtual + 1
             withAnimation(.easeInOut(duration: 0.5)) {
-                selectedIndex = next
+                scrolledId = nextVirtual
             }
         }
     }
