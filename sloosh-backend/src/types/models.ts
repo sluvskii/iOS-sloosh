@@ -111,6 +111,7 @@ export interface MediaDetailsDto extends MediaDto {
   nextEpisodeToAir?: TvNextEpisodeDto | null
   seasons?: TvSeasonSummaryDto[]
   similar?: MediaDto[]
+  backdrops?: string[]
   alloha?: {
     kpId: number | null
     imdbId: string | null

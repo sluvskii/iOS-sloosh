@@ -910,10 +910,35 @@ export class TMDBService {
       }
     }
 
+    // Backdrops
+    const rawBackdrops = (data.images?.backdrops || []) as any[]
+    const backdrops: string[] = []
+    const seenBackdrops = new Set<string>()
+
+    const primaryBackdrop = base.backdrop || (base.backdrop_path ? formatImageUrl(base.backdrop_path, "original") : undefined)
+    if (primaryBackdrop) {
+      backdrops.push(primaryBackdrop)
+      seenBackdrops.add(primaryBackdrop)
+      if (base.backdrop_path) seenBackdrops.add(base.backdrop_path)
+    }
+
+    for (const b of rawBackdrops) {
+      if (!b.file_path || seenBackdrops.has(b.file_path)) continue
+      if (b.aspect_ratio && b.aspect_ratio < 1.4) continue
+      const formatted = formatImageUrl(b.file_path, "original")
+      if (formatted && !seenBackdrops.has(formatted)) {
+        seenBackdrops.add(b.file_path)
+        seenBackdrops.add(formatted)
+        backdrops.push(formatted)
+        if (backdrops.length >= 8) break
+      }
+    }
+
     return {
       ...base,
       genres: (genreNames.length > 0 ? genreNames : (base.genres || []).map((g: any) => g.name).filter(Boolean)) as any,
       backdrop: base.backdrop || base.poster,
+      backdrops: backdrops.length > 0 ? backdrops : undefined,
       duration: data.runtime || undefined,
       countries: (data.production_countries || []).map(localizeCountry).filter(Boolean),
       logo: logoUrl,
@@ -1067,10 +1092,35 @@ export class TMDBService {
 
     const duration = data.episode_run_time?.[0] || data.last_episode_to_air?.runtime || undefined
 
+    // Backdrops
+    const rawTvBackdrops = (data.images?.backdrops || []) as any[]
+    const tvBackdrops: string[] = []
+    const seenTvBackdrops = new Set<string>()
+
+    const primaryTvBackdrop = base.backdrop || (base.backdrop_path ? formatImageUrl(base.backdrop_path, "original") : undefined)
+    if (primaryTvBackdrop) {
+      tvBackdrops.push(primaryTvBackdrop)
+      seenTvBackdrops.add(primaryTvBackdrop)
+      if (base.backdrop_path) seenTvBackdrops.add(base.backdrop_path)
+    }
+
+    for (const b of rawTvBackdrops) {
+      if (!b.file_path || seenTvBackdrops.has(b.file_path)) continue
+      if (b.aspect_ratio && b.aspect_ratio < 1.4) continue
+      const formatted = formatImageUrl(b.file_path, "original")
+      if (formatted && !seenTvBackdrops.has(formatted)) {
+        seenTvBackdrops.add(b.file_path)
+        seenTvBackdrops.add(formatted)
+        tvBackdrops.push(formatted)
+        if (tvBackdrops.length >= 8) break
+      }
+    }
+
     return {
       ...base,
       genres: (tvGenreNames.length > 0 ? tvGenreNames : (base.genres || []).map((g: any) => g.name).filter(Boolean)) as any,
       backdrop: base.backdrop || base.poster,
+      backdrops: tvBackdrops.length > 0 ? tvBackdrops : undefined,
       duration,
       countries: (data.origin_country || (data.production_countries ? data.production_countries.map((c: any) => c.iso_3166_1 || c.name) : [])).map(localizeCountry).filter(Boolean),
       logo: logoUrl,
