@@ -55,7 +55,7 @@ struct BackdropCarouselView: View {
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
-        ZStack(alignment: .bottom) {
+        Group {
             if urls.count <= 1 {
                 let firstUrl = urls.first.flatMap { URL(string: $0) }
                 RemoteBackdropView(
@@ -106,27 +106,6 @@ struct BackdropCarouselView: View {
                         endPoint: .bottom
                     )
                 )
-                
-                // Minimalist Liquid Glass Capsule Dots Indicator
-                HStack(spacing: 5) {
-                    ForEach(0..<urls.count, id: \.self) { idx in
-                        Capsule()
-                            .fill(idx == selectedIndex ? Color.white : Color.white.opacity(0.35))
-                            .frame(width: idx == selectedIndex ? 14 : 5, height: 4.5)
-                            .animation(.easeInOut(duration: 0.25), value: selectedIndex)
-                            .padding(.vertical, 4)
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                withAnimation(.easeInOut(duration: 0.35)) {
-                                    selectedIndex = idx
-                                }
-                            }
-                    }
-                }
-                .padding(.horizontal, 8)
-                .padding(.vertical, 2)
-                .glassEffect(in: Capsule())
-                .padding(.bottom, 12)
             }
         }
         .onAppear {
@@ -1031,6 +1010,28 @@ struct DetailsView: View {
                     }
 
                     VStack(alignment: .center, spacing: 12) {
+                        if details.displayBackdropUrls.count > 1 {
+                            HStack(spacing: 5) {
+                                ForEach(0..<min(details.displayBackdropUrls.count, 8), id: \.self) { idx in
+                                    Capsule()
+                                        .fill(idx == selectedBackdropIndex ? Color.white : Color.white.opacity(0.35))
+                                        .frame(width: idx == selectedBackdropIndex ? 14 : 5, height: 4.5)
+                                        .animation(.easeInOut(duration: 0.25), value: selectedBackdropIndex)
+                                        .padding(.vertical, 4)
+                                        .contentShape(Rectangle())
+                                        .onTapGesture {
+                                            withAnimation(.easeInOut(duration: 0.35)) {
+                                                selectedBackdropIndex = idx
+                                            }
+                                        }
+                                }
+                            }
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 2)
+                            .glassEffect(in: Capsule())
+                            .padding(.bottom, 2)
+                        }
+
                         ZStack {
                             RemoteLogoView(
                                 url: URL(string: details.displayLogoUrl ?? ""),
@@ -1188,6 +1189,28 @@ struct DetailsView: View {
 
                         VStack(spacing: 0) {
                             VStack(alignment: .center, spacing: 12) {
+                                if details.displayBackdropUrls.count > 1 {
+                                    HStack(spacing: 5) {
+                                        ForEach(0..<min(details.displayBackdropUrls.count, 8), id: \.self) { idx in
+                                            Capsule()
+                                                .fill(idx == selectedBackdropIndex ? Color.white : Color.white.opacity(0.35))
+                                                .frame(width: idx == selectedBackdropIndex ? 14 : 5, height: 4.5)
+                                                .animation(.easeInOut(duration: 0.25), value: selectedBackdropIndex)
+                                                .padding(.vertical, 4)
+                                                .contentShape(Rectangle())
+                                                .onTapGesture {
+                                                    withAnimation(.easeInOut(duration: 0.35)) {
+                                                        selectedBackdropIndex = idx
+                                                    }
+                                                }
+                                        }
+                                    }
+                                    .padding(.horizontal, 8)
+                                    .padding(.vertical, 2)
+                                    .glassEffect(in: Capsule())
+                                    .padding(.bottom, 2)
+                                }
+
                                 ZStack {
                                     RemoteLogoView(
                                         url: URL(string: details.displayLogoUrl ?? ""),
