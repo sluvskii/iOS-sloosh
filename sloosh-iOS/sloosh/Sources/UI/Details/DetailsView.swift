@@ -43,6 +43,146 @@ struct RemoteBackdropView: View {
     }
 }
 
+struct BackdropCarouselView: View {
+    let urls: [String]
+    let fallbackUrl: URL?
+    let width: CGFloat
+    let height: CGFloat
+    @Binding var selectedIndex: Int
+    var isHeaderVisible: Bool = true
+    
+    @State private var timerTask: Task<Void, Never>? = nil
+    @Environment(\.scenePhase) private var scenePhase
+
+    var body: some View {
+        ZStack(alignment: .bottom) {
+            if urls.count <= 1 {
+                let firstUrl = urls.first.flatMap { URL(string: $0) }
+                RemoteBackdropView(
+                    url: firstUrl,
+                    fallbackUrl: fallbackUrl,
+                    width: width,
+                    height: height
+                )
+            } else {
+                TabView(selection: $selectedIndex) {
+                    ForEach(0..<urls.count, id: \.self) { idx in
+                        AsyncCachedImage(
+                            url: URL(string: urls[idx]),
+                            fallbackUrl: fallbackUrl
+                        ) {
+                            Rectangle().fill(Color.gray.opacity(0.2))
+                                .frame(width: width, height: height)
+                                .shimmer()
+                        } content: { image in
+                            Image(uiImage: image)
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: width, height: height)
+                                .clipped()
+                        } fallback: {
+                            Rectangle().fill(Color.gray.opacity(0.2))
+                                .frame(width: width, height: height)
+                        }
+                        .tag(idx)
+                    }
+                }
+                .tabViewStyle(.page(indexDisplayMode: .never))
+                .mask(
+                    LinearGradient(
+                        gradient: Gradient(stops: [
+                            .init(color: .clear, location: 0.0),
+                            .init(color: .black.opacity(0.4), location: 0.06),
+                            .init(color: .black.opacity(0.85), location: 0.12),
+                            .init(color: .black, location: 0.18),
+                            .init(color: .black, location: 0.35),
+                            .init(color: .black.opacity(0.8), location: 0.50),
+                            .init(color: .black.opacity(0.45), location: 0.68),
+                            .init(color: .black.opacity(0.2), location: 0.82),
+                            .init(color: .black.opacity(0.06), location: 0.93),
+                            .init(color: .clear, location: 1.0)
+                        ]),
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                )
+                
+                // Minimalist Liquid Glass Capsule Dots Indicator
+                HStack(spacing: 5) {
+                    ForEach(0..<urls.count, id: \.self) { idx in
+                        Capsule()
+                            .fill(idx == selectedIndex ? Color.white : Color.white.opacity(0.35))
+                            .frame(width: idx == selectedIndex ? 14 : 5, height: 4.5)
+                            .animation(.easeInOut(duration: 0.25), value: selectedIndex)
+                            .padding(.vertical, 4)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                withAnimation(.easeInOut(duration: 0.35)) {
+                                    selectedIndex = idx
+                                }
+                            }
+                    }
+                }
+                .padding(.horizontal, 8)
+                .padding(.vertical, 2)
+                .glassEffect(in: Capsule())
+                .padding(.bottom, 12)
+            }
+        }
+        .onAppear {
+            if selectedIndex >= urls.count {
+                selectedIndex = 0
+            }
+            restartTimer()
+        }
+        .onDisappear {
+            stopTimer()
+        }
+        .onChange(of: selectedIndex) { _, _ in
+            restartTimer()
+        }
+        .onChange(of: urls.count) { _, count in
+            if selectedIndex >= count {
+                selectedIndex = 0
+            }
+            restartTimer()
+        }
+        .onChange(of: isHeaderVisible) { _, visible in
+            if visible {
+                restartTimer()
+            } else {
+                stopTimer()
+            }
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active && isHeaderVisible {
+                restartTimer()
+            } else {
+                stopTimer()
+            }
+        }
+    }
+    
+    private func stopTimer() {
+        timerTask?.cancel()
+        timerTask = nil
+    }
+    
+    private func restartTimer() {
+        stopTimer()
+        guard urls.count > 1, isHeaderVisible, scenePhase == .active else { return }
+        
+        timerTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 7_000_000_000)
+            if Task.isCancelled { return }
+            guard isHeaderVisible, scenePhase == .active, urls.count > 1 else { return }
+            withAnimation(.easeInOut(duration: 0.6)) {
+                selectedIndex = (selectedIndex + 1) % urls.count
+            }
+        }
+    }
+}
+
 struct RemoteLogoView: View {
     let url: URL?
     let fallbackTitle: String
@@ -149,6 +289,15 @@ struct DetailsView: View {
 
     @State private var dominantBackdropColor: UIColor? = nil
     @State private var dominantPosterColor: UIColor? = nil
+    @State private var selectedBackdropIndex: Int = 0
+
+    private func currentBackdropUrl(for details: MediaDetailsDto) -> String? {
+        let urls = details.displayBackdropUrls
+        if !urls.isEmpty && selectedBackdropIndex >= 0 && selectedBackdropIndex < urls.count {
+            return urls[selectedBackdropIndex]
+        }
+        return details.displayBackdropUrl
+    }
 
     @AppStorage("hasSeenSourceSelectionTooltip") private var hasSeenSourceSelectionTooltip = false
     @AppStorage("showOriginalTitle") private var showOriginalTitle = true
@@ -334,7 +483,22 @@ struct DetailsView: View {
             }
             .task(id: viewModel.details?.id) {
                 guard let details = viewModel.details else { return }
+                selectedBackdropIndex = 0
                 await preloadDominantColor(for: details)
+            }
+            .onChange(of: selectedBackdropIndex) { _, newIndex in
+                guard let details = viewModel.details else { return }
+                let urls = details.displayBackdropUrls
+                guard newIndex >= 0 && newIndex < urls.count else { return }
+                Task {
+                    if let newColor = await fetchAverageColor(from: URL(string: urls[newIndex])) {
+                        await MainActor.run {
+                            withAnimation(.easeInOut(duration: 0.6)) {
+                                self.dominantBackdropColor = newColor
+                            }
+                        }
+                    }
+                }
             }
             .onAppear {
                 CloudSyncService.shared.syncAllData()
@@ -810,25 +974,29 @@ struct DetailsView: View {
                 } else if let details = viewModel.details {
                     // Stretchy Backdrop
                     let baseHeight: CGFloat = 365
+                    let activeBackdrop = currentBackdropUrl(for: details)
                     
                     GeometryReader { geometry in
                         let minY = geometry.frame(in: .global).minY
                         let isScrollingDown = minY > 0
                         let height = isScrollingDown ? baseHeight + minY : baseHeight
                         let offset = isScrollingDown ? -minY : 0
+                        let isHeaderVisible = minY > -250
 
-                        RemoteBackdropView(
-                            url: URL(string: details.displayBackdropUrl ?? ""),
+                        BackdropCarouselView(
+                            urls: details.displayBackdropUrls,
                             fallbackUrl: URL(string: details.displayPosterUrl ?? ""),
                             width: geometry.size.width,
-                            height: height
+                            height: height,
+                            selectedIndex: $selectedBackdropIndex,
+                            isHeaderVisible: isHeaderVisible
                         )
                         .offset(y: offset)
                     }
                     .frame(height: baseHeight)
                     .contextMenu {
                         Button {
-                            Task { await saveImage(from: details.displayBackdropUrl, label: "обложка") }
+                            Task { await saveImage(from: activeBackdrop, label: "обложка") }
                         } label: {
                             Label("Сохранить обложку", systemImage: "photo.badge.arrow.down")
                         }
@@ -846,12 +1014,12 @@ struct DetailsView: View {
                         }
                         Divider()
                         Button {
-                            shareImages(posterUrl: details.displayPosterUrl, backdropUrl: details.displayBackdropUrl)
+                            shareImages(posterUrl: details.displayPosterUrl, backdropUrl: activeBackdrop)
                         } label: {
                             Label("Поделиться", systemImage: "square.and.arrow.up")
                         }
                     } preview: {
-                        AsyncCachedImage(url: URL(string: details.displayBackdropUrl ?? ""),
+                        AsyncCachedImage(url: URL(string: activeBackdrop ?? ""),
                                          fallbackUrl: URL(string: details.displayPosterUrl ?? "")) {
                             Rectangle().fill(Color.gray.opacity(0.3)).frame(width: 300, height: 200)
                         } content: { image in
@@ -1004,12 +1172,15 @@ struct DetailsView: View {
                             let isScrollingDown = minY > 0
                             let height = isScrollingDown ? baseHeight + minY : baseHeight
                             let offset = isScrollingDown ? -minY : 0
+                            let isHeaderVisible = minY > -200
 
-                            RemoteBackdropView(
-                                url: URL(string: details.displayBackdropUrl ?? ""),
+                            BackdropCarouselView(
+                                urls: details.displayBackdropUrls,
                                 fallbackUrl: URL(string: details.displayPosterUrl ?? ""),
                                 width: geometry.size.width,
-                                height: height
+                                height: height,
+                                selectedIndex: $selectedBackdropIndex,
+                                isHeaderVisible: isHeaderVisible
                             )
                             .offset(y: offset)
                         }
