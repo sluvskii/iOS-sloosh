@@ -255,7 +255,6 @@ struct BackdropCarouselView: View {
             let next = (selectedIndex + 1) % urls.count
             withAnimation(.easeInOut(duration: 0.9)) {
                 selectedIndex = next
-                scrolledId = next
             }
         }
     }
@@ -395,7 +394,7 @@ struct DetailsView: View {
     }
 
     private nonisolated(unsafe) static var dominantColorCache: [String: UIColor] = [:]
-    private static let dominantColorCacheLock = NSLock()
+    private nonisolated static let dominantColorCacheLock = NSLock()
 
     private func fetchAverageColor(from url: URL?) async -> UIColor? {
         guard let url else { return nil }
