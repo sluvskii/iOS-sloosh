@@ -49,31 +49,24 @@ struct BackdropSlideItemView: View {
     let height: CGFloat
 
     var body: some View {
-        ZStack {
-            AsyncCachedImage(
-                url: URL(string: urlString),
-                fallbackUrl: fallbackUrl
-            ) {
-                Color.black.opacity(0.3)
-                    .frame(width: width, height: height)
-            } content: { image in
-                Image(uiImage: image)
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-                    .frame(width: width, height: height)
-            } fallback: {
-                Color.black.opacity(0.3)
-                    .frame(width: width, height: height)
-            }
+        AsyncCachedImage(
+            url: URL(string: urlString),
+            fallbackUrl: fallbackUrl
+        ) {
+            Color.black.opacity(0.3)
+                .frame(width: width, height: height)
+        } content: { image in
+            Image(uiImage: image)
+                .resizable()
+                .aspectRatio(contentMode: .fill)
+                .frame(width: width, height: height)
+                .clipped()
+        } fallback: {
+            Color.black.opacity(0.3)
+                .frame(width: width, height: height)
         }
         .frame(width: width, height: height)
-        .scrollTransition(.interactive) { content, phase in
-            let value = CGFloat(phase.value)
-            let progress = min(max(abs(value), 0.0), 1.0)
-            return content
-                .offset(x: value * 55)
-                .scaleEffect(1.0 - progress * 0.07)
-        }
+        .clipped()
     }
 }
 
@@ -88,6 +81,10 @@ struct BackdropCarouselView: View {
     @State private var scrolledId: Int? = 0
     @State private var timerTask: Task<Void, Never>? = nil
     @Environment(\.scenePhase) private var scenePhase
+
+    private var itemWidth: CGFloat {
+        max(width, height * (16.0 / 9.0))
+    }
 
     var body: some View {
         Group {
@@ -120,20 +117,6 @@ struct BackdropCarouselView: View {
                 selectedIndex = newId
             }
         }
-        .onChange(of: selectedIndex) { _, newIndex in
-            if scrolledId != newIndex {
-                withAnimation(.easeInOut(duration: 0.8)) {
-                    scrolledId = newIndex
-                }
-            }
-            if urls.count > 1 {
-                let nextIndex = (newIndex + 1) % urls.count
-                if let nextUrl = URL(string: urls[nextIndex]) {
-                    ImageCache.prefetch(urls: [nextUrl])
-                }
-            }
-            restartTimer()
-        }
         .onChange(of: urls.count) { _, count in
             if selectedIndex >= count {
                 selectedIndex = 0
@@ -159,22 +142,47 @@ struct BackdropCarouselView: View {
     }
 
     private var carouselScroll: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            LazyHStack(spacing: 0) {
-                ForEach(0..<urls.count, id: \.self) { idx in
-                    BackdropSlideItemView(
-                        urlString: urls[idx],
-                        fallbackUrl: fallbackUrl,
-                        width: width,
-                        height: height
-                    )
-                    .id(idx)
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(spacing: 0) {
+                    ForEach(0..<urls.count, id: \.self) { idx in
+                        BackdropSlideItemView(
+                            urlString: urls[idx],
+                            fallbackUrl: fallbackUrl,
+                            width: itemWidth,
+                            height: height
+                        )
+                        .id(idx)
+                    }
+                }
+                .scrollTargetLayout()
+            }
+            .scrollTargetBehavior(.viewAligned)
+            .scrollPosition(id: $scrolledId)
+            .onAppear {
+                if selectedIndex < urls.count {
+                    scrolledId = selectedIndex
+                    DispatchQueue.main.async {
+                        proxy.scrollTo(selectedIndex, anchor: .center)
+                    }
                 }
             }
-            .scrollTargetLayout()
+            .onChange(of: selectedIndex) { _, newIndex in
+                if scrolledId != newIndex {
+                    withAnimation(.easeInOut(duration: 0.9)) {
+                        scrolledId = newIndex
+                        proxy.scrollTo(newIndex, anchor: .center)
+                    }
+                }
+                if urls.count > 1 {
+                    let nextIndex = (newIndex + 1) % urls.count
+                    if let nextUrl = URL(string: urls[nextIndex]) {
+                        ImageCache.prefetch(urls: [nextUrl])
+                    }
+                }
+                restartTimer()
+            }
         }
-        .scrollTargetBehavior(.paging)
-        .scrollPosition(id: $scrolledId)
     }
 
     private var verticalFadeMask: some View {
@@ -184,7 +192,7 @@ struct BackdropCarouselView: View {
                 .init(color: .black.opacity(0.4), location: 0.06),
                 .init(color: .black.opacity(0.85), location: 0.12),
                 .init(color: .black, location: 0.18),
-                .init(color: .black, location: 0.35),
+                .init(color: .black.opacity(0.35), location: 0.35),
                 .init(color: .black.opacity(0.8), location: 0.50),
                 .init(color: .black.opacity(0.45), location: 0.68),
                 .init(color: .black.opacity(0.2), location: 0.82),
@@ -210,7 +218,7 @@ struct BackdropCarouselView: View {
             if Task.isCancelled { return }
             guard isHeaderVisible, scenePhase == .active, urls.count > 1 else { return }
             let next = (selectedIndex + 1) % urls.count
-            withAnimation(.easeInOut(duration: 0.8)) {
+            withAnimation(.easeInOut(duration: 0.9)) {
                 selectedIndex = next
                 scrolledId = next
             }
