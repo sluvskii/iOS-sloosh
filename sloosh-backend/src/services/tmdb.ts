@@ -910,7 +910,7 @@ export class TMDBService {
       }
     }
 
-    // Backdrops
+    // Backdrops: prioritize clean textless backdrops (iso_639_1 is null/empty)
     const rawBackdrops = (data.images?.backdrops || []) as any[]
     const backdrops: string[] = []
     const seenBackdrops = new Set<string>()
@@ -922,9 +922,17 @@ export class TMDBService {
       if (base.backdrop_path) seenBackdrops.add(base.backdrop_path)
     }
 
-    for (const b of rawBackdrops) {
-      if (!b.file_path || seenBackdrops.has(b.file_path)) continue
-      if (b.aspect_ratio && b.aspect_ratio < 1.2) continue
+    const validRaw = rawBackdrops.filter((b: any) => b.file_path && (!b.aspect_ratio || b.aspect_ratio >= 1.2))
+    const textless = validRaw.filter((b: any) => !b.iso_639_1)
+    const withText = validRaw.filter((b: any) => Boolean(b.iso_639_1))
+
+    textless.sort((a: any, b: any) => ((b.vote_count || 0) * (b.vote_average || 0)) - ((a.vote_count || 0) * (a.vote_average || 0)))
+    withText.sort((a: any, b: any) => ((b.vote_count || 0) * (b.vote_average || 0)) - ((a.vote_count || 0) * (a.vote_average || 0)))
+
+    const candidateList = textless.length >= 3 ? textless : [...textless, ...withText]
+
+    for (const b of candidateList) {
+      if (seenBackdrops.has(b.file_path)) continue
       const formatted = formatImageUrl(b.file_path, "original")
       if (formatted && !seenBackdrops.has(formatted)) {
         seenBackdrops.add(b.file_path)
@@ -1092,7 +1100,7 @@ export class TMDBService {
 
     const duration = data.episode_run_time?.[0] || data.last_episode_to_air?.runtime || undefined
 
-    // Backdrops
+    // Backdrops: prioritize clean textless backdrops (iso_639_1 is null/empty)
     const rawTvBackdrops = (data.images?.backdrops || []) as any[]
     const tvBackdrops: string[] = []
     const seenTvBackdrops = new Set<string>()
@@ -1104,9 +1112,17 @@ export class TMDBService {
       if (base.backdrop_path) seenTvBackdrops.add(base.backdrop_path)
     }
 
-    for (const b of rawTvBackdrops) {
-      if (!b.file_path || seenTvBackdrops.has(b.file_path)) continue
-      if (b.aspect_ratio && b.aspect_ratio < 1.2) continue
+    const validRawTv = rawTvBackdrops.filter((b: any) => b.file_path && (!b.aspect_ratio || b.aspect_ratio >= 1.2))
+    const textlessTv = validRawTv.filter((b: any) => !b.iso_639_1)
+    const withTextTv = validRawTv.filter((b: any) => Boolean(b.iso_639_1))
+
+    textlessTv.sort((a: any, b: any) => ((b.vote_count || 0) * (b.vote_average || 0)) - ((a.vote_count || 0) * (a.vote_average || 0)))
+    withTextTv.sort((a: any, b: any) => ((b.vote_count || 0) * (b.vote_average || 0)) - ((a.vote_count || 0) * (a.vote_average || 0)))
+
+    const candidateTvList = textlessTv.length >= 3 ? textlessTv : [...textlessTv, ...withTextTv]
+
+    for (const b of candidateTvList) {
+      if (seenTvBackdrops.has(b.file_path)) continue
       const formatted = formatImageUrl(b.file_path, "original")
       if (formatted && !seenTvBackdrops.has(formatted)) {
         seenTvBackdrops.add(b.file_path)

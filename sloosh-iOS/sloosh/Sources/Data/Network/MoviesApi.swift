@@ -175,7 +175,7 @@ class MoviesApi {
         }
         
         var queryItems: [URLQueryItem] = [
-            URLQueryItem(name: "v", value: "4")
+            URLQueryItem(name: "v", value: "5")
         ]
         if let t = inferredType {
             queryItems.append(URLQueryItem(name: "type", value: t))
