@@ -1,6 +1,27 @@
 import SwiftUI
 import Photos
 
+struct BackdropFadeMask: View {
+    var body: some View {
+        LinearGradient(
+            stops: [
+                .init(color: .clear, location: 0.0),
+                .init(color: .black.opacity(0.4), location: 0.06),
+                .init(color: .black.opacity(0.85), location: 0.12),
+                .init(color: .black, location: 0.18),
+                .init(color: .black, location: 0.35),
+                .init(color: .black.opacity(0.80), location: 0.50),
+                .init(color: .black.opacity(0.45), location: 0.68),
+                .init(color: .black.opacity(0.20), location: 0.82),
+                .init(color: .black.opacity(0.06), location: 0.93),
+                .init(color: .clear, location: 1.0)
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+    }
+}
+
 struct RemoteBackdropView: View {
     let url: URL?
     let fallbackUrl: URL?
@@ -21,20 +42,8 @@ struct RemoteBackdropView: View {
             Color.black.opacity(0.3)
                 .frame(width: width, height: height)
         }
-        .mask(
-            LinearGradient(
-                stops: [
-                    .init(color: .clear, location: 0.0),
-                    .init(color: .black, location: 0.08),
-                    .init(color: .black, location: 0.70),
-                    .init(color: .black.opacity(0.7), location: 0.82),
-                    .init(color: .black.opacity(0.3), location: 0.92),
-                    .init(color: .clear, location: 1.0)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-        )
+        .frame(width: width, height: height)
+        .mask(BackdropFadeMask())
     }
 }
 
@@ -82,6 +91,8 @@ struct BackdropCarouselView: View {
                                     Color.black.opacity(0.3)
                                         .frame(width: width, height: height)
                                 }
+                                .frame(width: width, height: height)
+                                .mask(BackdropFadeMask())
                                 .id(idx)
                             }
                         }
@@ -89,7 +100,6 @@ struct BackdropCarouselView: View {
                     }
                     .scrollTargetBehavior(.paging)
                     .scrollPosition(id: $scrolledId)
-                    .mask(verticalFadeMask)
                     .simultaneousGesture(
                         DragGesture(minimumDistance: 1)
                             .onChanged { _ in
@@ -159,21 +169,6 @@ struct BackdropCarouselView: View {
                 stopTimer()
             }
         }
-    }
-
-    private var verticalFadeMask: some View {
-        LinearGradient(
-            stops: [
-                .init(color: .clear, location: 0.0),
-                .init(color: .black, location: 0.08),
-                .init(color: .black, location: 0.70),
-                .init(color: .black.opacity(0.7), location: 0.82),
-                .init(color: .black.opacity(0.3), location: 0.92),
-                .init(color: .clear, location: 1.0)
-            ],
-            startPoint: .top,
-            endPoint: .bottom
-        )
     }
     
     private func stopTimer() {
@@ -1420,24 +1415,7 @@ private struct DetailsSkeletonView: View {
                 .fill(Color.gray.opacity(0.2))
                 .frame(height: baseHeight)
                 .shimmer()
-                .mask(
-                    LinearGradient(
-                        gradient: Gradient(stops: [
-                            .init(color: .clear, location: 0.0),
-                            .init(color: .black.opacity(0.4), location: 0.06),
-                            .init(color: .black.opacity(0.85), location: 0.12),
-                            .init(color: .black, location: 0.18),
-                            .init(color: .black, location: 0.35),
-                            .init(color: .black.opacity(0.8), location: 0.50),
-                            .init(color: .black.opacity(0.45), location: 0.68),
-                            .init(color: .black.opacity(0.2), location: 0.82),
-                            .init(color: .black.opacity(0.06), location: 0.93),
-                            .init(color: .clear, location: 1.0)
-                        ]),
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
+                .mask(BackdropFadeMask())
             
             VStack(alignment: .center, spacing: 12) {
                 // Logo placeholder: replaced with a textual representation of loading to match RemoteLogoView
