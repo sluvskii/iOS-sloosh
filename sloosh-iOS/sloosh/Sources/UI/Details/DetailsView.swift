@@ -42,6 +42,42 @@ struct RemoteBackdropView: View {
     }
 }
 
+struct BackdropSlideItemView: View {
+    let urlString: String
+    let fallbackUrl: URL?
+    let width: CGFloat
+    let height: CGFloat
+
+    var body: some View {
+        ZStack {
+            AsyncCachedImage(
+                url: URL(string: urlString),
+                fallbackUrl: fallbackUrl
+            ) {
+                Color.black.opacity(0.3)
+                    .frame(width: width, height: height)
+            } content: { image in
+                Image(uiImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+                    .frame(width: width, height: height)
+            } fallback: {
+                Color.black.opacity(0.3)
+                    .frame(width: width, height: height)
+            }
+        }
+        .frame(width: width, height: height)
+        .scrollTransition(.interactive) { content, phase in
+            let value = CGFloat(phase.value)
+            let progress = min(max(abs(value), 0.0), 1.0)
+            content
+                .offset(x: value * 55)
+                .scaleEffect(1.0 - progress * 0.07)
+                .clipShape(RoundedRectangle(cornerRadius: progress * 14, style: .continuous))
+        }
+    }
+}
+
 struct BackdropCarouselView: View {
     let urls: [String]
     let fallbackUrl: URL?
@@ -65,60 +101,8 @@ struct BackdropCarouselView: View {
                     height: height
                 )
             } else {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    LazyHStack(spacing: 0) {
-                        ForEach(0..<urls.count, id: \.self) { idx in
-                            ZStack {
-                                AsyncCachedImage(
-                                    url: URL(string: urls[idx]),
-                                    fallbackUrl: fallbackUrl
-                                ) {
-                                    Color.black.opacity(0.3)
-                                        .frame(width: width, height: height)
-                                } content: { image in
-                                    Image(uiImage: image)
-                                        .resizable()
-                                        .aspectRatio(contentMode: .fill)
-                                        .frame(width: width, height: height)
-                                } fallback: {
-                                    Color.black.opacity(0.3)
-                                        .frame(width: width, height: height)
-                                }
-                            }
-                            .frame(width: width, height: height)
-                            .scrollTransition(.interactive) { content, phase in
-                                let value = CGFloat(phase.value)
-                                let progress = min(max(abs(value), 0.0), 1.0)
-                                content
-                                    .offset(x: value * 55)
-                                    .scaleEffect(1.0 - progress * 0.07)
-                                    .clipShape(RoundedRectangle(cornerRadius: progress * 14, style: .continuous))
-                            }
-                            .id(idx)
-                        }
-                    }
-                    .scrollTargetLayout()
-                }
-                .scrollTargetBehavior(.paging)
-                .scrollPosition(id: $scrolledId)
-                .mask(
-                    LinearGradient(
-                        gradient: Gradient(stops: [
-                            .init(color: .clear, location: 0.0),
-                            .init(color: .black.opacity(0.4), location: 0.06),
-                            .init(color: .black.opacity(0.85), location: 0.12),
-                            .init(color: .black, location: 0.18),
-                            .init(color: .black, location: 0.35),
-                            .init(color: .black.opacity(0.8), location: 0.50),
-                            .init(color: .black.opacity(0.45), location: 0.68),
-                            .init(color: .black.opacity(0.2), location: 0.82),
-                            .init(color: .black.opacity(0.06), location: 0.93),
-                            .init(color: .clear, location: 1.0)
-                        ]),
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
+                carouselScroll
+                    .mask(verticalFadeMask)
             }
         }
         .onAppear {
@@ -173,6 +157,44 @@ struct BackdropCarouselView: View {
                 stopTimer()
             }
         }
+    }
+
+    private var carouselScroll: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            LazyHStack(spacing: 0) {
+                ForEach(0..<urls.count, id: \.self) { idx in
+                    BackdropSlideItemView(
+                        urlString: urls[idx],
+                        fallbackUrl: fallbackUrl,
+                        width: width,
+                        height: height
+                    )
+                    .id(idx)
+                }
+            }
+            .scrollTargetLayout()
+        }
+        .scrollTargetBehavior(.paging)
+        .scrollPosition(id: $scrolledId)
+    }
+
+    private var verticalFadeMask: some View {
+        LinearGradient(
+            stops: [
+                .init(color: .clear, location: 0.0),
+                .init(color: .black.opacity(0.4), location: 0.06),
+                .init(color: .black.opacity(0.85), location: 0.12),
+                .init(color: .black, location: 0.18),
+                .init(color: .black, location: 0.35),
+                .init(color: .black.opacity(0.8), location: 0.50),
+                .init(color: .black.opacity(0.45), location: 0.68),
+                .init(color: .black.opacity(0.2), location: 0.82),
+                .init(color: .black.opacity(0.06), location: 0.93),
+                .init(color: .clear, location: 1.0)
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
     }
     
     private func stopTimer() {
@@ -330,7 +352,7 @@ struct DetailsView: View {
         }
     }
 
-    private static var dominantColorCache: [String: UIColor] = [:]
+    private nonisolated(unsafe) static var dominantColorCache: [String: UIColor] = [:]
     private static let dominantColorCacheLock = NSLock()
 
     private func fetchAverageColor(from url: URL?) async -> UIColor? {
