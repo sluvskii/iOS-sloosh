@@ -333,6 +333,7 @@ struct MediaDetailsDto: Codable {
     let duration: Int?
     let poster: String?
     let backdrop: String?
+    let backdrops: [String]?
     let logo: String?
     let cast: [CastMemberDto]?
     let directors: [CrewMemberDto]?
@@ -355,7 +356,7 @@ struct MediaDetailsDto: Codable {
     
     enum CodingKeys: String, CodingKey {
         case id, title, originalTitle, description, type, year, releaseDate
-        case genres, countries, duration, poster, backdrop, logo, cast, directors, writers, crew, trailers
+        case genres, countries, duration, poster, backdrop, backdrops, logo, cast, directors, writers, crew, trailers
         case ratings, ids, externalIds, productionCompanies, networks, collection, similar
         case budget, revenue, ageRating, status, nextEpisodeToAir, seasons
     }
@@ -373,6 +374,7 @@ struct MediaDetailsDto: Codable {
         duration: Int? = nil,
         poster: String? = nil,
         backdrop: String? = nil,
+        backdrops: [String]? = nil,
         logo: String? = nil,
         cast: [CastMemberDto]? = nil,
         directors: [CrewMemberDto]? = nil,
@@ -405,6 +407,7 @@ struct MediaDetailsDto: Codable {
         self.duration = duration
         self.poster = poster
         self.backdrop = backdrop
+        self.backdrops = backdrops
         self.logo = logo
         self.cast = cast
         self.directors = directors
@@ -468,6 +471,7 @@ struct MediaDetailsDto: Codable {
         self.duration = try? container.decodeIfPresent(Int.self, forKey: .duration)
         self.poster = try? container.decodeIfPresent(String.self, forKey: .poster)
         self.backdrop = try? container.decodeIfPresent(String.self, forKey: .backdrop)
+        self.backdrops = try? container.decodeIfPresent([String].self, forKey: .backdrops)
         self.logo = try? container.decodeIfPresent(String.self, forKey: .logo)
         self.cast = try? container.decodeIfPresent([CastMemberDto].self, forKey: .cast)
         self.directors = try? container.decodeIfPresent([CrewMemberDto].self, forKey: .directors)
@@ -588,6 +592,25 @@ struct MediaDetailsDto: Codable {
         }
         guard let validId = id?.replacingOccurrences(of: "kp_", with: ""), !validId.isEmpty else { return nil }
         return "https://api-sloosh.vercel.app/api/v1/images/backdrops/\(validId)/original"
+    }
+
+    var displayBackdropUrls: [String] {
+        var list: [String] = []
+        if let backdrops = backdrops, !backdrops.isEmpty {
+            for b in backdrops {
+                if let norm = normalizeImageUrl(path: b, id: id), !norm.isEmpty {
+                    if !list.contains(norm) {
+                        list.append(norm)
+                    }
+                } else if !b.isEmpty && !list.contains(b) {
+                    list.append(b)
+                }
+            }
+        }
+        if list.isEmpty, let single = displayBackdropUrl, !single.isEmpty {
+            list.append(single)
+        }
+        return list
     }
     
     var previewBackdropUrl: String? {
