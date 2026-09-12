@@ -53,6 +53,7 @@ struct BackdropCarouselView: View {
     let width: CGFloat
     let height: CGFloat
     @Binding var selectedIndex: Int
+    @Binding var timerProgress: CGFloat
     var isHeaderVisible: Bool = true
     
     private let loopMultiplier = 600
@@ -68,6 +69,7 @@ struct BackdropCarouselView: View {
         width: CGFloat,
         height: CGFloat,
         selectedIndex: Binding<Int>,
+        timerProgress: Binding<CGFloat>,
         isHeaderVisible: Bool = true
     ) {
         self.urls = urls
@@ -75,6 +77,7 @@ struct BackdropCarouselView: View {
         self.width = width
         self.height = height
         self._selectedIndex = selectedIndex
+        self._timerProgress = timerProgress
         self.isHeaderVisible = isHeaderVisible
         
         let count = urls.count
@@ -228,11 +231,20 @@ struct BackdropCarouselView: View {
     private func stopTimer() {
         timerTask?.cancel()
         timerTask = nil
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            timerProgress = 0.0
+        }
     }
     
     private func restartTimer() {
         stopTimer()
         guard urls.count > 1, isHeaderVisible, scenePhase == .active, !isInteracting else { return }
+        
+        withAnimation(.linear(duration: 5.0)) {
+            timerProgress = 1.0
+        }
         
         timerTask = Task { @MainActor in
             try? await Task.sleep(nanoseconds: 5_000_000_000)
@@ -245,6 +257,52 @@ struct BackdropCarouselView: View {
             withAnimation(.easeInOut(duration: 0.5)) {
                 scrolledId = nextVirtual
             }
+        }
+    }
+}
+
+struct BackdropPageIndicator: View {
+    let count: Int
+    @Binding var selectedIndex: Int
+    let progress: CGFloat
+    
+    private let activeWidth: CGFloat = 18
+    private let inactiveWidth: CGFloat = 5
+    private let pillHeight: CGFloat = 4.5
+    
+    var body: some View {
+        if count > 1 {
+            HStack(spacing: 5) {
+                ForEach(0..<min(count, 8), id: \.self) { idx in
+                    let isSelected = idx == selectedIndex
+                    let currentWidth = isSelected ? activeWidth : inactiveWidth
+                    
+                    ZStack(alignment: .leading) {
+                        Capsule()
+                            .fill(Color.white.opacity(0.32))
+                        
+                        if isSelected {
+                            Rectangle()
+                                .fill(Color.white)
+                                .frame(width: activeWidth * max(0.0, min(1.0, progress)))
+                        }
+                    }
+                    .frame(width: currentWidth, height: pillHeight)
+                    .clipShape(Capsule())
+                    .animation(.easeInOut(duration: 0.25), value: isSelected)
+                    .padding(.vertical, 4)
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        withAnimation(.easeInOut(duration: 0.35)) {
+                            selectedIndex = idx
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 2)
+            .glassEffect(in: Capsule())
+            .padding(.bottom, 2)
         }
     }
 }
@@ -356,6 +414,7 @@ struct DetailsView: View {
     @State private var dominantBackdropColor: UIColor? = nil
     @State private var dominantPosterColor: UIColor? = nil
     @State private var selectedBackdropIndex: Int = 0
+    @State private var backdropTimerProgress: CGFloat = 0.0
 
     private func currentBackdropUrl(for details: MediaDetailsDto) -> String? {
         let urls = details.displayBackdropUrls
@@ -1066,6 +1125,7 @@ struct DetailsView: View {
                             width: geometry.size.width,
                             height: height,
                             selectedIndex: $selectedBackdropIndex,
+                            timerProgress: $backdropTimerProgress,
                             isHeaderVisible: isHeaderVisible
                         )
                         .offset(y: offset)
@@ -1109,27 +1169,11 @@ struct DetailsView: View {
                     }
 
                     VStack(alignment: .center, spacing: 12) {
-                        if details.displayBackdropUrls.count > 1 {
-                            HStack(spacing: 5) {
-                                ForEach(0..<min(details.displayBackdropUrls.count, 8), id: \.self) { idx in
-                                    Capsule()
-                                        .fill(idx == selectedBackdropIndex ? Color.white : Color.white.opacity(0.35))
-                                        .frame(width: idx == selectedBackdropIndex ? 14 : 5, height: 4.5)
-                                        .animation(.easeInOut(duration: 0.25), value: selectedBackdropIndex)
-                                        .padding(.vertical, 4)
-                                        .contentShape(Rectangle())
-                                        .onTapGesture {
-                                            withAnimation(.easeInOut(duration: 0.35)) {
-                                                selectedBackdropIndex = idx
-                                            }
-                                        }
-                                }
-                            }
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 2)
-                            .glassEffect(in: Capsule())
-                            .padding(.bottom, 2)
-                        }
+                        BackdropPageIndicator(
+                            count: details.displayBackdropUrls.count,
+                            selectedIndex: $selectedBackdropIndex,
+                            progress: backdropTimerProgress
+                        )
 
                         ZStack {
                             RemoteLogoView(
@@ -1280,6 +1324,7 @@ struct DetailsView: View {
                                 width: geometry.size.width,
                                 height: height,
                                 selectedIndex: $selectedBackdropIndex,
+                                timerProgress: $backdropTimerProgress,
                                 isHeaderVisible: isHeaderVisible
                             )
                             .offset(y: offset)
@@ -1288,27 +1333,11 @@ struct DetailsView: View {
 
                         VStack(spacing: 0) {
                             VStack(alignment: .center, spacing: 12) {
-                                if details.displayBackdropUrls.count > 1 {
-                                    HStack(spacing: 5) {
-                                        ForEach(0..<min(details.displayBackdropUrls.count, 8), id: \.self) { idx in
-                                            Capsule()
-                                                .fill(idx == selectedBackdropIndex ? Color.white : Color.white.opacity(0.35))
-                                                .frame(width: idx == selectedBackdropIndex ? 14 : 5, height: 4.5)
-                                                .animation(.easeInOut(duration: 0.25), value: selectedBackdropIndex)
-                                                .padding(.vertical, 4)
-                                                .contentShape(Rectangle())
-                                                .onTapGesture {
-                                                    withAnimation(.easeInOut(duration: 0.35)) {
-                                                        selectedBackdropIndex = idx
-                                                    }
-                                                }
-                                        }
-                                    }
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 2)
-                                    .glassEffect(in: Capsule())
-                                    .padding(.bottom, 2)
-                                }
+                                BackdropPageIndicator(
+                                    count: details.displayBackdropUrls.count,
+                                    selectedIndex: $selectedBackdropIndex,
+                                    progress: backdropTimerProgress
+                                )
 
                                 ZStack {
                                     RemoteLogoView(
