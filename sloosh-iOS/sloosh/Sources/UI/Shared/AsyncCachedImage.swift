@@ -55,24 +55,26 @@ public final class ImageCache {
                 continue
             }
             
-            Task.detached(priority: .utility) {
+            Task.detached(priority: .userInitiated) {
                 var request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad)
                 request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15", forHTTPHeaderField: "User-Agent")
                 
                 if let cached = URLCache.shared.cachedResponse(for: request),
-                   let base = UIImage(data: cached.data) {
-                    let img = await base.byPreparingForDisplay() ?? base
-                    shared.insertImage(img, forKey: url.absoluteString)
-                    shared.insertImage(img, forKey: rawUrl.absoluteString)
+                   let img = UIImage(data: cached.data) {
+                    let decoded = await img.byPreparingForDisplay() ?? img
+                    shared.insertImage(decoded, forKey: url.absoluteString)
+                    shared.insertImage(decoded, forKey: rawUrl.absoluteString)
                     return
                 }
                 
                 if let (data, resp) = try? await URLSession.shared.data(for: request),
                    let http = resp as? HTTPURLResponse, http.statusCode == 200,
-                   let base = UIImage(data: data) {
-                    let img = await base.byPreparingForDisplay() ?? base
-                    shared.insertImage(img, forKey: url.absoluteString)
-                    shared.insertImage(img, forKey: rawUrl.absoluteString)
+                   let img = UIImage(data: data) {
+                    let cachedResponse = CachedURLResponse(response: http, data: data)
+                    URLCache.shared.storeCachedResponse(cachedResponse, for: request)
+                    let decoded = await img.byPreparingForDisplay() ?? img
+                    shared.insertImage(decoded, forKey: url.absoluteString)
+                    shared.insertImage(decoded, forKey: rawUrl.absoluteString)
                 }
             }
         }
@@ -135,10 +137,23 @@ public struct AsyncCachedImage<Placeholder: View, Content: View, Fallback: View>
         }
     }
     
+    private var activeImage: UIImage? {
+        if let image = image { return image }
+        if let url = url {
+            if let cached = ImageCache.shared.image(forKey: url.absoluteString) { return cached }
+            if let effective = ImageCache.resolveEffectiveUrl(url),
+               let cached = ImageCache.shared.image(forKey: effective.absoluteString) {
+                return cached
+            }
+        }
+        return nil
+    }
+    
     public var body: some View {
+        let current = activeImage
         Group {
-            if let image = image {
-                content(image)
+            if let current = current {
+                content(current)
             } else if isLoading {
                 placeholder()
             } else {
@@ -173,9 +188,8 @@ public struct AsyncCachedImage<Placeholder: View, Content: View, Fallback: View>
         request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15", forHTTPHeaderField: "User-Agent")
         
         if let cachedResponse = URLCache.shared.cachedResponse(for: request) {
-            let uiImg = await Task.detached(priority: .userInitiated) { () -> UIImage? in
-                guard let base = UIImage(data: cachedResponse.data) else { return nil }
-                return await base.byPreparingForDisplay() ?? base
+            let uiImg = await Task.detached(priority: .userInitiated) {
+                UIImage(data: cachedResponse.data)
             }.value
             
             if let uiImg = uiImg {
@@ -204,9 +218,8 @@ public struct AsyncCachedImage<Placeholder: View, Content: View, Fallback: View>
                 isSuccessful = true // For file:// URLs
             }
             
-            let uiImg = await Task.detached(priority: .userInitiated) { () -> UIImage? in
-                guard let base = UIImage(data: data) else { return nil }
-                return await base.byPreparingForDisplay() ?? base
+            let uiImg = await Task.detached(priority: .userInitiated) {
+                UIImage(data: data)
             }.value
             
             if isSuccessful, let uiImg {
