@@ -9,9 +9,8 @@ struct RemoteBackdropView: View {
 
     var body: some View {
         AsyncCachedImage(url: url, fallbackUrl: fallbackUrl) {
-            Rectangle().fill(Color.gray.opacity(0.2))
+            Color.black.opacity(0.3)
                 .frame(width: width, height: height)
-                .shimmer()
         } content: { image in
             Image(uiImage: image)
                 .resizable()
@@ -19,7 +18,7 @@ struct RemoteBackdropView: View {
                 .frame(width: width, height: height)
                 .clipped()
         } fallback: {
-            Rectangle().fill(Color.gray.opacity(0.2))
+            Color.black.opacity(0.3)
                 .frame(width: width, height: height)
         }
         .mask(
@@ -71,9 +70,8 @@ struct BackdropCarouselView: View {
                             url: URL(string: urls[idx]),
                             fallbackUrl: fallbackUrl
                         ) {
-                            Rectangle().fill(Color.gray.opacity(0.2))
+                            Color.black.opacity(0.3)
                                 .frame(width: width, height: height)
-                                .shimmer()
                         } content: { image in
                             Image(uiImage: image)
                                 .resizable()
@@ -81,7 +79,7 @@ struct BackdropCarouselView: View {
                                 .frame(width: width, height: height)
                                 .clipped()
                         } fallback: {
-                            Rectangle().fill(Color.gray.opacity(0.2))
+                            Color.black.opacity(0.3)
                                 .frame(width: width, height: height)
                         }
                         .tag(idx)
@@ -112,18 +110,26 @@ struct BackdropCarouselView: View {
             if selectedIndex >= urls.count {
                 selectedIndex = 0
             }
+            ImageCache.prefetch(urls: urls.compactMap { URL(string: $0) })
             restartTimer()
         }
         .onDisappear {
             stopTimer()
         }
-        .onChange(of: selectedIndex) { _, _ in
+        .onChange(of: selectedIndex) { _, newIndex in
+            if urls.count > 1 {
+                let nextIndex = (newIndex + 1) % urls.count
+                if let nextUrl = URL(string: urls[nextIndex]) {
+                    ImageCache.prefetch(urls: [nextUrl])
+                }
+            }
             restartTimer()
         }
         .onChange(of: urls.count) { _, count in
             if selectedIndex >= count {
                 selectedIndex = 0
             }
+            ImageCache.prefetch(urls: urls.compactMap { URL(string: $0) })
             restartTimer()
         }
         .onChange(of: isHeaderVisible) { _, visible in
@@ -152,10 +158,10 @@ struct BackdropCarouselView: View {
         guard urls.count > 1, isHeaderVisible, scenePhase == .active else { return }
         
         timerTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 7_000_000_000)
+            try? await Task.sleep(nanoseconds: 5_000_000_000)
             if Task.isCancelled { return }
             guard isHeaderVisible, scenePhase == .active, urls.count > 1 else { return }
-            withAnimation(.easeInOut(duration: 0.6)) {
+            withAnimation(.easeInOut(duration: 0.8)) {
                 selectedIndex = (selectedIndex + 1) % urls.count
             }
         }
@@ -463,6 +469,7 @@ struct DetailsView: View {
             .task(id: viewModel.details?.id) {
                 guard let details = viewModel.details else { return }
                 selectedBackdropIndex = 0
+                ImageCache.prefetch(urls: details.displayBackdropUrls.compactMap { URL(string: $0) })
                 await preloadDominantColor(for: details)
             }
             .onChange(of: selectedBackdropIndex) { _, newIndex in
