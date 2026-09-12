@@ -70,6 +70,38 @@ struct BackdropSlideItemView: View {
     }
 }
 
+struct CenteredBackdropScrollTargetBehavior: ScrollTargetBehavior {
+    let itemWidth: CGFloat
+    let count: Int
+    let onSnap: (Int) -> Void
+
+    func updateTarget(_ target: inout ScrollTarget, context: TargetContext) {
+        guard count > 0 else { return }
+        let viewportWidth = context.containerSize.width
+        let centerOffset = (itemWidth - viewportWidth) / 2.0
+        
+        let velocityX = context.velocity.dx
+        let currentOffset = target.rect.origin.x - centerOffset
+        let rawIndex = currentOffset / itemWidth
+        
+        let targetIndex: Int
+        if velocityX > 0.2 {
+            targetIndex = Int(ceil(rawIndex))
+        } else if velocityX < -0.2 {
+            targetIndex = Int(floor(rawIndex))
+        } else {
+            targetIndex = Int(round(rawIndex))
+        }
+        
+        let clamped = max(0, min(count - 1, targetIndex))
+        target.rect.origin.x = CGFloat(clamped) * itemWidth + centerOffset
+        
+        DispatchQueue.main.async {
+            onSnap(clamped)
+        }
+    }
+}
+
 struct BackdropCarouselView: View {
     let urls: [String]
     let fallbackUrl: URL?
@@ -78,7 +110,7 @@ struct BackdropCarouselView: View {
     @Binding var selectedIndex: Int
     var isHeaderVisible: Bool = true
     
-    @State private var scrolledId: Int? = 0
+    @State private var isUserSnapping: Bool = false
     @State private var timerTask: Task<Void, Never>? = nil
     @Environment(\.scenePhase) private var scenePhase
 
@@ -105,22 +137,15 @@ struct BackdropCarouselView: View {
             if selectedIndex >= urls.count {
                 selectedIndex = 0
             }
-            scrolledId = selectedIndex
             ImageCache.prefetch(urls: urls.compactMap { URL(string: $0) })
             restartTimer()
         }
         .onDisappear {
             stopTimer()
         }
-        .onChange(of: scrolledId) { _, newId in
-            if let newId, newId != selectedIndex {
-                selectedIndex = newId
-            }
-        }
         .onChange(of: urls.count) { _, count in
             if selectedIndex >= count {
                 selectedIndex = 0
-                scrolledId = 0
             }
             ImageCache.prefetch(urls: urls.compactMap { URL(string: $0) })
             restartTimer()
@@ -157,20 +182,30 @@ struct BackdropCarouselView: View {
                 }
                 .scrollTargetLayout()
             }
-            .scrollTargetBehavior(.viewAligned)
-            .scrollPosition(id: $scrolledId)
+            .scrollTargetBehavior(CenteredBackdropScrollTargetBehavior(itemWidth: itemWidth, count: urls.count) { snappedIndex in
+                if selectedIndex != snappedIndex {
+                    isUserSnapping = true
+                    selectedIndex = snappedIndex
+                }
+            })
             .onAppear {
                 if selectedIndex < urls.count {
-                    scrolledId = selectedIndex
                     DispatchQueue.main.async {
                         proxy.scrollTo(selectedIndex, anchor: .center)
                     }
                 }
             }
+            .task {
+                try? await Task.sleep(nanoseconds: 50_000_000)
+                if selectedIndex < urls.count {
+                    proxy.scrollTo(selectedIndex, anchor: .center)
+                }
+            }
             .onChange(of: selectedIndex) { _, newIndex in
-                if scrolledId != newIndex {
+                if isUserSnapping {
+                    isUserSnapping = false
+                } else {
                     withAnimation(.easeInOut(duration: 0.9)) {
-                        scrolledId = newIndex
                         proxy.scrollTo(newIndex, anchor: .center)
                     }
                 }
