@@ -47,6 +47,34 @@ public final class ImageCache {
         }
         return original
     }
+
+    public static func prefetch(urls: [URL]) {
+        for rawUrl in urls {
+            guard let url = resolveEffectiveUrl(rawUrl) else { continue }
+            if shared.image(forKey: url.absoluteString) != nil || shared.image(forKey: rawUrl.absoluteString) != nil {
+                continue
+            }
+            
+            Task.detached(priority: .utility) {
+                var request = URLRequest(url: url, cachePolicy: .returnCacheDataElseLoad)
+                request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15", forHTTPHeaderField: "User-Agent")
+                
+                if let cached = URLCache.shared.cachedResponse(for: request),
+                   let img = UIImage(data: cached.data) {
+                    shared.insertImage(img, forKey: url.absoluteString)
+                    shared.insertImage(img, forKey: rawUrl.absoluteString)
+                    return
+                }
+                
+                if let (data, resp) = try? await URLSession.shared.data(for: request),
+                   let http = resp as? HTTPURLResponse, http.statusCode == 200,
+                   let img = UIImage(data: data) {
+                    shared.insertImage(img, forKey: url.absoluteString)
+                    shared.insertImage(img, forKey: rawUrl.absoluteString)
+                }
+            }
+        }
+    }
 }
 
 public struct AsyncCachedImage<Placeholder: View, Content: View, Fallback: View>: View {

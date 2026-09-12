@@ -578,8 +578,9 @@ actor MediaDetailsDiskCache {
             try? FileManager.default.removeItem(at: base.appendingPathComponent("sloosh.mediadetails.v6", isDirectory: true))
             try? FileManager.default.removeItem(at: base.appendingPathComponent("sloosh.mediadetails.v7", isDirectory: true))
             try? FileManager.default.removeItem(at: base.appendingPathComponent("sloosh.mediadetails.v8", isDirectory: true))
+            try? FileManager.default.removeItem(at: base.appendingPathComponent("sloosh.mediadetails.v9", isDirectory: true))
             
-            let dir = base.appendingPathComponent("sloosh.mediadetails.v9", isDirectory: true)
+            let dir = base.appendingPathComponent("sloosh.mediadetails.v10", isDirectory: true)
             try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             self.cacheDir = dir
         } else {
