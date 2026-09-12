@@ -174,7 +174,9 @@ class MoviesApi {
             endpoint = "api/v2/movie/\(cleanId)"
         }
         
-        var queryItems: [URLQueryItem] = []
+        var queryItems: [URLQueryItem] = [
+            URLQueryItem(name: "v", value: "4")
+        ]
         if let t = inferredType {
             queryItems.append(URLQueryItem(name: "type", value: t))
         }
