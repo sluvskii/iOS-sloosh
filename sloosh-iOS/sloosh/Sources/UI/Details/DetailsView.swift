@@ -96,10 +96,12 @@ struct BackdropCarouselView: View {
                                 .id(idx)
                             }
                         }
+                        .frame(height: height)
                         .scrollTargetLayout()
                     }
                     .scrollTargetBehavior(.paging)
                     .scrollPosition(id: $scrolledId)
+                    .frame(width: width, height: height)
                     .simultaneousGesture(
                         DragGesture(minimumDistance: 1)
                             .onChanged { _ in
@@ -136,6 +138,7 @@ struct BackdropCarouselView: View {
                 }
             }
         }
+        .frame(width: width, height: height)
         .onAppear {
             if selectedIndex >= urls.count {
                 selectedIndex = 0
