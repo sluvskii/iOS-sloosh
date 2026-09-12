@@ -345,7 +345,7 @@ async function attachAllohaAndIds(details: MediaDetailsDto, tmdbId: number) {
 }
 
 async function handleTvDetails(id: number, isKp: boolean): Promise<MediaDetailsDto> {
-  const cacheKey = `tv:v3:${isKp ? "kp_" : ""}${id}`
+  const cacheKey = `tv:v4:${isKp ? "kp_" : ""}${id}`
   const cached = getCached<MediaDetailsDto>(detailsCache, cacheKey)
   if (cached) return cached
 
@@ -379,7 +379,7 @@ async function handleTvDetails(id: number, isKp: boolean): Promise<MediaDetailsD
 }
 
 async function handleMovieDetails(id: number, isKp: boolean): Promise<MediaDetailsDto> {
-  const cacheKey = `movie:v3:${isKp ? "kp_" : ""}${id}`
+  const cacheKey = `movie:v4:${isKp ? "kp_" : ""}${id}`
   const cached = getCached<MediaDetailsDto>(detailsCache, cacheKey)
   if (cached) return cached
 

@@ -924,7 +924,7 @@ export class TMDBService {
 
     for (const b of rawBackdrops) {
       if (!b.file_path || seenBackdrops.has(b.file_path)) continue
-      if (b.aspect_ratio && b.aspect_ratio < 1.4) continue
+      if (b.aspect_ratio && b.aspect_ratio < 1.2) continue
       const formatted = formatImageUrl(b.file_path, "original")
       if (formatted && !seenBackdrops.has(formatted)) {
         seenBackdrops.add(b.file_path)
@@ -1106,7 +1106,7 @@ export class TMDBService {
 
     for (const b of rawTvBackdrops) {
       if (!b.file_path || seenTvBackdrops.has(b.file_path)) continue
-      if (b.aspect_ratio && b.aspect_ratio < 1.4) continue
+      if (b.aspect_ratio && b.aspect_ratio < 1.2) continue
       const formatted = formatImageUrl(b.file_path, "original")
       if (formatted && !seenTvBackdrops.has(formatted)) {
         seenTvBackdrops.add(b.file_path)

@@ -577,8 +577,9 @@ actor MediaDetailsDiskCache {
             try? FileManager.default.removeItem(at: base.appendingPathComponent("sloosh.mediadetails.v5", isDirectory: true))
             try? FileManager.default.removeItem(at: base.appendingPathComponent("sloosh.mediadetails.v6", isDirectory: true))
             try? FileManager.default.removeItem(at: base.appendingPathComponent("sloosh.mediadetails.v7", isDirectory: true))
+            try? FileManager.default.removeItem(at: base.appendingPathComponent("sloosh.mediadetails.v8", isDirectory: true))
             
-            let dir = base.appendingPathComponent("sloosh.mediadetails.v8", isDirectory: true)
+            let dir = base.appendingPathComponent("sloosh.mediadetails.v9", isDirectory: true)
             try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
             self.cacheDir = dir
         } else {
@@ -606,6 +607,11 @@ actor MediaDetailsDiskCache {
         }
         // If entry has no crew or directors (from older build before crew was added), treat as cache miss
         if entry.details.crew == nil && entry.details.directors == nil {
+            try? FileManager.default.removeItem(at: url)
+            return nil
+        }
+        // If entry has no backdrops (from older build before backdrops was added), treat as cache miss
+        if entry.details.backdrops == nil {
             try? FileManager.default.removeItem(at: url)
             return nil
         }
