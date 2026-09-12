@@ -50,6 +50,8 @@ struct BackdropCarouselView: View {
     @Binding var selectedIndex: Int
     var isHeaderVisible: Bool = true
     
+    @State private var scrolledId: Int? = 0
+    @State private var isInteracting: Bool = false
     @State private var timerTask: Task<Void, Never>? = nil
     @Environment(\.scenePhase) private var scenePhase
 
@@ -64,70 +66,85 @@ struct BackdropCarouselView: View {
                     height: height
                 )
             } else {
-                TabView(selection: $selectedIndex) {
-                    ForEach(0..<urls.count, id: \.self) { idx in
-                        AsyncCachedImage(
-                            url: URL(string: urls[idx]),
-                            fallbackUrl: fallbackUrl
-                        ) {
-                            Color.black.opacity(0.3)
-                                .frame(width: width, height: height)
-                        } content: { image in
-                            Image(uiImage: image)
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                                .frame(width: width, height: height)
-                                .clipped()
-                        } fallback: {
-                            Color.black.opacity(0.3)
-                                .frame(width: width, height: height)
+                ScrollViewReader { proxy in
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        LazyHStack(spacing: 0) {
+                            ForEach(0..<urls.count, id: \.self) { idx in
+                                AsyncCachedImage(
+                                    url: URL(string: urls[idx]),
+                                    fallbackUrl: fallbackUrl
+                                ) {
+                                    Color.black.opacity(0.3)
+                                        .frame(width: width, height: height)
+                                } content: { image in
+                                    Image(uiImage: image)
+                                        .resizable()
+                                        .aspectRatio(contentMode: .fill)
+                                        .frame(width: width, height: height)
+                                        .clipped()
+                                } fallback: {
+                                    Color.black.opacity(0.3)
+                                        .frame(width: width, height: height)
+                                }
+                                .id(idx)
+                            }
                         }
-                        .tag(idx)
+                        .scrollTargetLayout()
+                    }
+                    .scrollTargetBehavior(.paging)
+                    .scrollPosition(id: $scrolledId)
+                    .mask(verticalFadeMask)
+                    .simultaneousGesture(
+                        DragGesture(minimumDistance: 1)
+                            .onChanged { _ in
+                                if !isInteracting {
+                                    isInteracting = true
+                                    stopTimer()
+                                }
+                            }
+                            .onEnded { _ in
+                                isInteracting = false
+                                restartTimer()
+                            }
+                    )
+                    .onChange(of: scrolledId) { _, newId in
+                        if let newId, newId != selectedIndex {
+                            selectedIndex = newId
+                        }
+                    }
+                    .onChange(of: selectedIndex) { _, newIndex in
+                        if scrolledId != newIndex {
+                            withAnimation(.easeInOut(duration: 0.5)) {
+                                scrolledId = newIndex
+                                proxy.scrollTo(newIndex)
+                            }
+                        }
+                        if urls.count > 1 {
+                            let nextIndex = (newIndex + 1) % urls.count
+                            if let nextUrl = URL(string: urls[nextIndex]) {
+                                ImageCache.prefetch(urls: [nextUrl])
+                            }
+                        }
+                        restartTimer()
                     }
                 }
-                .tabViewStyle(.page(indexDisplayMode: .never))
-                .mask(
-                    LinearGradient(
-                        gradient: Gradient(stops: [
-                            .init(color: .clear, location: 0.0),
-                            .init(color: .black.opacity(0.4), location: 0.06),
-                            .init(color: .black.opacity(0.85), location: 0.12),
-                            .init(color: .black, location: 0.18),
-                            .init(color: .black, location: 0.35),
-                            .init(color: .black.opacity(0.8), location: 0.50),
-                            .init(color: .black.opacity(0.45), location: 0.68),
-                            .init(color: .black.opacity(0.2), location: 0.82),
-                            .init(color: .black.opacity(0.06), location: 0.93),
-                            .init(color: .clear, location: 1.0)
-                        ]),
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                )
             }
         }
         .onAppear {
             if selectedIndex >= urls.count {
                 selectedIndex = 0
             }
+            scrolledId = selectedIndex
             ImageCache.prefetch(urls: urls.compactMap { URL(string: $0) })
             restartTimer()
         }
         .onDisappear {
             stopTimer()
         }
-        .onChange(of: selectedIndex) { _, newIndex in
-            if urls.count > 1 {
-                let nextIndex = (newIndex + 1) % urls.count
-                if let nextUrl = URL(string: urls[nextIndex]) {
-                    ImageCache.prefetch(urls: [nextUrl])
-                }
-            }
-            restartTimer()
-        }
         .onChange(of: urls.count) { _, count in
             if selectedIndex >= count {
                 selectedIndex = 0
+                scrolledId = 0
             }
             ImageCache.prefetch(urls: urls.compactMap { URL(string: $0) })
             restartTimer()
@@ -147,6 +164,25 @@ struct BackdropCarouselView: View {
             }
         }
     }
+
+    private var verticalFadeMask: some View {
+        LinearGradient(
+            stops: [
+                .init(color: .clear, location: 0.0),
+                .init(color: .black.opacity(0.4), location: 0.06),
+                .init(color: .black.opacity(0.85), location: 0.12),
+                .init(color: .black, location: 0.18),
+                .init(color: .black.opacity(0.35), location: 0.35),
+                .init(color: .black.opacity(0.8), location: 0.50),
+                .init(color: .black.opacity(0.45), location: 0.68),
+                .init(color: .black.opacity(0.2), location: 0.82),
+                .init(color: .black.opacity(0.06), location: 0.93),
+                .init(color: .clear, location: 1.0)
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+    }
     
     private func stopTimer() {
         timerTask?.cancel()
@@ -155,14 +191,15 @@ struct BackdropCarouselView: View {
     
     private func restartTimer() {
         stopTimer()
-        guard urls.count > 1, isHeaderVisible, scenePhase == .active else { return }
+        guard urls.count > 1, isHeaderVisible, scenePhase == .active, !isInteracting else { return }
         
         timerTask = Task { @MainActor in
             try? await Task.sleep(nanoseconds: 5_000_000_000)
             if Task.isCancelled { return }
-            guard isHeaderVisible, scenePhase == .active, urls.count > 1 else { return }
-            withAnimation(.easeInOut) {
-                selectedIndex = (selectedIndex + 1) % urls.count
+            guard isHeaderVisible, scenePhase == .active, urls.count > 1, !isInteracting else { return }
+            let next = (selectedIndex + 1) % urls.count
+            withAnimation(.easeInOut(duration: 0.5)) {
+                selectedIndex = next
             }
         }
     }
@@ -346,6 +383,16 @@ struct DetailsView: View {
         }.value
     }
 
+    private func preloadAllBackdropColors(for details: MediaDetailsDto) {
+        Task.detached(priority: .utility) {
+            for urlStr in details.displayBackdropUrls {
+                if let url = URL(string: urlStr) {
+                    _ = await self.fetchAverageColor(from: url)
+                }
+            }
+        }
+    }
+
     private func preloadDominantColor(for details: MediaDetailsDto) async {
         async let backdropColor = fetchAverageColor(from: URL(string: details.previewBackdropUrl ?? ""))
         async let posterColor = fetchAverageColor(from: URL(string: details.displayPosterUrl ?? ""))
@@ -470,7 +517,22 @@ struct DetailsView: View {
                 guard let details = viewModel.details else { return }
                 selectedBackdropIndex = 0
                 ImageCache.prefetch(urls: details.displayBackdropUrls.compactMap { URL(string: $0) })
+                preloadAllBackdropColors(for: details)
                 await preloadDominantColor(for: details)
+            }
+            .onChange(of: selectedBackdropIndex) { _, newIndex in
+                guard let details = viewModel.details else { return }
+                let urls = details.displayBackdropUrls
+                guard newIndex >= 0 && newIndex < urls.count else { return }
+                Task {
+                    if let newColor = await fetchAverageColor(from: URL(string: urls[newIndex])) {
+                        await MainActor.run {
+                            withAnimation(.easeInOut(duration: 0.6)) {
+                                self.dominantBackdropColor = newColor
+                            }
+                        }
+                    }
+                }
             }
             .onAppear {
                 CloudSyncService.shared.syncAllData()
