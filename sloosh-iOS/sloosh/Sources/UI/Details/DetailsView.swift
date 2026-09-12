@@ -23,18 +23,14 @@ struct RemoteBackdropView: View {
         }
         .mask(
             LinearGradient(
-                gradient: Gradient(stops: [
+                stops: [
                     .init(color: .clear, location: 0.0),
-                    .init(color: .black.opacity(0.4), location: 0.06),
-                    .init(color: .black.opacity(0.85), location: 0.12),
-                    .init(color: .black, location: 0.18),
-                    .init(color: .black, location: 0.35),
-                    .init(color: .black.opacity(0.8), location: 0.50),
-                    .init(color: .black.opacity(0.45), location: 0.68),
-                    .init(color: .black.opacity(0.2), location: 0.82),
-                    .init(color: .black.opacity(0.06), location: 0.93),
+                    .init(color: .black, location: 0.08),
+                    .init(color: .black, location: 0.70),
+                    .init(color: .black.opacity(0.7), location: 0.82),
+                    .init(color: .black.opacity(0.3), location: 0.92),
                     .init(color: .clear, location: 1.0)
-                ]),
+                ],
                 startPoint: .top,
                 endPoint: .bottom
             )
@@ -169,14 +165,10 @@ struct BackdropCarouselView: View {
         LinearGradient(
             stops: [
                 .init(color: .clear, location: 0.0),
-                .init(color: .black.opacity(0.4), location: 0.06),
-                .init(color: .black.opacity(0.85), location: 0.12),
-                .init(color: .black, location: 0.18),
-                .init(color: .black.opacity(0.35), location: 0.35),
-                .init(color: .black.opacity(0.8), location: 0.50),
-                .init(color: .black.opacity(0.45), location: 0.68),
-                .init(color: .black.opacity(0.2), location: 0.82),
-                .init(color: .black.opacity(0.06), location: 0.93),
+                .init(color: .black, location: 0.08),
+                .init(color: .black, location: 0.70),
+                .init(color: .black.opacity(0.7), location: 0.82),
+                .init(color: .black.opacity(0.3), location: 0.92),
                 .init(color: .clear, location: 1.0)
             ],
             startPoint: .top,
