@@ -2583,6 +2583,7 @@ struct EpisodeCellView: View {
     var seasonEpisode: TvSeasonEpisodeDto? = nil
     var details: MediaDetailsDto? = nil
     var isAvailable: Bool = true
+    var isLastPlayed: Bool = false
     let onPlayTap: () -> Void
     let onUpdate: () -> Void
     let onInfoTap: (TvEpisodeDetailsDto?, TvSeasonEpisodeDto?) -> Void
@@ -2595,6 +2596,48 @@ struct EpisodeCellView: View {
     
     @ObservedObject private var downloadManager = DownloadManager.shared
     
+    init(
+        movieId: String,
+        season: Int,
+        episode: Int,
+        fallbackTitle: String = "Серия",
+        seasonEpisode: TvSeasonEpisodeDto? = nil,
+        details: MediaDetailsDto? = nil,
+        isAvailable: Bool = true,
+        isLastPlayed: Bool = false,
+        onPlayTap: @escaping () -> Void = {},
+        onUpdate: @escaping () -> Void = {},
+        onInfoTap: @escaping (TvEpisodeDetailsDto?, TvSeasonEpisodeDto?) -> Void = { _, _ in }
+    ) {
+        self.movieId = movieId
+        self.season = season
+        self.episode = episode
+        self.fallbackTitle = fallbackTitle
+        self.seasonEpisode = seasonEpisode
+        self.details = details
+        self.isAvailable = isAvailable
+        self.isLastPlayed = isLastPlayed
+        self.onPlayTap = onPlayTap
+        self.onUpdate = onUpdate
+        self.onInfoTap = onInfoTap
+
+        let root: String
+        if let kp = details?.ids?.kp ?? details?.externalIds?.kp, kp > 0 {
+            root = "kp_\(kp)"
+        } else if movieId.hasPrefix("kp_") || movieId.hasPrefix("tmdb_") {
+            root = movieId
+        } else if let intVal = Int(movieId) {
+            root = "kp_\(intVal)"
+        } else {
+            root = movieId
+        }
+        let progressKey = "\(root)_s\(season)_e\(episode)"
+        let prog = PlaybackProgressStore.shared.normalizedProgress(mediaId: progressKey)
+        let watched = PlaybackProgressStore.shared.loadWatched(mediaId: progressKey) || (prog ?? 0) >= 0.9
+        _progressFractionState = State(initialValue: prog)
+        _isWatchedState = State(initialValue: watched)
+    }
+
     var previewUrl: URL? {
         if let still = seasonEpisode?.stillPath ?? meta?.stillPath, !still.isEmpty {
             if still.hasPrefix("http") {
@@ -2629,15 +2672,6 @@ struct EpisodeCellView: View {
         return "\(root)_s\(season)_e\(episode)"
     }
     
-    private var isLastPlayed: Bool {
-        let effectiveDetails = details
-        let effectiveKp = effectiveDetails?.ids?.kp ?? effectiveDetails?.externalIds?.kp ?? (movieId.hasPrefix("kp_") ? Int(movieId.dropFirst(3)) : nil)
-        let rootKey = effectiveKp.map { "kp_\($0)" } ?? (movieId.hasPrefix("tmdb_") ? movieId : "tmdb_\(movieId)")
-        let lastSeason = PlaybackProgressStore.shared.loadLastSeason(mediaKey: rootKey) ?? (effectiveKp.flatMap { PlaybackProgressStore.shared.loadLastSeason(kpId: $0) })
-        let lastEpisode = PlaybackProgressStore.shared.loadLastEpisode(mediaKey: rootKey) ?? (effectiveKp.flatMap { PlaybackProgressStore.shared.loadLastEpisode(kpId: $0) })
-        return lastSeason == season && lastEpisode == episode
-    }
-
     private func updateProgressState() {
         guard isAvailable else { return }
         progressFractionState = PlaybackProgressStore.shared.normalizedProgress(mediaId: progressKey)
@@ -2929,6 +2963,9 @@ struct EpisodeCellView: View {
             updateProgressState()
             if seasonEpisode != nil { return }
             if isLoading { return }
+            // Brief pause so season-level getSeason can finish, avoiding redundant individual network calls
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            if Task.isCancelled || seasonEpisode != nil || isLoading { return }
             isLoading = true
             meta = nil
             do {
@@ -3129,7 +3166,7 @@ struct InlineEpisodesSection: View {
     @ViewBuilder
     private var seasonPickerView: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
+            LazyHStack(spacing: 8) {
                 ForEach(allSeasons, id: \.self) { season in
                     Button(action: {
                         let generator = UIImpactFeedbackGenerator(style: .light)
@@ -3170,11 +3207,17 @@ struct InlineEpisodesSection: View {
 
     @ViewBuilder
     private var episodesListView: some View {
+        let effectiveKp = details.ids?.kp ?? details.externalIds?.kp ?? (rawId.hasPrefix("kp_") ? Int(rawId.dropFirst(3)) : nil)
+        let rootKey = effectiveKp.map { "kp_\($0)" } ?? (rawId.hasPrefix("tmdb_") ? rawId : "tmdb_\(rawId)")
+        let lastPlayedSeason = PlaybackProgressStore.shared.loadLastSeason(mediaKey: rootKey) ?? (effectiveKp.flatMap { PlaybackProgressStore.shared.loadLastSeason(kpId: $0) })
+        let lastPlayedEpisode = PlaybackProgressStore.shared.loadLastEpisode(mediaKey: rootKey) ?? (effectiveKp.flatMap { PlaybackProgressStore.shared.loadLastEpisode(kpId: $0) })
+
         ScrollViewReader { proxy in
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 12) {
+                LazyHStack(spacing: 12) {
                     ForEach(episodesForSelectedSeason, id: \.self) { episode in
                         let isAvailable = isEpisodeAvailable(episode)
+                        let isLastPlayed = (selectedSeason == lastPlayedSeason && episode == lastPlayedEpisode)
                         let seasonEpisode: TvSeasonEpisodeDto? = {
                             if let found = currentSeasonData?.episodes?.first(where: { $0.episodeNumber == episode }) {
                                 return found
@@ -3220,6 +3263,7 @@ struct InlineEpisodesSection: View {
                                 seasonEpisode: seasonEpisode,
                                 details: details,
                                 isAvailable: isAvailable,
+                                isLastPlayed: isLastPlayed,
                                 onPlayTap: { () -> Void in
                                     if isAvailable {
                                         onEpisodeTap(selectedSeason, episode)
