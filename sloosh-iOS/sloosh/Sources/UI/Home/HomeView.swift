@@ -1105,7 +1105,7 @@ class HomeViewModel: ObservableObject {
 
     private func filterItemsForSelectedCategory(_ items: [MediaDto], category: HomeCategory) -> [MediaDto] {
         switch category {
-        case .all:
+        case .all, .anime:
             return items
         case .movies:
             return items.filter { $0.type == "movie" && !isCartoon($0) }
@@ -1113,8 +1113,6 @@ class HomeViewModel: ObservableObject {
             return items.filter { $0.type == "tv" && !isCartoon($0) }
         case .cartoons:
             return items.filter { isCartoon($0) && !isAnime($0) }
-        case .anime:
-            return items.filter { isAnime($0) }
         }
     }
 
