@@ -1,5 +1,6 @@
 import SwiftUI
 import Photos
+import ImageIO
 
 struct BackdropFadeMask: View {
     var body: some View {
@@ -43,7 +44,6 @@ struct RemoteBackdropView: View {
                 .frame(width: width, height: height)
         }
         .frame(width: width, height: height)
-        .mask(BackdropFadeMask())
     }
 }
 
@@ -55,37 +55,7 @@ struct BackdropCarouselView: View {
     @Binding var selectedIndex: Int
     @Binding var timerProgress: CGFloat
     var isHeaderVisible: Bool = true
-    
-    // Total repetitions in non-lazy HStack:
-    // Starts at natural offset 0 (first backdrop), advances strictly +1 slide at a time.
-    // Non-lazy HStack guarantees views are never prematurely unmounted during slide.
-    private let totalRepetitions = 20
-    
-    @State private var scrolledId: Int? = 0
-    @State private var isInteracting: Bool = false
-    @State private var isAutoScrolling: Bool = false
-    @State private var timerTask: Task<Void, Never>? = nil
     @Environment(\.scenePhase) private var scenePhase
-
-    init(
-        urls: [String],
-        fallbackUrl: URL?,
-        width: CGFloat,
-        height: CGFloat,
-        selectedIndex: Binding<Int>,
-        timerProgress: Binding<CGFloat>,
-        isHeaderVisible: Bool = true
-    ) {
-        self.urls = urls
-        self.fallbackUrl = fallbackUrl
-        self.width = width
-        self.height = height
-        self._selectedIndex = selectedIndex
-        self._timerProgress = timerProgress
-        self.isHeaderVisible = isHeaderVisible
-        let initial = urls.isEmpty ? 0 : (selectedIndex.wrappedValue % urls.count)
-        self._scrolledId = State(initialValue: initial)
-    }
 
     var body: some View {
         Group {
@@ -98,188 +68,327 @@ struct BackdropCarouselView: View {
                     height: height
                 )
             } else {
-                let totalVirtualCount = urls.count * totalRepetitions
-                ScrollViewReader { proxy in
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 0) {
-                            ForEach(0..<totalVirtualCount, id: \.self) { virtualIndex in
-                                let realIndex = virtualIndex % urls.count
-                                AsyncCachedImage(
-                                    url: URL(string: urls[realIndex]),
-                                    fallbackUrl: fallbackUrl
-                                ) {
-                                    Color.black.opacity(0.3)
-                                        .frame(width: width, height: height)
-                                } content: { image in
-                                    Image(uiImage: image)
-                                        .resizable()
-                                        .aspectRatio(contentMode: .fill)
-                                        .frame(width: width, height: height)
-                                        .clipped()
-                                } fallback: {
-                                    Color.black.opacity(0.3)
-                                        .frame(width: width, height: height)
-                                }
-                                .frame(width: width, height: height)
-                                .mask(BackdropFadeMask())
-                                .id(virtualIndex)
-                            }
-                        }
-                        .frame(height: height)
-                        .scrollTargetLayout()
-                    }
-                    .scrollTargetBehavior(.paging)
-                    .scrollPosition(id: $scrolledId)
-                    .frame(width: width, height: height)
-                    .simultaneousGesture(
-                        DragGesture(minimumDistance: 1)
-                            .onChanged { _ in
-                                if !isInteracting {
-                                    isInteracting = true
-                                    stopTimer()
-                                }
-                            }
-                            .onEnded { _ in
-                                isInteracting = false
-                                restartTimer(proxy: proxy)
-                            }
-                    )
-                    .onChange(of: scrolledId) { _, newId in
-                        guard let newId, urls.count > 1 else { return }
-                        guard !isAutoScrolling else { return }
-                        let count = urls.count
-                        let realIndex = newId % count
-                        if realIndex != selectedIndex {
-                            selectedIndex = realIndex
-                        }
-                    }
-                    .onChange(of: selectedIndex) { _, newIndex in
-                        guard urls.count > 1, !isAutoScrolling else { return }
-                        let count = urls.count
-                        let current = scrolledId ?? 0
-                        let currentReal = current % count
-                        
-                        if currentReal != newIndex {
-                            let diff = newIndex - currentReal
-                            let target = current + diff
-                            if target >= 0 && target < totalVirtualCount {
-                                withAnimation(.easeInOut(duration: 0.4)) {
-                                    scrolledId = target
-                                    proxy.scrollTo(target)
-                                }
-                            }
-                        }
-                        
-                        let nextIndex = (newIndex + 1) % count
-                        if let nextUrl = URL(string: urls[nextIndex]) {
-                            ImageCache.prefetch(urls: [nextUrl])
-                        }
-                        restartTimer(proxy: proxy)
-                    }
-                    .onAppear {
-                        let initial = selectedIndex % urls.count
-                        scrolledId = initial
-                        proxy.scrollTo(initial)
-                        ImageCache.prefetch(urls: urls.compactMap { URL(string: $0) })
-                        restartTimer(proxy: proxy)
-                    }
-                    .onChange(of: urls.count) { _, _ in
-                        selectedIndex = 0
-                        scrolledId = 0
-                        proxy.scrollTo(0)
-                        ImageCache.prefetch(urls: urls.compactMap { URL(string: $0) })
-                        restartTimer(proxy: proxy)
-                    }
-                    .onChange(of: isHeaderVisible) { _, visible in
-                        if visible {
-                            restartTimer(proxy: proxy)
-                        } else {
-                            stopTimer()
-                        }
-                    }
-                    .onChange(of: scenePhase) { _, phase in
-                        if phase == .active && isHeaderVisible {
-                            restartTimer(proxy: proxy)
-                        } else {
-                            stopTimer()
-                        }
-                    }
-                }
+                BackdropPagingRepresentable(
+                    urls: urls,
+                    fallbackUrl: fallbackUrl,
+                    selectedIndex: $selectedIndex,
+                    timerProgress: $timerProgress,
+                    isHeaderVisible: isHeaderVisible,
+                    scenePhase: scenePhase
+                )
             }
         }
         .frame(width: width, height: height)
-        .onDisappear {
+        .mask(BackdropFadeMask())
+    }
+}
+
+private struct BackdropPagingRepresentable: UIViewControllerRepresentable {
+    let urls: [String]
+    let fallbackUrl: URL?
+    @Binding var selectedIndex: Int
+    @Binding var timerProgress: CGFloat
+    var isHeaderVisible: Bool
+    var scenePhase: ScenePhase
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+
+    func makeUIViewController(context: Context) -> UIPageViewController {
+        let pageVC = UIPageViewController(
+            transitionStyle: .scroll,
+            navigationOrientation: .horizontal,
+            options: [UIPageViewController.OptionsKey.interPageSpacing: 0]
+        )
+        pageVC.view.backgroundColor = .clear
+        pageVC.dataSource = context.coordinator
+        pageVC.delegate = context.coordinator
+
+        if let scrollView = pageVC.view.subviews.first(where: { $0 is UIScrollView }) as? UIScrollView {
+            scrollView.delegate = context.coordinator
+        }
+
+        context.coordinator.pageViewController = pageVC
+        let initialIndex = (selectedIndex >= 0 && selectedIndex < urls.count) ? selectedIndex : 0
+        context.coordinator.currentIndex = initialIndex
+        let initialVC = context.coordinator.makeSlideVC(index: initialIndex)
+        pageVC.setViewControllers([initialVC], direction: .forward, animated: false)
+
+        context.coordinator.startTimer()
+        return pageVC
+    }
+
+    func updateUIViewController(_ pageVC: UIPageViewController, context: Context) {
+        let coordinator = context.coordinator
+        coordinator.parent = self
+
+        let count = urls.count
+        guard count > 1 else { return }
+
+        // If selectedIndex changed from outside (e.g. user tapped indicator dot), advance smoothly
+        if !coordinator.isUserDragging && !coordinator.isTransitioning {
+            let targetIndex = selectedIndex % count
+            if targetIndex != coordinator.currentIndex {
+                let direction: UIPageViewController.NavigationDirection = targetIndex >= coordinator.currentIndex ? .forward : .reverse
+                coordinator.currentIndex = targetIndex
+                let targetVC = coordinator.makeSlideVC(index: targetIndex)
+                coordinator.isTransitioning = true
+                pageVC.setViewControllers([targetVC], direction: direction, animated: true) { [weak coordinator] _ in
+                    coordinator?.isTransitioning = false
+                    coordinator?.startTimer()
+                }
+            }
+        }
+
+        let isAppActive = scenePhase == .active
+        if !isHeaderVisible || !isAppActive {
+            coordinator.stopTimer()
+        } else if coordinator.timerTask == nil && !coordinator.isUserDragging && !coordinator.isTransitioning {
+            coordinator.startTimer()
+        }
+    }
+
+    final class Coordinator: NSObject, UIPageViewControllerDataSource, UIPageViewControllerDelegate, UIScrollViewDelegate {
+        var parent: BackdropPagingRepresentable
+        weak var pageViewController: UIPageViewController?
+        var currentIndex: Int = 0
+        var isUserDragging: Bool = false
+        var isTransitioning: Bool = false
+        var timerTask: Task<Void, Never>?
+
+        init(_ parent: BackdropPagingRepresentable) {
+            self.parent = parent
+            self.currentIndex = (parent.selectedIndex >= 0 && parent.selectedIndex < parent.urls.count) ? parent.selectedIndex : 0
+        }
+
+        func makeSlideVC(index: Int) -> BackdropSlideViewController {
+            let safeIndex = ((index % parent.urls.count) + parent.urls.count) % parent.urls.count
+            return BackdropSlideViewController(
+                index: safeIndex,
+                urlString: parent.urls[safeIndex],
+                fallbackUrl: parent.fallbackUrl
+            )
+        }
+
+        // MARK: - UIPageViewControllerDataSource (Infinite Looping)
+        func pageViewController(_ pageViewController: UIPageViewController, viewControllerBefore viewController: UIViewController) -> UIViewController? {
+            guard let slideVC = viewController as? BackdropSlideViewController, parent.urls.count > 1 else { return nil }
+            let prevIndex = (slideVC.index - 1 + parent.urls.count) % parent.urls.count
+            return makeSlideVC(index: prevIndex)
+        }
+
+        func pageViewController(_ pageViewController: UIPageViewController, viewControllerAfter viewController: UIViewController) -> UIViewController? {
+            guard let slideVC = viewController as? BackdropSlideViewController, parent.urls.count > 1 else { return nil }
+            let nextIndex = (slideVC.index + 1) % parent.urls.count
+            return makeSlideVC(index: nextIndex)
+        }
+
+        // MARK: - UIPageViewControllerDelegate
+        func pageViewController(_ pageViewController: UIPageViewController, didFinishAnimating finished: Bool, previousViewControllers: [UIViewController], transitionCompleted completed: Bool) {
+            isTransitioning = false
+            guard completed,
+                  let currentVC = pageViewController.viewControllers?.first as? BackdropSlideViewController else {
+                return
+            }
+            let newIndex = currentVC.index
+            currentIndex = newIndex
+            if parent.selectedIndex != newIndex {
+                parent.selectedIndex = newIndex
+            }
+            startTimer()
+        }
+
+        // MARK: - UIScrollViewDelegate (Interactivity tracking)
+        func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
+            isUserDragging = true
+            stopTimer()
+        }
+
+        func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
+            if !decelerate {
+                isUserDragging = false
+                startTimer()
+            }
+        }
+
+        func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
+            isUserDragging = false
+            startTimer()
+        }
+
+        // MARK: - Timer & Progress
+        func stopTimer() {
+            timerTask?.cancel()
+            timerTask = nil
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                parent.timerProgress = 0.0
+            }
+        }
+
+        func startTimer() {
+            stopTimer()
+            guard parent.urls.count > 1, parent.isHeaderVisible, parent.scenePhase == .active, !isUserDragging else { return }
+
+            // Prefetch adjacent backdrops
+            let count = parent.urls.count
+            let nextIdx = (currentIndex + 1) % count
+            let prevIdx = (currentIndex - 1 + count) % count
+            let prefetchUrls = [parent.urls[nextIdx], parent.urls[prevIdx]].compactMap { URL(string: $0) }
+            ImageCache.prefetch(urls: prefetchUrls)
+
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                parent.timerProgress = 0.0
+            }
+
+            withAnimation(.linear(duration: 5.0)) {
+                parent.timerProgress = 1.0
+            }
+
+            timerTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: 5_000_000_000)
+                guard let self = self, !Task.isCancelled else { return }
+                guard self.parent.isHeaderVisible, self.parent.scenePhase == .active, !self.isUserDragging, !self.isTransitioning else { return }
+                guard let pageVC = self.pageViewController, self.parent.urls.count > 1 else { return }
+
+                let count = self.parent.urls.count
+                let nextIndex = (self.currentIndex + 1) % count
+                let nextVC = self.makeSlideVC(index: nextIndex)
+
+                self.isTransitioning = true
+                pageVC.setViewControllers([nextVC], direction: .forward, animated: true) { [weak self] completed in
+                    guard let self = self else { return }
+                    self.isTransitioning = false
+                    if completed {
+                        self.currentIndex = nextIndex
+                        if self.parent.selectedIndex != nextIndex {
+                            self.parent.selectedIndex = nextIndex
+                        }
+                    }
+                    self.startTimer()
+                }
+            }
+        }
+
+        deinit {
             stopTimer()
         }
     }
-    
-    private func stopTimer() {
-        timerTask?.cancel()
-        timerTask = nil
-        isAutoScrolling = false
-        var transaction = Transaction()
-        transaction.disablesAnimations = true
-        withTransaction(transaction) {
-            timerProgress = 0.0
-        }
-    }
-    
-    private func restartTimer(proxy: ScrollViewProxy) {
-        stopTimer()
-        guard urls.count > 1, isHeaderVisible, scenePhase == .active, !isInteracting else { return }
-        startProgressCycle(proxy: proxy)
+}
+
+private final class BackdropSlideViewController: UIViewController {
+    let index: Int
+    let urlString: String
+    let fallbackUrl: URL?
+    private let imageView = UIImageView()
+    private var loadTask: Task<Void, Never>?
+
+    init(index: Int, urlString: String, fallbackUrl: URL?) {
+        self.index = index
+        self.urlString = urlString
+        self.fallbackUrl = fallbackUrl
+        super.init(nibName: nil, bundle: nil)
     }
 
-    private func startProgressCycle(proxy: ScrollViewProxy) {
-        var transaction = Transaction()
-        transaction.disablesAnimations = true
-        withTransaction(transaction) {
-            timerProgress = 0.0
+    required init?(coder: NSCoder) { fatalError() }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = UIColor.black.withAlphaComponent(0.3)
+        imageView.contentMode = .scaleAspectFill
+        imageView.clipsToBounds = true
+        imageView.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(imageView)
+
+        NSLayoutConstraint.activate([
+            imageView.topAnchor.constraint(equalTo: view.topAnchor),
+            imageView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            imageView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            imageView.trailingAnchor.constraint(equalTo: view.trailingAnchor)
+        ])
+
+        loadImage()
+    }
+
+    private func loadImage() {
+        guard let url = URL(string: urlString) else {
+            loadFallback()
+            return
         }
-        
-        withAnimation(.linear(duration: 5.0)) {
-            timerProgress = 1.0
+
+        let effectiveUrl = ImageCache.resolveEffectiveUrl(url)
+        let key = effectiveUrl?.absoluteString ?? url.absoluteString
+
+        // 1. Instant check from RAM cache
+        if let cached = ImageCache.shared.image(forKey: key) ?? ImageCache.shared.image(forKey: url.absoluteString) {
+            self.imageView.image = cached
+            return
         }
-        
-        timerTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 5_000_000_000)
-            if Task.isCancelled { return }
-            guard isHeaderVisible, scenePhase == .active, urls.count > 1, !isInteracting else { return }
-            
-            let count = urls.count
-            let current = scrolledId ?? selectedIndex
-            let nextVirtual = current + 1
-            let nextReal = nextVirtual % count
-            
-            isAutoScrolling = true
-            
-            withAnimation(.easeInOut(duration: 0.5)) {
-                scrolledId = nextVirtual
-                proxy.scrollTo(nextVirtual)
+
+        // 2. Asynchronous background load
+        loadTask = Task { [weak self] in
+            guard let self = self else { return }
+            let targetUrl = effectiveUrl ?? url
+            var request = URLRequest(url: targetUrl, cachePolicy: .returnCacheDataElseLoad)
+            request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15", forHTTPHeaderField: "User-Agent")
+
+            if let cached = URLCache.shared.cachedResponse(for: request),
+               let img = UIImage(data: cached.data) {
+                let decoded = await img.byPreparingForDisplay() ?? img
+                ImageCache.shared.insertImage(decoded, forKey: key)
+                ImageCache.shared.insertImage(decoded, forKey: url.absoluteString)
+                if !Task.isCancelled {
+                    await MainActor.run {
+                        self.imageView.image = decoded
+                    }
+                }
+                return
             }
-            
-            // Wait for 0.5s slide animation to complete smoothly before updating selection
-            try? await Task.sleep(nanoseconds: 550_000_000)
-            if Task.isCancelled { return }
-            
-            isAutoScrolling = false
-            if selectedIndex != nextReal {
-                selectedIndex = nextReal
+
+            do {
+                let (data, resp) = try await URLSession.shared.data(for: request)
+                if Task.isCancelled { return }
+                if let http = resp as? HTTPURLResponse, http.statusCode == 200,
+                   let img = UIImage(data: data) {
+                    let cachedResponse = CachedURLResponse(response: http, data: data)
+                    URLCache.shared.storeCachedResponse(cachedResponse, for: request)
+                    let decoded = await img.byPreparingForDisplay() ?? img
+                    ImageCache.shared.insertImage(decoded, forKey: key)
+                    ImageCache.shared.insertImage(decoded, forKey: url.absoluteString)
+                    if !Task.isCancelled {
+                        await MainActor.run {
+                            self.imageView.image = decoded
+                        }
+                    }
+                    return
+                }
+            } catch {
+                if Task.isCancelled { return }
             }
-            
-            // If nearing end of totalRepetitions pool, silently reset to nextReal
-            if nextVirtual >= (totalRepetitions - 1) * count {
-                var resetTransaction = Transaction()
-                resetTransaction.disablesAnimations = true
-                withTransaction(resetTransaction) {
-                    scrolledId = nextReal
-                    proxy.scrollTo(nextReal)
+
+            if !Task.isCancelled {
+                await MainActor.run {
+                    self.loadFallback()
                 }
             }
-            
-            guard isHeaderVisible, scenePhase == .active, urls.count > 1, !isInteracting else { return }
-            startProgressCycle(proxy: proxy)
         }
+    }
+
+    private func loadFallback() {
+        guard let fallback = fallbackUrl else { return }
+        let effectiveFallback = ImageCache.resolveEffectiveUrl(fallback)
+        let key = effectiveFallback?.absoluteString ?? fallback.absoluteString
+        if let cached = ImageCache.shared.image(forKey: key) ?? ImageCache.shared.image(forKey: fallback.absoluteString) {
+            self.imageView.image = cached
+        }
+    }
+
+    deinit {
+        loadTask?.cancel()
     }
 }
 
@@ -487,19 +596,36 @@ struct DetailsView: View {
             }
         }
 
-        // 3. Если изображения нет в памяти — загружаем из кеша URLSession
+        // 3. Если изображения нет в памяти — загружаем из кеша URLSession со сверхбыстрым даунсемплингом
         return await Task.detached(priority: .userInitiated) {
             do {
                 let targetUrl = effectiveUrl ?? url
-                let request = URLRequest(url: targetUrl, cachePolicy: .returnCacheDataElseLoad)
+                var request = URLRequest(url: targetUrl, cachePolicy: .returnCacheDataElseLoad)
+                request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15", forHTTPHeaderField: "User-Agent")
                 let (data, response) = try await URLSession.shared.data(for: request)
-                guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200,
-                      let image = UIImage(data: data),
-                      let avg = image.averageColor else {
+                guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
                     return nil
                 }
-                Self.dominantColorCacheLock.withLock {
-                    Self.dominantColorCache[key] = avg
+
+                let options: [CFString: Any] = [
+                    kCGImageSourceCreateThumbnailFromImageAlways: true,
+                    kCGImageSourceShouldCacheImmediately: true,
+                    kCGImageSourceCreateThumbnailWithTransform: true,
+                    kCGImageSourceThumbnailMaxPixelSize: 32
+                ]
+
+                var avg: UIColor? = nil
+                if let source = CGImageSourceCreateWithData(data as CFData, nil),
+                   let thumbCg = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) {
+                    avg = UIImage(cgImage: thumbCg).averageColor
+                } else if let image = UIImage(data: data) {
+                    avg = image.averageColor
+                }
+
+                if let avg {
+                    Self.dominantColorCacheLock.withLock {
+                        Self.dominantColorCache[key] = avg
+                    }
                 }
                 return avg
             } catch {
@@ -510,7 +636,11 @@ struct DetailsView: View {
 
     private func preloadAllBackdropColors(for details: MediaDetailsDto) {
         Task.detached(priority: .utility) {
+            // Даем 1.5 секунды приоритета плавной анимации перехода на экран
+            try? await Task.sleep(nanoseconds: 1_500_000_000)
+            if Task.isCancelled { return }
             for urlStr in details.displayBackdropUrls {
+                if Task.isCancelled { return }
                 if let url = URL(string: urlStr) {
                     _ = await self.fetchAverageColor(from: url)
                 }
