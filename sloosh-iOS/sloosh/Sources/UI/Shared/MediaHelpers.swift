@@ -99,6 +99,8 @@ func cleanTranslationName(_ rawName: String) -> String {
     name = name.replacingOccurrences(of: "(?i)\\b(?:Blu-ray(?:\\s*CEE)?|BDRip|WEB-DL|HDTV|Line)\\b", with: "", options: .regularExpression)
     name = name.replacingOccurrences(of: "(?i)\\b(?:5[.]?1|7[.]?1|2[.]?0)\\b", with: "", options: .regularExpression)
     
+    name = name.replacingOccurrences(of: "(?i)\\bHDrezka\\s+St(?:\\.|\\b)", with: "HDrezka Studio", options: .regularExpression)
+    
     // 2. Субтитры
     if name.localizedCaseInsensitiveContains("субтитр") || name.localizedCaseInsensitiveContains("subtitle") {
         return "💬 \(name)"
@@ -179,7 +181,8 @@ func cleanTranslationName(_ rawName: String) -> String {
         .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
         .trimmingCharacters(in: .whitespacesAndNewlines)
     
-    // Очищаем тире и префиксы вида "Многоголосый - " при наличии названия студии
+    // Очищаем тире и префиксы вида "Многоголосый - " при наличии названия студии,
+    // но сохраняем "Дубляж" если это дубляж!
     cleanRemainder = cleanRemainder
         .replacingOccurrences(of: "\\s*[–—-]\\s*", with: " - ", options: .regularExpression)
         .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -188,23 +191,45 @@ func cleanTranslationName(_ rawName: String) -> String {
         let prefix = String(cleanRemainder[..<dashRange.lowerBound]).trimmingCharacters(in: .whitespaces)
         let suffix = String(cleanRemainder[dashRange.upperBound...]).trimmingCharacters(in: .whitespaces)
         let lowerPrefix = prefix.lowercased()
-        if lowerPrefix.contains("многоголос") || lowerPrefix.contains("дубл") || lowerPrefix.contains("двухголос") || lowerPrefix.contains("закадр") || lowerPrefix.contains("проф") || lowerPrefix.contains("люб") {
+        if lowerPrefix.contains("дубл") {
+            cleanRemainder = suffix.isEmpty ? "Дубляж" : "Дубляж \(suffix)"
+        } else if lowerPrefix.contains("многоголос") || lowerPrefix.contains("двухголос") || lowerPrefix.contains("закадр") || lowerPrefix.contains("проф") || lowerPrefix.contains("люб") {
             if !suffix.isEmpty {
                 cleanRemainder = suffix
             }
         }
     } else {
-        let prefixPattern = "(?i)^(?:профессиональный\\s+|проф[.]\\s+|любительский\\s+|люб[.]\\s+)?(?:многоголосый|двухголосый|одноголосый|закадровый|дублированный|дубляж)[:\\s-]+(.+)$"
-        if let regex = try? NSRegularExpression(pattern: prefixPattern, options: []) {
+        let dubPrefixPattern = "(?i)^(?:профессиональный\\s+|проф[.]\\s+|полный\\s+)?(?:дублированный|дубляж)[:\\s-]+(.+)$"
+        var matchedDub = false
+        if let regex = try? NSRegularExpression(pattern: dubPrefixPattern, options: []) {
             let range = NSRange(location: 0, length: cleanRemainder.utf16.count)
             if let match = regex.firstMatch(in: cleanRemainder, options: [], range: range),
                let groupRange = Range(match.range(at: 1), in: cleanRemainder) {
                 let studioPart = String(cleanRemainder[groupRange]).trimmingCharacters(in: .whitespaces)
                 if !studioPart.isEmpty {
-                    cleanRemainder = studioPart
+                    cleanRemainder = "Дубляж \(studioPart)"
+                    matchedDub = true
                 }
             }
         }
+
+        if !matchedDub {
+            let prefixPattern = "(?i)^(?:профессиональный\\s+|проф[.]\\s+|любительский\\s+|люб[.]\\s+)?(?:многоголосый|двухголосый|одноголосый|закадровый)[:\\s-]+(.+)$"
+            if let regex = try? NSRegularExpression(pattern: prefixPattern, options: []) {
+                let range = NSRange(location: 0, length: cleanRemainder.utf16.count)
+                if let match = regex.firstMatch(in: cleanRemainder, options: [], range: range),
+                   let groupRange = Range(match.range(at: 1), in: cleanRemainder) {
+                    let studioPart = String(cleanRemainder[groupRange]).trimmingCharacters(in: .whitespaces)
+                    if !studioPart.isEmpty {
+                        cleanRemainder = studioPart
+                    }
+                }
+            }
+        }
+    }
+
+    if cleanRemainder.lowercased() == "дублированный" {
+        cleanRemainder = "Дубляж"
     }
 
     while cleanRemainder.hasPrefix("-") || cleanRemainder.hasPrefix(",") || cleanRemainder.hasPrefix("–") || cleanRemainder.hasPrefix("—") {
