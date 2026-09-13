@@ -573,7 +573,9 @@ final class AllohaRepository: @unchecked Sendable {
         for (key, val) in params {
             queryItems.append(URLQueryItem(name: key, value: val))
         }
-        var comps = URLComponents(string: "https://api.alloha.tv/")
+        guard var comps = URLComponents(string: "https://api.alloha.tv/") else {
+            throw URLError(.badURL)
+        }
         comps.queryItems = queryItems
         guard let url = comps.url else {
             throw URLError(.badURL)

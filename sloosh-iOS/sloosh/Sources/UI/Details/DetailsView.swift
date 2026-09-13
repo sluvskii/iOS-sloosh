@@ -3226,8 +3226,8 @@ class DetailsViewModel: ObservableObject {
 
         let effectiveTmdbId = tmdbId ?? details?.externalIds?.tmdb ?? details?.ids?.tmdb ?? Int(details?.id ?? "")
         let effectiveImdbId = imdbId ?? details?.externalIds?.imdb ?? details?.ids?.imdb
-        let effectiveTitle = (title?.isEmpty == false ? title : details?.title) ?? details?.name
-        let effectiveOriginal = originalTitle ?? details?.originalTitle ?? details?.name
+        let effectiveTitle = (title?.isEmpty == false ? title : details?.title) ?? ""
+        let effectiveOriginal = originalTitle ?? details?.originalTitle
         let effectiveYear = year ?? details?.year
 
         do {
@@ -3303,8 +3303,8 @@ class DetailsViewModel: ObservableObject {
     ) async {
         let effectiveTmdbId = tmdbId ?? details?.externalIds?.tmdb ?? details?.ids?.tmdb ?? Int(details?.id ?? "")
         let effectiveImdbId = imdbId ?? details?.externalIds?.imdb ?? details?.ids?.imdb
-        let effectiveTitle = title.isEmpty ? ((details?.title ?? details?.name) ?? "") : title
-        let effectiveOriginal = originalTitle ?? details?.originalTitle ?? details?.name
+        let effectiveTitle = title.isEmpty ? (details?.title ?? "") : title
+        let effectiveOriginal = originalTitle ?? details?.originalTitle
         let effectiveYear = year ?? details?.year
         let cacheKey = kpId > 0 ? kpId : (effectiveTmdbId ?? 0)
 
