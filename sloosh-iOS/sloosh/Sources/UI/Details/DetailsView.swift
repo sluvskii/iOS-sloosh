@@ -115,7 +115,10 @@ private struct BackdropPagingRepresentable: UIViewControllerRepresentable {
         let initialVC = context.coordinator.makeSlideVC(index: initialIndex)
         pageVC.setViewControllers([initialVC], direction: .forward, animated: false)
 
-        context.coordinator.startTimer()
+        // Запускаем таймер на следующем тике runloop, когда вью уже смонтирована в окно
+        DispatchQueue.main.async { [weak coordinator = context.coordinator] in
+            coordinator?.startTimer()
+        }
         return pageVC
     }
 
@@ -126,7 +129,7 @@ private struct BackdropPagingRepresentable: UIViewControllerRepresentable {
         let count = urls.count
         guard count > 1 else { return }
 
-        // If selectedIndex changed from outside (e.g. user tapped indicator dot), advance smoothly
+        // Если selectedIndex изменился извне (например, по тапу на полоску индикатора)
         if !coordinator.isUserDragging && !coordinator.isTransitioning {
             let targetIndex = selectedIndex % count
             if targetIndex != coordinator.currentIndex {
@@ -136,8 +139,8 @@ private struct BackdropPagingRepresentable: UIViewControllerRepresentable {
                 coordinator.isTransitioning = true
                 pageVC.setViewControllers([targetVC], direction: direction, animated: true) { [weak coordinator] _ in
                     coordinator?.isTransitioning = false
-                    coordinator?.startTimer()
                 }
+                coordinator.startTimer()
             }
         }
 
@@ -145,7 +148,9 @@ private struct BackdropPagingRepresentable: UIViewControllerRepresentable {
         if !isHeaderVisible || !isAppActive {
             coordinator.stopTimer()
         } else if coordinator.timerTask == nil && !coordinator.isUserDragging && !coordinator.isTransitioning {
-            coordinator.startTimer()
+            DispatchQueue.main.async { [weak coordinator] in
+                coordinator?.startTimer()
+            }
         }
     }
 
@@ -193,8 +198,10 @@ private struct BackdropPagingRepresentable: UIViewControllerRepresentable {
             }
             let newIndex = currentVC.index
             currentIndex = newIndex
-            if parent.selectedIndex != newIndex {
-                parent.selectedIndex = newIndex
+            withAnimation(.easeInOut(duration: 0.25)) {
+                if parent.selectedIndex != newIndex {
+                    parent.selectedIndex = newIndex
+                }
             }
             startTimer()
         }
@@ -208,12 +215,30 @@ private struct BackdropPagingRepresentable: UIViewControllerRepresentable {
         func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
             if !decelerate {
                 isUserDragging = false
+                if let currentVC = pageViewController?.viewControllers?.first as? BackdropSlideViewController {
+                    let newIndex = currentVC.index
+                    currentIndex = newIndex
+                    withAnimation(.easeInOut(duration: 0.25)) {
+                        if parent.selectedIndex != newIndex {
+                            parent.selectedIndex = newIndex
+                        }
+                    }
+                }
                 startTimer()
             }
         }
 
         func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
             isUserDragging = false
+            if let currentVC = pageViewController?.viewControllers?.first as? BackdropSlideViewController {
+                let newIndex = currentVC.index
+                currentIndex = newIndex
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    if parent.selectedIndex != newIndex {
+                        parent.selectedIndex = newIndex
+                    }
+                }
+            }
             startTimer()
         }
 
@@ -259,18 +284,31 @@ private struct BackdropPagingRepresentable: UIViewControllerRepresentable {
                 let nextIndex = (self.currentIndex + 1) % count
                 let nextVC = self.makeSlideVC(index: nextIndex)
 
+                // 1. Сразу обновляем индекс, чтобы капсула начала сужаться в точку синхронно со стартом перелистывания
+                self.currentIndex = nextIndex
+                withAnimation(.easeInOut(duration: 0.35)) {
+                    if self.parent.selectedIndex != nextIndex {
+                        self.parent.selectedIndex = nextIndex
+                    }
+                }
+
+                // 2. Запускаем анимацию перелистывания в UIPageViewController
                 self.isTransitioning = true
                 pageVC.setViewControllers([nextVC], direction: .forward, animated: true) { [weak self] completed in
                     guard let self = self else { return }
                     self.isTransitioning = false
-                    if completed {
-                        self.currentIndex = nextIndex
-                        if self.parent.selectedIndex != nextIndex {
-                            self.parent.selectedIndex = nextIndex
+                    if !completed {
+                        if let currentVC = self.pageViewController?.viewControllers?.first as? BackdropSlideViewController {
+                            self.currentIndex = currentVC.index
+                            if self.parent.selectedIndex != currentVC.index {
+                                self.parent.selectedIndex = currentVC.index
+                            }
                         }
                     }
-                    self.startTimer()
                 }
+
+                // 3. Сразу запускаем таймер прогресса для новой активной полоски
+                self.startTimer()
             }
         }
 
