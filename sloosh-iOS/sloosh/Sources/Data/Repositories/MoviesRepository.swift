@@ -66,11 +66,22 @@ class MoviesRepository: ObservableObject {
                 return diskCached
             }
         }
-        let response = try await MoviesApi.shared.getPopularMovies(page: page)
-        let results = response.data?.results ?? []
-        popularCache[page] = results
-        await listDiskCache.save(results, key: "popular_\(page)")
-        return results
+        do {
+            let response = try await MoviesApi.shared.getPopularMovies(page: page)
+            let results = response.data?.results ?? []
+            if !results.isEmpty {
+                popularCache[page] = results
+                await listDiskCache.save(results, key: "popular_\(page)")
+            }
+            return results
+        } catch {
+            if let cached = popularCache[page] { return cached }
+            if let diskCached = await listDiskCache.load(key: "popular_\(page)") {
+                popularCache[page] = diskCached
+                return diskCached
+            }
+            throw error
+        }
     }
 
     func getTopMovies(page: Int = 1, force: Bool = false) async throws -> [MediaDto] {
@@ -81,11 +92,22 @@ class MoviesRepository: ObservableObject {
                 return diskCached
             }
         }
-        let response = try await MoviesApi.shared.getTopMovies(page: page)
-        let results = response.data?.results ?? []
-        topMoviesCache[page] = results
-        await listDiskCache.save(results, key: "topMovies_\(page)")
-        return results
+        do {
+            let response = try await MoviesApi.shared.getTopMovies(page: page)
+            let results = response.data?.results ?? []
+            if !results.isEmpty {
+                topMoviesCache[page] = results
+                await listDiskCache.save(results, key: "topMovies_\(page)")
+            }
+            return results
+        } catch {
+            if let cached = topMoviesCache[page] { return cached }
+            if let diskCached = await listDiskCache.load(key: "topMovies_\(page)") {
+                topMoviesCache[page] = diskCached
+                return diskCached
+            }
+            throw error
+        }
     }
 
     func getTopTv(page: Int = 1, force: Bool = false) async throws -> [MediaDto] {
@@ -96,11 +118,22 @@ class MoviesRepository: ObservableObject {
                 return diskCached
             }
         }
-        let response = try await MoviesApi.shared.getTopTv(page: page)
-        let results = response.data?.results ?? []
-        topTvCache[page] = results
-        await listDiskCache.save(results, key: "topTv_\(page)")
-        return results
+        do {
+            let response = try await MoviesApi.shared.getTopTv(page: page)
+            let results = response.data?.results ?? []
+            if !results.isEmpty {
+                topTvCache[page] = results
+                await listDiskCache.save(results, key: "topTv_\(page)")
+            }
+            return results
+        } catch {
+            if let cached = topTvCache[page] { return cached }
+            if let diskCached = await listDiskCache.load(key: "topTv_\(page)") {
+                topTvCache[page] = diskCached
+                return diskCached
+            }
+            throw error
+        }
     }
 
     func getCartoons(page: Int = 1, force: Bool = false) async throws -> [MediaDto] {
@@ -111,11 +144,22 @@ class MoviesRepository: ObservableObject {
                 return diskCached
             }
         }
-        let response = try await MoviesApi.shared.getCartoons(page: page)
-        let results = response.data?.results ?? []
-        cartoonsCache[page] = results
-        await listDiskCache.save(results, key: "cartoons_\(page)")
-        return results
+        do {
+            let response = try await MoviesApi.shared.getCartoons(page: page)
+            let results = response.data?.results ?? []
+            if !results.isEmpty {
+                cartoonsCache[page] = results
+                await listDiskCache.save(results, key: "cartoons_\(page)")
+            }
+            return results
+        } catch {
+            if let cached = cartoonsCache[page] { return cached }
+            if let diskCached = await listDiskCache.load(key: "cartoons_\(page)") {
+                cartoonsCache[page] = diskCached
+                return diskCached
+            }
+            throw error
+        }
     }
 
     func getPopularAnime(page: Int = 1, force: Bool = false) async throws -> [MediaDto] {
@@ -126,11 +170,22 @@ class MoviesRepository: ObservableObject {
                 return diskCached
             }
         }
-        let response = try await MoviesApi.shared.getAnime(page: page, order: "popular")
-        let results = response.data?.results ?? []
-        popularAnimeCache[page] = results
-        await listDiskCache.save(results, key: "anime_popular_\(page)")
-        return results
+        do {
+            let response = try await MoviesApi.shared.getAnime(page: page, order: "popular")
+            let results = response.data?.results ?? []
+            if !results.isEmpty {
+                popularAnimeCache[page] = results
+                await listDiskCache.save(results, key: "anime_popular_\(page)")
+            }
+            return results
+        } catch {
+            if let cached = popularAnimeCache[page] { return cached }
+            if let diskCached = await listDiskCache.load(key: "anime_popular_\(page)") {
+                popularAnimeCache[page] = diskCached
+                return diskCached
+            }
+            throw error
+        }
     }
 
     func getTopAnime(page: Int = 1, force: Bool = false) async throws -> [MediaDto] {
@@ -141,11 +196,22 @@ class MoviesRepository: ObservableObject {
                 return diskCached
             }
         }
-        let response = try await MoviesApi.shared.getAnime(page: page, order: "top")
-        let results = response.data?.results ?? []
-        topAnimeCache[page] = results
-        await listDiskCache.save(results, key: "anime_top_\(page)")
-        return results
+        do {
+            let response = try await MoviesApi.shared.getAnime(page: page, order: "top")
+            let results = response.data?.results ?? []
+            if !results.isEmpty {
+                topAnimeCache[page] = results
+                await listDiskCache.save(results, key: "anime_top_\(page)")
+            }
+            return results
+        } catch {
+            if let cached = topAnimeCache[page] { return cached }
+            if let diskCached = await listDiskCache.load(key: "anime_top_\(page)") {
+                topAnimeCache[page] = diskCached
+                return diskCached
+            }
+            throw error
+        }
     }
 
     func getTrending(page: Int = 1, force: Bool = false) async throws -> [MediaDto] {
@@ -156,11 +222,22 @@ class MoviesRepository: ObservableObject {
                 return diskCached
             }
         }
-        let response = try await MoviesApi.shared.getTrending(page: page)
-        let results = response.data?.allItems ?? response.data?.results ?? []
-        trendingCache[page] = results
-        await listDiskCache.save(results, key: "trending_\(page)")
-        return results
+        do {
+            let response = try await MoviesApi.shared.getTrending(page: page)
+            let results = response.data?.allItems ?? response.data?.results ?? []
+            if !results.isEmpty {
+                trendingCache[page] = results
+                await listDiskCache.save(results, key: "trending_\(page)")
+            }
+            return results
+        } catch {
+            if let cached = trendingCache[page] { return cached }
+            if let diskCached = await listDiskCache.load(key: "trending_\(page)") {
+                trendingCache[page] = diskCached
+                return diskCached
+            }
+            throw error
+        }
     }
 
     // MARK: - Details (two-level: memory → disk → network)
