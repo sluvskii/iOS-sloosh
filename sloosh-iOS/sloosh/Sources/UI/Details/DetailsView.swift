@@ -198,18 +198,76 @@ private struct BackdropPagingRepresentable: UIViewControllerRepresentable {
             }
             let newIndex = currentVC.index
             currentIndex = newIndex
-            withAnimation(.easeInOut(duration: 0.25)) {
-                if parent.selectedIndex != newIndex {
+            if parent.selectedIndex != newIndex {
+                withAnimation(.easeInOut(duration: 0.2)) {
                     parent.selectedIndex = newIndex
                 }
             }
             startTimer()
         }
 
-        // MARK: - UIScrollViewDelegate (Interactivity tracking)
+        // MARK: - UIScrollViewDelegate (Real-time gesture & drag tracking)
         func scrollViewWillBeginDragging(_ scrollView: UIScrollView) {
             isUserDragging = true
             stopTimer()
+        }
+
+        func scrollViewDidScroll(_ scrollView: UIScrollView) {
+            guard isUserDragging, !isTransitioning else { return }
+            let width = scrollView.bounds.width
+            guard width > 0, parent.urls.count > 1 else { return }
+            let count = parent.urls.count
+            let offset = scrollView.contentOffset.x
+            let delta = offset - width
+
+            // Как только пользователь перетянул задник более чем на 45% ширины экрана,
+            // капсула мгновенно переключается на новый задник прямо под пальцем
+            if delta > width * 0.45 {
+                let nextIndex = (currentIndex + 1) % count
+                if parent.selectedIndex != nextIndex {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        parent.selectedIndex = nextIndex
+                    }
+                }
+            } else if delta < -width * 0.45 {
+                let prevIndex = (currentIndex - 1 + count) % count
+                if parent.selectedIndex != prevIndex {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        parent.selectedIndex = prevIndex
+                    }
+                }
+            } else if abs(delta) < width * 0.35 {
+                // Если пользователь вернул палец обратно к центру
+                if parent.selectedIndex != currentIndex {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        parent.selectedIndex = currentIndex
+                    }
+                }
+            }
+        }
+
+        func scrollViewWillEndDragging(_ scrollView: UIScrollView, withVelocity velocity: CGPoint, targetContentOffset: UnsafeMutablePointer<CGPoint>) {
+            let width = scrollView.bounds.width
+            guard width > 0, parent.urls.count > 1 else { return }
+            let count = parent.urls.count
+            let targetX = targetContentOffset.pointee.x
+
+            // В момент отрыва пальца UIKit уже точно знает целевую страницу:
+            // мгновенно переключаем капсулу, не дожидаясь окончания замедления
+            let targetIndex: Int
+            if targetX > width * 1.4 {
+                targetIndex = (currentIndex + 1) % count
+            } else if targetX < width * 0.6 {
+                targetIndex = (currentIndex - 1 + count) % count
+            } else {
+                targetIndex = currentIndex
+            }
+
+            if parent.selectedIndex != targetIndex {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    parent.selectedIndex = targetIndex
+                }
+            }
         }
 
         func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
@@ -218,8 +276,8 @@ private struct BackdropPagingRepresentable: UIViewControllerRepresentable {
                 if let currentVC = pageViewController?.viewControllers?.first as? BackdropSlideViewController {
                     let newIndex = currentVC.index
                     currentIndex = newIndex
-                    withAnimation(.easeInOut(duration: 0.25)) {
-                        if parent.selectedIndex != newIndex {
+                    if parent.selectedIndex != newIndex {
+                        withAnimation(.easeInOut(duration: 0.2)) {
                             parent.selectedIndex = newIndex
                         }
                     }
@@ -233,8 +291,8 @@ private struct BackdropPagingRepresentable: UIViewControllerRepresentable {
             if let currentVC = pageViewController?.viewControllers?.first as? BackdropSlideViewController {
                 let newIndex = currentVC.index
                 currentIndex = newIndex
-                withAnimation(.easeInOut(duration: 0.25)) {
-                    if parent.selectedIndex != newIndex {
+                if parent.selectedIndex != newIndex {
+                    withAnimation(.easeInOut(duration: 0.2)) {
                         parent.selectedIndex = newIndex
                     }
                 }
