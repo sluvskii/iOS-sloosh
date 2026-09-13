@@ -110,6 +110,7 @@ func normalizedAllohaTranslationName(_ raw: String?) -> String {
     }
 
     value = value
+        .replacingOccurrences(of: "(?i)\\bHDrezka\\s+St(?:\\.|\\b)", with: "HDrezka Studio", options: .regularExpression)
         .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
         .trimmingCharacters(in: .whitespacesAndNewlines)
 
