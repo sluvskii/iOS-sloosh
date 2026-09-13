@@ -56,10 +56,16 @@ struct BackdropCarouselView: View {
     @Binding var timerProgress: CGFloat
     var isHeaderVisible: Bool = true
     
-    private let loopMultiplier = 600
+    // Stable loop multiplier using non-lazy HStack:
+    // Guarantees views are never prematurely unmounted during scroll animation,
+    // completely eliminating the glitch where the previous backdrop disappears.
+    private var loopMultiplier: Int {
+        max(16, 60 / max(urls.count, 1))
+    }
     
     @State private var scrolledId: Int?
     @State private var isInteracting: Bool = false
+    @State private var isAutoScrolling: Bool = false
     @State private var timerTask: Task<Void, Never>? = nil
     @Environment(\.scenePhase) private var scenePhase
 
@@ -82,7 +88,8 @@ struct BackdropCarouselView: View {
         
         let count = urls.count
         if count > 1 {
-            let base = (600 / 2) * count
+            let mult = max(16, 60 / max(count, 1))
+            let base = (mult / 2) * count
             let initial = base + (selectedIndex.wrappedValue % count)
             self._scrolledId = State(initialValue: initial)
         } else {
@@ -104,7 +111,7 @@ struct BackdropCarouselView: View {
                 let totalVirtualCount = urls.count * loopMultiplier
                 ScrollViewReader { proxy in
                     ScrollView(.horizontal, showsIndicators: false) {
-                        LazyHStack(spacing: 0) {
+                        HStack(spacing: 0) {
                             ForEach(0..<totalVirtualCount, id: \.self) { virtualIndex in
                                 let realIndex = virtualIndex % urls.count
                                 AsyncCachedImage(
@@ -144,19 +151,31 @@ struct BackdropCarouselView: View {
                             }
                             .onEnded { _ in
                                 isInteracting = false
-                                restartTimer()
+                                restartTimer(proxy: proxy)
                             }
                     )
                     .onChange(of: scrolledId) { _, newId in
                         guard let newId, urls.count > 1 else { return }
+                        guard !isAutoScrolling else { return }
                         let count = urls.count
                         let realIndex = ((newId % count) + count) % count
                         if realIndex != selectedIndex {
                             selectedIndex = realIndex
                         }
+                        
+                        let centerBase = (loopMultiplier / 2) * count
+                        if newId > (loopMultiplier - 4) * count || newId < 4 * count {
+                            let recenteredVirtual = centerBase + realIndex
+                            var transaction = Transaction()
+                            transaction.disablesAnimations = true
+                            withTransaction(transaction) {
+                                scrolledId = recenteredVirtual
+                                proxy.scrollTo(recenteredVirtual)
+                            }
+                        }
                     }
                     .onChange(of: selectedIndex) { _, newIndex in
-                        guard urls.count > 1 else { return }
+                        guard urls.count > 1, !isAutoScrolling else { return }
                         let count = urls.count
                         let currentVirtual = scrolledId ?? ((loopMultiplier / 2) * count + newIndex)
                         let currentReal = ((currentVirtual % count) + count) % count
@@ -179,58 +198,59 @@ struct BackdropCarouselView: View {
                         if let nextUrl = URL(string: urls[nextIndex]) {
                             ImageCache.prefetch(urls: [nextUrl])
                         }
-                        restartTimer()
+                        restartTimer(proxy: proxy)
+                    }
+                    .onAppear {
+                        let count = urls.count
+                        if count > 1 {
+                            let base = (loopMultiplier / 2) * count
+                            let target = base + (selectedIndex % count)
+                            scrolledId = target
+                        } else {
+                            scrolledId = 0
+                        }
+                        ImageCache.prefetch(urls: urls.compactMap { URL(string: $0) })
+                        restartTimer(proxy: proxy)
+                    }
+                    .onChange(of: urls.count) { _, count in
+                        if count > 1 {
+                            let base = (loopMultiplier / 2) * count
+                            let target = base + (selectedIndex % count)
+                            scrolledId = target
+                        } else {
+                            selectedIndex = 0
+                            scrolledId = 0
+                        }
+                        ImageCache.prefetch(urls: urls.compactMap { URL(string: $0) })
+                        restartTimer(proxy: proxy)
+                    }
+                    .onChange(of: isHeaderVisible) { _, visible in
+                        if visible {
+                            restartTimer(proxy: proxy)
+                        } else {
+                            stopTimer()
+                        }
+                    }
+                    .onChange(of: scenePhase) { _, phase in
+                        if phase == .active && isHeaderVisible {
+                            restartTimer(proxy: proxy)
+                        } else {
+                            stopTimer()
+                        }
                     }
                 }
             }
         }
         .frame(width: width, height: height)
-        .onAppear {
-            let count = urls.count
-            if count > 1 {
-                let base = (loopMultiplier / 2) * count
-                let target = base + (selectedIndex % count)
-                scrolledId = target
-            } else {
-                scrolledId = 0
-            }
-            ImageCache.prefetch(urls: urls.compactMap { URL(string: $0) })
-            restartTimer()
-        }
         .onDisappear {
             stopTimer()
-        }
-        .onChange(of: urls.count) { _, count in
-            if count > 1 {
-                let base = (loopMultiplier / 2) * count
-                let target = base + (selectedIndex % count)
-                scrolledId = target
-            } else {
-                selectedIndex = 0
-                scrolledId = 0
-            }
-            ImageCache.prefetch(urls: urls.compactMap { URL(string: $0) })
-            restartTimer()
-        }
-        .onChange(of: isHeaderVisible) { _, visible in
-            if visible {
-                restartTimer()
-            } else {
-                stopTimer()
-            }
-        }
-        .onChange(of: scenePhase) { _, phase in
-            if phase == .active && isHeaderVisible {
-                restartTimer()
-            } else {
-                stopTimer()
-            }
         }
     }
     
     private func stopTimer() {
         timerTask?.cancel()
         timerTask = nil
+        isAutoScrolling = false
         var transaction = Transaction()
         transaction.disablesAnimations = true
         withTransaction(transaction) {
@@ -238,9 +258,18 @@ struct BackdropCarouselView: View {
         }
     }
     
-    private func restartTimer() {
+    private func restartTimer(proxy: ScrollViewProxy) {
         stopTimer()
         guard urls.count > 1, isHeaderVisible, scenePhase == .active, !isInteracting else { return }
+        startProgressCycle(proxy: proxy)
+    }
+
+    private func startProgressCycle(proxy: ScrollViewProxy) {
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            timerProgress = 0.0
+        }
         
         withAnimation(.linear(duration: 5.0)) {
             timerProgress = 1.0
@@ -254,9 +283,38 @@ struct BackdropCarouselView: View {
             let count = urls.count
             let currentVirtual = scrolledId ?? ((loopMultiplier / 2) * count + selectedIndex)
             let nextVirtual = currentVirtual + 1
+            let nextReal = ((nextVirtual % count) + count) % count
+            
+            isAutoScrolling = true
+            
             withAnimation(.easeInOut(duration: 0.5)) {
                 scrolledId = nextVirtual
+                proxy.scrollTo(nextVirtual)
             }
+            
+            // Wait for 0.5s slide animation to complete smoothly before updating selection
+            try? await Task.sleep(nanoseconds: 550_000_000)
+            if Task.isCancelled { return }
+            
+            isAutoScrolling = false
+            if selectedIndex != nextReal {
+                selectedIndex = nextReal
+            }
+            
+            // Check if silent recentering is needed
+            let centerBase = (loopMultiplier / 2) * count
+            if nextVirtual > (loopMultiplier - 4) * count || nextVirtual < 4 * count {
+                let recenteredVirtual = centerBase + nextReal
+                var resetTransaction = Transaction()
+                resetTransaction.disablesAnimations = true
+                withTransaction(resetTransaction) {
+                    scrolledId = recenteredVirtual
+                    proxy.scrollTo(recenteredVirtual)
+                }
+            }
+            
+            guard isHeaderVisible, scenePhase == .active, urls.count > 1, !isInteracting else { return }
+            startProgressCycle(proxy: proxy)
         }
     }
 }
