@@ -883,18 +883,32 @@ class HomeViewModel: ObservableObject {
         switch category {
         case .all:
             if selectedFilter == .topRated {
-                return (try? await repo.getTopMovies(page: 1, force: false)) ?? (try? await repo.getTrending(page: 1, force: false))
+                if let top = try? await repo.getTopMovies(page: 1, force: false), !top.isEmpty {
+                    return top
+                }
+                return try? await repo.getTrending(page: 1, force: false)
             } else {
-                return (try? await repo.getTrending(page: 1, force: false)) ?? (try? await repo.getPopularMovies(page: 1, force: false))
+                if let trending = try? await repo.getTrending(page: 1, force: false), !trending.isEmpty {
+                    return trending
+                }
+                return try? await repo.getPopularMovies(page: 1, force: false)
             }
         case .movies:
-            return selectedFilter == .topRated ? (try? await repo.getTopMovies(page: 1, force: false)) : (try? await repo.getPopularMovies(page: 1, force: false))
+            if selectedFilter == .topRated {
+                return try? await repo.getTopMovies(page: 1, force: false)
+            } else {
+                return try? await repo.getPopularMovies(page: 1, force: false)
+            }
         case .tvShows:
             return try? await repo.getTopTv(page: 1, force: false)
         case .cartoons:
             return try? await repo.getCartoons(page: 1, force: false)
         case .anime:
-            return selectedFilter == .topRated ? (try? await repo.getTopAnime(page: 1, force: false)) : (try? await repo.getPopularAnime(page: 1, force: false))
+            if selectedFilter == .topRated {
+                return try? await repo.getTopAnime(page: 1, force: false)
+            } else {
+                return try? await repo.getPopularAnime(page: 1, force: false)
+            }
         }
     }
 
