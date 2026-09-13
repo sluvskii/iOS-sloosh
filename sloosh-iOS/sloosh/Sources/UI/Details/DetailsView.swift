@@ -56,14 +56,12 @@ struct BackdropCarouselView: View {
     @Binding var timerProgress: CGFloat
     var isHeaderVisible: Bool = true
     
-    // Stable loop multiplier using non-lazy HStack:
-    // Guarantees views are never prematurely unmounted during scroll animation,
-    // completely eliminating the glitch where the previous backdrop disappears.
-    private var loopMultiplier: Int {
-        max(16, 60 / max(urls.count, 1))
-    }
+    // Total repetitions in non-lazy HStack:
+    // Starts at natural offset 0 (first backdrop), advances strictly +1 slide at a time.
+    // Non-lazy HStack guarantees views are never prematurely unmounted during slide.
+    private let totalRepetitions = 20
     
-    @State private var scrolledId: Int?
+    @State private var scrolledId: Int? = 0
     @State private var isInteracting: Bool = false
     @State private var isAutoScrolling: Bool = false
     @State private var timerTask: Task<Void, Never>? = nil
@@ -85,16 +83,8 @@ struct BackdropCarouselView: View {
         self._selectedIndex = selectedIndex
         self._timerProgress = timerProgress
         self.isHeaderVisible = isHeaderVisible
-        
-        let count = urls.count
-        if count > 1 {
-            let mult = max(16, 60 / max(count, 1))
-            let base = (mult / 2) * count
-            let initial = base + (selectedIndex.wrappedValue % count)
-            self._scrolledId = State(initialValue: initial)
-        } else {
-            self._scrolledId = State(initialValue: 0)
-        }
+        let initial = urls.isEmpty ? 0 : (selectedIndex.wrappedValue % urls.count)
+        self._scrolledId = State(initialValue: initial)
     }
 
     var body: some View {
@@ -108,7 +98,7 @@ struct BackdropCarouselView: View {
                     height: height
                 )
             } else {
-                let totalVirtualCount = urls.count * loopMultiplier
+                let totalVirtualCount = urls.count * totalRepetitions
                 ScrollViewReader { proxy in
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 0) {
@@ -158,39 +148,25 @@ struct BackdropCarouselView: View {
                         guard let newId, urls.count > 1 else { return }
                         guard !isAutoScrolling else { return }
                         let count = urls.count
-                        let realIndex = ((newId % count) + count) % count
+                        let realIndex = newId % count
                         if realIndex != selectedIndex {
                             selectedIndex = realIndex
-                        }
-                        
-                        let centerBase = (loopMultiplier / 2) * count
-                        if newId > (loopMultiplier - 4) * count || newId < 4 * count {
-                            let recenteredVirtual = centerBase + realIndex
-                            var transaction = Transaction()
-                            transaction.disablesAnimations = true
-                            withTransaction(transaction) {
-                                scrolledId = recenteredVirtual
-                                proxy.scrollTo(recenteredVirtual)
-                            }
                         }
                     }
                     .onChange(of: selectedIndex) { _, newIndex in
                         guard urls.count > 1, !isAutoScrolling else { return }
                         let count = urls.count
-                        let currentVirtual = scrolledId ?? ((loopMultiplier / 2) * count + newIndex)
-                        let currentReal = ((currentVirtual % count) + count) % count
+                        let current = scrolledId ?? 0
+                        let currentReal = current % count
                         
                         if currentReal != newIndex {
-                            var diff = newIndex - currentReal
-                            if diff > count / 2 {
-                                diff -= count
-                            } else if diff < -count / 2 {
-                                diff += count
-                            }
-                            let targetVirtual = currentVirtual + diff
-                            withAnimation(.easeInOut(duration: 0.4)) {
-                                scrolledId = targetVirtual
-                                proxy.scrollTo(targetVirtual)
+                            let diff = newIndex - currentReal
+                            let target = current + diff
+                            if target >= 0 && target < totalVirtualCount {
+                                withAnimation(.easeInOut(duration: 0.4)) {
+                                    scrolledId = target
+                                    proxy.scrollTo(target)
+                                }
                             }
                         }
                         
@@ -201,26 +177,16 @@ struct BackdropCarouselView: View {
                         restartTimer(proxy: proxy)
                     }
                     .onAppear {
-                        let count = urls.count
-                        if count > 1 {
-                            let base = (loopMultiplier / 2) * count
-                            let target = base + (selectedIndex % count)
-                            scrolledId = target
-                        } else {
-                            scrolledId = 0
-                        }
+                        let initial = selectedIndex % urls.count
+                        scrolledId = initial
+                        proxy.scrollTo(initial)
                         ImageCache.prefetch(urls: urls.compactMap { URL(string: $0) })
                         restartTimer(proxy: proxy)
                     }
-                    .onChange(of: urls.count) { _, count in
-                        if count > 1 {
-                            let base = (loopMultiplier / 2) * count
-                            let target = base + (selectedIndex % count)
-                            scrolledId = target
-                        } else {
-                            selectedIndex = 0
-                            scrolledId = 0
-                        }
+                    .onChange(of: urls.count) { _, _ in
+                        selectedIndex = 0
+                        scrolledId = 0
+                        proxy.scrollTo(0)
                         ImageCache.prefetch(urls: urls.compactMap { URL(string: $0) })
                         restartTimer(proxy: proxy)
                     }
@@ -281,9 +247,9 @@ struct BackdropCarouselView: View {
             guard isHeaderVisible, scenePhase == .active, urls.count > 1, !isInteracting else { return }
             
             let count = urls.count
-            let currentVirtual = scrolledId ?? ((loopMultiplier / 2) * count + selectedIndex)
-            let nextVirtual = currentVirtual + 1
-            let nextReal = ((nextVirtual % count) + count) % count
+            let current = scrolledId ?? selectedIndex
+            let nextVirtual = current + 1
+            let nextReal = nextVirtual % count
             
             isAutoScrolling = true
             
@@ -301,15 +267,13 @@ struct BackdropCarouselView: View {
                 selectedIndex = nextReal
             }
             
-            // Check if silent recentering is needed
-            let centerBase = (loopMultiplier / 2) * count
-            if nextVirtual > (loopMultiplier - 4) * count || nextVirtual < 4 * count {
-                let recenteredVirtual = centerBase + nextReal
+            // If nearing end of totalRepetitions pool, silently reset to nextReal
+            if nextVirtual >= (totalRepetitions - 1) * count {
                 var resetTransaction = Transaction()
                 resetTransaction.disablesAnimations = true
                 withTransaction(resetTransaction) {
-                    scrolledId = recenteredVirtual
-                    proxy.scrollTo(recenteredVirtual)
+                    scrolledId = nextReal
+                    proxy.scrollTo(nextReal)
                 }
             }
             
