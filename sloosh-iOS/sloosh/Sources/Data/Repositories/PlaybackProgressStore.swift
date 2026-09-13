@@ -721,8 +721,8 @@ public final class PlaybackProgressStore: ObservableObject {
         let models = (try? context.fetch(descriptor)) ?? []
         var cache: [String: String] = [:]
         for m in models {
-            if let vo = m.voiceover, !vo.isEmpty {
-                cache[m.userSourceKey] = vo
+            if !m.voiceover.isEmpty {
+                cache[m.userSourceKey] = m.voiceover
             }
         }
         lastVoiceoverCache = cache
@@ -872,21 +872,6 @@ public final class PlaybackProgressStore: ObservableObject {
         return loadLastEpisode(mediaKey: "kp_\(kpId)")
     }
 
-    public func saveLastPlayed(kpId: Int, season: Int?, episode: Int?) {
-        if kpId > 0 {
-            saveLastPlayed(mediaKey: "kp_\(kpId)", season: season, episode: episode)
-        }
-    }
-
-    public func loadLastSeason(kpId: Int) -> Int? {
-        guard kpId > 0 else { return nil }
-        return loadLastSeason(mediaKey: "kp_\(kpId)")
-    }
-
-    public func loadLastEpisode(kpId: Int) -> Int? {
-        guard kpId > 0 else { return nil }
-        return loadLastEpisode(mediaKey: "kp_\(kpId)")
-    }
 
     public func syncRemoteProgressToLocal(_ remoteRecords: [PlaybackProgressRecord], userId: String) async {
         guard !userId.isEmpty else { return }
