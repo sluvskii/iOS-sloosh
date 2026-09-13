@@ -12,6 +12,7 @@ class MoviesRepository: ObservableObject {
     private var cartoonsCache: [Int: [MediaDto]] = [:]
     private var popularAnimeCache: [Int: [MediaDto]] = [:]
     private var topAnimeCache: [Int: [MediaDto]] = [:]
+    private var trendingCache: [Int: [MediaDto]] = [:]
     private var episodeCache: [String: TvEpisodeDetailsDto] = [:]
     private var seasonCache: [String: TvSeasonDto] = [:]
     private var memoryWarningToken: Any?
@@ -43,6 +44,7 @@ class MoviesRepository: ObservableObject {
         cartoonsCache.removeAll()
         popularAnimeCache.removeAll()
         topAnimeCache.removeAll()
+        trendingCache.removeAll()
         episodeCache.removeAll()
         seasonCache.removeAll()
         detailsMemory.removeAll()
@@ -143,6 +145,21 @@ class MoviesRepository: ObservableObject {
         let results = response.data?.results ?? []
         topAnimeCache[page] = results
         await listDiskCache.save(results, key: "anime_top_\(page)")
+        return results
+    }
+
+    func getTrending(page: Int = 1, force: Bool = false) async throws -> [MediaDto] {
+        if !force {
+            if let cached = trendingCache[page] { return cached }
+            if let diskCached = await listDiskCache.load(key: "trending_\(page)") {
+                trendingCache[page] = diskCached
+                return diskCached
+            }
+        }
+        let response = try await MoviesApi.shared.getTrending(page: page)
+        let results = response.data?.allItems ?? response.data?.results ?? []
+        trendingCache[page] = results
+        await listDiskCache.save(results, key: "trending_\(page)")
         return results
     }
 

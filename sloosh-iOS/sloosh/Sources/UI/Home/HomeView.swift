@@ -867,14 +867,33 @@ class HomeViewModel: ObservableObject {
             let key = HomeCacheKey(category: cat, filter: selectedFilter, searchFilters: searchFilters)
             if cachedItems[key] == nil {
                 switch cat {
-                case .all, .movies:
-                    _ = try? await MoviesRepository.shared.getPopularMovies(page: 1)
+                case .all:
+                    if selectedFilter == .popular {
+                        _ = try? await MoviesRepository.shared.getTrending(page: 1)
+                        _ = try? await MoviesRepository.shared.getCartoons(page: 1)
+                        _ = try? await MoviesRepository.shared.getPopularAnime(page: 1)
+                    } else {
+                        _ = try? await MoviesRepository.shared.getTopMovies(page: 1)
+                        _ = try? await MoviesRepository.shared.getTopTv(page: 1)
+                        _ = try? await MoviesRepository.shared.getCartoons(page: 1)
+                        _ = try? await MoviesRepository.shared.getTopAnime(page: 1)
+                    }
+                case .movies:
+                    if selectedFilter == .popular {
+                        _ = try? await MoviesRepository.shared.getPopularMovies(page: 1)
+                    } else {
+                        _ = try? await MoviesRepository.shared.getTopMovies(page: 1)
+                    }
                 case .tvShows:
                     _ = try? await MoviesRepository.shared.getTopTv(page: 1)
                 case .cartoons:
-                    _ = try? await MoviesRepository.shared.getTopMovies(page: 1)
+                    _ = try? await MoviesRepository.shared.getCartoons(page: 1)
                 case .anime:
-                    _ = try? await MoviesRepository.shared.getPopularAnime(page: 1)
+                    if selectedFilter == .popular {
+                        _ = try? await MoviesRepository.shared.getPopularAnime(page: 1)
+                    } else {
+                        _ = try? await MoviesRepository.shared.getTopAnime(page: 1)
+                    }
                 }
             }
         }
@@ -883,7 +902,41 @@ class HomeViewModel: ObservableObject {
     private func fetchPage(_ cursor: InfiniteCursor, category: HomeCategory, filter: HomeFilter, force: Bool = false) async throws -> [MediaDto] {
         if cursor.phase == .original {
             switch category {
-            case .all, .movies:
+            case .all:
+                switch filter {
+                case .popular:
+                    async let trendingTask = MoviesRepository.shared.getTrending(page: cursor.page, force: force)
+                    async let cartoonsTask = MoviesRepository.shared.getCartoons(page: cursor.page, force: force)
+                    async let animeTask = MoviesRepository.shared.getPopularAnime(page: cursor.page, force: force)
+
+                    let trending = (try? await trendingTask) ?? []
+                    let cartoons = (try? await cartoonsTask) ?? []
+                    let anime = (try? await animeTask) ?? []
+
+                    if trending.isEmpty && cartoons.isEmpty && anime.isEmpty {
+                        return try await MoviesRepository.shared.getPopularMovies(page: cursor.page, force: force)
+                    } else {
+                        return interleaveMedia(primary: trending, secondary1: cartoons, secondary2: anime)
+                    }
+                case .topRated:
+                    async let moviesTask = MoviesRepository.shared.getTopMovies(page: cursor.page, force: force)
+                    async let tvTask = MoviesRepository.shared.getTopTv(page: cursor.page, force: force)
+                    async let cartoonsTask = MoviesRepository.shared.getCartoons(page: cursor.page, force: force)
+                    async let animeTask = MoviesRepository.shared.getTopAnime(page: cursor.page, force: force)
+
+                    let movies = (try? await moviesTask) ?? []
+                    let tv = (try? await tvTask) ?? []
+                    let cartoons = (try? await cartoonsTask) ?? []
+                    let anime = (try? await animeTask) ?? []
+
+                    let interleaved = interleaveFour(list1: movies, list2: tv, list3: cartoons, list4: anime)
+                    if interleaved.isEmpty {
+                        return try await MoviesRepository.shared.getTopMovies(page: cursor.page, force: force)
+                    } else {
+                        return interleaved
+                    }
+                }
+            case .movies:
                 switch filter {
                 case .popular:
                     return try await MoviesRepository.shared.getPopularMovies(page: cursor.page, force: force)
@@ -927,6 +980,63 @@ class HomeViewModel: ObservableObject {
             let response = try await MoviesRepository.shared.searchMoviesResponse(query: "", page: cursor.page, filters: mergedFilters)
             return response.results ?? []
         }
+    }
+
+    private func interleaveMedia(primary: [MediaDto], secondary1: [MediaDto], secondary2: [MediaDto]) -> [MediaDto] {
+        var result: [MediaDto] = []
+        var seenIds = Set<String>()
+
+        func appendUnique(_ item: MediaDto) {
+            let id = item.id
+            if !id.isEmpty && !seenIds.contains(id) {
+                seenIds.insert(id)
+                result.append(item)
+            }
+        }
+
+        var pIdx = 0
+        var s1Idx = 0
+        var s2Idx = 0
+
+        while pIdx < primary.count || s1Idx < secondary1.count || s2Idx < secondary2.count {
+            for _ in 0..<4 {
+                if pIdx < primary.count {
+                    appendUnique(primary[pIdx])
+                    pIdx += 1
+                }
+            }
+            if s1Idx < secondary1.count {
+                appendUnique(secondary1[s1Idx])
+                s1Idx += 1
+            }
+            if s2Idx < secondary2.count {
+                appendUnique(secondary2[s2Idx])
+                s2Idx += 1
+            }
+        }
+        return result
+    }
+
+    private func interleaveFour(list1: [MediaDto], list2: [MediaDto], list3: [MediaDto], list4: [MediaDto]) -> [MediaDto] {
+        var result: [MediaDto] = []
+        var seenIds = Set<String>()
+
+        func appendUnique(_ item: MediaDto) {
+            let id = item.id
+            if !id.isEmpty && !seenIds.contains(id) {
+                seenIds.insert(id)
+                result.append(item)
+            }
+        }
+
+        let maxSize = max(list1.count, list2.count, list3.count, list4.count)
+        for i in 0..<maxSize {
+            if i < list1.count { appendUnique(list1[i]) }
+            if i < list2.count { appendUnique(list2[i]) }
+            if i < list3.count { appendUnique(list3[i]) }
+            if i < list4.count { appendUnique(list4[i]) }
+        }
+        return result
     }
 
     private func filterValidItems(_ items: [MediaDto]) -> [MediaDto] {
