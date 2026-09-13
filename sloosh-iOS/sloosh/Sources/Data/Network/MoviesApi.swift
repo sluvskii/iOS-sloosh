@@ -162,6 +162,14 @@ class MoviesApi {
         }
         return try await performRequest(endpoint: "api/v1/anime", queryItems: queryItems)
     }
+
+    func getTrending(page: Int = 1, window: String = "week") async throws -> ApiEnvelope<MediaResponse> {
+        var queryItems = [URLQueryItem(name: "page", value: String(page))]
+        if !window.isEmpty {
+            queryItems.append(URLQueryItem(name: "window", value: window))
+        }
+        return try await performRequest(endpoint: "api/v1/trending", queryItems: queryItems)
+    }
     
     func getDetails(id: String, type: String? = nil) async throws -> ApiEnvelope<MediaDetailsDto> {
         let cleanId = id.replacingOccurrences(of: "tv_", with: "").replacingOccurrences(of: "movie_", with: "")
