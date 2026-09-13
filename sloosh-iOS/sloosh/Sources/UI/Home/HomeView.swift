@@ -207,22 +207,7 @@ struct HomeCategoryContentView: View {
                 // Invisible anchor used to scroll-to-top on tab switch
                 Color.clear.frame(height: 0).id("home-scroll-top")
 
-                if isLoading || items == nil {
-                    LazyVGrid(columns: columns, spacing: spacing) {
-                        ForEach(0..<12, id: \.self) { _ in
-                            MoviePosterCardPlaceholder()
-                        }
-                    }
-                    .padding(.horizontal, padding)
-                    .padding(.bottom, padding)
-                } else if let items = items, items.isEmpty {
-                    HomeEmptyState(
-                        category: category,
-                        filter: viewModel.selectedFilter
-                    )
-                    .containerRelativeFrame(.vertical)
-                    .padding(.horizontal, 20)
-                } else if let items = items {
+                if let items = items, !items.isEmpty {
                     LazyVGrid(columns: columns, spacing: spacing) {
                         ForEach(items) { movie in
                             MovieDetailsNavigationLink(movie: movie, navigationTransition: navigationTransition)
@@ -253,6 +238,21 @@ struct HomeCategoryContentView: View {
                         }
                     }
                     .padding(.horizontal, padding)
+                } else if isLoading || items == nil {
+                    LazyVGrid(columns: columns, spacing: spacing) {
+                        ForEach(0..<12, id: \.self) { _ in
+                            MoviePosterCardPlaceholder()
+                        }
+                    }
+                    .padding(.horizontal, padding)
+                    .padding(.bottom, padding)
+                } else {
+                    HomeEmptyState(
+                        category: category,
+                        filter: viewModel.selectedFilter
+                    )
+                    .containerRelativeFrame(.vertical)
+                    .padding(.horizontal, 20)
                 }
             }
             .coordinateSpace(name: "scroll_\(category.rawValue)")
@@ -283,7 +283,7 @@ struct HomeCategoryContentView: View {
             }
             .scrollIndicators(.hidden)
             .refreshable {
-                await viewModel.applyCurrentSelection(force: true)
+                await viewModel.refresh(category: category)
             }
         }
     }
@@ -768,7 +768,6 @@ class HomeViewModel: ObservableObject {
         let key = HomeCacheKey(category: selectedCategory, filter: selectedFilter, searchFilters: searchFilters)
 
         if force {
-            cachedItems[key] = nil
             cachedCursors[key] = nil
             cachedCanLoadMore[key] = true
         } else if !hasPerformedInitialLoad {
@@ -778,6 +777,13 @@ class HomeViewModel: ObservableObject {
         }
 
         await loadData(for: selectedCategory, force: force)
+    }
+
+    func refresh(category: HomeCategory) async {
+        let key = HomeCacheKey(category: category, filter: selectedFilter, searchFilters: searchFilters)
+        cachedCursors[key] = nil
+        cachedCanLoadMore[key] = true
+        await loadData(for: category, force: true)
     }
     
     private func initialCursor(for key: HomeCacheKey) -> InfiniteCursor {
@@ -803,16 +809,20 @@ class HomeViewModel: ObservableObject {
         let key = HomeCacheKey(category: cat, filter: selectedFilter, searchFilters: searchFilters)
 
         let currentCanLoadMore = cachedCanLoadMore[key] ?? true
-        guard currentCanLoadMore else { return }
+        guard currentCanLoadMore || force else { return }
 
         let isCurrentlyLoading = isLoading[key] ?? false
         let isCurrentlyLoadingMore = isLoadingMore[key] ?? false
-        guard !isCurrentlyLoading, !isCurrentlyLoadingMore else { return }
+        if !force {
+            guard !isCurrentlyLoading, !isCurrentlyLoadingMore else { return }
+        } else {
+            guard !isCurrentlyLoading else { return }
+        }
 
         let existingItems = cachedItems[key] ?? []
         if existingItems.isEmpty {
             isLoading[key] = true
-        } else {
+        } else if !force {
             isLoadingMore[key] = true
         }
 
@@ -823,8 +833,8 @@ class HomeViewModel: ObservableObject {
 
         do {
             var newItems: [MediaDto] = []
-            var cursor = cachedCursors[key] ?? initialCursor(for: key)
-            var canLoad = currentCanLoadMore
+            var cursor = (force ? nil : cachedCursors[key]) ?? initialCursor(for: key)
+            var canLoad = force ? true : currentCanLoadMore
 
             while newItems.isEmpty && canLoad {
                 let fetched = try await fetchPage(cursor, category: cat, filter: selectedFilter, force: force && cursor.page == 1)
@@ -843,11 +853,16 @@ class HomeViewModel: ObservableObject {
                 cursor.page += 1
             }
 
-            let currentItems = cachedItems[key] ?? []
-            let existingIds = Set(currentItems.map { $0.id })
-            let uniqueNewItems = newItems.filter { !existingIds.contains($0.id) }
-
-            cachedItems[key] = currentItems + uniqueNewItems
+            if force {
+                if !newItems.isEmpty {
+                    cachedItems[key] = newItems
+                }
+            } else {
+                let currentItems = cachedItems[key] ?? []
+                let existingIds = Set(currentItems.map { $0.id })
+                let uniqueNewItems = newItems.filter { !existingIds.contains($0.id) }
+                cachedItems[key] = currentItems + uniqueNewItems
+            }
             cachedCursors[key] = cursor
             cachedCanLoadMore[key] = canLoad
 
@@ -857,6 +872,29 @@ class HomeViewModel: ObservableObject {
             }
         } catch {
             print("Failed to load category data: \(error)")
+            if (cachedItems[key] == nil || cachedItems[key]?.isEmpty == true), let fallback = await loadFallbackFromDisk(for: cat) {
+                cachedItems[key] = fallback
+            }
+        }
+    }
+
+    private func loadFallbackFromDisk(for category: HomeCategory) async -> [MediaDto]? {
+        let repo = MoviesRepository.shared
+        switch category {
+        case .all:
+            if selectedFilter == .topRated {
+                return (try? await repo.getTopMovies(page: 1, force: false)) ?? (try? await repo.getTrending(page: 1, force: false))
+            } else {
+                return (try? await repo.getTrending(page: 1, force: false)) ?? (try? await repo.getPopularMovies(page: 1, force: false))
+            }
+        case .movies:
+            return selectedFilter == .topRated ? (try? await repo.getTopMovies(page: 1, force: false)) : (try? await repo.getPopularMovies(page: 1, force: false))
+        case .tvShows:
+            return try? await repo.getTopTv(page: 1, force: false)
+        case .cartoons:
+            return try? await repo.getCartoons(page: 1, force: false)
+        case .anime:
+            return selectedFilter == .topRated ? (try? await repo.getTopAnime(page: 1, force: false)) : (try? await repo.getPopularAnime(page: 1, force: false))
         }
     }
 
