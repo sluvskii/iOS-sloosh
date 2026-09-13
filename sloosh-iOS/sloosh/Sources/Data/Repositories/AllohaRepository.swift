@@ -460,65 +460,122 @@ final class AllohaRepository: @unchecked Sendable {
         return URLSession(configuration: configuration, delegate: delegate, delegateQueue: nil)
     }()
     
-    func fetchByKpId(kpId: Int, tmdbId: Int? = nil) async throws -> AllohaApiResult {
+    func fetchByKpId(
+        kpId: Int,
+        tmdbId: Int? = nil,
+        imdbId: String? = nil,
+        title: String? = nil,
+        originalTitle: String? = nil,
+        year: Int? = nil
+    ) async throws -> AllohaApiResult {
         let cacheKey = kpId > 0 ? kpId : (tmdbId ?? 0)
-        let cached = cacheQueue.sync { catalogCache[cacheKey] }
-        if let cached = cached, cached.expiresAt > Date() {
-            return cached.result
+        if cacheKey > 0 {
+            let cached = cacheQueue.sync { catalogCache[cacheKey] }
+            if let cached = cached, cached.expiresAt > Date() {
+                return cached.result
+            }
         }
 
-        // Try KP ID first if positive
-        if kpId > 0 {
-            do {
-                let result = try await performAllohaQuery(param: "kp", value: String(kpId))
+        func saveToCache(_ result: AllohaApiResult) {
+            if cacheKey > 0 {
                 cacheQueue.async(flags: .barrier) { [weak self] in
                     guard let self = self else { return }
                     self.catalogCache[cacheKey] = (result: result, expiresAt: Date().addingTimeInterval(self.cacheTtl))
                 }
-                return result
-            } catch {
-                if tmdbId == nil || tmdbId == 0 {
-                    throw error
-                }
             }
         }
 
-        // Fallback to TMDB ID if available
-        if let tmdb = tmdbId, tmdb > 0 {
-            let result = try await performAllohaQuery(param: "tmdb", value: String(tmdb))
-            cacheQueue.async(flags: .barrier) { [weak self] in
-                guard let self = self else { return }
-                self.catalogCache[cacheKey] = (result: result, expiresAt: Date().addingTimeInterval(self.cacheTtl))
+        // 1. Try KP ID first if positive
+        if kpId > 0 {
+            if let result = try? await performAllohaQuery(params: ["kp": String(kpId)]) {
+                saveToCache(result)
+                return result
             }
-            return result
+        }
+
+        // 2. Fallback to TMDB ID if available
+        if let tmdb = tmdbId, tmdb > 0 {
+            if let result = try? await performAllohaQuery(params: ["tmdb": String(tmdb)]) {
+                saveToCache(result)
+                return result
+            }
+        }
+
+        // 3. Fallback to IMDB ID if available (crucial when provider has id_tmdb = null)
+        if let imdb = imdbId?.trimmingCharacters(in: .whitespacesAndNewlines), !imdb.isEmpty {
+            if let result = try? await performAllohaQuery(params: ["imdb": imdb]) {
+                saveToCache(result)
+                return result
+            }
+        }
+
+        // 4. Fallback to Russian title + year
+        if let cleanTitle = title?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !cleanTitle.isEmpty,
+           !cleanTitle.hasPrefix("Без названия") {
+            if let yr = year, yr > 1900 {
+                if let result = try? await performAllohaQuery(params: ["name": cleanTitle, "year": String(yr)]) {
+                    saveToCache(result)
+                    return result
+                }
+            }
+            if let result = try? await performAllohaQuery(params: ["name": cleanTitle]) {
+                saveToCache(result)
+                return result
+            }
+        }
+
+        // 5. Fallback to Original title + year
+        if let cleanOrig = originalTitle?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !cleanOrig.isEmpty,
+           cleanOrig != title {
+            if let yr = year, yr > 1900 {
+                if let result = try? await performAllohaQuery(params: ["name": cleanOrig, "year": String(yr)]) {
+                    saveToCache(result)
+                    return result
+                }
+            }
+            if let result = try? await performAllohaQuery(params: ["name": cleanOrig]) {
+                saveToCache(result)
+                return result
+            }
         }
 
         throw URLError(.badURL)
     }
 
-    func fetchMedia(kpId: Int?, tmdbId: Int?, title: String? = nil) async throws -> AllohaApiResult {
+    func fetchMedia(
+        kpId: Int?,
+        tmdbId: Int?,
+        imdbId: String? = nil,
+        title: String? = nil,
+        originalTitle: String? = nil,
+        year: Int? = nil
+    ) async throws -> AllohaApiResult {
         let validKp = (kpId ?? 0) > 0 ? (kpId ?? 0) : 0
         let validTmdb = (tmdbId ?? 0) > 0 ? tmdbId : nil
-        if validKp > 0 || validTmdb != nil {
-            do {
-                return try await fetchByKpId(kpId: validKp, tmdbId: validTmdb)
-            } catch {
-                if let title = title, !title.isEmpty, !title.hasPrefix("Без названия") {
-                    return try await performAllohaQuery(param: "name", value: title)
-                }
-                throw error
-            }
-        }
-        if let title = title, !title.isEmpty, !title.hasPrefix("Без названия") {
-            return try await performAllohaQuery(param: "name", value: title)
-        }
-        throw URLError(.badURL)
+        return try await fetchByKpId(
+            kpId: validKp,
+            tmdbId: validTmdb,
+            imdbId: imdbId,
+            title: title,
+            originalTitle: originalTitle,
+            year: year
+        )
     }
 
     private func performAllohaQuery(param: String, value: String) async throws -> AllohaApiResult {
-        guard let encodedToken = token.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
-              let encodedVal = value.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
-              let url = URL(string: "https://api.alloha.tv/?token=\(encodedToken)&\(param)=\(encodedVal)") else {
+        return try await performAllohaQuery(params: [param: value])
+    }
+
+    private func performAllohaQuery(params: [String: String]) async throws -> AllohaApiResult {
+        var queryItems = [URLQueryItem(name: "token", value: token)]
+        for (key, val) in params {
+            queryItems.append(URLQueryItem(name: key, value: val))
+        }
+        var comps = URLComponents(string: "https://api.alloha.tv/")
+        comps.queryItems = queryItems
+        guard let url = comps.url else {
             throw URLError(.badURL)
         }
         
@@ -533,6 +590,7 @@ final class AllohaRepository: @unchecked Sendable {
         
         // Custom parsing to match Android's manual JSON parsing
         guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let status = json["status"] as? String, status == "success",
               let dataObj = json["data"] as? [String: Any] else {
             throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: [], debugDescription: "Invalid JSON structure"))
         }

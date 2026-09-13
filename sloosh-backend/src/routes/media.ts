@@ -330,8 +330,21 @@ mediaRouter.get("/tv/:id/season/:season/episode/:episode", async (c) => {
 
 // Helper to attach Alloha streams & normalized IDs
 async function attachAllohaAndIds(details: MediaDetailsDto, tmdbId: number) {
-  const allohaInfo = await resolveAlloha(tmdbId)
-  if (allohaInfo.kpId || allohaInfo.imdbId) {
+  const imdbId = details.externalIds?.imdb || details.ids?.imdb
+  const kpId = details.externalIds?.kp || details.ids?.kp
+  const title = details.title || details.name
+  const originalTitle = details.originalTitle || details.original_title
+  const year = details.year
+
+  const allohaInfo = await resolveAlloha(tmdbId, {
+    imdbId,
+    kpId,
+    title,
+    originalTitle,
+    year,
+  })
+
+  if (allohaInfo.kpId || allohaInfo.imdbId || allohaInfo.iframeUrl) {
     details.alloha = allohaInfo
     if (!details.externalIds) details.externalIds = {}
     if (allohaInfo.kpId) details.externalIds.kp = allohaInfo.kpId
@@ -345,7 +358,7 @@ async function attachAllohaAndIds(details: MediaDetailsDto, tmdbId: number) {
 }
 
 async function handleTvDetails(id: number, isKp: boolean): Promise<MediaDetailsDto> {
-  const cacheKey = `tv:v5:${isKp ? "kp_" : ""}${id}`
+  const cacheKey = `tv:v6:${isKp ? "kp_" : ""}${id}`
   const cached = getCached<MediaDetailsDto>(detailsCache, cacheKey)
   if (cached) return cached
 
@@ -379,7 +392,7 @@ async function handleTvDetails(id: number, isKp: boolean): Promise<MediaDetailsD
 }
 
 async function handleMovieDetails(id: number, isKp: boolean): Promise<MediaDetailsDto> {
-  const cacheKey = `movie:v5:${isKp ? "kp_" : ""}${id}`
+  const cacheKey = `movie:v6:${isKp ? "kp_" : ""}${id}`
   const cached = getCached<MediaDetailsDto>(detailsCache, cacheKey)
   if (cached) return cached
 

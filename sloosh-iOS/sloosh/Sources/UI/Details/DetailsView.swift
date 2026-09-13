@@ -877,10 +877,12 @@ struct DetailsView: View {
 
         let kpId = details.ids?.kp ?? details.externalIds?.kp ?? 0
         let tmdbId = details.externalIds?.tmdb ?? details.ids?.tmdb ?? Int(details.id ?? "")
-        guard kpId > 0 || (tmdbId ?? 0) > 0 else { return }
+        let imdbId = details.externalIds?.imdb ?? details.ids?.imdb
+        let title = details.title ?? details.originalTitle ?? ""
+        guard kpId > 0 || (tmdbId ?? 0) > 0 || imdbId != nil || !title.isEmpty else { return }
 
         sourceSheetSourceID = "playBtn"
-        sourceSheetTitle = details.title ?? details.originalTitle ?? ""
+        sourceSheetTitle = title
         sourceSheetDetent = .medium
         sourceSheetMode = .play
         viewModel.prepareSourceSheet(kpId: kpId, tmdbId: tmdbId)
@@ -888,14 +890,23 @@ struct DetailsView: View {
 
         sourceFetchTask?.cancel()
         sourceFetchTask = Task {
-            await viewModel.fetchSources(kpId: kpId, tmdbId: tmdbId, title: sourceSheetTitle)
+            await viewModel.fetchSources(
+                kpId: kpId,
+                tmdbId: tmdbId,
+                imdbId: imdbId,
+                title: sourceSheetTitle,
+                originalTitle: details.originalTitle,
+                year: details.year
+            )
         }
     }
 
     private func handleEpisodeSelection(details: MediaDetailsDto, season: Int, episode: Int) {
         let kpId = details.ids?.kp ?? details.externalIds?.kp ?? 0
         let tmdbId = details.externalIds?.tmdb ?? details.ids?.tmdb ?? Int(details.id ?? "")
-        guard kpId > 0 || (tmdbId ?? 0) > 0 else { return }
+        let imdbId = details.externalIds?.imdb ?? details.ids?.imdb
+        let title = details.title ?? details.originalTitle ?? ""
+        guard kpId > 0 || (tmdbId ?? 0) > 0 || imdbId != nil || !title.isEmpty else { return }
 
         PlaybackProgressStore.shared.saveLastPlayed(
             kpId: kpId > 0 ? kpId : (tmdbId ?? 0),
@@ -904,7 +915,7 @@ struct DetailsView: View {
         )
 
         sourceSheetSourceID = "playBtn"
-        sourceSheetTitle = details.title ?? details.originalTitle ?? ""
+        sourceSheetTitle = title
         sourceSheetDetent = .medium
         sourceSheetMode = .play
         viewModel.prepareSourceSheet(kpId: kpId, tmdbId: tmdbId)
@@ -912,7 +923,14 @@ struct DetailsView: View {
 
         sourceFetchTask?.cancel()
         sourceFetchTask = Task {
-            await viewModel.fetchSources(kpId: kpId, tmdbId: tmdbId, title: sourceSheetTitle)
+            await viewModel.fetchSources(
+                kpId: kpId,
+                tmdbId: tmdbId,
+                imdbId: imdbId,
+                title: sourceSheetTitle,
+                originalTitle: details.originalTitle,
+                year: details.year
+            )
         }
     }
 
@@ -1045,9 +1063,11 @@ struct DetailsView: View {
     private func startDownloadWithPreferredTranslation(details: MediaDetailsDto, season: Int?, episode: Int?) {
         let kpId = details.ids?.kp ?? details.externalIds?.kp ?? 0
         let tmdbId = details.externalIds?.tmdb ?? details.ids?.tmdb ?? Int(details.id ?? "")
-        guard kpId > 0 || (tmdbId ?? 0) > 0 else { return }
+        let imdbId = details.externalIds?.imdb ?? details.ids?.imdb
+        let title = details.title ?? details.originalTitle ?? ""
+        guard kpId > 0 || (tmdbId ?? 0) > 0 || imdbId != nil || !title.isEmpty else { return }
         
-        sourceSheetTitle = details.title ?? details.originalTitle ?? ""
+        sourceSheetTitle = title
         sourceSheetDetent = .medium
         sourceSheetMode = .download
         viewModel.prepareSourceSheet(kpId: kpId, tmdbId: tmdbId)
@@ -1055,7 +1075,14 @@ struct DetailsView: View {
 
         sourceFetchTask?.cancel()
         sourceFetchTask = Task {
-            await viewModel.fetchSources(kpId: kpId, tmdbId: tmdbId, title: sourceSheetTitle)
+            await viewModel.fetchSources(
+                kpId: kpId,
+                tmdbId: tmdbId,
+                imdbId: imdbId,
+                title: sourceSheetTitle,
+                originalTitle: details.originalTitle,
+                year: details.year
+            )
         }
     }
 
@@ -2289,7 +2316,15 @@ struct EpisodeDetailsSheet: View {
         Task {
             let title = details.title ?? details.originalTitle ?? ""
             let tmdbId = details.externalIds?.tmdb ?? details.ids?.tmdb ?? Int(details.id ?? "")
-            await vm.fetchSources(kpId: kpId, tmdbId: tmdbId, title: title)
+            let imdbId = details.externalIds?.imdb ?? details.ids?.imdb
+            await vm.fetchSources(
+                kpId: kpId,
+                tmdbId: tmdbId,
+                imdbId: imdbId,
+                title: title,
+                originalTitle: details.originalTitle,
+                year: details.year
+            )
             guard let result = vm.sourceResultWrapper?.allohaResult else { return }
             
             let savedVoiceover = PlaybackProgressStore.shared.loadLastVoiceover(kpId: kpId, source: "alloha")
@@ -3094,9 +3129,17 @@ class DetailsViewModel: ObservableObject {
             let isTv = details?.type == "tv" || inferredType == "tv"
             let effectiveKpId = details?.ids?.kp ?? details?.externalIds?.kp ?? (id.hasPrefix("kp_") ? Int(id.replacingOccurrences(of: "kp_", with: "")) : nil)
             let tmdbId = details?.externalIds?.tmdb ?? details?.ids?.tmdb ?? Int(details?.id ?? "")
+            let effectiveImdbId = details?.externalIds?.imdb ?? details?.ids?.imdb
 
-            if isTv, ((effectiveKpId ?? 0) > 0 || (tmdbId ?? 0) > 0) {
-                await fetchInlineSeasons(kpId: effectiveKpId ?? 0, tmdbId: tmdbId)
+            if isTv, ((effectiveKpId ?? 0) > 0 || (tmdbId ?? 0) > 0 || effectiveImdbId != nil || !(details?.title ?? "").isEmpty) {
+                await fetchInlineSeasons(
+                    kpId: effectiveKpId ?? 0,
+                    tmdbId: tmdbId,
+                    imdbId: effectiveImdbId,
+                    title: details?.title,
+                    originalTitle: details?.originalTitle,
+                    year: details?.year
+                )
             }
 
             let studioToFetch = details?.identifiedStudio ?? studio
@@ -3170,13 +3213,32 @@ class DetailsViewModel: ObservableObject {
         self.movieCollection = await MoviesRepository.shared.getMovieCollection(id: id)
     }
 
-    func fetchInlineSeasons(kpId: Int, tmdbId: Int? = nil) async {
+    func fetchInlineSeasons(
+        kpId: Int,
+        tmdbId: Int? = nil,
+        imdbId: String? = nil,
+        title: String? = nil,
+        originalTitle: String? = nil,
+        year: Int? = nil
+    ) async {
         isFetchingInlineSeasons = true
         defer { isFetchingInlineSeasons = false }
 
         let effectiveTmdbId = tmdbId ?? details?.externalIds?.tmdb ?? details?.ids?.tmdb ?? Int(details?.id ?? "")
+        let effectiveImdbId = imdbId ?? details?.externalIds?.imdb ?? details?.ids?.imdb
+        let effectiveTitle = (title?.isEmpty == false ? title : details?.title) ?? details?.name
+        let effectiveOriginal = originalTitle ?? details?.originalTitle ?? details?.name
+        let effectiveYear = year ?? details?.year
+
         do {
-            let result = try await AllohaRepository.shared.fetchByKpId(kpId: kpId, tmdbId: effectiveTmdbId)
+            let result = try await AllohaRepository.shared.fetchByKpId(
+                kpId: kpId,
+                tmdbId: effectiveTmdbId,
+                imdbId: effectiveImdbId,
+                title: effectiveTitle,
+                originalTitle: effectiveOriginal,
+                year: effectiveYear
+            )
             if result.isSerial {
                 self.inlineSourceWrapper = SourceResultWrapper(allohaResult: result, kpId: kpId > 0 ? kpId : (effectiveTmdbId ?? 0))
             }
@@ -3231,8 +3293,19 @@ class DetailsViewModel: ObservableObject {
         return (mediaId, type)
     }
 
-    func fetchSources(kpId: Int, tmdbId: Int? = nil, title: String) async {
+    func fetchSources(
+        kpId: Int,
+        tmdbId: Int? = nil,
+        imdbId: String? = nil,
+        title: String,
+        originalTitle: String? = nil,
+        year: Int? = nil
+    ) async {
         let effectiveTmdbId = tmdbId ?? details?.externalIds?.tmdb ?? details?.ids?.tmdb ?? Int(details?.id ?? "")
+        let effectiveImdbId = imdbId ?? details?.externalIds?.imdb ?? details?.ids?.imdb
+        let effectiveTitle = title.isEmpty ? ((details?.title ?? details?.name) ?? "") : title
+        let effectiveOriginal = originalTitle ?? details?.originalTitle ?? details?.name
+        let effectiveYear = year ?? details?.year
         let cacheKey = kpId > 0 ? kpId : (effectiveTmdbId ?? 0)
 
         // Кэш на 5 минут — повторный тап «Смотреть» возвращает результат мгновенно
@@ -3252,12 +3325,14 @@ class DetailsViewModel: ObservableObject {
         }
 
         do {
-            let result: AllohaApiResult
-            if kpId > 0 || (effectiveTmdbId ?? 0) > 0 {
-                result = try await AllohaRepository.shared.fetchByKpId(kpId: kpId, tmdbId: effectiveTmdbId)
-            } else {
-                result = try await AllohaRepository.shared.fetchMedia(kpId: nil, tmdbId: nil, title: title)
-            }
+            let result = try await AllohaRepository.shared.fetchByKpId(
+                kpId: kpId,
+                tmdbId: effectiveTmdbId,
+                imdbId: effectiveImdbId,
+                title: effectiveTitle,
+                originalTitle: effectiveOriginal,
+                year: effectiveYear
+            )
             let wrapper = SourceResultWrapper(allohaResult: result, kpId: kpId > 0 ? kpId : (effectiveTmdbId ?? 0))
             if cacheKey > 0 {
                 sourcesCache[cacheKey] = (wrapper: wrapper, expiresAt: Date().addingTimeInterval(sourcesCacheTtl))
