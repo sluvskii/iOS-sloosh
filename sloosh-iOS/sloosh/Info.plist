@@ -30,8 +30,6 @@
     <true/>
     <key>LSSupportsOpeningDocumentsInPlace</key>
     <true/>
-    <key>AllohaToken</key>
-    <string>$(ALLOHA_TOKEN)</string>
     <key>UIApplicationSceneManifest</key>
     <dict>
         <key>UIApplicationSupportsMultipleScenes</key>

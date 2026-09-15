@@ -99,6 +99,20 @@ app.route("/api/v2", mediaRouter)
 app.route("/api/v1", categoriesRouter)
 app.route("/api/v2", categoriesRouter)
 
+// Dynamic Stream Configuration Endpoint (provides active streaming balancer tokens to authenticated apps)
+const streamConfigHandler = (c: any) => {
+  c.header("Cache-Control", "public, max-age=60, s-maxage=300, stale-while-revalidate=600")
+  return c.json({
+    status: "success",
+    data: {
+      tokens: config.alloha.allTokens,
+    },
+  })
+}
+app.get("/api/v1/config/streams", streamConfigHandler)
+app.get("/api/v2/config/streams", streamConfigHandler)
+
+
 // Direct streaming proxy helper to bypass ISP blocking of image.tmdb.org
 async function streamImageFromUrl(url: string): Promise<Response | null> {
   try {

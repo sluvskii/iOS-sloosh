@@ -288,4 +288,14 @@ class MoviesApi {
         ]
         return try await performRequest(endpoint: "api/v1/media/\(cleanType)/\(cleanId)/related/cast", queryItems: queryItems)
     }
+
+    func getStreamTokens() async throws -> [String] {
+        let envelope: ApiEnvelope<StreamConfigDto> = try await performRequest(endpoint: "api/v1/config/streams")
+        return envelope.data?.tokens ?? []
+    }
 }
+
+struct StreamConfigDto: Codable {
+    let tokens: [String]
+}
+

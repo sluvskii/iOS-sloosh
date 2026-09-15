@@ -70,9 +70,10 @@ struct slooshApp: App {
             ])
         }
         
-        // Упреждающе разогреваем WebKit для мгновенного разбора Alloha-токенов
+        // Упреждающе разогреваем WebKit и подгружаем стрим-токены с бэкенда
         Task { @MainActor in
             SharedWebViewProvider.shared.prewarm()
+            await AllohaRepository.shared.warmup()
         }
     }
     
