@@ -425,37 +425,74 @@ typealias TrustAllSessionDelegate = AllohaTrustedSessionDelegate
 final class AllohaRepository: @unchecked Sendable {
     static let shared = AllohaRepository()
     
-    /// Reads AllohaToken from Info.plist (set via ALLOHA_TOKEN build variable or Secrets.xcconfig).
-    /// Never hardcode this value in source — it lives in the project's build settings instead.
-    private static let fallbackToken: String = {
-        let parts = ["ffbd312", "217e27c", "4245f26", "78afe18", "81"]
-        return parts.joined()
-    }()
-    private static let primaryToken: String = {
-        if let t = Bundle.main.object(forInfoDictionaryKey: "AllohaToken") as? String, !t.isEmpty, t != "$(ALLOHA_TOKEN)" {
-            return t
-        }
-        // Fallback for local dev without xcconfig: read from environment
-        if let t = ProcessInfo.processInfo.environment["ALLOHA_TOKEN"], !t.isEmpty {
-            return t
-        }
-        return fallbackToken
-    }()
-    private static let token: String = primaryToken
-    private var token: String { Self.token }
-
-    private static let backupTokens: [String] = [
-        "04941a9a3ca3ac16e2b4327347bbc1",
-        "7f303bf45447726226613c600db22e"
-    ]
+    // Dynamic stream tokens delivered securely from the backend API (zero tokens in client binary)
+    private var remoteTokens: [String] = []
+    private var lastFetchDate: Date?
+    private let tokensFetchTtl: TimeInterval = 10 * 60 // 10 minutes cache
+    private var activeFetchTask: Task<[String], Never>?
 
     private var failedTokens: [String: Date] = [:]
     private let tokenCooldownDuration: TimeInterval = 5 * 60 // 5 minutes cooldown
     private let tokenQueue = DispatchQueue(label: "ru.sloosh.alloharepo.tokens", attributes: .concurrent)
 
+    /// Background prefetch of streaming tokens upon app launch
+    func warmup() async {
+        _ = await ensureTokensLoaded()
+    }
+
+    /// Ensures stream tokens are loaded from backend and up to date
+    func ensureTokensLoaded() async -> [String] {
+        let now = Date()
+        let (cachedTokens, shouldRefresh) = tokenQueue.sync {
+            let tokens = self.remoteTokens
+            let expired = self.lastFetchDate.map { now.timeIntervalSince($0) > self.tokensFetchTtl } ?? true
+            return (tokens, tokens.isEmpty || expired)
+        }
+
+        if !shouldRefresh && !cachedTokens.isEmpty {
+            return getHealthyCandidateTokens()
+        }
+
+        let fetchTask: Task<[String], Never> = tokenQueue.sync {
+            if let inFlight = self.activeFetchTask {
+                return inFlight
+            }
+            let task = Task<[String], Never> {
+                do {
+                    let tokens = try await MoviesApi.shared.getStreamTokens()
+                    if !tokens.isEmpty {
+                        self.tokenQueue.async(flags: .barrier) {
+                            self.remoteTokens = tokens
+                            self.lastFetchDate = Date()
+                        }
+                        #if DEBUG
+                        print("[AllohaRepository] Dynamic stream tokens loaded from backend: \(tokens.count) tokens")
+                        #endif
+                        return tokens
+                    }
+                } catch {
+                    #if DEBUG
+                    print("[AllohaRepository] Failed to fetch stream tokens from backend: \(error)")
+                    #endif
+                }
+                return self.tokenQueue.sync { self.remoteTokens }
+            }
+            self.activeFetchTask = task
+            return task
+        }
+
+        _ = await fetchTask.value
+        tokenQueue.async(flags: .barrier) {
+            self.activeFetchTask = nil
+        }
+
+        return getHealthyCandidateTokens()
+    }
+
     private func getHealthyCandidateTokens() -> [String] {
+        let allTokens = tokenQueue.sync { self.remoteTokens }
         var unique: [String] = []
-        for t in ([Self.primaryToken] + Self.backupTokens) where !t.isEmpty {
+        for t in allTokens where !t.isEmpty {
             if !unique.contains(t) {
                 unique.append(t)
             }
@@ -622,7 +659,7 @@ final class AllohaRepository: @unchecked Sendable {
     }
 
     private func performAllohaQuery(params: [String: String]) async throws -> AllohaApiResult {
-        let candidates = getHealthyCandidateTokens()
+        let candidates = await ensureTokensLoaded()
         guard !candidates.isEmpty else {
             throw URLError(.userAuthenticationRequired)
         }
