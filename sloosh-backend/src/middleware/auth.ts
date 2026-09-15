@@ -40,16 +40,5 @@ export function isValidApiKey(providedKey?: string | null): boolean {
     return true
   }
 
-  // 3. Fallback transitional check for backwards compatibility if no Vercel variable is configured yet
-  if (!config.apiKey && config.allowedApiKeys.length === 0) {
-    const fallback = [
-      0x2F, 0x30, 0x33, 0x33, 0x2F, 0x34, 0x03, 0x3D,
-      0x2C, 0x2C, 0x03, 0x2F, 0x39, 0x3F, 0x03, 0x2A,
-      0x6D, 0x03, 0x64, 0x3A, 0x65, 0x6F, 0x39, 0x6D,
-      0x68, 0x3E, 0x6E, 0x38, 0x6C, 0x6B
-    ].map((b) => String.fromCharCode(b ^ 0x5C)).join("")
-    return cleanKey === fallback
-  }
-
   return false
 }

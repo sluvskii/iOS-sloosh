@@ -35,20 +35,8 @@ class MoviesApi {
     // Production base URL on Vercel
     private let baseURL = "https://api-sloosh.vercel.app"
     
-    /// Обфусцированный мастер-ключ доступа к API sloosh (защита от сканирования strings/grep в бинарнике)
-    private static let resolvedApiKey: String = {
-        let mask: UInt8 = 0x5C
-        let obf: [UInt8] = [
-            0x2F, 0x30, 0x33, 0x33, 0x2F, 0x34, 0x03, 0x3D,
-            0x2C, 0x2C, 0x03, 0x2F, 0x39, 0x3F, 0x03, 0x2A,
-            0x6D, 0x03, 0x64, 0x3A, 0x65, 0x6F, 0x39, 0x6D,
-            0x68, 0x3E, 0x6E, 0x38, 0x6C, 0x6B
-        ]
-        let bytes = obf.map { $0 ^ mask }
-        return String(bytes: bytes, encoding: .utf8) ?? ""
-    }()
-
-    public static var currentApiKey: String = resolvedApiKey
+    /// Мастер-ключ доступа к API sloosh (внедряется при CI-сборке из GitHub Secrets)
+    public static var currentApiKey: String = AppSecrets.apiKey
     
     private let session: URLSession
     private let decoder = JSONDecoder()
