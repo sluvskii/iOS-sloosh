@@ -431,7 +431,7 @@ final class AllohaRepository: @unchecked Sendable {
         let parts = ["ffbd312", "217e27c", "4245f26", "78afe18", "81"]
         return parts.joined()
     }()
-    private static let token: String = {
+    private static let primaryToken: String = {
         if let t = Bundle.main.object(forInfoDictionaryKey: "AllohaToken") as? String, !t.isEmpty, t != "$(ALLOHA_TOKEN)" {
             return t
         }
@@ -441,7 +441,59 @@ final class AllohaRepository: @unchecked Sendable {
         }
         return fallbackToken
     }()
+    private static let token: String = primaryToken
     private var token: String { Self.token }
+
+    private static let backupTokens: [String] = [
+        "04941a9a3ca3ac16e2b4327347bbc1",
+        "7f303bf45447726226613c600db22e"
+    ]
+
+    private var failedTokens: [String: Date] = [:]
+    private let tokenCooldownDuration: TimeInterval = 5 * 60 // 5 minutes cooldown
+    private let tokenQueue = DispatchQueue(label: "ru.sloosh.alloharepo.tokens", attributes: .concurrent)
+
+    private func getHealthyCandidateTokens() -> [String] {
+        var unique: [String] = []
+        for t in ([Self.primaryToken] + Self.backupTokens) where !t.isEmpty {
+            if !unique.contains(t) {
+                unique.append(t)
+            }
+        }
+
+        let now = Date()
+        let available = tokenQueue.sync {
+            unique.filter { candidate in
+                guard let cooldownUntil = failedTokens[candidate] else { return true }
+                return now >= cooldownUntil
+            }
+        }
+
+        if available.isEmpty {
+            tokenQueue.async(flags: .barrier) { [weak self] in
+                self?.failedTokens.removeAll()
+            }
+            return unique
+        }
+
+        return available
+    }
+
+    private func markTokenFailed(_ failedToken: String) {
+        tokenQueue.async(flags: .barrier) { [weak self] in
+            guard let self = self else { return }
+            self.failedTokens[failedToken] = Date().addingTimeInterval(self.tokenCooldownDuration)
+            #if DEBUG
+            print("[AllohaRepository] Token ending with ...\(failedToken.suffix(6)) marked failed for 5m cooldown")
+            #endif
+        }
+    }
+
+    private func markTokenSuccess(_ healthyToken: String) {
+        tokenQueue.async(flags: .barrier) { [weak self] in
+            self?.failedTokens.removeValue(forKey: healthyToken)
+        }
+    }
     
     private var catalogCache: [Int: (result: AllohaApiResult, expiresAt: Date)] = [:]
     private let cacheTtl: TimeInterval = 5 * 60 // 5 minutes
@@ -570,49 +622,100 @@ final class AllohaRepository: @unchecked Sendable {
     }
 
     private func performAllohaQuery(params: [String: String]) async throws -> AllohaApiResult {
-        var queryItems = [URLQueryItem(name: "token", value: token)]
-        for (key, val) in params {
-            queryItems.append(URLQueryItem(name: key, value: val))
+        let candidates = getHealthyCandidateTokens()
+        guard !candidates.isEmpty else {
+            throw URLError(.userAuthenticationRequired)
         }
-        guard var comps = URLComponents(string: "https://api.alloha.tv/") else {
-            throw URLError(.badURL)
+
+        var lastError: Error = URLError(.badServerResponse)
+
+        for candidateToken in candidates {
+            var queryItems = [URLQueryItem(name: "token", value: candidateToken)]
+            for (key, val) in params {
+                queryItems.append(URLQueryItem(name: key, value: val))
+            }
+            guard var comps = URLComponents(string: "https://api.alloha.tv/") else {
+                throw URLError(.badURL)
+            }
+            comps.queryItems = queryItems
+            guard let url = comps.url else {
+                throw URLError(.badURL)
+            }
+
+            var request = URLRequest(url: url)
+            request.timeoutInterval = 8
+            request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1", forHTTPHeaderField: "User-Agent")
+
+            do {
+                let (data, response) = try await session.data(for: request)
+
+                guard let httpResponse = response as? HTTPURLResponse else {
+                    markTokenFailed(candidateToken)
+                    continue
+                }
+
+                if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 || httpResponse.statusCode == 429 || httpResponse.statusCode >= 500 {
+                    markTokenFailed(candidateToken)
+                    lastError = URLError(.badServerResponse)
+                    continue
+                }
+
+                guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+                    markTokenFailed(candidateToken)
+                    continue
+                }
+
+                let status = (json["status"] as? String)?.lowercased() ?? ""
+                if status == "error" {
+                    let errorInfo = (json["error_info"] as? String)?.lowercased() ?? ""
+                    if errorInfo.contains("not movie") {
+                        // Token is healthy! The title simply does not exist for this search query.
+                        markTokenSuccess(candidateToken)
+                        // DO NOT query backup tokens! Re-throw to advance caller to next param.
+                        throw URLError(.resourceUnavailable)
+                    }
+                    // Real token / auth / ban failure
+                    markTokenFailed(candidateToken)
+                    lastError = URLError(.userAuthenticationRequired)
+                    continue
+                }
+
+                guard status == "success", let dataObj = json["data"] as? [String: Any] else {
+                    markTokenFailed(candidateToken)
+                    continue
+                }
+
+                markTokenSuccess(candidateToken)
+                return try await parseAllohaData(dataObj)
+            } catch let error as URLError where error.code == .resourceUnavailable {
+                // Short-circuit: movie not found with a healthy token. Advance caller immediately.
+                throw error
+            } catch {
+                markTokenFailed(candidateToken)
+                lastError = error
+                continue
+            }
         }
-        comps.queryItems = queryItems
-        guard let url = comps.url else {
-            throw URLError(.badURL)
-        }
-        
-        var request = URLRequest(url: url)
-        request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Mobile/15E148 Safari/604.1", forHTTPHeaderField: "User-Agent")
-        
-        let (data, response) = try await session.data(for: request)
-        
-        guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
-            throw URLError(.badServerResponse)
-        }
-        
-        // Custom parsing to match Android's manual JSON parsing
-        guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-              let status = json["status"] as? String, status == "success",
-              let dataObj = json["data"] as? [String: Any] else {
-            throw DecodingError.dataCorrupted(DecodingError.Context(codingPath: [], debugDescription: "Invalid JSON structure"))
-        }
-        
+
+        throw lastError
+    }
+
+    private func parseAllohaData(_ dataObj: [String: Any]) async throws -> AllohaApiResult {
         let title = dataObj["name"] as? String ?? "Unknown"
-        
+
         if let seasonsObj = dataObj["seasons"] as? [String: Any] {
             var parsedSeasons: [AllohaSeason] = []
-            
+
             for (sKey, sValue) in seasonsObj {
                 guard let seasonNum = Int(sKey),
                       let sDict = sValue as? [String: Any],
                       let episodesObj = sDict["episodes"] as? [String: Any] else { continue }
-                
+
                 var parsedEpisodes: [AllohaEpisode] = []
                 for (eKey, eValue) in episodesObj {
                     guard let episodeNum = Int(eKey),
                           let eDict = eValue as? [String: Any] else { continue }
-                    
+
                     var parsedTrans: [AllohaTranslation] = []
                     if let transObj = eDict["translation"] as? [String: Any] {
                         for (tKey, tValue) in transObj {
@@ -624,7 +727,7 @@ final class AllohaRepository: @unchecked Sendable {
                             iframe = injectTranslationId(tKey, into: iframe)
                             iframe = injectSeasonEpisode(season: seasonNum, episode: episodeNum, into: iframe)
                             let transName = tDict["translation"] as? String ?? "Unknown"
-                            
+
                             let cleanTitle = normalizedAllohaTranslationName(transName)
                             let lower = cleanTitle.lowercased()
                             if !lower.contains("субтитр") && !lower.contains("subtitle") {
@@ -646,7 +749,7 @@ final class AllohaRepository: @unchecked Sendable {
                             iframe = injectTranslationId(translationId, into: iframe)
                             iframe = injectSeasonEpisode(season: seasonNum, episode: episodeNum, into: iframe)
                             let transName = tDict["translation"] as? String ?? "Unknown"
-                            
+
                             let cleanTitle = normalizedAllohaTranslationName(transName)
                             let lower = cleanTitle.lowercased()
                             if !lower.contains("субтитр") && !lower.contains("subtitle") {
@@ -654,25 +757,25 @@ final class AllohaRepository: @unchecked Sendable {
                             }
                         }
                     }
-                    
+
                     // Порядок озвучек сохраняем как отдаёт Alloha (популярные первыми)
                     if !parsedTrans.isEmpty {
                         parsedEpisodes.append(AllohaEpisode(season: seasonNum, episode: episodeNum, translations: parsedTrans))
                     }
                 }
-                
+
                 parsedEpisodes.sort { $0.episode < $1.episode }
                 if !parsedEpisodes.isEmpty {
                     parsedSeasons.append(AllohaSeason(season: seasonNum, episodes: parsedEpisodes))
                 }
             }
-            
+
             parsedSeasons.sort { $0.season < $1.season }
-            
+
             return AllohaApiResult(title: title, isSerial: true, movie: nil, seasons: parsedSeasons)
         } else {
             var parsedTrans: [AllohaTranslation] = []
-            
+
             // 1. Проверяем translation_iframe (основной формат Alloha для фильмов)
             if let transIframeDict = dataObj["translation_iframe"] as? [String: Any] {
                 for (tKey, tValue) in transIframeDict {
@@ -687,7 +790,7 @@ final class AllohaRepository: @unchecked Sendable {
                     guard !iframe.isEmpty else { continue }
                     if iframe.hasPrefix("//") { iframe = "https:" + iframe }
                     iframe = injectTranslationId(tKey, into: iframe)
-                    
+
                     if transName.isEmpty {
                         if let nameDict = (dataObj["translation"] as? [String: Any]) ?? (dataObj["translations"] as? [String: Any]) {
                             if let n = nameDict[tKey] as? String {
@@ -722,7 +825,7 @@ final class AllohaRepository: @unchecked Sendable {
                 }
                 // Порядок озвучек сохраняем как отдаёт Alloha (популярные первыми)
             }
-            
+
             // 2. Если translation_iframe не дал результатов, проверяем translation и translations
             if parsedTrans.isEmpty {
                 let transSource = dataObj["translation"] ?? dataObj["translations"]
@@ -770,11 +873,11 @@ final class AllohaRepository: @unchecked Sendable {
                     }
                 }
             }
-            
+
             // 3. Если для фильма доступен один мастер-iframe со скрытыми bnsi audioVariants
             var defaultIframe = dataObj["iframe"] as? String ?? parsedTrans.first?.iframeUrl ?? ""
             if defaultIframe.hasPrefix("//") { defaultIframe = "https:" + defaultIframe }
-            
+
             if parsedTrans.count <= 1 && !defaultIframe.isEmpty {
                 let resolver = await AllohaRuntimeResolver()
                 if let resolved = try? await resolver.resolve(iframeUrl: defaultIframe),
@@ -795,20 +898,20 @@ final class AllohaRepository: @unchecked Sendable {
                     }
                 }
             }
-            
+
             // 4. Финальный фолбэк — если ничего не найдено, ставим дефолтную дорожку "Основной"
             if parsedTrans.isEmpty && !defaultIframe.isEmpty {
                 parsedTrans = [
                     AllohaTranslation(id: "default", name: "Основной", iframeUrl: defaultIframe, streamUrl: nil)
                 ]
             }
-            
+
             var movie: AllohaMovie? = nil
             if !parsedTrans.isEmpty {
                 let movieIframe = defaultIframe.isEmpty ? parsedTrans.first!.iframeUrl : defaultIframe
                 movie = AllohaMovie(title: title, iframeUrl: movieIframe, translations: parsedTrans)
             }
-            
+
             return AllohaApiResult(title: title, isSerial: false, movie: movie, seasons: [])
         }
     }
