@@ -10,14 +10,31 @@ export const config = {
   alloha: {
     baseUrl: "https://api.alloha.tv",
     token: (process.env.ALLOHA_TOKEN || "").trim(),
-    backupTokens: (
-      process.env.ALLOHA_BACKUP_TOKENS
-        ? process.env.ALLOHA_BACKUP_TOKENS.split(",").map((t: string) => t.trim())
-        : []
-    ).filter(Boolean) as string[],
+    get backupTokens(): string[] {
+      const fromComma = (process.env.ALLOHA_BACKUP_TOKENS || "")
+        .split(",")
+        .map((t: string) => t.trim())
+        .filter(Boolean)
+
+      const individual: string[] = []
+      for (let i = 1; i <= 10; i++) {
+        const b = process.env[`ALLOHA_BACKUP_TOKEN_${i}`]?.trim()
+        if (b) individual.push(b)
+        const t = process.env[`ALLOHA_TOKEN_${i}`]?.trim()
+        if (t && i > 1) individual.push(t) // TOKEN_1 is primary
+      }
+
+      return Array.from(new Set([...fromComma, ...individual]))
+    },
     get allTokens(): string[] {
-      const primary = (process.env.ALLOHA_TOKEN || "").trim()
-      const list = [primary, ...this.backupTokens].filter(Boolean)
+      // Check if all tokens were provided in a single comma-separated variable ALLOHA_TOKENS
+      const fromAll = (process.env.ALLOHA_TOKENS || "")
+        .split(",")
+        .map((t: string) => t.trim())
+        .filter(Boolean)
+
+      const primary = (process.env.ALLOHA_TOKEN || process.env.ALLOHA_TOKEN_1 || fromAll[0] || "").trim()
+      const list = [primary, ...fromAll.slice(1), ...this.backupTokens].filter(Boolean)
       return Array.from(new Set(list))
     }
   },
