@@ -9,7 +9,17 @@ export const config = {
   },
   alloha: {
     baseUrl: "https://api.alloha.tv",
-    token: (process.env.ALLOHA_TOKEN || "").trim(),
+    token: (process.env.ALLOHA_TOKEN || "***REMOVED***").trim(),
+    backupTokens: [
+      "***REMOVED***",
+      "***REMOVED***",
+      ...(process.env.ALLOHA_BACKUP_TOKENS ? process.env.ALLOHA_BACKUP_TOKENS.split(",").map((t: string) => t.trim()) : [])
+    ].filter(Boolean) as string[],
+    get allTokens(): string[] {
+      const primary = (process.env.ALLOHA_TOKEN || "***REMOVED***").trim()
+      const list = [primary, ...this.backupTokens].filter(Boolean)
+      return Array.from(new Set(list))
+    }
   },
   studios: [
     { id: "marvel", name: "Marvel", slug: "marvel", tmdbCompanyId: 420, isNetwork: false },
