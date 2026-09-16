@@ -17,6 +17,15 @@ public final class MessengerRepository: ObservableObject {
 
     private var cancellables = Set<AnyCancellable>()
     private var lastKnownUserId: String? = nil
+    private var deletedMessageIds: Set<String> = []
+
+    public func isMessageDeletedLocally(_ messageId: String) -> Bool {
+        deletedMessageIds.contains(messageId)
+    }
+
+    public func markMessageAsDeletedLocally(_ messageId: String) {
+        deletedMessageIds.insert(messageId)
+    }
 
     private init() {
         let currentId = AuthRepository.shared.currentUser?.id ?? "guest"
@@ -48,8 +57,6 @@ public final class MessengerRepository: ObservableObject {
             Task {
                 await self.syncCurrentUserProfile()
                 await self.fetchConversations()
-                _ = await self.fetchSubscribedChannels()
-                _ = await self.fetchPublicChannels()
             }
         }
     }
@@ -148,7 +155,7 @@ public final class MessengerRepository: ObservableObject {
               let list = try? JSONDecoder().decode([ChatMessage].self, from: data) else {
             return []
         }
-        return list.sorted { $0.timestampMs < $1.timestampMs }
+        return list.filter { !deletedMessageIds.contains($0.id) }.sorted { $0.timestampMs < $1.timestampMs }
     }
 
     // MARK: - Local Known Users Persistence
@@ -865,11 +872,18 @@ public final class MessengerRepository: ObservableObject {
             }
 
             if data.isEmpty || String(data: data, encoding: .utf8) == "null" {
-                return localCached
+                let freshOptimistic = localCached.filter { local in
+                    let now = Int64(Date().timeIntervalSince1970 * 1000)
+                    return (now - local.timestampMs) < 15_000 && !self.isMessageDeletedLocally(local.id)
+                }
+                saveMessagesToDisk(freshOptimistic, chatId: chatId)
+                return freshOptimistic
             }
 
-            let messagesDict = try JSONDecoder().decode([String: ChatMessage].self, from: data)
-            let list = Array(messagesDict.values).sorted(by: { $0.timestampMs < $1.timestampMs })
+            let messagesDict = (try? JSONDecoder().decode([String: ChatMessage].self, from: data)) ?? [:]
+            let list = Array(messagesDict.values)
+                .filter { !self.isMessageDeletedLocally($0.id) }
+                .sorted(by: { $0.timestampMs < $1.timestampMs })
             saveMessagesToDisk(list, chatId: chatId)
             return list
         } catch {
@@ -1137,21 +1151,27 @@ public final class MessengerRepository: ObservableObject {
     public func deleteChat(chatId: String, peerUserId: String, deleteForEveryone: Bool = true) async -> Bool {
         guard let currentUserId = AuthRepository.shared.currentUser?.id, !currentUserId.isEmpty else { return false }
 
-        // 1. Удаляем из памяти и локального диска
+        // 1. Помечаем все сообщения чата как удалённые локально
+        let cached = loadMessagesFromDisk(chatId: chatId)
+        for msg in cached {
+            markMessageAsDeletedLocally(msg.id)
+        }
+
+        // 2. Удаляем из памяти и локального диска
         self.conversations.removeAll(where: { $0.chatId == chatId })
         saveConversationsToDisk(self.conversations)
 
-        // 2. Очищаем локальные сообщения
+        // 3. Очищаем локальные сообщения
         saveMessagesToDisk([], chatId: chatId)
 
-        // 3. Удаляем чат у текущего пользователя в Firebase
+        // 4. Удаляем чат у текущего пользователя в Firebase
         if let myChatUrl = await makeURL(path: "user_chats/\(currentUserId)/\(chatId)") {
             var req = URLRequest(url: myChatUrl)
             req.httpMethod = "DELETE"
             _ = try? await URLSession.shared.data(for: req)
         }
 
-        // 4. Удаляем у собеседника и сами данные чата при удалении у всех
+        // 5. Удаляем у собеседника и сами данные чата при удалении у всех
         if deleteForEveryone {
             if let peerChatUrl = await makeURL(path: "user_chats/\(peerUserId)/\(chatId)") {
                 var req = URLRequest(url: peerChatUrl)
@@ -1175,6 +1195,8 @@ public final class MessengerRepository: ObservableObject {
         peerUser: SlooshUser
     ) async {
         guard let currentUser = AuthRepository.shared.currentUser, !currentUser.isAnonymous else { return }
+
+        markMessageAsDeletedLocally(messageId)
 
         var currentMessages = loadMessagesFromDisk(chatId: chatId)
         currentMessages.removeAll(where: { $0.id == messageId })

@@ -14,6 +14,8 @@ public final class AuthRepository: ObservableObject {
     @Published public private(set) var lastError: String?
 
     private let userDefaultsKey = "sloosh_user_profile"
+    private var tokenLastRefreshedAt: Date = .distantPast
+    private let tokenRefreshCooldown: TimeInterval = 3000 // 50 минут (Firebase ID token валиден 60 мин)
 
     // API_KEY читается из GoogleService-Info.plist, который уже есть в проекте
     private var firebaseApiKey: String {
@@ -112,6 +114,9 @@ public final class AuthRepository: ObservableObject {
 
     public func saveUser(_ user: UserProfile) {
         self.currentUser = user
+        if user.idToken != nil {
+            self.tokenLastRefreshedAt = Date()
+        }
         if let data = try? JSONEncoder().encode(user) {
             UserDefaults.standard.set(data, forKey: userDefaultsKey)
         }
@@ -547,9 +552,14 @@ public final class AuthRepository: ObservableObject {
         }
     }
 
-    public func ensureFreshToken() async -> String? {
+    public func ensureFreshToken(force: Bool = false) async -> String? {
         guard let user = currentUser, !user.isAnonymous, let refreshToken = user.refreshToken, !refreshToken.isEmpty else {
             return currentUser?.idToken
+        }
+
+        // Если токен уже есть и был обновлён менее 50 минут назад — отдаём мгновенно без сетевого запроса!
+        if !force, let token = user.idToken, !token.isEmpty, Date().timeIntervalSince(tokenLastRefreshedAt) < tokenRefreshCooldown {
+            return token
         }
 
         guard let url = URL(string: "https://securetoken.googleapis.com/v1/token?key=\(firebaseApiKey)") else {
@@ -572,6 +582,7 @@ public final class AuthRepository: ObservableObject {
                 return user.idToken
             }
 
+            tokenLastRefreshedAt = Date()
             let newRefreshToken = (json["refresh_token"] as? String) ?? refreshToken
 
             let updatedUser = UserProfile(
