@@ -1,3 +1,4 @@
+# CI Pipeline for sloosh iOS
 name: iOS Build
 
 on:
