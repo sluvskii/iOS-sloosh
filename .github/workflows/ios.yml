@@ -97,6 +97,14 @@ jobs:
           echo "Final CFBundleShortVersionString: $(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' sloosh/Info.plist)"
 
 
+      - name: Cache DerivedData
+        uses: actions/cache@v4
+        with:
+          path: sloosh-iOS/build
+          key: deriveddata-${{ runner.os }}-${{ github.run_number }}
+          restore-keys: |
+            deriveddata-${{ runner.os }}-
+
       - name: Build iOS App
         run: |
           cd sloosh-iOS
