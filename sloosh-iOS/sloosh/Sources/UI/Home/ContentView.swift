@@ -74,6 +74,7 @@ struct ContentView: View {
                     }
                     Tab(value: .messenger) {
                         MessengerView()
+                            .tint(Color.primary)
                     } label: {
                         tabLabel("Чаты", systemImage: "bubble.left.and.bubble.right.fill")
                     }

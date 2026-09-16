@@ -168,6 +168,7 @@ public struct MessengerView: View {
                 }
             }
         }
+        .tint(Color.primary)
     }
 
     private var channelActionTitle: String {
@@ -521,12 +522,14 @@ public struct PeakChannelRow: View {
                 } label: {
                     Label("Удалить канал", systemImage: "trash")
                 }
+                .tint(.red)
             } else {
                 Button(role: .destructive) {
                     onAction()
                 } label: {
                     Label("Отписаться", systemImage: "arrow.uturn.backward")
                 }
+                .tint(.red)
             }
         }
     }
@@ -647,6 +650,7 @@ private struct PeakChatRow: View {
             } label: {
                 Label("Удалить чат", systemImage: "trash")
             }
+            .tint(.red)
         }
     }
 
@@ -861,6 +865,7 @@ private struct NewChatSheet: View {
                 }
             }
         }
+        .tint(Color.primary)
     }
 }
 
