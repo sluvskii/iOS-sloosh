@@ -2,7 +2,17 @@ name: iOS Build
 
 on:
   push:
+    paths-ignore:
+      - 'README.md'
+      - 'AGENTS.md'
+      - '.gitignore'
+      - 'database.rules.json'
   pull_request:
+    paths-ignore:
+      - 'README.md'
+      - 'AGENTS.md'
+      - '.gitignore'
+      - 'database.rules.json'
   workflow_dispatch:
 
 jobs:
@@ -39,16 +49,21 @@ jobs:
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode_26.0.1.app/Contents/Developer
 
-      - name: Cache Homebrew packages
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/Library/Caches/Homebrew
-            /usr/local/Cellar/xcodegen
-          key: brew-xcodegen-${{ runner.os }}-v1
-
       - name: Install XcodeGen
-        run: brew install xcodegen
+        run: |
+          if ! which xcodegen > /dev/null 2>&1; then
+            echo "Downloading XcodeGen binary release..."
+            if curl -fsSL https://github.com/yonaskolb/XcodeGen/releases/download/2.42.0/xcodegen.zip -o /tmp/xcodegen.zip; then
+              unzip -q /tmp/xcodegen.zip -d /tmp/xcodegen
+              sudo cp /tmp/xcodegen/xcodegen/bin/xcodegen /usr/local/bin/xcodegen
+              sudo cp -r /tmp/xcodegen/xcodegen/share/xcodegen /usr/local/share/ 2>/dev/null || true
+              rm -rf /tmp/xcodegen /tmp/xcodegen.zip
+            else
+              echo "Fallback to Homebrew with no update..."
+              HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_INSTALL_CLEANUP=1 brew install xcodegen
+            fi
+          fi
+          xcodegen --version
 
       - name: Inject Build Number
         run: |
@@ -90,10 +105,15 @@ jobs:
             -destination "generic/platform=iOS" \
             -sdk iphoneos \
             -derivedDataPath ./build \
+            -parallelizeTargets \
+            -jobs $(sysctl -n hw.ncpu) \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_INJECT_BASE_ENTITLEMENTS=NO \
             COMPILER_INDEX_STORE_ENABLE=NO \
+            DEBUG_INFORMATION_FORMAT=dwarf \
+            SWIFT_COMPILATION_MODE=wholemodule \
             -quiet
 
       - name: Package IPA (Unsigned)
@@ -101,7 +121,7 @@ jobs:
           cd sloosh-iOS
           mkdir -p Payload
           mv build/Build/Products/Release-iphoneos/sloosh.app Payload/
-          zip -r sloosh.ipa Payload
+          zip -q -1 -r sloosh.ipa Payload
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
