@@ -40,56 +40,7 @@ public struct ChatDetailView: View {
 
             messageList
                 .safeAreaInset(edge: .bottom) {
-                    VStack(spacing: 0) {
-                        // Banner for editing message
-                        if let editing = editingMessage {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("Редактирование")
-                                        .font(.system(size: 12, weight: .bold))
-                                        .foregroundColor(.primary)
-                                    Text(editing.text ?? "")
-                                }
-                                Spacer()
-                                Button {
-                                    editingMessage = nil
-                                    messageText = ""
-                                } label: {
-                                    Image(systemName: "xmark.circle.fill")
-                                        .foregroundColor(.secondary)
-                                }
-                            }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 8)
-                            .background(Color(UIColor.secondarySystemGroupedBackground))
-                        }
-                        // Banner for replying message
-                        else if let replying = replyingMessage {
-                            HStack {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("Ответ на сообщение")
-                                        .font(.system(size: 12, weight: .bold))
-                                        .foregroundColor(.primary)
-                                    Text(replying.text ?? "Медиа карточка")
-                                        .font(.system(size: 13))
-                                        .foregroundColor(.secondary)
-                                        .lineLimit(1)
-                                }
-                                Spacer()
-                                Button {
-                                    replyingMessage = nil
-                                } label: {
-                                    Image(systemName: "xmark.circle.fill")
-                                        .foregroundColor(.secondary)
-                                }
-                            }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 8)
-                            .background(Color(UIColor.secondarySystemGroupedBackground))
-                        }
-
-                        inputBar
-                    }
+                    inputBar
                 }
         }
         .navigationBarTitleDisplayMode(.inline)
@@ -229,6 +180,7 @@ public struct ChatDetailView: View {
 
                                 PeakMessageBubbleView(
                                     message: message,
+                                    peerUser: peerUser,
                                     isFromMe: isFromMe,
                                     showMeta: showMeta,
                                     allMessages: messages,
@@ -239,12 +191,18 @@ public struct ChatDetailView: View {
                                         selectedMediaForDirectPlay = media
                                     },
                                     onReply: { msg in
-                                        replyingMessage = msg
+                                        withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                                            replyingMessage = msg
+                                            editingMessage = nil
+                                        }
                                         isInputFocused = true
                                     },
                                     onEdit: { msg in
-                                        editingMessage = msg
-                                        messageText = msg.text ?? ""
+                                        withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                                            editingMessage = msg
+                                            replyingMessage = nil
+                                            messageText = msg.text ?? ""
+                                        }
                                         isInputFocused = true
                                     },
                                     onDelete: { msg in
@@ -302,8 +260,12 @@ public struct ChatDetailView: View {
         messageText.contains("\n") || messageText.count > 32
     }
 
+    private var isExpandedInput: Bool {
+        isMultilineInput || replyingMessage != nil || editingMessage != nil
+    }
+
     private var inputBarCornerRadius: CGFloat {
-        isMultilineInput ? 18 : 22
+        isExpandedInput ? 20 : 22
     }
 
     private var deviceBottomSafeArea: CGFloat {
@@ -328,23 +290,126 @@ public struct ChatDetailView: View {
         isInputFocused ? 8 : 2
     }
 
+    private func replyHeaderTitle(for msg: ChatMessage) -> String {
+        if msg.senderId == peerUser.id {
+            return "В ответ \(peerUser.displayTitle)"
+        } else {
+            return "В ответ себе"
+        }
+    }
+
+    private func replyPreviewText(for msg: ChatMessage) -> String {
+        if let text = msg.text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return text
+        }
+        if msg.type == .media, let media = msg.media {
+            return media.title
+        }
+        return "Медиа"
+    }
+
     private var inputBar: some View {
         HStack(alignment: .bottom, spacing: 8) {
-            // Floating Glass Text Field Capsule / Rounded Box (Telegram-style morphing shape)
-            HStack(alignment: .bottom, spacing: 8) {
+            // Floating Glass Text Field Capsule / Morphing Box (Telegram-style inline reply/edit)
+            VStack(alignment: .leading, spacing: 6) {
+                // 1. Inline Reply Preview
+                if let replying = replyingMessage {
+                    HStack(spacing: 8) {
+                        Capsule()
+                            .fill(colorScheme == .dark ? Color.white : Color.primary)
+                            .frame(width: 2.5, height: 32)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(replyHeaderTitle(for: replying))
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(colorScheme == .dark ? .white : .primary)
+                                .lineLimit(1)
+
+                            Text(replyPreviewText(for: replying))
+                                .font(.system(size: 12))
+                                .foregroundColor(.secondary)
+                                .lineLimit(1)
+                        }
+
+                        Spacer(minLength: 4)
+
+                        Button {
+                            withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                                replyingMessage = nil
+                            }
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(.secondary)
+                                .padding(6)
+                                .contentShape(Circle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.top, 2)
+                    .transition(.asymmetric(
+                        insertion: .opacity.combined(with: .move(edge: .bottom)),
+                        removal: .opacity.combined(with: .move(edge: .bottom))
+                    ))
+                }
+                // 2. Inline Edit Preview
+                else if let editing = editingMessage {
+                    HStack(spacing: 8) {
+                        Capsule()
+                            .fill(colorScheme == .dark ? Color.white : Color.primary)
+                            .frame(width: 2.5, height: 32)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Редактирование")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(colorScheme == .dark ? .white : .primary)
+                                .lineLimit(1)
+
+                            Text(editing.text?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? (editing.text ?? "") : "Сообщение")
+                                .font(.system(size: 12))
+                                .foregroundColor(.secondary)
+                                .lineLimit(1)
+                        }
+
+                        Spacer(minLength: 4)
+
+                        Button {
+                            withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                                editingMessage = nil
+                                messageText = ""
+                            }
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(.secondary)
+                                .padding(6)
+                                .contentShape(Circle())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.top, 2)
+                    .transition(.asymmetric(
+                        insertion: .opacity.combined(with: .move(edge: .bottom)),
+                        removal: .opacity.combined(with: .move(edge: .bottom))
+                    ))
+                }
+
+                // 3. Text Input Field
                 TextField("Сообщение", text: $messageText, axis: .vertical)
                     .font(.system(size: 16))
                     .foregroundColor(.primary)
                     .lineLimit(1...6)
                     .focused($isInputFocused)
-                    .padding(.vertical, 10)
-                    .padding(.horizontal, 16)
-                    .frame(minHeight: 40)
+                    .frame(minHeight: isExpandedInput ? 24 : 38)
             }
+            .padding(.vertical, isExpandedInput ? 8 : 2)
+            .padding(.horizontal, 14)
             .glassEffect(
                 .regular.interactive(),
                 in: RoundedRectangle(cornerRadius: inputBarCornerRadius, style: .continuous)
             )
+            .animation(.spring(response: 0.32, dampingFraction: 0.82), value: replyingMessage != nil)
+            .animation(.spring(response: 0.32, dampingFraction: 0.82), value: editingMessage != nil)
             .animation(.easeInOut(duration: 0.2), value: isMultilineInput)
 
             // Telegram-style Animated Sliding/Popping Send Button
@@ -376,6 +441,8 @@ public struct ChatDetailView: View {
         .padding(.vertical, inputBarVerticalPadding)
         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: isInputFocused)
         .animation(.spring(response: 0.32, dampingFraction: 0.78), value: hasTextToSending)
+        .animation(.spring(response: 0.32, dampingFraction: 0.82), value: replyingMessage != nil)
+        .animation(.spring(response: 0.32, dampingFraction: 0.82), value: editingMessage != nil)
     }
 
     // MARK: - Actions & Logic
@@ -645,6 +712,7 @@ private let inactiveReactionBgColor = Color(UIColor { trait in
 
 private struct PeakMessageBubbleView: View {
     let message: ChatMessage
+    let peerUser: SlooshUser
     let isFromMe: Bool
     let showMeta: Bool
     let allMessages: [ChatMessage]
@@ -676,6 +744,15 @@ private struct PeakMessageBubbleView: View {
             return allMessages.first(where: { $0.id == replyToId })
         }
         return nil
+    }
+
+    private var repliedAuthorTitle: String {
+        guard let replied = repliedMessage else { return "Ответ" }
+        if replied.senderId == peerUser.id {
+            return peerUser.displayTitle
+        } else {
+            return "Вы"
+        }
     }
 
     var body: some View {
@@ -757,10 +834,11 @@ private struct PeakMessageBubbleView: View {
                             .frame(width: 2)
 
                         VStack(alignment: .leading, spacing: 2) {
-                            Text("Ответ")
-                                .font(.system(size: 11, weight: .bold))
+                            Text(repliedAuthorTitle)
+                                .font(.system(size: 11.5, weight: .bold))
                                 .foregroundColor(isFromMe ? outgoingTextColor : .primary)
-                            Text(replied.text ?? "Медиа")
+                                .lineLimit(1)
+                            Text(replied.text?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? (replied.text ?? "") : (replied.type == .media ? (replied.media?.title ?? "Медиа") : "Медиа"))
                                 .font(.system(size: 13))
                                 .foregroundColor(isFromMe ? outgoingMetaColor : .secondary)
                                 .lineLimit(1)
