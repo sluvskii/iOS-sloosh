@@ -23,6 +23,7 @@ public struct ChatDetailView: View {
 
     @FocusState private var isInputFocused: Bool
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
 
     public init(peerUser: SlooshUser) {
         self.peerUser = peerUser
@@ -136,6 +137,20 @@ public struct ChatDetailView: View {
                 UserPresenceService.shared.clearTyping(chatId: chatId)
             }
         }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active && activePlayerConfig == nil {
+                startPolling()
+            } else {
+                pollTask?.cancel()
+            }
+        }
+        .onChange(of: activePlayerConfig) { _, config in
+            if config != nil {
+                pollTask?.cancel()
+            } else if scenePhase == .active {
+                startPolling()
+            }
+        }
         .onDisappear {
             let chatId = repo.getOrCreateChatId(peerUserId: peerUser.id)
             UserPresenceService.shared.clearTyping(chatId: chatId)
@@ -235,6 +250,9 @@ public struct ChatDetailView: View {
                                     },
                                     onReact: { emoji, msg in
                                         addReaction(emoji, to: msg)
+                                    },
+                                    onRetry: { msg in
+                                        retryMessage(msg)
                                     }
                                 )
                                 .id(message.id)
@@ -247,8 +265,8 @@ public struct ChatDetailView: View {
                 .defaultScrollAnchor(.bottom)
                 .scrollContentBackground(.hidden)
                 .scrollDismissesKeyboard(.interactively)
-                .onChange(of: messages.count) { _, _ in
-                    if let lastId = messages.last?.id {
+                .onChange(of: messages.count) { oldCount, newCount in
+                    if newCount > oldCount, let lastId = messages.last?.id {
                         proxy.scrollTo(lastId, anchor: .bottom)
                     }
                 }
@@ -269,18 +287,7 @@ public struct ChatDetailView: View {
     }
 
     private func shouldShowMeta(for message: ChatMessage) -> Bool {
-        guard let index = messages.firstIndex(where: { $0.id == message.id }), index < messages.count - 1 else { return true }
-        let next = messages[index + 1]
-        if message.senderId == next.senderId && isSameMinute(ms1: message.timestampMs, ms2: next.timestampMs) {
-            return false
-        }
         return true
-    }
-
-    private func isSameMinute(ms1: Int64, ms2: Int64) -> Bool {
-        let date1 = Date(timeIntervalSince1970: TimeInterval(ms1) / 1000.0)
-        let date2 = Date(timeIntervalSince1970: TimeInterval(ms2) / 1000.0)
-        return Calendar.current.isDate(date1, equalTo: date2, toGranularity: .minute)
     }
 
     // MARK: - Animated Telegram Style Input Bar (iOS 26+ Liquid Glass)
@@ -360,23 +367,25 @@ public struct ChatDetailView: View {
 
     private func syncMessages(remoteList: [ChatMessage]) async {
         let filteredRemote = remoteList.filter { !repo.isMessageDeletedLocally($0.id) }
-        let sortedRemote = filteredRemote.sorted(by: { $0.timestampMs < $1.timestampMs })
-        let now = Int64(Date().timeIntervalSince1970 * 1000)
         let currentUserId = AuthRepository.shared.currentUser?.id ?? ""
+        let chatId = repo.getOrCreateChatId(peerUserId: peerUser.id)
 
         // 1. Сохраняем свежие оптимистичные сообщения (только если не удалены локально!)
-        let pendingOptimistic = self.messages.filter { local in
+        let pendingLocals = self.messages.filter { local in
             local.senderId == currentUserId &&
             !repo.isMessageDeletedLocally(local.id) &&
-            (now - local.timestampMs) < 15_000 &&
+            (local.deliveryStatus == .sending || local.deliveryStatus == .failed || repo.isMessageInOutbox(chatId: chatId, messageId: local.id)) &&
             !filteredRemote.contains(where: { $0.id == local.id })
         }
 
-        // 2. Умное слияние реакций: сохраняем локальные реакции текущего пользователя, пока сервер обновляется
+        // 2. Умное слияние реакций и статуса доставки
         var mergedRemote: [ChatMessage] = []
-        for remoteMsg in sortedRemote {
+        for remoteMsg in filteredRemote {
             var msg = remoteMsg
             if let localMsg = self.messages.first(where: { $0.id == remoteMsg.id }) {
+                if msg.deliveryStatus == nil {
+                    msg.deliveryStatus = localMsg.deliveryStatus ?? .sent
+                }
                 if let localReactions = localMsg.reactions, let myEmoji = localReactions[currentUserId] {
                     var dict = remoteMsg.reactions ?? [:]
                     dict[currentUserId] = myEmoji
@@ -385,20 +394,21 @@ public struct ChatDetailView: View {
                     dict.removeValue(forKey: currentUserId)
                     msg.reactions = dict.isEmpty ? nil : dict
                 }
+            } else if msg.deliveryStatus == nil {
+                msg.deliveryStatus = .sent
             }
             mergedRemote.append(msg)
         }
 
         var merged = mergedRemote
-        merged.append(contentsOf: pendingOptimistic)
-        let sortedMerged = merged.sorted(by: { $0.timestampMs < $1.timestampMs })
+        merged.append(contentsOf: pendingLocals)
+        let sortedMerged = merged.sorted(by: { $0.timestampMs < $1.timestampMs || ($0.timestampMs == $1.timestampMs && $0.id < $1.id) })
 
         guard sortedMerged != self.messages else { return }
 
         // Обновляем список сообщений мгновенно и нативно
         self.messages = sortedMerged
 
-        let chatId = repo.getOrCreateChatId(peerUserId: peerUser.id)
         await repo.markMessagesAsRead(chatId: chatId, peerUserId: peerUser.id, messages: sortedMerged)
     }
 
@@ -470,15 +480,18 @@ public struct ChatDetailView: View {
 
         let replyId = replyingMessage?.id
         let currentUserId = AuthRepository.shared.currentUser?.id ?? ""
+        let monotonicTs = repo.generateMonotonicTimestamp()
 
-        // Оптимистичное создание сообщения за 0мс с единым стабильным ID!
+        // Оптимистичное создание сообщения за 0мс с единым стабильным ID и монотонным временем!
         let optimisticMessage = ChatMessage(
             senderId: currentUserId,
             receiverId: peerUser.id,
             type: .text,
             text: trimmed,
+            timestampMs: monotonicTs,
             replyToId: replyId,
-            isRead: false
+            isRead: false,
+            deliveryStatus: .sending
         )
 
         messageText = ""
@@ -488,9 +501,20 @@ public struct ChatDetailView: View {
 
         // Добавляем на UI мгновенно за 0мс без мигания и скачков
         self.messages.append(optimisticMessage)
+        self.messages.sort { $0.timestampMs < $1.timestampMs || ($0.timestampMs == $1.timestampMs && $0.id < $1.id) }
 
         Task {
             _ = await repo.sendMessage(toPeerUser: peerUser, message: optimisticMessage)
+        }
+    }
+
+    private func retryMessage(_ msg: ChatMessage) {
+        let chatId = repo.getOrCreateChatId(peerUserId: peerUser.id)
+        if let idx = self.messages.firstIndex(where: { $0.id == msg.id }) {
+            self.messages[idx].deliveryStatus = .sending
+        }
+        Task {
+            await repo.retrySendMessage(chatId: chatId, messageId: msg.id, peerUser: peerUser)
         }
     }
 
@@ -589,6 +613,7 @@ private struct PeakMessageBubbleView: View {
     let onEdit: (ChatMessage) -> Void
     let onDelete: (ChatMessage) -> Void
     let onReact: (String, ChatMessage) -> Void
+    let onRetry: ((ChatMessage) -> Void)?
 
     @State private var showReactionPicker: Bool = false
 
@@ -763,9 +788,30 @@ private struct PeakMessageBubbleView: View {
                 .foregroundColor(.secondary)
 
             if isFromMe {
-                Image(systemName: message.isRead == true ? "checkmark.circle.fill" : "checkmark.circle")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundColor(.secondary)
+                switch message.deliveryStatus {
+                case .sending:
+                    Image(systemName: "clock")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundColor(.secondary)
+                case .failed:
+                    Button {
+                        onRetry?(message)
+                    } label: {
+                        HStack(spacing: 2) {
+                            Image(systemName: "exclamationmark.circle.fill")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(.red)
+                            Text("Повторить")
+                                .font(.system(size: 10, weight: .medium))
+                                .foregroundColor(.red)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                case .sent, .none:
+                    Image(systemName: message.isRead == true ? "checkmark.circle.fill" : "checkmark.circle")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(message.isRead == true ? Color.slooshAccent : .secondary)
+                }
             }
 
             if message.isEdited == true {

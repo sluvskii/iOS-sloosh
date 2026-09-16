@@ -15,9 +15,18 @@ public final class MessengerRepository: ObservableObject {
     private let databaseBaseURL = "https://sloosh-77434-default-rtdb.firebaseio.com"
     private let knownUsersKey = "sloosh_messenger_known_users"
 
+    private let deletedMessageIdsKey = "sloosh_messenger_deleted_message_ids"
+    private let outboxKey = "sloosh_messenger_outbox_queue"
+
     private var cancellables = Set<AnyCancellable>()
     private var lastKnownUserId: String? = nil
     private var deletedMessageIds: Set<String> = []
+    private var outboxQueue: [String: [ChatMessage]] = [:]
+    private var lastMonotonicTimestampMs: Int64 = 0
+
+    public var totalUnreadCount: Int {
+        conversations.reduce(0) { $0 + $1.unreadCount }
+    }
 
     public func isMessageDeletedLocally(_ messageId: String) -> Bool {
         deletedMessageIds.contains(messageId)
@@ -25,6 +34,42 @@ public final class MessengerRepository: ObservableObject {
 
     public func markMessageAsDeletedLocally(_ messageId: String) {
         deletedMessageIds.insert(messageId)
+        saveDeletedMessageIds()
+    }
+
+    private func loadDeletedMessageIds() {
+        if let array = UserDefaults.standard.stringArray(forKey: deletedMessageIdsKey) {
+            deletedMessageIds = Set(array)
+        }
+    }
+
+    private func saveDeletedMessageIds() {
+        let array = Array(deletedMessageIds.suffix(1000))
+        UserDefaults.standard.set(array, forKey: deletedMessageIdsKey)
+    }
+
+    public func isMessageInOutbox(chatId: String, messageId: String) -> Bool {
+        outboxQueue[chatId]?.contains(where: { $0.id == messageId }) == true
+    }
+
+    private func loadOutboxFromDisk() {
+        if let data = UserDefaults.standard.data(forKey: outboxKey),
+           let decoded = try? JSONDecoder().decode([String: [ChatMessage]].self, from: data) {
+            self.outboxQueue = decoded
+        }
+    }
+
+    private func saveOutboxToDisk() {
+        if let data = try? JSONEncoder().encode(outboxQueue) {
+            UserDefaults.standard.set(data, forKey: outboxKey)
+        }
+    }
+
+    public func generateMonotonicTimestamp() -> Int64 {
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let monotonic = max(nowMs, lastMonotonicTimestampMs + 1)
+        lastMonotonicTimestampMs = monotonic
+        return monotonic
     }
 
     public func clearSearchResults() {
@@ -37,6 +82,20 @@ public final class MessengerRepository: ObservableObject {
         self.conversations = loadConversationsFromDisk(userId: currentId)
         self.subscribedChannels = loadSubscribedChannelsFromDisk(userId: currentId)
         self.publicChannels = loadPublicChannelsFromDisk()
+        loadDeletedMessageIds()
+        loadOutboxFromDisk()
+
+        // Listen for network reconnection to drain outbox queue
+        NetworkMonitor.shared.$isConnected
+            .receive(on: RunLoop.main)
+            .sink { [weak self] isConnected in
+                if isConnected {
+                    Task { [weak self] in
+                        await self?.drainOutboxQueue()
+                    }
+                }
+            }
+            .store(in: &cancellables)
 
         // Subscribe to user account changes in AuthRepository
         AuthRepository.shared.$currentUser
@@ -147,7 +206,10 @@ public final class MessengerRepository: ObservableObject {
     public func saveMessagesToDisk(_ messages: [ChatMessage], chatId: String, userId: String? = nil) {
         let uid = userId ?? AuthRepository.shared.currentUser?.id ?? "guest"
         let key = "sloosh_messenger_messages_v2_\(uid)_\(chatId)"
-        if let data = try? JSONEncoder().encode(messages) {
+        let sorted = messages
+            .filter { !deletedMessageIds.contains($0.id) }
+            .sorted { $0.timestampMs < $1.timestampMs || ($0.timestampMs == $1.timestampMs && $0.id < $1.id) }
+        if let data = try? JSONEncoder().encode(sorted) {
             UserDefaults.standard.set(data, forKey: key)
         }
     }
@@ -159,7 +221,9 @@ public final class MessengerRepository: ObservableObject {
               let list = try? JSONDecoder().decode([ChatMessage].self, from: data) else {
             return []
         }
-        return list.filter { !deletedMessageIds.contains($0.id) }.sorted { $0.timestampMs < $1.timestampMs }
+        return list
+            .filter { !deletedMessageIds.contains($0.id) }
+            .sorted { $0.timestampMs < $1.timestampMs || ($0.timestampMs == $1.timestampMs && $0.id < $1.id) }
     }
 
     // MARK: - Local Known Users Persistence
@@ -876,18 +940,34 @@ public final class MessengerRepository: ObservableObject {
             }
 
             if data.isEmpty || String(data: data, encoding: .utf8) == "null" {
-                let freshOptimistic = localCached.filter { local in
-                    let now = Int64(Date().timeIntervalSince1970 * 1000)
-                    return (now - local.timestampMs) < 15_000 && !self.isMessageDeletedLocally(local.id)
+                let remaining = localCached.filter { local in
+                    !self.isMessageDeletedLocally(local.id) &&
+                    (local.deliveryStatus == .sending || local.deliveryStatus == .failed || self.isMessageInOutbox(chatId: chatId, messageId: local.id))
                 }
-                saveMessagesToDisk(freshOptimistic, chatId: chatId)
-                return freshOptimistic
+                saveMessagesToDisk(remaining, chatId: chatId)
+                return remaining
             }
 
             let messagesDict = (try? JSONDecoder().decode([String: ChatMessage].self, from: data)) ?? [:]
-            let list = Array(messagesDict.values)
+            var list = Array(messagesDict.values)
                 .filter { !self.isMessageDeletedLocally($0.id) }
-                .sorted(by: { $0.timestampMs < $1.timestampMs })
+                .map { msg -> ChatMessage in
+                    var copy = msg
+                    if copy.deliveryStatus == nil || copy.deliveryStatus == .sending {
+                        copy.deliveryStatus = .sent
+                    }
+                    return copy
+                }
+
+            // Preserve local pending / outbox messages that haven't landed on Firebase yet
+            let pendingLocals = localCached.filter { local in
+                !self.isMessageDeletedLocally(local.id) &&
+                (local.deliveryStatus == .sending || local.deliveryStatus == .failed || self.isMessageInOutbox(chatId: chatId, messageId: local.id)) &&
+                !list.contains(where: { $0.id == local.id })
+            }
+            list.append(contentsOf: pendingLocals)
+            list.sort { $0.timestampMs < $1.timestampMs || ($0.timestampMs == $1.timestampMs && $0.id < $1.id) }
+
             saveMessagesToDisk(list, chatId: chatId)
             return list
         } catch {
@@ -905,32 +985,13 @@ public final class MessengerRepository: ObservableObject {
         guard !unreadIncoming.isEmpty else { return }
 
         var updatedList = messages
+        var patchPayload: [String: Any] = [:]
         for msg in unreadIncoming {
             if let idx = updatedList.firstIndex(where: { $0.id == msg.id }) {
-                let readMsg = ChatMessage(
-                    id: msg.id,
-                    senderId: msg.senderId,
-                    receiverId: msg.receiverId,
-                    type: msg.type,
-                    text: msg.text,
-                    media: msg.media,
-                    timestampMs: msg.timestampMs,
-                    replyToId: msg.replyToId,
-                    reactions: msg.reactions,
-                    isEdited: msg.isEdited,
-                    isRead: true
-                )
+                var readMsg = updatedList[idx]
+                readMsg.isRead = true
                 updatedList[idx] = readMsg
-
-                Task {
-                    if let msgUrl = await makeURL(path: "chats/\(chatId)/messages/\(msg.id)") {
-                        var req = URLRequest(url: msgUrl)
-                        req.httpMethod = "PUT"
-                        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-                        req.httpBody = try? JSONEncoder().encode(readMsg)
-                        _ = try? await URLSession.shared.data(for: req)
-                    }
-                }
+                patchPayload["\(msg.id)/isRead"] = true
             }
         }
         saveMessagesToDisk(updatedList, chatId: chatId)
@@ -948,12 +1009,25 @@ public final class MessengerRepository: ObservableObject {
             saveConversationsToDisk(conversations)
         }
 
-        if let unreadUrl = await makeURL(path: "user_chats/\(currentUserId)/\(chatId)/unreadCount") {
-            var req = URLRequest(url: unreadUrl)
-            req.httpMethod = "PUT"
-            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-            req.httpBody = "0".data(using: .utf8)
-            _ = try? await URLSession.shared.data(for: req)
+        // Single atomic PATCH for all read receipts
+        Task {
+            if !patchPayload.isEmpty,
+               let patchData = try? JSONSerialization.data(withJSONObject: patchPayload),
+               let patchUrl = await makeURL(path: "chats/\(chatId)/messages") {
+                var req = URLRequest(url: patchUrl)
+                req.httpMethod = "PATCH"
+                req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                req.httpBody = patchData
+                _ = try? await URLSession.shared.data(for: req)
+            }
+
+            if let unreadUrl = await makeURL(path: "user_chats/\(currentUserId)/\(chatId)/unreadCount") {
+                var req = URLRequest(url: unreadUrl)
+                req.httpMethod = "PUT"
+                req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                req.httpBody = "0".data(using: .utf8)
+                _ = try? await URLSession.shared.data(for: req)
+            }
         }
     }
 
@@ -965,20 +1039,26 @@ public final class MessengerRepository: ObservableObject {
 
         let chatId = getOrCreateChatId(peerUserId: peerUser.id)
 
+        var sendingMessage = message
+        if sendingMessage.deliveryStatus == nil {
+            sendingMessage.deliveryStatus = .sending
+        }
+
         // 1. Optimistic local update
         var currentMessages = loadMessagesFromDisk(chatId: chatId)
-        if let idx = currentMessages.firstIndex(where: { $0.id == message.id }) {
-            currentMessages[idx] = message
+        if let idx = currentMessages.firstIndex(where: { $0.id == sendingMessage.id }) {
+            currentMessages[idx] = sendingMessage
         } else {
-            currentMessages.append(message)
+            currentMessages.append(sendingMessage)
         }
+        currentMessages.sort { $0.timestampMs < $1.timestampMs || ($0.timestampMs == $1.timestampMs && $0.id < $1.id) }
         saveMessagesToDisk(currentMessages, chatId: chatId)
 
         let previewText: String
-        if let media = message.media {
+        if let media = sendingMessage.media {
             previewText = "🎬 \(media.title)"
         } else {
-            previewText = message.text ?? ""
+            previewText = sendingMessage.text ?? ""
         }
 
         let updatedConv = ChatConversation(
@@ -986,7 +1066,7 @@ public final class MessengerRepository: ObservableObject {
             peerUser: peerUser,
             lastMessageText: previewText,
             unreadCount: 0,
-            updatedAtMs: message.timestampMs
+            updatedAtMs: sendingMessage.timestampMs
         )
         var convs = self.conversations
         if let idx = convs.firstIndex(where: { $0.chatId == chatId }) {
@@ -998,9 +1078,17 @@ public final class MessengerRepository: ObservableObject {
         self.conversations = convs
         saveConversationsToDisk(convs)
 
-        // 2. Background REST
+        // 2. Add to outbox queue
+        if outboxQueue[chatId] == nil {
+            outboxQueue[chatId] = []
+        }
+        outboxQueue[chatId]?.removeAll(where: { $0.id == sendingMessage.id })
+        outboxQueue[chatId]?.append(sendingMessage)
+        saveOutboxToDisk()
+
+        // 3. Attempt posting to Firebase
         Task {
-            _ = await postMessageToFirebase(chatId: chatId, message: message, peerUser: peerUser)
+            await attemptPostMessage(chatId: chatId, message: sendingMessage, peerUser: peerUser)
         }
         return true
     }
@@ -1013,6 +1101,7 @@ public final class MessengerRepository: ObservableObject {
     ) async -> Bool {
         guard let currentUser = AuthRepository.shared.currentUser, !currentUser.isAnonymous else { return false }
         let messageType: MessageType = (mediaPayload != nil) ? .media : .text
+        let monotonicTs = generateMonotonicTimestamp()
 
         let message = ChatMessage(
             senderId: currentUser.id,
@@ -1020,9 +1109,96 @@ public final class MessengerRepository: ObservableObject {
             type: messageType,
             text: text,
             media: mediaPayload,
-            replyToId: replyToId
+            timestampMs: monotonicTs,
+            replyToId: replyToId,
+            deliveryStatus: .sending
         )
         return await sendMessage(toPeerUser: peerUser, message: message)
+    }
+
+    public func attemptPostMessage(
+        chatId: String,
+        message: ChatMessage,
+        peerUser: SlooshUser?
+    ) async {
+        // If offline, leave in outbox as .sending
+        guard NetworkMonitor.shared.isConnected else {
+            return
+        }
+
+        // Retry up to 3 times
+        var success = false
+        for attempt in 0..<3 {
+            if attempt > 0 {
+                try? await Task.sleep(nanoseconds: UInt64(attempt * 1_000_000_000))
+            }
+            success = await postMessageToFirebase(chatId: chatId, message: message, peerUser: peerUser)
+            if success {
+                break
+            }
+            if !NetworkMonitor.shared.isConnected {
+                return
+            }
+        }
+
+        if success {
+            // Remove from outbox
+            outboxQueue[chatId]?.removeAll(where: { $0.id == message.id })
+            saveOutboxToDisk()
+
+            // Update status to .sent on disk
+            var diskMsgs = loadMessagesFromDisk(chatId: chatId)
+            if let idx = diskMsgs.firstIndex(where: { $0.id == message.id }) {
+                diskMsgs[idx].deliveryStatus = .sent
+                saveMessagesToDisk(diskMsgs, chatId: chatId)
+            }
+        } else {
+            if NetworkMonitor.shared.isConnected {
+                var diskMsgs = loadMessagesFromDisk(chatId: chatId)
+                if let idx = diskMsgs.firstIndex(where: { $0.id == message.id }) {
+                    diskMsgs[idx].deliveryStatus = .failed
+                    saveMessagesToDisk(diskMsgs, chatId: chatId)
+                }
+                if let outIdx = outboxQueue[chatId]?.firstIndex(where: { $0.id == message.id }) {
+                    outboxQueue[chatId]?[outIdx].deliveryStatus = .failed
+                    saveOutboxToDisk()
+                }
+            }
+        }
+    }
+
+    public func retrySendMessage(chatId: String, messageId: String, peerUser: SlooshUser) async {
+        var diskMsgs = loadMessagesFromDisk(chatId: chatId)
+        guard let idx = diskMsgs.firstIndex(where: { $0.id == messageId }) else { return }
+        diskMsgs[idx].deliveryStatus = .sending
+        let messageToRetry = diskMsgs[idx]
+        saveMessagesToDisk(diskMsgs, chatId: chatId)
+
+        if outboxQueue[chatId] == nil {
+            outboxQueue[chatId] = []
+        }
+        outboxQueue[chatId]?.removeAll(where: { $0.id == messageId })
+        outboxQueue[chatId]?.append(messageToRetry)
+        saveOutboxToDisk()
+
+        await attemptPostMessage(chatId: chatId, message: messageToRetry, peerUser: peerUser)
+    }
+
+    public func drainOutboxQueue() async {
+        guard NetworkMonitor.shared.isConnected else { return }
+        let queueSnapshot = outboxQueue
+
+        for (chatId, messages) in queueSnapshot {
+            guard !messages.isEmpty else { continue }
+            let peerUser = conversations.first(where: { $0.chatId == chatId })?.peerUser
+                ?? getLocalKnownUsers().values.first(where: { chatId.contains($0.id) })
+
+            for msg in messages {
+                if msg.deliveryStatus != .failed {
+                    await attemptPostMessage(chatId: chatId, message: msg, peerUser: peerUser)
+                }
+            }
+        }
     }
 
     public func postMessageToFirebase(
@@ -1165,8 +1341,10 @@ public final class MessengerRepository: ObservableObject {
         self.conversations.removeAll(where: { $0.chatId == chatId })
         saveConversationsToDisk(self.conversations)
 
-        // 3. Очищаем локальные сообщения
+        // 3. Очищаем локальные сообщения и очередь отправки
         saveMessagesToDisk([], chatId: chatId)
+        outboxQueue.removeValue(forKey: chatId)
+        saveOutboxToDisk()
 
         // 4. Удаляем чат у текущего пользователя в Firebase
         if let myChatUrl = await makeURL(path: "user_chats/\(currentUserId)/\(chatId)") {
@@ -1205,6 +1383,8 @@ public final class MessengerRepository: ObservableObject {
         var currentMessages = loadMessagesFromDisk(chatId: chatId)
         currentMessages.removeAll(where: { $0.id == messageId })
         saveMessagesToDisk(currentMessages, chatId: chatId)
+        outboxQueue[chatId]?.removeAll(where: { $0.id == messageId })
+        saveOutboxToDisk()
 
         if let msgUrl = await makeURL(path: "chats/\(chatId)/messages/\(messageId)") {
             var req = URLRequest(url: msgUrl)

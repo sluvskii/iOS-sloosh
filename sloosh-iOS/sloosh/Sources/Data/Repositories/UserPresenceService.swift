@@ -134,33 +134,24 @@ public final class UserPresenceService: ObservableObject {
                 "lastSeenMs": nowMs
             ]
 
-            guard let jsonData = try? JSONSerialization.data(withJSONObject: presenceDict) else { return }
+            let userProfilePatch: [String: Any] = [
+                "isOnline": isOnline,
+                "lastSeenMs": nowMs,
+                "presence": presenceDict
+            ]
 
-            // 1. Update /user_profiles/{uid}/presence
-            if let url = await makeURL(path: "user_profiles/\(currentUser.id)/presence") {
+            if let patchData = try? JSONSerialization.data(withJSONObject: userProfilePatch),
+               let url = await makeURL(path: "user_profiles/\(currentUser.id)") {
                 var req = URLRequest(url: url)
-                req.httpMethod = "PUT"
+                req.httpMethod = "PATCH"
                 req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-                req.httpBody = jsonData
-                _ = try? await URLSession.shared.data(for: req)
-            }
-
-            // Also update top-level /user_profiles/{uid}/isOnline & lastSeenMs
-            if let url2 = await makeURL(path: "user_profiles/\(currentUser.id)/isOnline") {
-                var req = URLRequest(url: url2)
-                req.httpMethod = "PUT"
-                req.httpBody = "\(isOnline)".data(using: .utf8)
-                _ = try? await URLSession.shared.data(for: req)
-            }
-            if let url3 = await makeURL(path: "user_profiles/\(currentUser.id)/lastSeenMs") {
-                var req = URLRequest(url: url3)
-                req.httpMethod = "PUT"
-                req.httpBody = "\(nowMs)".data(using: .utf8)
+                req.httpBody = patchData
                 _ = try? await URLSession.shared.data(for: req)
             }
 
             // 2. Update /users/{uid}/presence
-            if let url4 = await makeURL(path: "users/\(currentUser.id)/presence") {
+            if let url4 = await makeURL(path: "users/\(currentUser.id)/presence"),
+               let jsonData = try? JSONSerialization.data(withJSONObject: presenceDict) {
                 var req = URLRequest(url: url4)
                 req.httpMethod = "PUT"
                 req.setValue("application/json", forHTTPHeaderField: "Content-Type")
