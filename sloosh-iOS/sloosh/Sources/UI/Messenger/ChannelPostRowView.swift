@@ -17,20 +17,14 @@ public struct ChannelPostRowView: View {
 
     private var activeReactionBgColor: Color {
         colorScheme == .dark
-            ? Color(red: 0.23, green: 0.23, blue: 0.24)
-            : Color(red: 0.82, green: 0.82, blue: 0.84)
+            ? Color(white: 0.32)
+            : Color(red: 0.88, green: 0.88, blue: 0.90)
     }
 
     private var inactiveReactionBgColor: Color {
-        Color(UIColor.secondarySystemGroupedBackground)
-    }
-
-    private var activeReactionStrokeColor: Color {
-        colorScheme == .dark ? Color.white.opacity(0.3) : Color.black.opacity(0.25)
-    }
-
-    private var inactiveReactionStrokeColor: Color {
-        colorScheme == .dark ? Color.white.opacity(0.08) : Color.black.opacity(0.08)
+        colorScheme == .dark
+            ? Color(white: 0.16)
+            : Color(UIColor.systemBackground)
     }
 
     public init(
@@ -138,9 +132,11 @@ public struct ChannelPostRowView: View {
                 RoundedRectangle(cornerRadius: 20, style: .continuous)
                     .fill(Color(UIColor.secondarySystemGroupedBackground))
             )
-            .overlay(
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .stroke(Color.primary.opacity(0.06), lineWidth: 0.5)
+            .shadow(
+                color: Color.black.opacity(colorScheme == .light ? 0.04 : 0),
+                radius: 3,
+                x: 0,
+                y: 1
             )
             .contextMenu {
                 contextMenuContent
@@ -197,17 +193,14 @@ public struct ChannelPostRowView: View {
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3.5)
                     .background(
-                        isMyReaction ? activeReactionBgColor : inactiveReactionBgColor
+                        Capsule().fill(isMyReaction ? activeReactionBgColor : inactiveReactionBgColor)
                     )
-                    .clipShape(Capsule())
-                    .overlay(
-                        Capsule()
-                            .stroke(
-                                isMyReaction ? activeReactionStrokeColor : inactiveReactionStrokeColor,
-                                lineWidth: isMyReaction ? 1.0 : 0.8
-                            )
+                    .shadow(
+                        color: Color.black.opacity(colorScheme == .dark ? 0.25 : 0.08),
+                        radius: 2.5,
+                        x: 0,
+                        y: 1
                     )
-                    .shadow(color: Color.black.opacity(0.08), radius: 2, x: 0, y: 1)
                 }
                 .buttonStyle(PeakPressButtonStyle())
                 .transition(.scale(scale: 0.01, anchor: .center).combined(with: .opacity))
