@@ -605,7 +605,7 @@ private struct iMessageReactionPickerView: View {
 private let outgoingBubbleColor = Color(UIColor { trait in
     trait.userInterfaceStyle == .dark
         ? UIColor(red: 0.20, green: 0.20, blue: 0.21, alpha: 1.0)
-        : UIColor(red: 0.17, green: 0.17, blue: 0.18, alpha: 1.0)
+        : UIColor(red: 0.88, green: 0.88, blue: 0.90, alpha: 1.0)
 })
 
 private let incomingBubbleColor = Color(UIColor { trait in
@@ -614,40 +614,16 @@ private let incomingBubbleColor = Color(UIColor { trait in
         : UIColor.systemBackground
 })
 
-private let outgoingBubbleStrokeColor = Color(UIColor { trait in
-    trait.userInterfaceStyle == .dark
-        ? UIColor.white.withAlphaComponent(0.08)
-        : UIColor.black.withAlphaComponent(0.08)
-})
-
-private let incomingBubbleStrokeColor = Color(UIColor { trait in
-    trait.userInterfaceStyle == .dark
-        ? UIColor.white.withAlphaComponent(0.06)
-        : UIColor.black.withAlphaComponent(0.06)
-})
-
 private let activeReactionBgColor = Color(UIColor { trait in
     trait.userInterfaceStyle == .dark
-        ? UIColor(white: 0.28, alpha: 1.0)
-        : UIColor(white: 0.85, alpha: 1.0)
+        ? UIColor(white: 0.32, alpha: 1.0)
+        : UIColor(red: 0.88, green: 0.88, blue: 0.90, alpha: 1.0)
 })
 
 private let inactiveReactionBgColor = Color(UIColor { trait in
     trait.userInterfaceStyle == .dark
-        ? UIColor(white: 0.14, alpha: 0.95)
-        : UIColor(white: 0.98, alpha: 0.95)
-})
-
-private let activeReactionStrokeColor = Color(UIColor { trait in
-    trait.userInterfaceStyle == .dark
-        ? UIColor.white.withAlphaComponent(0.3)
-        : UIColor.black.withAlphaComponent(0.25)
-})
-
-private let inactiveReactionStrokeColor = Color(UIColor { trait in
-    trait.userInterfaceStyle == .dark
-        ? UIColor.white.withAlphaComponent(0.08)
-        : UIColor.black.withAlphaComponent(0.08)
+        ? UIColor(white: 0.16, alpha: 0.95)
+        : UIColor.systemBackground
 })
 
 // MARK: - Peak Message Bubble View (Adaptive Theme + Minute Grouping)
@@ -666,6 +642,19 @@ private struct PeakMessageBubbleView: View {
     let onRetry: ((ChatMessage) -> Void)?
 
     @State private var showReactionPicker: Bool = false
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var outgoingTextColor: Color {
+        colorScheme == .dark ? .white : .primary
+    }
+
+    private var outgoingMetaColor: Color {
+        colorScheme == .dark ? Color.white.opacity(0.65) : .secondary
+    }
+
+    private var outgoingReadCheckmarkColor: Color {
+        colorScheme == .dark ? .white : .primary
+    }
 
     private var repliedMessage: ChatMessage? {
         if let replyToId = message.replyToId {
@@ -749,16 +738,16 @@ private struct PeakMessageBubbleView: View {
                 if let replied = repliedMessage {
                     HStack(spacing: 8) {
                         Capsule()
-                            .fill(isFromMe ? Color.white.opacity(0.6) : Color.primary.opacity(0.4))
+                            .fill(isFromMe ? (colorScheme == .dark ? Color.white.opacity(0.6) : Color.primary.opacity(0.35)) : Color.primary.opacity(0.35))
                             .frame(width: 2)
 
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Ответ")
                                 .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(isFromMe ? .white : .primary)
+                                .foregroundColor(isFromMe ? outgoingTextColor : .primary)
                             Text(replied.text ?? "Медиа")
                                 .font(.system(size: 13))
-                                .foregroundColor(isFromMe ? Color.white.opacity(0.7) : .secondary)
+                                .foregroundColor(isFromMe ? outgoingMetaColor : .secondary)
                                 .lineLimit(1)
                         }
                     }
@@ -770,7 +759,7 @@ private struct PeakMessageBubbleView: View {
                 if let text = message.text, !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     Text(text)
                         .font(.system(size: 16))
-                        .foregroundColor(isFromMe ? .white : .primary)
+                        .foregroundColor(isFromMe ? outgoingTextColor : .primary)
                 }
             }
             .padding(.horizontal, 14)
@@ -779,9 +768,11 @@ private struct PeakMessageBubbleView: View {
                 RoundedRectangle(cornerRadius: 20, style: .continuous)
                     .fill(isFromMe ? outgoingBubbleColor : incomingBubbleColor)
             )
-            .overlay(
-                RoundedRectangle(cornerRadius: 20, style: .continuous)
-                    .stroke(isFromMe ? outgoingBubbleStrokeColor : incomingBubbleStrokeColor, lineWidth: 0.5)
+            .shadow(
+                color: Color.black.opacity(!isFromMe && colorScheme == .light ? 0.04 : 0),
+                radius: 3,
+                x: 0,
+                y: 1
             )
             .contextMenu {
                 Button {
@@ -828,14 +819,14 @@ private struct PeakMessageBubbleView: View {
         HStack(spacing: 4) {
             Text(formatTime(ms: message.timestampMs))
                 .font(.system(size: 11))
-                .foregroundColor(isFromMe ? Color.white.opacity(0.65) : .secondary)
+                .foregroundColor(isFromMe ? outgoingMetaColor : .secondary)
 
             if isFromMe {
                 switch message.deliveryStatus {
                 case .sending:
                     Image(systemName: "clock")
                         .font(.system(size: 10, weight: .medium))
-                        .foregroundColor(Color.white.opacity(0.65))
+                        .foregroundColor(outgoingMetaColor)
                 case .failed:
                     Button {
                         onRetry?(message)
@@ -853,14 +844,14 @@ private struct PeakMessageBubbleView: View {
                 case .sent, .none:
                     Image(systemName: message.isRead == true ? "checkmark.circle.fill" : "checkmark.circle")
                         .font(.system(size: 11, weight: .medium))
-                        .foregroundColor(message.isRead == true ? .white : Color.white.opacity(0.65))
+                        .foregroundColor(message.isRead == true ? outgoingReadCheckmarkColor : outgoingMetaColor)
                 }
             }
 
             if message.isEdited == true {
                 Text("изм.")
                     .font(.system(size: 11))
-                    .foregroundColor(isFromMe ? Color.white.opacity(0.65) : .secondary)
+                    .foregroundColor(isFromMe ? outgoingMetaColor : .secondary)
             }
         }
     }
@@ -887,17 +878,14 @@ private struct PeakMessageBubbleView: View {
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3.5)
                     .background(
-                        isMyReaction ? activeReactionBgColor : inactiveReactionBgColor
+                        Capsule().fill(isMyReaction ? activeReactionBgColor : inactiveReactionBgColor)
                     )
-                    .clipShape(Capsule())
-                    .overlay(
-                        Capsule()
-                            .stroke(
-                                isMyReaction ? activeReactionStrokeColor : inactiveReactionStrokeColor,
-                                lineWidth: isMyReaction ? 1.0 : 0.8
-                            )
+                    .shadow(
+                        color: Color.black.opacity(colorScheme == .dark ? 0.25 : 0.08),
+                        radius: 2.5,
+                        x: 0,
+                        y: 1
                     )
-                    .shadow(color: Color.black.opacity(0.08), radius: 2, x: 0, y: 1)
                 }
                 .buttonStyle(PeakPressButtonStyle())
                 .transition(.scale(scale: 0.01, anchor: .center).combined(with: .opacity))
