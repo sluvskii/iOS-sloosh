@@ -95,6 +95,14 @@ jobs:
           echo "Final CFBundleShortVersionString: $(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' sloosh/Info.plist)"
 
 
+      - name: Cache DerivedData
+        uses: actions/cache@v4
+        with:
+          path: sloosh-iOS/build
+          key: deriveddata-${{ runner.os }}-${{ github.run_number }}
+          restore-keys: |
+            deriveddata-${{ runner.os }}-
+
       - name: Build iOS App
         run: |
           cd sloosh-iOS
@@ -107,20 +115,23 @@ jobs:
             -derivedDataPath ./build \
             -parallelizeTargets \
             -jobs $(sysctl -n hw.ncpu) \
+            ARCHS=arm64 \
+            ONLY_ACTIVE_ARCH=YES \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_INJECT_BASE_ENTITLEMENTS=NO \
             COMPILER_INDEX_STORE_ENABLE=NO \
             DEBUG_INFORMATION_FORMAT=dwarf \
-            SWIFT_COMPILATION_MODE=wholemodule \
+            SWIFT_COMPILATION_MODE=singlefile \
+            -showBuildTimingSummary \
             -quiet
 
       - name: Package IPA (Unsigned)
         run: |
           cd sloosh-iOS
           mkdir -p Payload
-          mv build/Build/Products/Release-iphoneos/sloosh.app Payload/
+          cp -R build/Build/Products/Release-iphoneos/sloosh.app Payload/
           zip -q -1 -r sloosh.ipa Payload
 
       - name: Create Release
