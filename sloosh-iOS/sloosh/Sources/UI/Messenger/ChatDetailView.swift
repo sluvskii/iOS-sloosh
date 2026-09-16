@@ -144,8 +144,8 @@ public struct ChatDetailView: View {
                 pollTask?.cancel()
             }
         }
-        .onChange(of: activePlayerConfig) { _, config in
-            if config != nil {
+        .onChange(of: activePlayerConfig != nil) { _, isPlaying in
+            if isPlaying {
                 pollTask?.cancel()
             } else if scenePhase == .active {
                 startPolling()
