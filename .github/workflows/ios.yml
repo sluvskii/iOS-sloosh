@@ -101,9 +101,9 @@ jobs:
         uses: actions/cache@v4
         with:
           path: sloosh-iOS/build
-          key: deriveddata-${{ runner.os }}-${{ github.run_number }}
+          key: deriveddata-v2-${{ runner.os }}-${{ github.run_number }}
           restore-keys: |
-            deriveddata-${{ runner.os }}-
+            deriveddata-v2-${{ runner.os }}-
 
       - name: Build iOS App
         run: |
