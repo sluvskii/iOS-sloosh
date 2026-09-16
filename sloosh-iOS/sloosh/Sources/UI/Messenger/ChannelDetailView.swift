@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 public struct ChannelDetailView: View {
     public let channel: ChannelModel
@@ -66,8 +67,22 @@ public struct ChannelDetailView: View {
         isMultilineInput ? 18 : 22
     }
 
+    private var deviceBottomSafeArea: CGFloat {
+        let scenes = UIApplication.shared.connectedScenes
+        let windowScene = scenes.compactMap { $0 as? UIWindowScene }.first(where: { $0.activationState == .foregroundActive })
+            ?? scenes.compactMap { $0 as? UIWindowScene }.first
+        let keyWindow = windowScene?.windows.first(where: { $0.isKeyWindow })
+            ?? windowScene?.windows.first
+        let bottom = keyWindow?.safeAreaInsets.bottom ?? 34
+        return bottom > 0 ? bottom : 34
+    }
+
+    private var collapsedHorizontalPadding: CGFloat {
+        deviceBottomSafeArea + 2
+    }
+
     private var inputBarHorizontalPadding: CGFloat {
-        isInputFocused ? 6 : 24
+        isInputFocused ? 6 : collapsedHorizontalPadding
     }
 
     private var inputBarVerticalPadding: CGFloat {
