@@ -311,27 +311,27 @@ public struct ChatDetailView: View {
     private var inputBar: some View {
         HStack(alignment: .bottom, spacing: 8) {
             // Floating Glass Text Field Capsule / Morphing Box (Telegram-style inline reply/edit)
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: isExpandedInput ? 8 : 4) {
                 // 1. Inline Reply Preview
                 if let replying = replyingMessage {
                     HStack(spacing: 8) {
                         Capsule()
-                            .fill(colorScheme == .dark ? Color.white : Color.primary)
-                            .frame(width: 2.5, height: 32)
+                            .fill(colorScheme == .dark ? Color.white : Color.black)
+                            .frame(width: 2.5, height: 36)
 
-                        VStack(alignment: .leading, spacing: 2) {
+                        VStack(alignment: .leading, spacing: 3) {
                             Text(replyHeaderTitle(for: replying))
-                                .font(.system(size: 13, weight: .semibold))
+                                .font(.system(size: 13.5, weight: .semibold))
                                 .foregroundColor(colorScheme == .dark ? .white : .primary)
                                 .lineLimit(1)
 
                             Text(replyPreviewText(for: replying))
-                                .font(.system(size: 12))
+                                .font(.system(size: 13.5, weight: .regular))
                                 .foregroundColor(.secondary)
                                 .lineLimit(1)
                         }
 
-                        Spacer(minLength: 4)
+                        Spacer(minLength: 8)
 
                         Button {
                             withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
@@ -339,14 +339,15 @@ public struct ChatDetailView: View {
                             }
                         } label: {
                             Image(systemName: "xmark")
-                                .font(.system(size: 11, weight: .bold))
+                                .font(.system(size: 13.5, weight: .semibold))
                                 .foregroundColor(.secondary)
-                                .padding(6)
+                                .padding(8)
                                 .contentShape(Circle())
                         }
                         .buttonStyle(.plain)
                     }
-                    .padding(.top, 2)
+                    .padding(.top, 4)
+                    .padding(.bottom, 6)
                     .transition(.asymmetric(
                         insertion: .opacity.combined(with: .move(edge: .bottom)),
                         removal: .opacity.combined(with: .move(edge: .bottom))
@@ -356,22 +357,22 @@ public struct ChatDetailView: View {
                 else if let editing = editingMessage {
                     HStack(spacing: 8) {
                         Capsule()
-                            .fill(colorScheme == .dark ? Color.white : Color.primary)
-                            .frame(width: 2.5, height: 32)
+                            .fill(colorScheme == .dark ? Color.white : Color.black)
+                            .frame(width: 2.5, height: 36)
 
-                        VStack(alignment: .leading, spacing: 2) {
+                        VStack(alignment: .leading, spacing: 3) {
                             Text("Редактирование")
-                                .font(.system(size: 13, weight: .semibold))
+                                .font(.system(size: 13.5, weight: .semibold))
                                 .foregroundColor(colorScheme == .dark ? .white : .primary)
                                 .lineLimit(1)
 
                             Text(editing.text?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? (editing.text ?? "") : "Сообщение")
-                                .font(.system(size: 12))
+                                .font(.system(size: 13.5, weight: .regular))
                                 .foregroundColor(.secondary)
                                 .lineLimit(1)
                         }
 
-                        Spacer(minLength: 4)
+                        Spacer(minLength: 8)
 
                         Button {
                             withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
@@ -380,14 +381,15 @@ public struct ChatDetailView: View {
                             }
                         } label: {
                             Image(systemName: "xmark")
-                                .font(.system(size: 11, weight: .bold))
+                                .font(.system(size: 13.5, weight: .semibold))
                                 .foregroundColor(.secondary)
-                                .padding(6)
+                                .padding(8)
                                 .contentShape(Circle())
                         }
                         .buttonStyle(.plain)
                     }
-                    .padding(.top, 2)
+                    .padding(.top, 4)
+                    .padding(.bottom, 6)
                     .transition(.asymmetric(
                         insertion: .opacity.combined(with: .move(edge: .bottom)),
                         removal: .opacity.combined(with: .move(edge: .bottom))
@@ -398,11 +400,13 @@ public struct ChatDetailView: View {
                 TextField("Сообщение", text: $messageText, axis: .vertical)
                     .font(.system(size: 16))
                     .foregroundColor(.primary)
+                    .tint(colorScheme == .dark ? Color.white : Color.black)
                     .lineLimit(1...6)
                     .focused($isInputFocused)
                     .frame(minHeight: isExpandedInput ? 24 : 38)
             }
-            .padding(.vertical, isExpandedInput ? 8 : 2)
+            .padding(.top, isExpandedInput ? 6 : 2)
+            .padding(.bottom, isExpandedInput ? 8 : 2)
             .padding(.horizontal, 14)
             .glassEffect(
                 .regular.interactive(),
@@ -830,16 +834,16 @@ private struct PeakMessageBubbleView: View {
                 if let replied = repliedMessage {
                     HStack(spacing: 8) {
                         Capsule()
-                            .fill(isFromMe ? (colorScheme == .dark ? Color.white.opacity(0.6) : Color.primary.opacity(0.35)) : Color.primary.opacity(0.35))
-                            .frame(width: 2)
+                            .fill(colorScheme == .dark ? Color.white : Color.black)
+                            .frame(width: 2.5)
 
-                        VStack(alignment: .leading, spacing: 2) {
+                        VStack(alignment: .leading, spacing: 3) {
                             Text(repliedAuthorTitle)
-                                .font(.system(size: 11.5, weight: .bold))
+                                .font(.system(size: 13, weight: .semibold))
                                 .foregroundColor(isFromMe ? outgoingTextColor : .primary)
                                 .lineLimit(1)
                             Text(replied.text?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? (replied.text ?? "") : (replied.type == .media ? (replied.media?.title ?? "Медиа") : "Медиа"))
-                                .font(.system(size: 13))
+                                .font(.system(size: 13, weight: .regular))
                                 .foregroundColor(isFromMe ? outgoingMetaColor : .secondary)
                                 .lineLimit(1)
                         }

@@ -343,6 +343,7 @@ public struct ChannelDetailView: View {
                 TextField("Опубликовать пост...", text: $inputText, axis: .vertical)
                     .font(.system(size: 16))
                     .foregroundColor(.primary)
+                    .tint(colorScheme == .dark ? Color.white : Color.black)
                     .lineLimit(1...6)
                     .focused($isInputFocused)
                     .padding(.vertical, 10)
