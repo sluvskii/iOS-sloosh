@@ -24,6 +24,7 @@ public struct ChatDetailView: View {
     @FocusState private var isInputFocused: Bool
     @Environment(\.dismiss) private var dismiss
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.colorScheme) private var colorScheme
 
     public init(peerUser: SlooshUser) {
         self.peerUser = peerUser
@@ -336,17 +337,17 @@ public struct ChatDetailView: View {
                 Button {
                     sendMessage()
                 } label: {
-                    ZStack {
-                        Circle()
-                            .fill(Color.primary)
-                            .frame(width: 40, height: 40)
-
-                        Image(systemName: "arrow.up")
-                            .font(.system(size: 17, weight: .bold))
-                            .foregroundColor(Color(UIColor.systemBackground))
-                    }
+                    Image(systemName: "arrow.up")
+                        .font(.system(size: 17, weight: .bold))
+                        .foregroundColor(colorScheme == .dark ? .black : .white)
+                        .frame(width: 40, height: 40)
+                        .background(
+                            Circle()
+                                .fill(colorScheme == .dark ? Color.white : Color.black)
+                        )
+                        .glassEffect(.regular.interactive(), in: .circle)
                 }
-                .buttonStyle(OpaquePressButtonStyle())
+                .buttonStyle(.glassPress)
                 .transition(
                     .asymmetric(
                         insertion: .scale(scale: 0.3).combined(with: .opacity).combined(with: .move(edge: .trailing)),

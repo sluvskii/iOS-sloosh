@@ -27,6 +27,7 @@ public struct ChannelDetailView: View {
     @State private var pollTask: Task<Void, Never>? = nil
 
     @FocusState private var isInputFocused: Bool
+    @Environment(\.colorScheme) private var colorScheme
 
     public init(channel: ChannelModel) {
         self.channel = channel
@@ -344,17 +345,17 @@ public struct ChannelDetailView: View {
                 Button {
                     publishPostAction()
                 } label: {
-                    ZStack {
-                        Circle()
-                            .fill(Color.primary)
-                            .frame(width: 40, height: 40)
-
-                        Image(systemName: "arrow.up")
-                            .font(.system(size: 17, weight: .bold))
-                            .foregroundColor(Color(UIColor.systemBackground))
-                    }
+                    Image(systemName: "arrow.up")
+                        .font(.system(size: 17, weight: .bold))
+                        .foregroundColor(colorScheme == .dark ? .black : .white)
+                        .frame(width: 40, height: 40)
+                        .background(
+                            Circle()
+                                .fill(colorScheme == .dark ? Color.white : Color.black)
+                        )
+                        .glassEffect(.regular.interactive(), in: .circle)
                 }
-                .buttonStyle(OpaquePressButtonStyle())
+                .buttonStyle(.glassPress)
                 .transition(
                     .asymmetric(
                         insertion: .scale(scale: 0.3).combined(with: .opacity).combined(with: .move(edge: .trailing)),
