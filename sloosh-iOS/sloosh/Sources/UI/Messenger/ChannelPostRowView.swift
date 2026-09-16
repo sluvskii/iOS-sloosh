@@ -132,12 +132,6 @@ public struct ChannelPostRowView: View {
                 RoundedRectangle(cornerRadius: 20, style: .continuous)
                     .fill(Color(UIColor.secondarySystemGroupedBackground))
             )
-            .shadow(
-                color: Color.black.opacity(colorScheme == .light ? 0.04 : 0),
-                radius: 3,
-                x: 0,
-                y: 1
-            )
             .contextMenu {
                 contextMenuContent
             }
@@ -194,12 +188,6 @@ public struct ChannelPostRowView: View {
                     .padding(.vertical, 3.5)
                     .background(
                         Capsule().fill(isMyReaction ? activeReactionBgColor : inactiveReactionBgColor)
-                    )
-                    .shadow(
-                        color: Color.black.opacity(colorScheme == .dark ? 0.25 : 0.08),
-                        radius: 2.5,
-                        x: 0,
-                        y: 1
                     )
                 }
                 .buttonStyle(PeakPressButtonStyle())

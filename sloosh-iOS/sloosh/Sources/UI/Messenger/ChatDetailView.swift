@@ -345,7 +345,6 @@ public struct ChatDetailView: View {
                             .font(.system(size: 17, weight: .bold))
                             .foregroundColor(Color(UIColor.systemBackground))
                     }
-                    .glassEffect(.regular.interactive(), in: Circle())
                 }
                 .buttonStyle(OpaquePressButtonStyle())
                 .transition(
@@ -768,12 +767,6 @@ private struct PeakMessageBubbleView: View {
                 RoundedRectangle(cornerRadius: 20, style: .continuous)
                     .fill(isFromMe ? outgoingBubbleColor : incomingBubbleColor)
             )
-            .shadow(
-                color: Color.black.opacity(!isFromMe && colorScheme == .light ? 0.04 : 0),
-                radius: 3,
-                x: 0,
-                y: 1
-            )
             .contextMenu {
                 Button {
                     withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) {
@@ -879,12 +872,6 @@ private struct PeakMessageBubbleView: View {
                     .padding(.vertical, 3.5)
                     .background(
                         Capsule().fill(isMyReaction ? activeReactionBgColor : inactiveReactionBgColor)
-                    )
-                    .shadow(
-                        color: Color.black.opacity(colorScheme == .dark ? 0.25 : 0.08),
-                        radius: 2.5,
-                        x: 0,
-                        y: 1
                     )
                 }
                 .buttonStyle(PeakPressButtonStyle())

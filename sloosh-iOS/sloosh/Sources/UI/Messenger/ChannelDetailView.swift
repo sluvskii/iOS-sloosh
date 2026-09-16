@@ -353,7 +353,6 @@ public struct ChannelDetailView: View {
                             .font(.system(size: 17, weight: .bold))
                             .foregroundColor(Color(UIColor.systemBackground))
                     }
-                    .glassEffect(.regular.interactive(), in: Circle())
                 }
                 .buttonStyle(OpaquePressButtonStyle())
                 .transition(
