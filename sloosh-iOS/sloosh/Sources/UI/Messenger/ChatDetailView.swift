@@ -109,6 +109,7 @@ public struct ChatDetailView: View {
             UserPresenceService.shared.clearTyping(chatId: chatId)
             pollTask?.cancel()
         }
+        .tint(Color.primary)
     }
 
     // MARK: - Navigation Bar Content
@@ -808,25 +809,29 @@ private struct PeakMessageBubbleView: View {
                 onPlayDirectly(payload)
             })
             .contextMenu {
-                Button {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) {
-                        showReactionPicker.toggle()
+                Group {
+                    Button {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) {
+                            showReactionPicker.toggle()
+                        }
+                    } label: {
+                        Label("Реакция...", systemImage: "face.smiling")
                     }
-                } label: {
-                    Label("Реакция...", systemImage: "face.smiling")
-                }
 
-                Button {
-                    onReply(message)
-                } label: {
-                    Label("Ответить", systemImage: "arrowshape.turn.up.left")
+                    Button {
+                        onReply(message)
+                    } label: {
+                        Label("Ответить", systemImage: "arrowshape.turn.up.left")
+                    }
                 }
+                .tint(Color.primary)
 
                 Button(role: .destructive) {
                     onDelete(message)
                 } label: {
                     Label("Удалить у всех", systemImage: "trash")
                 }
+                .tint(.red)
             }
         } else {
             VStack(alignment: .leading, spacing: 4) {
@@ -866,42 +871,46 @@ private struct PeakMessageBubbleView: View {
                     .fill(isFromMe ? outgoingBubbleColor : incomingBubbleColor)
             )
             .contextMenu {
-                Button {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) {
-                        showReactionPicker.toggle()
-                    }
-                } label: {
-                    Label("Реакция...", systemImage: "face.smiling")
-                }
-
-                Button {
-                    onReply(message)
-                } label: {
-                    Label("Ответить", systemImage: "arrowshape.turn.up.left")
-                }
-
-                if let text = message.text, !text.isEmpty {
+                Group {
                     Button {
-                        UIPasteboard.general.string = text
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) {
+                            showReactionPicker.toggle()
+                        }
                     } label: {
-                        Label("Скопировать", systemImage: "doc.on.doc")
+                        Label("Реакция...", systemImage: "face.smiling")
                     }
-                }
 
-                if isFromMe {
                     Button {
-                        onEdit(message)
+                        onReply(message)
                     } label: {
-                        Label("Редактировать", systemImage: "pencil")
+                        Label("Ответить", systemImage: "arrowshape.turn.up.left")
+                    }
+
+                    if let text = message.text, !text.isEmpty {
+                        Button {
+                            UIPasteboard.general.string = text
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        } label: {
+                            Label("Скопировать", systemImage: "doc.on.doc")
+                        }
+                    }
+
+                    if isFromMe {
+                        Button {
+                            onEdit(message)
+                        } label: {
+                            Label("Редактировать", systemImage: "pencil")
+                        }
                     }
                 }
+                .tint(Color.primary)
 
                 Button(role: .destructive) {
                     onDelete(message)
                 } label: {
                     Label("Удалить у всех", systemImage: "trash")
                 }
+                .tint(.red)
             }
         }
     }
@@ -1121,6 +1130,7 @@ public struct ChatInfoView: View {
         } message: {
             Text("История сообщений и диалог будут удалены.")
         }
+        .tint(Color.primary)
     }
 }
 

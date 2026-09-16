@@ -73,6 +73,7 @@ public struct CreateChannelSheet: View {
                 }
             }
         }
+        .tint(Color.primary)
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
         .presentationBackground {

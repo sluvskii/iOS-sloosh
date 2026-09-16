@@ -203,41 +203,47 @@ public struct ChannelPostRowView: View {
 
     @ViewBuilder
     private var contextMenuContent: some View {
-        Button {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) {
-                showReactionPicker.toggle()
-            }
-        } label: {
-            Label("Реакция...", systemImage: "face.smiling")
-        }
-
-        if let text = post.text, !text.isEmpty {
+        Group {
             Button {
-                UIPasteboard.general.string = text
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.78)) {
+                    showReactionPicker.toggle()
+                }
             } label: {
-                Label("Скопировать текст", systemImage: "doc.on.doc")
+                Label("Реакция...", systemImage: "face.smiling")
+            }
+
+            if let text = post.text, !text.isEmpty {
+                Button {
+                    UIPasteboard.general.string = text
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                } label: {
+                    Label("Скопировать текст", systemImage: "doc.on.doc")
+                }
+            }
+
+            if isAuthor {
+                Button {
+                    onTogglePin?()
+                } label: {
+                    Label(post.isPinned ? "Открепить" : "Закрепить", systemImage: "pin")
+                }
+
+                Button {
+                    onEditPost?()
+                } label: {
+                    Label("Редактировать", systemImage: "pencil")
+                }
             }
         }
+        .tint(Color.primary)
 
         if isAuthor {
-            Button {
-                onTogglePin?()
-            } label: {
-                Label(post.isPinned ? "Открепить" : "Закрепить", systemImage: "pin")
-            }
-
-            Button {
-                onEditPost?()
-            } label: {
-                Label("Редактировать", systemImage: "pencil")
-            }
-
             Button(role: .destructive) {
                 onDeletePost?()
             } label: {
                 Label("Удалить пост", systemImage: "trash")
             }
+            .tint(.red)
         }
     }
 

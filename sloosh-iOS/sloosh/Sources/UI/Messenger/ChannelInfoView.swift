@@ -220,6 +220,7 @@ public struct ChannelInfoView: View {
             }
             Button("Отмена", role: .cancel) {}
         }
+        .tint(Color.primary)
     }
 
     // MARK: - Actions

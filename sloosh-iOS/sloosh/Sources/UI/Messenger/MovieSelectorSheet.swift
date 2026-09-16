@@ -64,6 +64,7 @@ public struct MovieSelectorSheet: View {
                 }
             }
         }
+        .tint(Color.primary)
         .presentationBackground { Color.clear.glassEffect(in: .rect) }
         .presentationDragIndicator(.visible)
         .presentationDetents([.medium, .large])

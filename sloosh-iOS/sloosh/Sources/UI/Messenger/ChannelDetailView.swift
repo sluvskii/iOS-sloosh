@@ -236,6 +236,7 @@ public struct ChannelDetailView: View {
         .onDisappear {
             pollTask?.cancel()
         }
+        .tint(Color.primary)
     }
 
     // MARK: - Posts Feed
