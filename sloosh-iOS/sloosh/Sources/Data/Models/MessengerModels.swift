@@ -144,6 +144,14 @@ public struct SlooshUser: Identifiable, Codable, Sendable, Equatable, Hashable {
     }
 }
 
+// MARK: - Message Delivery Status
+
+public enum MessageDeliveryStatus: String, Codable, Sendable, Hashable {
+    case sending
+    case sent
+    case failed
+}
+
 // MARK: - Chat Message Model
 
 public struct ChatMessage: Identifiable, Codable, Sendable, Equatable, Hashable {
@@ -158,6 +166,7 @@ public struct ChatMessage: Identifiable, Codable, Sendable, Equatable, Hashable 
     public var reactions: [String: String]?
     public var isEdited: Bool?
     public var isRead: Bool?
+    public var deliveryStatus: MessageDeliveryStatus?
 
     public init(
         id: String = UUID().uuidString,
@@ -170,7 +179,8 @@ public struct ChatMessage: Identifiable, Codable, Sendable, Equatable, Hashable 
         replyToId: String? = nil,
         reactions: [String: String]? = nil,
         isEdited: Bool? = nil,
-        isRead: Bool? = nil
+        isRead: Bool? = nil,
+        deliveryStatus: MessageDeliveryStatus? = nil
     ) {
         self.id = id
         self.senderId = senderId
@@ -183,6 +193,7 @@ public struct ChatMessage: Identifiable, Codable, Sendable, Equatable, Hashable 
         self.reactions = reactions
         self.isEdited = isEdited
         self.isRead = isRead
+        self.deliveryStatus = deliveryStatus
     }
 }
 

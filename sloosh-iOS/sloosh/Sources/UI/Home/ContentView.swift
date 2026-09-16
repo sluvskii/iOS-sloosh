@@ -14,6 +14,7 @@ struct ContentView: View {
     @State private var selectedTab: AppTab = .home
     @ObservedObject private var deepLinkManager = DeepLinkManager.shared
     @ObservedObject private var authRepo = AuthRepository.shared
+    @ObservedObject private var messengerRepo = MessengerRepository.shared
     @State private var loadedAvatarImage: UIImage? = resolveInitialAvatar(for: AuthRepository.shared.currentUser)
     @State private var avatarVersion: Int = 0
 
@@ -76,6 +77,7 @@ struct ContentView: View {
                     } label: {
                         tabLabel("Чаты", systemImage: "bubble.left.and.bubble.right.fill")
                     }
+                    .badge(messengerRepo.totalUnreadCount)
                     Tab(value: .continueWatching) {
                         ContinueView()
                     } label: {
