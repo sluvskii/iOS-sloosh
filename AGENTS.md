@@ -2,13 +2,13 @@
 
 ## Workspace Overview
 
-This workspace contains the two core projects of the `sloosh` ecosystem:
+This workspace contains the flagship native iOS app:
 
 - `sloosh-iOS/`: the active native iOS app under the `sloosh` brand (SwiftUI, iOS 26+).
-- `sloosh-backend/`: the dedicated backend API server deployed to Vercel (`https://api-sloosh.vercel.app`), built with TypeScript, Hono, and Vercel Edge Runtime.
+- The dedicated backend API server (`https://api-sloosh.vercel.app`) is maintained in its own private repository: `sloosh-api` (`w:\sloosh-api`).
 
 > [!NOTE]
-> The app is completely independent. We have fully transitioned away from the legacy `neomovies` API and codebase. We do NOT use `neomovies` or rely on it in any form. Our own backend (`sloosh-backend`) provides a significantly faster, more reliable, and feature-rich API specifically tailored for `sloosh`.
+> The app is completely independent. We have fully transitioned away from the legacy `neomovies` API and codebase. We do NOT use `neomovies` or rely on it in any form. Our own backend (`sloosh-api`) provides a significantly faster, more reliable, and feature-rich API specifically tailored for `sloosh`.
 
 ---
 
@@ -38,9 +38,9 @@ This workspace contains the two core projects of the `sloosh` ecosystem:
 
 ---
 
-## Backend Architecture (`sloosh-backend`)
+## Backend Architecture (`sloosh-api`)
 
-The backend is located in `sloosh-backend/` and deployed to Vercel:
+The backend is maintained in its dedicated private repository `sloosh-api` (`w:\sloosh-api`) and deployed to Vercel:
 - **Base URL**: `https://api-sloosh.vercel.app`
 - **Tech Stack**: TypeScript, Hono web framework, Vercel Edge Runtime.
 - **Primary Data Provider**: The Movie Database (TMDB) v3 API with rich extensions.
