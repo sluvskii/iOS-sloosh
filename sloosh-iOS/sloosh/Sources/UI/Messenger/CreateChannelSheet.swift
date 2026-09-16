@@ -99,12 +99,12 @@ public struct CreateChannelSheet: View {
                         .frame(width: 32, height: 32)
                         .overlay(
                             Circle()
-                                .fill(Color.slooshAccent)
+                                .fill(Color.primary)
                                 .frame(width: 28, height: 28)
                                 .overlay(
                                     Image(systemName: "camera.fill")
                                         .font(.system(size: 12, weight: .bold))
-                                        .foregroundColor(.black)
+                                        .foregroundColor(Color(UIColor.systemBackground))
                                 )
                         )
                         .offset(x: 2, y: 2)
@@ -134,7 +134,7 @@ public struct CreateChannelSheet: View {
                 if !cleanTag.isEmpty {
                     Text("@\(cleanTag)")
                         .font(.system(size: 14, weight: .semibold))
-                        .foregroundColor(Color.slooshAccent)
+                        .foregroundColor(.secondary)
                 }
             }
 

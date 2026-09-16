@@ -26,7 +26,7 @@ public struct MovieSelectorSheet: View {
                     VStack(spacing: 12) {
                         Spacer()
                         ProgressView("Поиск...")
-                            .tint(Color.slooshAccent)
+                            .tint(Color.primary)
                         Spacer()
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)

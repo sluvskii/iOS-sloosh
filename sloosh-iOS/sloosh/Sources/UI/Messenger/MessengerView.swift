@@ -198,7 +198,7 @@ public struct MessengerView: View {
                     HStack(spacing: 10) {
                         ProgressView()
                             .controlSize(.small)
-                            .tint(Color.slooshAccent)
+                            .tint(Color.primary)
                         Text("Поиск...")
                             .font(.system(size: 13, weight: .medium))
                             .foregroundColor(.secondary)
@@ -349,10 +349,10 @@ public struct MessengerView: View {
                     Text("Написать сообщение")
                         .font(.system(size: 15, weight: .bold))
                 }
-                .foregroundColor(.black)
+                .foregroundColor(Color(UIColor.systemBackground))
                 .padding(.horizontal, 20)
                 .padding(.vertical, 12)
-                .background(Capsule().fill(Color.slooshAccent))
+                .background(Capsule().fill(Color.primary))
             }
             .buttonStyle(PeakPressButtonStyle())
             .padding(.top, 8)
@@ -370,24 +370,18 @@ public struct MessengerView: View {
                         VStack(alignment: .leading, spacing: 8) {
                             RoundedRectangle(cornerRadius: 4)
                                 .fill(Color.secondary.opacity(0.2))
-                                .frame(width: 120, height: 16)
+                                .frame(width: 140, height: 16)
                             RoundedRectangle(cornerRadius: 4)
-                                .fill(Color.secondary.opacity(0.2))
-                                .frame(width: 200, height: 14)
+                                .fill(Color.secondary.opacity(0.15))
+                                .frame(width: 220, height: 14)
                         }
                         Spacer()
                     }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 10)
-                    .redacted(reason: .placeholder)
-                    .opacity(0.4)
-
-                    PeakDivider()
-                        .padding(.leading, 86)
                 }
             }
         }
-        .scrollContentBackground(.hidden)
     }
 
     private var guestView: some View {
@@ -398,7 +392,7 @@ public struct MessengerView: View {
                 .font(.system(size: 64))
                 .foregroundStyle(
                     LinearGradient(
-                        colors: [.slooshAccent, .white],
+                        colors: [.primary, .secondary],
                         startPoint: .topLeading,
                         endPoint: .bottomTrailing
                     )
@@ -425,10 +419,10 @@ public struct MessengerView: View {
                     Text("Войти в аккаунт")
                         .font(.system(size: 17, weight: .bold))
                 }
-                .foregroundColor(.black)
+                .foregroundColor(Color(UIColor.systemBackground))
                 .frame(maxWidth: .infinity)
                 .frame(height: 52)
-                .background(Capsule().fill(Color.slooshAccent))
+                .background(Capsule().fill(Color.primary))
                 .padding(.horizontal, 40)
             }
             .buttonStyle(.plain)
@@ -446,7 +440,7 @@ public struct MessengerView: View {
                 } label: {
                     Image(systemName: "square.and.pencil")
                         .font(.system(size: 18, weight: .bold))
-                        .foregroundColor(.slooshAccent)
+                        .foregroundColor(.primary)
                 }
             }
         }
@@ -496,7 +490,7 @@ public struct PeakChannelRow: View {
                         if isOwner {
                             Image(systemName: "crown.fill")
                                 .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(Color.slooshAccent)
+                                .foregroundColor(.primary)
                         }
                     }
 
@@ -574,7 +568,7 @@ public struct PublicChannelSearchRow: View {
                 HStack(spacing: 6) {
                     Text(channel.displayTag)
                         .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(Color.slooshAccent)
+                        .foregroundColor(.secondary)
 
                     Text("•")
                         .font(.system(size: 11))
@@ -636,10 +630,10 @@ private struct PeakChatRow: View {
                     if chat.unreadCount > 0 {
                         Text("\(chat.unreadCount)")
                             .font(.system(size: 12, weight: .bold))
-                            .foregroundColor(.black)
+                            .foregroundColor(Color(UIColor.systemBackground))
                             .padding(.horizontal, 7)
                             .padding(.vertical, 3)
-                            .background(Capsule().fill(Color.slooshAccent))
+                            .background(Capsule().fill(Color.primary))
                     }
                 }
             }
@@ -688,7 +682,7 @@ private struct PeakUserSearchRow: View {
                 if !user.displayTag.isEmpty {
                     Text(user.displayTag)
                         .font(.system(size: 14, weight: .medium))
-                        .foregroundColor(Color.slooshAccent)
+                        .foregroundColor(.secondary)
                 } else {
                     Text("Пользователь Sloosh")
                         .font(.system(size: 14))
@@ -765,7 +759,7 @@ private struct NewChatSheet: View {
                         HStack(spacing: 10) {
                             ProgressView()
                                 .controlSize(.small)
-                                .tint(Color.slooshAccent)
+                                .tint(Color.primary)
                             Text("Поиск...")
                                 .font(.system(size: 13, weight: .medium))
                                 .foregroundColor(.secondary)

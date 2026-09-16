@@ -33,7 +33,7 @@ public struct SlooshAvatarView: View {
             avatarSource: user.avatarUrl,
             fallbackText: user.displayName.isEmpty ? (user.tag ?? "S") : user.displayName,
             size: size,
-            accentColor: Color.slooshAccent,
+            accentColor: .primary,
             isChannel: false,
             showOnline: showOnline,
             isOnline: user.isCurrentlyOnline
@@ -57,7 +57,7 @@ public struct SlooshAvatarView: View {
             avatarSource: userProfile?.photoURL,
             fallbackText: userProfile?.displayName ?? userProfile?.tag ?? "S",
             size: size,
-            accentColor: Color.slooshAccent,
+            accentColor: .primary,
             isChannel: false,
             showOnline: false,
             isOnline: true
@@ -102,11 +102,11 @@ public struct SlooshAvatarView: View {
     private var fallbackView: some View {
         ZStack {
             Circle()
-                .fill((accentColor ?? Color.slooshAccent).opacity(0.16))
+                .fill((accentColor ?? Color.primary).opacity(0.12))
 
             Text(initialLetter)
                 .font(.system(size: size * 0.42, weight: .bold, design: .rounded))
-                .foregroundColor(accentColor ?? Color.slooshAccent)
+                .foregroundColor(accentColor ?? Color.primary)
         }
         .frame(width: size, height: size)
         .glassEffect(.regular.interactive(), in: Circle())
@@ -126,12 +126,12 @@ public struct SlooshAvatarView: View {
             .frame(width: max(16, size * 0.32), height: max(16, size * 0.32))
             .overlay(
                 Circle()
-                    .fill(Color.slooshAccent)
+                    .fill(Color.primary)
                     .frame(width: max(13, size * 0.26), height: max(13, size * 0.26))
                     .overlay(
                         Image(systemName: "megaphone.fill")
                             .font(.system(size: max(7, size * 0.11), weight: .bold))
-                            .foregroundColor(.black)
+                            .foregroundColor(Color(UIColor.systemBackground))
                     )
             )
             .offset(x: 2, y: 2)

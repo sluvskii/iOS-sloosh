@@ -33,17 +33,17 @@ public struct PinnedPostBar: View {
             HStack(spacing: 10) {
                 // Pin accent bar & icon
                 RoundedRectangle(cornerRadius: 2, style: .continuous)
-                    .fill(Color.slooshAccent)
+                    .fill(Color.primary)
                     .frame(width: 3, height: 28)
 
                 Image(systemName: "pin.fill")
                     .font(.system(size: 13, weight: .bold))
-                    .foregroundColor(Color.slooshAccent)
+                    .foregroundColor(Color.primary)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Закрепленное сообщение")
                         .font(.system(size: 11, weight: .bold))
-                        .foregroundColor(Color.slooshAccent)
+                        .foregroundColor(Color.primary)
 
                     Text(previewText)
                         .font(.system(size: 13, weight: .medium))

@@ -13,6 +13,25 @@ public struct ChannelPostRowView: View {
     public var onDeletePost: (() -> Void)? = nil
 
     @State private var showReactionPicker: Bool = false
+    @Environment(\.colorScheme) private var colorScheme
+
+    private var activeReactionBgColor: Color {
+        colorScheme == .dark
+            ? Color(red: 0.23, green: 0.23, blue: 0.24)
+            : Color(red: 0.82, green: 0.82, blue: 0.84)
+    }
+
+    private var inactiveReactionBgColor: Color {
+        Color(UIColor.secondarySystemGroupedBackground)
+    }
+
+    private var activeReactionStrokeColor: Color {
+        colorScheme == .dark ? Color.white.opacity(0.3) : Color.black.opacity(0.25)
+    }
+
+    private var inactiveReactionStrokeColor: Color {
+        colorScheme == .dark ? Color.white.opacity(0.08) : Color.black.opacity(0.08)
+    }
 
     public init(
         post: ChannelPost,
@@ -102,7 +121,7 @@ public struct ChannelPostRowView: View {
                         Text("Закреплено")
                             .font(.system(size: 11, weight: .bold))
                     }
-                    .foregroundColor(Color.slooshAccent)
+                    .foregroundColor(.primary)
                     .padding(.bottom, 2)
                 }
 
@@ -172,20 +191,20 @@ public struct ChannelPostRowView: View {
                         if count > 1 {
                             Text("\(count)")
                                 .font(.system(size: 11.5, weight: .bold))
-                                .foregroundColor(isMyReaction ? .black : .primary)
+                                .foregroundColor(.primary)
                         }
                     }
                     .padding(.horizontal, 8)
                     .padding(.vertical, 3.5)
                     .background(
-                        isMyReaction ? Color.slooshAccent : Color(UIColor.secondarySystemGroupedBackground)
+                        isMyReaction ? activeReactionBgColor : inactiveReactionBgColor
                     )
                     .clipShape(Capsule())
                     .overlay(
                         Capsule()
                             .stroke(
-                                isMyReaction ? Color.slooshAccent : Color(UIColor.separator).opacity(0.4),
-                                lineWidth: 0.8
+                                isMyReaction ? activeReactionStrokeColor : inactiveReactionStrokeColor,
+                                lineWidth: isMyReaction ? 1.0 : 0.8
                             )
                     )
                     .shadow(color: Color.black.opacity(0.08), radius: 2, x: 0, y: 1)

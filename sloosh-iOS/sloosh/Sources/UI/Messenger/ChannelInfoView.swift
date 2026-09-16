@@ -69,7 +69,7 @@ public struct ChannelInfoView: View {
                 // Tag row
                 HStack(spacing: 12) {
                     Image(systemName: "at")
-                        .foregroundStyle(Color.slooshAccent)
+                        .foregroundStyle(Color.primary)
                         .font(.system(size: 18))
                         .frame(width: 24)
 
@@ -89,7 +89,7 @@ public struct ChannelInfoView: View {
                 if !currentChannel.description.isEmpty {
                     HStack(alignment: .top, spacing: 12) {
                         Image(systemName: "text.alignleft")
-                            .foregroundStyle(Color.slooshAccent)
+                            .foregroundStyle(Color.primary)
                             .font(.system(size: 18))
                             .frame(width: 24)
                             .padding(.top, 2)
@@ -132,7 +132,7 @@ public struct ChannelInfoView: View {
                     } label: {
                         HStack(spacing: 12) {
                             Image(systemName: isMuted ? "bell.slash.fill" : "bell.fill")
-                                .foregroundStyle(Color.slooshAccent)
+                                .foregroundStyle(Color.primary)
                                 .font(.system(size: 18))
                                 .frame(width: 24)
 
@@ -373,12 +373,12 @@ public struct EditChannelSheet: View {
                         .frame(width: 32, height: 32)
                         .overlay(
                             Circle()
-                                .fill(Color.slooshAccent)
+                                .fill(Color.primary)
                                 .frame(width: 28, height: 28)
                                 .overlay(
                                     Image(systemName: "camera.fill")
                                         .font(.system(size: 12, weight: .bold))
-                                        .foregroundColor(.black)
+                                        .foregroundColor(Color(UIColor.systemBackground))
                                 )
                         )
                         .offset(x: 2, y: 2)
