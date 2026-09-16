@@ -75,7 +75,7 @@ public struct MessengerView: View {
                 let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
                 if trimmed.isEmpty {
                     self.isSearching = false
-                    repo.searchResults = []
+                    repo.clearSearchResults()
                     return
                 }
 
@@ -845,7 +845,7 @@ private struct NewChatSheet: View {
                 let trimmed = newQ.trimmingCharacters(in: .whitespacesAndNewlines)
                 if trimmed.isEmpty {
                     isSearching = false
-                    repo.searchResults = []
+                    repo.clearSearchResults()
                     return
                 }
                 isSearching = true

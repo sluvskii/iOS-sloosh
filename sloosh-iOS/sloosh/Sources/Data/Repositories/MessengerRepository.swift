@@ -9,7 +9,7 @@ public final class MessengerRepository: ObservableObject {
     @Published public private(set) var conversations: [ChatConversation] = []
     @Published public private(set) var subscribedChannels: [ChannelModel] = []
     @Published public private(set) var publicChannels: [ChannelModel] = []
-    @Published public private(set) var searchResults: [SlooshUser] = []
+    @Published public var searchResults: [SlooshUser] = []
     @Published public private(set) var isLoading: Bool = false
 
     private let databaseBaseURL = "https://sloosh-77434-default-rtdb.firebaseio.com"
@@ -25,6 +25,10 @@ public final class MessengerRepository: ObservableObject {
 
     public func markMessageAsDeletedLocally(_ messageId: String) {
         deletedMessageIds.insert(messageId)
+    }
+
+    public func clearSearchResults() {
+        self.searchResults = []
     }
 
     private init() {
