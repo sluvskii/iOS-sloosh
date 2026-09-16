@@ -85,7 +85,7 @@ public struct ChannelDetailView: View {
                         if let media = attachedMedia {
                             HStack(spacing: 8) {
                                 Image(systemName: "film")
-                                    .foregroundColor(Color.slooshAccent)
+                                    .foregroundColor(.primary)
                                 Text(media.title)
                                     .font(.system(size: 13, weight: .semibold))
                                     .lineLimit(1)
@@ -107,7 +107,7 @@ public struct ChannelDetailView: View {
                                 VStack(alignment: .leading, spacing: 2) {
                                     Text("Редактирование поста")
                                         .font(.system(size: 12, weight: .bold))
-                                        .foregroundColor(Color.slooshAccent)
+                                        .foregroundColor(.primary)
                                     Text(editing.text ?? "Медиа пост")
                                         .font(.system(size: 13))
                                         .foregroundColor(.secondary)
@@ -311,12 +311,12 @@ public struct ChannelDetailView: View {
             } label: {
                 ZStack {
                     Circle()
-                        .fill(attachedMedia != nil ? Color.slooshAccent : Color.primary.opacity(0.08))
+                        .fill(attachedMedia != nil ? Color.primary : Color.primary.opacity(0.08))
                         .frame(width: 40, height: 40)
 
                     Image(systemName: "film.fill")
                         .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(attachedMedia != nil ? .black : .primary)
+                        .foregroundColor(attachedMedia != nil ? Color(UIColor.systemBackground) : .primary)
                 }
                 .glassEffect(.regular.interactive(), in: Circle())
             }
@@ -346,12 +346,12 @@ public struct ChannelDetailView: View {
                 } label: {
                     ZStack {
                         Circle()
-                            .fill(Color.slooshAccent)
+                            .fill(Color.primary)
                             .frame(width: 40, height: 40)
 
                         Image(systemName: "arrow.up")
                             .font(.system(size: 17, weight: .bold))
-                            .foregroundColor(.black)
+                            .foregroundColor(Color(UIColor.systemBackground))
                     }
                     .glassEffect(.regular.interactive(), in: Circle())
                 }
@@ -419,7 +419,7 @@ public struct ChannelDetailView: View {
         VStack(spacing: 12) {
             Image(systemName: "bubble.left.and.bubble.right.fill")
                 .font(.system(size: 44))
-                .foregroundColor(Color.slooshAccent)
+                .foregroundColor(.secondary)
 
             Text("Пока нет постов")
                 .font(.system(size: 20, weight: .bold))
