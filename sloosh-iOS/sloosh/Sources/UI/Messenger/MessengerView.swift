@@ -9,12 +9,13 @@ public struct MessengerView: View {
     @State private var selectedChannel: ChannelModel? = nil
     @State private var showAuthSheet: Bool = false
     @State private var showCreateChannelSheet: Bool = false
+    @State private var showNewChatSheet: Bool = false
 
     // Chat deletion state
     @State private var peerToDelete: SlooshUser? = nil
     @State private var showDeleteChatConfirm: Bool = false
 
-    // Channel action state (Unsubscribe or Delete)
+    // Channel action state (Unsubscribe or Delete) - Archived for channels
     @State private var channelToAction: ChannelModel? = nil
     @State private var showChannelActionConfirm: Bool = false
 
@@ -33,7 +34,8 @@ public struct MessengerView: View {
         var items: [MessengerFeedItem] = []
         if searchQuery.isEmpty {
             items += repo.conversations.map { MessengerFeedItem.directChat($0) }
-            items += repo.subscribedChannels.map { MessengerFeedItem.channel($0) }
+            // Archived: Channels can be re-enabled here in the future
+            // items += repo.subscribedChannels.map { MessengerFeedItem.channel($0) }
         } else {
             let query = searchQuery.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
             let cleanQuery = TagValidator.sanitize(query)
@@ -42,13 +44,10 @@ public struct MessengerView: View {
                 $0.peerUser.displayTag.localizedCaseInsensitiveContains(cleanQuery) ||
                 $0.lastMessageText.localizedCaseInsensitiveContains(query)
             }
-            let filteredSubs = repo.subscribedChannels.filter {
-                $0.name.localizedCaseInsensitiveContains(query) ||
-                $0.tag.localizedCaseInsensitiveContains(cleanQuery) ||
-                (!cleanQuery.isEmpty && TagValidator.sanitize($0.name).localizedCaseInsensitiveContains(cleanQuery))
-            }
             items += filteredChats.map { MessengerFeedItem.directChat($0) }
-            items += filteredSubs.map { MessengerFeedItem.channel($0) }
+            // Archived: Channels can be re-enabled here in the future
+            // let filteredSubs = repo.subscribedChannels.filter { ... }
+            // items += filteredSubs.map { MessengerFeedItem.channel($0) }
         }
         return items.sorted { $0.timestampMs > $1.timestampMs }
     }
@@ -60,9 +59,9 @@ public struct MessengerView: View {
 
                 if !authRepo.isAuthenticated {
                     guestView
-                } else if repo.isLoading && repo.conversations.isEmpty && repo.subscribedChannels.isEmpty {
+                } else if repo.isLoading && repo.conversations.isEmpty {
                     skeletonList
-                } else if repo.conversations.isEmpty && repo.subscribedChannels.isEmpty && searchQuery.isEmpty {
+                } else if repo.conversations.isEmpty && searchQuery.isEmpty {
                     emptyState
                 } else {
                     feedList
@@ -70,42 +69,25 @@ public struct MessengerView: View {
             }
             .navigationTitle("Чаты")
             .navigationBarTitleDisplayMode(.large)
-            .searchable(text: $searchQuery, prompt: "Поиск чатов и каналов")
+            .searchable(text: $searchQuery, prompt: "Поиск по имени или @тегу")
             .onChange(of: searchQuery) { _, newValue in
                 searchTask?.cancel()
                 let trimmed = newValue.trimmingCharacters(in: .whitespacesAndNewlines)
                 if trimmed.isEmpty {
-                    self.searchedPublicChannels = []
                     self.isSearching = false
+                    repo.searchResults = []
                     return
-                }
-
-                // 1. Instant local search on existing cached channels (strictly by name or tag)
-                let cleanTrimmed = TagValidator.sanitize(trimmed)
-                let localMatching = (repo.publicChannels + repo.subscribedChannels).filter { ch in
-                    ch.name.localizedCaseInsensitiveContains(trimmed) ||
-                    ch.tag.localizedCaseInsensitiveContains(trimmed) ||
-                    (!cleanTrimmed.isEmpty && ch.tag.localizedCaseInsensitiveContains(cleanTrimmed)) ||
-                    (!cleanTrimmed.isEmpty && TagValidator.sanitize(ch.name).localizedCaseInsensitiveContains(cleanTrimmed))
-                }
-                if !localMatching.isEmpty {
-                    self.searchedPublicChannels = localMatching
                 }
 
                 self.isSearching = true
                 searchTask = Task {
-                    // Small debounce
                     try? await Task.sleep(nanoseconds: 180_000_000)
                     if Task.isCancelled { return }
 
-                    async let usersTask = repo.searchUsers(query: trimmed)
-                    async let channelsTask = repo.fetchPublicChannels(query: trimmed)
-
-                    let (_, channels) = await (usersTask, channelsTask)
+                    _ = await repo.searchUsers(query: trimmed)
                     if Task.isCancelled { return }
 
                     await MainActor.run {
-                        self.searchedPublicChannels = channels
                         self.isSearching = false
                     }
                 }
@@ -116,6 +98,11 @@ public struct MessengerView: View {
             }
             .navigationDestination(item: $selectedChannel) { channel in
                 ChannelDetailView(channel: channel)
+            }
+            .sheet(isPresented: $showNewChatSheet) {
+                NewChatSheet { selectedUser in
+                    selectedPeerUser = selectedUser
+                }
             }
             .sheet(isPresented: $showCreateChannelSheet) {
                 CreateChannelSheet { newChannel in
@@ -168,15 +155,16 @@ public struct MessengerView: View {
                 if authRepo.isAuthenticated {
                     await repo.syncCurrentUserProfile()
                     await repo.fetchConversations()
-                    _ = await repo.fetchSubscribedChannels()
-                    _ = await repo.fetchPublicChannels()
+                    // Channels archived per user instructions:
+                    // _ = await repo.fetchSubscribedChannels()
+                    // _ = await repo.fetchPublicChannels()
                 }
             }
             .refreshable {
                 if authRepo.isAuthenticated {
                     await repo.fetchConversations()
-                    _ = await repo.fetchSubscribedChannels()
-                    _ = await repo.fetchPublicChannels()
+                    // _ = await repo.fetchSubscribedChannels()
+                    // _ = await repo.fetchPublicChannels()
                 }
             }
         }
@@ -220,34 +208,7 @@ public struct MessengerView: View {
                     .padding(.vertical, 12)
                 }
 
-                // 1. Поиск: Публичные каналы
-                if !searchQuery.isEmpty && !searchedPublicChannels.isEmpty {
-                    Section {
-                        ForEach(searchedPublicChannels) { channel in
-                            Button {
-                                selectedChannel = channel
-                            } label: {
-                                PublicChannelSearchRow(channel: channel)
-                            }
-                            .buttonStyle(PeakPressButtonStyle())
-
-                            PeakDivider()
-                                .padding(.leading, 86)
-                        }
-                    } header: {
-                        HStack {
-                            Text("КАНАЛЫ")
-                                .font(.system(size: 12, weight: .bold))
-                                .foregroundColor(.secondary)
-                            Spacer()
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.top, 10)
-                        .padding(.bottom, 4)
-                    }
-                }
-
-                // 2. Поиск: Пользователи
+                // 1. Поиск: Пользователи
                 if !searchQuery.isEmpty && !repo.searchResults.isEmpty {
                     Section {
                         ForEach(repo.searchResults) { user in
@@ -274,10 +235,10 @@ public struct MessengerView: View {
                     }
                 }
 
-                // 3. Основной объединённый список диалогов и каналов
-                if !searchQuery.isEmpty && (!repo.searchResults.isEmpty || !searchedPublicChannels.isEmpty) && !unifiedFeedItems.isEmpty {
+                // 2. Основной список диалогов
+                if !searchQuery.isEmpty && !repo.searchResults.isEmpty && !unifiedFeedItems.isEmpty {
                     HStack {
-                        Text("ЧАТЫ И ПОДПИСКИ")
+                        Text("ЧАТЫ")
                             .font(.system(size: 12, weight: .bold))
                             .foregroundColor(.secondary)
                         Spacer()
@@ -323,8 +284,8 @@ public struct MessengerView: View {
                     }
                 }
 
-                // 4. Пустой результат поиска
-                if !searchQuery.isEmpty && !isSearching && searchedPublicChannels.isEmpty && repo.searchResults.isEmpty && unifiedFeedItems.isEmpty {
+                // 3. Пустой результат поиска
+                if !searchQuery.isEmpty && !isSearching && repo.searchResults.isEmpty && unifiedFeedItems.isEmpty {
                     searchEmptyState
                         .padding(.top, 60)
                 }
@@ -343,7 +304,7 @@ public struct MessengerView: View {
                 .font(.system(size: 17, weight: .semibold))
                 .foregroundColor(.primary)
 
-            Text("По запросу «\(searchQuery)» не найдено ни одного канала или пользователя.")
+            Text("По запросу «\(searchQuery)» не найдено ни одного пользователя.")
                 .font(.system(size: 14))
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
@@ -365,40 +326,33 @@ public struct MessengerView: View {
 
     private var emptyState: some View {
         VStack(spacing: 16) {
-            ZStack(alignment: .bottomTrailing) {
-                Image(systemName: "bubble.left.and.bubble.right")
-                    .font(.system(size: 48, weight: .thin))
-                    .foregroundColor(.secondary)
-
-                Image(systemName: "megaphone.fill")
-                    .font(.system(size: 20, weight: .bold))
-                    .foregroundColor(Color.slooshAccent)
-                    .offset(x: 6, y: 6)
-            }
-
-            Text("Пока нет чатов и каналов")
-                .font(.system(size: 17, weight: .semibold))
+            Image(systemName: "bubble.left.and.bubble.right")
+                .font(.system(size: 52, weight: .thin))
                 .foregroundColor(.secondary)
 
-            Text("Найдите друзей или интересные каналы через поиск, или создайте свой первый канал!")
+            Text("Нет сообщений")
+                .font(.system(size: 18, weight: .bold))
+                .foregroundColor(.primary)
+
+            Text("Найдите собеседника по имени или @тегу через поиск, чтобы начать диалог.")
                 .font(.system(size: 14))
                 .foregroundColor(.secondary)
                 .multilineTextAlignment(.center)
-                .padding(.horizontal, 36)
+                .padding(.horizontal, 40)
 
             Button {
-                showCreateChannelSheet = true
+                showNewChatSheet = true
             } label: {
                 HStack(spacing: 8) {
-                    Image(systemName: "megaphone.fill")
+                    Image(systemName: "square.and.pencil")
                         .font(.system(size: 15, weight: .bold))
-                    Text("Создать канал")
+                    Text("Написать сообщение")
                         .font(.system(size: 15, weight: .bold))
                 }
-                .foregroundColor(.primary)
+                .foregroundColor(.black)
                 .padding(.horizontal, 20)
-                .padding(.vertical, 11)
-                .glassEffect(in: Capsule())
+                .padding(.vertical, 12)
+                .background(Capsule().fill(Color.slooshAccent))
             }
             .buttonStyle(PeakPressButtonStyle())
             .padding(.top, 8)
@@ -451,11 +405,11 @@ public struct MessengerView: View {
                 )
 
             VStack(spacing: 8) {
-                Text("Чаты и Каналы Sloosh")
+                Text("Личные сообщения Sloosh")
                     .font(.system(size: 24, weight: .bold))
                     .foregroundColor(.primary)
 
-                Text("Войдите в аккаунт, чтобы общаться с друзьями, читать авторские каналы и делиться фильмами!")
+                Text("Войдите в аккаунт, чтобы общаться с друзьями и делиться фильмами!")
                     .font(.system(size: 15))
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
@@ -487,17 +441,8 @@ public struct MessengerView: View {
     private var toolbarContent: some ToolbarContent {
         if authRepo.isAuthenticated {
             ToolbarItem(placement: .navigationBarTrailing) {
-                Menu {
-                    Button {
-                        showCreateChannelSheet = true
-                    } label: {
-                        Label("Создать канал", systemImage: "megaphone.fill")
-                    }
-
-                    Button {} label: {
-                        Label("Создать беседу (Скоро)", systemImage: "person.2.fill")
-                    }
-                    .disabled(true)
+                Button {
+                    showNewChatSheet = true
                 } label: {
                     Image(systemName: "square.and.pencil")
                         .font(.system(size: 18, weight: .bold))
@@ -799,3 +744,129 @@ public struct PeakDivider: View {
             .frame(height: 0.5)
     }
 }
+
+// MARK: - New Chat Sheet (Direct Messaging User Picker)
+
+private struct NewChatSheet: View {
+    let onSelectUser: (SlooshUser) -> Void
+    @Environment(\.dismiss) private var dismiss
+    @StateObject private var repo = MessengerRepository.shared
+    @State private var query: String = ""
+    @State private var isSearching: Bool = false
+    @State private var searchTask: Task<Void, Never>? = nil
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                Color(UIColor.systemBackground).ignoresSafeArea()
+
+                VStack(spacing: 0) {
+                    if isSearching {
+                        HStack(spacing: 10) {
+                            ProgressView()
+                                .controlSize(.small)
+                                .tint(Color.slooshAccent)
+                            Text("Поиск...")
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundColor(.secondary)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 12)
+                    }
+
+                    let isQueryEmpty = query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    let displayedUsers: [SlooshUser] = {
+                        if !isQueryEmpty {
+                            return repo.searchResults
+                        } else {
+                            let recent = repo.conversations.map { $0.peerUser }
+                            if !recent.isEmpty {
+                                return recent
+                            }
+                            return Array(repo.getLocalKnownUsers().values)
+                        }
+                    }()
+
+                    if displayedUsers.isEmpty && !isSearching {
+                        VStack(spacing: 12) {
+                            Spacer()
+                            Image(systemName: isQueryEmpty ? "person.2.fill" : "person.crop.circle.badge.questionmark")
+                                .font(.system(size: 48, weight: .thin))
+                                .foregroundColor(.secondary)
+                            Text(isQueryEmpty ? "Начните новый диалог" : "Пользователь не найден")
+                                .font(.system(size: 16, weight: .semibold))
+                                .foregroundColor(.primary)
+                            Text(isQueryEmpty ? "Введите имя или @тег пользователя в поиске выше." : "Проверьте правильность написания имени или @тега.")
+                                .font(.system(size: 13))
+                                .foregroundColor(.secondary)
+                                .multilineTextAlignment(.center)
+                                .padding(.horizontal, 32)
+                            Spacer()
+                        }
+                    } else {
+                        ScrollView {
+                            LazyVStack(spacing: 0) {
+                                if isQueryEmpty && !displayedUsers.isEmpty {
+                                    HStack {
+                                        Text("НЕДАВНИЕ КОНТАКТЫ")
+                                            .font(.system(size: 12, weight: .bold))
+                                            .foregroundColor(.secondary)
+                                        Spacer()
+                                    }
+                                    .padding(.horizontal, 16)
+                                    .padding(.top, 12)
+                                    .padding(.bottom, 4)
+                                }
+
+                                ForEach(displayedUsers) { user in
+                                    Button {
+                                        dismiss()
+                                        onSelectUser(user)
+                                    } label: {
+                                        PeakUserSearchRow(user: user)
+                                    }
+                                    .buttonStyle(PeakPressButtonStyle())
+
+                                    PeakDivider()
+                                        .padding(.leading, 86)
+                                }
+                            }
+                        }
+                        .scrollContentBackground(.hidden)
+                    }
+                }
+            }
+            .navigationTitle("Новое сообщение")
+            .navigationBarTitleDisplayMode(.inline)
+            .searchable(text: $query, prompt: "Имя или @тег пользователя")
+            .onChange(of: query) { _, newQ in
+                searchTask?.cancel()
+                let trimmed = newQ.trimmingCharacters(in: .whitespacesAndNewlines)
+                if trimmed.isEmpty {
+                    isSearching = false
+                    repo.searchResults = []
+                    return
+                }
+                isSearching = true
+                searchTask = Task {
+                    try? await Task.sleep(nanoseconds: 180_000_000)
+                    if Task.isCancelled { return }
+                    _ = await repo.searchUsers(query: trimmed)
+                    if Task.isCancelled { return }
+                    await MainActor.run {
+                        isSearching = false
+                    }
+                }
+            }
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Отмена") {
+                        dismiss()
+                    }
+                }
+            }
+        }
+    }
+}
+

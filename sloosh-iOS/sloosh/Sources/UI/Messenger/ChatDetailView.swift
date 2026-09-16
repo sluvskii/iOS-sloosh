@@ -359,15 +359,17 @@ public struct ChatDetailView: View {
     // MARK: - Actions & Logic
 
     private func syncMessages(remoteList: [ChatMessage]) async {
-        let sortedRemote = remoteList.sorted(by: { $0.timestampMs < $1.timestampMs })
+        let filteredRemote = remoteList.filter { !repo.isMessageDeletedLocally($0.id) }
+        let sortedRemote = filteredRemote.sorted(by: { $0.timestampMs < $1.timestampMs })
         let now = Int64(Date().timeIntervalSince1970 * 1000)
         let currentUserId = AuthRepository.shared.currentUser?.id ?? ""
 
-        // 1. Сохраняем свежие оптимистичные сообщения
+        // 1. Сохраняем свежие оптимистичные сообщения (только если не удалены локально!)
         let pendingOptimistic = self.messages.filter { local in
             local.senderId == currentUserId &&
+            !repo.isMessageDeletedLocally(local.id) &&
             (now - local.timestampMs) < 15_000 &&
-            !remoteList.contains(where: { $0.id == local.id })
+            !filteredRemote.contains(where: { $0.id == local.id })
         }
 
         // 2. Умное слияние реакций: сохраняем локальные реакции текущего пользователя, пока сервер обновляется
@@ -410,7 +412,7 @@ public struct ChatDetailView: View {
         pollTask?.cancel()
         pollTask = Task {
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 1_600_000_000)
+                try? await Task.sleep(nanoseconds: 2_500_000_000)
                 if Task.isCancelled { break }
                 let chatId = repo.getOrCreateChatId(peerUserId: peerUser.id)
 
@@ -425,9 +427,11 @@ public struct ChatDetailView: View {
                 await syncMessages(remoteList: list)
 
                 await MainActor.run {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        self.livePresence = presence
-                        self.isPeerTyping = typing
+                    if self.livePresence.isOnline != presence.isOnline || self.livePresence.lastSeenMs != presence.lastSeenMs || self.isPeerTyping != typing {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            self.livePresence = presence
+                            self.isPeerTyping = typing
+                        }
                     }
                 }
             }
@@ -533,10 +537,12 @@ public struct ChatDetailView: View {
 
     private func deleteMessage(_ msg: ChatMessage) {
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        repo.markMessageAsDeletedLocally(msg.id)
         withAnimation(.easeInOut(duration: 0.22)) {
             self.messages.removeAll(where: { $0.id == msg.id })
         }
         let chatId = repo.getOrCreateChatId(peerUserId: peerUser.id)
+        repo.saveMessagesToDisk(self.messages, chatId: chatId)
         Task {
             await repo.deleteMessage(chatId: chatId, messageId: msg.id, peerUser: peerUser)
         }

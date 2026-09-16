@@ -72,6 +72,8 @@ public final class UserPresenceService: ObservableObject {
 
     private var heartbeatTimer: Timer?
     private var typingDebounceTask: Task<Void, Never>?
+    private var lastTypingSentAt: Date = .distantPast
+    private var presenceLastFetchedAt: [String: Date] = [:]
     @Published private(set) var presenceCache: [String: (isOnline: Bool, lastSeenMs: Int64?)] = [:]
 
     private init() {}
@@ -171,6 +173,15 @@ public final class UserPresenceService: ObservableObject {
     // MARK: - Live User Presence Query
 
     public func fetchUserPresence(userId: String) async -> (isOnline: Bool, lastSeenMs: Int64?) {
+        let now = Date()
+        if let lastFetch = presenceLastFetchedAt[userId], now.timeIntervalSince(lastFetch) < 15.0,
+           let cached = presenceCache[userId] {
+            let trulyOnline = PresenceFormatter.isOnline(isOnlineFlag: cached.isOnline, lastSeenMs: cached.lastSeenMs)
+            return (trulyOnline, cached.lastSeenMs)
+        }
+
+        presenceLastFetchedAt[userId] = now
+
         // 1. Check user_profiles/{userId}
         if let url = await makeURL(path: "user_profiles/\(userId)"),
            let (data, response) = try? await URLSession.shared.data(from: url),
@@ -225,20 +236,24 @@ public final class UserPresenceService: ObservableObject {
 
     public func sendTyping(chatId: String) {
         guard let currentUser = AuthRepository.shared.currentUser, !currentUser.isAnonymous else { return }
-        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let now = Date()
+        let nowMs = Int64(now.timeIntervalSince1970 * 1000)
 
-        typingDebounceTask?.cancel()
-
-        Task {
-            if let url = await makeURL(path: "chats/\(chatId)/typing/\(currentUser.id)") {
-                var req = URLRequest(url: url)
-                req.httpMethod = "PUT"
-                req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-                req.httpBody = "\(nowMs)".data(using: .utf8)
-                _ = try? await URLSession.shared.data(for: req)
+        // Троттлинг: шлем запрос в сеть не чаще одного раза в 3 секунды при непрерывном вводе
+        if now.timeIntervalSince(lastTypingSentAt) > 3.0 {
+            lastTypingSentAt = now
+            Task {
+                if let url = await makeURL(path: "chats/\(chatId)/typing/\(currentUser.id)") {
+                    var req = URLRequest(url: url)
+                    req.httpMethod = "PUT"
+                    req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                    req.httpBody = "\(nowMs)".data(using: .utf8)
+                    _ = try? await URLSession.shared.data(for: req)
+                }
             }
         }
 
+        typingDebounceTask?.cancel()
         // Автоматически очистить статус печатания через 3.5 секунды бездействия
         typingDebounceTask = Task {
             try? await Task.sleep(nanoseconds: 3_500_000_000)
