@@ -188,7 +188,7 @@ Root: `sloosh-iOS/sloosh/Sources/`
 - Builds, code signing, and distribution are executed **exclusively via GitHub Actions CI**.
 - **AltStore / SideStore Distribution**:
   - CI automatically generates `apps.json` with the latest build number, download URL, and metadata.
-  - The repository publishes `apps.json` directly to the `gh-pages` branch (`https://sluvskii.github.io/iOS-sloosh/apps.json`).
+  - The repository deploys `apps.json` directly via official GitHub Actions Pages (`https://sluvskii.github.io/iOS-sloosh/apps.json`).
 - **Delivery Protocol**:
   1. Make minimal, focused, verified edits.
   2. Commit changes and push directly to `main`:
