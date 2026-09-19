@@ -534,17 +534,24 @@ public struct PeakChannelRow: View {
         }
     }
 
+    private static let timeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm"
+        return formatter
+    }()
+
+    private static let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "dd.MM"
+        return formatter
+    }()
+
     private func formatTime(ms: Int64) -> String {
         let date = Date(timeIntervalSince1970: TimeInterval(ms) / 1000.0)
-        let calendar = Calendar.current
-        if calendar.isDateInToday(date) {
-            let formatter = DateFormatter()
-            formatter.dateFormat = "HH:mm"
-            return formatter.string(from: date)
+        if Calendar.current.isDateInToday(date) {
+            return Self.timeFormatter.string(from: date)
         } else {
-            let formatter = DateFormatter()
-            formatter.dateFormat = "dd.MM"
-            return formatter.string(from: date)
+            return Self.dateFormatter.string(from: date)
         }
     }
 }
@@ -654,17 +661,24 @@ private struct PeakChatRow: View {
         }
     }
 
+    private static let timeFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "HH:mm"
+        return formatter
+    }()
+
+    private static let dateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "dd.MM"
+        return formatter
+    }()
+
     private func formatTime(ms: Int64) -> String {
         let date = Date(timeIntervalSince1970: TimeInterval(ms) / 1000.0)
-        let calendar = Calendar.current
-        if calendar.isDateInToday(date) {
-            let formatter = DateFormatter()
-            formatter.dateFormat = "HH:mm"
-            return formatter.string(from: date)
+        if Calendar.current.isDateInToday(date) {
+            return Self.timeFormatter.string(from: date)
         } else {
-            let formatter = DateFormatter()
-            formatter.dateFormat = "dd.MM"
-            return formatter.string(from: date)
+            return Self.dateFormatter.string(from: date)
         }
     }
 }
