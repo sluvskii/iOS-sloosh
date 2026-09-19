@@ -22,7 +22,11 @@ public final class MessengerRepository: ObservableObject {
     private var lastKnownUserId: String? = nil
     private var deletedMessageIds: Set<String> = []
     private var outboxQueue: [String: [ChatMessage]] = [:]
-    private var lastMonotonicTimestampMs: Int64 = 0
+    private var lastMonotonicTimestampMs: Int64 = {
+        let stored = UserDefaults.standard.object(forKey: "sloosh_last_monotonic_ts") as? NSNumber
+        return stored?.int64Value ?? 0
+    }()
+    private var serverClockOffsetMs: Int64 = 0
 
     public var totalUnreadCount: Int {
         conversations.reduce(0) { $0 + $1.unreadCount }
@@ -65,11 +69,43 @@ public final class MessengerRepository: ObservableObject {
         }
     }
 
-    public func generateMonotonicTimestamp() -> Int64 {
-        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
-        let monotonic = max(nowMs, lastMonotonicTimestampMs + 1)
-        lastMonotonicTimestampMs = monotonic
-        return monotonic
+    private static let httpDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss z"
+        return formatter
+    }()
+
+    public func syncServerTime(from response: URLResponse?) {
+        guard let httpResp = response as? HTTPURLResponse,
+              let dateStr = (httpResp.allHeaderFields["Date"] ?? httpResp.allHeaderFields["date"]) as? String,
+              let serverDate = Self.httpDateFormatter.date(from: dateStr) else {
+            return
+        }
+        let serverMs = Int64(serverDate.timeIntervalSince1970 * 1000)
+        let localMs = Int64(Date().timeIntervalSince1970 * 1000)
+        let offset = serverMs - localMs
+        if self.serverClockOffsetMs == 0 {
+            self.serverClockOffsetMs = offset
+        } else {
+            self.serverClockOffsetMs = (self.serverClockOffsetMs * 3 + offset) / 4
+        }
+    }
+
+    public func updateMonotonicBaseline(with observedTimestampMs: Int64) {
+        if observedTimestampMs > lastMonotonicTimestampMs {
+            lastMonotonicTimestampMs = observedTimestampMs
+            UserDefaults.standard.set(observedTimestampMs, forKey: "sloosh_last_monotonic_ts")
+        }
+    }
+
+    public func generateMonotonicTimestamp(after minimumTimestamp: Int64 = 0) -> Int64 {
+        let calibratedNow = Int64(Date().timeIntervalSince1970 * 1000) + serverClockOffsetMs
+        let safeTimestamp = max(calibratedNow, minimumTimestamp + 1, lastMonotonicTimestampMs + 1)
+        lastMonotonicTimestampMs = safeTimestamp
+        UserDefaults.standard.set(safeTimestamp, forKey: "sloosh_last_monotonic_ts")
+        return safeTimestamp
     }
 
     public func clearSearchResults() {
@@ -221,9 +257,13 @@ public final class MessengerRepository: ObservableObject {
               let list = try? JSONDecoder().decode([ChatMessage].self, from: data) else {
             return []
         }
-        return list
+        let sorted = list
             .filter { !deletedMessageIds.contains($0.id) }
             .sorted { $0.timestampMs < $1.timestampMs || ($0.timestampMs == $1.timestampMs && $0.id < $1.id) }
+        if let maxTs = sorted.map(\.timestampMs).max() {
+            updateMonotonicBaseline(with: maxTs)
+        }
+        return sorted
     }
 
     // MARK: - Local Known Users Persistence
@@ -869,6 +909,7 @@ public final class MessengerRepository: ObservableObject {
 
         do {
             let (data, response) = try await URLSession.shared.data(from: url)
+            syncServerTime(from: response)
             guard let httpResp = response as? HTTPURLResponse, (200...299).contains(httpResp.statusCode) else {
                 return
             }
@@ -935,6 +976,7 @@ public final class MessengerRepository: ObservableObject {
 
         do {
             let (data, response) = try await URLSession.shared.data(from: url)
+            syncServerTime(from: response)
             guard let httpResp = response as? HTTPURLResponse, (200...299).contains(httpResp.statusCode) else {
                 return localCached
             }
@@ -967,6 +1009,10 @@ public final class MessengerRepository: ObservableObject {
             }
             list.append(contentsOf: pendingLocals)
             list.sort { $0.timestampMs < $1.timestampMs || ($0.timestampMs == $1.timestampMs && $0.id < $1.id) }
+
+            if let maxRemote = list.map(\.timestampMs).max() {
+                self.updateMonotonicBaseline(with: maxRemote)
+            }
 
             saveMessagesToDisk(list, chatId: chatId)
             return list
@@ -1044,8 +1090,16 @@ public final class MessengerRepository: ObservableObject {
             sendingMessage.deliveryStatus = .sending
         }
 
-        // 1. Optimistic local update
+        // 1. Optimistic local update with strictly guaranteed monotonic timestamp
         var currentMessages = loadMessagesFromDisk(chatId: chatId)
+        let maxDiskTs = currentMessages.map(\.timestampMs).max() ?? 0
+        if sendingMessage.timestampMs <= maxDiskTs {
+            let safeTs = generateMonotonicTimestamp(after: maxDiskTs)
+            sendingMessage.timestampMs = safeTs
+        } else {
+            updateMonotonicBaseline(with: sendingMessage.timestampMs)
+        }
+
         if let idx = currentMessages.firstIndex(where: { $0.id == sendingMessage.id }) {
             currentMessages[idx] = sendingMessage
         } else {
@@ -1101,9 +1155,13 @@ public final class MessengerRepository: ObservableObject {
     ) async -> Bool {
         guard let currentUser = AuthRepository.shared.currentUser, !currentUser.isAnonymous else { return false }
         let messageType: MessageType = (mediaPayload != nil) ? .media : .text
-        let monotonicTs = generateMonotonicTimestamp()
+        let chatId = getOrCreateChatId(peerUserId: peerUser.id)
+        let lastDiskTs = loadMessagesFromDisk(chatId: chatId).map(\.timestampMs).max() ?? 0
+        let monotonicTs = generateMonotonicTimestamp(after: lastDiskTs)
+        let msgId = "msg_\(monotonicTs)_\(UUID().uuidString.prefix(8).lowercased())"
 
         let message = ChatMessage(
+            id: msgId,
             senderId: currentUser.id,
             receiverId: peerUser.id,
             type: messageType,
@@ -1216,6 +1274,7 @@ public final class MessengerRepository: ObservableObject {
             request.httpBody = try JSONEncoder().encode(message)
 
             let (_, response) = try await URLSession.shared.data(for: request)
+            syncServerTime(from: response)
             guard let httpResp = response as? HTTPURLResponse, (200...299).contains(httpResp.statusCode) else {
                 return false
             }

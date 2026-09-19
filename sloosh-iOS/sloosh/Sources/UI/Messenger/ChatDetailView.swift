@@ -457,6 +457,10 @@ public struct ChatDetailView: View {
         let currentUserId = AuthRepository.shared.currentUser?.id ?? ""
         let chatId = repo.getOrCreateChatId(peerUserId: peerUser.id)
 
+        if let maxRemote = filteredRemote.map(\.timestampMs).max() {
+            repo.updateMonotonicBaseline(with: maxRemote)
+        }
+
         // 1. Сохраняем свежие оптимистичные сообщения (только если не удалены локально!)
         let pendingLocals = self.messages.filter { local in
             local.senderId == currentUserId &&
@@ -567,10 +571,13 @@ public struct ChatDetailView: View {
 
         let replyId = replyingMessage?.id
         let currentUserId = AuthRepository.shared.currentUser?.id ?? ""
-        let monotonicTs = repo.generateMonotonicTimestamp()
+        let highestKnownTs = self.messages.map(\.timestampMs).max() ?? 0
+        let monotonicTs = repo.generateMonotonicTimestamp(after: highestKnownTs)
+        let msgId = "msg_\(monotonicTs)_\(UUID().uuidString.prefix(8).lowercased())"
 
-        // Оптимистичное создание сообщения за 0мс с единым стабильным ID и монотонным временем!
+        // Оптимистичное создание сообщения за 0мс с единым стабильным ID и строго монотонным временем!
         let optimisticMessage = ChatMessage(
+            id: msgId,
             senderId: currentUserId,
             receiverId: peerUser.id,
             type: .text,
@@ -597,11 +604,27 @@ public struct ChatDetailView: View {
 
     private func retryMessage(_ msg: ChatMessage) {
         let chatId = repo.getOrCreateChatId(peerUserId: peerUser.id)
+        let highestKnownTs = self.messages.map(\.timestampMs).max() ?? 0
+        let newTs = repo.generateMonotonicTimestamp(after: highestKnownTs)
+
+        var updatedMsg = msg
+        updatedMsg.timestampMs = newTs
+        updatedMsg.deliveryStatus = .sending
+
         if let idx = self.messages.firstIndex(where: { $0.id == msg.id }) {
-            self.messages[idx].deliveryStatus = .sending
+            self.messages[idx] = updatedMsg
+            self.messages.sort { $0.timestampMs < $1.timestampMs || ($0.timestampMs == $1.timestampMs && $0.id < $1.id) }
         }
+
+        var diskMsgs = repo.loadMessagesFromDisk(chatId: chatId)
+        if let idx = diskMsgs.firstIndex(where: { $0.id == msg.id }) {
+            diskMsgs[idx] = updatedMsg
+            diskMsgs.sort { $0.timestampMs < $1.timestampMs || ($0.timestampMs == $1.timestampMs && $0.id < $1.id) }
+            repo.saveMessagesToDisk(diskMsgs, chatId: chatId)
+        }
+
         Task {
-            await repo.retrySendMessage(chatId: chatId, messageId: msg.id, peerUser: peerUser)
+            await repo.attemptPostMessage(chatId: chatId, message: updatedMsg, peerUser: peerUser)
         }
     }
 
@@ -990,11 +1013,15 @@ private struct PeakMessageBubbleView: View {
         .animation(.spring(response: 0.28, dampingFraction: 0.72), value: reactionsDict)
     }
 
-    private func formatTime(ms: Int64) -> String {
-        let date = Date(timeIntervalSince1970: TimeInterval(ms) / 1000.0)
+    private static let timeFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.dateFormat = "HH:mm"
-        return formatter.string(from: date)
+        return formatter
+    }()
+
+    private func formatTime(ms: Int64) -> String {
+        let date = Date(timeIntervalSince1970: TimeInterval(ms) / 1000.0)
+        return Self.timeFormatter.string(from: date)
     }
 }
 

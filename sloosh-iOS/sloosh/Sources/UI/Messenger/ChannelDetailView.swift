@@ -540,7 +540,8 @@ public struct ChannelDetailView: View {
             }
         } else {
             guard let currentUser = AuthRepository.shared.currentUser, !currentUser.isAnonymous else { return }
-            let now = Int64(Date().timeIntervalSince1970 * 1000)
+            let maxExisting = self.posts.map(\.timestampMs).max() ?? 0
+            let now = repo.generateMonotonicTimestamp(after: maxExisting)
             let postId = "post_\(now)_\(UUID().uuidString.prefix(6).lowercased())"
             let optimisticPost = ChannelPost(
                 id: postId,
