@@ -135,27 +135,28 @@ struct ProfileView: View {
                                 ProfileAvatarButton(user: authRepo.currentUser)
                             }
                             .buttonStyle(.plain)
-                            .confirmationDialog(
-                                "Управление профилем",
-                                isPresented: $showAccountOptions,
-                                titleVisibility: .visible
-                            ) {
-                                if authRepo.isAdmin {
-                                    Button("Панель управления") {
-                                        showAdminDashboard = true
-                                    }
-                                    .tint(.primary)
+                            .overlay(alignment: .topLeading) {
+                                if showAccountOptions {
+                                    ProfileAccountActions(
+                                        isAdmin: authRepo.isAdmin,
+                                        onAdmin: {
+                                            showAccountOptions = false
+                                            showAdminDashboard = true
+                                        },
+                                        onEdit: {
+                                            showAccountOptions = false
+                                            showEditProfileSheet = true
+                                        },
+                                        onSignOut: {
+                                            showAccountOptions = false
+                                            showSignOutAlert = true
+                                        }
+                                    )
+                                    .offset(y: 52)
+                                    .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .topLeading)))
                                 }
-                                Button("Редактировать профиль") {
-                                    showEditProfileSheet = true
-                                }
-                                .tint(.primary)
-                                Button("Выйти из аккаунта", role: .destructive) {
-                                    showSignOutAlert = true
-                                }
-                                Button("Отмена", role: .cancel) {}
                             }
-                            .tint(.primary)
+                            .animation(.bouncy(duration: 0.35), value: showAccountOptions)
                             .confirmationDialog(
                                 "Выйти из аккаунта?",
                                 isPresented: $showSignOutAlert,
@@ -270,6 +271,46 @@ struct ProfileView: View {
                 }
             }
         }
+    }
+}
+
+private struct ProfileAccountActions: View {
+    let isAdmin: Bool
+    let onAdmin: () -> Void
+    let onEdit: () -> Void
+    let onSignOut: () -> Void
+
+    var body: some View {
+        GlassEffectContainer(spacing: 10) {
+            VStack(alignment: .leading, spacing: 10) {
+                if isAdmin {
+                    action("Панель управления", systemImage: "person.2.fill", action: onAdmin)
+                }
+                action("Редактировать профиль", systemImage: "pencil", action: onEdit)
+                action("Выйти из аккаунта", systemImage: "rectangle.portrait.and.arrow.right", action: onSignOut, color: .red)
+            }
+            .frame(width: 300, alignment: .leading)
+        }
+    }
+
+    private func action(
+        _ title: String,
+        systemImage: String,
+        action: @escaping () -> Void,
+        color: Color = .primary
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 14) {
+                Image(systemName: systemImage)
+                    .frame(width: 28, alignment: .center)
+                Text(title)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.82)
+            }
+            .foregroundStyle(color)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .buttonStyle(.glass)
     }
 }
 
