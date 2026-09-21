@@ -127,7 +127,7 @@ struct ProfileView: View {
                             .truncationMode(.tail)
                             .padding(.horizontal, 100)
 
-                        HStack {
+                        HStack(alignment: .top) {
                             // Left Avatar / Sign-In Button
                             if authRepo.isAuthenticated {
                                 ProfileAccountMenu(
