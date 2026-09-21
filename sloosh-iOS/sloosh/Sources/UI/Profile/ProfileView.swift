@@ -125,37 +125,32 @@ struct ProfileView: View {
 
                         HStack {
                             // Left Avatar / Sign-In Button
-                            Button {
-                                if authRepo.isAuthenticated {
-                                    showAccountOptions = true
-                                } else {
-                                    showAuthSheet = true
-                                }
-                            } label: {
-                                ProfileAvatarButton(user: authRepo.currentUser)
-                            }
-                            .buttonStyle(.plain)
-                            .confirmationDialog(
-                                "Управление профилем",
-                                isPresented: $showAccountOptions,
-                                titleVisibility: .visible
-                            ) {
-                                if authRepo.isAdmin {
-                                    Button("Панель управления") {
+                            if authRepo.isAuthenticated {
+                                ProfileAccountMenu(
+                                    user: authRepo.currentUser,
+                                    isAdmin: authRepo.isAdmin,
+                                    isExpanded: $showAccountOptions,
+                                    onAdmin: {
+                                        showAccountOptions = false
                                         showAdminDashboard = true
+                                    },
+                                    onEdit: {
+                                        showAccountOptions = false
+                                        showEditProfileSheet = true
+                                    },
+                                    onSignOut: {
+                                        showAccountOptions = false
+                                        showSignOutAlert = true
                                     }
-                                    .tint(.primary)
+                                )
+                            } else {
+                                Button {
+                                    showAuthSheet = true
+                                } label: {
+                                    ProfileAvatarButton(user: authRepo.currentUser)
                                 }
-                                Button("Редактировать профиль") {
-                                    showEditProfileSheet = true
-                                }
-                                .tint(.primary)
-                                Button("Выйти из аккаунта", role: .destructive) {
-                                    showSignOutAlert = true
-                                }
-                                Button("Отмена", role: .cancel) {}
+                                .buttonStyle(.plain)
                             }
-                            .tint(.primary)
                             .confirmationDialog(
                                 "Выйти из аккаунта?",
                                 isPresented: $showSignOutAlert,
@@ -273,6 +268,59 @@ struct ProfileView: View {
     }
 }
 
+private struct ProfileAccountMenu: View {
+    let user: UserProfile?
+    let isAdmin: Bool
+    @Binding var isExpanded: Bool
+    let onAdmin: () -> Void
+    let onEdit: () -> Void
+    let onSignOut: () -> Void
+    @Namespace private var glassNamespace
+
+    var body: some View {
+        GlassEffectContainer(spacing: 10) {
+            VStack(alignment: .leading, spacing: 10) {
+                if isExpanded {
+                    if isAdmin {
+                        accountAction("Панель управления", systemImage: "person.2.fill", id: "admin", action: onAdmin)
+                            .glassEffectTransition(.matchedGeometry)
+                    }
+                    accountAction("Редактировать профиль", systemImage: "pencil", id: "edit", action: onEdit)
+                        .glassEffectTransition(.matchedGeometry)
+                    accountAction("Выйти из аккаунта", systemImage: "rectangle.portrait.and.arrow.right", id: "signOut", action: onSignOut, role: .destructive)
+                        .glassEffectTransition(.matchedGeometry)
+                }
+
+                Button {
+                    withAnimation(.bouncy(duration: 0.35)) {
+                        isExpanded.toggle()
+                    }
+                } label: {
+                    ProfileAvatarButton(user: user)
+                }
+                .buttonStyle(.plain)
+                .glassEffectID("profile", in: glassNamespace)
+                .accessibilityLabel(isExpanded ? "Закрыть меню профиля" : "Управление профилем")
+            }
+        }
+    }
+
+    private func accountAction(
+        _ title: String,
+        systemImage: String,
+        id: String,
+        action: @escaping () -> Void,
+        role: ButtonRole? = nil
+    ) -> some View {
+        Button(role: role, action: action) {
+            Label(title, systemImage: systemImage)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .buttonStyle(.glass)
+        .glassEffectID(id, in: glassNamespace)
+    }
+}
+
 /// Avatar button in Profile Header
 private struct ProfileAvatarButton: View {
     let user: UserProfile?
@@ -358,7 +406,7 @@ struct ProfileCategoryContentView: View {
                                         Label("Удалить", systemImage: "trash")
                                     }
                                 }
-                                .tint(.primary)
+                                .tint(nil)
                             }
                         }
                     }
