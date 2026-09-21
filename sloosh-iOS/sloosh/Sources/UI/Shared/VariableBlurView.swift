@@ -28,6 +28,8 @@ public struct VariableBlurView: View {
                         switch direction {
                         case .blurredTopClearBottom, .blurredLeadingClearTrailing:
                             return [tintColor.opacity(tintOpacity), tintColor.opacity(0.0)]
+                        case .blurredCenterClearEdges:
+                            return [Color.clear, Color.clear]
                         case .blurredBottomClearTop, .blurredTrailingClearLeading:
                             return [tintColor.opacity(0.0), tintColor.opacity(tintOpacity)]
                         }
@@ -36,12 +38,14 @@ public struct VariableBlurView: View {
                         switch direction {
                         case .blurredTopClearBottom, .blurredBottomClearTop: return .top
                         case .blurredLeadingClearTrailing, .blurredTrailingClearLeading: return .leading
+                        case .blurredCenterClearEdges: return .center
                         }
                     }(),
                     endPoint: {
                         switch direction {
                         case .blurredTopClearBottom, .blurredBottomClearTop: return .bottom
                         case .blurredLeadingClearTrailing, .blurredTrailingClearLeading: return .trailing
+                        case .blurredCenterClearEdges: return .center
                         }
                     }()
                 )
@@ -60,6 +64,7 @@ public struct VariableBlurRepresentable: UIViewRepresentable {
         case blurredBottomClearTop
         case blurredLeadingClearTrailing
         case blurredTrailingClearLeading
+        case blurredCenterClearEdges
     }
     
     public init(maxBlurRadius: CGFloat = 2, direction: BlurDirection = .blurredTopClearBottom, style: UIBlurEffect.Style = .systemMaterial) {
@@ -177,7 +182,8 @@ public final class VariableBlurUIView: UIVisualEffectView {
     
     private func createGradientImage() -> CGImage? {
         let isHorizontal = (direction == .blurredLeadingClearTrailing || direction == .blurredTrailingClearLeading)
-        let width: CGFloat = isHorizontal ? 100 : 1
+        let isRadial = direction == .blurredCenterClearEdges
+        let width: CGFloat = isHorizontal || isRadial ? 100 : 1
         let height: CGFloat = isHorizontal ? 1 : 100
         let colorSpace = CGColorSpaceCreateDeviceRGB()
         let bitmapInfo = CGImageAlphaInfo.premultipliedLast.rawValue
@@ -209,7 +215,18 @@ public final class VariableBlurUIView: UIVisualEffectView {
             endPoint = CGPoint(x: 0, y: 0)
         }
         
-        context.drawLinearGradient(gradient, start: startPoint, end: endPoint, options: [])
+        if isRadial {
+            context.drawRadialGradient(
+                gradient,
+                startCenter: CGPoint(x: width / 2, y: height / 2),
+                startRadius: 0,
+                endCenter: CGPoint(x: width / 2, y: height / 2),
+                endRadius: width / 2,
+                options: []
+            )
+        } else {
+            context.drawLinearGradient(gradient, start: startPoint, end: endPoint, options: [])
+        }
         return context.makeImage()
     }
 }

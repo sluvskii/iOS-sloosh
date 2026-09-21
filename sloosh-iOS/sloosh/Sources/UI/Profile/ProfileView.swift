@@ -292,35 +292,15 @@ struct ProfileView: View {
 }
 
 private struct ProfileMenuBlur: View {
-    private let canvasSize = CGSize(width: 320, height: 240)
-
     var body: some View {
-        ZStack {
-            // Several native variable-blur layers create a real radial falloff:
-            // the outer layer is subtle, while the smaller inner layers are stronger.
-            variableBlur(radius: 6, endRadius: 210)
-            variableBlur(radius: 12, endRadius: 155)
-            variableBlur(radius: 20, endRadius: 100)
-        }
-        .frame(width: canvasSize.width, height: canvasSize.height)
-        .allowsHitTesting(false)
-    }
-
-    private func variableBlur(radius: CGFloat, endRadius: CGFloat) -> some View {
         VariableBlurView(
-            maxBlurRadius: radius,
-            direction: .blurredTopClearBottom,
+            maxBlurRadius: 22,
+            direction: .blurredCenterClearEdges,
             tintOpacity: 0
         )
-        .frame(width: canvasSize.width, height: canvasSize.height)
-        .mask(
-            RadialGradient(
-                colors: [.white, .white.opacity(0.72), .clear],
-                center: .center,
-                startRadius: 8,
-                endRadius: endRadius
-            )
-        )
+        .frame(width: 320, height: 230)
+        .clipShape(RoundedRectangle(cornerRadius: 34, style: .continuous))
+        .allowsHitTesting(false)
     }
 }
 
