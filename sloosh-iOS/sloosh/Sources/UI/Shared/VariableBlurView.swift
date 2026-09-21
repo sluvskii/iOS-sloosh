@@ -213,6 +213,9 @@ public final class VariableBlurUIView: UIVisualEffectView {
         case .blurredTrailingClearLeading:
             startPoint = CGPoint(x: width, y: 0)
             endPoint = CGPoint(x: 0, y: 0)
+        case .blurredCenterClearEdges:
+            startPoint = CGPoint(x: width / 2, y: height / 2)
+            endPoint = CGPoint(x: width / 2, y: height / 2)
         }
         
         if isRadial {
