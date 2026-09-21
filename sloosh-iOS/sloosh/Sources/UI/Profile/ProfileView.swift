@@ -144,10 +144,12 @@ struct ProfileView: View {
                                     Button("Панель управления") {
                                         showAdminDashboard = true
                                     }
+                                    .tint(.primary)
                                 }
                                 Button("Редактировать профиль") {
                                     showEditProfileSheet = true
                                 }
+                                .tint(.primary)
                                 Button("Выйти из аккаунта", role: .destructive) {
                                     showSignOutAlert = true
                                 }
@@ -355,7 +357,7 @@ struct ProfileCategoryContentView: View {
                                         Label("Удалить", systemImage: "trash")
                                     }
                                 }
-                                .tint(nil)
+                                .tint(.primary)
                             }
                         }
                     }
