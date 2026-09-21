@@ -293,7 +293,6 @@ private struct ProfileMenuBlur: View {
             tintOpacity: 0
         )
         .frame(width: 340, height: 220)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .allowsHitTesting(false)
     }
 }
