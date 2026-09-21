@@ -147,7 +147,7 @@ struct ProfileView: View {
                                 if showAccountOptions {
                                     ZStack(alignment: .topLeading) {
                                         ProfileMenuBlur()
-                                            .offset(x: 0, y: 52)
+                                            .offset(x: 0, y: 210)
                                             .zIndex(0)
 
                                         ProfileAccountActions(
@@ -294,12 +294,12 @@ struct ProfileView: View {
 private struct ProfileMenuBlur: View {
     var body: some View {
         VariableBlurView(
-            maxBlurRadius: 22,
+            maxBlurRadius: 12,
             direction: .blurredCenterClearEdges,
             tintOpacity: 0
         )
-        .frame(width: 300, height: 190)
-        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .frame(width: 300, height: 90)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .allowsHitTesting(false)
     }
 }
