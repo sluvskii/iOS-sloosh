@@ -289,9 +289,6 @@ private struct ProfileAccountMenu: View {
     var body: some View {
         GlassEffectContainer(spacing: 10) {
             VStack(alignment: .leading, spacing: 10) {
-                // Keep every action wide enough for a single-line Russian label.
-                Color.clear
-                    .frame(width: 300, height: 0)
 
                 Button {
                     withAnimation(.bouncy(duration: 0.35)) {
@@ -338,6 +335,7 @@ private struct ProfileAccountMenu: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .buttonStyle(.glass)
+        .frame(width: 300, alignment: .leading)
         .glassEffectID(id, in: glassNamespace)
     }
 }
