@@ -126,6 +126,8 @@ struct ProfileView: View {
                             .lineLimit(1)
                             .truncationMode(.tail)
                             .padding(.horizontal, 100)
+                            .offset(y: showAccountOptions ? -110 : 0)
+                            .animation(.bouncy(duration: 0.35), value: showAccountOptions)
 
                         HStack {
                             // Left Avatar / Sign-In Button
@@ -193,6 +195,8 @@ struct ProfileView: View {
                             .frame(height: 44)
                             .clipShape(Capsule())
                             .glassEffect(.regular.interactive(), in: .capsule)
+                            .offset(y: showAccountOptions ? -110 : 0)
+                            .animation(.bouncy(duration: 0.35), value: showAccountOptions)
                         }
                     }
                     .padding(.horizontal, 16)
