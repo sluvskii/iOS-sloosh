@@ -230,6 +230,7 @@ struct ProfileView: View {
                             .glassEffect(.regular.interactive(), in: .capsule)
                         }
                     }
+                    .zIndex(showAccountOptions ? 100 : 0)
                     .padding(.horizontal, 16)
 
                     // Category Tabs
