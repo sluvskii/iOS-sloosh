@@ -119,15 +119,13 @@ struct ProfileView: View {
             .safeAreaInset(edge: .top, spacing: 0) {
                 VStack(spacing: 8) {
                     // Header Bar
-                    ZStack {
+                    ZStack(alignment: .top) {
                         Text(authRepo.isAuthenticated ? (authRepo.currentUser?.displayTag.isEmpty == false ? authRepo.currentUser!.displayTag : authRepo.currentUser?.displayTitle ?? "Профиль") : "Профиль")
                             .font(.system(size: 18, weight: .semibold))
                             .foregroundStyle(.primary)
                             .lineLimit(1)
                             .truncationMode(.tail)
                             .padding(.horizontal, 100)
-                            .offset(y: showAccountOptions ? -110 : 0)
-                            .animation(.bouncy(duration: 0.35), value: showAccountOptions)
 
                         HStack {
                             // Left Avatar / Sign-In Button
@@ -195,8 +193,6 @@ struct ProfileView: View {
                             .frame(height: 44)
                             .clipShape(Capsule())
                             .glassEffect(.regular.interactive(), in: .capsule)
-                            .offset(y: showAccountOptions ? -110 : 0)
-                            .animation(.bouncy(duration: 0.35), value: showAccountOptions)
                         }
                     }
                     .padding(.horizontal, 16)
@@ -327,9 +323,13 @@ private struct ProfileAccountMenu: View {
         foreground: Color = .primary
     ) -> some View {
         Button(role: role, action: action) {
-            Label(title, systemImage: systemImage)
-                .foregroundStyle(foreground)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            HStack(spacing: 14) {
+                Image(systemName: systemImage)
+                    .frame(width: 28, alignment: .center)
+                Text(title)
+            }
+            .foregroundStyle(foreground)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
         .buttonStyle(.glass)
         .glassEffectID(id, in: glassNamespace)
