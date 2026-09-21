@@ -122,6 +122,8 @@ struct ProfileView: View {
                             .lineLimit(1)
                             .truncationMode(.tail)
                             .padding(.horizontal, 100)
+                            .offset(y: showAccountOptions ? 160 : 0)
+                            .animation(.bouncy(duration: 0.35), value: showAccountOptions)
 
                         HStack {
                             // Left Avatar / Sign-In Button
@@ -189,6 +191,8 @@ struct ProfileView: View {
                             .frame(height: 44)
                             .clipShape(Capsule())
                             .glassEffect(.regular.interactive(), in: .capsule)
+                            .offset(y: showAccountOptions ? 160 : 0)
+                            .animation(.bouncy(duration: 0.35), value: showAccountOptions)
                         }
                     }
                     .padding(.horizontal, 16)
@@ -263,6 +267,14 @@ struct ProfileView: View {
                     favoritesRepo.reloadFromDb()
                 }
             }
+            .simultaneousGesture(
+                TapGesture().onEnded {
+                    guard showAccountOptions else { return }
+                    withAnimation(.bouncy(duration: 0.35)) {
+                        showAccountOptions = false
+                    }
+                }
+            )
         }
     }
 }
@@ -286,7 +298,7 @@ private struct ProfileAccountMenu: View {
                     }
                     accountAction("Редактировать профиль", systemImage: "pencil", id: "edit", action: onEdit)
                         .glassEffectTransition(.matchedGeometry)
-                    accountAction("Выйти из аккаунта", systemImage: "rectangle.portrait.and.arrow.right", id: "signOut", action: onSignOut, role: .destructive)
+                    accountAction("Выйти из аккаунта", systemImage: "rectangle.portrait.and.arrow.right", id: "signOut", action: onSignOut, role: .destructive, foreground: .red)
                         .glassEffectTransition(.matchedGeometry)
                 }
 
@@ -309,10 +321,12 @@ private struct ProfileAccountMenu: View {
         systemImage: String,
         id: String,
         action: @escaping () -> Void,
-        role: ButtonRole? = nil
+        role: ButtonRole? = nil,
+        foreground: Color = .primary
     ) -> some View {
         Button(role: role, action: action) {
             Label(title, systemImage: systemImage)
+                .foregroundStyle(foreground)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
         .buttonStyle(.glass)
