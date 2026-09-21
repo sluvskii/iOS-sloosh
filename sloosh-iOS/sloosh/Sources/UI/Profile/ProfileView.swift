@@ -289,6 +289,10 @@ private struct ProfileAccountMenu: View {
     var body: some View {
         GlassEffectContainer(spacing: 10) {
             VStack(alignment: .leading, spacing: 10) {
+                // Keep every action wide enough for a single-line Russian label.
+                Color.clear
+                    .frame(width: 300, height: 0)
+
                 Button {
                     withAnimation(.bouncy(duration: 0.35)) {
                         isExpanded.toggle()
@@ -327,6 +331,8 @@ private struct ProfileAccountMenu: View {
                 Image(systemName: systemImage)
                     .frame(width: 28, alignment: .center)
                 Text(title)
+                .lineLimit(1)
+                .minimumScaleFactor(0.82)
             }
             .foregroundStyle(foreground)
             .frame(maxWidth: .infinity, alignment: .leading)
