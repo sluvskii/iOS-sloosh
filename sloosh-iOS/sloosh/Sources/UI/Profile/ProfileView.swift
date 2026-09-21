@@ -166,7 +166,7 @@ struct ProfileView: View {
                                 }
                             }
                             .zIndex(showAccountOptions ? 100 : 0)
-                            .animation(.bouncy(duration: 0.35), value: showAccountOptions)
+                            .animation(.smooth(duration: 0.38), value: showAccountOptions)
                             .confirmationDialog(
                                 "Выйти из аккаунта?",
                                 isPresented: $showSignOutAlert,
@@ -292,8 +292,8 @@ private struct ProfileMenuBlur: View {
             direction: .blurredCenterClearEdges,
             tintOpacity: 0
         )
-        .frame(width: 300, height: 190)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .frame(width: 340, height: 220)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .allowsHitTesting(false)
     }
 }
