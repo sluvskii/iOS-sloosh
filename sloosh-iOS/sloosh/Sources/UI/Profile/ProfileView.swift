@@ -1,5 +1,9 @@
 import SwiftUI
 
+extension Notification.Name {
+    static let profileAccountMenuDismissRequested = Notification.Name("profileAccountMenuDismissRequested")
+}
+
 enum FavoriteCategory: String, CaseIterable {
     case all = "Все"
     case movies = "Фильмы"
@@ -122,8 +126,6 @@ struct ProfileView: View {
                             .lineLimit(1)
                             .truncationMode(.tail)
                             .padding(.horizontal, 100)
-                            .offset(y: showAccountOptions ? 160 : 0)
-                            .animation(.bouncy(duration: 0.35), value: showAccountOptions)
 
                         HStack {
                             // Left Avatar / Sign-In Button
@@ -191,8 +193,6 @@ struct ProfileView: View {
                             .frame(height: 44)
                             .clipShape(Capsule())
                             .glassEffect(.regular.interactive(), in: .capsule)
-                            .offset(y: showAccountOptions ? 160 : 0)
-                            .animation(.bouncy(duration: 0.35), value: showAccountOptions)
                         }
                     }
                     .padding(.horizontal, 16)
@@ -267,14 +267,12 @@ struct ProfileView: View {
                     favoritesRepo.reloadFromDb()
                 }
             }
-            .simultaneousGesture(
-                TapGesture().onEnded {
-                    guard showAccountOptions else { return }
-                    withAnimation(.bouncy(duration: 0.35)) {
-                        showAccountOptions = false
-                    }
+            .onReceive(NotificationCenter.default.publisher(for: .profileAccountMenuDismissRequested)) { _ in
+                guard showAccountOptions else { return }
+                withAnimation(.bouncy(duration: 0.35)) {
+                    showAccountOptions = false
                 }
-            )
+            }
         }
     }
 }
@@ -291,17 +289,6 @@ private struct ProfileAccountMenu: View {
     var body: some View {
         GlassEffectContainer(spacing: 10) {
             VStack(alignment: .leading, spacing: 10) {
-                if isExpanded {
-                    if isAdmin {
-                        accountAction("Панель управления", systemImage: "person.2.fill", id: "admin", action: onAdmin)
-                            .glassEffectTransition(.matchedGeometry)
-                    }
-                    accountAction("Редактировать профиль", systemImage: "pencil", id: "edit", action: onEdit)
-                        .glassEffectTransition(.matchedGeometry)
-                    accountAction("Выйти из аккаунта", systemImage: "rectangle.portrait.and.arrow.right", id: "signOut", action: onSignOut, role: .destructive, foreground: .red)
-                        .glassEffectTransition(.matchedGeometry)
-                }
-
                 Button {
                     withAnimation(.bouncy(duration: 0.35)) {
                         isExpanded.toggle()
@@ -312,6 +299,17 @@ private struct ProfileAccountMenu: View {
                 .buttonStyle(.plain)
                 .glassEffectID("profile", in: glassNamespace)
                 .accessibilityLabel(isExpanded ? "Закрыть меню профиля" : "Управление профилем")
+
+                if isExpanded {
+                    if isAdmin {
+                        accountAction("Панель управления", systemImage: "person.2.fill", id: "admin", action: onAdmin)
+                            .glassEffectTransition(.matchedGeometry)
+                    }
+                    accountAction("Редактировать профиль", systemImage: "pencil", id: "edit", action: onEdit)
+                        .glassEffectTransition(.matchedGeometry)
+                    accountAction("Выйти из аккаунта", systemImage: "rectangle.portrait.and.arrow.right", id: "signOut", action: onSignOut, role: .destructive, foreground: .red)
+                        .glassEffectTransition(.matchedGeometry)
+                }
             }
         }
     }
@@ -431,6 +429,9 @@ struct ProfileCategoryContentView: View {
         .refreshable {
             await CloudSyncService.shared.syncAllDataAsync(force: true)
             favoritesRepo.reloadFromDb()
+        }
+        .onTapGesture {
+            NotificationCenter.default.post(name: .profileAccountMenuDismissRequested, object: nil)
         }
         .onScrollGeometryChange(for: CGFloat.self) { geometry in
             geometry.contentOffset.y + geometry.contentInsets.top
