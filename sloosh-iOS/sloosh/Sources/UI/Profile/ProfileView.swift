@@ -103,6 +103,14 @@ struct ProfileView: View {
                 .scrollTargetLayout()
             }
             .scrollTargetBehavior(.paging)
+            .simultaneousGesture(
+                TapGesture().onEnded {
+                    guard showAccountOptions else { return }
+                    withAnimation(.bouncy(duration: 0.35)) {
+                        showAccountOptions = false
+                    }
+                }
+            )
             .scrollPosition(id: Binding(
                 get: { selectedCategory },
                 set: { newValue in
@@ -137,7 +145,17 @@ struct ProfileView: View {
                             .buttonStyle(.plain)
                             .overlay(alignment: .topLeading) {
                                 if showAccountOptions {
-                                    ProfileAccountActions(
+                                    ZStack(alignment: .topLeading) {
+                                        VariableBlurView(
+                                            maxBlurRadius: 16,
+                                            direction: .blurredTopClearBottom,
+                                            tintOpacity: 0.45
+                                        )
+                                        .frame(width: 340, height: 330)
+                                        .offset(x: -20, y: 28)
+                                        .allowsHitTesting(false)
+
+                                        ProfileAccountActions(
                                         isAdmin: authRepo.isAdmin,
                                         onAdmin: {
                                             showAccountOptions = false
@@ -151,11 +169,13 @@ struct ProfileView: View {
                                             showAccountOptions = false
                                             showSignOutAlert = true
                                         }
-                                    )
+                                        )
+                                    }
                                     .offset(y: 52)
                                     .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .topLeading)))
                                 }
                             }
+                            .zIndex(showAccountOptions ? 100 : 0)
                             .animation(.bouncy(duration: 0.35), value: showAccountOptions)
                             .confirmationDialog(
                                 "Выйти из аккаунта?",
