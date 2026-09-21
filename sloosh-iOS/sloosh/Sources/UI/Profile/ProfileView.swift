@@ -1,9 +1,5 @@
 import SwiftUI
 
-extension Notification.Name {
-    static let profileAccountMenuDismissRequested = Notification.Name("profileAccountMenuDismissRequested")
-}
-
 enum FavoriteCategory: String, CaseIterable {
     case all = "Все"
     case movies = "Фильмы"
@@ -119,7 +115,7 @@ struct ProfileView: View {
             .safeAreaInset(edge: .top, spacing: 0) {
                 VStack(spacing: 8) {
                     // Header Bar
-                    ZStack(alignment: .top) {
+                    ZStack {
                         Text(authRepo.isAuthenticated ? (authRepo.currentUser?.displayTag.isEmpty == false ? authRepo.currentUser!.displayTag : authRepo.currentUser?.displayTitle ?? "Профиль") : "Профиль")
                             .font(.system(size: 18, weight: .semibold))
                             .foregroundStyle(.primary)
@@ -127,34 +123,52 @@ struct ProfileView: View {
                             .truncationMode(.tail)
                             .padding(.horizontal, 100)
 
-                        HStack(alignment: .top) {
+                        HStack {
                             // Left Avatar / Sign-In Button
-                            if authRepo.isAuthenticated {
-                                ProfileAccountMenu(
-                                    user: authRepo.currentUser,
-                                    isAdmin: authRepo.isAdmin,
-                                    isExpanded: $showAccountOptions,
-                                    onAdmin: {
-                                        showAccountOptions = false
-                                        showAdminDashboard = true
-                                    },
-                                    onEdit: {
-                                        showAccountOptions = false
-                                        showEditProfileSheet = true
-                                    },
-                                    onSignOut: {
-                                        showAccountOptions = false
-                                        showSignOutAlert = true
-                                    }
-                                )
-                            } else {
-                                Button {
+                            Button {
+                                if authRepo.isAuthenticated {
+                                    showAccountOptions = true
+                                } else {
                                     showAuthSheet = true
-                                } label: {
-                                    ProfileAvatarButton(user: authRepo.currentUser)
                                 }
-                                .buttonStyle(.plain)
+                            } label: {
+                                ProfileAvatarButton(user: authRepo.currentUser)
                             }
+                            .buttonStyle(.plain)
+                            .confirmationDialog(
+                                "Управление профилем",
+                                isPresented: $showAccountOptions,
+                                titleVisibility: .visible
+                            ) {
+                                if authRepo.isAdmin {
+                                    Button("Панель управления") {
+                                        showAdminDashboard = true
+                                    }
+                                    .tint(.primary)
+                                }
+                                Button("Редактировать профиль") {
+                                    showEditProfileSheet = true
+                                }
+                                .tint(.primary)
+                                Button("Выйти из аккаунта", role: .destructive) {
+                                    showSignOutAlert = true
+                                }
+                                Button("Отмена", role: .cancel) {}
+                            }
+                            .tint(.primary)
+                            .confirmationDialog(
+                                "Выйти из аккаунта?",
+                                isPresented: $showSignOutAlert,
+                                titleVisibility: .visible
+                            ) {
+                                Button("Выйти из аккаунта", role: .destructive) {
+                                    authRepo.signOut()
+                                }
+                                Button("Отмена", role: .cancel) {}
+                            } message: {
+                                Text("Вы действительно хотите выйти из своего аккаунта?")
+                            }
+
                             Spacer()
 
                             // Двойная капсула: Загрузки + Настройки
@@ -196,18 +210,6 @@ struct ProfileView: View {
                         }
                     }
                     .padding(.horizontal, 16)
-                    .confirmationDialog(
-                        "Выйти из аккаунта?",
-                        isPresented: $showSignOutAlert,
-                        titleVisibility: .visible
-                    ) {
-                        Button("Выйти из аккаунта", role: .destructive) {
-                            authRepo.signOut()
-                        }
-                        Button("Отмена", role: .cancel) {}
-                    } message: {
-                        Text("Вы действительно хотите выйти из своего аккаунта?")
-                    }
 
                     // Category Tabs
                     ProfileCategoryTextTabs(
@@ -267,76 +269,7 @@ struct ProfileView: View {
                     favoritesRepo.reloadFromDb()
                 }
             }
-            .onReceive(NotificationCenter.default.publisher(for: .profileAccountMenuDismissRequested)) { _ in
-                guard showAccountOptions else { return }
-                withAnimation(.bouncy(duration: 0.35)) {
-                    showAccountOptions = false
-                }
-            }
         }
-    }
-}
-
-private struct ProfileAccountMenu: View {
-    let user: UserProfile?
-    let isAdmin: Bool
-    @Binding var isExpanded: Bool
-    let onAdmin: () -> Void
-    let onEdit: () -> Void
-    let onSignOut: () -> Void
-    @Namespace private var glassNamespace
-
-    var body: some View {
-        GlassEffectContainer(spacing: 10) {
-            VStack(alignment: .leading, spacing: 10) {
-
-                Button {
-                    withAnimation(.bouncy(duration: 0.35)) {
-                        isExpanded.toggle()
-                    }
-                } label: {
-                    ProfileAvatarButton(user: user)
-                }
-                .buttonStyle(.plain)
-                .glassEffectID("profile", in: glassNamespace)
-                .accessibilityLabel(isExpanded ? "Закрыть меню профиля" : "Управление профилем")
-
-                if isExpanded {
-                    if isAdmin {
-                        accountAction("Панель управления", systemImage: "person.2.fill", id: "admin", action: onAdmin)
-                            .glassEffectTransition(.matchedGeometry)
-                    }
-                    accountAction("Редактировать профиль", systemImage: "pencil", id: "edit", action: onEdit)
-                        .glassEffectTransition(.matchedGeometry)
-                    accountAction("Выйти из аккаунта", systemImage: "rectangle.portrait.and.arrow.right", id: "signOut", action: onSignOut, role: .destructive, foreground: .red)
-                        .glassEffectTransition(.matchedGeometry)
-                }
-            }
-        }
-    }
-
-    private func accountAction(
-        _ title: String,
-        systemImage: String,
-        id: String,
-        action: @escaping () -> Void,
-        role: ButtonRole? = nil,
-        foreground: Color = .primary
-    ) -> some View {
-        Button(role: role, action: action) {
-            HStack(spacing: 14) {
-                Image(systemName: systemImage)
-                    .frame(width: 28, alignment: .center)
-                Text(title)
-                .lineLimit(1)
-                .minimumScaleFactor(0.82)
-            }
-            .foregroundStyle(foreground)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .buttonStyle(.glass)
-        .frame(width: 300, alignment: .leading)
-        .glassEffectID(id, in: glassNamespace)
     }
 }
 
@@ -425,7 +358,7 @@ struct ProfileCategoryContentView: View {
                                         Label("Удалить", systemImage: "trash")
                                     }
                                 }
-                                .tint(nil)
+                                .tint(.primary)
                             }
                         }
                     }
@@ -437,9 +370,6 @@ struct ProfileCategoryContentView: View {
         .refreshable {
             await CloudSyncService.shared.syncAllDataAsync(force: true)
             favoritesRepo.reloadFromDb()
-        }
-        .onTapGesture {
-            NotificationCenter.default.post(name: .profileAccountMenuDismissRequested, object: nil)
         }
         .onScrollGeometryChange(for: CGFloat.self) { geometry in
             geometry.contentOffset.y + geometry.contentInsets.top
