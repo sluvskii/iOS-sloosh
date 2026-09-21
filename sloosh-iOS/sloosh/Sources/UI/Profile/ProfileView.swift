@@ -151,8 +151,22 @@ struct ProfileView: View {
                                             direction: .blurredTopClearBottom,
                                             tintOpacity: 0.45
                                         )
-                                        .frame(width: 340, height: 330)
-                                        .offset(x: -20, y: 28)
+                                        .frame(width: 370, height: 350)
+                                        .mask(
+                                            RadialGradient(
+                                                stops: [
+                                                    .init(color: .white, location: 0.0),
+                                                    .init(color: .white.opacity(0.9), location: 0.55),
+                                                    .init(color: .white.opacity(0.35), location: 0.82),
+                                                    .init(color: .clear, location: 1.0)
+                                                ],
+                                                center: .center,
+                                                startRadius: 20,
+                                                endRadius: 230
+                                            )
+                                        )
+                                        .offset(x: -35, y: 18)
+                                        .zIndex(0)
                                         .allowsHitTesting(false)
 
                                         ProfileAccountActions(
@@ -172,6 +186,7 @@ struct ProfileView: View {
                                         )
                                     }
                                     .offset(y: 52)
+                                    .zIndex(1)
                                     .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .topLeading)))
                                 }
                             }
