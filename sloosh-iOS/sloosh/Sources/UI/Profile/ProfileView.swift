@@ -155,6 +155,7 @@ struct ProfileView: View {
                                 }
                                 Button("Отмена", role: .cancel) {}
                             }
+                            .tint(.primary)
                             .confirmationDialog(
                                 "Выйти из аккаунта?",
                                 isPresented: $showSignOutAlert,
