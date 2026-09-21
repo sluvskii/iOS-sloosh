@@ -151,19 +151,6 @@ struct ProfileView: View {
                                 }
                                 .buttonStyle(.plain)
                             }
-                            .confirmationDialog(
-                                "Выйти из аккаунта?",
-                                isPresented: $showSignOutAlert,
-                                titleVisibility: .visible
-                            ) {
-                                Button("Выйти из аккаунта", role: .destructive) {
-                                    authRepo.signOut()
-                                }
-                                Button("Отмена", role: .cancel) {}
-                            } message: {
-                                Text("Вы действительно хотите выйти из своего аккаунта?")
-                            }
-
                             Spacer()
 
                             // Двойная капсула: Загрузки + Настройки
@@ -205,6 +192,18 @@ struct ProfileView: View {
                         }
                     }
                     .padding(.horizontal, 16)
+                    .confirmationDialog(
+                        "Выйти из аккаунта?",
+                        isPresented: $showSignOutAlert,
+                        titleVisibility: .visible
+                    ) {
+                        Button("Выйти из аккаунта", role: .destructive) {
+                            authRepo.signOut()
+                        }
+                        Button("Отмена", role: .cancel) {}
+                    } message: {
+                        Text("Вы действительно хотите выйти из своего аккаунта?")
+                    }
 
                     // Category Tabs
                     ProfileCategoryTextTabs(
