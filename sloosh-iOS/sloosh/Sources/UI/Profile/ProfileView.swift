@@ -160,6 +160,7 @@ struct ProfileView: View {
                                             showSignOutAlert = true
                                         }
                                     )
+                                    .fixedSize(horizontal: true, vertical: true)
                                     .offset(y: 52)
                                     .zIndex(1)
                                     .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .topLeading)))
