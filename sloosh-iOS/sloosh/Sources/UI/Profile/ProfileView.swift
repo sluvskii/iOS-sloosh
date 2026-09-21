@@ -145,12 +145,7 @@ struct ProfileView: View {
                             .buttonStyle(.plain)
                             .overlay(alignment: .topLeading) {
                                 if showAccountOptions {
-                                    ZStack(alignment: .topLeading) {
-                                        ProfileMenuBlur()
-                                            .offset(x: 0, y: 52)
-                                            .zIndex(0)
-
-                                        ProfileAccountActions(
+                                    ProfileAccountActions(
                                         isAdmin: authRepo.isAdmin,
                                         onAdmin: {
                                             showAccountOptions = false
@@ -164,8 +159,7 @@ struct ProfileView: View {
                                             showAccountOptions = false
                                             showSignOutAlert = true
                                         }
-                                        )
-                                    }
+                                    )
                                     .offset(y: 52)
                                     .zIndex(1)
                                     .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .topLeading)))
@@ -321,6 +315,10 @@ private struct ProfileAccountActions: View {
             }
             .frame(width: 300, alignment: .leading)
         }
+        .background {
+            ProfileMenuBlur()
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     private func action(
