@@ -200,6 +200,13 @@ struct PlayerView: View {
 
 
 @MainActor
+public final class PlayerTimeTracker: ObservableObject {
+    @Published public var currentTime: Double = 0
+    @Published public var currentDuration: Double = 0
+    @Published public var bufferedProgress: Double = 0
+}
+
+@MainActor
 class PlayerViewModel: ObservableObject {
     struct PlaybackQualityOption: Equatable {
         let key: String
@@ -230,10 +237,26 @@ class PlayerViewModel: ObservableObject {
         return previousEpisodeCandidate() != nil
     }
 
-    // MARK: - Timing
-    @Published var currentTime: Double = 0
-    @Published var currentDuration: Double = 0
-    @Published var bufferedProgress: Double = 0
+    // MARK: - Timing (Isolated to timeTracker to prevent full-tree re-renders during playback)
+    public let timeTracker = PlayerTimeTracker()
+
+    var currentTime: Double {
+        get { timeTracker.currentTime }
+        set { timeTracker.currentTime = newValue }
+    }
+
+    var currentDuration: Double {
+        get { timeTracker.currentDuration }
+        set { timeTracker.currentDuration = newValue }
+    }
+
+    var bufferedProgress: Double {
+        get { timeTracker.bufferedProgress }
+        set { timeTracker.bufferedProgress = newValue }
+    }
+
+    private var lastProgressSaveSecond: Int = -1
+
     @Published var screenScrubTime: Double?
     @Published var introRange: ClosedRange<Double>?
     @Published var outroRange: ClosedRange<Double>?
@@ -1880,7 +1903,9 @@ class PlayerViewModel: ObservableObject {
             }
             
             // Сохраняем прогресс каждые 5 секунд (только если не висит начальный seek и позиция > 2 секунд)
-            if !self.isInitialSeekPending && Int(t) % 5 == 0 && t > 2 {
+            let currentSec = Int(t)
+            if !self.isInitialSeekPending && currentSec % 5 == 0 && currentSec != self.lastProgressSaveSecond && t > 2 {
+                self.lastProgressSaveSecond = currentSec
                 let dur = self.currentDuration >= 120 ? self.currentDuration : nil
                 PlaybackProgressStore.shared.save(
                     mediaId: mediaId,

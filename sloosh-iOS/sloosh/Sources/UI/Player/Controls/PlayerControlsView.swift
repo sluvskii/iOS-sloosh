@@ -25,7 +25,6 @@ struct PlayerControlsView: View {
                 onBackgroundTap?()
             }
             .opacity(showControls && !isSeeking ? 1 : 0)
-            .animation(.easeInOut(duration: 0.24), value: showControls)
             .animation(.easeInOut(duration: 0.2), value: isSeeking)
             .ignoresSafeArea()
 
@@ -123,7 +122,7 @@ struct PlayerControlsView: View {
                         .opacity(isSeeking ? 0 : 1)
                         .animation(.easeInOut(duration: 0.2), value: isSeeking)
 
-                        SeekBarView(vm: vm, isInteracting: $isInteracting)
+                        SeekBarView(vm: vm, timeTracker: vm.timeTracker, isInteracting: $isInteracting)
                             .padding(.horizontal, 8)
                             .padding(.bottom, 24) // Увеличенный отступ
                     }
@@ -139,8 +138,6 @@ struct PlayerControlsView: View {
                     .ignoresSafeArea()
             }
             .opacity(showControls ? 1 : 0)
-            .blur(radius: showControls ? 0 : 16)
-            .animation(.easeInOut(duration: 0.24), value: showControls)
         }
     }
 }
