@@ -143,11 +143,15 @@ struct SourceSelectionView: View {
 
     private func setupInitialSelection() {
         let currentKey = mediaKey
-        let specificVoiceover = PlaybackProgressStore.shared.loadLastVoiceover(mediaKey: currentKey) ??
-            (kpId.flatMap { $0 > 0 ? PlaybackProgressStore.shared.loadLastVoiceover(kpId: $0, source: "alloha") : nil })
-        let globalVoiceover = UserDefaults.standard.string(forKey: "alloha_last_translation_name")
-        let effectiveGlobal = (globalVoiceover != nil && !isOriginalOrEnglishTranslation(globalVoiceover)) ? globalVoiceover : nil
-        let savedVoiceover = specificVoiceover ?? effectiveGlobal
+        var savedVoiceover = PlaybackProgressStore.shared.loadLastVoiceover(mediaKey: currentKey)
+        if savedVoiceover == nil, let kpId, kpId > 0 {
+            savedVoiceover = PlaybackProgressStore.shared.loadLastVoiceover(kpId: kpId, source: "alloha")
+        }
+        if savedVoiceover == nil,
+           let globalVoiceover = UserDefaults.standard.string(forKey: "alloha_last_translation_name"),
+           !isOriginalOrEnglishTranslation(globalVoiceover) {
+            savedVoiceover = globalVoiceover
+        }
 
         if result.isSerial {
             var initialSeason = result.seasons.first?.season

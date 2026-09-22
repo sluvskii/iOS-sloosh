@@ -2184,9 +2184,13 @@ class PlayerViewModel: ObservableObject {
     }
 
     private func preferredTranslation(in episode: AllohaEpisode) -> AllohaTranslation? {
-        let pref = targetVoiceover ?? _currentTranslationName
-            ?? (rootMediaKey.flatMap { PlaybackProgressStore.shared.loadLastVoiceover(mediaKey: $0, source: "alloha") })
-            ?? (currentKpId.flatMap { $0 > 0 ? PlaybackProgressStore.shared.loadLastVoiceover(kpId: $0, source: "alloha") : nil })
+        var pref = targetVoiceover ?? _currentTranslationName
+        if pref == nil, let root = rootMediaKey {
+            pref = PlaybackProgressStore.shared.loadLastVoiceover(mediaKey: root, source: "alloha")
+        }
+        if pref == nil, let kpId = currentKpId, kpId > 0 {
+            pref = PlaybackProgressStore.shared.loadLastVoiceover(kpId: kpId, source: "alloha")
+        }
         return bestTranslation(in: episode.translations, preferredName: pref)
     }
 

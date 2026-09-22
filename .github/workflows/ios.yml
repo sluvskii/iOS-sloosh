@@ -127,8 +127,7 @@ jobs:
             COMPILER_INDEX_STORE_ENABLE=NO \
             DEBUG_INFORMATION_FORMAT=dwarf \
             SWIFT_COMPILATION_MODE=singlefile \
-            -showBuildTimingSummary \
-            -quiet
+            -showBuildTimingSummary
 
       - name: Package IPA (Unsigned)
         run: |
