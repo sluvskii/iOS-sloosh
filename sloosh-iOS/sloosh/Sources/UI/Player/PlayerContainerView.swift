@@ -11,8 +11,6 @@ struct PlayerContainerView: View {
     @State private var pipController: AVPictureInPictureController?
     @State private var hideTask: Task<Void, Never>?
     @State private var isInteracting = false
-    @State private var isPopoverOpen = false
-    @State private var menuOpenedAt: Date = .distantPast
     @State private var isZoomedToFill = false
     @State private var tapTask: Task<Void, Never>?
     @State private var consecutiveTaps: Int = 0
@@ -62,7 +60,6 @@ struct PlayerContainerView: View {
                         hideTask?.cancel()
                     },
                     isInteracting: $isInteracting,
-                    isPopoverOpen: $isPopoverOpen,
                     showControls: showControls,
                     isSeeking: isSeeking,
                     onInteraction: {
@@ -85,14 +82,6 @@ struct PlayerContainerView: View {
             if interacting {
                 hideTask?.cancel()
             } else if showControls {
-                scheduleAutoHide()
-            }
-        }
-        .onChange(of: isPopoverOpen) { _, open in
-            if open {
-                menuOpenedAt = Date()
-                scheduleAutoHide()
-            } else if showControls && !isInteracting {
                 scheduleAutoHide()
             }
         }
@@ -253,31 +242,17 @@ struct PlayerContainerView: View {
         hideTask?.cancel()
         guard vm.isPlaying else { return }
         hideTask = Task { @MainActor in
-            var idleSeconds: Double = 0
-            let checkInterval: Double = 0.5
-            let timeout: Double = 4.0
-
             while !Task.isCancelled {
-                try? await Task.sleep(for: .seconds(checkInterval))
+                try? await Task.sleep(for: .seconds(3.5))
                 guard !Task.isCancelled, vm.isPlaying, !isInteracting else { return }
 
-                let menuPresented = isSystemMenuPresented()
-                let recentlyOpened = Date().timeIntervalSince(menuOpenedAt) < 1.0
-
-                if menuPresented || (isPopoverOpen && recentlyOpened) {
-                    idleSeconds = 0
+                if isSystemMenuPresented() {
+                    try? await Task.sleep(for: .seconds(1.5))
                     continue
                 }
 
-                if isPopoverOpen {
-                    isPopoverOpen = false
-                }
-
-                idleSeconds += checkInterval
-                if idleSeconds >= timeout {
-                    withAnimation(hideAnimation) { showControls = false }
-                    break
-                }
+                withAnimation(hideAnimation) { showControls = false }
+                break
             }
         }
     }
@@ -292,25 +267,28 @@ struct PlayerContainerView: View {
         let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
         for scene in scenes {
             for window in scene.windows {
-                if hasActiveMenu(in: window) {
-                    return true
+                let winName = String(describing: type(of: window))
+                if winName.contains("ContextMenu") {
+                    if !window.isHidden && window.alpha > 0.05 {
+                        return true
+                    }
                 }
-            }
-        }
-        return false
-    }
-
-    private func hasActiveMenu(in view: UIView) -> Bool {
-        if view.isHidden { return false }
-        let className = String(describing: type(of: view))
-        if className.contains("ContextMenu") || className.contains("PopoverView") {
-            if view.alpha > 0.05 && view.bounds.width > 0 && view.bounds.height > 0 {
-                return true
-            }
-        }
-        for subview in view.subviews {
-            if hasActiveMenu(in: subview) {
-                return true
+                for subview in window.subviews {
+                    let subName = String(describing: type(of: subview))
+                    if subName.contains("ContextMenu") || subName.contains("PopoverView") {
+                        if !subview.isHidden && subview.alpha > 0.05 {
+                            return true
+                        }
+                    }
+                    for child in subview.subviews {
+                        let childName = String(describing: type(of: child))
+                        if childName.contains("ContextMenu") || childName.contains("PopoverView") {
+                            if !child.isHidden && child.alpha > 0.05 {
+                                return true
+                            }
+                        }
+                    }
+                }
             }
         }
         return false

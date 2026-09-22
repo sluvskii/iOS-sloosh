@@ -2,13 +2,38 @@ import SwiftUI
 
 // MARK: - Нижняя правая панель: скорость | озвучка | качество | субтитры | серии
 // Нативные Liquid Glass меню iOS с анимацией трансформации кнопки
+// Оптимизировано: View изолировано через Equatable от ежесекундного тика currentTime в PlayerViewModel
 
-struct BottomRowView: View {
-    @ObservedObject var vm: PlayerViewModel
-    @Binding var isMenuOpen: Bool
+struct BottomRowView: View, Equatable {
+    let vm: PlayerViewModel
+    let playbackRate: Float
+    let availableVoiceovers: [String]
+    let currentTranslationName: String?
+    let availableQualities: [PlayerViewModel.PlaybackQualityOption]
+    let currentQualityKey: String?
+    let availableSubtitles: [PlaybackSubtitle]
+    let currentSubtitleUrl: String?
+    let isMovie: Bool
+    let seriesResult: AllohaApiResult?
+    let currentSeason: Int?
+    let currentEpisode: Int?
     var onInteraction: (() -> Void)? = nil
 
     private let speeds: [Float] = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0]
+
+    static func == (lhs: BottomRowView, rhs: BottomRowView) -> Bool {
+        lhs.playbackRate == rhs.playbackRate &&
+        lhs.currentTranslationName == rhs.currentTranslationName &&
+        lhs.currentQualityKey == rhs.currentQualityKey &&
+        lhs.currentSubtitleUrl == rhs.currentSubtitleUrl &&
+        lhs.isMovie == rhs.isMovie &&
+        lhs.currentSeason == rhs.currentSeason &&
+        lhs.currentEpisode == rhs.currentEpisode &&
+        lhs.availableVoiceovers == rhs.availableVoiceovers &&
+        lhs.availableQualities == rhs.availableQualities &&
+        lhs.availableSubtitles == rhs.availableSubtitles &&
+        lhs.seriesResult?.seasons.count == rhs.seriesResult?.seasons.count
+    }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -16,22 +41,22 @@ struct BottomRowView: View {
             speedMenu
 
             // Озвучка / аудиодорожка
-            if vm.availableVoiceovers.count > 1 {
+            if availableVoiceovers.count > 1 {
                 voiceoverMenu
             }
 
             // Качество видео
-            if vm.availableQualities.count > 1 {
+            if availableQualities.count > 1 {
                 qualityMenu
             }
 
             // Субтитры
-            if !vm.availableSubtitles.isEmpty {
+            if !availableSubtitles.isEmpty {
                 subtitlesMenu
             }
 
             // Выбор серий (для сериалов)
-            if !vm.isMovie, let series = vm.seriesResult, !series.seasons.isEmpty {
+            if !isMovie, let series = seriesResult, !series.seasons.isEmpty {
                 episodesMenu(series: series)
             }
         }
@@ -46,9 +71,8 @@ struct BottomRowView: View {
     private var speedMenu: some View {
         Menu {
             Picker("Скорость", selection: Binding(
-                get: { vm.playbackRate },
+                get: { playbackRate },
                 set: { rate in
-                    isMenuOpen = false
                     vm.setPlaybackRate(rate)
                     onInteraction?()
                 }
@@ -66,10 +90,6 @@ struct BottomRowView: View {
                 .contentShape(Rectangle())
         }
         .menuOrder(.priority)
-        .simultaneousGesture(TapGesture().onEnded {
-            isMenuOpen = true
-            onInteraction?()
-        })
         .accessibilityLabel("Скорость воспроизведения: \(speedLabel)")
     }
 
@@ -80,15 +100,14 @@ struct BottomRowView: View {
             Picker("Озвучка", selection: Binding(
                 get: { activeVoiceoverIndex ?? -1 },
                 set: { idx in
-                    isMenuOpen = false
-                    if idx >= 0 && idx < vm.availableVoiceovers.count {
-                        vm.switchVoiceover(to: vm.availableVoiceovers[idx], at: idx)
+                    if idx >= 0 && idx < availableVoiceovers.count {
+                        vm.switchVoiceover(to: availableVoiceovers[idx], at: idx)
                     }
                     onInteraction?()
                 }
             )) {
-                ForEach(Array(vm.availableVoiceovers.enumerated()), id: \.offset) { idx, name in
-                    Text(displayTranslationName(name, at: idx, in: vm.availableVoiceovers)).tag(idx)
+                ForEach(Array(availableVoiceovers.enumerated()), id: \.offset) { idx, name in
+                    Text(displayTranslationName(name, at: idx, in: availableVoiceovers)).tag(idx)
                 }
             }
         } label: {
@@ -100,10 +119,6 @@ struct BottomRowView: View {
                 .contentShape(Rectangle())
         }
         .menuOrder(.priority)
-        .simultaneousGesture(TapGesture().onEnded {
-            isMenuOpen = true
-            onInteraction?()
-        })
         .accessibilityLabel("Выбор озвучки")
     }
 
@@ -112,14 +127,13 @@ struct BottomRowView: View {
     private var qualityMenu: some View {
         Menu {
             Picker("Качество", selection: Binding(
-                get: { vm.currentQualityKey ?? "" },
+                get: { currentQualityKey ?? "" },
                 set: { qKey in
-                    isMenuOpen = false
                     vm.changeQuality(to: qKey)
                     onInteraction?()
                 }
             )) {
-                ForEach(vm.availableQualities, id: \.key) { q in
+                ForEach(availableQualities, id: \.key) { q in
                     Text(q.key).tag(q.key)
                 }
             }
@@ -132,10 +146,6 @@ struct BottomRowView: View {
                 .contentShape(Rectangle())
         }
         .menuOrder(.priority)
-        .simultaneousGesture(TapGesture().onEnded {
-            isMenuOpen = true
-            onInteraction?()
-        })
         .accessibilityLabel("Качество видео")
     }
 
@@ -144,24 +154,23 @@ struct BottomRowView: View {
     private var subtitlesMenu: some View {
         Menu {
             Picker("Субтитры", selection: Binding(
-                get: { vm.currentSubtitle?.url ?? "none" },
+                get: { currentSubtitleUrl ?? "none" },
                 set: { url in
-                    isMenuOpen = false
                     if url == "none" {
                         vm.setSubtitle(nil)
-                    } else if let sub = vm.availableSubtitles.first(where: { $0.url == url }) {
+                    } else if let sub = availableSubtitles.first(where: { $0.url == url }) {
                         vm.setSubtitle(sub)
                     }
                     onInteraction?()
                 }
             )) {
                 Text("Выключены").tag("none")
-                ForEach(vm.availableSubtitles, id: \.url) { sub in
+                ForEach(availableSubtitles, id: \.url) { sub in
                     Text(sub.label).tag(sub.url)
                 }
             }
         } label: {
-            Image(systemName: vm.currentSubtitle != nil ? "text.bubble.fill" : "text.bubble")
+            Image(systemName: currentSubtitleUrl != nil ? "captions.bubble.fill" : "captions.bubble")
                 .font(.system(size: 17, weight: .medium))
                 .foregroundStyle(.white.opacity(0.85))
                 .blendMode(.plusLighter)
@@ -169,11 +178,7 @@ struct BottomRowView: View {
                 .contentShape(Rectangle())
         }
         .menuOrder(.priority)
-        .simultaneousGesture(TapGesture().onEnded {
-            isMenuOpen = true
-            onInteraction?()
-        })
-        .accessibilityLabel(vm.currentSubtitle != nil ? "Субтитры (включены)" : "Субтитры")
+        .accessibilityLabel(currentSubtitleUrl != nil ? "Субтитры (включены)" : "Субтитры")
     }
 
     // MARK: - Серии (для сериалов)
@@ -185,9 +190,8 @@ struct BottomRowView: View {
                 ForEach(series.seasons.sorted(by: { $0.season < $1.season }), id: \.season) { season in
                     Menu {
                         Picker("Серии", selection: Binding(
-                            get: { (vm.currentSeason == season.season) ? (vm.currentEpisode ?? -1) : -1 },
+                            get: { (currentSeason == season.season) ? (currentEpisode ?? -1) : -1 },
                             set: { ep in
-                                isMenuOpen = false
                                 if ep >= 0 {
                                     vm.selectEpisode(season: season.season, episode: ep)
                                 }
@@ -199,7 +203,7 @@ struct BottomRowView: View {
                             }
                         }
                     } label: {
-                        if vm.currentSeason == season.season {
+                        if currentSeason == season.season {
                             Label("Сезон \(season.season)", systemImage: "checkmark")
                         } else {
                             Text("Сезон \(season.season)")
@@ -208,9 +212,8 @@ struct BottomRowView: View {
                 }
             } else if let singleSeason = series.seasons.first {
                 Picker("Серии", selection: Binding(
-                    get: { vm.currentEpisode ?? -1 },
+                    get: { currentEpisode ?? -1 },
                     set: { ep in
-                        isMenuOpen = false
                         if ep >= 0 {
                             vm.selectEpisode(season: singleSeason.season, episode: ep)
                         }
@@ -231,21 +234,17 @@ struct BottomRowView: View {
                 .contentShape(Rectangle())
         }
         .menuOrder(.priority)
-        .simultaneousGesture(TapGesture().onEnded {
-            isMenuOpen = true
-            onInteraction?()
-        })
         .accessibilityLabel("Выбор серии")
     }
 
     // MARK: - Хелперы
 
     private var speedLabel: String {
-        switch vm.playbackRate {
+        switch playbackRate {
         case 1.0: return "1×"
         case 1.5: return "1.5×"
         case 2.0: return "2×"
-        default:  return String(format: "%.2g×", vm.playbackRate)
+        default:  return String(format: "%.2g×", playbackRate)
         }
     }
 
@@ -254,14 +253,14 @@ struct BottomRowView: View {
     }
 
     private var activeVoiceoverIndex: Int? {
-        if let current = vm.currentTranslationName {
-            if let directIdx = vm.availableVoiceovers.firstIndex(of: current) {
+        if let current = currentTranslationName {
+            if let directIdx = availableVoiceovers.firstIndex(of: current) {
                 return directIdx
             }
-            if let matchIdx = vm.availableVoiceovers.firstIndex(where: { allohaTranslationNamesMatch($0, current, exactOnly: true) }) {
+            if let matchIdx = availableVoiceovers.firstIndex(where: { allohaTranslationNamesMatch($0, current, exactOnly: true) }) {
                 return matchIdx
             }
-            if let matchIdx = vm.availableVoiceovers.firstIndex(where: { allohaTranslationNamesMatch($0, current, exactOnly: false) }) {
+            if let matchIdx = availableVoiceovers.firstIndex(where: { allohaTranslationNamesMatch($0, current, exactOnly: false) }) {
                 return matchIdx
             }
         }

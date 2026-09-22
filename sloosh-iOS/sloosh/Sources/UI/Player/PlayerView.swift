@@ -201,7 +201,7 @@ struct PlayerView: View {
 
 @MainActor
 class PlayerViewModel: ObservableObject {
-    struct PlaybackQualityOption {
+    struct PlaybackQualityOption: Equatable {
         let key: String
         let url: URL
         let preferredPeakBitRate: Double?
