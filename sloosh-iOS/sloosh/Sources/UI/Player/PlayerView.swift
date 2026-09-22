@@ -1733,9 +1733,8 @@ class PlayerViewModel: ObservableObject {
                         }
                         await MainActor.run {
                             self.syncNativeAudioTracks()
-                            if let targetVoice = self.targetVoiceover ?? self._currentTranslationName {
-                                self.selectAudioTrackInPlayer(named: targetVoice)
-                            }
+                            let targetVoice = self.targetVoiceover ?? self._currentTranslationName ?? "Дубляж"
+                            self.selectAudioTrackInPlayer(named: targetVoice)
                         }
                     }
                 }
@@ -2185,34 +2184,10 @@ class PlayerViewModel: ObservableObject {
     }
 
     private func preferredTranslation(in episode: AllohaEpisode) -> AllohaTranslation? {
-        if let targetVoiceover,
-           let match = episode.translations.first(where: { allohaTranslationNamesMatch($0.name, targetVoiceover) }) {
-            return match
-        }
-
-        if let name = _currentTranslationName,
-           let match = episode.translations.first(where: { allohaTranslationNamesMatch($0.name, name) }) {
-            return match
-        }
-
-        if let root = rootMediaKey,
-           let saved = PlaybackProgressStore.shared.loadLastVoiceover(mediaKey: root, source: "alloha"),
-           let match = episode.translations.first(where: { allohaTranslationNamesMatch($0.name, saved) }) {
-            return match
-        }
-
-        if let kpId = currentKpId, kpId > 0,
-           let saved = PlaybackProgressStore.shared.loadLastVoiceover(kpId: kpId, source: "alloha"),
-           let match = episode.translations.first(where: { allohaTranslationNamesMatch($0.name, saved) }) {
-            return match
-        }
-
-        if let globalSaved = UserDefaults.standard.string(forKey: "alloha_last_translation_name"),
-           let match = episode.translations.first(where: { allohaTranslationNamesMatch($0.name, globalSaved) }) {
-            return match
-        }
-
-        return episode.translations.first
+        let pref = targetVoiceover ?? _currentTranslationName
+            ?? (rootMediaKey.flatMap { PlaybackProgressStore.shared.loadLastVoiceover(mediaKey: $0, source: "alloha") })
+            ?? (currentKpId.flatMap { $0 > 0 ? PlaybackProgressStore.shared.loadLastVoiceover(kpId: $0, source: "alloha") : nil })
+        return bestTranslation(in: episode.translations, preferredName: pref)
     }
 
 
@@ -2243,6 +2218,19 @@ class PlayerViewModel: ObservableObject {
                         targetVoiceover = cleanTitle
                     }
                     logDebug("applyResolvedAllohaStream: matched audioVariant '\(matchingVariant["title"] ?? "")' -> \(variantUrl)")
+                }
+            } else if !audioVariants.isEmpty {
+                // Если озвучка явно не выбрана, приоритетно отдаём русский вариант, а не английский дефолт 0
+                if let matchingVariant = findMatchingAudioVariant(in: audioVariants, for: "Дубляж", isDedicatedIframe: currentIframeUrl != nil),
+                   let variantUrl = (matchingVariant["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !variantUrl.isEmpty {
+                    resolvedUrlString = variantUrl
+                    let rawTitle = (matchingVariant["title"] as? String) ?? ""
+                    let cleanTitle = self.availableVoiceovers.first(where: { allohaTranslationNamesMatch($0, rawTitle, exactOnly: true) })
+                        ?? self.availableVoiceovers.first(where: { allohaTranslationNamesMatch($0, rawTitle, exactOnly: false) })
+                        ?? cleanTranslationName(rawTitle)
+                    _currentTranslationName = cleanTitle
+                    targetVoiceover = cleanTitle
+                    logDebug("applyResolvedAllohaStream: defaulted to Russian audioVariant '\(rawTitle)' -> \(variantUrl)")
                 }
             }
         }
@@ -2405,29 +2393,53 @@ class PlayerViewModel: ObservableObject {
         
         // Match by index or language tag if name represents a standard language
         let lowerName = name.lowercased()
+        let isLookingForEnglish = lowerName.contains("eng") || lowerName.contains("original") || lowerName.contains("англ") || lowerName.contains("ori")
+        let isLookingForRussian = lowerName.contains("rus") || lowerName.contains("рус") || lowerName.contains("дуб") || !isLookingForEnglish
         let targetLang: String? = {
-            if lowerName.contains("eng") || lowerName.contains("original") || lowerName.contains("англ") || lowerName.contains("ori") {
-                return "en"
-            }
-            if lowerName.contains("rus") || lowerName.contains("рус") || lowerName.contains("дуб") {
-                return "ru"
-            }
-            if lowerName.contains("ukr") || lowerName.contains("укр") {
-                return "uk"
-            }
+            if isLookingForEnglish { return "en" }
+            if isLookingForRussian { return "ru" }
+            if lowerName.contains("ukr") || lowerName.contains("укр") { return "uk" }
             return nil
         }()
         
         if let targetLang {
+            // First check extendedLanguageTag and locale
             if let option = options.first(where: { 
                 $0.extendedLanguageTag?.lowercased().hasPrefix(targetLang) == true ||
-                $0.locale?.identifier.lowercased().hasPrefix(targetLang) == true 
+                $0.locale?.identifier.lowercased().hasPrefix(targetLang) == true ||
+                ($0.extendedLanguageTag?.lowercased() == "rus" && targetLang == "ru") ||
+                ($0.locale?.identifier.lowercased().contains("ru") == true && targetLang == "ru")
             }) {
                 item.select(option, in: group)
                 persistVoiceoverSelection(canonicalName)
                 saveCurrentProgress()
                 logDebug("selectAudioTrackInPlayer: selected by language tag '\(targetLang)', option='\(option.displayName)'")
                 return
+            }
+
+            // Also check displayName for language keywords (crucial when HLS manifest omits LANGUAGE tag!)
+            if targetLang == "ru" {
+                if let option = options.first(where: {
+                    let d = $0.displayName.lowercased()
+                    return d.contains("rus") || d.contains("рус") || d.contains("дуб") || d.contains("russian")
+                }) {
+                    item.select(option, in: group)
+                    persistVoiceoverSelection(canonicalName)
+                    saveCurrentProgress()
+                    logDebug("selectAudioTrackInPlayer: selected Russian by displayName '\(option.displayName)'")
+                    return
+                }
+            } else if targetLang == "en" {
+                if let option = options.first(where: {
+                    let d = $0.displayName.lowercased()
+                    return d.contains("eng") || d.contains("англ") || d.contains("ori") || d.contains("original")
+                }) {
+                    item.select(option, in: group)
+                    persistVoiceoverSelection(canonicalName)
+                    saveCurrentProgress()
+                    logDebug("selectAudioTrackInPlayer: selected English by displayName '\(option.displayName)'")
+                    return
+                }
             }
         }
         
@@ -2437,6 +2449,20 @@ class PlayerViewModel: ObservableObject {
             saveCurrentProgress()
             logDebug("selectAudioTrackInPlayer: selected by index \(targetIndex), option='\(options[targetIndex].displayName)'")
             return
+        }
+
+        // Fallback for Russian target: if there are multiple options and option 0 is English,
+        // select option 1 (the dubbed track)
+        if isLookingForRussian && options.count > 1 {
+            let opt0Name = options[0].displayName.lowercased()
+            let opt0Tag = options[0].extendedLanguageTag?.lowercased() ?? ""
+            if opt0Name.contains("eng") || opt0Name.contains("ori") || opt0Tag.hasPrefix("en") {
+                item.select(options[1], in: group)
+                persistVoiceoverSelection(canonicalName)
+                saveCurrentProgress()
+                logDebug("selectAudioTrackInPlayer: selected non-English fallback option='\(options[1].displayName)'")
+                return
+            }
         }
 
         logDebug("selectAudioTrackInPlayer: failed to match any track for '\(name)'")
@@ -2514,7 +2540,7 @@ class PlayerViewModel: ObservableObject {
                 voiceover: finalName
             )
         }
-        if let finalName, !finalName.isEmpty {
+        if let finalName, !finalName.isEmpty, !isOriginalOrEnglishTranslation(finalName) {
             UserDefaults.standard.set(finalName, forKey: "alloha_last_translation_name")
         }
     }

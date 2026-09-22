@@ -146,10 +146,76 @@ func detectLanguageTag(in text: String) -> String? {
     if lower.contains("китай") || lower.contains("chinese") || lower.contains("chi") {
         return "chi"
     }
-    if lower.contains("русск") || lower.contains("rus") {
+    if lower.contains("русск") || lower.contains("rus") || lower.contains("дубл") || lower.contains("дуб") || lower.contains("закадр") || lower.contains("многоголос") || lower == "ru" {
         return "rus"
     }
     return nil
+}
+
+/// Проверяет, относится ли название дорожки к оригиналу / английскому языку
+public func isOriginalOrEnglishTranslation(_ name: String?) -> Bool {
+    guard let name = name?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty else {
+        return false
+    }
+    let lower = name.lowercased()
+    if lower == "en" || lower == "eng" || lower == "оригинал" || lower == "original" {
+        return true
+    }
+    if lower.contains("оригинал") || lower.contains("original") || lower.contains("english") || lower.contains("английск") {
+        return true
+    }
+    return detectLanguageTag(in: name) == "eng"
+}
+
+/// Проверяет, является ли дорожка русской (дубляж, закадровый перевод или студийный)
+public func isRussianTranslation(_ name: String?) -> Bool {
+    guard let name = name?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty else {
+        return false
+    }
+    if isOriginalOrEnglishTranslation(name) {
+        return false
+    }
+    let tag = detectLanguageTag(in: name)
+    if let tag, tag != "rus" {
+        return false
+    }
+    return true
+}
+
+/// Вычисляет ранжирование озвучки для правильной сортировки (меньше число = выше приоритет для зрителя)
+public func translationRank(_ name: String) -> Int {
+    let lower = name.lowercased()
+    let lang = detectLanguageTag(in: name)
+
+    // Региональные не-русские языки (украинский, казахский и т.д.)
+    if let lang, lang != "rus" && lang != "eng" {
+        return 80
+    }
+
+    // Английский / оригинал -> в самый конец для стриминга на русском языке
+    if isOriginalOrEnglishTranslation(name) {
+        return 90
+    }
+
+    // Русский официальный дубляж -> максимальный приоритет
+    if lower.contains("дубл") || lower.contains("дуб") || lower.contains("полное дублирование") {
+        return 10
+    }
+
+    // Известные топ-студии дубляжа
+    let topStudios = ["пифагор", "невафильм", "red head sound", "rhs", "flarrow"]
+    if topStudios.contains(where: { lower.contains($0) }) {
+        return 20
+    }
+
+    // Профессиональный многоголосый перевод / ключевые релиз-группы
+    let proKeywords = ["профессиональн", "проф", "многоголос", "hdrezka", "lostfilm", "кубик в кубе"]
+    if proKeywords.contains(where: { lower.contains($0) }) {
+        return 30
+    }
+
+    // Прочие русские переводы (авторские, закадровые)
+    return 40
 }
 
 func isTranslationNoiseWord(_ word: String) -> Bool {
@@ -254,6 +320,22 @@ func allohaTranslationNamesMatch(_ lhs: String?, _ rhs: String?, exactOnly: Bool
         }
         return true
     }
+
+    // Generic Russian language label (e.g. in HLS tracks: "Russian", "Русский", "ru", "rus")
+    // matches generic Russian dubbing / voiceover labels ("Дубляж", "Дублированный", "Профессиональный", etc.)
+    let isGenericRussian: (String) -> Bool = { name in
+        let n = name.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        return n == "русский" || n == "russian" || n == "rus" || n == "ru" || n == "рус" || n == "русская"
+    }
+    let isGenericRussianVoiceover: (String) -> Bool = { name in
+        let n = name.lowercased()
+        return n.contains("дубл") || n.contains("дуб") || n.contains("профессиональн") || n.contains("закадр") || n.contains("многоголос")
+    }
+
+    if (isGenericRussian(left) && isGenericRussianVoiceover(right)) ||
+       (isGenericRussian(right) && isGenericRussianVoiceover(left)) {
+        return true
+    }
     
     // Helper to strip generic studio/dub noise words
     let noiseWords = [
@@ -317,6 +399,13 @@ func findMatchingAudioVariant(
 ) -> [String: Any]? {
     guard !audioVariants.isEmpty else { return nil }
     guard let target = targetVoice?.trimmingCharacters(in: .whitespacesAndNewlines), !target.isEmpty else {
+        // Если целевая озвучка не задана, приоритетно отдаём русскую дорожку, а не английский вариант 0
+        if let rus = audioVariants.first(where: {
+            guard let url = $0["url"] as? String, !url.isEmpty else { return false }
+            return isRussianTranslation($0["title"] as? String)
+        }) {
+            return rus
+        }
         return audioVariants.first(where: { (($0["url"] as? String) ?? "").isEmpty == false })
     }
 
@@ -330,7 +419,7 @@ func findMatchingAudioVariant(
         return match
     }
 
-    // 3. Совпадение по языковому тегу (Украинский, Казахский, Английский и т.д.)
+    // 3. Совпадение по языковому тегу (Украинский, Казахский, Русский, Английский и т.д.)
     if let targetLang = detectLanguageTag(in: target) {
         if let match = audioVariants.first(where: {
             guard let title = $0["title"] as? String else { return false }
@@ -356,9 +445,35 @@ func findMatchingAudioVariant(
         }
     }
 
-    // 5. Для выделенного iframe (загруженного под конкретную озвучку translation=ID):
-    // Если целевая озвучка — НЕ русский дубляж, но вариант 0 — русский дубляж,
-    // а в iframe есть вариант 1 — выбираем вариант 1 (это именно та озвучка, под которую создан iframe!)
+    // 5. Для аудиодорожек фильма/сериала:
+    // Если целевая озвучка — русский дубляж/перевод, а вариант 0 — английский/оригинал,
+    // то выбираем русский/не-английский вариант!
+    let targetIsRussian = isRussianTranslation(target)
+    let targetIsOriginal = isOriginalOrEnglishTranslation(target)
+
+    if targetIsRussian && audioVariants.count > 1 {
+        // Ищем вариант, который явно русский или не английский
+        if let rusVariant = audioVariants.first(where: {
+            let t = ($0["title"] as? String) ?? ""
+            return isRussianTranslation(t)
+        }) {
+            return rusVariant
+        }
+        // Если вариант 0 — английский, отдаём вариант 1
+        let v0Title = (audioVariants[0]["title"] as? String) ?? ""
+        if isOriginalOrEnglishTranslation(v0Title) {
+            return audioVariants[1]
+        }
+    } else if targetIsOriginal && audioVariants.count > 1 {
+        if let engVariant = audioVariants.first(where: {
+            let t = ($0["title"] as? String) ?? ""
+            return isOriginalOrEnglishTranslation(t)
+        }) {
+            return engVariant
+        }
+    }
+
+    // 6. Для выделенного iframe (загруженного под конкретную озвучку translation=ID):
     if isDedicatedIframe && audioVariants.count > 1 {
         let isTargetDub = target.lowercased().contains("дубл")
         if !isTargetDub {
@@ -369,10 +484,80 @@ func findMatchingAudioVariant(
                 return nonDub
             }
             return audioVariants[1]
+        } else {
+            // Если целевая озвучка — дубляж, отдаём вариант, не являющийся оригиналом
+            if let dubVariant = audioVariants.first(where: {
+                let t = ($0["title"] as? String) ?? ""
+                return !isOriginalOrEnglishTranslation(t)
+            }) {
+                return dubVariant
+            }
         }
     }
 
     return nil
+}
+
+/// Выбирает наиболее подходящую озвучку для пользователя, отдавая строгий приоритет
+/// русскому дубляжу перед оригиналом, если пользователь явно не выбрал оригинал.
+public func bestTranslation(in translations: [AllohaTranslation], preferredName: String?) -> AllohaTranslation? {
+    guard !translations.isEmpty else { return nil }
+
+    // 1. Точное совпадение с предпочитаемой озвучкой конкретного медиа
+    if let preferredName, !preferredName.isEmpty,
+       let match = translations.first(where: { allohaTranslationNamesMatch($0.name, preferredName, exactOnly: true) }) {
+        return match
+    }
+
+    // 1b. Нестрогое совпадение с предпочитаемой озвучкой конкретного медиа
+    if let preferredName, !preferredName.isEmpty,
+       let match = translations.first(where: { allohaTranslationNamesMatch($0.name, preferredName, exactOnly: false) }) {
+        return match
+    }
+
+    // 2. Глобальная предпочтительная озвучка (игнорируем, если там случайно сохранён оригинал)
+    if let global = UserDefaults.standard.string(forKey: "alloha_last_translation_name"),
+       !isOriginalOrEnglishTranslation(global),
+       let match = translations.first(where: { allohaTranslationNamesMatch($0.name, global, exactOnly: false) }) {
+        return match
+    }
+
+    // 3. Русский дубляж (Дубляж, Дублированный, Полное дублирование)
+    if let dubMatch = translations.first(where: {
+        let n = $0.name.lowercased()
+        let tag = detectLanguageTag(in: $0.name)
+        return (n.contains("дубл") || n.contains("дуб") || n.contains("полное дублирование")) &&
+               (tag == nil || tag == "rus") &&
+               !isOriginalOrEnglishTranslation($0.name)
+    }) {
+        return dubMatch
+    }
+
+    // 4. Известные студии дубляжа (Пифагор, Невафильм, Red Head Sound, Flarrow)
+    let topStudios = ["пифагор", "невафильм", "red head sound", "rhs", "flarrow"]
+    if let studioMatch = translations.first(where: { t in
+        let n = t.name.lowercased()
+        return topStudios.contains(where: { n.contains($0) }) && isRussianTranslation(t.name)
+    }) {
+        return studioMatch
+    }
+
+    // 5. Профессиональный многоголосый перевод (HDRezka, LostFilm, Кубик в кубе и т.д.)
+    let proKeywords = ["профессиональн", "проф", "многоголос", "hdrezka", "lostfilm", "кубик в кубе"]
+    if let proMatch = translations.first(where: { t in
+        let n = t.name.lowercased()
+        return proKeywords.contains(where: { n.contains($0) }) && isRussianTranslation(t.name)
+    }) {
+        return proMatch
+    }
+
+    // 6. Любая русская озвучка
+    if let anyRus = translations.first(where: { isRussianTranslation($0.name) }) {
+        return anyRus
+    }
+
+    // 7. Фолбэк на первую доступную дорожку (если русских дорожек вообще нет)
+    return translations.first
 }
 
 
@@ -795,8 +980,9 @@ final class AllohaRepository: @unchecked Sendable {
                         }
                     }
 
-                    // Порядок озвучек сохраняем как отдаёт Alloha (популярные первыми)
+                    // Порядок озвучек: сортируем так, чтобы русский дубляж был первым
                     if !parsedTrans.isEmpty {
+                        parsedTrans.sort { translationRank($0.name) < translationRank($1.name) }
                         parsedEpisodes.append(AllohaEpisode(season: seasonNum, episode: episodeNum, translations: parsedTrans))
                     }
                 }
@@ -945,6 +1131,7 @@ final class AllohaRepository: @unchecked Sendable {
 
             var movie: AllohaMovie? = nil
             if !parsedTrans.isEmpty {
+                parsedTrans.sort { translationRank($0.name) < translationRank($1.name) }
                 let movieIframe = defaultIframe.isEmpty ? parsedTrans.first!.iframeUrl : defaultIframe
                 movie = AllohaMovie(title: title, iframeUrl: movieIframe, translations: parsedTrans)
             }

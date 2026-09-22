@@ -206,10 +206,11 @@ private struct ContinueWatchingItem: Identifiable {
 
     @MainActor
     var voiceover: String? {
-        record.voiceover ??
-        PlaybackProgressStore.shared.loadLastVoiceover(mediaKey: record.rootMediaKey) ??
-        (record.kpId > 0 ? PlaybackProgressStore.shared.loadLastVoiceover(kpId: record.kpId, source: "alloha") : nil) ??
-        UserDefaults.standard.string(forKey: "alloha_last_translation_name")
+        if let v = record.voiceover, !v.isEmpty { return v }
+        if let v = PlaybackProgressStore.shared.loadLastVoiceover(mediaKey: record.rootMediaKey), !v.isEmpty { return v }
+        if record.kpId > 0, let v = PlaybackProgressStore.shared.loadLastVoiceover(kpId: record.kpId, source: "alloha"), !v.isEmpty { return v }
+        if let g = UserDefaults.standard.string(forKey: "alloha_last_translation_name"), !isOriginalOrEnglishTranslation(g) { return g }
+        return nil
     }
 }
 
@@ -538,28 +539,7 @@ private final class ContinueViewModel: ObservableObject {
     }
 
     private func preferredTranslation(in translations: [AllohaTranslation], preferredVoiceover: String?) -> AllohaTranslation? {
-        guard !translations.isEmpty else { return nil }
-
-        // 1. Try specified voiceover (per-show preference) - exact match
-        if let preferredVoiceover,
-           let translation = translations.first(where: { allohaTranslationNamesMatch($0.name, preferredVoiceover, exactOnly: true) }) {
-            return translation
-        }
-
-        // 1b. Try specified voiceover (per-show preference) - fuzzy/studio match
-        if let preferredVoiceover,
-           let translation = translations.first(where: { allohaTranslationNamesMatch($0.name, preferredVoiceover, exactOnly: false) }) {
-            return translation
-        }
-
-        // 2. Try global preferred voiceover
-        if let globalVoiceover = UserDefaults.standard.string(forKey: "alloha_last_translation_name"),
-           let translation = translations.first(where: { allohaTranslationNamesMatch($0.name, globalVoiceover, exactOnly: false) }) {
-            return translation
-        }
-
-        // 3. Fallback to first available
-        return translations.first
+        bestTranslation(in: translations, preferredName: preferredVoiceover)
     }
 
     private func preferredQualityForResume() -> VideoQualityPreference? {
