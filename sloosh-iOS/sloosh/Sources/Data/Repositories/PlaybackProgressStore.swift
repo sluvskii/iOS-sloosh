@@ -749,7 +749,9 @@ public final class PlaybackProgressStore: ObservableObject {
             } else {
                 context.insert(LastPlayedVoiceoverModel(userId: activeUserId, key: key, source: source, voiceover: v))
             }
-            UserDefaults.standard.set(v, forKey: "alloha_last_translation_name")
+            if !isOriginalOrEnglishTranslation(v) {
+                UserDefaults.standard.set(v, forKey: "alloha_last_translation_name")
+            }
 
             // Keep existing ProgressRecordModel & memory cache in sync with latest selection
             ensureRecordCacheLoaded()

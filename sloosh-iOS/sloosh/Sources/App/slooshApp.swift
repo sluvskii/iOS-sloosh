@@ -62,6 +62,12 @@ struct slooshApp: App {
             print("Failed to set audio session category: \(error)")
         }
         
+        // Сбрасываем глобальную настройку озвучки, если там сохранён оригинал/английский
+        if let savedGlobal = UserDefaults.standard.string(forKey: "alloha_last_translation_name"),
+           isOriginalOrEnglishTranslation(savedGlobal) {
+            UserDefaults.standard.removeObject(forKey: "alloha_last_translation_name")
+        }
+        
         // Configure TipKit
         if #available(iOS 17.0, *) {
             try? Tips.configure([

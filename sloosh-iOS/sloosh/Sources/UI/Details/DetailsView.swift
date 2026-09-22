@@ -2559,9 +2559,7 @@ struct EpisodeDetailsSheet: View {
             guard let seasonObj = result.seasons.first(where: { $0.season == item.season }),
                   let epObj = seasonObj.episodes.first(where: { $0.episode == item.episode }) else { return }
             
-            let matching = epObj.translations.first(where: { allohaTranslationNamesMatch($0.name, savedVoiceover, exactOnly: true) })
-            let globalMatching = epObj.translations.first(where: { allohaTranslationNamesMatch($0.name, globalVoiceover, exactOnly: false) })
-            guard let translation = matching ?? globalMatching ?? epObj.translations.first else { return }
+            guard let translation = bestTranslation(in: epObj.translations, preferredName: savedVoiceover) else { return }
             
             let preferredQuality = VideoQualityPreference(rawValue: UserDefaults.standard.string(forKey: "preferredVideoQuality") ?? "Спрашивать каждый раз") ?? .ask
             DownloadManager.shared.startDownload(
@@ -3377,6 +3375,7 @@ class DetailsViewModel: ObservableObject {
 
     func saveAllohaTranslation(_ name: String?) {
         guard let name = name, !name.isEmpty else { return }
+        guard !isOriginalOrEnglishTranslation(name) else { return }
         UserDefaults.standard.set(name, forKey: allohaTranslationPreferenceKey)
     }
 
@@ -3615,7 +3614,7 @@ class DetailsViewModel: ObservableObject {
 
     private func preferredAllohaTranslation(from movie: AllohaMovie) -> AllohaTranslation? {
         let savedName = UserDefaults.standard.string(forKey: allohaTranslationPreferenceKey)
-        return movie.translations.first(where: { $0.name == savedName }) ?? movie.translations.first
+        return bestTranslation(in: movie.translations, preferredName: savedName)
     }
 }
 
