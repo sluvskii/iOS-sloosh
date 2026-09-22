@@ -12,6 +12,7 @@ struct PlayerContainerView: View {
     @State private var hideTask: Task<Void, Never>?
     @State private var isInteracting = false
     @State private var isPopoverOpen = false
+    @State private var menuOpenedAt: Date = .distantPast
     @State private var isZoomedToFill = false
     @State private var tapTask: Task<Void, Never>?
     @State private var consecutiveTaps: Int = 0
@@ -63,7 +64,10 @@ struct PlayerContainerView: View {
                     isInteracting: $isInteracting,
                     isPopoverOpen: $isPopoverOpen,
                     showControls: showControls,
-                    isSeeking: isSeeking
+                    isSeeking: isSeeking,
+                    onInteraction: {
+                        resetHideTimer()
+                    }
                 )
                 .allowsHitTesting(showControls)
             }
@@ -80,13 +84,14 @@ struct PlayerContainerView: View {
         .onChange(of: isInteracting) { _, interacting in
             if interacting {
                 hideTask?.cancel()
-            } else if showControls && !isPopoverOpen {
+            } else if showControls {
                 scheduleAutoHide()
             }
         }
         .onChange(of: isPopoverOpen) { _, open in
             if open {
-                hideTask?.cancel()
+                menuOpenedAt = Date()
+                scheduleAutoHide()
             } else if showControls && !isInteracting {
                 scheduleAutoHide()
             }
@@ -147,7 +152,9 @@ struct PlayerContainerView: View {
                 withAnimation(wasControlsShown ? hideAnimation : showAnimation) {
                     self.showControls = !wasControlsShown
                 }
-                if !wasControlsShown {
+                if wasControlsShown {
+                    self.hideTask?.cancel()
+                } else {
                     self.scheduleAutoHide()
                 }
             }
@@ -246,15 +253,67 @@ struct PlayerContainerView: View {
         hideTask?.cancel()
         guard vm.isPlaying else { return }
         hideTask = Task { @MainActor in
-            try? await Task.sleep(for: .seconds(4.0))
-            guard !Task.isCancelled, vm.isPlaying, !isInteracting, !isPopoverOpen else { return }
-            withAnimation(hideAnimation) { showControls = false }
+            var idleSeconds: Double = 0
+            let checkInterval: Double = 0.5
+            let timeout: Double = 4.0
+
+            while !Task.isCancelled {
+                try? await Task.sleep(for: .seconds(checkInterval))
+                guard !Task.isCancelled, vm.isPlaying, !isInteracting else { return }
+
+                let menuPresented = isSystemMenuPresented()
+                let recentlyOpened = Date().timeIntervalSince(menuOpenedAt) < 1.0
+
+                if menuPresented || (isPopoverOpen && recentlyOpened) {
+                    idleSeconds = 0
+                    continue
+                }
+
+                if isPopoverOpen {
+                    isPopoverOpen = false
+                }
+
+                idleSeconds += checkInterval
+                if idleSeconds >= timeout {
+                    withAnimation(hideAnimation) { showControls = false }
+                    break
+                }
+            }
         }
     }
 
     func resetHideTimer() {
         if !showControls { withAnimation(showAnimation) { showControls = true } }
         scheduleAutoHide()
+    }
+
+    @MainActor
+    private func isSystemMenuPresented() -> Bool {
+        let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
+        for scene in scenes {
+            for window in scene.windows {
+                if hasActiveMenu(in: window) {
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
+    private func hasActiveMenu(in view: UIView) -> Bool {
+        if view.isHidden { return false }
+        let className = String(describing: type(of: view))
+        if className.contains("ContextMenu") || className.contains("PopoverView") {
+            if view.alpha > 0.05 && view.bounds.width > 0 && view.bounds.height > 0 {
+                return true
+            }
+        }
+        for subview in view.subviews {
+            if hasActiveMenu(in: subview) {
+                return true
+            }
+        }
+        return false
     }
 
 }

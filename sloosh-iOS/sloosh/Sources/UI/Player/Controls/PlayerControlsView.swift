@@ -11,6 +11,7 @@ struct PlayerControlsView: View {
     @Binding var isPopoverOpen: Bool
     var showControls: Bool
     var isSeeking: Bool
+    var onInteraction: (() -> Void)? = nil
 
     var body: some View {
         ZStack {
@@ -101,7 +102,11 @@ struct PlayerControlsView: View {
                                     .transition(.move(edge: .trailing).combined(with: .opacity))
                                 }
                                 
-                                BottomRowView(vm: vm)
+                                BottomRowView(
+                                    vm: vm,
+                                    isMenuOpen: $isPopoverOpen,
+                                    onInteraction: onInteraction
+                                )
                             }
                             .padding(.trailing, 8)
                         }
