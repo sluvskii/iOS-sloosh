@@ -8,7 +8,6 @@ struct PlayerControlsView: View {
     var onBackgroundTap: (() -> Void)? = nil
 
     @Binding var isInteracting: Bool
-    @Binding var isPopoverOpen: Bool
     var showControls: Bool
     var isSeeking: Bool
     var onInteraction: (() -> Void)? = nil
@@ -104,9 +103,20 @@ struct PlayerControlsView: View {
                                 
                                 BottomRowView(
                                     vm: vm,
-                                    isMenuOpen: $isPopoverOpen,
+                                    playbackRate: vm.playbackRate,
+                                    availableVoiceovers: vm.availableVoiceovers,
+                                    currentTranslationName: vm.currentTranslationName,
+                                    availableQualities: vm.availableQualities,
+                                    currentQualityKey: vm.currentQualityKey,
+                                    availableSubtitles: vm.availableSubtitles,
+                                    currentSubtitleUrl: vm.currentSubtitle?.url,
+                                    isMovie: vm.isMovie,
+                                    seriesResult: vm.seriesResult,
+                                    currentSeason: vm.currentSeason,
+                                    currentEpisode: vm.currentEpisode,
                                     onInteraction: onInteraction
                                 )
+                                .equatable()
                             }
                             .padding(.trailing, 8)
                         }
@@ -138,7 +148,7 @@ struct PlayerControlsView: View {
 // MARK: - Инфо о текущем видео снизу слева (Озвучка, Сезон, Серия)
 
 struct PlayerTitleInfoView: View {
-    @ObservedObject var vm: PlayerViewModel
+    let vm: PlayerViewModel
     
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
