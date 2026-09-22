@@ -42,13 +42,14 @@ struct PlayerPresenter: UIViewControllerRepresentable {
         func dismissPlayer() {
             guard !dismissCalled else { return }
             dismissCalled = true
-            vm.prepareForDismiss()
             if Thread.isMainThread {
                 MainActor.assumeIsolated {
+                    vm.prepareForDismiss()
                     onDismiss()
                 }
             } else {
                 Task { @MainActor in
+                    self.vm.prepareForDismiss()
                     self.onDismiss()
                 }
             }
@@ -1024,7 +1025,8 @@ class PlayerViewModel: ObservableObject {
         clearNowPlaying()
 
         // Отложенная очистка: даём UI-анимации закрытия завершиться без малейших микрофризов
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(nanoseconds: 350_000_000)
             guard let self else { return }
             self.player = nil
 
@@ -1040,7 +1042,7 @@ class PlayerViewModel: ObservableObject {
 
             HlsProxyServer.shared.stop()
 
-            DispatchQueue.global(qos: .utility).async {
+            Task.detached(priority: .utility) {
                 try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
                 try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [.mixWithOthers])
             }
