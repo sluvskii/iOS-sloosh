@@ -42,33 +42,20 @@ struct PlayerPresenter: UIViewControllerRepresentable {
         func dismissPlayer() {
             guard !dismissCalled else { return }
             dismissCalled = true
+            vm.prepareForDismiss()
             if Thread.isMainThread {
                 MainActor.assumeIsolated {
-                    vm.cleanup()
                     onDismiss()
                 }
             } else {
                 Task { @MainActor in
-                    self.vm.cleanup()
                     self.onDismiss()
                 }
             }
         }
 
         func didDismiss() {
-            guard !dismissCalled else { return }
-            dismissCalled = true
-            if Thread.isMainThread {
-                MainActor.assumeIsolated {
-                    vm.cleanup()
-                    onDismiss()
-                }
-            } else {
-                Task { @MainActor in
-                    self.vm.cleanup()
-                    self.onDismiss()
-                }
-            }
+            vm.cleanup()
         }
     }
 }
@@ -946,9 +933,58 @@ class PlayerViewModel: ObservableObject {
         }
     }
     
+    private var isPreparedForDismiss = false
+    private var isCleaningUp = false
+
+    /// Мгновенная подготовка к закрытию плеера: останавливает звук, снимает таймеры и KVO,
+    /// фиксирует прогресс в памяти. Не выполняет дисковых и IPC операций, гарантируя 0ms задержки UI.
+    func prepareForDismiss() {
+        guard !isPreparedForDismiss else { return }
+        isPreparedForDismiss = true
+
+        // 1. Быстрая остановка аудио и видео
+        player?.pause()
+        isPlaying = false
+
+        // 2. Мгновенная фиксация прогресса в памяти
+        saveCurrentProgressInMemory()
+
+        // 3. Отмена сетевых задач резолвера потоков
+        resolveTask?.cancel()
+        resolveTask = nil
+        resolver?.cancel()
+        resolver = nil
+
+        // 4. Снятие высокочастотных KVO и таймеров
+        if let observer = timeObserver {
+            player?.removeTimeObserver(observer)
+            timeObserver = nil
+        }
+        statusObserver?.invalidate()
+        statusObserver = nil
+        bufferObserver?.invalidate()
+        bufferObserver = nil
+        rateObserver?.invalidate()
+        rateObserver = nil
+
+        UIApplication.shared.isIdleTimerDisabled = false
+    }
+
+    /// Полная очистка ресурсов после завершения анимации закрытия плеера
     func cleanup() {
-        // 1. Финальное сохранение текущего прогресса ПЕРЕД остановкой плеера и сбросом обсерверов
-        saveCurrentProgress()
+        prepareForDismiss()
+        guard !isCleaningUp else { return }
+        isCleaningUp = true
+
+        // Читаем параметры прогресса до обнуления
+        let mediaId = currentMediaId
+        let playerPos = player?.currentTime().seconds ?? 0
+        let pos = (playerPos.isFinite && !playerPos.isNaN && playerPos > 0) ? playerPos : currentTime
+        let playerDur = player?.currentItem?.duration.seconds ?? 0
+        let rawDur = (playerDur.isFinite && !playerDur.isNaN && playerDur > 0) ? playerDur : currentDuration
+        let dur = (rawDur.isFinite && !rawDur.isNaN && rawDur >= 120) ? rawDur : nil
+        let voiceover = _currentTranslationName
+        let isSeekPending = isInitialSeekPending
 
         hasStartedLoading = false
         currentPlaybackSourceURL = nil
@@ -956,10 +992,6 @@ class PlayerViewModel: ObservableObject {
         isInitialSeekPending = false
         pendingSeekPosition = nil
 
-        if let observer = timeObserver {
-            player?.removeTimeObserver(observer)
-            timeObserver = nil
-        }
         if let playbackEndObserver {
             NotificationCenter.default.removeObserver(playbackEndObserver)
             self.playbackEndObserver = nil
@@ -980,29 +1012,36 @@ class PlayerViewModel: ObservableObject {
             NotificationCenter.default.removeObserver(audioInterruptionObserver)
             self.audioInterruptionObserver = nil
         }
-        statusObserver?.invalidate()
-        statusObserver = nil
-        bufferObserver?.invalidate()
-        bufferObserver = nil
-        rateObserver?.invalidate()
-        rateObserver = nil
 
         clearNowPlaying()
 
-        // Возвращаем возможность автоблокировки экрана (плеер закрыт)
-        UIApplication.shared.isIdleTimerDisabled = false
+        let playerToRelease = self.player
+        self.player = nil
 
-        // Вежливо освобождаем аудиосессию, чтобы возобновилась фоновая музыка пользователя
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
-        try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [.mixWithOthers])
+        // Фоновая утилитарная очистка: диск, аудиосессия, прокси
+        Task.detached(priority: .utility) {
+            // Даём UI-анимации завершиться без малейших микрофризов
+            try? await Task.sleep(nanoseconds: 350_000_000)
 
-        resolveTask?.cancel()
-        resolveTask = nil
-        resolver?.cancel()
-        resolver = nil
-        player?.pause()
-        player = nil
-        HlsProxyServer.shared.stop()
+            if !isSeekPending, let mediaId = mediaId, pos > 1 {
+                await MainActor.run {
+                    PlaybackProgressStore.shared.save(
+                        mediaId: mediaId,
+                        positionSec: pos,
+                        durationSec: dur,
+                        voiceover: voiceover,
+                        forceDiskSave: true
+                    )
+                }
+            }
+
+            HlsProxyServer.shared.stop()
+
+            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+            try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [.mixWithOthers])
+
+            _ = playerToRelease
+        }
     }
 
     // MARK: - Playback actions
@@ -1265,6 +1304,26 @@ class PlayerViewModel: ObservableObject {
             durationSec: dur,
             voiceover: _currentTranslationName,
             forceDiskSave: true
+        )
+    }
+
+    /// Быстрое сохранение позиции воспроизведения только в оперативную память (без синхронной записи на диск)
+    private func saveCurrentProgressInMemory() {
+        guard !isInitialSeekPending else { return }
+        guard let mediaId = currentMediaId else { return }
+        let playerPos = player?.currentTime().seconds ?? 0
+        let pos = (playerPos.isFinite && !playerPos.isNaN && playerPos > 0) ? playerPos : currentTime
+        guard pos.isFinite, !pos.isNaN, pos > 1 else { return }
+
+        let playerDur = player?.currentItem?.duration.seconds ?? 0
+        let rawDur = (playerDur.isFinite && !playerDur.isNaN && playerDur > 0) ? playerDur : currentDuration
+        let dur = (rawDur.isFinite && !rawDur.isNaN && rawDur >= 120) ? rawDur : nil
+        PlaybackProgressStore.shared.save(
+            mediaId: mediaId,
+            positionSec: pos,
+            durationSec: dur,
+            voiceover: _currentTranslationName,
+            forceDiskSave: false
         )
     }
 

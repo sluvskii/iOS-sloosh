@@ -25,6 +25,11 @@ final class PlayerHostingController<Content: View>: UIHostingController<Content>
         AppDelegate.lockToLandscape()
     }
 
+    override func viewWillDisappear(_ animated: Bool) {
+        super.viewWillDisappear(animated)
+        AppDelegate.lockToPortrait()
+    }
+
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
         AppDelegate.lockToPortrait()

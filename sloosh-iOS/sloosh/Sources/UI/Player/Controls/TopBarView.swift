@@ -63,7 +63,10 @@ struct TopBarView: View {
     // MARK: - Отдельная кнопка «Закрыть» (нативная круглая иконка как в окне шеринга)
 
     private var closeButton: some View {
-        Button(action: onDismiss) {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            onDismiss()
+        } label: {
             Image(systemName: "xmark")
                 .font(.system(size: 20, weight: .semibold))
                 .foregroundStyle(.white)
