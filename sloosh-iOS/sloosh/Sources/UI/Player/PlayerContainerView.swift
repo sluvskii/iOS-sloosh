@@ -246,7 +246,7 @@ struct PlayerContainerView: View {
         hideTask?.cancel()
         guard vm.isPlaying else { return }
         hideTask = Task { @MainActor in
-            try? await Task.sleep(for: .seconds(2.5))
+            try? await Task.sleep(for: .seconds(4.0))
             guard !Task.isCancelled, vm.isPlaying, !isInteracting, !isPopoverOpen else { return }
             withAnimation(hideAnimation) { showControls = false }
         }
