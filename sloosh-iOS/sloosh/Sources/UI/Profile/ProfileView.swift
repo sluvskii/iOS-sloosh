@@ -103,14 +103,6 @@ struct ProfileView: View {
                 .scrollTargetLayout()
             }
             .scrollTargetBehavior(.paging)
-            .simultaneousGesture(
-                TapGesture().onEnded {
-                    guard showAccountOptions else { return }
-                    withAnimation(.bouncy(duration: 0.35)) {
-                        showAccountOptions = false
-                    }
-                }
-            )
             .scrollPosition(id: Binding(
                 get: { selectedCategory },
                 set: { newValue in
@@ -143,31 +135,24 @@ struct ProfileView: View {
                                 ProfileAvatarButton(user: authRepo.currentUser)
                             }
                             .buttonStyle(.plain)
-                            .overlay(alignment: .topLeading) {
-                                if showAccountOptions {
-                                    ProfileAccountActions(
-                                        isAdmin: authRepo.isAdmin,
-                                        onAdmin: {
-                                            showAccountOptions = false
-                                            showAdminDashboard = true
-                                        },
-                                        onEdit: {
-                                            showAccountOptions = false
-                                            showEditProfileSheet = true
-                                        },
-                                        onSignOut: {
-                                            showAccountOptions = false
-                                            showSignOutAlert = true
-                                        }
-                                    )
-                                    .fixedSize(horizontal: true, vertical: true)
-                                    .offset(y: 52)
-                                    .zIndex(1)
-                                    .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .topLeading)))
+                            .confirmationDialog(
+                                "Управление профилем",
+                                isPresented: $showAccountOptions,
+                                titleVisibility: .visible
+                            ) {
+                                if authRepo.isAdmin {
+                                    Button("Панель управления") {
+                                        showAdminDashboard = true
+                                    }
                                 }
+                                Button("Редактировать профиль") {
+                                    showEditProfileSheet = true
+                                }
+                                Button("Выйти из аккаунта", role: .destructive) {
+                                    showSignOutAlert = true
+                                }
+                                Button("Отмена", role: .cancel) {}
                             }
-                            .zIndex(showAccountOptions ? 100 : 0)
-                            .animation(.smooth(duration: 0.38), value: showAccountOptions)
                             .confirmationDialog(
                                 "Выйти из аккаунта?",
                                 isPresented: $showSignOutAlert,
@@ -221,7 +206,6 @@ struct ProfileView: View {
                             .glassEffect(.regular.interactive(), in: .capsule)
                         }
                     }
-                    .zIndex(showAccountOptions ? 100 : 0)
                     .padding(.horizontal, 16)
 
                     // Category Tabs
@@ -283,62 +267,6 @@ struct ProfileView: View {
                 }
             }
         }
-    }
-}
-
-private struct ProfileMenuBlur: View {
-    var body: some View {
-        VariableBlurView(
-            maxBlurRadius: 12,
-            direction: .blurredCenterClearEdges,
-            tintOpacity: 0
-        )
-        .frame(width: 340, height: 220)
-        .allowsHitTesting(false)
-    }
-}
-
-private struct ProfileAccountActions: View {
-    let isAdmin: Bool
-    let onAdmin: () -> Void
-    let onEdit: () -> Void
-    let onSignOut: () -> Void
-
-    var body: some View {
-        GlassEffectContainer(spacing: 10) {
-            VStack(alignment: .leading, spacing: 10) {
-                if isAdmin {
-                    action("Панель управления", systemImage: "person.2.fill", action: onAdmin)
-                }
-                action("Редактировать профиль", systemImage: "pencil", action: onEdit)
-                action("Выйти из аккаунта", systemImage: "rectangle.portrait.and.arrow.right", action: onSignOut, color: .red)
-            }
-            .frame(width: 300, alignment: .leading)
-        }
-        .background {
-            ProfileMenuBlur()
-        }
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-    }
-
-    private func action(
-        _ title: String,
-        systemImage: String,
-        action: @escaping () -> Void,
-        color: Color = .primary
-    ) -> some View {
-        Button(action: action) {
-            HStack(spacing: 14) {
-                Image(systemName: systemImage)
-                    .frame(width: 28, alignment: .center)
-                Text(title)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.82)
-            }
-            .foregroundStyle(color)
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
-        .buttonStyle(.glass)
     }
 }
 
@@ -427,7 +355,7 @@ struct ProfileCategoryContentView: View {
                                         Label("Удалить", systemImage: "trash")
                                     }
                                 }
-                                .tint(.primary)
+                                .tint(nil)
                             }
                         }
                     }
