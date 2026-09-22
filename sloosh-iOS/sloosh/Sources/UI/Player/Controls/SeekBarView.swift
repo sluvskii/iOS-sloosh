@@ -4,6 +4,7 @@ import SwiftUI
 
 struct SeekBarView: View {
     @ObservedObject var vm: PlayerViewModel
+    @ObservedObject var timeTracker: PlayerTimeTracker
     @Binding var isInteracting: Bool
     @State private var isDragging = false
     @State private var dragProgress: Double = 0
@@ -13,14 +14,14 @@ struct SeekBarView: View {
     @State private var sliderWidth: CGFloat = 260
 
     private var progress: Double {
-        guard vm.currentDuration > 0 else { return 0 }
-        if let scrub = vm.screenScrubTime { return scrub / vm.currentDuration }
-        return isDragging ? dragProgress : (vm.currentTime / vm.currentDuration)
+        guard timeTracker.currentDuration > 0 else { return 0 }
+        if let scrub = vm.screenScrubTime { return scrub / timeTracker.currentDuration }
+        return isDragging ? dragProgress : (timeTracker.currentTime / timeTracker.currentDuration)
     }
 
     private var displayTime: Double {
         if let scrub = vm.screenScrubTime { return scrub }
-        return isDragging ? (dragProgress * vm.currentDuration) : vm.currentTime
+        return isDragging ? (dragProgress * timeTracker.currentDuration) : timeTracker.currentTime
     }
 
     var body: some View {
@@ -59,7 +60,7 @@ struct SeekBarView: View {
                 }
             )
 
-            Text("-" + formatTime(max(0, vm.currentDuration - displayTime)))
+            Text("-" + formatTime(max(0, timeTracker.currentDuration - displayTime)))
                 .font(.system(size: 13, weight: .medium).monospacedDigit())
                 .foregroundStyle(.white.opacity(0.65))
                 .blendMode(.plusLighter)
@@ -70,17 +71,17 @@ struct SeekBarView: View {
         .glassEffect(.regular, in: .capsule)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Прогресс воспроизведения")
-        .accessibilityValue("\(formatTime(displayTime)) из \(formatTime(vm.currentDuration))")
+        .accessibilityValue("\(formatTime(displayTime)) из \(formatTime(timeTracker.currentDuration))")
         .simultaneousGesture(
             DragGesture(minimumDistance: 10)
                 .onChanged { value in
                     if abs(value.translation.height) > abs(value.translation.width) && !isHStackScrubbing {
                         return
                     }
-                    guard vm.currentDuration > 0 else { return }
+                    guard timeTracker.currentDuration > 0 else { return }
                     if !isHStackScrubbing {
                         isHStackScrubbing = true
-                        screenScrubInitialTime = vm.currentTime
+                        screenScrubInitialTime = timeTracker.currentTime
                         scrubStartLocationX = value.startLocation.x
                         isInteracting = true
                     }
@@ -88,14 +89,14 @@ struct SeekBarView: View {
                     let trackWidth = max(sliderWidth, 200)
                     let startX = max(1, min(trackWidth - 1, scrubStartLocationX))
                     
-                    let thumbX = (screenScrubInitialTime / vm.currentDuration) * Double(trackWidth)
+                    let thumbX = (screenScrubInitialTime / timeTracker.currentDuration) * Double(trackWidth)
                     let distanceToThumb = abs(Double(startX) - thumbX)
                     
                     let speedFactor = 1.0 + (distanceToThumb / Double(trackWidth)) * 5.0
-                    let baseMultiplier = vm.currentDuration / Double(trackWidth)
+                    let baseMultiplier = timeTracker.currentDuration / Double(trackWidth)
                     let deltaSeconds = Double(value.translation.width) * baseMultiplier * speedFactor
                     
-                    let target = max(0, min(vm.currentDuration, screenScrubInitialTime + deltaSeconds))
+                    let target = max(0, min(timeTracker.currentDuration, screenScrubInitialTime + deltaSeconds))
                     if vm.screenScrubTime == nil || abs((vm.screenScrubTime ?? 0) - target) >= 0.25 {
                         vm.screenScrubTime = target
                     }

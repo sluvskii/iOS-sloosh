@@ -247,7 +247,7 @@ public final class PlaybackProgressStore: ObservableObject {
         }
 
         let now = Date()
-        if forceDiskSave || now.timeIntervalSince(lastDiskSaveDate) >= 2.0 {
+        if forceDiskSave || now.timeIntervalSince(lastDiskSaveDate) >= 15.0 {
             lastDiskSaveDate = now
             try? context.save()
             scheduleCloudProgressPush(force: forceDiskSave)
