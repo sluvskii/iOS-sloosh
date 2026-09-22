@@ -2091,6 +2091,14 @@ class PlayerViewModel: ObservableObject {
         playEpisode(prevEpisode)
     }
 
+    func selectEpisode(season: Int, episode: Int) {
+        guard let seriesResult,
+              let seasonObj = seriesResult.seasons.first(where: { $0.season == season }),
+              let epObj = seasonObj.episodes.first(where: { $0.episode == episode }) else { return }
+        guard let translation = preferredTranslation(in: epObj) else { return }
+        playEpisode((season: season, episode: episode, translation: translation))
+    }
+
     private func playEpisode(_ episode: (season: Int, episode: Int, translation: AllohaTranslation)) {
         let now = Date()
         guard now.timeIntervalSince(lastEpisodeSwitchTimestamp) > 0.6 else {

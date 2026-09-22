@@ -7,10 +7,6 @@ struct PlayerControlsView: View {
     let onDismiss: () -> Void
     var onBackgroundTap: (() -> Void)? = nil
 
-    @State private var showVoiceoverSheet = false
-    @State private var showQualitySheet = false
-    @State private var showSpeedSheet = false
-    @State private var showSubtitleSheet = false
     @Binding var isInteracting: Bool
     @Binding var isPopoverOpen: Bool
     var showControls: Bool
@@ -105,13 +101,7 @@ struct PlayerControlsView: View {
                                     .transition(.move(edge: .trailing).combined(with: .opacity))
                                 }
                                 
-                                BottomRowView(
-                                    vm: vm,
-                                    showVoiceoverSheet: $showVoiceoverSheet,
-                                    showQualitySheet: $showQualitySheet,
-                                    showSpeedSheet: $showSpeedSheet,
-                                    showSubtitleSheet: $showSubtitleSheet
-                                )
+                                BottomRowView(vm: vm)
                             }
                             .padding(.trailing, 8)
                         }
@@ -137,11 +127,6 @@ struct PlayerControlsView: View {
             .blur(radius: showControls ? 0 : 16)
             .animation(.easeInOut(duration: 0.24), value: showControls)
         }
-        // Sheets are now popovers on BottomRowView
-        .onChange(of: showVoiceoverSheet) { _, _ in isPopoverOpen = showVoiceoverSheet || showQualitySheet || showSpeedSheet || showSubtitleSheet }
-        .onChange(of: showQualitySheet)   { _, _ in isPopoverOpen = showVoiceoverSheet || showQualitySheet || showSpeedSheet || showSubtitleSheet }
-        .onChange(of: showSpeedSheet)     { _, _ in isPopoverOpen = showVoiceoverSheet || showQualitySheet || showSpeedSheet || showSubtitleSheet }
-        .onChange(of: showSubtitleSheet)  { _, _ in isPopoverOpen = showVoiceoverSheet || showQualitySheet || showSpeedSheet || showSubtitleSheet }
     }
 }
 
