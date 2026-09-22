@@ -5,6 +5,8 @@ import SwiftUI
 
 struct BottomRowView: View {
     @ObservedObject var vm: PlayerViewModel
+    @Binding var isMenuOpen: Bool
+    var onInteraction: (() -> Void)? = nil
 
     private let speeds: [Float] = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0]
 
@@ -45,7 +47,11 @@ struct BottomRowView: View {
         Menu {
             Picker("Скорость", selection: Binding(
                 get: { vm.playbackRate },
-                set: { vm.setPlaybackRate($0) }
+                set: { rate in
+                    isMenuOpen = false
+                    vm.setPlaybackRate(rate)
+                    onInteraction?()
+                }
             )) {
                 ForEach(speeds, id: \.self) { rate in
                     Text(rateLabel(rate)).tag(rate)
@@ -60,6 +66,10 @@ struct BottomRowView: View {
                 .contentShape(Rectangle())
         }
         .menuOrder(.priority)
+        .simultaneousGesture(TapGesture().onEnded {
+            isMenuOpen = true
+            onInteraction?()
+        })
         .accessibilityLabel("Скорость воспроизведения: \(speedLabel)")
     }
 
@@ -70,9 +80,11 @@ struct BottomRowView: View {
             Picker("Озвучка", selection: Binding(
                 get: { activeVoiceoverIndex ?? -1 },
                 set: { idx in
+                    isMenuOpen = false
                     if idx >= 0 && idx < vm.availableVoiceovers.count {
                         vm.switchVoiceover(to: vm.availableVoiceovers[idx], at: idx)
                     }
+                    onInteraction?()
                 }
             )) {
                 ForEach(Array(vm.availableVoiceovers.enumerated()), id: \.offset) { idx, name in
@@ -88,6 +100,10 @@ struct BottomRowView: View {
                 .contentShape(Rectangle())
         }
         .menuOrder(.priority)
+        .simultaneousGesture(TapGesture().onEnded {
+            isMenuOpen = true
+            onInteraction?()
+        })
         .accessibilityLabel("Выбор озвучки")
     }
 
@@ -97,7 +113,11 @@ struct BottomRowView: View {
         Menu {
             Picker("Качество", selection: Binding(
                 get: { vm.currentQualityKey ?? "" },
-                set: { vm.changeQuality(to: $0) }
+                set: { qKey in
+                    isMenuOpen = false
+                    vm.changeQuality(to: qKey)
+                    onInteraction?()
+                }
             )) {
                 ForEach(vm.availableQualities, id: \.key) { q in
                     Text(q.key).tag(q.key)
@@ -112,6 +132,10 @@ struct BottomRowView: View {
                 .contentShape(Rectangle())
         }
         .menuOrder(.priority)
+        .simultaneousGesture(TapGesture().onEnded {
+            isMenuOpen = true
+            onInteraction?()
+        })
         .accessibilityLabel("Качество видео")
     }
 
@@ -122,11 +146,13 @@ struct BottomRowView: View {
             Picker("Субтитры", selection: Binding(
                 get: { vm.currentSubtitle?.url ?? "none" },
                 set: { url in
+                    isMenuOpen = false
                     if url == "none" {
                         vm.setSubtitle(nil)
                     } else if let sub = vm.availableSubtitles.first(where: { $0.url == url }) {
                         vm.setSubtitle(sub)
                     }
+                    onInteraction?()
                 }
             )) {
                 Text("Выключены").tag("none")
@@ -143,6 +169,10 @@ struct BottomRowView: View {
                 .contentShape(Rectangle())
         }
         .menuOrder(.priority)
+        .simultaneousGesture(TapGesture().onEnded {
+            isMenuOpen = true
+            onInteraction?()
+        })
         .accessibilityLabel(vm.currentSubtitle != nil ? "Субтитры (включены)" : "Субтитры")
     }
 
@@ -157,9 +187,11 @@ struct BottomRowView: View {
                         Picker("Серии", selection: Binding(
                             get: { (vm.currentSeason == season.season) ? (vm.currentEpisode ?? -1) : -1 },
                             set: { ep in
+                                isMenuOpen = false
                                 if ep >= 0 {
                                     vm.selectEpisode(season: season.season, episode: ep)
                                 }
+                                onInteraction?()
                             }
                         )) {
                             ForEach(season.episodes.sorted(by: { $0.episode < $1.episode }), id: \.episode) { ep in
@@ -178,9 +210,11 @@ struct BottomRowView: View {
                 Picker("Серии", selection: Binding(
                     get: { vm.currentEpisode ?? -1 },
                     set: { ep in
+                        isMenuOpen = false
                         if ep >= 0 {
                             vm.selectEpisode(season: singleSeason.season, episode: ep)
                         }
+                        onInteraction?()
                     }
                 )) {
                     ForEach(singleSeason.episodes.sorted(by: { $0.episode < $1.episode }), id: \.episode) { ep in
@@ -197,6 +231,10 @@ struct BottomRowView: View {
                 .contentShape(Rectangle())
         }
         .menuOrder(.priority)
+        .simultaneousGesture(TapGesture().onEnded {
+            isMenuOpen = true
+            onInteraction?()
+        })
         .accessibilityLabel("Выбор серии")
     }
 
