@@ -55,7 +55,15 @@ struct PlayerPresenter: UIViewControllerRepresentable {
         }
 
         func didDismiss() {
-            vm.cleanup()
+            if Thread.isMainThread {
+                MainActor.assumeIsolated {
+                    vm.cleanup()
+                }
+            } else {
+                Task { @MainActor in
+                    self.vm.cleanup()
+                }
+            }
         }
     }
 }
@@ -1015,32 +1023,27 @@ class PlayerViewModel: ObservableObject {
 
         clearNowPlaying()
 
-        let playerToRelease = self.player
-        self.player = nil
-
-        // Фоновая утилитарная очистка: диск, аудиосессия, прокси
-        Task.detached(priority: .utility) {
-            // Даём UI-анимации завершиться без малейших микрофризов
-            try? await Task.sleep(nanoseconds: 350_000_000)
+        // Отложенная очистка: даём UI-анимации закрытия завершиться без малейших микрофризов
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+            guard let self else { return }
+            self.player = nil
 
             if !isSeekPending, let mediaId = mediaId, pos > 1 {
-                await MainActor.run {
-                    PlaybackProgressStore.shared.save(
-                        mediaId: mediaId,
-                        positionSec: pos,
-                        durationSec: dur,
-                        voiceover: voiceover,
-                        forceDiskSave: true
-                    )
-                }
+                PlaybackProgressStore.shared.save(
+                    mediaId: mediaId,
+                    positionSec: pos,
+                    durationSec: dur,
+                    voiceover: voiceover,
+                    forceDiskSave: true
+                )
             }
 
             HlsProxyServer.shared.stop()
 
-            try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
-            try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [.mixWithOthers])
-
-            _ = playerToRelease
+            DispatchQueue.global(qos: .utility).async {
+                try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+                try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .default, options: [.mixWithOthers])
+            }
         }
     }
 
