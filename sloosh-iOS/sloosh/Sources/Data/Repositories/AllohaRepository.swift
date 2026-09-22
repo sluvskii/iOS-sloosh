@@ -153,11 +153,15 @@ func detectLanguageTag(in text: String) -> String? {
 }
 
 /// Проверяет, относится ли название дорожки к оригиналу / английскому языку
-public func isOriginalOrEnglishTranslation(_ name: String?) -> Bool {
+func isOriginalOrEnglishTranslation(_ name: String?) -> Bool {
     guard let name = name?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty else {
         return false
     }
     let lower = name.lowercased()
+    // Если явно указан русский дубляж или русский язык, это точно не оригинал
+    if lower.contains("дубл") || lower.contains("дуб") || lower.contains("русск") || lower.contains("полное дублирование") {
+        return false
+    }
     if lower == "en" || lower == "eng" || lower == "оригинал" || lower == "original" {
         return true
     }
@@ -168,7 +172,7 @@ public func isOriginalOrEnglishTranslation(_ name: String?) -> Bool {
 }
 
 /// Проверяет, является ли дорожка русской (дубляж, закадровый перевод или студийный)
-public func isRussianTranslation(_ name: String?) -> Bool {
+func isRussianTranslation(_ name: String?) -> Bool {
     guard let name = name?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty else {
         return false
     }
@@ -183,7 +187,7 @@ public func isRussianTranslation(_ name: String?) -> Bool {
 }
 
 /// Вычисляет ранжирование озвучки для правильной сортировки (меньше число = выше приоритет для зрителя)
-public func translationRank(_ name: String) -> Int {
+func translationRank(_ name: String) -> Int {
     let lower = name.lowercased()
     let lang = detectLanguageTag(in: name)
 
@@ -500,7 +504,7 @@ func findMatchingAudioVariant(
 
 /// Выбирает наиболее подходящую озвучку для пользователя, отдавая строгий приоритет
 /// русскому дубляжу перед оригиналом, если пользователь явно не выбрал оригинал.
-public func bestTranslation(in translations: [AllohaTranslation], preferredName: String?) -> AllohaTranslation? {
+func bestTranslation(in translations: [AllohaTranslation], preferredName: String?) -> AllohaTranslation? {
     guard !translations.isEmpty else { return nil }
 
     // 1. Точное совпадение с предпочитаемой озвучкой конкретного медиа
