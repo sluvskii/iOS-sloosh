@@ -202,7 +202,6 @@ struct PlayerContainerView: View {
                 
                 HStack(spacing: 12) {
                     Button("Закрыть") {
-                        vm.cleanup()
                         onDismiss()
                     }
                     .font(.system(size: 15, weight: .semibold))
