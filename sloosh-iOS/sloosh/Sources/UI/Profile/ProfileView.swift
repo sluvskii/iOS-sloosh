@@ -124,66 +124,7 @@ struct ProfileView: View {
 
                         HStack {
                             // Left Avatar / Sign-In Button
-                            if authRepo.isAuthenticated {
-                                Menu {
-                                    if let user = authRepo.currentUser {
-                                        let name = user.displayName.isEmpty ? (user.tag ?? "Аккаунт") : user.displayName
-                                        Section(name) {
-                                            if authRepo.isAdmin {
-                                                Button {
-                                                    showAdminDashboard = true
-                                                } label: {
-                                                    Label("Панель управления", systemImage: "shield.fill")
-                                                }
-                                            }
-
-                                            Button {
-                                                showEditProfileSheet = true
-                                            } label: {
-                                                Label("Редактировать профиль", systemImage: "pencil")
-                                            }
-
-                                            Button {
-                                                Task {
-                                                    await CloudSyncService.shared.syncAllDataAsync()
-                                                    favoritesRepo.reloadFromDb()
-                                                }
-                                            } label: {
-                                                Label("Синхронизировать", systemImage: "arrow.triangle.2.circlepath")
-                                            }
-                                        }
-
-                                        Section {
-                                            Button(role: .destructive) {
-                                                showSignOutAlert = true
-                                            } label: {
-                                                Label("Выйти из аккаунта", systemImage: "rectangle.portrait.and.arrow.right")
-                                            }
-                                        }
-                                    }
-                                } label: {
-                                    ProfileAvatarButton(user: authRepo.currentUser)
-                                }
-                                .menuOrder(.priority)
-                            } else {
-                                Button {
-                                    showAuthSheet = true
-                                } label: {
-                                    ProfileAvatarButton(user: nil)
-                                }
-                                .buttonStyle(.plain)
-                            }
-                            .alert(
-                                "Выйти из аккаунта?",
-                                isPresented: $showSignOutAlert
-                            ) {
-                                Button("Выйти", role: .destructive) {
-                                    authRepo.signOut()
-                                }
-                                Button("Отмена", role: .cancel) {}
-                            } message: {
-                                Text("Вы действительно хотите выйти из своего аккаунта?")
-                            }
+                            avatarHeaderButton
 
                             Spacer()
 
@@ -257,6 +198,17 @@ struct ProfileView: View {
             .sheet(isPresented: $showAdminDashboard) {
                 AdminDashboardView()
             }
+            .alert(
+                "Выйти из аккаунта?",
+                isPresented: $showSignOutAlert
+            ) {
+                Button("Выйти", role: .destructive) {
+                    authRepo.signOut()
+                }
+                Button("Отмена", role: .cancel) {}
+            } message: {
+                Text("Вы действительно хотите выйти из своего аккаунта?")
+            }
             .sheet(item: $directPlaybackMovie, onDismiss: {
                 if let pending = pendingPlayerConfig {
                     pendingPlayerConfig = nil
@@ -285,6 +237,56 @@ struct ProfileView: View {
                     favoritesRepo.reloadFromDb()
                 }
             }
+        }
+    }
+
+    // MARK: - Avatar Header Menu
+
+    @ViewBuilder
+    private var avatarHeaderButton: some View {
+        if authRepo.isAuthenticated {
+            Menu {
+                if authRepo.isAdmin {
+                    Button {
+                        showAdminDashboard = true
+                    } label: {
+                        Label("Панель управления", systemImage: "shield.fill")
+                    }
+                }
+
+                Button {
+                    showEditProfileSheet = true
+                } label: {
+                    Label("Редактировать профиль", systemImage: "pencil")
+                }
+
+                Button {
+                    Task {
+                        await CloudSyncService.shared.syncAllDataAsync()
+                        favoritesRepo.reloadFromDb()
+                    }
+                } label: {
+                    Label("Синхронизировать", systemImage: "arrow.triangle.2.circlepath")
+                }
+
+                Divider()
+
+                Button(role: .destructive) {
+                    showSignOutAlert = true
+                } label: {
+                    Label("Выйти из аккаунта", systemImage: "rectangle.portrait.and.arrow.right")
+                }
+            } label: {
+                ProfileAvatarButton(user: authRepo.currentUser)
+            }
+            .menuOrder(.priority)
+        } else {
+            Button {
+                showAuthSheet = true
+            } label: {
+                ProfileAvatarButton(user: nil)
+            }
+            .buttonStyle(.plain)
         }
     }
 }
