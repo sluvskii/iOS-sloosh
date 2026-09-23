@@ -26,7 +26,6 @@ struct ProfileView: View {
     @SceneStorage("profileShowsDownloads") private var showsDownloads = false
     @State private var showAuthSheet = false
     @State private var showSignOutAlert = false
-    @State private var showAccountOptions = false
     @State private var showEditProfileSheet = false
     @State private var showAdminDashboard = false
     @Namespace private var navigationTransition
@@ -125,40 +124,60 @@ struct ProfileView: View {
 
                         HStack {
                             // Left Avatar / Sign-In Button
-                            Button {
-                                if authRepo.isAuthenticated {
-                                    showAccountOptions = true
-                                } else {
-                                    showAuthSheet = true
-                                }
-                            } label: {
-                                ProfileAvatarButton(user: authRepo.currentUser)
-                            }
-                            .buttonStyle(.plain)
-                            .confirmationDialog(
-                                "Управление профилем",
-                                isPresented: $showAccountOptions,
-                                titleVisibility: .visible
-                            ) {
-                                if authRepo.isAdmin {
-                                    Button("Панель управления") {
-                                        showAdminDashboard = true
+                            if authRepo.isAuthenticated {
+                                Menu {
+                                    if let user = authRepo.currentUser {
+                                        let name = user.displayName.isEmpty ? (user.tag ?? "Аккаунт") : user.displayName
+                                        Section(name) {
+                                            if authRepo.isAdmin {
+                                                Button {
+                                                    showAdminDashboard = true
+                                                } label: {
+                                                    Label("Панель управления", systemImage: "shield.fill")
+                                                }
+                                            }
+
+                                            Button {
+                                                showEditProfileSheet = true
+                                            } label: {
+                                                Label("Редактировать профиль", systemImage: "pencil")
+                                            }
+
+                                            Button {
+                                                Task {
+                                                    await CloudSyncService.shared.syncAllDataAsync()
+                                                    favoritesRepo.reloadFromDb()
+                                                }
+                                            } label: {
+                                                Label("Синхронизировать", systemImage: "arrow.triangle.2.circlepath")
+                                            }
+                                        }
+
+                                        Section {
+                                            Button(role: .destructive) {
+                                                showSignOutAlert = true
+                                            } label: {
+                                                Label("Выйти из аккаунта", systemImage: "rectangle.portrait.and.arrow.right")
+                                            }
+                                        }
                                     }
+                                } label: {
+                                    ProfileAvatarButton(user: authRepo.currentUser)
                                 }
-                                Button("Редактировать профиль") {
-                                    showEditProfileSheet = true
+                                .menuOrder(.priority)
+                            } else {
+                                Button {
+                                    showAuthSheet = true
+                                } label: {
+                                    ProfileAvatarButton(user: nil)
                                 }
-                                Button("Выйти из аккаунта", role: .destructive) {
-                                    showSignOutAlert = true
-                                }
-                                Button("Отмена", role: .cancel) {}
+                                .buttonStyle(.plain)
                             }
-                            .confirmationDialog(
+                            .alert(
                                 "Выйти из аккаунта?",
-                                isPresented: $showSignOutAlert,
-                                titleVisibility: .visible
+                                isPresented: $showSignOutAlert
                             ) {
-                                Button("Выйти из аккаунта", role: .destructive) {
+                                Button("Выйти", role: .destructive) {
                                     authRepo.signOut()
                                 }
                                 Button("Отмена", role: .cancel) {}
