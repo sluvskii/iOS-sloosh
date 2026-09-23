@@ -76,6 +76,7 @@ public struct SlooshAvatarView: View {
                 onlineBadge
             }
         }
+        .frame(width: size, height: size)
     }
 
     @ViewBuilder
