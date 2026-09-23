@@ -86,43 +86,49 @@ struct SourceSelectionView: View {
     
     // Selection actions
     func selectTranslation(_ name: String) {
-        selectedTranslationName = name
-        if result.isSerial {
-            if let s = selectedSeason, !seasonHasTranslation(season: s, t: name) {
-                if let newS = result.seasons.first(where: { seasonHasTranslation(season: $0.season, t: name) }) {
-                    selectedSeason = newS.season
+        withAnimation(.easeInOut(duration: 0.2)) {
+            selectedTranslationName = name
+            if result.isSerial {
+                if let s = selectedSeason, !seasonHasTranslation(season: s, t: name) {
+                    if let newS = result.seasons.first(where: { seasonHasTranslation(season: $0.season, t: name) }) {
+                        selectedSeason = newS.season
+                    }
                 }
-            }
-            if let s = selectedSeason, let e = selectedEpisode, !episodeHasTranslation(season: s, episode: e, t: name) {
-                if let season = result.seasons.first(where: { $0.season == s }),
-                   let newEp = season.episodes.first(where: { $0.translations.contains(where: { allohaTranslationNamesMatch($0.name, name, exactOnly: true) }) }) {
-                    selectedEpisode = newEp.episode
+                if let s = selectedSeason, let e = selectedEpisode, !episodeHasTranslation(season: s, episode: e, t: name) {
+                    if let season = result.seasons.first(where: { $0.season == s }),
+                       let newEp = season.episodes.first(where: { $0.translations.contains(where: { allohaTranslationNamesMatch($0.name, name, exactOnly: true) }) }) {
+                        selectedEpisode = newEp.episode
+                    }
                 }
             }
         }
     }
     
     func selectSeason(_ s: Int) {
-        selectedSeason = s
-        guard let seasonObj = result.seasons.first(where: { $0.season == s }) else { return }
-        if let e = selectedEpisode, !seasonObj.episodes.contains(where: { $0.episode == e }) {
-            selectedEpisode = seasonObj.episodes.first?.episode ?? 1
-        }
-        if let t = selectedTranslationName, let e = selectedEpisode, !episodeHasTranslation(season: s, episode: e, t: t) {
-            if let ep = seasonObj.episodes.first(where: { $0.episode == e }),
-               let bestT = bestTranslation(in: ep.translations, preferredName: selectedTranslationName) {
-                selectedTranslationName = bestT.name
+        withAnimation(.easeInOut(duration: 0.2)) {
+            selectedSeason = s
+            guard let seasonObj = result.seasons.first(where: { $0.season == s }) else { return }
+            if let e = selectedEpisode, !seasonObj.episodes.contains(where: { $0.episode == e }) {
+                selectedEpisode = seasonObj.episodes.first?.episode ?? 1
+            }
+            if let t = selectedTranslationName, let e = selectedEpisode, !episodeHasTranslation(season: s, episode: e, t: t) {
+                if let ep = seasonObj.episodes.first(where: { $0.episode == e }),
+                   let bestT = bestTranslation(in: ep.translations, preferredName: selectedTranslationName) {
+                    selectedTranslationName = bestT.name
+                }
             }
         }
     }
     
     func selectEpisode(_ e: Int) {
-        selectedEpisode = e
-        if let s = selectedSeason, let t = selectedTranslationName, !episodeHasTranslation(season: s, episode: e, t: t) {
-            if let seasonObj = result.seasons.first(where: { $0.season == s }),
-               let epObj = seasonObj.episodes.first(where: { $0.episode == e }),
-               let bestT = bestTranslation(in: epObj.translations, preferredName: selectedTranslationName) {
-                selectedTranslationName = bestT.name
+        withAnimation(.easeInOut(duration: 0.2)) {
+            selectedEpisode = e
+            if let s = selectedSeason, let t = selectedTranslationName, !episodeHasTranslation(season: s, episode: e, t: t) {
+                if let seasonObj = result.seasons.first(where: { $0.season == s }),
+                   let epObj = seasonObj.episodes.first(where: { $0.episode == e }),
+                   let bestT = bestTranslation(in: epObj.translations, preferredName: selectedTranslationName) {
+                    selectedTranslationName = bestT.name
+                }
             }
         }
     }
