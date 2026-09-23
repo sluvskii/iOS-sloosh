@@ -274,12 +274,30 @@ struct ProfileView: View {
                 Button(role: .destructive) {
                     showSignOutAlert = true
                 } label: {
-                    Label("Выйти из аккаунта", systemImage: "rectangle.portrait.and.arrow.right")
+                    Label {
+                        Text("Выйти из аккаунта")
+                    } icon: {
+                        if let img = UIImage(systemName: "rectangle.portrait.and.arrow.right")?.withTintColor(.systemRed, renderingMode: .alwaysOriginal) {
+                            Image(uiImage: img)
+                        } else {
+                            Image(systemName: "rectangle.portrait.and.arrow.right")
+                        }
+                    }
                 }
+                .tint(.red)
             } label: {
                 ProfileAvatarButton(user: authRepo.currentUser)
+                    .frame(width: 38, height: 38)
+                    .clipShape(Circle())
+                    .contentShape(Circle())
+                    .contentShape(.contextMenuPreview, Circle())
             }
             .menuOrder(.priority)
+            .buttonStyle(.plain)
+            .frame(width: 38, height: 38)
+            .clipShape(Circle())
+            .contentShape(Circle())
+            .contentShape(.contextMenuPreview, Circle())
         } else {
             Button {
                 showAuthSheet = true
@@ -301,13 +319,15 @@ private struct ProfileAvatarButton: View {
     }
 
     var body: some View {
-        Group {
-            if isAuthenticated {
-                SlooshAvatarView(userProfile: user, size: 38)
-                    .glassEffect(.regular.interactive(), in: Circle())
-            } else {
-                signInButton
-            }
+        if isAuthenticated {
+            SlooshAvatarView(userProfile: user, size: 38)
+                .frame(width: 38, height: 38)
+                .glassEffect(.regular.interactive(), in: Circle())
+                .clipShape(Circle())
+                .contentShape(Circle())
+                .contentShape(.contextMenuPreview, Circle())
+        } else {
+            signInButton
         }
     }
 
