@@ -10,45 +10,40 @@ struct WatchSelectorChip: View {
 
     var body: some View {
         Button {
-            let generator = UIImpactFeedbackGenerator(style: .light)
-            generator.prepare()
-            generator.impactOccurred()
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
             action()
         } label: {
             Text(title)
-                .font(.system(size: 15, weight: .semibold))
+                .font(.system(size: 14, weight: .semibold))
                 .lineLimit(1)
                 .truncationMode(.tail)
-                .padding(.horizontal, 18)
-                .padding(.vertical, 10)
-                .frame(minHeight: 40)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 7)
+                .frame(height: 35)
                 .foregroundStyle(
                     isSelected
                         ? (colorScheme == .dark ? Color.black : Color.white)
-                        : (isAvailable ? Color.primary : Color.secondary.opacity(0.6))
+                        : (isAvailable ? Color.primary : Color.secondary.opacity(0.5))
                 )
                 .background(
                     Capsule()
                         .fill(
                             isSelected
                                 ? (colorScheme == .dark ? Color.white : Color.primary)
-                                : (colorScheme == .dark ? Color.white.opacity(0.08) : Color.black.opacity(0.06))
+                                : (colorScheme == .dark ? Color.white.opacity(0.10) : Color(UIColor.secondarySystemFill))
                         )
                 )
-                .glassEffect(isSelected ? .regular : .regular.interactive(), in: Capsule())
         }
         .buttonStyle(ChipButtonStyle())
         .disabled(!isAvailable)
-        .opacity(isAvailable ? 1.0 : 0.45)
-        .animation(.easeInOut(duration: 0.2), value: isSelected)
+        .opacity(isAvailable ? 1.0 : 0.4)
     }
 }
 
 struct ChipButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed ? 0.97 : 1.0)
-            .animation(.spring(response: 0.25, dampingFraction: 0.7), value: configuration.isPressed)
+            .opacity(configuration.isPressed ? 0.75 : 1.0)
     }
 }
 

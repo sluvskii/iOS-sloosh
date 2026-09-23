@@ -48,14 +48,20 @@ struct SourceSelectionView: View {
     }
     
     // Available checking
-    func isTranslationAvailable(_ name: String) -> Bool {
+    private var availableTranslationsForSelectedEpisode: Set<String> {
         if result.isSerial {
-            guard let s = selectedSeason, let e = selectedEpisode else { return false }
-            return episodeHasTranslation(season: s, episode: e, t: name)
+            guard let s = selectedSeason, let e = selectedEpisode,
+                  let season = result.seasons.first(where: { $0.season == s }),
+                  let ep = season.episodes.first(where: { $0.episode == e }) else { return [] }
+            return Set(ep.translations.map { $0.name })
         } else if let movie = result.movie {
-            return movie.translations.contains { $0.name == name }
+            return Set(movie.translations.map { $0.name })
         }
-        return false
+        return []
+    }
+
+    func isTranslationAvailable(_ name: String, in availableSet: Set<String>) -> Bool {
+        availableSet.contains(where: { allohaTranslationNamesMatch($0, name, exactOnly: true) })
     }
     
     func isSeasonAvailable(_ seasonNum: Int) -> Bool {
@@ -86,49 +92,43 @@ struct SourceSelectionView: View {
     
     // Selection actions
     func selectTranslation(_ name: String) {
-        withAnimation(.easeInOut(duration: 0.2)) {
-            selectedTranslationName = name
-            if result.isSerial {
-                if let s = selectedSeason, !seasonHasTranslation(season: s, t: name) {
-                    if let newS = result.seasons.first(where: { seasonHasTranslation(season: $0.season, t: name) }) {
-                        selectedSeason = newS.season
-                    }
+        selectedTranslationName = name
+        if result.isSerial {
+            if let s = selectedSeason, !seasonHasTranslation(season: s, t: name) {
+                if let newS = result.seasons.first(where: { seasonHasTranslation(season: $0.season, t: name) }) {
+                    selectedSeason = newS.season
                 }
-                if let s = selectedSeason, let e = selectedEpisode, !episodeHasTranslation(season: s, episode: e, t: name) {
-                    if let season = result.seasons.first(where: { $0.season == s }),
-                       let newEp = season.episodes.first(where: { $0.translations.contains(where: { allohaTranslationNamesMatch($0.name, name, exactOnly: true) }) }) {
-                        selectedEpisode = newEp.episode
-                    }
+            }
+            if let s = selectedSeason, let e = selectedEpisode, !episodeHasTranslation(season: s, episode: e, t: name) {
+                if let season = result.seasons.first(where: { $0.season == s }),
+                   let newEp = season.episodes.first(where: { $0.translations.contains(where: { allohaTranslationNamesMatch($0.name, name, exactOnly: true) }) }) {
+                    selectedEpisode = newEp.episode
                 }
             }
         }
     }
     
     func selectSeason(_ s: Int) {
-        withAnimation(.easeInOut(duration: 0.2)) {
-            selectedSeason = s
-            guard let seasonObj = result.seasons.first(where: { $0.season == s }) else { return }
-            if let e = selectedEpisode, !seasonObj.episodes.contains(where: { $0.episode == e }) {
-                selectedEpisode = seasonObj.episodes.first?.episode ?? 1
-            }
-            if let t = selectedTranslationName, let e = selectedEpisode, !episodeHasTranslation(season: s, episode: e, t: t) {
-                if let ep = seasonObj.episodes.first(where: { $0.episode == e }),
-                   let bestT = bestTranslation(in: ep.translations, preferredName: selectedTranslationName) {
-                    selectedTranslationName = bestT.name
-                }
+        selectedSeason = s
+        guard let seasonObj = result.seasons.first(where: { $0.season == s }) else { return }
+        if let e = selectedEpisode, !seasonObj.episodes.contains(where: { $0.episode == e }) {
+            selectedEpisode = seasonObj.episodes.first?.episode ?? 1
+        }
+        if let t = selectedTranslationName, let e = selectedEpisode, !episodeHasTranslation(season: s, episode: e, t: t) {
+            if let ep = seasonObj.episodes.first(where: { $0.episode == e }),
+               let bestT = bestTranslation(in: ep.translations, preferredName: selectedTranslationName) {
+                selectedTranslationName = bestT.name
             }
         }
     }
     
     func selectEpisode(_ e: Int) {
-        withAnimation(.easeInOut(duration: 0.2)) {
-            selectedEpisode = e
-            if let s = selectedSeason, let t = selectedTranslationName, !episodeHasTranslation(season: s, episode: e, t: t) {
-                if let seasonObj = result.seasons.first(where: { $0.season == s }),
-                   let epObj = seasonObj.episodes.first(where: { $0.episode == e }),
-                   let bestT = bestTranslation(in: epObj.translations, preferredName: selectedTranslationName) {
-                    selectedTranslationName = bestT.name
-                }
+        selectedEpisode = e
+        if let s = selectedSeason, let t = selectedTranslationName, !episodeHasTranslation(season: s, episode: e, t: t) {
+            if let seasonObj = result.seasons.first(where: { $0.season == s }),
+               let epObj = seasonObj.episodes.first(where: { $0.episode == e }),
+               let bestT = bestTranslation(in: epObj.translations, preferredName: selectedTranslationName) {
+                selectedTranslationName = bestT.name
             }
         }
     }
@@ -314,17 +314,18 @@ struct SourceSelectionView: View {
     @ViewBuilder
     private var translationsSection: some View {
         if !allTranslations.isEmpty {
+            let available = availableTranslationsForSelectedEpisode
             VStack(alignment: .leading, spacing: 12) {
                 Text("Озвучка")
                     .font(.system(size: 20, weight: .bold))
                     .foregroundColor(.primary)
                 
-                FlowLayout(spacing: 10) {
+                FlowLayout(spacing: 8) {
                     ForEach(Array(allTranslations.enumerated()), id: \.offset) { idx, tName in
                         WatchSelectorChip(
                             title: displayTranslationName(tName, at: idx, in: allTranslations),
                             isSelected: selectedTranslationName == tName,
-                            isAvailable: isTranslationAvailable(tName)
+                            isAvailable: isTranslationAvailable(tName, in: available)
                         ) {
                             selectTranslation(tName)
                         }
@@ -341,7 +342,7 @@ struct SourceSelectionView: View {
                 .font(.system(size: 20, weight: .bold))
                 .foregroundColor(.primary)
             
-            FlowLayout(spacing: 10) {
+            FlowLayout(spacing: 8) {
                 ForEach(allSeasons, id: \.self) { s in
                     WatchSelectorChip(
                         title: "\(s) сезон",
@@ -362,7 +363,7 @@ struct SourceSelectionView: View {
                 .font(.system(size: 20, weight: .bold))
                 .foregroundColor(.primary)
             
-            FlowLayout(spacing: 10) {
+            FlowLayout(spacing: 8) {
                 ForEach(allEpisodes, id: \.self) { e in
                     WatchSelectorChip(
                         title: "\(e) серия",
