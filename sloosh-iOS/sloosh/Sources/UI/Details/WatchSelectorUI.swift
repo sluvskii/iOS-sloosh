@@ -9,37 +9,46 @@ struct WatchSelectorChip: View {
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
-        Button(action: action) {
+        Button {
+            let generator = UIImpactFeedbackGenerator(style: .light)
+            generator.prepare()
+            generator.impactOccurred()
+            action()
+        } label: {
             Text(title)
-                .font(.system(size: 14, weight: isSelected ? .bold : .medium))
+                .font(.system(size: 15, weight: .semibold))
                 .lineLimit(1)
                 .truncationMode(.tail)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
+                .padding(.horizontal, 18)
+                .padding(.vertical, 10)
+                .frame(minHeight: 40)
                 .foregroundStyle(
-                    isSelected 
-                        ? (colorScheme == .dark ? Color.black : Color.white) 
-                        : (isAvailable ? Color.primary : Color.secondary)
+                    isSelected
+                        ? (colorScheme == .dark ? Color.black : Color.white)
+                        : (isAvailable ? Color.primary : Color.secondary.opacity(0.6))
                 )
                 .background(
                     Capsule()
                         .fill(
                             isSelected
                                 ? (colorScheme == .dark ? Color.white : Color.primary)
-                                : (isAvailable ? Color(UIColor.secondarySystemFill) : Color(UIColor.tertiarySystemFill))
+                                : (colorScheme == .dark ? Color.white.opacity(0.08) : Color.black.opacity(0.06))
                         )
                 )
+                .glassEffect(isSelected ? .regular : .regular.interactive(), in: Capsule())
         }
         .buttonStyle(ChipButtonStyle())
-        .opacity(isAvailable ? 1.0 : 0.5)
+        .disabled(!isAvailable)
+        .opacity(isAvailable ? 1.0 : 0.45)
+        .animation(.easeInOut(duration: 0.2), value: isSelected)
     }
 }
 
 struct ChipButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
-            .animation(.easeOut(duration: 0.15), value: configuration.isPressed)
+            .scaleEffect(configuration.isPressed ? 0.97 : 1.0)
+            .animation(.spring(response: 0.25, dampingFraction: 0.7), value: configuration.isPressed)
     }
 }
 
