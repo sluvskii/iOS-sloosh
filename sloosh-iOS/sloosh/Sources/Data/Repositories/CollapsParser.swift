@@ -1,17 +1,14 @@
 import Foundation
-import os.log
 
-public final class CollapsParser {
-    private static let logger = OSLog(subsystem: "com.sloosh.ios", category: "CollapsParser")
-
-    public struct ParseResult {
-        public let catalog: CollapsCatalog
-        public let apiResult: AllohaApiResult
-        public let episodeSubtitles: [EpisodeKey: [PlaybackSubtitle]]
-        public let movieSubtitles: [PlaybackSubtitle]
+final class CollapsParser {
+    struct ParseResult {
+        let catalog: CollapsCatalog
+        let apiResult: AllohaApiResult
+        let episodeSubtitles: [EpisodeKey: [PlaybackSubtitle]]
+        let movieSubtitles: [PlaybackSubtitle]
     }
 
-    public static func parseCatalog(embedHtml: String, defaultTitle: String) -> ParseResult? {
+    static func parseCatalog(embedHtml: String, defaultTitle: String) -> ParseResult? {
         let trimmed = embedHtml.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
 

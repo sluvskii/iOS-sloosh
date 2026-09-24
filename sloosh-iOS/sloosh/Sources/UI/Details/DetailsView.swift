@@ -3659,27 +3659,25 @@ class DetailsViewModel: ObservableObject {
             hasFinishedSourceFetch = true
         }
 
-        async let allohaFetch: AllohaApiResult? = {
-            try? await AllohaRepository.shared.fetchByKpId(
-                kpId: kpId,
-                tmdbId: effectiveTmdbId,
-                imdbId: effectiveImdbId,
-                title: effectiveTitle,
-                originalTitle: effectiveOriginal,
-                year: effectiveYear
-            )
-        }()
+        let validKp = kpId > 0 ? kpId : (self.details?.ids?.kp ?? self.details?.externalIds?.kp)
 
-        async let collapsFetch: CollapsParser.ParseResult? = {
-            let validKp = kpId > 0 ? kpId : (self.details?.ids?.kp ?? self.details?.externalIds?.kp)
-            return try? await CollapsRepository.shared.fetchMedia(
-                kpId: validKp,
-                imdbId: effectiveImdbId,
-                title: effectiveTitle
-            )
-        }()
+        async let allohaTask = AllohaRepository.shared.fetchByKpId(
+            kpId: kpId,
+            tmdbId: effectiveTmdbId,
+            imdbId: effectiveImdbId,
+            title: effectiveTitle,
+            originalTitle: effectiveOriginal,
+            year: effectiveYear
+        )
 
-        let (allohaResult, collapsResult) = await (allohaFetch, collapsFetch)
+        async let collapsTask = CollapsRepository.shared.fetchMedia(
+            kpId: validKp,
+            imdbId: effectiveImdbId,
+            title: effectiveTitle
+        )
+
+        let allohaResult = try? await allohaTask
+        let collapsResult = (try? await collapsTask) ?? nil
         let resolvedKp = kpId > 0 ? kpId : (effectiveTmdbId ?? 0)
         let wrapper = SourceResultWrapper(
             allohaResult: allohaResult,

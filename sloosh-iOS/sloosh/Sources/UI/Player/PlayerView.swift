@@ -731,7 +731,24 @@ class PlayerViewModel: ObservableObject {
             isLoading = false
         }
     }
-    
+
+    private func fetchAndUpdateQualitiesFromMaster(url: URL, headers: [String: String]) async {
+        var request = URLRequest(url: url)
+        request.timeoutInterval = 10
+        for (k, v) in headers {
+            request.setValue(v, forHTTPHeaderField: k)
+        }
+        guard let (data, response) = try? await URLSession.shared.data(for: request),
+              let httpResponse = response as? HTTPURLResponse,
+              (200...299).contains(httpResponse.statusCode),
+              let content = String(data: data, encoding: .utf8) else {
+            return
+        }
+        await MainActor.run {
+            self.parseMasterPlaylist(content: content, baseUrl: url)
+        }
+    }
+
     private func parseMasterPlaylist(content: String, baseUrl: URL) {
         var qualities: [PlaybackQualityOption] = [
             PlaybackQualityOption(
