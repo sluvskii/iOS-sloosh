@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct SettingsView: View {
+    @AppStorage("preferredStreamSource") private var preferredSource: MediaStreamSource = .source1
     @AppStorage("preferredVideoQuality") private var preferredQuality: VideoQualityPreference = .ask
     @AppStorage("autoplayNextEpisode") private var autoplayNextEpisode = true
     @AppStorage("tabBarShowsLabels") private var tabBarShowsLabels = false
@@ -149,6 +150,20 @@ struct SettingsView: View {
             }
             
             Section("Воспроизведение") {
+                // Основной источник
+                HStack(spacing: 12) {
+                    Image(systemName: "server.rack")
+                        .foregroundStyle(Color.slooshAccent)
+                        .font(.system(size: 18))
+                        .frame(width: 24)
+                    
+                    Picker("Основной источник", selection: $preferredSource) {
+                        ForEach(MediaStreamSource.allCases) { source in
+                            Text(source.settingsTitle).tag(source)
+                        }
+                    }
+                }
+
                 // Качество видео
                 HStack(spacing: 12) {
                     Image(systemName: "video.fill")
