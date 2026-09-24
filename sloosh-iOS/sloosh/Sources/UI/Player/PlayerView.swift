@@ -90,6 +90,8 @@ struct PlayerView: View {
     let posterUrl: String?
     let backdropUrl: String?
     let logoUrl: String?
+    let streamSource: MediaStreamSource
+    let episodeSubtitles: [EpisodeKey: [PlaybackSubtitle]]
 
     @StateObject private var viewModel = PlayerViewModel()
     @Environment(\.dismiss) private var dismissEnv
@@ -111,7 +113,9 @@ struct PlayerView: View {
         tmdbId: Int? = nil,
         posterUrl: String? = nil,
         backdropUrl: String? = nil,
-        logoUrl: String? = nil
+        logoUrl: String? = nil,
+        streamSource: MediaStreamSource = .source1,
+        episodeSubtitles: [EpisodeKey: [PlaybackSubtitle]] = [:]
     ) {
         self.iframeUrl = iframeUrl
         self.fallbackTitle = fallbackTitle
@@ -130,6 +134,8 @@ struct PlayerView: View {
         self.posterUrl = posterUrl
         self.backdropUrl = backdropUrl
         self.logoUrl = logoUrl
+        self.streamSource = streamSource
+        self.episodeSubtitles = episodeSubtitles
     }
 
     init(config: PlayerConfig) {
@@ -150,7 +156,9 @@ struct PlayerView: View {
             tmdbId: config.tmdbId,
             posterUrl: config.posterUrl,
             backdropUrl: config.backdropUrl,
-            logoUrl: config.logoUrl
+            logoUrl: config.logoUrl,
+            streamSource: config.source,
+            episodeSubtitles: config.episodeSubtitles
         )
     }
 
@@ -173,6 +181,8 @@ struct PlayerView: View {
             viewModel.posterUrl = posterUrl
             viewModel.backdropUrl = backdropUrl
             viewModel.logoUrl = logoUrl
+            viewModel.streamSource = streamSource
+            viewModel.episodeSubtitles = episodeSubtitles
 
             if iframeUrl != nil || directStreamUrl != nil {
                 viewModel.load(
@@ -347,6 +357,8 @@ class PlayerViewModel: ObservableObject {
     var posterUrl: String?
     var backdropUrl: String?
     var logoUrl: String?
+    var streamSource: MediaStreamSource = .source1
+    var episodeSubtitles: [EpisodeKey: [PlaybackSubtitle]] = [:]
 
     private var resolver: AllohaRuntimeResolver?
     private var resolveTask: Task<Void, Never>?
@@ -473,7 +485,7 @@ class PlayerViewModel: ObservableObject {
         )
     }
 
-    /// Честный повтор: инвалидирует кеши и перезапрашивает свежий поток у Alloha с сохранением позиции.
+    /// Честный повтор: инвалидирует кеши и перезапрашивает свежий поток у Alloha / Collaps с сохранением позиции.
     func retryPlayback() {
         error = nil
         isLoading = true
@@ -481,6 +493,87 @@ class PlayerViewModel: ObservableObject {
 
         // Сохраняем текущую позицию, чтобы после переподключения продолжить с неё
         saveCurrentProgress()
+
+        if streamSource == .source2 {
+            CollapsRepository.shared.invalidateCache()
+            originalStreamURL = nil
+            currentPlaybackSourceURL = nil
+            
+            Task { [weak self] in
+                guard let self else { return }
+                do {
+                    let result = try await CollapsRepository.shared.fetchMedia(
+                        kpId: self.currentKpId,
+                        imdbId: nil,
+                        title: self.fallbackTitle
+                    )
+                    guard let result else {
+                        await MainActor.run {
+                            self.isLoading = false
+                            self.error = "Не удалось обновить ссылку на резервный видеопоток"
+                        }
+                        return
+                    }
+                    
+                    await MainActor.run {
+                        self.seriesResult = result.apiResult
+                        self.episodeSubtitles = result.episodeSubtitles
+                        
+                        let currentSeasonNum = self.currentSeason ?? 1
+                        let currentEpisodeNum = self.currentEpisode ?? 1
+                        
+                        let streamUrl: String?
+                        let voices: [String]
+                        let subtitles: [PlaybackSubtitle]
+                        
+                        if result.apiResult.isSerial {
+                            let ep = result.catalog.seasons?.first(where: { $0.season == currentSeasonNum })?.episodes.first(where: { $0.episode == currentEpisodeNum })
+                            streamUrl = ep?.playlist.primaryUrl
+                            voices = ep?.playlist.voiceovers ?? []
+                            subtitles = result.episodeSubtitles[EpisodeKey(season: currentSeasonNum, episode: currentEpisodeNum)] ?? []
+                        } else {
+                            if case .movie(_, let playlist) = result.catalog {
+                                streamUrl = playlist.primaryUrl
+                                voices = playlist.voiceovers
+                                subtitles = result.movieSubtitles
+                            } else {
+                                streamUrl = nil
+                                voices = []
+                                subtitles = []
+                            }
+                        }
+                        
+                        guard let freshUrl = streamUrl, !freshUrl.isEmpty else {
+                            self.isLoading = false
+                            self.error = "Не удалось обновить ссылку на видео"
+                            return
+                        }
+                        
+                        self.targetDirectStreamUrl = freshUrl
+                        self.hasStartedLoading = false
+                        self.beginLoad(
+                            iframeUrl: nil,
+                            kpId: self.currentKpId,
+                            season: self.currentSeason,
+                            episode: self.currentEpisode,
+                            selectedVoiceover: self.targetVoiceover ?? self._currentTranslationName,
+                            directStreamUrl: freshUrl,
+                            voices: voices,
+                            subtitles: subtitles,
+                            customHeaders: CollapsRepository.streamHeaders,
+                            mediaKey: self.mediaKey,
+                            tmdbId: self.tmdbId
+                        )
+                    }
+                } catch {
+                    await MainActor.run {
+                        self.isLoading = false
+                        self.error = "Не удалось обновить видеопоток: \(error.localizedDescription)"
+                    }
+                }
+            }
+            return
+        }
 
         if let iframeUrl = currentIframeUrl, !iframeUrl.isEmpty {
             AllohaRuntimeResolver.invalidateCache(for: iframeUrl)
@@ -1353,7 +1446,7 @@ class PlayerViewModel: ObservableObject {
         targetVoiceover = canonicalName
         persistVoiceoverSelection(canonicalName)
         saveCurrentProgress()
-        selectAudioTrackInPlayer(named: name)
+        selectAudioTrackInPlayer(named: name, at: index)
     }
 
 
@@ -1832,6 +1925,17 @@ class PlayerViewModel: ObservableObject {
                 guard playerItem === self.player?.currentItem else { return }
                 let err = notif.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? NSError
                 self.logDebug("setupPlayerItemObservers: item failedToPlayToEndTime: \(err?.localizedDescription ?? "unknown")")
+                if UIApplication.shared.applicationState != .active {
+                    // Приложение свернуто или экран заблокирован. Не показываем ошибку, тихо сохраняем прогресс.
+                    // При возврате в приложение foregroundObserver восстановит воспроизведение.
+                    self.saveCurrentProgress()
+                    return
+                }
+                if !self.hasRetriedPlayback {
+                    self.hasRetriedPlayback = true
+                    self.retryPlayback()
+                    return
+                }
                 self.error = "Воспроизведение было прервано. Нажмите «Попробовать снова»."
                 self.isLoading = false
                 self.isBuffering = false
@@ -1892,9 +1996,10 @@ class PlayerViewModel: ObservableObject {
                                 self.logDebug("setupPlayerItemObservers: No alternative quality found, retrying stream URL")
                                  HlsProxyServer.shared.start(
                                     headers: self.currentHeaders,
-                                    voices: [],
+                                    voices: self.availableVoiceovers,
                                     subtitles: self.availableSubtitles,
-                                    mediaId: self.currentMediaId ?? (self.currentKpId.map { "kp_\($0)" } ?? "unknown")
+                                    mediaId: self.currentMediaId ?? (self.currentKpId.map { "kp_\($0)" } ?? "unknown"),
+                                    preferredVoiceName: self.targetVoiceover ?? self._currentTranslationName
                                 )
                                 self.reloadPlayback(to: url, preferredPeakBitRate: nil)
                             }
@@ -1910,9 +2015,10 @@ class PlayerViewModel: ObservableObject {
                         if let origUrl = self.originalStreamURL {
                             HlsProxyServer.shared.start(
                                 headers: self.currentHeaders,
-                                voices: [],
+                                voices: self.availableVoiceovers,
                                 subtitles: self.availableSubtitles,
-                                mediaId: self.currentMediaId ?? (self.currentKpId.map { "kp_\($0)" } ?? "unknown")
+                                mediaId: self.currentMediaId ?? (self.currentKpId.map { "kp_\($0)" } ?? "unknown"),
+                                preferredVoiceName: self.targetVoiceover ?? self._currentTranslationName
                             )
                             self.reloadPlayback(to: origUrl, preferredPeakBitRate: self.player?.currentItem?.preferredPeakBitRate)
                         } else {
@@ -2150,10 +2256,15 @@ class PlayerViewModel: ObservableObject {
                     UIApplication.shared.isIdleTimerDisabled = true
                 }
 
-                // 4. Возобновляем воспроизведение если играло до ухода в фон
-                let wasPlaying = UserDefaults.standard.bool(forKey: "sloosh_was_playing_before_bg")
-                if wasPlaying && self.player?.timeControlStatus != .playing {
-                    self.player?.play()
+                // 4. Возобновляем воспроизведение если играло до ухода в фон, либо восстанавливаем упавший поток
+                if self.player?.currentItem?.status == .failed || self.error != nil {
+                    self.logDebug("foregroundObserver: player item failed or error present, auto-retrying playback")
+                    self.retryPlayback()
+                } else {
+                    let wasPlaying = UserDefaults.standard.bool(forKey: "sloosh_was_playing_before_bg")
+                    if wasPlaying && self.player?.timeControlStatus != .playing {
+                        self.player?.play()
+                    }
                 }
 
                 // ВАЖНО: watchdog по таймеру УДАЛЁН.
@@ -2352,6 +2463,14 @@ class PlayerViewModel: ObservableObject {
             return self.availableVoiceovers
         }()
 
+        let epSubs: [PlaybackSubtitle] = {
+            let key = EpisodeKey(season: episode.season, episode: episode.episode)
+            if let specificSubs = self.episodeSubtitles[key], !specificSubs.isEmpty {
+                return specificSubs
+            }
+            return self.availableSubtitles
+        }()
+
         beginLoad(
             iframeUrl: episode.translation.iframeUrl,
             kpId: currentKpId,
@@ -2360,7 +2479,7 @@ class PlayerViewModel: ObservableObject {
             selectedVoiceover: episode.translation.name,
             directStreamUrl: (episode.translation.streamUrl?.isEmpty == false) ? episode.translation.streamUrl : nil,
             voices: epVoices,
-            subtitles: self.availableSubtitles,
+            subtitles: epSubs,
             customHeaders: self.customHeaders,
             mediaKey: rootMediaKey,
             tmdbId: tmdbId
@@ -2418,11 +2537,15 @@ class PlayerViewModel: ObservableObject {
 
     private func preferredTranslation(in episode: AllohaEpisode) -> AllohaTranslation? {
         var pref = targetVoiceover ?? _currentTranslationName
+        let sourceKey = streamSource == .source2 ? "collaps" : "alloha"
         if pref == nil, let root = rootMediaKey {
-            pref = PlaybackProgressStore.shared.loadLastVoiceover(mediaKey: root, source: "alloha")
+            pref = PlaybackProgressStore.shared.loadLastVoiceover(mediaKey: root, source: sourceKey)
         }
         if pref == nil, let kpId = currentKpId, kpId > 0 {
-            pref = PlaybackProgressStore.shared.loadLastVoiceover(kpId: kpId, source: "alloha")
+            pref = PlaybackProgressStore.shared.loadLastVoiceover(kpId: kpId, source: sourceKey)
+        }
+        if pref == nil {
+            pref = UserDefaults.standard.string(forKey: "\(sourceKey)_last_translation_name")
         }
         return bestTranslation(in: episode.translations, preferredName: pref)
     }
@@ -2597,7 +2720,7 @@ class PlayerViewModel: ObservableObject {
     }
 
 
-    private func selectAudioTrackInPlayer(named name: String) {
+    private func selectAudioTrackInPlayer(named name: String, at index: Int? = nil) {
         guard let player = player,
               let item = player.currentItem,
               let group = item.asset.mediaSelectionGroup(forMediaCharacteristic: .audible) else {
@@ -2610,7 +2733,7 @@ class PlayerViewModel: ObservableObject {
             ?? cleanTranslationName(name)
         
         let options = group.options
-        logDebug("selectAudioTrackInPlayer: target='\(name)', options=\(options.map { $0.displayName })")
+        logDebug("selectAudioTrackInPlayer: target='\(name)', index=\(index ?? -1), options=\(options.map { $0.displayName })")
         
         // Exact match
         if let option = options.first(where: { allohaTranslationNamesMatch($0.displayName, name, exactOnly: true) }) {
@@ -2627,6 +2750,16 @@ class PlayerViewModel: ObservableObject {
             persistVoiceoverSelection(canonicalName)
             saveCurrentProgress()
             logDebug("selectAudioTrackInPlayer: selected fuzzy match option='\(option.displayName)'")
+            return
+        }
+        
+        // Match by track index (crucial for Collaps where rus0, rus1 map to availableVoiceovers[0], availableVoiceovers[1])
+        let trackIndex = index ?? self.availableVoiceovers.firstIndex(of: name)
+        if let trackIndex, trackIndex >= 0, trackIndex < options.count {
+            item.select(options[trackIndex], in: group)
+            persistVoiceoverSelection(canonicalName)
+            saveCurrentProgress()
+            logDebug("selectAudioTrackInPlayer: selected by trackIndex \(trackIndex), option='\(options[trackIndex].displayName)'")
             return
         }
         
@@ -2780,21 +2913,22 @@ class PlayerViewModel: ObservableObject {
     private func persistVoiceoverSelection(_ name: String?) {
         let normalized = normalizedAllohaTranslationName(name)
         let finalName = normalized.isEmpty ? name : normalized
+        let sourceKey = streamSource == .source2 ? "collaps" : "alloha"
         if let root = rootMediaKey {
             PlaybackProgressStore.shared.saveLastVoiceover(
                 mediaKey: root,
-                source: "alloha",
+                source: sourceKey,
                 voiceover: finalName
             )
         } else if let kpId = currentKpId, kpId > 0 {
             PlaybackProgressStore.shared.saveLastVoiceover(
                 kpId: kpId,
-                source: "alloha",
+                source: sourceKey,
                 voiceover: finalName
             )
         }
         if let finalName, !finalName.isEmpty, !isOriginalOrEnglishTranslation(finalName) {
-            UserDefaults.standard.set(finalName, forKey: "alloha_last_translation_name")
+            UserDefaults.standard.set(finalName, forKey: "\(sourceKey)_last_translation_name")
         }
     }
 

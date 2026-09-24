@@ -19,6 +19,8 @@ struct PlayerConfig: Identifiable {
     let posterUrl: String?
     let backdropUrl: String?
     let logoUrl: String?
+    let source: MediaStreamSource
+    let episodeSubtitles: [EpisodeKey: [PlaybackSubtitle]]
 
     init(
         iframeUrl: String?,
@@ -37,7 +39,9 @@ struct PlayerConfig: Identifiable {
         tmdbId: Int? = nil,
         posterUrl: String? = nil,
         backdropUrl: String? = nil,
-        logoUrl: String? = nil
+        logoUrl: String? = nil,
+        source: MediaStreamSource = .source1,
+        episodeSubtitles: [EpisodeKey: [PlaybackSubtitle]] = [:]
     ) {
         self.iframeUrl = iframeUrl
         self.title = title
@@ -56,6 +60,8 @@ struct PlayerConfig: Identifiable {
         self.posterUrl = posterUrl
         self.backdropUrl = backdropUrl
         self.logoUrl = logoUrl
+        self.source = source
+        self.episodeSubtitles = episodeSubtitles
     }
 }
 
@@ -106,7 +112,9 @@ struct HomeDirectPlayWrapper: View {
                         tmdbId: tmdb,
                         posterUrl: viewModel.details?.displayPosterUrl,
                         backdropUrl: viewModel.details?.displayBackdropUrl ?? viewModel.details?.displayPosterUrl,
-                        logoUrl: viewModel.details?.displayLogoUrl
+                        logoUrl: viewModel.details?.displayLogoUrl,
+                        source: source,
+                        episodeSubtitles: source == .source2 ? (wrapper.collapsResult?.episodeSubtitles ?? [:]) : [:]
                     )
                     onPlay(config)
                 }

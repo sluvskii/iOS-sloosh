@@ -211,33 +211,21 @@ final class CollapsParser {
 
     private static func extractOrderedVoices(from audioObj: [String: Any]) -> [String] {
         guard let names = audioObj["names"] as? [String] else { return [] }
-        let order = (audioObj["order"] as? [Int]) ?? []
 
-        struct VoiceItem {
-            let name: String
-            let order: Int
-            let originalIndex: Int
-        }
-
-        var items: [VoiceItem] = []
+        var result: [String] = []
         for (idx, raw) in names.enumerated() {
             var name = raw.trimmingCharacters(in: .whitespacesAndNewlines)
             if name.lowercased() == "delete" {
                 name = "Дорожка \(idx + 1)"
             }
-            let ord = (idx < order.count) ? order[idx] : (1000 + idx)
-            items.append(VoiceItem(name: name, order: ord, originalIndex: idx))
+            // Sanitize inner double quotes which break HLS EXT-X-MEDIA attributes in AVPlayer
+            name = name.replacingOccurrences(of: "\"", with: "'")
+            result.append(name)
         }
 
-        items.sort { a, b in
-            if a.order != b.order {
-                return a.order < b.order
-            }
-            return a.originalIndex < b.originalIndex
-        }
-
-        return items.map { $0.name }.filter { !$0.isEmpty }
+        return result.filter { !$0.isEmpty }
     }
+
 
     // MARK: - Movie Extraction
 
