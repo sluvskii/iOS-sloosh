@@ -1885,7 +1885,7 @@ class PlayerViewModel: ObservableObject {
                         }
                         await MainActor.run {
                             self.syncNativeAudioTracks()
-                            let targetVoice = self.targetVoiceover ?? self._currentTranslationName ?? "Дубляж"
+                            let targetVoice = self.targetVoiceover ?? self._currentTranslationName ?? self.availableVoiceovers.first ?? "Дубляж"
                             self.selectAudioTrackInPlayer(named: targetVoice)
                         }
                     }
@@ -2648,6 +2648,21 @@ class PlayerViewModel: ObservableObject {
             }
         }
 
+        // Guaranteed fallback: ensure an audio track IS ALWAYS SELECTED so playback doesn't stay silent
+        if let defaultOpt = group.defaultOption {
+            item.select(defaultOpt, in: group)
+            persistVoiceoverSelection(canonicalName)
+            saveCurrentProgress()
+            logDebug("selectAudioTrackInPlayer: fallback selected group.defaultOption '\(defaultOpt.displayName)'")
+            return
+        } else if let firstOpt = options.first {
+            item.select(firstOpt, in: group)
+            persistVoiceoverSelection(canonicalName)
+            saveCurrentProgress()
+            logDebug("selectAudioTrackInPlayer: fallback selected first available option '\(firstOpt.displayName)'")
+            return
+        }
+
         logDebug("selectAudioTrackInPlayer: failed to match any track for '\(name)'")
     }
     
@@ -2683,8 +2698,7 @@ class PlayerViewModel: ObservableObject {
     
     private func extractAudioIndex(from name: String) -> Int? {
         let patterns = [
-            #"(?:^|[^a-z0-9])(?:rus|ru|eng|en)(\d+)(?:$|[^a-z0-9])"#,
-            #"(?:^|[^a-z0-9])audio[_-]?(\d+)(?:$|[^a-z0-9])"#
+            #"(?:^|[^a-z0-9])(?:[a-z]{2,4}|audio[_-]?|track[_-]?)(\d+)(?:$|[^a-z0-9])"#
         ]
         for pattern in patterns {
             guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { continue }

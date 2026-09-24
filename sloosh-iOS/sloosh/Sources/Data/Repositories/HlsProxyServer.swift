@@ -548,14 +548,7 @@ class HlsProxyServer {
             components?.query = nil
             let cleanBaseUrl = components?.url ?? baseUrl
             
-            let baseDir: URL
-            if !cleanBaseUrl.pathExtension.isEmpty {
-                baseDir = cleanBaseUrl.deletingLastPathComponent()
-            } else {
-                baseDir = cleanBaseUrl
-            }
-            
-            if let resolvedUrl = URL(string: urlString, relativeTo: baseDir) {
+            if let resolvedUrl = URL(string: urlString, relativeTo: cleanBaseUrl)?.absoluteURL {
                 absoluteUrlString = resolvedUrl.absoluteString
             } else {
                 absoluteUrlString = urlString

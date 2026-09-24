@@ -174,12 +174,12 @@ class PlaybackHlsRewriter {
         let language = extractQuotedAttr(line, key: "LANGUAGE")
 
         let index = extractAudioIndex(from: rawName)
-            ?? extractAudioIndex(from: uri)
+            ?? extractAudioIndex(from: uri, isUri: true)
             ?? extractAudioIndex(from: language)
 
         guard let index, index >= 0, index < voices.count else { return line }
 
-        // Only rewrite if rawName is missing or generic (e.g. "rus0", "en1", "audio0")
+        // Only rewrite if rawName is missing or generic (e.g. "rus0", "fin3", "ukr4", "audio0")
         if let raw = rawName, !isGenericTrackName(raw) {
             return line
         }
@@ -201,8 +201,10 @@ class PlaybackHlsRewriter {
     private static func isGenericTrackName(_ name: String) -> Bool {
         let lower = name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         let patterns = [
-            #"^(?:rus|ru|eng|en)\d*$"#,
-            #"^audio[_-]?\d*$"#
+            #"^[a-z]{2,4}\d*$"#,
+            #"^audio[_-]?\d*$"#,
+            #"^track[_-]?\d*$"#,
+            #"^stream[_-]?\d*$"#
         ]
         for p in patterns {
             if let regex = try? NSRegularExpression(pattern: p),
@@ -213,12 +215,18 @@ class PlaybackHlsRewriter {
         return false
     }
 
-
-    private static func extractAudioIndex(from raw: String?) -> Int? {
+    private static func extractAudioIndex(from raw: String?, isUri: Bool = false) -> Int? {
         guard let raw, !raw.isEmpty else { return nil }
+        if isUri {
+            if let regex = try? NSRegularExpression(pattern: #"index-a(\d+)"#, options: [.caseInsensitive]),
+               let match = regex.firstMatch(in: raw, options: [], range: NSRange(raw.startIndex..<raw.endIndex, in: raw)),
+               let idxRange = Range(match.range(at: 1), in: raw),
+               let num = Int(raw[idxRange]), num >= 1 {
+                return num - 1
+            }
+        }
         let patterns = [
-            #"(?:^|[^a-z0-9])(?:rus|ru|eng|en)(\d+)(?:$|[^a-z0-9])"#,
-            #"(?:^|[^a-z0-9])audio[_-]?(\d+)(?:$|[^a-z0-9])"#
+            #"(?:^|[^a-z0-9])(?:[a-z]{2,4}|audio[_-]?|track[_-]?)(\d+)(?:$|[^a-z0-9])"#
         ]
         for pattern in patterns {
             guard let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]) else { continue }
@@ -245,8 +253,11 @@ class PlaybackHlsRewriter {
         let newAttr = "\(key)=\"\(escapedValue)\""
         
         if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
-           regex.firstMatch(in: line, options: [], range: NSRange(line.startIndex..., in: line)) != nil {
-            return regex.stringByReplacingMatches(in: line, options: [], range: NSRange(line.startIndex..., in: line), withTemplate: newAttr)
+           let match = regex.firstMatch(in: line, options: [], range: NSRange(line.startIndex..., in: line)),
+           let range = Range(match.range, in: line) {
+            var result = line
+            result.replaceSubrange(range, with: newAttr)
+            return result
         } else if let colonIndex = line.firstIndex(of: ":") {
             let prefix = line[...colonIndex]
             let rest = line[line.index(after: colonIndex)...]
