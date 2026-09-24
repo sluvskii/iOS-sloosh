@@ -5,6 +5,17 @@ enum SourceSelectionMode {
     case download
 }
 
+struct EpisodeKey: Hashable {
+    let season: Int
+    let episode: Int
+}
+
+struct TranslationChipItem: Identifiable, Hashable {
+    let id: String
+    let name: String
+    let displayName: String
+}
+
 struct SourceSelectionView: View {
     let mode: SourceSelectionMode
     let result: AllohaApiResult
@@ -21,12 +32,12 @@ struct SourceSelectionView: View {
     @State private var showQualitySelection = false
 
     // Precomputed immutable caches (calculated once on init)
-    let allTranslations: [String]
-    let translationDisplayNames: [String]
+    let allTranslations: [TranslationChipItem]
     let allSeasons: [Int]
     let seasonEpisodes: [Int: [Int]]
     let seasonTranslationsMap: [Int: Set<String>]
     let episodeTranslationsMap: [EpisodeKey: Set<String>]
+    let movieTranslationNames: Set<String>
 
     init(
         mode: SourceSelectionMode,
@@ -41,12 +52,15 @@ struct SourceSelectionView: View {
         self.details = details
         self.onAction = onAction
 
-        if result.isSerial {
-            var names = Set<String>()
-            var sEpisodes: [Int: [Int]] = [:]
-            var sTransMap: [Int: Set<String>] = [:]
-            var epTransMap: [EpisodeKey: Set<String>] = [:]
+        var transItems: [TranslationChipItem] = []
+        var seasonsList: [Int] = []
+        var sEpisodes: [Int: [Int]] = [:]
+        var sTransMap: [Int: Set<String>] = [:]
+        var epTransMap: [EpisodeKey: Set<String>] = [:]
+        var movieNames = Set<String>()
 
+        if result.isSerial {
+            var allNames = Set<String>()
             for season in result.seasons {
                 var seasonNames = Set<String>()
                 let epNums = season.episodes.map { $0.episode }.sorted()
@@ -55,39 +69,49 @@ struct SourceSelectionView: View {
                 for ep in season.episodes {
                     let epNames = Set(ep.translations.map { $0.name })
                     seasonNames.formUnion(epNames)
-                    names.formUnion(epNames)
+                    allNames.formUnion(epNames)
                     epTransMap[EpisodeKey(season: season.season, episode: ep.episode)] = epNames
                 }
                 sTransMap[season.season] = seasonNames
             }
 
-            let sortedTranslations = Array(names).sorted()
-            self.allTranslations = sortedTranslations
-            self.translationDisplayNames = sortedTranslations.enumerated().map { idx, name in
-                displayTranslationName(name, at: idx, in: sortedTranslations)
+            let sortedNames = Array(allNames).sorted()
+            transItems = sortedNames.enumerated().map { idx, name in
+                TranslationChipItem(
+                    id: name,
+                    name: name,
+                    displayName: displayTranslationName(name, at: idx, in: sortedNames)
+                )
             }
-            self.allSeasons = result.seasons.map { $0.season }.sorted()
-            self.seasonEpisodes = sEpisodes
-            self.seasonTranslationsMap = sTransMap
-            self.episodeTranslationsMap = epTransMap
+            seasonsList = result.seasons.map { $0.season }.sorted()
         } else if let movie = result.movie {
-            let sortedTranslations = movie.translations.map { $0.name }.sorted()
-            self.allTranslations = sortedTranslations
-            self.translationDisplayNames = sortedTranslations.enumerated().map { idx, name in
-                displayTranslationName(name, at: idx, in: sortedTranslations)
+            let sortedNames = movie.translations.map { $0.name }.sorted()
+            movieNames = Set(sortedNames)
+            transItems = sortedNames.enumerated().map { idx, name in
+                TranslationChipItem(
+                    id: name,
+                    name: name,
+                    displayName: displayTranslationName(name, at: idx, in: sortedNames)
+                )
             }
-            self.allSeasons = []
-            self.seasonEpisodes = [:]
-            self.seasonTranslationsMap = [:]
-            self.episodeTranslationsMap = [:]
-        } else {
-            self.allTranslations = []
-            self.translationDisplayNames = []
-            self.allSeasons = []
-            self.seasonEpisodes = [:]
-            self.seasonTranslationsMap = [:]
-            self.episodeTranslationsMap = [:]
         }
+
+        self.allTranslations = transItems
+        self.allSeasons = seasonsList
+        self.seasonEpisodes = sEpisodes
+        self.seasonTranslationsMap = sTransMap
+        self.episodeTranslationsMap = epTransMap
+        self.movieTranslationNames = movieNames
+
+        let initial = Self.computeInitialSelection(
+            result: result,
+            kpId: kpId,
+            details: details
+        )
+        _selectedSeason = State(initialValue: initial.season)
+        _selectedEpisode = State(initialValue: initial.episode)
+        _selectedTranslationName = State(initialValue: initial.translationName)
+        _showQualitySelection = State(initialValue: false)
     }
     
     var allEpisodes: [Int] {
@@ -101,10 +125,9 @@ struct SourceSelectionView: View {
             guard let s = selectedSeason, let e = selectedEpisode else { return false }
             guard let epNames = episodeTranslationsMap[EpisodeKey(season: s, episode: e)] else { return false }
             return epNames.contains(where: { allohaTranslationNamesMatch($0, name, exactOnly: true) })
-        } else if let movie = result.movie {
-            return movie.translations.contains { $0.name == name }
+        } else {
+            return movieTranslationNames.contains(name)
         }
-        return false
     }
     
     func isSeasonAvailable(_ seasonNum: Int) -> Bool {
@@ -180,8 +203,23 @@ struct SourceSelectionView: View {
         return "unknown"
     }
 
-    private func setupInitialSelection() {
-        let currentKey = mediaKey
+    static func computeInitialSelection(
+        result: AllohaApiResult,
+        kpId: Int?,
+        details: MediaDetailsDto?
+    ) -> (season: Int?, episode: Int?, translationName: String?) {
+        let validKp = (kpId ?? 0) > 0 ? (kpId ?? 0) : (details?.ids?.kp ?? details?.externalIds?.kp ?? 0)
+        let currentKey: String
+        if validKp > 0 {
+            currentKey = "kp_\(validKp)"
+        } else if let detailsId = details?.id, !detailsId.isEmpty {
+            currentKey = detailsId.hasPrefix("kp_") || detailsId.hasPrefix("tmdb_") ? detailsId : "tmdb_\(detailsId)"
+        } else if let tmdb = details?.externalIds?.tmdb ?? details?.ids?.tmdb, tmdb > 0 {
+            currentKey = "tmdb_\(tmdb)"
+        } else {
+            currentKey = "unknown"
+        }
+
         var savedVoiceover = PlaybackProgressStore.shared.loadLastVoiceover(mediaKey: currentKey)
         if savedVoiceover == nil, let kpId, kpId > 0 {
             savedVoiceover = PlaybackProgressStore.shared.loadLastVoiceover(kpId: kpId, source: "alloha")
@@ -225,20 +263,22 @@ struct SourceSelectionView: View {
             }
             
             if let seasonNum = initialSeason, let season = result.seasons.first(where: { $0.season == seasonNum }) {
-                selectedSeason = seasonNum
-                
                 let episodeToSelect = initialEpisode.flatMap { epNum in
                     season.episodes.first(where: { $0.episode == epNum })
                 } ?? season.episodes.first
                 
-                if let episode = episodeToSelect {
-                    selectedEpisode = episode.episode
-                    selectedTranslationName = preferredTranslation(in: episode.translations, preferredName: savedVoiceover)?.name
+                let epNum = episodeToSelect?.episode
+                let tName = episodeToSelect.flatMap { ep in
+                    bestTranslation(in: ep.translations, preferredName: savedVoiceover)?.name
                 }
+                return (seasonNum, epNum, tName)
             }
+            return (initialSeason, initialEpisode, nil)
         } else if let movie = result.movie {
-            selectedTranslationName = preferredTranslation(in: movie.translations, preferredName: savedVoiceover)?.name
+            let tName = bestTranslation(in: movie.translations, preferredName: savedVoiceover)?.name
+            return (nil, nil, tName)
         }
+        return (nil, nil, nil)
     }
     
     func actionSelected() {
@@ -285,6 +325,7 @@ struct SourceSelectionView: View {
             dismiss()
         }
     }
+
     /// Кнопка «Смотреть» активна только когда пользователь сделал полный выбор.
     var isReadyToPlay: Bool {
         guard selectedTranslationName != nil else { return false }
@@ -333,9 +374,6 @@ struct SourceSelectionView: View {
         }
         .presentationBackground { Color.clear.glassEffect(in: .rect) }
         .presentationDragIndicator(.visible)
-        .onAppear {
-            setupInitialSelection()
-        }
         .sheet(isPresented: $showQualitySelection) {
             QualitySelectionSheet { selectedQuality in
                 showQualitySelection = false
@@ -353,14 +391,15 @@ struct SourceSelectionView: View {
                     .foregroundColor(.primary)
                 
                 FlowLayout(spacing: 8) {
-                    ForEach(Array(allTranslations.enumerated()), id: \.offset) { idx, tName in
+                    ForEach(allTranslations) { item in
                         WatchSelectorChip(
-                            title: translationDisplayNames[idx],
-                            isSelected: selectedTranslationName == tName,
-                            isAvailable: isTranslationAvailable(tName)
+                            title: item.displayName,
+                            isSelected: selectedTranslationName == item.name,
+                            isAvailable: isTranslationAvailable(item.name)
                         ) {
-                            selectTranslation(tName)
+                            selectTranslation(item.name)
                         }
+                        .equatable()
                     }
                 }
             }
@@ -383,6 +422,7 @@ struct SourceSelectionView: View {
                     ) {
                         selectSeason(s)
                     }
+                    .equatable()
                 }
             }
         }
@@ -404,6 +444,7 @@ struct SourceSelectionView: View {
                     ) {
                         selectEpisode(e)
                     }
+                    .equatable()
                 }
             }
         }
