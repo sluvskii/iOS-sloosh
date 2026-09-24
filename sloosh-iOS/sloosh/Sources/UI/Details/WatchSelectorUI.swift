@@ -50,9 +50,9 @@ struct WatchSelectorChip: View, Equatable {
                 )
         }
         .buttonStyle(ChipButtonStyle())
-        .disabled(!isAvailable)
-        .opacity(isAvailable ? 1.0 : 0.35)
+        .opacity(isSelected || isAvailable ? 1.0 : 0.4)
         .animation(.easeInOut(duration: 0.16), value: isSelected)
+        .animation(.easeInOut(duration: 0.16), value: isAvailable)
     }
 }
 
