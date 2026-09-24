@@ -1285,15 +1285,15 @@ enum MediaStreamSource: String, CaseIterable, Identifiable, Codable {
 
     var title: String {
         switch self {
-        case .source1: return "Источник 1"
-        case .source2: return "Источник 2"
+        case .source1: return "Основной"
+        case .source2: return "Резервный"
         }
     }
 
     var settingsTitle: String {
         switch self {
-        case .source1: return "Источник 1 (Основной)"
-        case .source2: return "Источник 2 (Резервный)"
+        case .source1: return "Основной"
+        case .source2: return "Резервный"
         }
     }
 }

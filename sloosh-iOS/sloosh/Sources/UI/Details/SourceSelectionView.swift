@@ -154,11 +154,11 @@ struct SourceSelectionView: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(action: { dismiss() }) {
                         Image(systemName: "xmark")
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundStyle(.primary)
-                            .frame(width: 32, height: 32)
+                            .font(.system(size: 12, weight: .bold))
+                            .frame(width: 30, height: 30)
                             .glassEffect(.regular.interactive(), in: .circle)
                     }
+                    .foregroundStyle(.primary)
                     .buttonStyle(.plain)
                 }
 
@@ -225,19 +225,21 @@ struct SourceSelectionView: View {
                 .disabled(!isSourceAvailable(source))
             }
         } label: {
-            HStack(spacing: 5) {
+            HStack(spacing: 4) {
                 Text(selectedSource.title)
                     .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.primary)
                 Image(systemName: "chevron.up.chevron.down")
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(.secondary)
             }
-            .foregroundStyle(.primary)
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .glassEffect(.regular.interactive(), in: .capsule)
         }
+        .foregroundStyle(.primary)
     }
+
 
     @ViewBuilder
     private func sourceUnavailableView(for source: MediaStreamSource) -> some View {
