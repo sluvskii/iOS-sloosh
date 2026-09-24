@@ -31,6 +31,10 @@ struct SourceSelectionView: View {
     @AppStorage("preferredVideoQuality") private var preferredQuality: VideoQualityPreference = .ask
     @State private var showQualitySelection = false
 
+    @Namespace private var voiceoverNamespace
+    @Namespace private var seasonNamespace
+    @Namespace private var episodeNamespace
+
     // Precomputed immutable caches (calculated once on init)
     let allTranslations: [TranslationChipItem]
     let allSeasons: [Int]
@@ -62,17 +66,13 @@ struct SourceSelectionView: View {
         if result.isSerial {
             var allNames = Set<String>()
             for season in result.seasons {
-                var seasonNames = Set<String>()
                 let epNums = season.episodes.map { $0.episode }.sorted()
                 sEpisodes[season.season] = epNums
 
                 for ep in season.episodes {
-                    let epNames = Set(ep.translations.map { $0.name })
-                    seasonNames.formUnion(epNames)
+                    let epNames = ep.translations.map { $0.name }
                     allNames.formUnion(epNames)
-                    epTransMap[EpisodeKey(season: season.season, episode: ep.episode)] = epNames
                 }
-                sTransMap[season.season] = seasonNames
             }
 
             let sortedNames = Array(allNames).sorted()
@@ -84,6 +84,24 @@ struct SourceSelectionView: View {
                 )
             }
             seasonsList = result.seasons.map { $0.season }.sorted()
+
+            // Precompute canonical Set<String> for each episode and season
+            // This turns every runtime check into a pure O(1) set lookup
+            for season in result.seasons {
+                var seasonMatchedNames = Set<String>()
+                for ep in season.episodes {
+                    let rawEpNames = Set(ep.translations.map { $0.name })
+                    var availableForEp = Set<String>()
+                    for name in sortedNames {
+                        if rawEpNames.contains(name) || rawEpNames.contains(where: { allohaTranslationNamesMatch($0, name, exactOnly: true) }) {
+                            availableForEp.insert(name)
+                        }
+                    }
+                    epTransMap[EpisodeKey(season: season.season, episode: ep.episode)] = availableForEp
+                    seasonMatchedNames.formUnion(availableForEp)
+                }
+                sTransMap[season.season] = seasonMatchedNames
+            }
         } else if let movie = result.movie {
             let sortedNames = movie.translations.map { $0.name }.sorted()
             movieNames = Set(sortedNames)
@@ -119,12 +137,11 @@ struct SourceSelectionView: View {
         return seasonEpisodes[s] ?? []
     }
     
-    // Available checking
+    // Instant O(1) Available checking
     func isTranslationAvailable(_ name: String) -> Bool {
         if result.isSerial {
             guard let s = selectedSeason, let e = selectedEpisode else { return false }
-            guard let epNames = episodeTranslationsMap[EpisodeKey(season: s, episode: e)] else { return false }
-            return epNames.contains(where: { allohaTranslationNamesMatch($0, name, exactOnly: true) })
+            return episodeTranslationsMap[EpisodeKey(season: s, episode: e)]?.contains(name) ?? false
         } else {
             return movieTranslationNames.contains(name)
         }
@@ -132,14 +149,12 @@ struct SourceSelectionView: View {
     
     func isSeasonAvailable(_ seasonNum: Int) -> Bool {
         guard let tName = selectedTranslationName else { return true }
-        guard let sNames = seasonTranslationsMap[seasonNum] else { return false }
-        return sNames.contains(where: { allohaTranslationNamesMatch($0, tName, exactOnly: true) })
+        return seasonTranslationsMap[seasonNum]?.contains(tName) ?? false
     }
     
     func isEpisodeAvailable(_ episodeNum: Int) -> Bool {
         guard let s = selectedSeason, let tName = selectedTranslationName else { return true }
-        guard let epNames = episodeTranslationsMap[EpisodeKey(season: s, episode: episodeNum)] else { return false }
-        return epNames.contains(where: { allohaTranslationNamesMatch($0, tName, exactOnly: true) })
+        return episodeTranslationsMap[EpisodeKey(season: s, episode: episodeNum)]?.contains(tName) ?? false
     }
 
     func preferredTranslation(in translations: [AllohaTranslation], preferredName: String?) -> AllohaTranslation? {
@@ -170,21 +185,19 @@ struct SourceSelectionView: View {
             selectedEpisode = episodes.first ?? 1
         }
         if let t = selectedTranslationName, let e = selectedEpisode, !isEpisodeAvailable(e) {
-            if let seasonObj = result.seasons.first(where: { $0.season == s }),
-               let ep = seasonObj.episodes.first(where: { $0.episode == e }),
-               let bestT = bestTranslation(in: ep.translations, preferredName: selectedTranslationName) {
-                selectedTranslationName = bestT.name
+            if let epNames = episodeTranslationsMap[EpisodeKey(season: s, episode: e)],
+               let firstAvailable = allTranslations.first(where: { epNames.contains($0.name) }) {
+                selectedTranslationName = firstAvailable.name
             }
         }
     }
     
     func selectEpisode(_ e: Int) {
         selectedEpisode = e
-        if let t = selectedTranslationName, !isEpisodeAvailable(e), let s = selectedSeason {
-            if let seasonObj = result.seasons.first(where: { $0.season == s }),
-               let epObj = seasonObj.episodes.first(where: { $0.episode == e }),
-               let bestT = bestTranslation(in: epObj.translations, preferredName: selectedTranslationName) {
-                selectedTranslationName = bestT.name
+        if let s = selectedSeason, let t = selectedTranslationName, !isEpisodeAvailable(e) {
+            if let epNames = episodeTranslationsMap[EpisodeKey(season: s, episode: e)],
+               let firstAvailable = allTranslations.first(where: { epNames.contains($0.name) }) {
+                selectedTranslationName = firstAvailable.name
             }
         }
     }
@@ -395,11 +408,14 @@ struct SourceSelectionView: View {
                         WatchSelectorChip(
                             title: item.displayName,
                             isSelected: selectedTranslationName == item.name,
-                            isAvailable: isTranslationAvailable(item.name)
+                            isAvailable: isTranslationAvailable(item.name),
+                            namespace: voiceoverNamespace,
+                            namespaceId: "activeVoiceover"
                         ) {
-                            selectTranslation(item.name)
+                            withAnimation(.spring(response: 0.32, dampingFraction: 0.65)) {
+                                selectTranslation(item.name)
+                            }
                         }
-                        .equatable()
                     }
                 }
             }
@@ -418,11 +434,14 @@ struct SourceSelectionView: View {
                     WatchSelectorChip(
                         title: "\(s) сезон",
                         isSelected: selectedSeason == s,
-                        isAvailable: isSeasonAvailable(s)
+                        isAvailable: isSeasonAvailable(s),
+                        namespace: seasonNamespace,
+                        namespaceId: "activeSeason"
                     ) {
-                        selectSeason(s)
+                        withAnimation(.spring(response: 0.32, dampingFraction: 0.65)) {
+                            selectSeason(s)
+                        }
                     }
-                    .equatable()
                 }
             }
         }
@@ -440,11 +459,14 @@ struct SourceSelectionView: View {
                     WatchSelectorChip(
                         title: "\(e) серия",
                         isSelected: selectedEpisode == e,
-                        isAvailable: isEpisodeAvailable(e)
+                        isAvailable: isEpisodeAvailable(e),
+                        namespace: episodeNamespace,
+                        namespaceId: "activeEpisode"
                     ) {
-                        selectEpisode(e)
+                        withAnimation(.spring(response: 0.32, dampingFraction: 0.65)) {
+                            selectEpisode(e)
+                        }
                     }
-                    .equatable()
                 }
             }
         }
