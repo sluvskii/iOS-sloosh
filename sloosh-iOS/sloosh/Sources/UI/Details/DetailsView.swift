@@ -606,6 +606,8 @@ struct DetailsView: View {
     @State private var playerQuality: VideoQualityPreference? = nil
     @State private var playerSeriesResult: AllohaApiResult?
     @State private var playerCustomHeaders: [String: String]? = nil
+    @State private var playerStreamSource: MediaStreamSource = .source1
+    @State private var playerEpisodeSubtitles: [EpisodeKey: [PlaybackSubtitle]] = [:]
     @State private var favoriteBounce = false
     @State private var movieToDelete: DownloadItem? = nil
     @State private var showDeleteMovieAlert = false
@@ -999,11 +1001,15 @@ struct DetailsView: View {
                                 playerQuality = quality
                                 
                                 if source == .source2, let collaps = wrapper.collapsResult {
+                                    playerStreamSource = .source2
+                                    playerEpisodeSubtitles = collaps.episodeSubtitles
                                     playerSeriesResult = collaps.apiResult
                                     playerVoices = collaps.apiResult.allTranslationNames
                                     playerSubtitles = subs
                                     playerCustomHeaders = headers
                                 } else if let alloha = wrapper.allohaResult {
+                                    playerStreamSource = .source1
+                                    playerEpisodeSubtitles = [:]
                                     playerSeriesResult = alloha
                                     playerVoices = alloha.allTranslationNames
                                     playerSubtitles = []
@@ -1061,6 +1067,8 @@ struct DetailsView: View {
                 playerQuality = nil
                 playerSeriesResult = nil
                 playerCustomHeaders = nil
+                playerStreamSource = .source1
+                playerEpisodeSubtitles = [:]
             }) {
                 if let details = viewModel.details {
                     let fallbackTitle = directPlaybackTitle ?? details.title ?? details.originalTitle ?? ""
@@ -1082,7 +1090,9 @@ struct DetailsView: View {
                             tmdbId: playerTmdbId,
                             posterUrl: details.displayPosterUrl,
                             backdropUrl: details.displayBackdropUrl ?? details.displayPosterUrl,
-                            logoUrl: details.displayLogoUrl
+                            logoUrl: details.displayLogoUrl,
+                            streamSource: playerStreamSource,
+                            episodeSubtitles: playerEpisodeSubtitles
                         )
                     } else if let streamUrl = playerStreamUrl {
                         PlayerView(
@@ -1102,7 +1112,9 @@ struct DetailsView: View {
                             tmdbId: playerTmdbId,
                             posterUrl: details.displayPosterUrl,
                             backdropUrl: details.displayBackdropUrl ?? details.displayPosterUrl,
-                            logoUrl: details.displayLogoUrl
+                            logoUrl: details.displayLogoUrl,
+                            streamSource: playerStreamSource,
+                            episodeSubtitles: playerEpisodeSubtitles
                         )
                     } else {
                         ZStack {
@@ -1158,6 +1170,9 @@ struct DetailsView: View {
                     playerSubtitles = pending.subtitles
                     playerQuality = pending.quality
                     playerSeriesResult = pending.seriesResult
+                    playerCustomHeaders = pending.customHeaders
+                    playerStreamSource = pending.source
+                    playerEpisodeSubtitles = pending.episodeSubtitles
                     showPlayer = true
                 }
             }

@@ -54,23 +54,24 @@ class HlsProxyServer {
         // Завершаем фоновую задачу при возврате в активный режим
         endBackgroundTaskIfNeeded()
 
-        let params: (headers: [String: String], voices: [String], subtitles: [PlaybackSubtitle], mediaId: String)? = stateLock.withLock {
-            // Перезапускаем если mediaId есть, но слушатель мёртв (nil или упавший)
-            if !self.mediaId.isEmpty && !self.isListenerAlive {
-                return (self.headers, self.voices, self.subtitles, self.mediaId)
+        let params: (headers: [String: String], voices: [String], subtitles: [PlaybackSubtitle], mediaId: String, preferredVoiceName: String?)? = stateLock.withLock {
+            if !self.mediaId.isEmpty {
+                return (self.headers, self.voices, self.subtitles, self.mediaId, self.preferredVoiceName)
             }
             return nil
         }
 
         if let p = params {
-            print("HlsProxyServer: restarting listener on foreground (was dead)")
-            // Очищаем мёртвый listener перед перезапуском
-            stateLock.withLock {
-                self.listener?.cancel()
-                self.listener = nil
-                self.isListenerAlive = false
+            let needsRestart = stateLock.withLock { !self.isListenerAlive || self.listener == nil }
+            if needsRestart {
+                print("HlsProxyServer: restarting listener on foreground (was dead)")
+                stateLock.withLock {
+                    self.listener?.cancel()
+                    self.listener = nil
+                    self.isListenerAlive = false
+                }
+                start(headers: p.headers, voices: p.voices, subtitles: p.subtitles, mediaId: p.mediaId, preferredVoiceName: p.preferredVoiceName)
             }
-            start(headers: p.headers, voices: p.voices, subtitles: p.subtitles, mediaId: p.mediaId)
         }
     }
 
@@ -344,8 +345,8 @@ class HlsProxyServer {
     }
     
     private func fetchAndServe(realUrl: URL, isPlaylist: Bool, targetQuality: String? = nil, incomingHeaders: [String: String], connection: NWConnection) async {
-        let (currentHeaders, currentVoices, currentSubtitles, currentMediaId) = stateLock.withLock {
-            (self.headers, self.voices, self.subtitles, self.mediaId)
+        let (currentHeaders, currentVoices, currentSubtitles, currentMediaId, currentPreferredVoice) = stateLock.withLock {
+            (self.headers, self.voices, self.subtitles, self.mediaId, self.preferredVoiceName)
         }
 
         var request = URLRequest(url: realUrl)
@@ -392,7 +393,8 @@ class HlsProxyServer {
                             voices: currentVoices,
                             subtitles: currentSubtitles,
                             mediaId: currentMediaId,
-                            targetQuality: targetQuality
+                            targetQuality: targetQuality,
+                            preferredVoiceName: currentPreferredVoice
                         )
 
                         AppDiagnostics.shared.log("HlsProxyServer: rewritten master playlist:\n\(playlistRewritten)")

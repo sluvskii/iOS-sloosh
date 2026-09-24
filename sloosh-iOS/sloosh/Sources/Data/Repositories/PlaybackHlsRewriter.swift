@@ -32,6 +32,7 @@ class PlaybackHlsRewriter {
         subtitles: [PlaybackSubtitle] = [],
         mediaId: String,
         targetQuality: String? = nil,
+        preferredVoiceName: String? = nil,
         rewriteVariantUris: Bool = false,
         stripExistingSubtitles: Bool = false
     ) -> String {
@@ -72,7 +73,7 @@ class PlaybackHlsRewriter {
                     continue
                 }
             }
-            output.append(rewriteMediaLine(line, voices: voices))
+            output.append(rewriteMediaLine(line, voices: voices, preferredVoiceName: preferredVoiceName))
         }
 
         if hasMediaTags && !hasEmittedVersion && !output.contains(where: { $0.hasPrefix("#EXT-X-VERSION:") }) {
@@ -299,7 +300,7 @@ class PlaybackHlsRewriter {
         return result
     }
     
-    private static func rewriteMediaLine(_ line: String, voices: [String]) -> String {
+    private static func rewriteMediaLine(_ line: String, voices: [String], preferredVoiceName: String? = nil) -> String {
         guard line.hasPrefix("#EXT-X-MEDIA") else { return line }
         guard line.contains("TYPE=AUDIO") else { return line }
         guard !voices.isEmpty else { return line }
@@ -330,6 +331,13 @@ class PlaybackHlsRewriter {
 
         var output = addOrReplaceAttribute(line, key: "NAME", value: voiceName)
         output = addOrReplaceAttribute(output, key: "LANGUAGE", value: normalizedLang)
+
+        if let preferred = preferredVoiceName, !preferred.isEmpty {
+            let isMatch = allohaTranslationNamesMatch(voiceName, preferred, exactOnly: false)
+            output = addOrReplaceAttribute(output, key: "DEFAULT", value: isMatch ? "YES" : "NO", quoted: false)
+            output = addOrReplaceAttribute(output, key: "AUTOSELECT", value: isMatch ? "YES" : "NO", quoted: false)
+        }
+
         return output
     }
 
@@ -382,10 +390,17 @@ class PlaybackHlsRewriter {
         return upper.contains("TYPE=SUBTITLES") || upper.contains("TYPE=CLOSED-CAPTIONS")
     }
     
-    private static func addOrReplaceAttribute(_ line: String, key: String, value: String) -> String {
-        let pattern = "\\b\(NSRegularExpression.escapedPattern(for: key))=\"([^\"]*)\""
-        let escapedValue = escapeAttr(value)
-        let newAttr = "\(key)=\"\(escapedValue)\""
+    private static func addOrReplaceAttribute(_ line: String, key: String, value: String, quoted: Bool = true) -> String {
+        let pattern: String
+        let newAttr: String
+        if quoted {
+            pattern = "\\b\(NSRegularExpression.escapedPattern(for: key))=\"([^\"]*)\""
+            let escapedValue = escapeAttr(value)
+            newAttr = "\(key)=\"\(escapedValue)\""
+        } else {
+            pattern = "\\b\(NSRegularExpression.escapedPattern(for: key))=([^,\\s]+)"
+            newAttr = "\(key)=\(value)"
+        }
         
         if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
            let match = regex.firstMatch(in: line, options: [], range: NSRange(line.startIndex..., in: line)),
@@ -423,7 +438,8 @@ class PlaybackHlsRewriter {
     }
     
     private static func escapeAttr(_ s: String) -> String {
-        return s.replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
+        return s.replacingOccurrences(of: "\\", with: "")
+            .replacingOccurrences(of: "\"", with: "'")
     }
 }
+
