@@ -577,8 +577,7 @@ class AllohaTrustedSessionDelegate: NSObject, @preconcurrency URLSessionDelegate
         "videocdn.tv", "dhklxm.ru", "cdnhl.ru"
     ]
     
-    @MainActor
-    func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge, completionHandler: @escaping @MainActor @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
+    nonisolated func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge, completionHandler: @escaping @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
         guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
               let serverTrust = challenge.protectionSpace.serverTrust else {
             completionHandler(.performDefaultHandling, nil)
