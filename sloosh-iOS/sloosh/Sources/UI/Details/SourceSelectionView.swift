@@ -13,10 +13,12 @@ struct TranslationChipItem: Identifiable, Hashable {
 
 struct SourceSelectionView: View {
     let mode: SourceSelectionMode
+    let isLoading: Bool
     let source1Result: AllohaApiResult?
     let source2Result: CollapsParser.ParseResult?
     let kpId: Int?
     let details: MediaDetailsDto?
+    let fallbackTitle: String?
     let onAction: (AllohaTranslation, Int?, Int?, VideoQualityPreference, MediaStreamSource, [PlaybackSubtitle], [String: String]) -> Void
     @Environment(\.dismiss) private var dismiss
 
@@ -29,13 +31,16 @@ struct SourceSelectionView: View {
         result: AllohaApiResult,
         kpId: Int?,
         details: MediaDetailsDto?,
+        fallbackTitle: String? = nil,
         onAction: @escaping (AllohaTranslation, Int?, Int?, VideoQualityPreference) -> Void
     ) {
         self.mode = mode
+        self.isLoading = false
         self.source1Result = result
         self.source2Result = nil
         self.kpId = kpId
         self.details = details
+        self.fallbackTitle = fallbackTitle
         self.onAction = { translation, season, episode, quality, _, _, _ in
             onAction(translation, season, episode, quality)
         }
@@ -44,17 +49,21 @@ struct SourceSelectionView: View {
 
     init(
         mode: SourceSelectionMode,
-        source1Result: AllohaApiResult?,
-        source2Result: CollapsParser.ParseResult?,
-        kpId: Int?,
-        details: MediaDetailsDto?,
+        isLoading: Bool = false,
+        source1Result: AllohaApiResult? = nil,
+        source2Result: CollapsParser.ParseResult? = nil,
+        kpId: Int? = nil,
+        details: MediaDetailsDto? = nil,
+        fallbackTitle: String? = nil,
         onAction: @escaping (AllohaTranslation, Int?, Int?, VideoQualityPreference, MediaStreamSource, [PlaybackSubtitle], [String: String]) -> Void
     ) {
         self.mode = mode
+        self.isLoading = isLoading
         self.source1Result = source1Result
         self.source2Result = source2Result
         self.kpId = kpId
         self.details = details
+        self.fallbackTitle = fallbackTitle
         self.onAction = onAction
 
         let saved = UserDefaults.standard.string(forKey: "preferredStreamSource")
@@ -95,9 +104,44 @@ struct SourceSelectionView: View {
         }
     }
 
+    private var hasAnySource: Bool {
+        isSourceAvailable(.source1) || isSourceAvailable(.source2)
+    }
+
+    private var isLikelySerial: Bool {
+        if let isSerial = details?.isSerial { return isSerial }
+        if let type = details?.type { return type == "tv" || type == "serial" }
+        return false
+    }
+
+    private func adjustSourceIfNeeded() {
+        guard !isLoading else { return }
+        let hasSource1 = isSourceAvailable(.source1)
+        let hasSource2 = isSourceAvailable(.source2)
+
+        guard hasSource1 || hasSource2 else { return }
+
+        if preferredSource == .source2 {
+            if hasSource2 {
+                if selectedSource != .source2 { selectedSource = .source2 }
+            } else if hasSource1 {
+                if selectedSource != .source1 { selectedSource = .source1 }
+            }
+        } else {
+            if hasSource1 {
+                if selectedSource != .source1 { selectedSource = .source1 }
+            } else if hasSource2 {
+                if selectedSource != .source2 { selectedSource = .source2 }
+            }
+        }
+    }
+
     private var currentTitle: String {
         if let t = details?.title, !t.isEmpty {
             return t
+        }
+        if let fallback = fallbackTitle, !fallback.isEmpty {
+            return fallback
         }
         if selectedSource == .source1, let t = source1Result?.title, !t.isEmpty {
             return t
@@ -111,44 +155,19 @@ struct SourceSelectionView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                if selectedSource == .source1 {
-                    if let res1 = source1Result, (!res1.seasons.isEmpty || res1.movie != nil) {
-                        SingleSourceContentView(
-                            mode: mode,
-                            source: .source1,
-                            result: res1,
-                            kpId: kpId,
-                            details: details,
-                            episodeSubtitles: [:],
-                            movieSubtitles: [],
-                            customHeaders: [:]
-                        ) { translation, season, episode, quality, subs, headers in
-                            onAction(translation, season, episode, quality, .source1, subs, headers)
-                            dismiss()
-                        }
-                    } else {
-                        sourceUnavailableView(for: .source1)
-                    }
+                if isLoading {
+                    skeletonContentView
+                        .transition(.opacity)
+                } else if !hasAnySource {
+                    emptyContentView
+                        .transition(.opacity)
                 } else {
-                    if let res2 = source2Result?.apiResult, (!res2.seasons.isEmpty || res2.movie != nil) {
-                        SingleSourceContentView(
-                            mode: mode,
-                            source: .source2,
-                            result: res2,
-                            kpId: kpId,
-                            details: details,
-                            episodeSubtitles: source2Result?.episodeSubtitles ?? [:],
-                            movieSubtitles: source2Result?.movieSubtitles ?? [],
-                            customHeaders: CollapsRepository.streamHeaders
-                        ) { translation, season, episode, quality, subs, headers in
-                            onAction(translation, season, episode, quality, .source2, subs, headers)
-                            dismiss()
-                        }
-                    } else {
-                        sourceUnavailableView(for: .source2)
-                    }
+                    currentSourceContentView
+                        .transition(.opacity)
                 }
             }
+            .animation(.easeInOut(duration: 0.25), value: isLoading)
+            .animation(.easeInOut(duration: 0.25), value: selectedSource)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -168,6 +187,20 @@ struct SourceSelectionView: View {
             }
             .scrollContentBackground(.hidden)
             .background(Color.clear)
+            .onAppear {
+                adjustSourceIfNeeded()
+            }
+            .onChange(of: isLoading) { _, loading in
+                if !loading {
+                    adjustSourceIfNeeded()
+                }
+            }
+            .onChange(of: source1Result != nil) { _, _ in
+                adjustSourceIfNeeded()
+            }
+            .onChange(of: source2Result != nil) { _, _ in
+                adjustSourceIfNeeded()
+            }
         }
         .presentationBackground { Color.clear.glassEffect(in: .rect) }
         .presentationDragIndicator(.visible)
@@ -216,16 +249,129 @@ struct SourceSelectionView: View {
                             Text(source.title)
                         }
                     }
-                    .disabled(!isSourceAvailable(source))
+                    .disabled(isLoading ? false : !isSourceAvailable(source))
                 }
             }
         } label: {
             Image(systemName: "server.rack")
         }
         .tint(.primary)
+        .disabled(isLoading)
+        .opacity(isLoading ? 0.45 : 1.0)
     }
 
+    @ViewBuilder
+    private var skeletonContentView: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                SourceSelectionSkeletonSection(
+                    title: "Озвучка",
+                    chipWidths: [96, 128, 108, 116, 92, 104]
+                )
 
+                if isLikelySerial {
+                    SourceSelectionSkeletonSection(
+                        title: "Сезон",
+                        chipWidths: [88, 88, 88]
+                    )
+                    SourceSelectionSkeletonSection(
+                        title: "Серия",
+                        chipWidths: [82, 82, 82, 82, 82, 82]
+                    )
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .contentMargins(.horizontal, 20, for: .scrollContent)
+        .contentMargins(.top, 16, for: .scrollContent)
+        .contentMargins(.bottom, 28, for: .scrollContent)
+        .safeAreaInset(edge: .bottom) {
+            skeletonBottomActionButton
+        }
+    }
+
+    @ViewBuilder
+    private var skeletonBottomActionButton: some View {
+        HStack(spacing: 8) {
+            Image(systemName: mode == .play ? "play.fill" : "arrow.down.circle.fill")
+                .font(.system(size: 18, weight: .black))
+            Text(mode == .play ? "Смотреть" : "Скачать")
+                .font(.system(size: 19, weight: .heavy))
+        }
+        .foregroundStyle(Color.black.opacity(0.28))
+        .padding(.horizontal, 26)
+        .frame(height: 50)
+        .background(
+            Capsule()
+                .fill(Color.white.opacity(0.35))
+        )
+        .glassEffect(.regular, in: .capsule)
+        .shadow(color: Color.black.opacity(0.12), radius: 10, x: 0, y: 4)
+        .shimmer()
+        .padding(.bottom, 8)
+    }
+
+    @ViewBuilder
+    private var emptyContentView: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "film.stack")
+                .font(.system(size: 42, weight: .semibold))
+                .foregroundStyle(.secondary)
+
+            Text("Видео пока недоступно")
+                .font(.system(size: 20, weight: .bold))
+                .foregroundStyle(.primary)
+
+            Text("Этот проект пока отсутствует в источниках стриминга или еще не вышел в релиз.")
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.vertical, 80)
+    }
+
+    @ViewBuilder
+    private var currentSourceContentView: some View {
+        if selectedSource == .source1 {
+            if let res1 = source1Result, (!res1.seasons.isEmpty || res1.movie != nil) {
+                SingleSourceContentView(
+                    mode: mode,
+                    source: .source1,
+                    result: res1,
+                    kpId: kpId,
+                    details: details,
+                    episodeSubtitles: [:],
+                    movieSubtitles: [],
+                    customHeaders: [:]
+                ) { translation, season, episode, quality, subs, headers in
+                    onAction(translation, season, episode, quality, .source1, subs, headers)
+                    dismiss()
+                }
+            } else {
+                sourceUnavailableView(for: .source1)
+            }
+        } else {
+            if let res2 = source2Result?.apiResult, (!res2.seasons.isEmpty || res2.movie != nil) {
+                SingleSourceContentView(
+                    mode: mode,
+                    source: .source2,
+                    result: res2,
+                    kpId: kpId,
+                    details: details,
+                    episodeSubtitles: source2Result?.episodeSubtitles ?? [:],
+                    movieSubtitles: source2Result?.movieSubtitles ?? [],
+                    customHeaders: CollapsRepository.streamHeaders
+                ) { translation, season, episode, quality, subs, headers in
+                    onAction(translation, season, episode, quality, .source2, subs, headers)
+                    dismiss()
+                }
+            } else {
+                sourceUnavailableView(for: .source2)
+            }
+        }
+    }
 
     @ViewBuilder
     private func sourceUnavailableView(for source: MediaStreamSource) -> some View {
@@ -760,3 +906,28 @@ struct SingleSourceContentView: View {
         .padding(.bottom, 8)
     }
 }
+
+// MARK: - Skeleton Section
+
+struct SourceSelectionSkeletonSection: View {
+    let title: String
+    let chipWidths: [CGFloat]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(title)
+                .font(.system(size: 20, weight: .bold))
+                .foregroundStyle(.primary)
+
+            FlowLayout(spacing: 8) {
+                ForEach(Array(chipWidths.enumerated()), id: \.offset) { _, width in
+                    Capsule()
+                        .fill(Color(UIColor.secondarySystemFill))
+                        .frame(width: width, height: 32)
+                }
+            }
+        }
+        .shimmer()
+    }
+}
+
