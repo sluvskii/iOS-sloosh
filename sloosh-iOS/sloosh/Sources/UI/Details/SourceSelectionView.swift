@@ -154,12 +154,8 @@ struct SourceSelectionView: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(action: { dismiss() }) {
                         Image(systemName: "xmark")
-                            .font(.system(size: 12, weight: .bold))
-                            .padding(8)
                     }
-                    .foregroundStyle(.primary)
-                    .buttonStyle(.plain)
-                    .glassEffect(.regular.interactive(), in: .circle)
+                    .tint(.primary)
                 }
 
                 ToolbarItem(placement: .principal) {
@@ -211,16 +207,9 @@ struct SourceSelectionView: View {
         Menu {
             ForEach(MediaStreamSource.allCases) { source in
                 Button {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                        selectSource(source)
-                    }
+                    selectSource(source)
                 } label: {
-                    HStack {
-                        Text(source.title)
-                        if selectedSource == source {
-                            Image(systemName: "checkmark")
-                        }
-                    }
+                    Label(source.title, systemImage: selectedSource == source ? "checkmark" : "")
                 }
                 .disabled(!isSourceAvailable(source))
             }
@@ -230,14 +219,11 @@ struct SourceSelectionView: View {
                     .font(.system(size: 13, weight: .semibold))
                 Image(systemName: "chevron.up.chevron.down")
                     .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(.secondary)
             }
-            .foregroundStyle(.primary)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
         }
-        .glassEffect(.regular.interactive(), in: .capsule)
+        .tint(.primary)
     }
+
 
 
     @ViewBuilder
