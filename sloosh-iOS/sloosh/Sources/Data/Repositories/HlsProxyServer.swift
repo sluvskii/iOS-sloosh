@@ -308,7 +308,8 @@ class HlsProxyServer {
                 // This fixes signed CDN URLs (VKVideo, etc.) that return m3u8 without extension.
                 let pathImpliesPlaylist = urlComponents.path.lowercased().hasSuffix(".m3u8")
                 let isPlaylist = decodedString.contains(".m3u8") || pathImpliesPlaylist
-                await fetchAndServe(realUrl: realUrl, isPlaylist: isPlaylist, incomingHeaders: incomingHeaders, connection: connection)
+                let targetQuality = urlComponents.queryItems?.first(where: { $0.name == "q" || $0.name == "quality" })?.value
+                await fetchAndServe(realUrl: realUrl, isPlaylist: isPlaylist, targetQuality: targetQuality, incomingHeaders: incomingHeaders, connection: connection)
             } else {
                 self.send404(on: connection)
             }
@@ -342,7 +343,7 @@ class HlsProxyServer {
         }
     }
     
-    private func fetchAndServe(realUrl: URL, isPlaylist: Bool, incomingHeaders: [String: String], connection: NWConnection) async {
+    private func fetchAndServe(realUrl: URL, isPlaylist: Bool, targetQuality: String? = nil, incomingHeaders: [String: String], connection: NWConnection) async {
         let (currentHeaders, currentVoices, currentSubtitles, currentMediaId) = stateLock.withLock {
             (self.headers, self.voices, self.subtitles, self.mediaId)
         }
@@ -390,7 +391,8 @@ class HlsProxyServer {
                             master: content,
                             voices: currentVoices,
                             subtitles: currentSubtitles,
-                            mediaId: currentMediaId
+                            mediaId: currentMediaId,
+                            targetQuality: targetQuality
                         )
 
                         AppDiagnostics.shared.log("HlsProxyServer: rewritten master playlist:\n\(playlistRewritten)")
