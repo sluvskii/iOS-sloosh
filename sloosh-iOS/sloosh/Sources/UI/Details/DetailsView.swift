@@ -730,8 +730,8 @@ struct DetailsView: View {
         }
     }
 
-    private static var dominantColorCache: [String: UIColor] = [:]
-    private static let dominantColorCacheLock = NSLock()
+    nonisolated(unsafe) private static var dominantColorCache: [String: UIColor] = [:]
+    nonisolated(unsafe) private static let dominantColorCacheLock = NSLock()
 
     private func fetchAverageColor(from url: URL?) async -> UIColor? {
         guard let url else { return nil }
@@ -1012,14 +1012,14 @@ struct DetailsView: View {
                                 
                                 selectedIframeUrl = translation.iframeUrl.isEmpty ? nil : translation.iframeUrl
                                 playerVoiceover = translation.name
-                                playerStreamUrl = translation.streamUrl.isEmpty ? nil : translation.streamUrl
+                                playerStreamUrl = (translation.streamUrl?.isEmpty == false) ? translation.streamUrl : nil
                                 
                                 pendingPlayerLaunch = true
                                 showSourceSheet = false
                                 viewModel.saveAllohaTranslation(translation.name)
                             } else {
                                 if let details = viewModel.details {
-                                    let directUrl = (source == .source2) ? (translation.streamUrl.isEmpty ? nil : translation.streamUrl) : nil
+                                    let directUrl = (source == .source2) ? ((translation.streamUrl?.isEmpty == false) ? translation.streamUrl : nil) : nil
                                     let headers = (source == .source2) ? CollapsRepository.streamHeaders : nil
                                     DownloadManager.shared.startDownload(
                                         details: details,
@@ -2613,7 +2613,7 @@ struct EpisodeDetailsSheet: View {
             guard let seasonObj = result.seasons.first(where: { $0.season == item.season }),
                   let epObj = seasonObj.episodes.first(where: { $0.episode == item.episode }) else { return }
             
-            guard let translation = bestTranslation(in: epObj.translations, preferredName: savedVoiceover) else { return }
+            guard let translation = bestTranslation(in: epObj.translations, preferredName: savedVoiceover ?? globalVoiceover) else { return }
             
             let preferredQuality = VideoQualityPreference(rawValue: UserDefaults.standard.string(forKey: "preferredVideoQuality") ?? "Спрашивать каждый раз") ?? .ask
             DownloadManager.shared.startDownload(
