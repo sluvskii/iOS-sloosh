@@ -951,6 +951,7 @@ final class AllohaRepository: @unchecked Sendable {
                             }
                             iframe = injectTranslationId(tKey, into: iframe)
                             iframe = injectSeasonEpisode(season: seasonNum, episode: episodeNum, into: iframe)
+                            let transName = tDict["translation"] as? String ?? tDict["name"] as? String ?? "Unknown"
                             let cleanTitle = normalizedAllohaTranslationName(transName)
                             let finalTitle = cleanTitle.isEmpty ? transName : cleanTitle
                             parsedTrans.append(AllohaTranslation(id: tKey, name: finalTitle, iframeUrl: iframe, streamUrl: nil))
