@@ -192,15 +192,13 @@ private struct BackdropPagingRepresentable: UIViewControllerRepresentable {
         // MARK: - UIPageViewControllerDelegate
         func pageViewController(_ pageViewController: UIPageViewController, didFinishAnimating finished: Bool, previousViewControllers: [UIViewController], transitionCompleted completed: Bool) {
             isTransitioning = false
-            guard completed,
-                  let currentVC = pageViewController.viewControllers?.first as? BackdropSlideViewController else {
-                return
-            }
-            let newIndex = currentVC.index
-            currentIndex = newIndex
-            if parent.selectedIndex != newIndex {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    parent.selectedIndex = newIndex
+            if let currentVC = pageViewController.viewControllers?.first as? BackdropSlideViewController {
+                let actualIndex = currentVC.index
+                currentIndex = actualIndex
+                if parent.selectedIndex != actualIndex {
+                    withAnimation(.easeInOut(duration: 0.2)) {
+                        parent.selectedIndex = actualIndex
+                    }
                 }
             }
             startTimer()
@@ -273,30 +271,12 @@ private struct BackdropPagingRepresentable: UIViewControllerRepresentable {
         func scrollViewDidEndDragging(_ scrollView: UIScrollView, willDecelerate decelerate: Bool) {
             if !decelerate {
                 isUserDragging = false
-                if let currentVC = pageViewController?.viewControllers?.first as? BackdropSlideViewController {
-                    let newIndex = currentVC.index
-                    currentIndex = newIndex
-                    if parent.selectedIndex != newIndex {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            parent.selectedIndex = newIndex
-                        }
-                    }
-                }
                 startTimer()
             }
         }
 
         func scrollViewDidEndDecelerating(_ scrollView: UIScrollView) {
             isUserDragging = false
-            if let currentVC = pageViewController?.viewControllers?.first as? BackdropSlideViewController {
-                let newIndex = currentVC.index
-                currentIndex = newIndex
-                if parent.selectedIndex != newIndex {
-                    withAnimation(.easeInOut(duration: 0.2)) {
-                        parent.selectedIndex = newIndex
-                    }
-                }
-            }
             startTimer()
         }
 
@@ -648,6 +628,88 @@ struct DetailsView: View {
             return urls[selectedBackdropIndex]
         }
         return details.displayBackdropUrl
+    }
+
+    @ViewBuilder
+    private func backdropContextMenu(for details: MediaDetailsDto) -> some View {
+        let activeBackdrop = currentBackdropUrl(for: details)
+        let allBackdrops = details.displayBackdropUrls
+        let currentIndex = (selectedBackdropIndex >= 0 && selectedBackdropIndex < allBackdrops.count) ? selectedBackdropIndex : 0
+
+        Button {
+            Task { await saveImage(from: activeBackdrop, label: "обложка") }
+        } label: {
+            Label(
+                allBackdrops.count > 1 ? "Сохранить текущую обложку (\(currentIndex + 1) из \(allBackdrops.count))" : "Сохранить обложку",
+                systemImage: "photo.badge.arrow.down"
+            )
+        }
+
+        if allBackdrops.count > 1 {
+            Menu {
+                Button {
+                    Task {
+                        for (i, urlStr) in allBackdrops.enumerated() {
+                            await saveImage(from: urlStr, label: "обложка \(i + 1)")
+                        }
+                    }
+                } label: {
+                    Label("Сохранить все (\(allBackdrops.count))", systemImage: "square.and.arrow.down.on.square.fill")
+                }
+
+                Divider()
+
+                ForEach(Array(allBackdrops.enumerated()), id: \.offset) { idx, urlStr in
+                    Button {
+                        Task { await saveImage(from: urlStr, label: "обложка \(idx + 1)") }
+                    } label: {
+                        if idx == currentIndex {
+                            Label("Обложка \(idx + 1) (текущая)", systemImage: "checkmark.circle.fill")
+                        } else {
+                            Label("Обложка \(idx + 1)", systemImage: "photo")
+                        }
+                    }
+                }
+            } label: {
+                Label("Выбрать из всех обложек", systemImage: "photo.stack")
+            }
+        }
+
+        Button {
+            Task { await saveImage(from: details.displayPosterUrl, label: "постер") }
+        } label: {
+            Label("Сохранить постер", systemImage: "photo")
+        }
+
+        if details.displayLogoUrl != nil {
+            Button {
+                Task { await saveImage(from: details.displayLogoUrl, label: "логотип") }
+            } label: {
+                Label("Сохранить логотип", systemImage: "text.below.photo")
+            }
+        }
+
+        Divider()
+
+        Button {
+            shareImages(posterUrl: details.displayPosterUrl, backdropUrl: activeBackdrop)
+        } label: {
+            Label("Поделиться", systemImage: "square.and.arrow.up")
+        }
+    }
+
+    @ViewBuilder
+    private func backdropContextMenuPreview(for details: MediaDetailsDto) -> some View {
+        let activeBackdrop = currentBackdropUrl(for: details)
+        AsyncCachedImage(url: URL(string: activeBackdrop ?? details.displayPosterUrl ?? ""),
+                         fallbackUrl: URL(string: details.displayPosterUrl ?? "")) {
+            Rectangle().fill(Color.gray.opacity(0.3)).frame(width: 300, height: 200)
+        } content: { image in
+            Image(uiImage: image).resizable().aspectRatio(contentMode: .fill)
+                .frame(width: 300, height: 200).clipped()
+        } fallback: {
+            Rectangle().fill(Color.gray.opacity(0.3)).frame(width: 300, height: 200)
+        }
     }
 
     @AppStorage("hasSeenSourceSelectionTooltip") private var hasSeenSourceSelectionTooltip = false
@@ -1402,40 +1464,9 @@ struct DetailsView: View {
                     }
                     .frame(height: baseHeight)
                     .contextMenu {
-                        let activeBackdrop = currentBackdropUrl(for: details)
-                        Button {
-                            Task { await saveImage(from: activeBackdrop, label: "обложка") }
-                        } label: {
-                            Label("Сохранить обложку", systemImage: "photo.badge.arrow.down")
-                        }
-                        Button {
-                            Task { await saveImage(from: details.displayPosterUrl, label: "постер") }
-                        } label: {
-                            Label("Сохранить постер", systemImage: "photo")
-                        }
-                        if details.displayLogoUrl != nil {
-                            Button {
-                                Task { await saveImage(from: details.displayLogoUrl, label: "логотип") }
-                            } label: {
-                                Label("Сохранить логотип", systemImage: "text.below.photo")
-                            }
-                        }
-                        Divider()
-                        Button {
-                            shareImages(posterUrl: details.displayPosterUrl, backdropUrl: activeBackdrop)
-                        } label: {
-                            Label("Поделиться", systemImage: "square.and.arrow.up")
-                        }
+                        backdropContextMenu(for: details)
                     } preview: {
-                        AsyncCachedImage(url: URL(string: details.displayBackdropUrl ?? details.displayPosterUrl ?? ""),
-                                         fallbackUrl: URL(string: details.displayPosterUrl ?? "")) {
-                            Rectangle().fill(Color.gray.opacity(0.3)).frame(width: 300, height: 200)
-                        } content: { image in
-                            Image(uiImage: image).resizable().aspectRatio(contentMode: .fill)
-                                .frame(width: 300, height: 200).clipped()
-                        } fallback: {
-                            Rectangle().fill(Color.gray.opacity(0.3)).frame(width: 300, height: 200)
-                        }
+                        backdropContextMenuPreview(for: details)
                     }
 
                     VStack(alignment: .center, spacing: 12) {
@@ -1600,6 +1631,11 @@ struct DetailsView: View {
                             .offset(y: offset)
                         }
                         .frame(height: baseHeight)
+                        .contextMenu {
+                            backdropContextMenu(for: details)
+                        } preview: {
+                            backdropContextMenuPreview(for: details)
+                        }
 
                         VStack(spacing: 0) {
                             VStack(alignment: .center, spacing: 12) {
