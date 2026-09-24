@@ -1365,6 +1365,16 @@ class PlayerViewModel: ObservableObject {
         let options = group.options
         logDebug("applySubtitleToPlayer: target='\(subtitle.label)', url='\(subtitle.url)', available options=\(options.map { $0.displayName })")
 
+        // External VTT/SRT — rendered by SubtitleOverlayView.
+        // MUST deselect native legible track to prevent double subtitle rendering.
+        if subtitle.url.hasPrefix("http://") || subtitle.url.hasPrefix("https://") {
+            if group.allowsEmptySelection {
+                item.select(nil, in: group)
+            }
+            logDebug("applySubtitleToPlayer: external VTT — deselected native legible track to prevent duplicate rendering")
+            return
+        }
+
         // 0. Native track index if url is "native_X"
         if subtitle.url.hasPrefix("native_"),
            let idxStr = subtitle.url.components(separatedBy: "_").last,
@@ -1420,6 +1430,7 @@ class PlayerViewModel: ObservableObject {
             logDebug("applySubtitleToPlayer: fallback selected first option '\(first.displayName)'")
         }
     }
+
 
     /// Переключает озвучку без закрытия плеера с сохранением позиции воспроизведения и качества видео
     func switchVoiceover(to name: String, at index: Int? = nil) {
@@ -3084,9 +3095,33 @@ class PlayerViewModel: ObservableObject {
         let nativeOptions = group.options
         logDebug("syncNativeSubtitleTracks: native legible options count=\(nativeOptions.count), names=\(nativeOptions.map { $0.displayName })")
 
+        // Always deselect native legible if we already have an active external VTT.
+        // This prevents AVPlayer from rendering duplicates over our SubtitleOverlayView.
+        if let current = self.currentSubtitle,
+           current.url.hasPrefix("http://") || current.url.hasPrefix("https://") {
+            if group.allowsEmptySelection {
+                item.select(nil, in: group)
+            }
+            logDebug("syncNativeSubtitleTracks: external VTT active — native legible deselected")
+            return
+        }
+
         if !nativeOptions.isEmpty {
             for (index, opt) in nativeOptions.enumerated() {
+                // Skip dummy Closed-Captions tracks (e.g. Alloha's empty "CC" track)
+                let upperName = opt.displayName.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+                if upperName == "CC" || upperName == "CLOSED CAPTIONS" {
+                    logDebug("syncNativeSubtitleTracks: skipping dummy CC track '\(opt.displayName)'")
+                    continue
+                }
+                // Skip if we already have an external VTT track covering the same language
                 let lang = opt.locale?.language.languageCode?.identifier ?? "ru"
+                if self.availableSubtitles.contains(where: {
+                    !$0.url.hasPrefix("native_") && ($0.lang.lowercased() == lang.lowercased())
+                }) {
+                    logDebug("syncNativeSubtitleTracks: skipping native track '\(opt.displayName)' — external VTT for lang '\(lang)' already present")
+                    continue
+                }
                 let label = opt.displayName.isEmpty ? "Субтитры \(index + 1)" : opt.displayName
                 let nativeId = "native_\(index)"
                 if !self.availableSubtitles.contains(where: { $0.url == nativeId || $0.label.lowercased() == label.lowercased() }) {
@@ -3103,6 +3138,7 @@ class PlayerViewModel: ObservableObject {
             item.select(nil, in: group)
         }
     }
+
     
     private func extractAudioIndex(from name: String) -> Int? {
         let patterns = [
