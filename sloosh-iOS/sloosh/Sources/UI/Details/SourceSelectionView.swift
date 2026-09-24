@@ -68,23 +68,7 @@ struct SourceSelectionView: View {
 
         let saved = UserDefaults.standard.string(forKey: "preferredStreamSource")
         let preferred = MediaStreamSource(rawValue: saved ?? "") ?? .source1
-
-        let hasSource1 = source1Result != nil && (!source1Result!.seasons.isEmpty || source1Result!.movie != nil)
-        let hasSource2 = source2Result != nil && (!source2Result!.apiResult.seasons.isEmpty || source2Result!.apiResult.movie != nil)
-
-        let initial: MediaStreamSource
-        if preferred == .source2 && hasSource2 {
-            initial = .source2
-        } else if preferred == .source1 && hasSource1 {
-            initial = .source1
-        } else if hasSource1 {
-            initial = .source1
-        } else if hasSource2 {
-            initial = .source2
-        } else {
-            initial = preferred
-        }
-        _selectedSource = State(initialValue: initial)
+        _selectedSource = State(initialValue: preferred)
     }
 
     private func selectSource(_ source: MediaStreamSource) {
@@ -112,28 +96,6 @@ struct SourceSelectionView: View {
         if let seasons = details?.seasons, !seasons.isEmpty { return true }
         if let type = details?.type { return type.lowercased() == "tv" || type.lowercased() == "serial" }
         return false
-    }
-
-    private func adjustSourceIfNeeded() {
-        guard !isLoading else { return }
-        let hasSource1 = isSourceAvailable(.source1)
-        let hasSource2 = isSourceAvailable(.source2)
-
-        guard hasSource1 || hasSource2 else { return }
-
-        if preferredSource == .source2 {
-            if hasSource2 {
-                if selectedSource != .source2 { selectedSource = .source2 }
-            } else if hasSource1 {
-                if selectedSource != .source1 { selectedSource = .source1 }
-            }
-        } else {
-            if hasSource1 {
-                if selectedSource != .source1 { selectedSource = .source1 }
-            } else if hasSource2 {
-                if selectedSource != .source2 { selectedSource = .source2 }
-            }
-        }
     }
 
     private var currentTitle: String {
@@ -187,20 +149,6 @@ struct SourceSelectionView: View {
             }
             .scrollContentBackground(.hidden)
             .background(Color.clear)
-            .onAppear {
-                adjustSourceIfNeeded()
-            }
-            .onChange(of: isLoading) { _, loading in
-                if !loading {
-                    adjustSourceIfNeeded()
-                }
-            }
-            .onChange(of: source1Result != nil) { _, _ in
-                adjustSourceIfNeeded()
-            }
-            .onChange(of: source2Result != nil) { _, _ in
-                adjustSourceIfNeeded()
-            }
         }
         .presentationBackground { Color.clear.glassEffect(in: .rect) }
         .presentationDragIndicator(.visible)
@@ -285,30 +233,6 @@ struct SourceSelectionView: View {
         .contentMargins(.horizontal, 20, for: .scrollContent)
         .contentMargins(.top, 16, for: .scrollContent)
         .contentMargins(.bottom, 28, for: .scrollContent)
-        .safeAreaInset(edge: .bottom) {
-            skeletonBottomActionButton
-        }
-    }
-
-    @ViewBuilder
-    private var skeletonBottomActionButton: some View {
-        HStack(spacing: 8) {
-            Image(systemName: mode == .play ? "play.fill" : "arrow.down.circle.fill")
-                .font(.system(size: 18, weight: .black))
-            Text(mode == .play ? "Смотреть" : "Скачать")
-                .font(.system(size: 19, weight: .heavy))
-        }
-        .foregroundStyle(Color.black.opacity(0.28))
-        .padding(.horizontal, 26)
-        .frame(height: 50)
-        .background(
-            Capsule()
-                .fill(Color.white.opacity(0.35))
-        )
-        .glassEffect(.regular, in: .capsule)
-        .shadow(color: Color.black.opacity(0.12), radius: 10, x: 0, y: 4)
-        .shimmer()
-        .padding(.bottom, 8)
     }
 
     @ViewBuilder
