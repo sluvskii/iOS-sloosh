@@ -51,15 +51,36 @@ struct ChipButtonStyle: ButtonStyle {
 struct FlowLayout: Layout {
     var spacing: CGFloat = 8
     
-    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+    struct CacheData {
+        var width: CGFloat
+        var result: FlowResult
+    }
+    
+    func makeCache(subviews: Subviews) -> CacheData {
+        CacheData(width: -1, result: FlowResult(size: .zero, points: [], sizes: []))
+    }
+    
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout CacheData) -> CGSize {
         let width = proposal.width ?? 300
+        if cache.width == width && !cache.result.sizes.isEmpty {
+            return cache.result.size
+        }
         let result = FlowResult(in: width, subviews: subviews, spacing: spacing)
+        cache = CacheData(width: width, result: result)
         return result.size
     }
     
-    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        let result = FlowResult(in: bounds.width, subviews: subviews, spacing: spacing)
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout CacheData) {
+        let result: FlowResult
+        if cache.width == bounds.width && !cache.result.sizes.isEmpty {
+            result = cache.result
+        } else {
+            result = FlowResult(in: bounds.width, subviews: subviews, spacing: spacing)
+            cache = CacheData(width: bounds.width, result: result)
+        }
+        
         for (index, subview) in subviews.enumerated() {
+            guard index < result.points.count else { break }
             let point = result.points[index]
             let itemWidth = min(result.sizes[index].width, bounds.width)
             subview.place(
@@ -73,6 +94,12 @@ struct FlowLayout: Layout {
         var size: CGSize = .zero
         var points: [CGPoint] = []
         var sizes: [CGSize] = []
+        
+        init(size: CGSize, points: [CGPoint], sizes: [CGSize]) {
+            self.size = size
+            self.points = points
+            self.sizes = sizes
+        }
         
         init(in maxWidth: CGFloat, subviews: Layout.Subviews, spacing: CGFloat) {
             var currentPoint = CGPoint.zero
