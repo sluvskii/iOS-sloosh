@@ -1,22 +1,19 @@
 import SwiftUI
 
-struct WatchSelectorChip: View, Equatable {
+struct WatchSelectorChip: View {
     let title: String
     let isSelected: Bool
     let isAvailable: Bool
+    var namespace: Namespace.ID? = nil
+    var namespaceId: String? = nil
     let action: () -> Void
 
     @Environment(\.colorScheme) private var colorScheme
-
-    static func == (lhs: WatchSelectorChip, rhs: WatchSelectorChip) -> Bool {
-        lhs.title == rhs.title &&
-        lhs.isSelected == rhs.isSelected &&
-        lhs.isAvailable == rhs.isAvailable
-    }
+    private static let feedback = UISelectionFeedbackGenerator()
 
     var body: some View {
         Button {
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            Self.feedback.selectionChanged()
             action()
         } label: {
             Text(title)
@@ -29,16 +26,26 @@ struct WatchSelectorChip: View, Equatable {
                 .foregroundStyle(
                     isSelected
                         ? (colorScheme == .dark ? Color.black : Color.white)
-                        : (isAvailable ? Color.primary : Color.secondary.opacity(0.5))
+                        : (isAvailable ? Color.primary : Color.secondary.opacity(0.45))
                 )
-                .background(
-                    Capsule()
-                        .fill(
-                            isSelected
-                                ? (colorScheme == .dark ? Color.white : Color.primary)
-                                : (colorScheme == .dark ? Color.white.opacity(0.10) : Color(UIColor.secondarySystemFill))
-                        )
-                )
+                .animation(.easeInOut(duration: 0.18), value: isSelected)
+                .background {
+                    if isSelected {
+                        if let namespace, let namespaceId {
+                            Capsule()
+                                .fill(colorScheme == .dark ? Color.white : Color.primary)
+                                .matchedGeometryEffect(id: namespaceId, in: namespace)
+                                .shadow(color: colorScheme == .dark ? Color.white.opacity(0.22) : Color.black.opacity(0.18), radius: 6, x: 0, y: 2)
+                        } else {
+                            Capsule()
+                                .fill(colorScheme == .dark ? Color.white : Color.primary)
+                                .shadow(color: colorScheme == .dark ? Color.white.opacity(0.22) : Color.black.opacity(0.18), radius: 6, x: 0, y: 2)
+                        }
+                    } else {
+                        Capsule()
+                            .fill(colorScheme == .dark ? Color.white.opacity(0.09) : Color(UIColor.secondarySystemFill))
+                    }
+                }
         }
         .buttonStyle(ChipButtonStyle())
         .disabled(!isAvailable)
@@ -49,7 +56,8 @@ struct WatchSelectorChip: View, Equatable {
 struct ChipButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .opacity(configuration.isPressed ? 0.75 : 1.0)
+            .scaleEffect(configuration.isPressed ? 0.94 : 1.0)
+            .animation(.spring(response: 0.22, dampingFraction: 0.65), value: configuration.isPressed)
     }
 }
 
