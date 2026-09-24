@@ -1988,60 +1988,62 @@ class PlayerViewModel: ObservableObject {
             forInterval: CMTime(seconds: 0.5, preferredTimescale: 600),
             queue: .main
         ) { [weak self, weak player] time in
-            guard let self, let player else { return }
-            if self.isUserSeeking || self.isInitialSeekPending { return }
-            let t = player.currentTime().seconds
-            if t.isFinite && !t.isNaN && t >= 0 {
-                if abs(self.currentTime - t) >= 0.25 {
-                    self.currentTime = t
-                }
-            }
-            let d = player.currentItem?.duration.seconds ?? 0
-            if d.isFinite && !d.isNaN && d > 0 {
-                if abs(self.currentDuration - d) > 0.5 {
-                    self.currentDuration = d
-                }
-            }
-            
-            if let intro = self.introRange, intro.contains(self.currentTime) {
-                if !self.showSkipIntro {
-                    withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                        self.showSkipIntro = true
+            MainActor.assumeIsolated {
+                guard let self, let player else { return }
+                if self.isUserSeeking || self.isInitialSeekPending { return }
+                let t = player.currentTime().seconds
+                if t.isFinite && !t.isNaN && t >= 0 {
+                    if abs(self.currentTime - t) >= 0.25 {
+                        self.currentTime = t
                     }
                 }
-            } else {
-                if self.showSkipIntro {
-                    withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                        self.showSkipIntro = false
+                let d = player.currentItem?.duration.seconds ?? 0
+                if d.isFinite && !d.isNaN && d > 0 {
+                    if abs(self.currentDuration - d) > 0.5 {
+                        self.currentDuration = d
                     }
                 }
-            }
-            
-            if let outro = self.outroRange, outro.contains(self.currentTime) {
-                if !self.showSkipOutro {
-                    withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                        self.showSkipOutro = true
+                
+                if let intro = self.introRange, intro.contains(self.currentTime) {
+                    if !self.showSkipIntro {
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                            self.showSkipIntro = true
+                        }
+                    }
+                } else {
+                    if self.showSkipIntro {
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                            self.showSkipIntro = false
+                        }
                     }
                 }
-            } else {
-                if self.showSkipOutro {
-                    withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                        self.showSkipOutro = false
+                
+                if let outro = self.outroRange, outro.contains(self.currentTime) {
+                    if !self.showSkipOutro {
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                            self.showSkipOutro = true
+                        }
+                    }
+                } else {
+                    if self.showSkipOutro {
+                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                            self.showSkipOutro = false
+                        }
                     }
                 }
-            }
-            
-            // Сохраняем прогресс каждые 5 секунд (только если не висит начальный seek и позиция > 2 секунд)
-            let currentSec = Int(t)
-            if !self.isInitialSeekPending && currentSec % 5 == 0 && currentSec != self.lastProgressSaveSecond && t > 2 {
-                self.lastProgressSaveSecond = currentSec
-                let dur = self.currentDuration >= 120 ? self.currentDuration : nil
-                PlaybackProgressStore.shared.save(
-                    mediaId: mediaId,
-                    positionSec: t,
-                    durationSec: dur,
-                    voiceover: self._currentTranslationName
-                )
+                
+                // Сохраняем прогресс каждые 5 секунд (только если не висит начальный seek и позиция > 2 секунд)
+                let currentSec = Int(t)
+                if !self.isInitialSeekPending && currentSec % 5 == 0 && currentSec != self.lastProgressSaveSecond && t > 2 {
+                    self.lastProgressSaveSecond = currentSec
+                    let dur = self.currentDuration >= 120 ? self.currentDuration : nil
+                    PlaybackProgressStore.shared.save(
+                        mediaId: mediaId,
+                        positionSec: t,
+                        durationSec: dur,
+                        voiceover: self._currentTranslationName
+                    )
+                }
             }
         }
 
@@ -2300,7 +2302,7 @@ class PlayerViewModel: ObservableObject {
             season: episode.season,
             episode: episode.episode,
             selectedVoiceover: episode.translation.name,
-            directStreamUrl: (episode.translation.streamUrl.isEmpty == false) ? episode.translation.streamUrl : nil,
+            directStreamUrl: (episode.translation.streamUrl?.isEmpty == false) ? episode.translation.streamUrl : nil,
             voices: epVoices,
             subtitles: self.availableSubtitles,
             customHeaders: self.customHeaders,
