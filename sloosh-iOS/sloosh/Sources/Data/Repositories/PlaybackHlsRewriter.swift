@@ -167,8 +167,50 @@ class PlaybackHlsRewriter {
     private static func rewriteMediaLine(_ line: String, voices: [String]) -> String {
         guard line.hasPrefix("#EXT-X-MEDIA") else { return line }
         guard line.contains("TYPE=AUDIO") else { return line }
-        // Preserve authentic audio track lines without corrupting them with arbitrary array index mappings
-        return line
+        guard !voices.isEmpty else { return line }
+
+        let rawName = extractQuotedAttr(line, key: "NAME")
+        let uri = extractQuotedAttr(line, key: "URI")
+        let language = extractQuotedAttr(line, key: "LANGUAGE")
+
+        let index = extractAudioIndex(from: rawName)
+            ?? extractAudioIndex(from: uri)
+            ?? extractAudioIndex(from: language)
+
+        guard let index, index >= 0, index < voices.count else { return line }
+
+        // Only rewrite if rawName is missing or generic (e.g. "rus0", "en1", "audio0")
+        if let raw = rawName, !isGenericTrackName(raw) {
+            return line
+        }
+
+        let voiceName = voices[index]
+        let normalizedLang: String
+        let lower = voiceName.lowercased()
+        if lower.contains("eng") || lower.contains("original") || lower.contains("англ") {
+            normalizedLang = "en"
+        } else {
+            normalizedLang = "ru"
+        }
+
+        var output = addOrReplaceAttribute(line, key: "NAME", value: voiceName)
+        output = addOrReplaceAttribute(output, key: "LANGUAGE", value: normalizedLang)
+        return output
+    }
+
+    private static func isGenericTrackName(_ name: String) -> Bool {
+        let lower = name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        let patterns = [
+            #"^(?:rus|ru|eng|en)\d*$"#,
+            #"^audio[_-]?\d*$"#
+        ]
+        for p in patterns {
+            if let regex = try? NSRegularExpression(pattern: p),
+               regex.firstMatch(in: lower, range: NSRange(lower.startIndex..., in: lower)) != nil {
+                return true
+            }
+        }
+        return false
     }
 
 

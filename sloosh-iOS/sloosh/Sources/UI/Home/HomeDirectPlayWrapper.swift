@@ -13,6 +13,7 @@ struct PlayerConfig: Identifiable {
     let subtitles: [PlaybackSubtitle]
     let quality: VideoQualityPreference?
     let seriesResult: AllohaApiResult?
+    let customHeaders: [String: String]?
     let mediaKey: String?
     let tmdbId: Int?
     let posterUrl: String?
@@ -31,6 +32,7 @@ struct PlayerConfig: Identifiable {
         subtitles: [PlaybackSubtitle],
         quality: VideoQualityPreference?,
         seriesResult: AllohaApiResult?,
+        customHeaders: [String: String]? = nil,
         mediaKey: String? = nil,
         tmdbId: Int? = nil,
         posterUrl: String? = nil,
@@ -48,6 +50,7 @@ struct PlayerConfig: Identifiable {
         self.subtitles = subtitles
         self.quality = quality
         self.seriesResult = seriesResult
+        self.customHeaders = customHeaders
         self.mediaKey = mediaKey
         self.tmdbId = tmdbId
         self.posterUrl = posterUrl
@@ -72,23 +75,33 @@ struct HomeDirectPlayWrapper: View {
                 SourceSelectionLoadingView(title: viewModel.details?.title ?? fallbackTitle)
                     .transition(.opacity)
             } else if let wrapper = viewModel.sourceResultWrapper,
-                      let result = wrapper.allohaResult {
-                SourceSelectionView(mode: .play, result: result, kpId: wrapper.kpId, details: viewModel.details) { translation, season, episode, quality in
+                      (wrapper.allohaResult != nil || wrapper.collapsResult != nil) {
+                SourceSelectionView(
+                    mode: .play,
+                    source1Result: wrapper.allohaResult,
+                    source2Result: wrapper.collapsResult,
+                    kpId: wrapper.kpId,
+                    details: viewModel.details
+                ) { translation, season, episode, quality, source, subs, headers in
                     let tmdb = viewModel.details?.externalIds?.tmdb ?? viewModel.details?.ids?.tmdb ?? Int(viewModel.details?.id ?? "")
                     let kp = (wrapper.kpId ?? 0) > 0 ? wrapper.kpId! : (viewModel.details?.ids?.kp ?? 0)
                     let resolvedKey = kp > 0 ? "kp_\(kp)" : (viewModel.details?.id ?? "tmdb_\(tmdb ?? 0)")
+                    
+                    let activeSeriesResult = source == .source2 ? wrapper.collapsResult?.apiResult : wrapper.allohaResult
+                    let voices = activeSeriesResult?.allTranslationNames ?? []
                     let config = PlayerConfig(
-                        iframeUrl: translation.iframeUrl,
+                        iframeUrl: translation.iframeUrl.isEmpty ? nil : translation.iframeUrl,
                         title: viewModel.details?.title ?? fallbackTitle,
                         kpId: wrapper.kpId,
                         season: season,
                         episode: episode,
                         voiceover: translation.name,
-                        streamUrl: translation.streamUrl,
-                        voices: result.allTranslationNames,
-                        subtitles: [],
+                        streamUrl: translation.streamUrl.isEmpty ? nil : translation.streamUrl,
+                        voices: voices,
+                        subtitles: subs,
                         quality: quality,
-                        seriesResult: result,
+                        seriesResult: activeSeriesResult,
+                        customHeaders: source == .source2 ? headers : nil,
                         mediaKey: resolvedKey,
                         tmdbId: tmdb,
                         posterUrl: viewModel.details?.displayPosterUrl,

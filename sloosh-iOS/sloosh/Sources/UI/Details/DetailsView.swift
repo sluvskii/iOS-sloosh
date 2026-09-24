@@ -605,6 +605,7 @@ struct DetailsView: View {
     @State private var playerSubtitles: [PlaybackSubtitle] = []
     @State private var playerQuality: VideoQualityPreference? = nil
     @State private var playerSeriesResult: AllohaApiResult?
+    @State private var playerCustomHeaders: [String: String]? = nil
     @State private var favoriteBounce = false
     @State private var movieToDelete: DownloadItem? = nil
     @State private var showDeleteMovieAlert = false
@@ -973,9 +974,14 @@ struct DetailsView: View {
             }) {
                 ZStack {
                     if let wrapper = viewModel.sourceResultWrapper,
-                       let result = wrapper.allohaResult,
-                       (!result.seasons.isEmpty || result.movie != nil) {
-                        SourceSelectionView(mode: sourceSheetMode, result: result, kpId: wrapper.kpId, details: viewModel.details) { translation, season, episode, quality in
+                       (wrapper.allohaResult != nil || wrapper.collapsResult != nil) {
+                        SourceSelectionView(
+                            mode: sourceSheetMode,
+                            source1Result: wrapper.allohaResult,
+                            source2Result: wrapper.collapsResult,
+                            kpId: wrapper.kpId,
+                            details: viewModel.details
+                        ) { translation, season, episode, quality, source, subs, headers in
                             if sourceSheetMode == .play {
                                 let effectiveKp = ((wrapper.kpId ?? 0) > 0 ? wrapper.kpId : nil)
                                     ?? viewModel.details?.ids?.kp
@@ -991,24 +997,38 @@ struct DetailsView: View {
                                 playerSeason = season
                                 playerEpisode = episode
                                 playerQuality = quality
-                                playerSeriesResult = result
-                                playerVoices = result.allTranslationNames
                                 
-                                selectedIframeUrl = translation.iframeUrl
+                                if source == .source2, let collaps = wrapper.collapsResult {
+                                    playerSeriesResult = collaps.apiResult
+                                    playerVoices = collaps.apiResult.allTranslationNames
+                                    playerSubtitles = subs
+                                    playerCustomHeaders = headers
+                                } else if let alloha = wrapper.allohaResult {
+                                    playerSeriesResult = alloha
+                                    playerVoices = alloha.allTranslationNames
+                                    playerSubtitles = []
+                                    playerCustomHeaders = nil
+                                }
+                                
+                                selectedIframeUrl = translation.iframeUrl.isEmpty ? nil : translation.iframeUrl
                                 playerVoiceover = translation.name
-                                playerStreamUrl = translation.streamUrl
+                                playerStreamUrl = translation.streamUrl.isEmpty ? nil : translation.streamUrl
                                 
                                 pendingPlayerLaunch = true
                                 showSourceSheet = false
                                 viewModel.saveAllohaTranslation(translation.name)
                             } else {
                                 if let details = viewModel.details {
+                                    let directUrl = (source == .source2) ? (translation.streamUrl.isEmpty ? nil : translation.streamUrl) : nil
+                                    let headers = (source == .source2) ? CollapsRepository.streamHeaders : nil
                                     DownloadManager.shared.startDownload(
                                         details: details,
                                         season: season,
                                         episode: episode,
                                         translation: translation,
-                                        preferredQuality: quality
+                                        preferredQuality: quality,
+                                        directStreamUrl: directUrl,
+                                        customHeaders: headers
                                     )
                                 }
                                 showSourceSheet = false
@@ -1040,6 +1060,7 @@ struct DetailsView: View {
                 playerSubtitles = []
                 playerQuality = nil
                 playerSeriesResult = nil
+                playerCustomHeaders = nil
             }) {
                 if let details = viewModel.details {
                     let fallbackTitle = directPlaybackTitle ?? details.title ?? details.originalTitle ?? ""
@@ -1056,6 +1077,7 @@ struct DetailsView: View {
                             subtitles: playerSubtitles,
                             initialQuality: playerQuality,
                             seriesResult: playerSeriesResult,
+                            customHeaders: playerCustomHeaders,
                             mediaKey: playerMediaKey,
                             tmdbId: playerTmdbId,
                             posterUrl: details.displayPosterUrl,
@@ -1075,6 +1097,7 @@ struct DetailsView: View {
                             subtitles: playerSubtitles,
                             initialQuality: playerQuality,
                             seriesResult: playerSeriesResult,
+                            customHeaders: playerCustomHeaders,
                             mediaKey: playerMediaKey,
                             tmdbId: playerTmdbId,
                             posterUrl: details.displayPosterUrl,
@@ -3354,6 +3377,7 @@ struct InlineEpisodesSection: View {
 struct SourceResultWrapper: Identifiable {
     let id = UUID()
     var allohaResult: AllohaApiResult?
+    var collapsResult: CollapsParser.ParseResult?
     var kpId: Int?
 }
 
@@ -3539,11 +3563,22 @@ class DetailsViewModel: ObservableObject {
                 originalTitle: effectiveOriginal,
                 year: effectiveYear
             )
-            if result.isSerial {
-                self.inlineSourceWrapper = SourceResultWrapper(allohaResult: result, kpId: kpId > 0 ? kpId : (effectiveTmdbId ?? 0))
+            if result.isSerial && !result.seasons.isEmpty {
+                self.inlineSourceWrapper = SourceResultWrapper(allohaResult: result, collapsResult: nil, kpId: kpId > 0 ? kpId : (effectiveTmdbId ?? 0))
+                return
             }
         } catch {
-            print("Error fetching inline seasons: \(error)")
+            print("Alloha inline seasons error: \(error)")
+        }
+
+        // Fallback to Collaps for inline seasons
+        let effectiveKp = kpId > 0 ? kpId : (self.details?.ids?.kp ?? self.details?.externalIds?.kp)
+        if let collaps = try? await CollapsRepository.shared.fetchMedia(
+            kpId: effectiveKp,
+            imdbId: effectiveImdbId,
+            title: effectiveTitle
+        ), collaps.apiResult.isSerial && !collaps.apiResult.seasons.isEmpty {
+            self.inlineSourceWrapper = SourceResultWrapper(allohaResult: collaps.apiResult, collapsResult: collaps, kpId: kpId > 0 ? kpId : (effectiveTmdbId ?? 0))
         }
     }
 
@@ -3624,8 +3659,8 @@ class DetailsViewModel: ObservableObject {
             hasFinishedSourceFetch = true
         }
 
-        do {
-            let result = try await AllohaRepository.shared.fetchByKpId(
+        async let allohaFetch: AllohaApiResult? = {
+            try? await AllohaRepository.shared.fetchByKpId(
                 kpId: kpId,
                 tmdbId: effectiveTmdbId,
                 imdbId: effectiveImdbId,
@@ -3633,14 +3668,29 @@ class DetailsViewModel: ObservableObject {
                 originalTitle: effectiveOriginal,
                 year: effectiveYear
             )
-            let wrapper = SourceResultWrapper(allohaResult: result, kpId: kpId > 0 ? kpId : (effectiveTmdbId ?? 0))
-            if cacheKey > 0 {
-                sourcesCache[cacheKey] = (wrapper: wrapper, expiresAt: Date().addingTimeInterval(sourcesCacheTtl))
-            }
-            self.sourceResultWrapper = wrapper
-        } catch {
-            print("Error fetching sources: \(error)")
+        }()
+
+        async let collapsFetch: CollapsParser.ParseResult? = {
+            let validKp = kpId > 0 ? kpId : (self.details?.ids?.kp ?? self.details?.externalIds?.kp)
+            return try? await CollapsRepository.shared.fetchMedia(
+                kpId: validKp,
+                imdbId: effectiveImdbId,
+                title: effectiveTitle
+            )
+        }()
+
+        let (allohaResult, collapsResult) = await (allohaFetch, collapsFetch)
+        let resolvedKp = kpId > 0 ? kpId : (effectiveTmdbId ?? 0)
+        let wrapper = SourceResultWrapper(
+            allohaResult: allohaResult,
+            collapsResult: collapsResult,
+            kpId: resolvedKp
+        )
+
+        if cacheKey > 0 && (allohaResult != nil || collapsResult != nil) {
+            sourcesCache[cacheKey] = (wrapper: wrapper, expiresAt: Date().addingTimeInterval(sourcesCacheTtl))
         }
+        self.sourceResultWrapper = wrapper
     }
 
     private func preferredAllohaTranslation(from movie: AllohaMovie) -> AllohaTranslation? {

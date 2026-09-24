@@ -30,6 +30,8 @@ struct DownloadItem: Identifiable, Codable, Equatable {
     var totalBytes: Int64?
     let translationName: String?
     var iframeUrl: String
+    var directStreamUrl: String?
+    var customHeaders: [String: String]?
     var preferredQuality: VideoQualityPreference
     let addedAt: Date
     var errorMessage: String?
@@ -40,16 +42,39 @@ struct DownloadItem: Identifiable, Codable, Equatable {
         case id, kpId, title, season, episode, episodeTitle, mediaType, posterUrl
         case localDirectory, localPlayableFileName, progress, status
         case downloadedBytes, totalBytes, translationName, iframeUrl
+        case directStreamUrl, customHeaders
         case preferredQuality, addedAt, errorMessage
     }
 
-    init(id: String, kpId: Int, title: String, season: Int?, episode: Int?, episodeTitle: String?, mediaType: String, posterUrl: String?, localDirectory: String, localPlayableFileName: String, progress: Double, status: DownloadStatus, downloadedBytes: Int64?, totalBytes: Int64?, translationName: String?, iframeUrl: String, preferredQuality: VideoQualityPreference = .q1080, addedAt: Date) {
+    init(
+        id: String,
+        kpId: Int,
+        title: String,
+        season: Int?,
+        episode: Int?,
+        episodeTitle: String?,
+        mediaType: String,
+        posterUrl: String?,
+        localDirectory: String,
+        localPlayableFileName: String,
+        progress: Double,
+        status: DownloadStatus,
+        downloadedBytes: Int64?,
+        totalBytes: Int64?,
+        translationName: String?,
+        iframeUrl: String,
+        preferredQuality: VideoQualityPreference = .q1080,
+        directStreamUrl: String? = nil,
+        customHeaders: [String: String]? = nil,
+        addedAt: Date
+    ) {
         self.id = id; self.kpId = kpId; self.title = title; self.season = season; self.episode = episode
         self.episodeTitle = episodeTitle; self.mediaType = mediaType; self.posterUrl = posterUrl
         self.localDirectory = localDirectory; self.localPlayableFileName = localPlayableFileName
         self.progress = progress; self.status = status; self.downloadedBytes = downloadedBytes; self.totalBytes = totalBytes
         self.translationName = translationName; self.iframeUrl = iframeUrl
-        self.preferredQuality = preferredQuality; self.addedAt = addedAt; self.errorMessage = nil
+        self.preferredQuality = preferredQuality; self.directStreamUrl = directStreamUrl
+        self.customHeaders = customHeaders; self.addedAt = addedAt; self.errorMessage = nil
     }
 
     init(from decoder: Decoder) throws {
@@ -70,6 +95,8 @@ struct DownloadItem: Identifiable, Codable, Equatable {
         totalBytes = try container.decodeIfPresent(Int64.self, forKey: .totalBytes)
         translationName = try container.decodeIfPresent(String.self, forKey: .translationName)
         iframeUrl = try container.decode(String.self, forKey: .iframeUrl)
+        directStreamUrl = try container.decodeIfPresent(String.self, forKey: .directStreamUrl)
+        customHeaders = try container.decodeIfPresent([String: String].self, forKey: .customHeaders)
         // Backward compatibility: field may not exist in older saved files
         preferredQuality = try container.decodeIfPresent(VideoQualityPreference.self, forKey: .preferredQuality) ?? .q1080
         addedAt = try container.decode(Date.self, forKey: .addedAt)
@@ -259,7 +286,9 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         season: Int?,
         episode: Int?,
         translation: AllohaTranslation,
-        preferredQuality: VideoQualityPreference
+        preferredQuality: VideoQualityPreference,
+        directStreamUrl: String? = nil,
+        customHeaders: [String: String]? = nil
     ) {
         let kpId = details.ids?.kp ?? 0
         guard kpId > 0 else { return }
@@ -277,7 +306,7 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         }
         
         var iframeUrl = translation.iframeUrl
-        if let s = season, let e = episode {
+        if let s = season, let e = episode, !iframeUrl.isEmpty {
             iframeUrl = injectSeasonEpisode(season: s, episode: e, into: iframeUrl)
         }
         
@@ -287,6 +316,8 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             downloads[existingIdx].progress = 0.0
             downloads[existingIdx].errorMessage = nil
             downloads[existingIdx].iframeUrl = iframeUrl
+            downloads[existingIdx].directStreamUrl = directStreamUrl
+            downloads[existingIdx].customHeaders = customHeaders
             item = downloads[existingIdx]
         } else {
             item = DownloadItem(
@@ -307,6 +338,8 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                 translationName: translation.name,
                 iframeUrl: iframeUrl,
                 preferredQuality: preferredQuality,
+                directStreamUrl: directStreamUrl,
+                customHeaders: customHeaders,
                 addedAt: Date()
             )
             downloads.append(item)
@@ -434,24 +467,36 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             } catch { print("Poster failed") }
         }
         
-        let resolver = AllohaRuntimeResolver()
-        let resolved: [String: Any]
-        do {
-            resolved = try await resolver.resolve(iframeUrl: item.iframeUrl)
-        } catch {
+        let streamUrlString: String
+        let headers: [String: String]
+        
+        if !item.iframeUrl.isEmpty {
+            let resolver = AllohaRuntimeResolver()
+            let resolved: [String: Any]
+            do {
+                resolved = try await resolver.resolve(iframeUrl: item.iframeUrl)
+            } catch {
+                await finishWithError(id: itemId, message: "Не удалось получить источник")
+                return
+            }
+            
+            var resolvedStreamUrl = (resolved["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            let audioVariants = (resolved["audioVariants"] as? [[String: Any]]) ?? []
+            if let matchingVariant = audioVariants.first(where: { variant in
+                let title = (variant["title"] as? String) ?? ""
+                return allohaTranslationNamesMatch(title, item.translationName)
+            }), let variantUrl = (matchingVariant["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !variantUrl.isEmpty {
+                resolvedStreamUrl = variantUrl
+            }
+            streamUrlString = resolvedStreamUrl
+            headers = (resolved["headers"] as? [String: String]) ?? [:]
+        } else if let direct = item.directStreamUrl, !direct.isEmpty {
+            streamUrlString = direct
+            headers = item.customHeaders ?? [:]
+        } else {
             await finishWithError(id: itemId, message: "Не удалось получить источник")
             return
         }
-        
-        var streamUrlString = (resolved["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let audioVariants = (resolved["audioVariants"] as? [[String: Any]]) ?? []
-        if let matchingVariant = audioVariants.first(where: { variant in
-            let title = (variant["title"] as? String) ?? ""
-            return allohaTranslationNamesMatch(title, item.translationName)
-        }), let variantUrl = (matchingVariant["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !variantUrl.isEmpty {
-            streamUrlString = variantUrl
-        }
-        let headers = (resolved["headers"] as? [String: String]) ?? [:]
         
         guard let masterPlaylistUrl = URL(string: streamUrlString) else {
             await finishWithError(id: itemId, message: "Не удалось получить ссылку на поток")
