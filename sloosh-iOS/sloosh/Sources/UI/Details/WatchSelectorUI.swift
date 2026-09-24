@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct WatchSelectorChip: View {
+struct WatchSelectorChip: View, Equatable {
     let title: String
     let isSelected: Bool
     let isAvailable: Bool
@@ -8,18 +8,24 @@ struct WatchSelectorChip: View {
 
     @Environment(\.colorScheme) private var colorScheme
 
+    static func == (lhs: WatchSelectorChip, rhs: WatchSelectorChip) -> Bool {
+        lhs.title == rhs.title &&
+        lhs.isSelected == rhs.isSelected &&
+        lhs.isAvailable == rhs.isAvailable
+    }
+
     var body: some View {
         Button {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             action()
         } label: {
             Text(title)
-                .font(.system(size: 14, weight: .semibold))
+                .font(.system(size: 13.5, weight: .semibold))
                 .lineLimit(1)
                 .truncationMode(.tail)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 7)
-                .frame(height: 35)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .frame(height: 32)
                 .foregroundStyle(
                     isSelected
                         ? (colorScheme == .dark ? Color.black : Color.white)
@@ -49,34 +55,36 @@ struct ChipButtonStyle: ButtonStyle {
 
 @available(iOS 16.0, *)
 struct FlowLayout: Layout {
+    typealias Cache = CacheData
     var spacing: CGFloat = 8
     
     struct CacheData {
         var width: CGFloat
+        var count: Int
         var result: FlowResult
     }
     
     func makeCache(subviews: Subviews) -> CacheData {
-        CacheData(width: -1, result: FlowResult(size: .zero, points: [], sizes: []))
+        CacheData(width: -1, count: -1, result: FlowResult(size: .zero, points: [], sizes: []))
     }
     
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout CacheData) -> CGSize {
         let width = proposal.width ?? 300
-        if cache.width == width && !cache.result.sizes.isEmpty {
+        if abs(cache.width - width) < 0.5 && cache.count == subviews.count && !cache.result.sizes.isEmpty {
             return cache.result.size
         }
         let result = FlowResult(in: width, subviews: subviews, spacing: spacing)
-        cache = CacheData(width: width, result: result)
+        cache = CacheData(width: width, count: subviews.count, result: result)
         return result.size
     }
     
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout CacheData) {
         let result: FlowResult
-        if cache.width == bounds.width && !cache.result.sizes.isEmpty {
+        if abs(cache.width - bounds.width) < 0.5 && cache.count == subviews.count && !cache.result.sizes.isEmpty {
             result = cache.result
         } else {
             result = FlowResult(in: bounds.width, subviews: subviews, spacing: spacing)
-            cache = CacheData(width: bounds.width, result: result)
+            cache = CacheData(width: bounds.width, count: subviews.count, result: result)
         }
         
         for (index, subview) in subviews.enumerated() {
