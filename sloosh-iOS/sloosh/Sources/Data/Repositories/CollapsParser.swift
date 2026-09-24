@@ -126,8 +126,11 @@ final class CollapsParser {
                 var playbackSubs: [PlaybackSubtitle] = []
                 if let cc = epObj["cc"] as? [[String: Any]] {
                     for subObj in cc {
-                        let url = (subObj["url"] as? String ?? subObj["src"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                        var url = (subObj["url"] as? String ?? subObj["src"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
                         guard !url.isEmpty else { continue }
+                        if url.hasPrefix("//") {
+                            url = "https:" + url
+                        }
                         let label = (subObj["name"] as? String ?? subObj["label"] as? String ?? "Русские").trimmingCharacters(in: .whitespacesAndNewlines)
                         let langRaw = (subObj["lang"] as? String ?? subObj["language"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
                         let lang = langRaw.isEmpty
@@ -291,8 +294,11 @@ final class CollapsParser {
            let data = String(html[range]).data(using: .utf8),
            let ccArray = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
             for subObj in ccArray {
-                let url = (subObj["url"] as? String ?? subObj["src"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+                var url = (subObj["url"] as? String ?? subObj["src"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !url.isEmpty else { continue }
+                if url.hasPrefix("//") {
+                    url = "https:" + url
+                }
                 let label = (subObj["name"] as? String ?? subObj["label"] as? String ?? "Русские").trimmingCharacters(in: .whitespacesAndNewlines)
                 let langRaw = (subObj["lang"] as? String ?? subObj["language"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
                 let lang = langRaw.isEmpty
