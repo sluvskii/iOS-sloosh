@@ -155,11 +155,11 @@ struct SourceSelectionView: View {
                     Button(action: { dismiss() }) {
                         Image(systemName: "xmark")
                             .font(.system(size: 12, weight: .bold))
-                            .frame(width: 30, height: 30)
-                            .glassEffect(.regular.interactive(), in: .circle)
+                            .padding(8)
                     }
                     .foregroundStyle(.primary)
                     .buttonStyle(.plain)
+                    .glassEffect(.regular.interactive(), in: .circle)
                 }
 
                 ToolbarItem(placement: .principal) {
@@ -228,16 +228,15 @@ struct SourceSelectionView: View {
             HStack(spacing: 4) {
                 Text(selectedSource.title)
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.primary)
                 Image(systemName: "chevron.up.chevron.down")
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(.secondary)
             }
+            .foregroundStyle(.primary)
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
-            .glassEffect(.regular.interactive(), in: .capsule)
         }
-        .foregroundStyle(.primary)
+        .glassEffect(.regular.interactive(), in: .capsule)
     }
 
 
