@@ -31,10 +31,6 @@ struct SourceSelectionView: View {
     @AppStorage("preferredVideoQuality") private var preferredQuality: VideoQualityPreference = .ask
     @State private var showQualitySelection = false
 
-    @Namespace private var voiceoverNamespace
-    @Namespace private var seasonNamespace
-    @Namespace private var episodeNamespace
-
     // Precomputed immutable caches (calculated once on init)
     let allTranslations: [TranslationChipItem]
     let allSeasons: [Int]
@@ -408,14 +404,11 @@ struct SourceSelectionView: View {
                         WatchSelectorChip(
                             title: item.displayName,
                             isSelected: selectedTranslationName == item.name,
-                            isAvailable: isTranslationAvailable(item.name),
-                            namespace: voiceoverNamespace,
-                            namespaceId: "activeVoiceover"
+                            isAvailable: isTranslationAvailable(item.name)
                         ) {
-                            withAnimation(.spring(response: 0.32, dampingFraction: 0.65)) {
-                                selectTranslation(item.name)
-                            }
+                            selectTranslation(item.name)
                         }
+                        .equatable()
                     }
                 }
             }
@@ -434,14 +427,11 @@ struct SourceSelectionView: View {
                     WatchSelectorChip(
                         title: "\(s) сезон",
                         isSelected: selectedSeason == s,
-                        isAvailable: isSeasonAvailable(s),
-                        namespace: seasonNamespace,
-                        namespaceId: "activeSeason"
+                        isAvailable: isSeasonAvailable(s)
                     ) {
-                        withAnimation(.spring(response: 0.32, dampingFraction: 0.65)) {
-                            selectSeason(s)
-                        }
+                        selectSeason(s)
                     }
+                    .equatable()
                 }
             }
         }
@@ -459,14 +449,11 @@ struct SourceSelectionView: View {
                     WatchSelectorChip(
                         title: "\(e) серия",
                         isSelected: selectedEpisode == e,
-                        isAvailable: isEpisodeAvailable(e),
-                        namespace: episodeNamespace,
-                        namespaceId: "activeEpisode"
+                        isAvailable: isEpisodeAvailable(e)
                     ) {
-                        withAnimation(.spring(response: 0.32, dampingFraction: 0.65)) {
-                            selectEpisode(e)
-                        }
+                        selectEpisode(e)
                     }
+                    .equatable()
                 }
             }
         }
