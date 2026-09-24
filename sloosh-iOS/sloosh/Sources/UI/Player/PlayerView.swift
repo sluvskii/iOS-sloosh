@@ -350,6 +350,7 @@ class PlayerViewModel: ObservableObject {
     @Published var currentSubtitleText: String?
     private var activeSubtitleCues: [SubtitleCue] = []
     private var subtitleFetchTask: Task<Void, Never>?
+    private var legibleDelegate: LegibleOutputDelegate?
     private var legibleOutput: AVPlayerItemLegibleOutput?
 
     // MARK: - PiP
@@ -1185,6 +1186,7 @@ class PlayerViewModel: ObservableObject {
             try? await Task.sleep(nanoseconds: 350_000_000)
             guard let self else { return }
             self.player = nil
+            self.legibleDelegate = nil
             self.legibleOutput = nil
 
             if !isSeekPending, let mediaId = mediaId, pos > 1 {
@@ -2060,9 +2062,27 @@ class PlayerViewModel: ObservableObject {
         statusObserver?.invalidate()
         bufferObserver?.invalidate()
 
+        let delegate = LegibleOutputDelegate { [weak self] lines in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                guard self.activeSubtitleCues.isEmpty else { return }
+                guard self.currentSubtitle != nil else {
+                    if self.currentSubtitleText != nil {
+                        self.currentSubtitleText = nil
+                    }
+                    return
+                }
+                let clean = lines.joined(separator: "\n")
+                let final = clean.isEmpty ? nil : clean
+                if self.currentSubtitleText != final {
+                    self.currentSubtitleText = final
+                }
+            }
+        }
         let legible = AVPlayerItemLegibleOutput()
-        legible.setDelegate(self, queue: DispatchQueue.main)
+        legible.setDelegate(delegate, queue: DispatchQueue.main)
         playerItem.add(legible)
+        self.legibleDelegate = delegate
         self.legibleOutput = legible
         
         if let playbackEndObserver {
@@ -3166,32 +3186,24 @@ class PlayerViewModel: ObservableObject {
     }
 }
 
-extension PlayerViewModel: AVPlayerItemLegibleOutputPushDelegate {
-    nonisolated func legibleOutput(
+private final class LegibleOutputDelegate: NSObject, AVPlayerItemLegibleOutputPushDelegate, @unchecked Sendable {
+    private let onStrings: @Sendable ([String]) -> Void
+
+    init(onStrings: @escaping @Sendable ([String]) -> Void) {
+        self.onStrings = onStrings
+        super.init()
+    }
+
+    func legibleOutput(
         _ output: AVPlayerItemLegibleOutput,
         didOutputAttributedStrings strings: [NSAttributedString],
         nativeDurationForSampleRanges nativeDurationProvider: [NSValue],
         forItemTime itemTime: CMTime
     ) {
-        Task { @MainActor [weak self] in
-            guard let self else { return }
-            // Если для текущего видео загружены внешние VTT субтитры, они имеют приоритет
-            guard self.activeSubtitleCues.isEmpty else { return }
-            guard self.currentSubtitle != nil else {
-                if self.currentSubtitleText != nil {
-                    self.currentSubtitleText = nil
-                }
-                return
-            }
-            let combined = strings
-                .map { $0.string.trimmingCharacters(in: .whitespacesAndNewlines) }
-                .filter { !$0.isEmpty }
-                .joined(separator: "\n")
-            let clean = combined.isEmpty ? nil : combined
-            if self.currentSubtitleText != clean {
-                self.currentSubtitleText = clean
-            }
-        }
+        let plain = strings
+            .map { $0.string.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        onStrings(plain)
     }
 }
 
