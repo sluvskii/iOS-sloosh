@@ -109,8 +109,8 @@ struct SourceSelectionView: View {
     }
 
     private var isLikelySerial: Bool {
-        if let isSerial = details?.isSerial { return isSerial }
-        if let type = details?.type { return type == "tv" || type == "serial" }
+        if let seasons = details?.seasons, !seasons.isEmpty { return true }
+        if let type = details?.type { return type.lowercased() == "tv" || type.lowercased() == "serial" }
         return false
     }
 
