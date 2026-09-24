@@ -105,10 +105,13 @@ final class CollapsParser {
                     continue
                 }
 
-                let hls = (epObj["hls"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
-                let dasha = (epObj["dasha"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
-                let dash = (epObj["dash"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
-                let mpd = dasha ?? dash
+                let rawHls = (epObj["hls"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                let rawDasha = (epObj["dasha"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                let rawDash = (epObj["dash"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+                let rawMpd = rawDasha ?? rawDash
+
+                let hls = rawHls.flatMap { $0.isEmpty ? nil : normalizeStreamUrl($0) }
+                let mpd = rawMpd.flatMap { $0.isEmpty ? nil : normalizeStreamUrl($0) }
                 let primaryUrl = hls ?? mpd ?? ""
 
                 var voices: [String] = []
@@ -194,30 +197,46 @@ final class CollapsParser {
         )
     }
 
+    private static func normalizeStreamUrl(_ urlString: String) -> String {
+        var str = urlString.trimmingCharacters(in: .whitespacesAndNewlines)
+        if str.hasPrefix("//") {
+            str = "https:" + str
+        }
+        str = str.replacingOccurrences(of: "\\/", with: "/")
+        if !str.isEmpty && !str.contains("vp") && !str.contains("&vp") && !str.contains("?vp") {
+            str += str.contains("?") ? "&vp" : "?vp"
+        }
+        return str
+    }
+
     private static func extractOrderedVoices(from audioObj: [String: Any]) -> [String] {
         guard let names = audioObj["names"] as? [String] else { return [] }
-        var ordered: [String] = []
-        if let order = audioObj["order"] as? [Int] {
-            for (idx, orderIdx) in order.enumerated() {
-                if orderIdx >= 0 && orderIdx < names.count {
-                    var name = names[orderIdx].trimmingCharacters(in: .whitespacesAndNewlines)
-                    if name.lowercased() == "delete" {
-                        name = "Дорожка \(idx + 1)"
-                    }
-                    ordered.append(name)
-                }
-            }
+        let order = (audioObj["order"] as? [Int]) ?? []
+
+        struct VoiceItem {
+            let name: String
+            let order: Int
+            let originalIndex: Int
         }
-        if ordered.isEmpty {
-            for (idx, raw) in names.enumerated() {
-                var name = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-                if name.lowercased() == "delete" {
-                    name = "Дорожка \(idx + 1)"
-                }
-                ordered.append(name)
+
+        var items: [VoiceItem] = []
+        for (idx, raw) in names.enumerated() {
+            var name = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            if name.lowercased() == "delete" {
+                name = "Дорожка \(idx + 1)"
             }
+            let ord = (idx < order.count) ? order[idx] : (1000 + idx)
+            items.append(VoiceItem(name: name, order: ord, originalIndex: idx))
         }
-        return ordered.filter { !$0.isEmpty }
+
+        items.sort { a, b in
+            if a.order != b.order {
+                return a.order < b.order
+            }
+            return a.originalIndex < b.originalIndex
+        }
+
+        return items.map { $0.name }.filter { !$0.isEmpty }
     }
 
     // MARK: - Movie Extraction
@@ -251,6 +270,13 @@ final class CollapsParser {
         // 4. URL scan fallback
         if hlsUrl == nil {
             hlsUrl = firstPreferredStreamURLString(in: html)
+        }
+
+        if let rawHls = hlsUrl {
+            hlsUrl = normalizeStreamUrl(rawHls)
+        }
+        if let rawDash = dashUrl {
+            dashUrl = normalizeStreamUrl(rawDash)
         }
 
         guard let primaryUrl = hlsUrl ?? dashUrl, !primaryUrl.isEmpty else { return nil }

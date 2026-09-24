@@ -29,13 +29,32 @@ class PlaybackHlsRewriter {
         }
 
         let streamInfIndex = filteredLines.firstIndex { $0.hasPrefix("#EXT-X-STREAM-INF") } ?? filteredLines.count
+        let hasMediaTags = filteredLines.contains { $0.hasPrefix("#EXT-X-MEDIA") }
+        var hasEmittedVersion = false
         
         for i in 0..<streamInfIndex {
             let line = filteredLines[i]
             if stripExistingSubtitles && isSubtitleMediaLine(line) {
                 continue
             }
+            if line.hasPrefix("#EXT-X-VERSION:") {
+                hasEmittedVersion = true
+                let vStr = line.replacingOccurrences(of: "#EXT-X-VERSION:", with: "").trimmingCharacters(in: .whitespacesAndNewlines)
+                // RFC 8216 Section 7: "A Playlist that contains an EXT-X-MEDIA tag MUST contain an EXT-X-VERSION tag with a value of 4 or higher."
+                if let v = Int(vStr), v < 4, hasMediaTags {
+                    output.append("#EXT-X-VERSION:4")
+                    continue
+                }
+            }
             output.append(rewriteMediaLine(line, voices: voices))
+        }
+
+        if hasMediaTags && !hasEmittedVersion && !output.contains(where: { $0.hasPrefix("#EXT-X-VERSION:") }) {
+            if let extm3uIdx = output.firstIndex(where: { $0.hasPrefix("#EXTM3U") }) {
+                output.insert("#EXT-X-VERSION:4", at: extm3uIdx + 1)
+            } else {
+                output.insert("#EXT-X-VERSION:4", at: 0)
+            }
         }
 
         

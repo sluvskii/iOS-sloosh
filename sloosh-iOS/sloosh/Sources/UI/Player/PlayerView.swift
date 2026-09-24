@@ -770,19 +770,14 @@ class PlayerViewModel: ObservableObject {
                 currentResolution = resStr
             } else if !line.hasPrefix("#") && !line.isEmpty {
                 if let res = currentResolution {
-                    let variantUrl: URL
-                    if line.hasPrefix("http") {
-                        guard let u = URL(string: line)?.absoluteURL else { continue }
-                        variantUrl = u
-                    } else {
-                        guard let u = URL(string: line, relativeTo: baseUrl)?.absoluteURL else { continue }
-                        variantUrl = u
-                    }
+                    // Variants parsed from the master playlist must always retain the master playlist's baseUrl,
+                    // because variant sub-playlists (e.g. index-v1.m3u8) contain only video segments and lack
+                    // demuxed audio tracks (#EXT-X-MEDIA:TYPE=AUDIO). Switching bitrate is done via preferredPeakBitRate.
                     if !qualities.contains(where: { $0.key == res }) {
                         qualities.append(
                             PlaybackQualityOption(
                                 key: res,
-                                url: variantUrl,
+                                url: baseUrl,
                                 preferredPeakBitRate: currentBandwidth,
                                 isAuto: false,
                                 shouldReloadOnSelect: false
@@ -794,7 +789,7 @@ class PlayerViewModel: ObservableObject {
                         qualities.append(
                             PlaybackQualityOption(
                                 key: uniqueRes,
-                                url: variantUrl,
+                                url: baseUrl,
                                 preferredPeakBitRate: currentBandwidth,
                                 isAuto: false,
                                 shouldReloadOnSelect: false
@@ -1422,6 +1417,22 @@ class PlayerViewModel: ObservableObject {
             return
         }
 
+        if !quality.shouldReloadOnSelect {
+            let isCurrentSourceMatch: Bool = {
+                guard let currentPlaybackSourceURL else { return false }
+                if currentPlaybackSourceURL.absoluteURL.absoluteString == quality.url.absoluteURL.absoluteString { return true }
+                if let orig = originalStreamURL, orig.absoluteURL.absoluteString == quality.url.absoluteURL.absoluteString { return true }
+                if isLocalProxyUrl(currentPlaybackSourceURL) { return true }
+                return false
+            }()
+
+            if isCurrentSourceMatch {
+                logDebug("changeQuality: quality='\(key)' has shouldReloadOnSelect=false and matches current source, setting preferredPeakBitRate=\(targetBitrate)")
+                player?.currentItem?.preferredPeakBitRate = targetBitrate
+                return
+            }
+        }
+
         // Вызываем reloadPlayback для мгновенного переключения качества с сохранением позиции
         reloadPlayback(to: quality.url, preferredPeakBitRate: targetBitrate)
     }
@@ -1504,7 +1515,13 @@ class PlayerViewModel: ObservableObject {
 
     private func shouldReloadForAutoSelection(autoURL: URL) -> Bool {
         guard let currentPlaybackSourceURL else { return false }
-        return currentPlaybackSourceURL.absoluteURL.absoluteString != autoURL.absoluteURL.absoluteString
+        if currentPlaybackSourceURL.absoluteURL.absoluteString == autoURL.absoluteURL.absoluteString {
+            return false
+        }
+        if isLocalProxyUrl(currentPlaybackSourceURL), let orig = originalStreamURL, orig.absoluteURL.absoluteString == autoURL.absoluteURL.absoluteString {
+            return false
+        }
+        return true
     }
 
     private func resolvedBitrate(for quality: PlaybackQualityOption) -> Double {
