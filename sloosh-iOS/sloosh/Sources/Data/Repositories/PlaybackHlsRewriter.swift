@@ -1,11 +1,37 @@
 import Foundation
 
 class PlaybackHlsRewriter {
+    static func normalizeResolutionLabel(width: Int, height: Int) -> String {
+        if width >= 1900 || height >= 800 {
+            return "1080p"
+        } else if width >= 1200 || height >= 500 {
+            return "720p"
+        } else if width >= 800 || height >= 400 {
+            return "480p"
+        } else if width >= 600 || height >= 250 {
+            return "360p"
+        } else if height > 0 {
+            return "\(height)p"
+        } else {
+            return "HD"
+        }
+    }
+
+    private struct ParsedVariant {
+        var streamInfLine: String
+        var uriLine: String
+        var resolutionLabel: String
+        var bandwidth: Double
+        var height: Int
+        var width: Int
+    }
+
     static func rewrite(
         master: String,
         voices: [String],
         subtitles: [PlaybackSubtitle] = [],
         mediaId: String,
+        targetQuality: String? = nil,
         rewriteVariantUris: Bool = false,
         stripExistingSubtitles: Bool = false
     ) -> String {
@@ -57,7 +83,6 @@ class PlaybackHlsRewriter {
             }
         }
 
-        
         if !subtitles.isEmpty {
             for sub in subtitles {
                 let lang = sub.lang.isEmpty ? "ru" : sub.lang
@@ -69,26 +94,117 @@ class PlaybackHlsRewriter {
             }
         }
         
-        var variantIndex = 0
-        for i in streamInfIndex..<filteredLines.count {
-            let line = filteredLines[i]
-            
+        // Parse variant entries: (#EXT-X-STREAM-INF, URI)
+        var parsedVariants: [ParsedVariant] = []
+        var idx = streamInfIndex
+        while idx < filteredLines.count {
+            let line = filteredLines[idx]
             if line.hasPrefix("#EXT-X-STREAM-INF") {
                 var modifiedLine = normalizeStreamInfVideoRange(line)
                 if !subtitles.isEmpty {
                     modifiedLine = addOrReplaceAttribute(modifiedLine, key: "SUBTITLES", value: subsGroupId)
                 }
-                output.append(modifiedLine)
-            } else if !line.hasPrefix("#") && !line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+
+                var width = 0
+                var height = 0
+                if let resRange = line.range(of: "RESOLUTION=([0-9]+)x([0-9]+)", options: .regularExpression) {
+                    let resStr = String(line[resRange]).replacingOccurrences(of: "RESOLUTION=", with: "")
+                    let parts = resStr.components(separatedBy: "x")
+                    if parts.count == 2 {
+                        width = Int(parts[0]) ?? 0
+                        height = Int(parts[1]) ?? 0
+                    }
+                }
+
+                var bandwidth: Double = 0
+                if let bwRange = line.range(of: "BANDWIDTH=([0-9]+)", options: .regularExpression) {
+                    let bwStr = String(line[bwRange]).replacingOccurrences(of: "BANDWIDTH=", with: "")
+                    bandwidth = Double(bwStr) ?? 0
+                }
+
+                let resLabel = normalizeResolutionLabel(width: width, height: height)
+
+                var uri = ""
+                var nextIdx = idx + 1
+                while nextIdx < filteredLines.count {
+                    let nextLine = filteredLines[nextIdx]
+                    if !nextLine.hasPrefix("#") && !nextLine.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                        uri = nextLine
+                        nextIdx += 1
+                        break
+                    }
+                    nextIdx += 1
+                }
+
+                if !uri.isEmpty {
+                    parsedVariants.append(ParsedVariant(
+                        streamInfLine: modifiedLine,
+                        uriLine: uri,
+                        resolutionLabel: resLabel,
+                        bandwidth: bandwidth,
+                        height: height,
+                        width: width
+                    ))
+                }
+                idx = nextIdx
+            } else {
+                idx += 1
+            }
+        }
+
+        // Sort parsed variants descending so highest resolution & bitrate is always first
+        parsedVariants.sort { (a, b) -> Bool in
+            let scoreA = a.height * 100_000_000 + Int(a.bandwidth)
+            let scoreB = b.height * 100_000_000 + Int(b.bandwidth)
+            return scoreA > scoreB
+        }
+
+        // Apply quality filter if requested (e.g. "1080p", "720p", "360p")
+        var finalVariants = parsedVariants
+        if let targetQuality, !targetQuality.isEmpty, targetQuality != "Авто", targetQuality.lowercased() != "auto" {
+            let matches = parsedVariants.filter { $0.resolutionLabel.lowercased() == targetQuality.lowercased() }
+            if !matches.isEmpty {
+                finalVariants = matches
+            } else if let maxHeight = parsedVariants.map({ $0.height }).max(), maxHeight > 0 {
+                // If requested resolution (e.g. 1080p) exceeds available, lock to highest available resolution (e.g. 720p)
+                finalVariants = parsedVariants.filter { $0.height == maxHeight }
+            }
+        }
+
+        if !finalVariants.isEmpty {
+            var variantIndex = 0
+            for v in finalVariants {
+                output.append(v.streamInfLine)
                 if rewriteVariantUris {
                     let newUri = "\(mediaId)_\(variantIndex).m3u8"
                     output.append(newUri)
                 } else {
-                    output.append(line)
+                    output.append(v.uriLine)
                 }
                 variantIndex += 1
-            } else {
-                output.append(line)
+            }
+        } else {
+            // Fallback to original loop if no variant pairs could be parsed
+            var variantIndex = 0
+            for i in streamInfIndex..<filteredLines.count {
+                let line = filteredLines[i]
+                if line.hasPrefix("#EXT-X-STREAM-INF") {
+                    var modifiedLine = normalizeStreamInfVideoRange(line)
+                    if !subtitles.isEmpty {
+                        modifiedLine = addOrReplaceAttribute(modifiedLine, key: "SUBTITLES", value: subsGroupId)
+                    }
+                    output.append(modifiedLine)
+                } else if !line.hasPrefix("#") && !line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    if rewriteVariantUris {
+                        let newUri = "\(mediaId)_\(variantIndex).m3u8"
+                        output.append(newUri)
+                    } else {
+                        output.append(line)
+                    }
+                    variantIndex += 1
+                } else {
+                    output.append(line)
+                }
             }
         }
         

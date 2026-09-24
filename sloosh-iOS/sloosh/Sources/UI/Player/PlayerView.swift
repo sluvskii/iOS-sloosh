@@ -736,7 +736,7 @@ class PlayerViewModel: ObservableObject {
         var qualities: [PlaybackQualityOption] = [
             PlaybackQualityOption(
                 key: "Авто",
-                url: baseUrl,
+                url: proxiedPlaybackURL(for: baseUrl, quality: nil) ?? baseUrl,
                 preferredPeakBitRate: nil,
                 isAuto: true,
                 shouldReloadOnSelect: false
@@ -749,50 +749,49 @@ class PlayerViewModel: ObservableObject {
         
         for line in lines {
             if line.hasPrefix("#EXT-X-STREAM-INF:") {
-                var resStr = "Поток"
                 currentBandwidth = nil
-                if let range = line.range(of: "RESOLUTION=([^,\\s]+)", options: .regularExpression) {
-                    let match = String(line[range])
-                    let res = match.replacingOccurrences(of: "RESOLUTION=", with: "")
-                    let components = res.components(separatedBy: "x")
-                    if components.count == 2, let height = Int(components[1]) {
-                        if height > 1080 { continue }
-                        resStr = "\(height)p"
-                    }
-                } else if let range = line.range(of: "BANDWIDTH=([^,\\s]+)", options: .regularExpression) {
+                if let range = line.range(of: "BANDWIDTH=([0-9]+)", options: .regularExpression) {
                     let match = String(line[range])
                     let bw = match.replacingOccurrences(of: "BANDWIDTH=", with: "")
                     if let bandwidth = Double(bw) {
                         currentBandwidth = bandwidth
-                        resStr = "\(bandwidth / 1000) kbps"
                     }
+                }
+
+                var resStr: String?
+                if let range = line.range(of: "RESOLUTION=([0-9]+)x([0-9]+)", options: .regularExpression) {
+                    let match = String(line[range])
+                    let res = match.replacingOccurrences(of: "RESOLUTION=", with: "")
+                    let components = res.components(separatedBy: "x")
+                    if components.count == 2, let width = Int(components[0]), let height = Int(components[1]) {
+                        if height > 1080 && width > 1920 { continue }
+                        resStr = PlaybackHlsRewriter.normalizeResolutionLabel(width: width, height: height)
+                    }
+                } else if let bw = currentBandwidth {
+                    resStr = "\(Int(bw / 1000)) kbps"
                 }
                 currentResolution = resStr
             } else if !line.hasPrefix("#") && !line.isEmpty {
                 if let res = currentResolution {
-                    // Variants parsed from the master playlist must always retain the master playlist's baseUrl,
-                    // because variant sub-playlists (e.g. index-v1.m3u8) contain only video segments and lack
-                    // demuxed audio tracks (#EXT-X-MEDIA:TYPE=AUDIO). Switching bitrate is done via preferredPeakBitRate.
-                    if !qualities.contains(where: { $0.key == res }) {
+                    let targetUrl = proxiedPlaybackURL(for: baseUrl, quality: res) ?? baseUrl
+                    if let index = qualities.firstIndex(where: { $0.key == res }) {
+                        if let currentBandwidth, (qualities[index].preferredPeakBitRate ?? 0) < currentBandwidth {
+                            qualities[index] = PlaybackQualityOption(
+                                key: res,
+                                url: targetUrl,
+                                preferredPeakBitRate: currentBandwidth,
+                                isAuto: false,
+                                shouldReloadOnSelect: true
+                            )
+                        }
+                    } else {
                         qualities.append(
                             PlaybackQualityOption(
                                 key: res,
-                                url: baseUrl,
+                                url: targetUrl,
                                 preferredPeakBitRate: currentBandwidth,
                                 isAuto: false,
-                                shouldReloadOnSelect: false
-                            )
-                        )
-                    } else {
-                        // Prevent duplicate keys
-                        let uniqueRes = "\(res) (\(qualities.count))"
-                        qualities.append(
-                            PlaybackQualityOption(
-                                key: uniqueRes,
-                                url: baseUrl,
-                                preferredPeakBitRate: currentBandwidth,
-                                isAuto: false,
-                                shouldReloadOnSelect: false
+                                shouldReloadOnSelect: true
                             )
                         )
                     }
@@ -916,6 +915,12 @@ class PlayerViewModel: ObservableObject {
     private func restoreOrApplyQuality() {
         let dummyUrl = originalStreamURL ?? currentPlaybackSourceURL ?? URL(string: "about:blank")!
         let (_, targetBitrate) = selectPreservedPlaybackTarget(fallbackUrl: dummyUrl)
+        if let currentKey = self.currentQualityKey, currentKey != "Авто" {
+            let targetRes = targetResolution(for: currentKey)
+            if targetRes != .zero {
+                player?.currentItem?.preferredMaximumResolution = targetRes
+            }
+        }
         if let targetBitrate, targetBitrate > 0 {
             player?.currentItem?.preferredPeakBitRate = targetBitrate
         }
@@ -1405,14 +1410,15 @@ class PlayerViewModel: ObservableObject {
             self.targetQualityPreference = newPreference
         }
         
+        let targetRes = targetResolution(for: key)
         let targetBitrate = resolvedBitrate(for: quality)
-        logDebug("changeQuality: quality='\(key)', targetBitrate=\(targetBitrate)")
+        logDebug("changeQuality: quality='\(key)', targetBitrate=\(targetBitrate), targetResolution=\(targetRes)")
         
         if quality.isAuto {
+            player?.currentItem?.preferredPeakBitRate = 0
+            player?.currentItem?.preferredMaximumResolution = .zero
             if shouldReloadForAutoSelection(autoURL: quality.url) {
-                reloadPlayback(to: quality.url, preferredPeakBitRate: 0)
-            } else {
-                player?.currentItem?.preferredPeakBitRate = 0
+                reloadPlayback(to: quality.url, preferredPeakBitRate: 0, preferredMaximumResolution: .zero)
             }
             return
         }
@@ -1422,22 +1428,22 @@ class PlayerViewModel: ObservableObject {
                 guard let currentPlaybackSourceURL else { return false }
                 if currentPlaybackSourceURL.absoluteURL.absoluteString == quality.url.absoluteURL.absoluteString { return true }
                 if let orig = originalStreamURL, orig.absoluteURL.absoluteString == quality.url.absoluteURL.absoluteString { return true }
-                if isLocalProxyUrl(currentPlaybackSourceURL) { return true }
                 return false
             }()
 
             if isCurrentSourceMatch {
-                logDebug("changeQuality: quality='\(key)' has shouldReloadOnSelect=false and matches current source, setting preferredPeakBitRate=\(targetBitrate)")
+                logDebug("changeQuality: quality='\(key)' has shouldReloadOnSelect=false and matches current source, setting preferredPeakBitRate=\(targetBitrate), preferredMaximumResolution=\(targetRes)")
                 player?.currentItem?.preferredPeakBitRate = targetBitrate
+                player?.currentItem?.preferredMaximumResolution = targetRes
                 return
             }
         }
 
         // Вызываем reloadPlayback для мгновенного переключения качества с сохранением позиции
-        reloadPlayback(to: quality.url, preferredPeakBitRate: targetBitrate)
+        reloadPlayback(to: quality.url, preferredPeakBitRate: targetBitrate, preferredMaximumResolution: targetRes)
     }
 
-    private func reloadPlayback(to sourceURL: URL, preferredPeakBitRate: Double?) {
+    private func reloadPlayback(to sourceURL: URL, preferredPeakBitRate: Double?, preferredMaximumResolution: CGSize = .zero) {
         logDebug("reloadPlayback: called with sourceURL=\(sourceURL.absoluteString), preferredPeakBitRate=\(preferredPeakBitRate ?? -1)")
         let savedTime: Double = {
             if self.isInitialSeekPending, let pending = self.pendingSeekPosition, pending > 2 {
@@ -1491,6 +1497,8 @@ class PlayerViewModel: ObservableObject {
 
         let playerItem = AVPlayerItem(asset: asset)
         playerItem.preferredPeakBitRate = max(0, preferredPeakBitRate ?? 0)
+        playerItem.preferredMaximumResolution = preferredMaximumResolution
+        playerItem.preferredForwardBufferDuration = 30.0
         hasRetriedPlayback = true
 
         self.isLoading = true
@@ -1499,7 +1507,7 @@ class PlayerViewModel: ObservableObject {
         setupPlayerItemObservers(for: playerItem)
     }
 
-    private func proxiedPlaybackURL(for sourceURL: URL) -> URL? {
+    private func proxiedPlaybackURL(for sourceURL: URL, quality: String? = nil) -> URL? {
         let absoluteUrlString = sourceURL.absoluteURL.absoluteString
         guard let encodedData = absoluteUrlString.data(using: .utf8) else { return nil }
         let encoded = encodedData.base64EncodedString()
@@ -1510,7 +1518,14 @@ class PlayerViewModel: ObservableObject {
         let ext = sourceURL.pathExtension
         let pathSuffix = ext.isEmpty ? "stream.m3u8" : "stream.\(ext)"
 
-        return URL(string: "http://127.0.0.1:\(HlsProxyServer.shared.port.rawValue)/proxy/\(pathSuffix)?url=\(encoded)")
+        var baseString = "http://127.0.0.1:\(HlsProxyServer.shared.port.rawValue)/proxy/\(pathSuffix)?url=\(encoded)"
+        if let quality, !quality.isEmpty, quality != "Авто", quality.lowercased() != "auto" {
+            if let encQ = quality.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) {
+                baseString += "&q=\(encQ)"
+            }
+        }
+
+        return URL(string: baseString)
     }
 
     private func shouldReloadForAutoSelection(autoURL: URL) -> Bool {
@@ -1518,27 +1533,44 @@ class PlayerViewModel: ObservableObject {
         if currentPlaybackSourceURL.absoluteURL.absoluteString == autoURL.absoluteURL.absoluteString {
             return false
         }
+        if currentPlaybackSourceURL.absoluteString.contains("&q=") || currentPlaybackSourceURL.absoluteString.contains("?q=") {
+            return true
+        }
         if isLocalProxyUrl(currentPlaybackSourceURL), let orig = originalStreamURL, orig.absoluteURL.absoluteString == autoURL.absoluteURL.absoluteString {
             return false
         }
         return true
     }
 
-    private func resolvedBitrate(for quality: PlaybackQualityOption) -> Double {
-        if let preferredPeakBitRate = quality.preferredPeakBitRate, preferredPeakBitRate > 0 {
-            return preferredPeakBitRate
+    private func targetResolution(for qualityKey: String) -> CGSize {
+        let height = Int(qualityKey.replacingOccurrences(of: "p", with: "")) ?? 0
+        switch height {
+        case 2160...: return CGSize(width: 3840, height: 2160)
+        case 1440..<2160: return CGSize(width: 2560, height: 1440)
+        case 1080..<1440: return CGSize(width: 1920, height: 1080)
+        case 720..<1080: return CGSize(width: 1280, height: 720)
+        case 480..<720: return CGSize(width: 854, height: 480)
+        case 360..<480: return CGSize(width: 640, height: 360)
+        case 1..<360: return CGSize(width: 426, height: 240)
+        default: return .zero
         }
+    }
 
+    private func resolvedBitrate(for quality: PlaybackQualityOption) -> Double {
         let height = Int(quality.key.replacingOccurrences(of: "p", with: "")) ?? 0
         switch height {
-        case 2160...: return 20_000_000 // 4K UHD
-        case 1440..<2160: return 12_000_000 // 2K/1440p
-        case 1080..<1440: return 8_000_000 // Full HD
-        case 720..<1080: return 4_000_000 // HD
-        case 480..<720: return 2_000_000
-        case 360..<480: return 1_000_000
-        case 1..<360: return 700_000
-        default: return 0
+        case 2160...: return 25_000_000 // 4K UHD
+        case 1440..<2160: return 16_000_000 // 2K/1440p
+        case 1080..<1440: return 10_000_000 // Full HD
+        case 720..<1080: return 6_000_000 // HD
+        case 480..<720: return 2_500_000 // 480p
+        case 360..<480: return 1_200_000 // 360p
+        case 1..<360: return 800_000
+        default:
+            if let bw = quality.preferredPeakBitRate, bw > 0 {
+                return bw * 2.5
+            }
+            return 0
         }
     }
 
@@ -1725,6 +1757,13 @@ class PlayerViewModel: ObservableObject {
         }
 
         let playerItem = AVPlayerItem(asset: asset)
+        playerItem.preferredForwardBufferDuration = 30.0
+        if let currentKey = currentQualityKey, currentKey != "Авто" {
+            let res = targetResolution(for: currentKey)
+            if res != .zero {
+                playerItem.preferredMaximumResolution = res
+            }
+        }
         // Превью кадров доступно только для локального (скачанного) или MP4 контента
         let supportsThumbnails = isLocalFile || isMp4
         self.isLocalPlayback = supportsThumbnails
