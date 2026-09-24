@@ -112,9 +112,8 @@ final class CollapsParser {
                 let primaryUrl = hls ?? mpd ?? ""
 
                 var voices: [String] = []
-                if let audio = epObj["audio"] as? [String: Any],
-                   let names = audio["names"] as? [String] {
-                    voices = names.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+                if let audio = epObj["audio"] as? [String: Any] {
+                    voices = extractOrderedVoices(from: audio)
                 }
                 if voices.isEmpty {
                     voices = ["Основная"]
@@ -195,6 +194,32 @@ final class CollapsParser {
         )
     }
 
+    private static func extractOrderedVoices(from audioObj: [String: Any]) -> [String] {
+        guard let names = audioObj["names"] as? [String] else { return [] }
+        var ordered: [String] = []
+        if let order = audioObj["order"] as? [Int] {
+            for (idx, orderIdx) in order.enumerated() {
+                if orderIdx >= 0 && orderIdx < names.count {
+                    var name = names[orderIdx].trimmingCharacters(in: .whitespacesAndNewlines)
+                    if name.lowercased() == "delete" {
+                        name = "Дорожка \(idx + 1)"
+                    }
+                    ordered.append(name)
+                }
+            }
+        }
+        if ordered.isEmpty {
+            for (idx, raw) in names.enumerated() {
+                var name = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+                if name.lowercased() == "delete" {
+                    name = "Дорожка \(idx + 1)"
+                }
+                ordered.append(name)
+            }
+        }
+        return ordered.filter { !$0.isEmpty }
+    }
+
     // MARK: - Movie Extraction
 
     private static func parseMovie(from html: String, title: String) -> ParseResult? {
@@ -230,15 +255,14 @@ final class CollapsParser {
 
         guard let primaryUrl = hlsUrl ?? dashUrl, !primaryUrl.isEmpty else { return nil }
 
-        // Extract audio names for movie if present (e.g. audio: {"names": ["Дублированный", ...]})
+        // Extract audio names for movie if present (e.g. audio: {"names": ["Дублированный", ...], "order": [...]})
         var voices: [String] = []
         if let audioPattern = try? NSRegularExpression(pattern: #"(?i)\baudio\s*:\s*(\{[^\r\n]+\})"#, options: []),
            let match = audioPattern.firstMatch(in: html, options: [], range: NSRange(html.startIndex..., in: html)),
            let range = Range(match.range(at: 1), in: html),
            let data = String(html[range]).data(using: .utf8),
-           let audioObj = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-           let names = audioObj["names"] as? [String] {
-            voices = names.map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+           let audioObj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+            voices = extractOrderedVoices(from: audioObj)
         }
         if voices.isEmpty {
             voices = ["Основная дорожка"]
