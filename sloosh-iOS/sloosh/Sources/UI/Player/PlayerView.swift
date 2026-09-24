@@ -498,80 +498,7 @@ class PlayerViewModel: ObservableObject {
             CollapsRepository.shared.invalidateCache()
             originalStreamURL = nil
             currentPlaybackSourceURL = nil
-            
-            Task { [weak self] in
-                guard let self else { return }
-                do {
-                    let result = try await CollapsRepository.shared.fetchMedia(
-                        kpId: self.currentKpId,
-                        imdbId: nil,
-                        title: self.fallbackTitle
-                    )
-                    guard let result else {
-                        await MainActor.run {
-                            self.isLoading = false
-                            self.error = "Не удалось обновить ссылку на резервный видеопоток"
-                        }
-                        return
-                    }
-                    
-                    await MainActor.run {
-                        self.seriesResult = result.apiResult
-                        self.episodeSubtitles = result.episodeSubtitles
-                        
-                        let currentSeasonNum = self.currentSeason ?? 1
-                        let currentEpisodeNum = self.currentEpisode ?? 1
-                        
-                        let streamUrl: String?
-                        let voices: [String]
-                        let subtitles: [PlaybackSubtitle]
-                        
-                        if result.apiResult.isSerial {
-                            let ep = result.catalog.seasons?.first(where: { $0.season == currentSeasonNum })?.episodes.first(where: { $0.episode == currentEpisodeNum })
-                            streamUrl = ep?.playlist.primaryUrl
-                            voices = ep?.playlist.voiceovers ?? []
-                            subtitles = result.episodeSubtitles[EpisodeKey(season: currentSeasonNum, episode: currentEpisodeNum)] ?? []
-                        } else {
-                            if case .movie(_, let playlist) = result.catalog {
-                                streamUrl = playlist.primaryUrl
-                                voices = playlist.voiceovers
-                                subtitles = result.movieSubtitles
-                            } else {
-                                streamUrl = nil
-                                voices = []
-                                subtitles = []
-                            }
-                        }
-                        
-                        guard let freshUrl = streamUrl, !freshUrl.isEmpty else {
-                            self.isLoading = false
-                            self.error = "Не удалось обновить ссылку на видео"
-                            return
-                        }
-                        
-                        self.targetDirectStreamUrl = freshUrl
-                        self.hasStartedLoading = false
-                        self.beginLoad(
-                            iframeUrl: nil,
-                            kpId: self.currentKpId,
-                            season: self.currentSeason,
-                            episode: self.currentEpisode,
-                            selectedVoiceover: self.targetVoiceover ?? self._currentTranslationName,
-                            directStreamUrl: freshUrl,
-                            voices: voices,
-                            subtitles: subtitles,
-                            customHeaders: CollapsRepository.streamHeaders,
-                            mediaKey: self.mediaKey,
-                            tmdbId: self.tmdbId
-                        )
-                    }
-                } catch {
-                    await MainActor.run {
-                        self.isLoading = false
-                        self.error = "Не удалось обновить видеопоток: \(error.localizedDescription)"
-                    }
-                }
-            }
+            retryCollapsPlayback()
             return
         }
 
@@ -638,6 +565,83 @@ class PlayerViewModel: ObservableObject {
             hasStartedLoading = false
             isLoading = false
             error = "Не удалось восстановить видеопоток. Закройте плеер и откройте заново."
+        }
+    }
+
+    private func retryCollapsPlayback() {
+        Task { [weak self] in
+            guard let self else { return }
+            await self.executeCollapsRetry()
+        }
+    }
+
+    private func executeCollapsRetry() async {
+        do {
+            let result = try await CollapsRepository.shared.fetchMedia(
+                kpId: currentKpId,
+                imdbId: nil,
+                title: fallbackTitle
+            )
+            guard let result else {
+                isLoading = false
+                error = "Не удалось обновить ссылку на резервный видеопоток"
+                return
+            }
+
+            seriesResult = result.apiResult
+            episodeSubtitles = result.episodeSubtitles
+
+            let currentSeasonNum = currentSeason ?? 1
+            let currentEpisodeNum = currentEpisode ?? 1
+
+            let streamUrl: String?
+            let voices: [String]
+            let subtitles: [PlaybackSubtitle]
+
+            if result.apiResult.isSerial {
+                let seasonMatch = result.catalog.seasons?.first(where: { $0.season == currentSeasonNum })
+                let epMatch = seasonMatch?.episodes.first(where: { $0.episode == currentEpisodeNum })
+                streamUrl = epMatch?.playlist.primaryUrl
+                voices = epMatch?.playlist.voiceovers ?? []
+                let epKey = EpisodeKey(season: currentSeasonNum, episode: currentEpisodeNum)
+                subtitles = result.episodeSubtitles[epKey] ?? []
+            } else {
+                if case .movie(_, let playlist) = result.catalog {
+                    streamUrl = playlist.primaryUrl
+                    voices = playlist.voiceovers
+                    subtitles = result.movieSubtitles
+                } else {
+                    streamUrl = nil
+                    voices = []
+                    subtitles = []
+                }
+            }
+
+            guard let freshUrl = streamUrl, !freshUrl.isEmpty else {
+                isLoading = false
+                error = "Не удалось обновить ссылку на видео"
+                return
+            }
+
+            targetDirectStreamUrl = freshUrl
+            hasStartedLoading = false
+            let voiceToSelect = targetVoiceover ?? _currentTranslationName
+            beginLoad(
+                iframeUrl: nil,
+                kpId: currentKpId,
+                season: currentSeason,
+                episode: currentEpisode,
+                selectedVoiceover: voiceToSelect,
+                directStreamUrl: freshUrl,
+                voices: voices,
+                subtitles: subtitles,
+                customHeaders: CollapsRepository.streamHeaders,
+                mediaKey: mediaKey,
+                tmdbId: tmdbId
+            )
+        } catch {
+            isLoading = false
+            error = "Не удалось обновить видеопоток: \(error.localizedDescription)"
         }
     }
 
