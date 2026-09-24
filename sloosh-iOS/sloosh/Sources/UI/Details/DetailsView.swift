@@ -974,78 +974,70 @@ struct DetailsView: View {
                     }
                 }
             }) {
-                ZStack {
-                    if let wrapper = viewModel.sourceResultWrapper,
-                       (wrapper.allohaResult != nil || wrapper.collapsResult != nil) {
-                        SourceSelectionView(
-                            mode: sourceSheetMode,
-                            source1Result: wrapper.allohaResult,
-                            source2Result: wrapper.collapsResult,
-                            kpId: wrapper.kpId,
-                            details: viewModel.details
-                        ) { translation, season, episode, quality, source, subs, headers in
-                            if sourceSheetMode == .play {
-                                let effectiveKp = ((wrapper.kpId ?? 0) > 0 ? wrapper.kpId : nil)
-                                    ?? viewModel.details?.ids?.kp
-                                    ?? viewModel.details?.externalIds?.kp
-                                let effectiveTmdb = viewModel.details?.externalIds?.tmdb
-                                    ?? viewModel.details?.ids?.tmdb
-                                    ?? Int(viewModel.details?.id ?? "")
-                                let resolvedKey = (effectiveKp.flatMap { $0 > 0 ? "kp_\($0)" : nil }) ?? (viewModel.details?.id ?? "tmdb_\(effectiveTmdb ?? 0)")
+                SourceSelectionView(
+                    mode: sourceSheetMode,
+                    isLoading: viewModel.isFetchingSources || !viewModel.hasFinishedSourceFetch,
+                    source1Result: viewModel.sourceResultWrapper?.allohaResult,
+                    source2Result: viewModel.sourceResultWrapper?.collapsResult,
+                    kpId: viewModel.sourceResultWrapper?.kpId,
+                    details: viewModel.details,
+                    fallbackTitle: sourceSheetTitle
+                ) { translation, season, episode, quality, source, subs, headers in
+                    let effectiveWrapper = viewModel.sourceResultWrapper
+                    if sourceSheetMode == .play {
+                        let effectiveKp = ((effectiveWrapper?.kpId ?? 0) > 0 ? effectiveWrapper?.kpId : nil)
+                            ?? viewModel.details?.ids?.kp
+                            ?? viewModel.details?.externalIds?.kp
+                        let effectiveTmdb = viewModel.details?.externalIds?.tmdb
+                            ?? viewModel.details?.ids?.tmdb
+                            ?? Int(viewModel.details?.id ?? "")
+                        let resolvedKey = (effectiveKp.flatMap { $0 > 0 ? "kp_\($0)" : nil }) ?? (viewModel.details?.id ?? "tmdb_\(effectiveTmdb ?? 0)")
 
-                                playerKpId = effectiveKp
-                                playerTmdbId = effectiveTmdb
-                                playerMediaKey = resolvedKey
-                                playerSeason = season
-                                playerEpisode = episode
-                                playerQuality = quality
-                                
-                                if source == .source2, let collaps = wrapper.collapsResult {
-                                    playerStreamSource = .source2
-                                    playerEpisodeSubtitles = collaps.episodeSubtitles
-                                    playerSeriesResult = collaps.apiResult
-                                    playerVoices = collaps.apiResult.allTranslationNames
-                                    playerSubtitles = subs
-                                    playerCustomHeaders = headers
-                                } else if let alloha = wrapper.allohaResult {
-                                    playerStreamSource = .source1
-                                    playerEpisodeSubtitles = [:]
-                                    playerSeriesResult = alloha
-                                    playerVoices = alloha.allTranslationNames
-                                    playerSubtitles = []
-                                    playerCustomHeaders = nil
-                                }
-                                
-                                selectedIframeUrl = translation.iframeUrl.isEmpty ? nil : translation.iframeUrl
-                                playerVoiceover = translation.name
-                                playerStreamUrl = (translation.streamUrl?.isEmpty == false) ? translation.streamUrl : nil
-                                
-                                pendingPlayerLaunch = true
-                                showSourceSheet = false
-                                viewModel.saveAllohaTranslation(translation.name)
-                            } else {
-                                if let details = viewModel.details {
-                                    let directUrl = (source == .source2) ? ((translation.streamUrl?.isEmpty == false) ? translation.streamUrl : nil) : nil
-                                    let headers = (source == .source2) ? CollapsRepository.streamHeaders : nil
-                                    DownloadManager.shared.startDownload(
-                                        details: details,
-                                        season: season,
-                                        episode: episode,
-                                        translation: translation,
-                                        preferredQuality: quality,
-                                        directStreamUrl: directUrl,
-                                        customHeaders: headers
-                                    )
-                                }
-                                showSourceSheet = false
-                            }
+                        playerKpId = effectiveKp
+                        playerTmdbId = effectiveTmdb
+                        playerMediaKey = resolvedKey
+                        playerSeason = season
+                        playerEpisode = episode
+                        playerQuality = quality
+                        
+                        if source == .source2, let collaps = effectiveWrapper?.collapsResult {
+                            playerStreamSource = .source2
+                            playerEpisodeSubtitles = collaps.episodeSubtitles
+                            playerSeriesResult = collaps.apiResult
+                            playerVoices = collaps.apiResult.allTranslationNames
+                            playerSubtitles = subs
+                            playerCustomHeaders = headers
+                        } else if let alloha = effectiveWrapper?.allohaResult {
+                            playerStreamSource = .source1
+                            playerEpisodeSubtitles = [:]
+                            playerSeriesResult = alloha
+                            playerVoices = alloha.allTranslationNames
+                            playerSubtitles = []
+                            playerCustomHeaders = nil
                         }
-                    } else if viewModel.isFetchingSources || !viewModel.hasFinishedSourceFetch {
-                        SourceSelectionLoadingView(
-                            title: sourceSheetTitle
-                        )
+                        
+                        selectedIframeUrl = translation.iframeUrl.isEmpty ? nil : translation.iframeUrl
+                        playerVoiceover = translation.name
+                        playerStreamUrl = (translation.streamUrl?.isEmpty == false) ? translation.streamUrl : nil
+                        
+                        pendingPlayerLaunch = true
+                        showSourceSheet = false
+                        viewModel.saveAllohaTranslation(translation.name)
                     } else {
-                        SourceSelectionEmptyView(title: sourceSheetTitle)
+                        if let details = viewModel.details {
+                            let directUrl = (source == .source2) ? ((translation.streamUrl?.isEmpty == false) ? translation.streamUrl : nil) : nil
+                            let headers = (source == .source2) ? CollapsRepository.streamHeaders : nil
+                            DownloadManager.shared.startDownload(
+                                details: details,
+                                season: season,
+                                episode: episode,
+                                translation: translation,
+                                preferredQuality: quality,
+                                directStreamUrl: directUrl,
+                                customHeaders: headers
+                            )
+                        }
+                        showSourceSheet = false
                     }
                 }
                 .presentationDetents([.medium, .large])
@@ -1929,109 +1921,6 @@ private struct DetailsSkeletonView: View {
             .frame(maxWidth: .infinity, alignment: .center)
             .offset(y: verticalSizeClass == .compact ? -50 : -25)
         }
-    }
-}
-
-
-
-struct SourceSelectionLoadingView: View {
-    let title: String
-
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    SourceSelectionSkeletonSection(title: "Озвучка", chipWidths: [84, 112, 96, 104])
-                    SourceSelectionSkeletonSection(title: "Сезон", chipWidths: [88, 88, 88])
-                    SourceSelectionSkeletonSection(title: "Серия", chipWidths: [84, 84, 84, 84])
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            .contentMargins(.horizontal, 20, for: .scrollContent)
-            .contentMargins(.top, 16, for: .scrollContent)
-            .contentMargins(.bottom, 28, for: .scrollContent)
-            .navigationTitle(title)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .foregroundStyle(.primary)
-                    }
-                    .tint(.primary)
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("Закрыть")
-                }
-            }
-        }
-        .presentationDragIndicator(.visible)
-    }
-}
-
-struct SourceSelectionSkeletonSection: View {
-    let title: String
-    let chipWidths: [CGFloat]
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(title)
-                .font(.system(size: 20, weight: .bold))
-                .foregroundStyle(.primary)
-
-            FlowLayout(spacing: 10) {
-                ForEach(Array(chipWidths.enumerated()), id: \.offset) { _, width in
-                    Capsule()
-                        .fill(Color(UIColor.secondarySystemFill))
-                        .frame(width: width, height: 34)
-                }
-            }
-        }
-        .shimmer()
-    }
-}
-
-struct SourceSelectionEmptyView: View {
-    let title: String
-
-    @Environment(\.dismiss) private var dismiss
-
-    var body: some View {
-        NavigationStack {
-            VStack(spacing: 16) {
-                Image(systemName: "film.stack")
-                    .font(.system(size: 38, weight: .semibold))
-                    .foregroundStyle(.secondary)
-
-                Text("Видео пока недоступно")
-                    .font(.system(size: 20, weight: .bold))
-
-                Text("Этот проект пока отсутствует в источниках стриминга или еще не вышел в релиз.")
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundStyle(.secondary)
-                    .multilineTextAlignment(.center)
-            }
-            .padding(.horizontal, 24)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .navigationTitle(title)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .foregroundStyle(.primary)
-                    }
-                    .tint(.primary)
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-        .presentationDragIndicator(.visible)
     }
 }
 

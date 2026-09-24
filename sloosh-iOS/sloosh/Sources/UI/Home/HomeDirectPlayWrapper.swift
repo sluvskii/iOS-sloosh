@@ -76,57 +76,45 @@ struct HomeDirectPlayWrapper: View {
     @State private var fetchAttempted = false
     
     var body: some View {
-        ZStack {
-            if !fetchAttempted || viewModel.isFetchingSources || viewModel.isLoading {
-                SourceSelectionLoadingView(title: viewModel.details?.title ?? fallbackTitle)
-                    .transition(.opacity)
-            } else if let wrapper = viewModel.sourceResultWrapper,
-                      (wrapper.allohaResult != nil || wrapper.collapsResult != nil) {
-                SourceSelectionView(
-                    mode: .play,
-                    source1Result: wrapper.allohaResult,
-                    source2Result: wrapper.collapsResult,
-                    kpId: wrapper.kpId,
-                    details: viewModel.details
-                ) { translation, season, episode, quality, source, subs, headers in
-                    let tmdb = viewModel.details?.externalIds?.tmdb ?? viewModel.details?.ids?.tmdb ?? Int(viewModel.details?.id ?? "")
-                    let kp = (wrapper.kpId ?? 0) > 0 ? wrapper.kpId! : (viewModel.details?.ids?.kp ?? 0)
-                    let resolvedKey = kp > 0 ? "kp_\(kp)" : (viewModel.details?.id ?? "tmdb_\(tmdb ?? 0)")
-                    
-                    let activeSeriesResult = source == .source2 ? wrapper.collapsResult?.apiResult : wrapper.allohaResult
-                    let voices = activeSeriesResult?.allTranslationNames ?? []
-                    let config = PlayerConfig(
-                        iframeUrl: translation.iframeUrl.isEmpty ? nil : translation.iframeUrl,
-                        title: viewModel.details?.title ?? fallbackTitle,
-                        kpId: wrapper.kpId,
-                        season: season,
-                        episode: episode,
-                        voiceover: translation.name,
-                        streamUrl: (translation.streamUrl?.isEmpty == false) ? translation.streamUrl : nil,
-                        voices: voices,
-                        subtitles: subs,
-                        quality: quality,
-                        seriesResult: activeSeriesResult,
-                        customHeaders: source == .source2 ? headers : nil,
-                        mediaKey: resolvedKey,
-                        tmdbId: tmdb,
-                        posterUrl: viewModel.details?.displayPosterUrl,
-                        backdropUrl: viewModel.details?.displayBackdropUrl ?? viewModel.details?.displayPosterUrl,
-                        logoUrl: viewModel.details?.displayLogoUrl,
-                        source: source,
-                        episodeSubtitles: source == .source2 ? (wrapper.collapsResult?.episodeSubtitles ?? [:]) : [:]
-                    )
-                    onPlay(config)
-                }
-                .transition(.opacity)
-            } else {
-                SourceSelectionEmptyView(title: viewModel.details?.title ?? fallbackTitle)
-                    .transition(.opacity)
-            }
+        SourceSelectionView(
+            mode: .play,
+            isLoading: !fetchAttempted || viewModel.isFetchingSources || viewModel.isLoading,
+            source1Result: viewModel.sourceResultWrapper?.allohaResult,
+            source2Result: viewModel.sourceResultWrapper?.collapsResult,
+            kpId: viewModel.sourceResultWrapper?.kpId,
+            details: viewModel.details,
+            fallbackTitle: fallbackTitle
+        ) { translation, season, episode, quality, source, subs, headers in
+            let wrapper = viewModel.sourceResultWrapper
+            let tmdb = viewModel.details?.externalIds?.tmdb ?? viewModel.details?.ids?.tmdb ?? Int(viewModel.details?.id ?? "")
+            let kp = (wrapper?.kpId ?? 0) > 0 ? wrapper!.kpId! : (viewModel.details?.ids?.kp ?? 0)
+            let resolvedKey = kp > 0 ? "kp_\(kp)" : (viewModel.details?.id ?? "tmdb_\(tmdb ?? 0)")
+            
+            let activeSeriesResult = source == .source2 ? wrapper?.collapsResult?.apiResult : wrapper?.allohaResult
+            let voices = activeSeriesResult?.allTranslationNames ?? []
+            let config = PlayerConfig(
+                iframeUrl: translation.iframeUrl.isEmpty ? nil : translation.iframeUrl,
+                title: viewModel.details?.title ?? fallbackTitle,
+                kpId: wrapper?.kpId,
+                season: season,
+                episode: episode,
+                voiceover: translation.name,
+                streamUrl: (translation.streamUrl?.isEmpty == false) ? translation.streamUrl : nil,
+                voices: voices,
+                subtitles: subs,
+                quality: quality,
+                seriesResult: activeSeriesResult,
+                customHeaders: source == .source2 ? headers : nil,
+                mediaKey: resolvedKey,
+                tmdbId: tmdb,
+                posterUrl: viewModel.details?.displayPosterUrl,
+                backdropUrl: viewModel.details?.displayBackdropUrl ?? viewModel.details?.displayPosterUrl,
+                logoUrl: viewModel.details?.displayLogoUrl,
+                source: source,
+                episodeSubtitles: source == .source2 ? (wrapper?.collapsResult?.episodeSubtitles ?? [:]) : [:]
+            )
+            onPlay(config)
         }
-        .animation(.easeInOut(duration: 0.3), value: viewModel.isFetchingSources)
-        .animation(.easeInOut(duration: 0.3), value: viewModel.isLoading)
-        .animation(.easeInOut(duration: 0.3), value: fetchAttempted)
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
         .task {
