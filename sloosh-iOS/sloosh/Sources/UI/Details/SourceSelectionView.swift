@@ -5,20 +5,6 @@ enum SourceSelectionMode {
     case download
 }
 
-enum MediaStreamSource: Int, CaseIterable, Identifiable {
-    case source1 = 1
-    case source2 = 2
-
-    var id: Int { rawValue }
-
-    var title: String {
-        switch self {
-        case .source1: return "Источник 1"
-        case .source2: return "Источник 2"
-        }
-    }
-}
-
 struct TranslationChipItem: Identifiable, Hashable {
     let id: String
     let name: String
@@ -34,6 +20,7 @@ struct SourceSelectionView: View {
     let onAction: (AllohaTranslation, Int?, Int?, VideoQualityPreference, MediaStreamSource, [PlaybackSubtitle], [String: String]) -> Void
     @Environment(\.dismiss) private var dismiss
 
+    @AppStorage("preferredStreamSource") private var preferredSource: MediaStreamSource = .source1
     @State private var selectedSource: MediaStreamSource
 
     // Backward compatibility init
@@ -70,15 +57,31 @@ struct SourceSelectionView: View {
         self.details = details
         self.onAction = onAction
 
+        let saved = UserDefaults.standard.string(forKey: "preferredStreamSource")
+        let preferred = MediaStreamSource(rawValue: saved ?? "") ?? .source1
+
+        let hasSource1 = source1Result != nil && (!source1Result!.seasons.isEmpty || source1Result!.movie != nil)
+        let hasSource2 = source2Result != nil && (!source2Result!.apiResult.seasons.isEmpty || source2Result!.apiResult.movie != nil)
+
         let initial: MediaStreamSource
-        if source1Result != nil && (!source1Result!.seasons.isEmpty || source1Result!.movie != nil) {
+        if preferred == .source2 && hasSource2 {
+            initial = .source2
+        } else if preferred == .source1 && hasSource1 {
             initial = .source1
-        } else if source2Result != nil && (!source2Result!.apiResult.seasons.isEmpty || source2Result!.apiResult.movie != nil) {
+        } else if hasSource1 {
+            initial = .source1
+        } else if hasSource2 {
             initial = .source2
         } else {
-            initial = .source1
+            initial = preferred
         }
         _selectedSource = State(initialValue: initial)
+    }
+
+    private func selectSource(_ source: MediaStreamSource) {
+        selectedSource = source
+        preferredSource = source
+        UserDefaults.standard.set(source.rawValue, forKey: "preferredStreamSource")
     }
 
     private func isSourceAvailable(_ source: MediaStreamSource) -> Bool {
@@ -93,13 +96,16 @@ struct SourceSelectionView: View {
     }
 
     private var currentTitle: String {
+        if let t = details?.title, !t.isEmpty {
+            return t
+        }
         if selectedSource == .source1, let t = source1Result?.title, !t.isEmpty {
             return t
         }
         if selectedSource == .source2, let t = source2Result?.apiResult.title, !t.isEmpty {
             return t
         }
-        return details?.title ?? details?.originalTitle ?? "Выбор озвучки"
+        return details?.originalTitle ?? "Выбор озвучки"
     }
 
     var body: some View {
@@ -115,8 +121,7 @@ struct SourceSelectionView: View {
                             details: details,
                             episodeSubtitles: [:],
                             movieSubtitles: [],
-                            customHeaders: [:],
-                            sheetTitle: currentTitle
+                            customHeaders: [:]
                         ) { translation, season, episode, quality, subs, headers in
                             onAction(translation, season, episode, quality, .source1, subs, headers)
                             dismiss()
@@ -134,8 +139,7 @@ struct SourceSelectionView: View {
                             details: details,
                             episodeSubtitles: source2Result?.episodeSubtitles ?? [:],
                             movieSubtitles: source2Result?.movieSubtitles ?? [],
-                            customHeaders: CollapsRepository.streamHeaders,
-                            sheetTitle: currentTitle
+                            customHeaders: CollapsRepository.streamHeaders
                         ) { translation, season, episode, quality, subs, headers in
                             onAction(translation, season, episode, quality, .source2, subs, headers)
                             dismiss()
@@ -150,15 +154,20 @@ struct SourceSelectionView: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(action: { dismiss() }) {
                         Image(systemName: "xmark")
-                            .symbolRenderingMode(.monochrome)
+                            .font(.system(size: 13, weight: .bold))
                             .foregroundStyle(.primary)
+                            .frame(width: 32, height: 32)
+                            .glassEffect(.regular.interactive(), in: .circle)
                     }
-                    .tint(.primary)
                     .buttonStyle(.plain)
                 }
 
                 ToolbarItem(placement: .principal) {
-                    sourceSwitcher
+                    headerTitleOrLogoView
+                }
+
+                ToolbarItem(placement: .topBarTrailing) {
+                    sourceCornerButton
                 }
             }
             .scrollContentBackground(.hidden)
@@ -169,41 +178,70 @@ struct SourceSelectionView: View {
     }
 
     @ViewBuilder
-    private var sourceSwitcher: some View {
-        HStack(spacing: 3) {
+    private var headerTitleOrLogoView: some View {
+        if let logoString = details?.displayLogoUrl,
+           let logoUrl = URL(string: logoString) {
+            AsyncCachedImage(url: logoUrl) {
+                fallbackHeaderTitle
+            } content: { image in
+                Image(uiImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(maxHeight: 26)
+            } fallback: {
+                fallbackHeaderTitle
+            }
+            .frame(maxWidth: 160)
+        } else {
+            fallbackHeaderTitle
+        }
+    }
+
+    private var fallbackHeaderTitle: some View {
+        Text(currentTitle)
+            .font(.system(size: 16, weight: .semibold))
+            .foregroundStyle(.primary)
+            .lineLimit(1)
+            .truncationMode(.tail)
+            .frame(maxWidth: 180)
+    }
+
+    @ViewBuilder
+    private var sourceCornerButton: some View {
+        Menu {
             ForEach(MediaStreamSource.allCases) { source in
-                let available = isSourceAvailable(source)
                 Button {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
-                        selectedSource = source
+                        selectSource(source)
                     }
                 } label: {
-                    Text(source.title)
-                        .font(.system(size: 13, weight: selectedSource == source ? .bold : .medium))
-                        .foregroundStyle(selectedSource == source ? Color.black : (available ? Color.primary.opacity(0.8) : Color.secondary.opacity(0.4)))
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 6)
-                        .background {
-                            if selectedSource == source {
-                                Capsule()
-                                    .fill(Color.white)
-                                    .shadow(color: Color.black.opacity(0.18), radius: 4, x: 0, y: 1.5)
-                            }
+                    HStack {
+                        Text(source.title)
+                        if selectedSource == source {
+                            Image(systemName: "checkmark")
                         }
+                    }
                 }
-                .buttonStyle(.plain)
+                .disabled(!isSourceAvailable(source))
             }
+        } label: {
+            HStack(spacing: 5) {
+                Text(selectedSource.title)
+                    .font(.system(size: 13, weight: .semibold))
+                Image(systemName: "chevron.up.chevron.down")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.secondary)
+            }
+            .foregroundStyle(.primary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
+            .glassEffect(.regular.interactive(), in: .capsule)
         }
-        .padding(3)
-        .background {
-            Capsule()
-                .fill(Color.primary.opacity(0.08))
-        }
-        .glassEffect(.regular.interactive(), in: .capsule)
     }
 
     @ViewBuilder
     private func sourceUnavailableView(for source: MediaStreamSource) -> some View {
+        let alternate = (source == .source1) ? MediaStreamSource.source2 : MediaStreamSource.source1
         VStack(spacing: 16) {
             Image(systemName: "film.stack")
                 .font(.system(size: 46))
@@ -211,11 +249,27 @@ struct SourceSelectionView: View {
             Text("В источнике видео пока недоступно")
                 .font(.system(size: 18, weight: .bold))
                 .foregroundStyle(.primary)
-            Text("Пожалуйста, переключитесь на \(source == .source1 ? "Источник 2" : "Источник 1") в шапке")
+            Text("Пожалуйста, переключитесь на \(alternate.title)")
                 .font(.system(size: 14))
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 32)
+            
+            if isSourceAvailable(alternate) {
+                Button {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        selectSource(alternate)
+                    }
+                } label: {
+                    Text("Переключиться на \(alternate.title)")
+                        .font(.system(size: 14, weight: .semibold))
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(Color.slooshAccent)
+                .padding(.top, 8)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(.vertical, 80)
@@ -233,7 +287,6 @@ struct SingleSourceContentView: View {
     let episodeSubtitles: [EpisodeKey: [PlaybackSubtitle]]
     let movieSubtitles: [PlaybackSubtitle]
     let customHeaders: [String: String]
-    let sheetTitle: String
     let onCommit: (AllohaTranslation, Int?, Int?, VideoQualityPreference, [PlaybackSubtitle], [String: String]) -> Void
 
     @State private var selectedSeason: Int?
@@ -260,7 +313,6 @@ struct SingleSourceContentView: View {
         episodeSubtitles: [EpisodeKey: [PlaybackSubtitle]],
         movieSubtitles: [PlaybackSubtitle],
         customHeaders: [String: String],
-        sheetTitle: String,
         onCommit: @escaping (AllohaTranslation, Int?, Int?, VideoQualityPreference, [PlaybackSubtitle], [String: String]) -> Void
     ) {
         self.mode = mode
@@ -271,7 +323,6 @@ struct SingleSourceContentView: View {
         self.episodeSubtitles = episodeSubtitles
         self.movieSubtitles = movieSubtitles
         self.customHeaders = customHeaders
-        self.sheetTitle = sheetTitle
         self.onCommit = onCommit
 
         var transItems: [TranslationChipItem] = []
@@ -601,12 +652,6 @@ struct SingleSourceContentView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 24) {
-                Text(sheetTitle)
-                    .font(.system(size: 20, weight: .bold))
-                    .foregroundColor(.primary)
-                    .lineLimit(2)
-                    .padding(.top, 4)
-
                 translationsSection
 
                 if result.isSerial && !allSeasons.isEmpty {

@@ -1277,6 +1277,27 @@ enum VideoQualityPreference: String, CaseIterable, Identifiable, Codable {
     }
 }
 
+enum MediaStreamSource: String, CaseIterable, Identifiable, Codable {
+    case source1 = "source1"
+    case source2 = "source2"
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .source1: return "Источник 1"
+        case .source2: return "Источник 2"
+        }
+    }
+
+    var settingsTitle: String {
+        switch self {
+        case .source1: return "Источник 1 (Основной)"
+        case .source2: return "Источник 2 (Резервный)"
+        }
+    }
+}
+
 enum CardStyle: String, CaseIterable, Identifiable {
     case classic = "classic"
     case overlay = "overlay"
