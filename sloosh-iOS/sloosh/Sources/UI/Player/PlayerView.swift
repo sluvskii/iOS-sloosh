@@ -1261,7 +1261,72 @@ class PlayerViewModel: ObservableObject {
 
     func setSubtitle(_ subtitle: PlaybackSubtitle?) {
         currentSubtitle = subtitle
-        // TODO: инъекция субтитров через HlsProxyServer в следующей фазе
+        logDebug("setSubtitle: user selected '\(subtitle?.label ?? "Выкл.")'")
+        applySubtitleToPlayer(subtitle)
+    }
+
+    private func applySubtitleToPlayer(_ subtitle: PlaybackSubtitle?) {
+        guard let player = player,
+              let item = player.currentItem,
+              let group = item.asset.mediaSelectionGroup(forMediaCharacteristic: .legible) else {
+            logDebug("applySubtitleToPlayer: legible group not available yet")
+            return
+        }
+
+        guard let subtitle = subtitle else {
+            if group.allowsEmptySelection {
+                item.select(nil, in: group)
+            }
+            logDebug("applySubtitleToPlayer: disabled subtitles (selected nil)")
+            return
+        }
+
+        let options = group.options
+        logDebug("applySubtitleToPlayer: target='\(subtitle.label)', available options=\(options.map { $0.displayName })")
+
+        // 1. Exact match by displayName
+        if let option = options.first(where: {
+            $0.displayName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == subtitle.label.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        }) {
+            item.select(option, in: group)
+            logDebug("applySubtitleToPlayer: selected exact match option '\(option.displayName)'")
+            return
+        }
+
+        // 2. Fuzzy match by name containment
+        let subLabel = subtitle.label.lowercased()
+        if let option = options.first(where: {
+            let optName = $0.displayName.lowercased()
+            return optName.contains(subLabel) || subLabel.contains(optName)
+        }) {
+            item.select(option, in: group)
+            logDebug("applySubtitleToPlayer: selected fuzzy match option '\(option.displayName)'")
+            return
+        }
+
+        // 3. Match by index in availableSubtitles
+        if let idx = availableSubtitles.firstIndex(where: { $0.url == subtitle.url && $0.label == subtitle.label }),
+           idx < options.count {
+            item.select(options[idx], in: group)
+            logDebug("applySubtitleToPlayer: selected index match [\(idx)] '\(options[idx].displayName)'")
+            return
+        }
+
+        // 4. Match by language code
+        if !subtitle.lang.isEmpty,
+           let option = options.first(where: {
+               $0.locale?.language.languageCode?.identifier.lowercased() == subtitle.lang.lowercased()
+           }) {
+            item.select(option, in: group)
+            logDebug("applySubtitleToPlayer: selected language match option '\(option.displayName)'")
+            return
+        }
+
+        // 5. Fallback to first option if nothing matched
+        if let first = options.first {
+            item.select(first, in: group)
+            logDebug("applySubtitleToPlayer: fallback selected first option '\(first.displayName)'")
+        }
     }
 
     /// Переключает озвучку без закрытия плеера с сохранением позиции воспроизведения и качества видео
@@ -2044,10 +2109,16 @@ class PlayerViewModel: ObservableObject {
                         } catch {
                             self.logDebug("setupPlayerItemObservers: failed to load audible group \(error)")
                         }
+                        do {
+                            _ = try await item.asset.loadMediaSelectionGroup(for: .legible)
+                        } catch {
+                            self.logDebug("setupPlayerItemObservers: failed to load legible group \(error)")
+                        }
                         await MainActor.run {
                             self.syncNativeAudioTracks()
                             let targetVoice = self.targetVoiceover ?? self._currentTranslationName ?? self.availableVoiceovers.first ?? "Дубляж"
                             self.selectAudioTrackInPlayer(named: targetVoice)
+                            self.syncNativeSubtitleTracks()
                         }
                     }
                 }
@@ -2881,6 +2952,35 @@ class PlayerViewModel: ObservableObject {
         if !updatedVoiceovers.isEmpty {
             self.availableVoiceovers = updatedVoiceovers
             logDebug("syncNativeAudioTracks: updated availableVoiceovers=\(self.availableVoiceovers)")
+        }
+    }
+
+    private func syncNativeSubtitleTracks() {
+        guard let player = player,
+              let item = player.currentItem,
+              let group = item.asset.mediaSelectionGroup(forMediaCharacteristic: .legible) else {
+            return
+        }
+
+        let nativeOptions = group.options
+        logDebug("syncNativeSubtitleTracks: native legible options count=\(nativeOptions.count), names=\(nativeOptions.map { $0.displayName })")
+
+        // If availableSubtitles is empty (e.g. Alloha stream with embedded HLS subtitles),
+        // populate availableSubtitles from native legible options so the subtitle button in BottomRowView appears!
+        if self.availableSubtitles.isEmpty && !nativeOptions.isEmpty {
+            self.availableSubtitles = nativeOptions.enumerated().map { (index, opt) in
+                let lang = opt.locale?.language.languageCode?.identifier ?? "ru"
+                let label = opt.displayName.isEmpty ? "Субтитры \(index + 1)" : opt.displayName
+                return PlaybackSubtitle(url: "native_\(index)", label: label, lang: lang)
+            }
+            logDebug("syncNativeSubtitleTracks: populated availableSubtitles with \(self.availableSubtitles.count) native tracks")
+        }
+
+        // Apply current subtitle selection if user previously chose one, or ensure subtitles stay off
+        if let current = self.currentSubtitle {
+            applySubtitleToPlayer(current)
+        } else if group.allowsEmptySelection {
+            item.select(nil, in: group)
         }
     }
     

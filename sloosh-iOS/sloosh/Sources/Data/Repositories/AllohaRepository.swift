@@ -951,13 +951,9 @@ final class AllohaRepository: @unchecked Sendable {
                             }
                             iframe = injectTranslationId(tKey, into: iframe)
                             iframe = injectSeasonEpisode(season: seasonNum, episode: episodeNum, into: iframe)
-                            let transName = tDict["translation"] as? String ?? "Unknown"
-
                             let cleanTitle = normalizedAllohaTranslationName(transName)
-                            let lower = cleanTitle.lowercased()
-                            if !lower.contains("субтитр") && !lower.contains("subtitle") {
-                                parsedTrans.append(AllohaTranslation(id: tKey, name: cleanTitle, iframeUrl: iframe, streamUrl: nil))
-                            }
+                            let finalTitle = cleanTitle.isEmpty ? transName : cleanTitle
+                            parsedTrans.append(AllohaTranslation(id: tKey, name: finalTitle, iframeUrl: iframe, streamUrl: nil))
                         }
                     } else if let transArray = eDict["translation"] as? [[String: Any]] {
                         for (index, tDict) in transArray.enumerated() {
@@ -976,10 +972,8 @@ final class AllohaRepository: @unchecked Sendable {
                             let transName = tDict["translation"] as? String ?? "Unknown"
 
                             let cleanTitle = normalizedAllohaTranslationName(transName)
-                            let lower = cleanTitle.lowercased()
-                            if !lower.contains("субтитр") && !lower.contains("subtitle") {
-                                parsedTrans.append(AllohaTranslation(id: translationId, name: cleanTitle, iframeUrl: iframe, streamUrl: nil))
-                            }
+                            let finalTitle = cleanTitle.isEmpty ? transName : cleanTitle
+                            parsedTrans.append(AllohaTranslation(id: translationId, name: finalTitle, iframeUrl: iframe, streamUrl: nil))
                         }
                     }
 
@@ -1027,10 +1021,8 @@ final class AllohaRepository: @unchecked Sendable {
                         }
                     }
                     let cleanTitle = normalizedAllohaTranslationName(transName.isEmpty ? "Озвучка \(tKey)" : transName)
-                    let lower = cleanTitle.lowercased()
-                    if !lower.contains("субтитр") && !lower.contains("subtitle") {
-                        parsedTrans.append(AllohaTranslation(id: tKey, name: cleanTitle, iframeUrl: iframe, streamUrl: nil))
-                    }
+                    let finalTitle = cleanTitle.isEmpty ? transName : cleanTitle
+                    parsedTrans.append(AllohaTranslation(id: tKey, name: finalTitle, iframeUrl: iframe, streamUrl: nil))
                 }
                 // Порядок озвучек сохраняем как отдаёт Alloha (популярные первыми)
             } else if let transIframeArray = dataObj["translation_iframe"] as? [[String: Any]] {
@@ -1044,10 +1036,8 @@ final class AllohaRepository: @unchecked Sendable {
                     iframe = injectTranslationId(translationId, into: iframe)
                     let transName = tDict["name"] as? String ?? tDict["translation"] as? String ?? tDict["title"] as? String ?? "Озвучка \(index + 1)"
                     let cleanTitle = normalizedAllohaTranslationName(transName)
-                    let lower = cleanTitle.lowercased()
-                    if !lower.contains("субтитр") && !lower.contains("subtitle") {
-                        parsedTrans.append(AllohaTranslation(id: translationId, name: cleanTitle, iframeUrl: iframe, streamUrl: nil))
-                    }
+                    let finalTitle = cleanTitle.isEmpty ? transName : cleanTitle
+                    parsedTrans.append(AllohaTranslation(id: translationId, name: finalTitle, iframeUrl: iframe, streamUrl: nil))
                 }
                 // Порядок озвучек сохраняем как отдаёт Alloha (популярные первыми)
             }
@@ -1063,10 +1053,8 @@ final class AllohaRepository: @unchecked Sendable {
                         iframe = injectTranslationId(tKey, into: iframe)
                         let transName = tDict["translation"] as? String ?? tDict["name"] as? String ?? "Unknown"
                         let cleanTitle = normalizedAllohaTranslationName(transName)
-                        let lower = cleanTitle.lowercased()
-                        if !lower.contains("субтитр") && !lower.contains("subtitle") {
-                            parsedTrans.append(AllohaTranslation(id: tKey, name: cleanTitle, iframeUrl: iframe, streamUrl: nil))
-                        }
+                        let finalTitle = cleanTitle.isEmpty ? transName : cleanTitle
+                        parsedTrans.append(AllohaTranslation(id: tKey, name: finalTitle, iframeUrl: iframe, streamUrl: nil))
                     }
                     // Порядок озвучек сохраняем как отдаёт Alloha (популярные первыми)
                 } else if let transArray = transSource as? [[String: Any]] {
@@ -1080,10 +1068,8 @@ final class AllohaRepository: @unchecked Sendable {
                         iframe = injectTranslationId(translationId, into: iframe)
                         let transName = tDict["translation"] as? String ?? tDict["name"] as? String ?? "Unknown"
                         let cleanTitle = normalizedAllohaTranslationName(transName)
-                        let lower = cleanTitle.lowercased()
-                        if !lower.contains("субтитр") && !lower.contains("subtitle") {
-                            parsedTrans.append(AllohaTranslation(id: translationId, name: cleanTitle, iframeUrl: iframe, streamUrl: nil))
-                        }
+                        let finalTitle = cleanTitle.isEmpty ? transName : cleanTitle
+                        parsedTrans.append(AllohaTranslation(id: translationId, name: finalTitle, iframeUrl: iframe, streamUrl: nil))
                     }
                     // Порядок озвучек сохраняем как отдаёт Alloha (популярные первыми)
                 } else if let transStr = transSource as? String {
@@ -1091,11 +1077,8 @@ final class AllohaRepository: @unchecked Sendable {
                     if iframe.hasPrefix("//") { iframe = "https:" + iframe }
                     if !iframe.isEmpty {
                         let cleanTitle = normalizedAllohaTranslationName(transStr)
-                        let lower = cleanTitle.lowercased()
-                        if !lower.contains("субтитр") && !lower.contains("subtitle") {
-                            let finalName = cleanTitle.isEmpty ? transStr : cleanTitle
-                            parsedTrans.append(AllohaTranslation(id: "default", name: finalName, iframeUrl: iframe, streamUrl: nil))
-                        }
+                        let finalName = cleanTitle.isEmpty ? transStr : cleanTitle
+                        parsedTrans.append(AllohaTranslation(id: "default", name: finalName, iframeUrl: iframe, streamUrl: nil))
                     }
                 }
             }
@@ -1114,10 +1097,8 @@ final class AllohaRepository: @unchecked Sendable {
                         let vTitle = (variant["title"] as? String) ?? "Озвучка \(idx + 1)"
                         let vUrl = (variant["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
                         let cleanTitle = normalizedAllohaTranslationName(vTitle)
-                        let lower = cleanTitle.lowercased()
-                        if !lower.contains("субтитр") && !lower.contains("subtitle") {
-                            dynamicTrans.append(AllohaTranslation(id: "\(idx)", name: cleanTitle, iframeUrl: defaultIframe, streamUrl: vUrl))
-                        }
+                        let finalTitle = cleanTitle.isEmpty ? vTitle : cleanTitle
+                        dynamicTrans.append(AllohaTranslation(id: "\(idx)", name: finalTitle, iframeUrl: defaultIframe, streamUrl: vUrl))
                     }
                     if !dynamicTrans.isEmpty {
                         parsedTrans = dynamicTrans

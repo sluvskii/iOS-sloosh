@@ -34,7 +34,8 @@ class PlaybackHlsRewriter {
         targetQuality: String? = nil,
         preferredVoiceName: String? = nil,
         rewriteVariantUris: Bool = false,
-        stripExistingSubtitles: Bool = false
+        stripExistingSubtitles: Bool = false,
+        port: Int = 8181
     ) -> String {
         guard !master.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             return master
@@ -56,7 +57,7 @@ class PlaybackHlsRewriter {
         }
 
         let streamInfIndex = filteredLines.firstIndex { $0.hasPrefix("#EXT-X-STREAM-INF") } ?? filteredLines.count
-        let hasMediaTags = filteredLines.contains { $0.hasPrefix("#EXT-X-MEDIA") }
+        let hasMediaTags = filteredLines.contains { $0.hasPrefix("#EXT-X-MEDIA") } || !subtitles.isEmpty
         var hasEmittedVersion = false
         
         for i in 0..<streamInfIndex {
@@ -88,10 +89,22 @@ class PlaybackHlsRewriter {
             for sub in subtitles {
                 let lang = sub.lang.isEmpty ? "ru" : sub.lang
                 let label = sub.label.isEmpty ? "Subtitle" : sub.label
-                let uri = sub.url
-                guard !uri.isEmpty else { continue }
+                let rawUri = sub.url
+                guard !rawUri.isEmpty else { continue }
                 
-                output.append("#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID=\"\(subsGroupId)\",NAME=\"\(escapeAttr(label))\",DEFAULT=NO,AUTOSELECT=YES,LANGUAGE=\"\(escapeAttr(lang))\",URI=\"\(escapeAttr(uri))\"")
+                let subUri: String
+                if rawUri.lowercased().contains(".m3u8") {
+                    subUri = rawUri
+                } else {
+                    // Raw VTT or SRT file: encode as base64 URL parameter to /subtitles/stream.m3u8
+                    let encoded = (rawUri.data(using: .utf8)?.base64EncodedString() ?? rawUri)
+                        .replacingOccurrences(of: "+", with: "-")
+                        .replacingOccurrences(of: "/", with: "_")
+                        .replacingOccurrences(of: "=", with: "")
+                    subUri = "http://127.0.0.1:\(port)/subtitles/stream.m3u8?url=\(encoded)"
+                }
+                
+                output.append("#EXT-X-MEDIA:TYPE=SUBTITLES,GROUP-ID=\"\(subsGroupId)\",NAME=\"\(escapeAttr(label))\",DEFAULT=NO,AUTOSELECT=YES,LANGUAGE=\"\(escapeAttr(lang))\",URI=\"\(escapeAttr(subUri))\"")
             }
         }
         

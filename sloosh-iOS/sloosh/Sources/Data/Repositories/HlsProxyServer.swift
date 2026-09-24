@@ -314,6 +314,24 @@ class HlsProxyServer {
             } else {
                 self.send404(on: connection)
             }
+        } else if urlComponents.path.hasPrefix("/subtitles"),
+                  let urlQuery = urlComponents.queryItems?.first(where: { $0.name == "url" })?.value {
+            let vttProxyUrl = "http://127.0.0.1:\(self.port.rawValue)/proxy/stream.vtt?url=\(urlQuery)"
+            let playlist = """
+            #EXTM3U
+            #EXT-X-VERSION:3
+            #EXT-X-TARGETDURATION:14400
+            #EXT-X-MEDIA-SEQUENCE:0
+            #EXT-X-PLAYLIST-TYPE:VOD
+            #EXTINF:14400.0,
+            \(vttProxyUrl)
+            #EXT-X-ENDLIST
+            """
+            if let data = playlist.data(using: .utf8) {
+                self.sendResponse(data: data, statusCode: 200, contentType: "application/vnd.apple.mpegurl", contentRange: nil, connection: connection)
+            } else {
+                self.send404(on: connection)
+            }
         } else if urlComponents.path.hasPrefix("/local/") {
             let relativePath = String(urlComponents.path.dropFirst(7)) // drop "/local/"
             let docs = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
@@ -394,7 +412,8 @@ class HlsProxyServer {
                             subtitles: currentSubtitles,
                             mediaId: currentMediaId,
                             targetQuality: targetQuality,
-                            preferredVoiceName: currentPreferredVoice
+                            preferredVoiceName: currentPreferredVoice,
+                            port: Int(self.port.rawValue)
                         )
 
                         AppDiagnostics.shared.log("HlsProxyServer: rewritten master playlist:\n\(playlistRewritten)")
@@ -437,10 +456,17 @@ class HlsProxyServer {
                 }
 
                 let statusCode = httpResponse.statusCode
-                let contentType = resolveContentType(for: realUrl, httpResponse: httpResponse)
+                var finalData = data
+                var contentType = resolveContentType(for: realUrl, httpResponse: httpResponse)
                 let contentRange = httpResponse.value(forHTTPHeaderField: "Content-Range")
 
-                self.sendResponse(data: data, statusCode: statusCode, contentType: contentType, contentRange: contentRange, connection: connection)
+                let isSub = contentType == "text/vtt" || contentType == "application/x-subrip" || realUrl.pathExtension.lowercased() == "vtt" || realUrl.pathExtension.lowercased() == "srt"
+                if isSub {
+                    contentType = "text/vtt"
+                    finalData = self.normalizeSubtitleData(data)
+                }
+
+                self.sendResponse(data: finalData, statusCode: statusCode, contentType: contentType, contentRange: contentRange, connection: connection)
             }
         } catch {
             if Task.isCancelled { return }
@@ -481,8 +507,12 @@ class HlsProxyServer {
                         let match = String(modifiedLine[range])
                         let uriString = match.replacingOccurrences(of: "URI=\"", with: "").replacingOccurrences(of: "\"", with: "")
                         if !uriString.isEmpty && uriString != "none" {
-                            let proxied = proxyUrl(uriString, baseUrl: baseUrl)
-                            modifiedLine.replaceSubrange(range, with: "URI=\"\(proxied)\"")
+                            if uriString.hasPrefix("http://127.0.0.1:") {
+                                // Already a local proxy URL, keep as is
+                            } else {
+                                let proxied = proxyUrl(uriString, baseUrl: baseUrl)
+                                modifiedLine.replaceSubrange(range, with: "URI=\"\(proxied)\"")
+                            }
                         }
                     }
                     result.append(modifiedLine)
@@ -609,6 +639,35 @@ class HlsProxyServer {
         connection.send(content: data, completion: .contentProcessed({ _ in
             connection.cancel()
         }))
+    }
+
+    private func normalizeSubtitleData(_ rawData: Data) -> Data {
+        guard var text = String(data: rawData, encoding: .utf8) ?? String(data: rawData, encoding: .windowsCP1251) else {
+            return rawData
+        }
+
+        if text.hasPrefix("\u{FEFF}") {
+            text.removeFirst()
+        }
+
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.hasPrefix("WEBVTT") {
+            if !text.contains("X-TIMESTAMP-MAP") {
+                if let range = text.range(of: "WEBVTT") {
+                    let insertIdx = range.upperBound
+                    text.insert(contentsOf: "\nX-TIMESTAMP-MAP=LOCAL:00:00:00.000,MPEGTS:0", at: insertIdx)
+                }
+            }
+        } else {
+            let srtRegex = try? NSRegularExpression(pattern: #"(\d{2}:\d{2}:\d{2}),(\d{3})"#, options: [])
+            if let regex = srtRegex {
+                let range = NSRange(text.startIndex..<text.endIndex, in: text)
+                text = regex.stringByReplacingMatches(in: text, options: [], range: range, withTemplate: "$1.$2")
+            }
+            text = "WEBVTT\nX-TIMESTAMP-MAP=LOCAL:00:00:00.000,MPEGTS:0\n\n" + text
+        }
+
+        return text.data(using: .utf8) ?? rawData
     }
 
     private func resolveContentType(for url: URL, httpResponse: HTTPURLResponse?) -> String {
