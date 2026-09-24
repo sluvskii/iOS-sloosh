@@ -150,14 +150,14 @@ struct SettingsView: View {
             }
             
             Section("Воспроизведение") {
-                // Основной источник
+                // Источник
                 HStack(spacing: 12) {
                     Image(systemName: "server.rack")
                         .foregroundStyle(Color.slooshAccent)
                         .font(.system(size: 18))
                         .frame(width: 24)
                     
-                    Picker("Основной источник", selection: $preferredSource) {
+                    Picker("Источник", selection: $preferredSource) {
                         ForEach(MediaStreamSource.allCases) { source in
                             Text(source.settingsTitle).tag(source)
                         }
