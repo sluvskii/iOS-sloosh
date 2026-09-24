@@ -1,17 +1,16 @@
 import Foundation
-import os.log
 
-public final class CollapsRepository: @unchecked Sendable {
-    public static let shared = CollapsRepository()
+final class CollapsRepository: @unchecked Sendable {
+    static let shared = CollapsRepository()
 
-    public static let streamHeaders: [String: String] = [
+    static let streamHeaders: [String: String] = [
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
         "Referer": "https://kinokrad.my/",
         "Origin": "https://kinokrad.my",
         "Accept": "*/*"
     ]
 
-    public static let embedHeaders: [String: String] = [
+    static let embedHeaders: [String: String] = [
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
         "Referer": "https://kinokrad.my/",
         "Origin": "https://kinokrad.my",
@@ -31,7 +30,7 @@ public final class CollapsRepository: @unchecked Sendable {
 
     private init() {}
 
-    public func fetchMedia(
+    func fetchMedia(
         kpId: Int?,
         imdbId: String? = nil,
         title: String? = nil
@@ -88,7 +87,7 @@ public final class CollapsRepository: @unchecked Sendable {
         return parsed
     }
 
-    public func invalidateCache() {
+    func invalidateCache() {
         cacheLock.lock()
         cache.removeAll()
         cacheLock.unlock()

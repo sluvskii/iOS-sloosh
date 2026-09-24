@@ -1,35 +1,35 @@
 import Foundation
 
-public struct EpisodeKey: Hashable, Codable, Sendable {
-    public let season: Int
-    public let episode: Int
+struct EpisodeKey: Hashable, Codable, Sendable {
+    let season: Int
+    let episode: Int
     
-    public init(season: Int, episode: Int) {
+    init(season: Int, episode: Int) {
         self.season = season
         self.episode = episode
     }
 }
 
-public struct CollapsSubtitle: Codable, Hashable, Equatable {
-    public let url: String
-    public let label: String
-    public let language: String
+struct CollapsSubtitle: Codable, Hashable, Equatable {
+    let url: String
+    let label: String
+    let language: String
     
-    public init(url: String, label: String, language: String) {
+    init(url: String, label: String, language: String) {
         self.url = url
         self.label = label
         self.language = language
     }
 }
 
-public struct CollapsPlaylist: Codable, Hashable, Equatable {
-    public let primaryUrl: String
-    public let hlsUrl: String?
-    public let dashUrl: String?
-    public let voiceovers: [String]
-    public let subtitles: [CollapsSubtitle]
+struct CollapsPlaylist: Codable, Hashable, Equatable {
+    let primaryUrl: String
+    let hlsUrl: String?
+    let dashUrl: String?
+    let voiceovers: [String]
+    let subtitles: [CollapsSubtitle]
     
-    public init(primaryUrl: String, hlsUrl: String?, dashUrl: String?, voiceovers: [String], subtitles: [CollapsSubtitle]) {
+    init(primaryUrl: String, hlsUrl: String?, dashUrl: String?, voiceovers: [String], subtitles: [CollapsSubtitle]) {
         self.primaryUrl = primaryUrl
         self.hlsUrl = hlsUrl
         self.dashUrl = dashUrl
@@ -38,13 +38,13 @@ public struct CollapsPlaylist: Codable, Hashable, Equatable {
     }
 }
 
-public struct CollapsEpisode: Codable, Hashable, Equatable {
-    public let season: Int
-    public let episode: Int
-    public let title: String
-    public let playlist: CollapsPlaylist
+struct CollapsEpisode: Codable, Hashable, Equatable {
+    let season: Int
+    let episode: Int
+    let title: String
+    let playlist: CollapsPlaylist
     
-    public init(season: Int, episode: Int, title: String, playlist: CollapsPlaylist) {
+    init(season: Int, episode: Int, title: String, playlist: CollapsPlaylist) {
         self.season = season
         self.episode = episode
         self.title = title
@@ -52,19 +52,19 @@ public struct CollapsEpisode: Codable, Hashable, Equatable {
     }
 }
 
-public struct CollapsSeason: Codable, Hashable, Equatable {
-    public let season: Int
-    public let title: String
-    public let episodes: [CollapsEpisode]
+struct CollapsSeason: Codable, Hashable, Equatable {
+    let season: Int
+    let title: String
+    let episodes: [CollapsEpisode]
     
-    public init(season: Int, title: String, episodes: [CollapsEpisode]) {
+    init(season: Int, title: String, episodes: [CollapsEpisode]) {
         self.season = season
         self.title = title
         self.episodes = episodes
     }
 }
 
-public enum CollapsCatalog: Codable, Hashable, Equatable {
+enum CollapsCatalog: Codable, Hashable, Equatable {
     case movie(source: String, playlist: CollapsPlaylist)
     case series(source: String, seasons: [CollapsSeason])
     
@@ -72,7 +72,7 @@ public enum CollapsCatalog: Codable, Hashable, Equatable {
         case kind, source, playlist, seasons
     }
     
-    public init(from decoder: Decoder) throws {
+    init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let kind = try container.decode(String.self, forKey: .kind)
         let source = try container.decode(String.self, forKey: .source)
@@ -89,7 +89,7 @@ public enum CollapsCatalog: Codable, Hashable, Equatable {
         }
     }
     
-    public func encode(to encoder: Encoder) throws {
+    func encode(to encoder: Encoder) throws {
         var container = encoder.container(keyedBy: CodingKeys.self)
         
         switch self {
