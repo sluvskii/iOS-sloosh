@@ -1,15 +1,19 @@
 import SwiftUI
 
-struct WatchSelectorChip: View {
+struct WatchSelectorChip: View, Equatable {
     let title: String
     let isSelected: Bool
     let isAvailable: Bool
-    var namespace: Namespace.ID? = nil
-    var namespaceId: String? = nil
     let action: () -> Void
 
     @Environment(\.colorScheme) private var colorScheme
     private static let feedback = UISelectionFeedbackGenerator()
+
+    static func == (lhs: WatchSelectorChip, rhs: WatchSelectorChip) -> Bool {
+        lhs.title == rhs.title &&
+        lhs.isSelected == rhs.isSelected &&
+        lhs.isAvailable == rhs.isAvailable
+    }
 
     var body: some View {
         Button {
@@ -28,36 +32,36 @@ struct WatchSelectorChip: View {
                         ? (colorScheme == .dark ? Color.black : Color.white)
                         : (isAvailable ? Color.primary : Color.secondary.opacity(0.45))
                 )
-                .animation(.easeInOut(duration: 0.18), value: isSelected)
-                .background {
-                    if isSelected {
-                        if let namespace, let namespaceId {
-                            Capsule()
-                                .fill(colorScheme == .dark ? Color.white : Color.primary)
-                                .matchedGeometryEffect(id: namespaceId, in: namespace)
-                                .shadow(color: colorScheme == .dark ? Color.white.opacity(0.22) : Color.black.opacity(0.18), radius: 6, x: 0, y: 2)
-                        } else {
-                            Capsule()
-                                .fill(colorScheme == .dark ? Color.white : Color.primary)
-                                .shadow(color: colorScheme == .dark ? Color.white.opacity(0.22) : Color.black.opacity(0.18), radius: 6, x: 0, y: 2)
-                        }
-                    } else {
-                        Capsule()
-                            .fill(colorScheme == .dark ? Color.white.opacity(0.09) : Color(UIColor.secondarySystemFill))
-                    }
-                }
+                .background(
+                    Capsule()
+                        .fill(
+                            isSelected
+                                ? (colorScheme == .dark ? Color.white : Color.primary)
+                                : (colorScheme == .dark ? Color.white.opacity(0.09) : Color(UIColor.secondarySystemFill))
+                        )
+                        .shadow(
+                            color: isSelected
+                                ? (colorScheme == .dark ? Color.white.opacity(0.14) : Color.black.opacity(0.12))
+                                : Color.clear,
+                            radius: 4,
+                            x: 0,
+                            y: 1
+                        )
+                )
         }
         .buttonStyle(ChipButtonStyle())
         .disabled(!isAvailable)
-        .opacity(isAvailable ? 1.0 : 0.4)
+        .opacity(isAvailable ? 1.0 : 0.35)
+        .animation(.easeInOut(duration: 0.16), value: isSelected)
     }
 }
 
 struct ChipButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed ? 0.94 : 1.0)
-            .animation(.spring(response: 0.22, dampingFraction: 0.65), value: configuration.isPressed)
+            .scaleEffect(configuration.isPressed ? 0.96 : 1.0)
+            .opacity(configuration.isPressed ? 0.85 : 1.0)
+            .animation(.easeOut(duration: 0.12), value: configuration.isPressed)
     }
 }
 
