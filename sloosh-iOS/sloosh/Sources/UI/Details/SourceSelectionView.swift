@@ -5,9 +5,18 @@ enum SourceSelectionMode {
     case download
 }
 
-struct EpisodeKey: Hashable {
-    let season: Int
-    let episode: Int
+enum MediaStreamSource: Int, CaseIterable, Identifiable {
+    case source1 = 1
+    case source2 = 2
+
+    var id: Int { rawValue }
+
+    var title: String {
+        switch self {
+        case .source1: return "Источник 1"
+        case .source2: return "Источник 2"
+        }
+    }
 }
 
 struct TranslationChipItem: Identifiable, Hashable {
@@ -18,16 +27,219 @@ struct TranslationChipItem: Identifiable, Hashable {
 
 struct SourceSelectionView: View {
     let mode: SourceSelectionMode
+    let source1Result: AllohaApiResult?
+    let source2Result: CollapsParser.ParseResult?
+    let kpId: Int?
+    let details: MediaDetailsDto?
+    let onAction: (AllohaTranslation, Int?, Int?, VideoQualityPreference, MediaStreamSource, [PlaybackSubtitle], [String: String]) -> Void
+    @Environment(\.dismiss) private var dismiss
+
+    @State private var selectedSource: MediaStreamSource
+
+    // Backward compatibility init
+    init(
+        mode: SourceSelectionMode,
+        result: AllohaApiResult,
+        kpId: Int?,
+        details: MediaDetailsDto?,
+        onAction: @escaping (AllohaTranslation, Int?, Int?, VideoQualityPreference) -> Void
+    ) {
+        self.mode = mode
+        self.source1Result = result
+        self.source2Result = nil
+        self.kpId = kpId
+        self.details = details
+        self.onAction = { translation, season, episode, quality, _, _, _ in
+            onAction(translation, season, episode, quality)
+        }
+        _selectedSource = State(initialValue: .source1)
+    }
+
+    init(
+        mode: SourceSelectionMode,
+        source1Result: AllohaApiResult?,
+        source2Result: CollapsParser.ParseResult?,
+        kpId: Int?,
+        details: MediaDetailsDto?,
+        onAction: @escaping (AllohaTranslation, Int?, Int?, VideoQualityPreference, MediaStreamSource, [PlaybackSubtitle], [String: String]) -> Void
+    ) {
+        self.mode = mode
+        self.source1Result = source1Result
+        self.source2Result = source2Result
+        self.kpId = kpId
+        self.details = details
+        self.onAction = onAction
+
+        let initial: MediaStreamSource
+        if source1Result != nil && (!source1Result!.seasons.isEmpty || source1Result!.movie != nil) {
+            initial = .source1
+        } else if source2Result != nil && (!source2Result!.apiResult.seasons.isEmpty || source2Result!.apiResult.movie != nil) {
+            initial = .source2
+        } else {
+            initial = .source1
+        }
+        _selectedSource = State(initialValue: initial)
+    }
+
+    private func isSourceAvailable(_ source: MediaStreamSource) -> Bool {
+        switch source {
+        case .source1:
+            guard let r = source1Result else { return false }
+            return !r.seasons.isEmpty || r.movie != nil
+        case .source2:
+            guard let r = source2Result?.apiResult else { return false }
+            return !r.seasons.isEmpty || r.movie != nil
+        }
+    }
+
+    private var currentTitle: String {
+        if selectedSource == .source1, let t = source1Result?.title, !t.isEmpty {
+            return t
+        }
+        if selectedSource == .source2, let t = source2Result?.apiResult.title, !t.isEmpty {
+            return t
+        }
+        return details?.title ?? details?.originalTitle ?? "Выбор озвучки"
+    }
+
+    var body: some View {
+        NavigationStack {
+            ZStack {
+                if selectedSource == .source1 {
+                    if let res1 = source1Result, (!res1.seasons.isEmpty || res1.movie != nil) {
+                        SingleSourceContentView(
+                            mode: mode,
+                            source: .source1,
+                            result: res1,
+                            kpId: kpId,
+                            details: details,
+                            episodeSubtitles: [:],
+                            movieSubtitles: [],
+                            customHeaders: [:],
+                            sheetTitle: currentTitle
+                        ) { translation, season, episode, quality, subs, headers in
+                            onAction(translation, season, episode, quality, .source1, subs, headers)
+                            dismiss()
+                        }
+                    } else {
+                        sourceUnavailableView(for: .source1)
+                    }
+                } else {
+                    if let res2 = source2Result?.apiResult, (!res2.seasons.isEmpty || res2.movie != nil) {
+                        SingleSourceContentView(
+                            mode: mode,
+                            source: .source2,
+                            result: res2,
+                            kpId: kpId,
+                            details: details,
+                            episodeSubtitles: source2Result?.episodeSubtitles ?? [:],
+                            movieSubtitles: source2Result?.movieSubtitles ?? [],
+                            customHeaders: CollapsRepository.streamHeaders,
+                            sheetTitle: currentTitle
+                        ) { translation, season, episode, quality, subs, headers in
+                            onAction(translation, season, episode, quality, .source2, subs, headers)
+                            dismiss()
+                        }
+                    } else {
+                        sourceUnavailableView(for: .source2)
+                    }
+                }
+            }
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(action: { dismiss() }) {
+                        Image(systemName: "xmark")
+                            .symbolRenderingMode(.monochrome)
+                            .foregroundStyle(.primary)
+                    }
+                    .tint(.primary)
+                    .buttonStyle(.plain)
+                }
+
+                ToolbarItem(placement: .principal) {
+                    sourceSwitcher
+                }
+            }
+            .scrollContentBackground(.hidden)
+            .background(Color.clear)
+        }
+        .presentationBackground { Color.clear.glassEffect(in: .rect) }
+        .presentationDragIndicator(.visible)
+    }
+
+    @ViewBuilder
+    private var sourceSwitcher: some View {
+        HStack(spacing: 3) {
+            ForEach(MediaStreamSource.allCases) { source in
+                let available = isSourceAvailable(source)
+                Button {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        selectedSource = source
+                    }
+                } label: {
+                    Text(source.title)
+                        .font(.system(size: 13, weight: selectedSource == source ? .bold : .medium))
+                        .foregroundStyle(selectedSource == source ? Color.black : (available ? Color.primary.opacity(0.8) : Color.secondary.opacity(0.4)))
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 6)
+                        .background {
+                            if selectedSource == source {
+                                Capsule()
+                                    .fill(Color.white)
+                                    .shadow(color: Color.black.opacity(0.18), radius: 4, x: 0, y: 1.5)
+                            }
+                        }
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(3)
+        .background {
+            Capsule()
+                .fill(Color.primary.opacity(0.08))
+        }
+        .glassEffect(.regular.interactive(), in: .capsule)
+    }
+
+    @ViewBuilder
+    private func sourceUnavailableView(for source: MediaStreamSource) -> some View {
+        VStack(spacing: 16) {
+            Image(systemName: "film.stack")
+                .font(.system(size: 46))
+                .foregroundStyle(.secondary.opacity(0.7))
+            Text("В источнике видео пока недоступно")
+                .font(.system(size: 18, weight: .bold))
+                .foregroundStyle(.primary)
+            Text("Пожалуйста, переключитесь на \(source == .source1 ? "Источник 2" : "Источник 1") в шапке")
+                .font(.system(size: 14))
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+                .padding(.horizontal, 32)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.vertical, 80)
+    }
+}
+
+// MARK: - Single Source Content View
+
+struct SingleSourceContentView: View {
+    let mode: SourceSelectionMode
+    let source: MediaStreamSource
     let result: AllohaApiResult
     let kpId: Int?
     let details: MediaDetailsDto?
-    let onAction: (AllohaTranslation, Int?, Int?, VideoQualityPreference) -> Void
-    @Environment(\.dismiss) private var dismiss
-    
+    let episodeSubtitles: [EpisodeKey: [PlaybackSubtitle]]
+    let movieSubtitles: [PlaybackSubtitle]
+    let customHeaders: [String: String]
+    let sheetTitle: String
+    let onCommit: (AllohaTranslation, Int?, Int?, VideoQualityPreference, [PlaybackSubtitle], [String: String]) -> Void
+
     @State private var selectedSeason: Int?
     @State private var selectedEpisode: Int?
     @State private var selectedTranslationName: String?
-    
+
     @AppStorage("preferredVideoQuality") private var preferredQuality: VideoQualityPreference = .ask
     @State private var showQualitySelection = false
 
@@ -41,16 +253,26 @@ struct SourceSelectionView: View {
 
     init(
         mode: SourceSelectionMode,
+        source: MediaStreamSource,
         result: AllohaApiResult,
         kpId: Int?,
         details: MediaDetailsDto?,
-        onAction: @escaping (AllohaTranslation, Int?, Int?, VideoQualityPreference) -> Void
+        episodeSubtitles: [EpisodeKey: [PlaybackSubtitle]],
+        movieSubtitles: [PlaybackSubtitle],
+        customHeaders: [String: String],
+        sheetTitle: String,
+        onCommit: @escaping (AllohaTranslation, Int?, Int?, VideoQualityPreference, [PlaybackSubtitle], [String: String]) -> Void
     ) {
         self.mode = mode
+        self.source = source
         self.result = result
         self.kpId = kpId
         self.details = details
-        self.onAction = onAction
+        self.episodeSubtitles = episodeSubtitles
+        self.movieSubtitles = movieSubtitles
+        self.customHeaders = customHeaders
+        self.sheetTitle = sheetTitle
+        self.onCommit = onCommit
 
         var transItems: [TranslationChipItem] = []
         var seasonsList: [Int] = []
@@ -120,19 +342,20 @@ struct SourceSelectionView: View {
         let initial = Self.computeInitialSelection(
             result: result,
             kpId: kpId,
-            details: details
+            details: details,
+            sourceKey: source == .source2 ? "collaps" : "alloha"
         )
         _selectedSeason = State(initialValue: initial.season)
         _selectedEpisode = State(initialValue: initial.episode)
         _selectedTranslationName = State(initialValue: initial.translationName)
         _showQualitySelection = State(initialValue: false)
     }
-    
+
     var allEpisodes: [Int] {
         guard let s = selectedSeason else { return [] }
         return seasonEpisodes[s] ?? []
     }
-    
+
     // Instant O(1) Available checking
     func isTranslationAvailable(_ name: String) -> Bool {
         if result.isSerial {
@@ -142,12 +365,12 @@ struct SourceSelectionView: View {
             return movieTranslationNames.contains(name)
         }
     }
-    
+
     func isSeasonAvailable(_ seasonNum: Int) -> Bool {
         guard let tName = selectedTranslationName else { return true }
         return seasonTranslationsMap[seasonNum]?.contains(tName) ?? false
     }
-    
+
     func isEpisodeAvailable(_ episodeNum: Int) -> Bool {
         guard let s = selectedSeason, let tName = selectedTranslationName else { return true }
         return episodeTranslationsMap[EpisodeKey(season: s, episode: episodeNum)]?.contains(tName) ?? false
@@ -164,7 +387,7 @@ struct SourceSelectionView: View {
     func preferredTranslation(in translations: [AllohaTranslation], preferredName: String?) -> AllohaTranslation? {
         bestTranslation(in: translations, preferredName: preferredName)
     }
-    
+
     // Selection actions
     func selectTranslation(_ name: String) {
         selectedTranslationName = name
@@ -186,7 +409,7 @@ struct SourceSelectionView: View {
             }
         }
     }
-    
+
     func selectSeason(_ s: Int) {
         selectedSeason = s
         let episodes = seasonEpisodes[s] ?? []
@@ -205,7 +428,7 @@ struct SourceSelectionView: View {
             }
         }
     }
-    
+
     func selectEpisode(_ e: Int) {
         selectedEpisode = e
         if let s = selectedSeason {
@@ -227,7 +450,7 @@ struct SourceSelectionView: View {
             }
         }
     }
-    
+
     var mediaKey: String {
         let validKp = (kpId ?? 0) > 0 ? (kpId ?? 0) : (details?.ids?.kp ?? details?.externalIds?.kp ?? 0)
         if validKp > 0 {
@@ -245,7 +468,8 @@ struct SourceSelectionView: View {
     static func computeInitialSelection(
         result: AllohaApiResult,
         kpId: Int?,
-        details: MediaDetailsDto?
+        details: MediaDetailsDto?,
+        sourceKey: String
     ) -> (season: Int?, episode: Int?, translationName: String?) {
         let validKp = (kpId ?? 0) > 0 ? (kpId ?? 0) : (details?.ids?.kp ?? details?.externalIds?.kp ?? 0)
         let currentKey: String
@@ -259,11 +483,11 @@ struct SourceSelectionView: View {
             currentKey = "unknown"
         }
 
-        var savedVoiceover = PlaybackProgressStore.shared.loadLastVoiceover(mediaKey: currentKey)
+        var savedVoiceover = PlaybackProgressStore.shared.loadLastVoiceover(mediaKey: currentKey, source: sourceKey)
         if savedVoiceover == nil, let kpId, kpId > 0 {
-            savedVoiceover = PlaybackProgressStore.shared.loadLastVoiceover(kpId: kpId, source: "alloha")
+            savedVoiceover = PlaybackProgressStore.shared.loadLastVoiceover(kpId: kpId, source: sourceKey)
         }
-        if savedVoiceover == nil,
+        if savedVoiceover == nil && sourceKey == "alloha",
            let globalVoiceover = UserDefaults.standard.string(forKey: "alloha_last_translation_name"),
            !isOriginalOrEnglishTranslation(globalVoiceover) {
             savedVoiceover = globalVoiceover
@@ -272,16 +496,15 @@ struct SourceSelectionView: View {
         if result.isSerial {
             var initialSeason = result.seasons.first?.season
             var initialEpisode: Int? = nil
-            
+
             if let lastSeason = PlaybackProgressStore.shared.loadLastSeason(mediaKey: currentKey) ?? (kpId.flatMap { $0 > 0 ? PlaybackProgressStore.shared.loadLastSeason(kpId: $0) : nil }),
                result.seasons.contains(where: { $0.season == lastSeason }) {
                 initialSeason = lastSeason
             }
-            
+
             if let lastEpisode = PlaybackProgressStore.shared.loadLastEpisode(mediaKey: currentKey) ?? (kpId.flatMap { $0 > 0 ? PlaybackProgressStore.shared.loadLastEpisode(kpId: $0) : nil }) {
                 initialEpisode = lastEpisode
-                
-                // If the user fully watched this episode, auto-select the next one!
+
                 let sNum = initialSeason ?? 1
                 let mediaId = "\(currentKey)_s\(sNum)_e\(lastEpisode)"
                 if PlaybackProgressStore.shared.loadWatched(mediaId: mediaId) {
@@ -291,7 +514,7 @@ struct SourceSelectionView: View {
                             if $0.0 != $1.0 { return $0.0 < $1.0 }
                             return $0.1 < $1.1
                         }
-                    
+
                     if let currentIdx = allEpisodes.firstIndex(where: { $0.0 == initialSeason && $0.1 == lastEpisode }),
                        currentIdx + 1 < allEpisodes.count {
                         let nextEp = allEpisodes[currentIdx + 1]
@@ -300,12 +523,12 @@ struct SourceSelectionView: View {
                     }
                 }
             }
-            
+
             if let seasonNum = initialSeason, let season = result.seasons.first(where: { $0.season == seasonNum }) {
                 let episodeToSelect = initialEpisode.flatMap { epNum in
                     season.episodes.first(where: { $0.episode == epNum })
                 } ?? season.episodes.first
-                
+
                 let epNum = episodeToSelect?.episode
                 let tName = episodeToSelect.flatMap { ep in
                     bestTranslation(in: ep.translations, preferredName: savedVoiceover)?.name
@@ -319,7 +542,7 @@ struct SourceSelectionView: View {
         }
         return (nil, nil, nil)
     }
-    
+
     func actionSelected() {
         if preferredQuality == .ask {
             showQualitySelection = true
@@ -327,45 +550,46 @@ struct SourceSelectionView: View {
             finishAction(quality: preferredQuality)
         }
     }
-    
+
     func finishAction(quality: VideoQualityPreference) {
         let currentKey = mediaKey
+        let sourceKey = source == .source2 ? "collaps" : "alloha"
+
         if result.isSerial {
             guard let s = selectedSeason, let e = selectedEpisode, let tName = selectedTranslationName else { return }
             guard let seasonObj = result.seasons.first(where: { $0.season == s }),
                   let epObj = seasonObj.episodes.first(where: { $0.episode == e }),
                   let translation = epObj.translations.first(where: { allohaTranslationNamesMatch($0.name, tName, exactOnly: true) }) else { return }
-            
+
             if mode == .play {
                 PlaybackProgressStore.shared.saveLastPlayed(mediaKey: currentKey, season: s, episode: e)
-                PlaybackProgressStore.shared.saveLastVoiceover(mediaKey: currentKey, source: "alloha", voiceover: translation.name)
+                PlaybackProgressStore.shared.saveLastVoiceover(mediaKey: currentKey, source: sourceKey, voiceover: translation.name)
                 if let kpId = kpId, kpId > 0 {
                     PlaybackProgressStore.shared.saveLastPlayed(kpId: kpId, season: s, episode: e)
-                    PlaybackProgressStore.shared.saveLastVoiceover(kpId: kpId, source: "alloha", voiceover: translation.name)
+                    PlaybackProgressStore.shared.saveLastVoiceover(kpId: kpId, source: sourceKey, voiceover: translation.name)
                 }
             }
-            
-            onAction(translation, s, e, quality)
-            dismiss()
+
+            let subs = episodeSubtitles[EpisodeKey(season: s, episode: e)] ?? []
+            onCommit(translation, s, e, quality, subs, customHeaders)
         } else if let movie = result.movie {
             guard let tName = selectedTranslationName,
                   let translation = movie.translations.first(where: { $0.name == tName }) else { return }
-            
+
             if mode == .play {
                 PlaybackProgressStore.shared.saveLastPlayed(mediaKey: currentKey, season: nil, episode: nil)
-                PlaybackProgressStore.shared.saveLastVoiceover(mediaKey: currentKey, source: "alloha", voiceover: translation.name)
+                PlaybackProgressStore.shared.saveLastVoiceover(mediaKey: currentKey, source: sourceKey, voiceover: translation.name)
                 if let kpId = kpId, kpId > 0 {
                     PlaybackProgressStore.shared.saveLastPlayed(kpId: kpId, season: nil, episode: nil)
-                    PlaybackProgressStore.shared.saveLastVoiceover(kpId: kpId, source: "alloha", voiceover: translation.name)
+                    PlaybackProgressStore.shared.saveLastVoiceover(kpId: kpId, source: sourceKey, voiceover: translation.name)
                 }
             }
-            
-            onAction(translation, nil, nil, quality)
-            dismiss()
+
+            let subs = movieSubtitles
+            onCommit(translation, nil, nil, quality, subs, customHeaders)
         }
     }
 
-    /// Кнопка «Смотреть» активна только когда пользователь сделал полный выбор.
     var isReadyToPlay: Bool {
         guard selectedTranslationName != nil else { return false }
         if result.isSerial {
@@ -375,44 +599,31 @@ struct SourceSelectionView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    translationsSection
-                    
-                    if result.isSerial && !allSeasons.isEmpty {
-                        seasonsSection
-                        if !allEpisodes.isEmpty {
-                            episodesSection
-                        }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                Text(sheetTitle)
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundColor(.primary)
+                    .lineLimit(2)
+                    .padding(.top, 4)
+
+                translationsSection
+
+                if result.isSerial && !allSeasons.isEmpty {
+                    seasonsSection
+                    if !allEpisodes.isEmpty {
+                        episodesSection
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .contentMargins(.horizontal, 20, for: .scrollContent)
-            .contentMargins(.top, 16, for: .scrollContent)
-            .contentMargins(.bottom, 28, for: .scrollContent)
-            .navigationTitle(result.title)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(action: { dismiss() }) {
-                        Image(systemName: "xmark")
-                            .symbolRenderingMode(.monochrome)
-                            .foregroundStyle(.primary)
-                    }
-                    .tint(.primary)
-                    .buttonStyle(.plain)
-                }
-            }
-            .safeAreaInset(edge: .bottom) {
-                bottomActionButton
-            }
-            .scrollContentBackground(.hidden)
-            .background(Color.clear)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .presentationBackground { Color.clear.glassEffect(in: .rect) }
-        .presentationDragIndicator(.visible)
+        .contentMargins(.horizontal, 20, for: .scrollContent)
+        .contentMargins(.top, 16, for: .scrollContent)
+        .contentMargins(.bottom, 28, for: .scrollContent)
+        .safeAreaInset(edge: .bottom) {
+            bottomActionButton
+        }
         .sheet(isPresented: $showQualitySelection) {
             QualitySelectionSheet { selectedQuality in
                 showQualitySelection = false
@@ -420,7 +631,7 @@ struct SourceSelectionView: View {
             }
         }
     }
-    
+
     @ViewBuilder
     private var translationsSection: some View {
         if !allTranslations.isEmpty {
@@ -428,7 +639,7 @@ struct SourceSelectionView: View {
                 Text("Озвучка")
                     .font(.system(size: 20, weight: .bold))
                     .foregroundColor(.primary)
-                
+
                 FlowLayout(spacing: 8) {
                     ForEach(allTranslations) { item in
                         WatchSelectorChip(
@@ -444,14 +655,14 @@ struct SourceSelectionView: View {
             }
         }
     }
-    
+
     @ViewBuilder
     private var seasonsSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Сезон")
                 .font(.system(size: 20, weight: .bold))
                 .foregroundColor(.primary)
-            
+
             FlowLayout(spacing: 8) {
                 ForEach(allSeasons, id: \.self) { s in
                     WatchSelectorChip(
@@ -466,14 +677,14 @@ struct SourceSelectionView: View {
             }
         }
     }
-    
+
     @ViewBuilder
     private var episodesSection: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Серия")
                 .font(.system(size: 20, weight: .bold))
                 .foregroundColor(.primary)
-            
+
             FlowLayout(spacing: 8) {
                 ForEach(allEpisodes, id: \.self) { e in
                     WatchSelectorChip(
@@ -488,7 +699,7 @@ struct SourceSelectionView: View {
             }
         }
     }
-    
+
     @ViewBuilder
     private var bottomActionButton: some View {
         Button(action: {

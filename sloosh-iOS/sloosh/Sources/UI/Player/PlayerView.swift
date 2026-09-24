@@ -84,6 +84,7 @@ struct PlayerView: View {
     let subtitles: [PlaybackSubtitle]
     let initialQuality: VideoQualityPreference?
     let seriesResult: AllohaApiResult?
+    let customHeaders: [String: String]?
     let mediaKey: String?
     let tmdbId: Int?
     let posterUrl: String?
@@ -105,6 +106,7 @@ struct PlayerView: View {
         subtitles: [PlaybackSubtitle] = [],
         initialQuality: VideoQualityPreference? = nil,
         seriesResult: AllohaApiResult? = nil,
+        customHeaders: [String: String]? = nil,
         mediaKey: String? = nil,
         tmdbId: Int? = nil,
         posterUrl: String? = nil,
@@ -122,6 +124,7 @@ struct PlayerView: View {
         self.subtitles = subtitles
         self.initialQuality = initialQuality
         self.seriesResult = seriesResult
+        self.customHeaders = customHeaders
         self.mediaKey = mediaKey
         self.tmdbId = tmdbId
         self.posterUrl = posterUrl
@@ -142,6 +145,7 @@ struct PlayerView: View {
             subtitles: config.subtitles,
             initialQuality: config.quality,
             seriesResult: config.seriesResult,
+            customHeaders: config.customHeaders,
             mediaKey: config.mediaKey,
             tmdbId: config.tmdbId,
             posterUrl: config.posterUrl,
@@ -180,6 +184,7 @@ struct PlayerView: View {
                     directStreamUrl: directStreamUrl,
                     voices: voices,
                     subtitles: subtitles,
+                    customHeaders: customHeaders,
                     mediaKey: mediaKey,
                     tmdbId: tmdbId,
                     posterUrl: posterUrl,
@@ -346,6 +351,7 @@ class PlayerViewModel: ObservableObject {
     private var resolver: AllohaRuntimeResolver?
     private var resolveTask: Task<Void, Never>?
     private var currentHeaders: [String: String] = [:]
+    private var customHeaders: [String: String]? = nil
     private var timeObserver: Any?
     private var statusObserver: NSKeyValueObservation?
     private var bufferObserver: NSKeyValueObservation?
@@ -439,6 +445,7 @@ class PlayerViewModel: ObservableObject {
         directStreamUrl: String? = nil,
         voices: [String] = [],
         subtitles: [PlaybackSubtitle] = [],
+        customHeaders: [String: String]? = nil,
         mediaKey: String? = nil,
         tmdbId: Int? = nil,
         posterUrl: String? = nil,
@@ -460,6 +467,7 @@ class PlayerViewModel: ObservableObject {
             directStreamUrl: directStreamUrl,
             voices: voices,
             subtitles: subtitles,
+            customHeaders: customHeaders,
             mediaKey: mediaKey,
             tmdbId: tmdbId
         )
@@ -494,6 +502,23 @@ class PlayerViewModel: ObservableObject {
                 directStreamUrl: nil,
                 voices: [],
                 subtitles: availableSubtitles,
+                customHeaders: customHeaders,
+                mediaKey: mediaKey,
+                tmdbId: tmdbId
+            )
+        } else if let directUrl = targetDirectStreamUrl {
+            print("retryPlayback: reloading direct stream")
+            hasStartedLoading = false
+            beginLoad(
+                iframeUrl: nil,
+                kpId: currentKpId,
+                season: currentSeason,
+                episode: currentEpisode,
+                selectedVoiceover: targetVoiceover ?? _currentTranslationName,
+                directStreamUrl: directUrl,
+                voices: availableVoiceovers,
+                subtitles: availableSubtitles,
+                customHeaders: customHeaders,
                 mediaKey: mediaKey,
                 tmdbId: tmdbId
             )
@@ -509,6 +534,7 @@ class PlayerViewModel: ObservableObject {
                 directStreamUrl: nil,
                 voices: [],
                 subtitles: availableSubtitles,
+                customHeaders: customHeaders,
                 mediaKey: mediaKey,
                 tmdbId: tmdbId,
                 posterUrl: posterUrl,
@@ -531,9 +557,14 @@ class PlayerViewModel: ObservableObject {
         directStreamUrl: String? = nil,
         voices: [String] = [],
         subtitles: [PlaybackSubtitle] = [],
+        customHeaders: [String: String]? = nil,
         mediaKey: String? = nil,
         tmdbId: Int? = nil
     ) {
+        if let customHeaders {
+            self.customHeaders = customHeaders
+        }
+
         // Отменяем незаконченные задачи предыдущего эпизода
         resolveTask?.cancel()
         resolveTask = nil
@@ -656,18 +687,43 @@ class PlayerViewModel: ObservableObject {
         error = nil
 
         if let directUrlString = directStreamUrl, let directUrl = URL(string: directUrlString) {
-            // Direct HLS playback (local file URL)
-            availableQualities = [
-                PlaybackQualityOption(
-                    key: "Локальный",
-                    url: directUrl,
-                    preferredPeakBitRate: nil,
-                    isAuto: false,
-                    shouldReloadOnSelect: false
-                )
-            ]
-            currentQualityKey = "Локальный"
-            playVideo(url: directUrl, headers: [:], voices: [], subtitles: [])
+            let isLocal = directUrl.isFileURL || directUrlString.contains("/local/")
+            if isLocal {
+                // Direct HLS playback (local file URL)
+                availableQualities = [
+                    PlaybackQualityOption(
+                        key: "Локальный",
+                        url: directUrl,
+                        preferredPeakBitRate: nil,
+                        isAuto: false,
+                        shouldReloadOnSelect: false
+                    )
+                ]
+                currentQualityKey = "Локальный"
+                playVideo(url: directUrl, headers: [:], voices: [], subtitles: [])
+            } else {
+                // Online direct stream (e.g. Collaps / Source 2)
+                let effectiveHeaders = customHeaders ?? self.customHeaders ?? CollapsRepository.streamHeaders
+                self.customHeaders = effectiveHeaders
+                if !voices.isEmpty {
+                    self.availableVoiceovers = voices
+                }
+                if !subtitles.isEmpty {
+                    self.availableSubtitles = subtitles
+                }
+                if let target = targetVoiceover ?? selectedVoiceover {
+                    self._currentTranslationName = target
+                }
+                self.availableQualities = [
+                    makeAutoQualityOption(url: directUrl)
+                ]
+                self.currentQualityKey = "Авто"
+                playVideo(url: directUrl, headers: effectiveHeaders, voices: voices, subtitles: subtitles)
+                Task { [weak self] in
+                    guard let self else { return }
+                    await self.fetchAndUpdateQualitiesFromMaster(url: directUrl, headers: effectiveHeaders)
+                }
+            }
         } else if let iframe = iframeUrl, !iframe.isEmpty {
             startParsing(iframeUrl: iframe, voices: voices, subtitles: subtitles)
         } else {
@@ -1176,8 +1232,17 @@ class PlayerViewModel: ObservableObject {
             if let streamUrlString = translation.streamUrl, let streamUrl = URL(string: streamUrlString) {
                 logDebug("switchVoiceover: using pre-resolved streamUrl=\(streamUrlString)")
                 self.currentTime = savedTime
+
+                if streamUrl == self.originalStreamURL {
+                    self.selectAudioTrackInPlayer(named: name)
+                    return
+                }
+
                 let (targetPlaybackUrl, activeBitrate) = self.selectPreservedPlaybackTarget(fallbackUrl: streamUrl)
                 reloadPlayback(to: targetPlaybackUrl, preferredPeakBitRate: activeBitrate)
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+                    self?.selectAudioTrackInPlayer(named: name)
+                }
                 return
             }
 
@@ -2220,12 +2285,25 @@ class PlayerViewModel: ObservableObject {
             PlaybackProgressStore.shared.saveLastPlayed(kpId: kpId, season: episode.season, episode: episode.episode)
         }
 
+        let epVoices: [String] = {
+            if let seasonObj = seriesResult?.seasons.first(where: { $0.season == episode.season }),
+               let epObj = seasonObj.episodes.first(where: { $0.episode == episode.episode }) {
+                let names = epObj.translations.map { $0.name }.filter { !$0.isEmpty }
+                if !names.isEmpty { return names }
+            }
+            return self.availableVoiceovers
+        }()
+
         beginLoad(
             iframeUrl: episode.translation.iframeUrl,
             kpId: currentKpId,
             season: episode.season,
             episode: episode.episode,
             selectedVoiceover: episode.translation.name,
+            directStreamUrl: (episode.translation.streamUrl.isEmpty == false) ? episode.translation.streamUrl : nil,
+            voices: epVoices,
+            subtitles: self.availableSubtitles,
+            customHeaders: self.customHeaders,
             mediaKey: rootMediaKey,
             tmdbId: tmdbId
         )
