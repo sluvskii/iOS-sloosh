@@ -598,28 +598,23 @@ class PlayerViewModel: ObservableObject {
             let voices: [String]
             let subtitles: [PlaybackSubtitle]
 
-            if result.apiResult.isSerial {
-                let seasonMatch = result.catalog.seasons?.first(where: { $0.season == currentSeasonNum })
+            switch result.catalog {
+            case .series(_, let seasons):
+                let seasonMatch = seasons.first(where: { $0.season == currentSeasonNum })
                 let epMatch = seasonMatch?.episodes.first(where: { $0.episode == currentEpisodeNum })
                 streamUrl = epMatch?.playlist.primaryUrl
                 voices = epMatch?.playlist.voiceovers ?? []
                 let epKey = EpisodeKey(season: currentSeasonNum, episode: currentEpisodeNum)
                 subtitles = result.episodeSubtitles[epKey] ?? []
-            } else {
-                if case .movie(_, let playlist) = result.catalog {
-                    streamUrl = playlist.primaryUrl
-                    voices = playlist.voiceovers
-                    subtitles = result.movieSubtitles
-                } else {
-                    streamUrl = nil
-                    voices = []
-                    subtitles = []
-                }
+            case .movie(_, let playlist):
+                streamUrl = playlist.primaryUrl
+                voices = playlist.voiceovers
+                subtitles = result.movieSubtitles
             }
 
             guard let freshUrl = streamUrl, !freshUrl.isEmpty else {
                 isLoading = false
-                error = "Не удалось обновить ссылку на видео"
+                self.error = "Не удалось обновить ссылку на видео"
                 return
             }
 
@@ -641,7 +636,7 @@ class PlayerViewModel: ObservableObject {
             )
         } catch {
             isLoading = false
-            error = "Не удалось обновить видеопоток: \(error.localizedDescription)"
+            self.error = "Не удалось обновить видеопоток: \(error.localizedDescription)"
         }
     }
 
