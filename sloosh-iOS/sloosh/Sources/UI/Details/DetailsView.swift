@@ -610,7 +610,6 @@ struct DetailsView: View {
     @State private var selectedIframeUrl: String? = nil
     @State private var sourceSheetTitle = ""
     @State private var sourceFetchTask: Task<Void, Never>?
-    @State private var sourceSheetDetent: PresentationDetent = .medium
     @State private var sourceSheetMode: SourceSelectionMode = .play
     @Namespace private var transition
     @State private var sourceSheetSourceID: String = "playBtn"
@@ -901,7 +900,6 @@ struct DetailsView: View {
             .sheet(isPresented: $showSourceSheet, onDismiss: {
                 sourceFetchTask?.cancel()
                 sourceFetchTask = nil
-                sourceSheetDetent = .medium
                 sourceSheetTitle = ""
                 viewModel.resetSourceSheet()
                 if pendingPlayerLaunch {
@@ -962,7 +960,7 @@ struct DetailsView: View {
                         SourceSelectionEmptyView(title: sourceSheetTitle)
                     }
                 }
-                .presentationDetents([.medium, .large], selection: $sourceSheetDetent)
+                .presentationDetents([.medium, .large])
             }
             .fullScreenCover(isPresented: $showPlayer, onDismiss: {
                 showPlayer = false
@@ -1109,7 +1107,6 @@ struct DetailsView: View {
 
         sourceSheetSourceID = "playBtn"
         sourceSheetTitle = title
-        sourceSheetDetent = .medium
         sourceSheetMode = .play
         viewModel.prepareSourceSheet(kpId: kpId, tmdbId: tmdbId)
         showSourceSheet = true
@@ -1142,7 +1139,6 @@ struct DetailsView: View {
 
         sourceSheetSourceID = "playBtn"
         sourceSheetTitle = title
-        sourceSheetDetent = .medium
         sourceSheetMode = .play
         viewModel.prepareSourceSheet(kpId: kpId, tmdbId: tmdbId)
         showSourceSheet = true
@@ -1294,7 +1290,6 @@ struct DetailsView: View {
         guard kpId > 0 || (tmdbId ?? 0) > 0 || imdbId != nil || !title.isEmpty else { return }
         
         sourceSheetTitle = title
-        sourceSheetDetent = .medium
         sourceSheetMode = .download
         viewModel.prepareSourceSheet(kpId: kpId, tmdbId: tmdbId)
         showSourceSheet = true
