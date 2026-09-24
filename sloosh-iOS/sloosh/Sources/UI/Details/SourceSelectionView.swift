@@ -187,7 +187,7 @@ struct SourceSelectionView: View {
             } fallback: {
                 fallbackHeaderTitle
             }
-            .frame(maxWidth: 160)
+            .frame(maxWidth: 180)
         } else {
             fallbackHeaderTitle
         }
@@ -205,21 +205,22 @@ struct SourceSelectionView: View {
     @ViewBuilder
     private var sourceCornerButton: some View {
         Menu {
-            ForEach(MediaStreamSource.allCases) { source in
-                Button {
-                    selectSource(source)
-                } label: {
-                    Label(source.title, systemImage: selectedSource == source ? "checkmark" : "")
+            Section("Источник") {
+                ForEach(MediaStreamSource.allCases) { source in
+                    Button {
+                        selectSource(source)
+                    } label: {
+                        if selectedSource == source {
+                            Label(source.title, systemImage: "checkmark")
+                        } else {
+                            Text(source.title)
+                        }
+                    }
+                    .disabled(!isSourceAvailable(source))
                 }
-                .disabled(!isSourceAvailable(source))
             }
         } label: {
-            HStack(spacing: 4) {
-                Text(selectedSource.title)
-                    .font(.system(size: 13, weight: .semibold))
-                Image(systemName: "chevron.up.chevron.down")
-                    .font(.system(size: 10, weight: .semibold))
-            }
+            Image(systemName: "server.rack")
         }
         .tint(.primary)
     }
