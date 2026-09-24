@@ -347,6 +347,10 @@ class PlayerViewModel: ObservableObject {
     // MARK: - Subtitles
     @Published var availableSubtitles: [PlaybackSubtitle] = []
     @Published var currentSubtitle: PlaybackSubtitle?
+    @Published var currentSubtitleText: String?
+    private var activeSubtitleCues: [SubtitleCue] = []
+    private var subtitleFetchTask: Task<Void, Never>?
+    private var legibleOutput: AVPlayerItemLegibleOutput?
 
     // MARK: - PiP
     @Published var isPiPActive = false
@@ -1106,11 +1110,15 @@ class PlayerViewModel: ObservableObject {
         // 2. Мгновенная фиксация прогресса в памяти
         saveCurrentProgressInMemory()
 
-        // 3. Отмена сетевых задач резолвера потоков
+        // 3. Отмена сетевых задач резолвера потоков и субтитров
         resolveTask?.cancel()
         resolveTask = nil
         resolver?.cancel()
         resolver = nil
+        subtitleFetchTask?.cancel()
+        subtitleFetchTask = nil
+        activeSubtitleCues.removeAll()
+        currentSubtitleText = nil
 
         // 4. Снятие высокочастотных KVO и таймеров
         if let observer = timeObserver {
@@ -1177,6 +1185,7 @@ class PlayerViewModel: ObservableObject {
             try? await Task.sleep(nanoseconds: 350_000_000)
             guard let self else { return }
             self.player = nil
+            self.legibleOutput = nil
 
             if !isSeekPending, let mediaId = mediaId, pos > 1 {
                 PlaybackProgressStore.shared.save(
@@ -1234,6 +1243,7 @@ class PlayerViewModel: ObservableObject {
         let time = CMTime(seconds: seconds, preferredTimescale: 600)
         isUserSeeking = true
         currentTime = seconds
+        updateSubtitleCue(at: seconds)
         player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
@@ -1262,7 +1272,76 @@ class PlayerViewModel: ObservableObject {
     func setSubtitle(_ subtitle: PlaybackSubtitle?) {
         currentSubtitle = subtitle
         logDebug("setSubtitle: user selected '\(subtitle?.label ?? "Выкл.")'")
+
+        subtitleFetchTask?.cancel()
+        subtitleFetchTask = nil
+        activeSubtitleCues = []
+        currentSubtitleText = nil
+
+        guard let subtitle = subtitle else {
+            applySubtitleToPlayer(nil)
+            return
+        }
+
         applySubtitleToPlayer(subtitle)
+
+        if subtitle.url.hasPrefix("http://") || subtitle.url.hasPrefix("https://") {
+            loadExternalSubtitles(from: subtitle.url)
+        }
+    }
+
+    private func loadExternalSubtitles(from urlString: String) {
+        guard let url = URL(string: urlString) else { return }
+        logDebug("loadExternalSubtitles: fetching from \(url.absoluteString)")
+
+        let headers = customHeaders ?? currentHeaders
+        subtitleFetchTask = Task { [weak self] in
+            do {
+                var request = URLRequest(url: url)
+                request.timeoutInterval = 10
+                for (k, v) in headers {
+                    request.setValue(v, forHTTPHeaderField: k)
+                }
+                if request.value(forHTTPHeaderField: "User-Agent") == nil {
+                    request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X)", forHTTPHeaderField: "User-Agent")
+                }
+
+                let (data, response) = try await URLSession.shared.data(for: request)
+                if Task.isCancelled { return }
+
+                guard let httpResponse = response as? HTTPURLResponse,
+                      (200...299).contains(httpResponse.statusCode) else {
+                    self?.logDebug("loadExternalSubtitles: non-200 HTTP response")
+                    return
+                }
+
+                let text = String(data: data, encoding: .utf8)
+                    ?? String(data: data, encoding: .windowsCP1251)
+                    ?? String(decoding: data, as: UTF8.self)
+
+                let cues = WebVTTParser.parse(text: text)
+                self?.logDebug("loadExternalSubtitles: parsed \(cues.count) cues from \(url.lastPathComponent)")
+
+                await MainActor.run { [weak self] in
+                    guard let self else { return }
+                    self.activeSubtitleCues = cues
+                    self.updateSubtitleCue(at: self.currentTime)
+                }
+            } catch {
+                if !Task.isCancelled {
+                    self?.logDebug("loadExternalSubtitles: failed to fetch: \(error.localizedDescription)")
+                }
+            }
+        }
+    }
+
+    func updateSubtitleCue(at time: TimeInterval) {
+        guard !activeSubtitleCues.isEmpty else { return }
+        let cue = WebVTTParser.cue(at: time, in: activeSubtitleCues)
+        let newText = cue?.text
+        if currentSubtitleText != newText {
+            currentSubtitleText = newText
+        }
     }
 
     private func applySubtitleToPlayer(_ subtitle: PlaybackSubtitle?) {
@@ -1282,7 +1361,17 @@ class PlayerViewModel: ObservableObject {
         }
 
         let options = group.options
-        logDebug("applySubtitleToPlayer: target='\(subtitle.label)', available options=\(options.map { $0.displayName })")
+        logDebug("applySubtitleToPlayer: target='\(subtitle.label)', url='\(subtitle.url)', available options=\(options.map { $0.displayName })")
+
+        // 0. Native track index if url is "native_X"
+        if subtitle.url.hasPrefix("native_"),
+           let idxStr = subtitle.url.components(separatedBy: "_").last,
+           let idx = Int(idxStr),
+           idx < options.count {
+            item.select(options[idx], in: group)
+            logDebug("applySubtitleToPlayer: selected native index [\(idx)] '\(options[idx].displayName)'")
+            return
+        }
 
         // 1. Exact match by displayName
         if let option = options.first(where: {
@@ -1315,7 +1404,8 @@ class PlayerViewModel: ObservableObject {
         // 4. Match by language code
         if !subtitle.lang.isEmpty,
            let option = options.first(where: {
-               $0.locale?.language.languageCode?.identifier.lowercased() == subtitle.lang.lowercased()
+               $0.locale?.language.languageCode?.identifier.lowercased() == subtitle.lang.lowercased() ||
+               $0.extendedLanguageTag?.lowercased().hasPrefix(subtitle.lang.lowercased()) == true
            }) {
             item.select(option, in: group)
             logDebug("applySubtitleToPlayer: selected language match option '\(option.displayName)'")
@@ -1969,6 +2059,11 @@ class PlayerViewModel: ObservableObject {
     private func setupPlayerItemObservers(for playerItem: AVPlayerItem) {
         statusObserver?.invalidate()
         bufferObserver?.invalidate()
+
+        let legible = AVPlayerItemLegibleOutput()
+        legible.setDelegate(self, queue: DispatchQueue.main)
+        playerItem.add(legible)
+        self.legibleOutput = legible
         
         if let playbackEndObserver {
             NotificationCenter.default.removeObserver(playbackEndObserver)
@@ -2197,6 +2292,7 @@ class PlayerViewModel: ObservableObject {
                 self.pendingSeekPosition = nil
                 if finished {
                     self.currentTime = targetSeek
+                    self.updateSubtitleCue(at: targetSeek)
                     self.logDebug("applySeekIfNeeded: seek to \(targetSeek)s completed successfully")
                 }
                 if self.wasPlayingBeforeReload || self.isPlaying {
@@ -2217,7 +2313,7 @@ class PlayerViewModel: ObservableObject {
         guard let mediaId = currentMediaId else { return }
 
         timeObserver = player.addPeriodicTimeObserver(
-            forInterval: CMTime(seconds: 0.5, preferredTimescale: 600),
+            forInterval: CMTime(seconds: 0.25, preferredTimescale: 600),
             queue: .main
         ) { [weak self, weak player] time in
             MainActor.assumeIsolated {
@@ -2227,6 +2323,9 @@ class PlayerViewModel: ObservableObject {
                 if t.isFinite && !t.isNaN && t >= 0 {
                     if abs(self.currentTime - t) >= 0.25 {
                         self.currentTime = t
+                    }
+                    if !self.activeSubtitleCues.isEmpty {
+                        self.updateSubtitleCue(at: t)
                     }
                 }
                 let d = player.currentItem?.duration.seconds ?? 0
@@ -2965,15 +3064,16 @@ class PlayerViewModel: ObservableObject {
         let nativeOptions = group.options
         logDebug("syncNativeSubtitleTracks: native legible options count=\(nativeOptions.count), names=\(nativeOptions.map { $0.displayName })")
 
-        // If availableSubtitles is empty (e.g. Alloha stream with embedded HLS subtitles),
-        // populate availableSubtitles from native legible options so the subtitle button in BottomRowView appears!
-        if self.availableSubtitles.isEmpty && !nativeOptions.isEmpty {
-            self.availableSubtitles = nativeOptions.enumerated().map { (index, opt) in
+        if !nativeOptions.isEmpty {
+            for (index, opt) in nativeOptions.enumerated() {
                 let lang = opt.locale?.language.languageCode?.identifier ?? "ru"
                 let label = opt.displayName.isEmpty ? "Субтитры \(index + 1)" : opt.displayName
-                return PlaybackSubtitle(url: "native_\(index)", label: label, lang: lang)
+                let nativeId = "native_\(index)"
+                if !self.availableSubtitles.contains(where: { $0.url == nativeId || $0.label.lowercased() == label.lowercased() }) {
+                    self.availableSubtitles.append(PlaybackSubtitle(url: nativeId, label: label, lang: lang))
+                }
             }
-            logDebug("syncNativeSubtitleTracks: populated availableSubtitles with \(self.availableSubtitles.count) native tracks")
+            logDebug("syncNativeSubtitleTracks: updated availableSubtitles count=\(self.availableSubtitles.count)")
         }
 
         // Apply current subtitle selection if user previously chose one, or ensure subtitles stay off
@@ -3065,3 +3165,33 @@ class PlayerViewModel: ObservableObject {
         return label
     }
 }
+
+extension PlayerViewModel: AVPlayerItemLegibleOutputPushDelegate {
+    nonisolated func legibleOutput(
+        _ output: AVPlayerItemLegibleOutput,
+        didOutputAttributedStrings strings: [NSAttributedString],
+        nativeDurationForSampleRanges nativeDurationProvider: [NSValue],
+        forItemTime itemTime: CMTime
+    ) {
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            // Если для текущего видео загружены внешние VTT субтитры, они имеют приоритет
+            guard self.activeSubtitleCues.isEmpty else { return }
+            guard self.currentSubtitle != nil else {
+                if self.currentSubtitleText != nil {
+                    self.currentSubtitleText = nil
+                }
+                return
+            }
+            let combined = strings
+                .map { $0.string.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .filter { !$0.isEmpty }
+                .joined(separator: "\n")
+            let clean = combined.isEmpty ? nil : combined
+            if self.currentSubtitleText != clean {
+                self.currentSubtitleText = clean
+            }
+        }
+    }
+}
+

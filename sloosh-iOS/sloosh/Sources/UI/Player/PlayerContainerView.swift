@@ -34,6 +34,17 @@ struct PlayerContainerView: View {
                 .onAppear { vm.pipController = pipController }
                 .onChange(of: pipController) { _, newVal in vm.pipController = newVal }
 
+            // 2.1. Субтитры (поверх видеослоя, под жестами и контролами)
+            if let subtitleText = vm.currentSubtitleText, !subtitleText.isEmpty {
+                SubtitleOverlayView(
+                    text: subtitleText,
+                    showControls: showControls,
+                    isZoomedToFill: isZoomedToFill
+                )
+                .allowsHitTesting(false)
+                .zIndex(1)
+            }
+
             // 3. (Буферизация перенесена в саму кнопку Play)
 
             // 4. Ошибка (показываем поверх видео, скрываем всё остальное)
