@@ -161,13 +161,16 @@ public struct AsyncCachedImage<Placeholder: View, Content: View, Fallback: View>
     
     public var body: some View {
         let current = activeImage
-        Group {
+        ZStack {
             if let current = current {
                 content(current)
+                    .transition(.opacity)
             } else if isLoading {
                 placeholder()
+                    .transition(.opacity)
             } else {
                 fallback()
+                    .transition(.opacity)
             }
         }
         .task(id: url) {
@@ -206,9 +209,11 @@ public struct AsyncCachedImage<Placeholder: View, Content: View, Fallback: View>
                 ImageCache.shared.insertImage(uiImg, forKey: url.absoluteString)
                 ImageCache.shared.insertImage(uiImg, forKey: rawUrl.absoluteString)
                 await MainActor.run {
-                    self.image = uiImg
-                    self.isLoading = false
-                    self.hasError = false
+                    withAnimation(.easeOut(duration: 0.24)) {
+                        self.image = uiImg
+                        self.isLoading = false
+                        self.hasError = false
+                    }
                 }
                 return
             }
@@ -236,9 +241,11 @@ public struct AsyncCachedImage<Placeholder: View, Content: View, Fallback: View>
                 ImageCache.shared.insertImage(uiImg, forKey: url.absoluteString)
                 ImageCache.shared.insertImage(uiImg, forKey: rawUrl.absoluteString)
                 await MainActor.run {
-                    self.image = uiImg
-                    self.isLoading = false
-                    self.hasError = false
+                    withAnimation(.easeOut(duration: 0.24)) {
+                        self.image = uiImg
+                        self.isLoading = false
+                        self.hasError = false
+                    }
                 }
                 return
             }
@@ -254,9 +261,11 @@ public struct AsyncCachedImage<Placeholder: View, Content: View, Fallback: View>
         if let rawFallback = fallbackUrl, let fallbackUrl = ImageCache.resolveEffectiveUrl(rawFallback) {
             if let cachedFallback = ImageCache.shared.image(forKey: fallbackUrl.absoluteString) ?? ImageCache.shared.image(forKey: rawFallback.absoluteString) {
                 await MainActor.run {
-                    self.image = cachedFallback
-                    self.isLoading = false
-                    self.hasError = false
+                    withAnimation(.easeOut(duration: 0.24)) {
+                        self.image = cachedFallback
+                        self.isLoading = false
+                        self.hasError = false
+                    }
                 }
                 return
             }
@@ -272,9 +281,11 @@ public struct AsyncCachedImage<Placeholder: View, Content: View, Fallback: View>
                     ImageCache.shared.insertImage(uiImg, forKey: fallbackUrl.absoluteString)
                     ImageCache.shared.insertImage(uiImg, forKey: rawFallback.absoluteString)
                     await MainActor.run {
-                        self.image = uiImg
-                        self.isLoading = false
-                        self.hasError = false
+                        withAnimation(.easeOut(duration: 0.24)) {
+                            self.image = uiImg
+                            self.isLoading = false
+                            self.hasError = false
+                        }
                     }
                     return
                 }
@@ -297,9 +308,11 @@ public struct AsyncCachedImage<Placeholder: View, Content: View, Fallback: View>
                     ImageCache.shared.insertImage(uiImg, forKey: fallbackUrl.absoluteString)
                     ImageCache.shared.insertImage(uiImg, forKey: rawFallback.absoluteString)
                     await MainActor.run {
-                        self.image = uiImg
-                        self.isLoading = false
-                        self.hasError = false
+                        withAnimation(.easeOut(duration: 0.24)) {
+                            self.image = uiImg
+                            self.isLoading = false
+                            self.hasError = false
+                        }
                     }
                     return
                 }
@@ -309,9 +322,11 @@ public struct AsyncCachedImage<Placeholder: View, Content: View, Fallback: View>
         }
         
         await MainActor.run {
-            self.image = nil
-            self.isLoading = false
-            self.hasError = true
+            withAnimation(.easeOut(duration: 0.24)) {
+                self.image = nil
+                self.isLoading = false
+                self.hasError = true
+            }
         }
     }
 }
