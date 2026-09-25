@@ -199,7 +199,7 @@ struct MediaDto: Codable, Identifiable {
             return normalizeImageUrl(path: p, id: originalId?.stringValue)
         }
         if let path = poster_path, !path.isEmpty {
-            return normalizeImageUrl(path: path, id: originalId?.stringValue) ?? (path.hasPrefix("http") ? path : "\(MoviesApi.activeBaseURL)/api/v1/images/tmdb/w500\(path)")
+            return normalizeImageUrl(path: path, id: originalId?.stringValue) ?? (path.hasPrefix("http") ? path : "\(MoviesApi.activeImagesBaseURL)/api/v1/images/tmdb/w500\(path)")
         }
         return nil
     }
@@ -209,7 +209,7 @@ struct MediaDto: Codable, Identifiable {
             return normalizeImageUrl(path: b, id: originalId?.stringValue) ?? b
         }
         if let path = backdrop_path, !path.isEmpty {
-            return normalizeImageUrl(path: path, id: originalId?.stringValue) ?? (path.hasPrefix("http") ? path : "\(MoviesApi.activeBaseURL)/api/v1/images/tmdb/original\(path)")
+            return normalizeImageUrl(path: path, id: originalId?.stringValue) ?? (path.hasPrefix("http") ? path : "\(MoviesApi.activeImagesBaseURL)/api/v1/images/tmdb/original\(path)")
         }
         return displayPosterUrl
     }
@@ -252,7 +252,7 @@ func adjustExternalImageUrl(urlStr: String, isLowQuality: Bool) -> String {
         } else {
             result = result.replacingOccurrences(of: "/w342/", with: "/w500/")
         }
-        result = result.replacingOccurrences(of: "https://image.tmdb.org/t/p/", with: "\(MoviesApi.activeBaseURL)/api/v1/images/tmdb/")
+        result = result.replacingOccurrences(of: "https://image.tmdb.org/t/p/", with: "\(MoviesApi.activeImagesBaseURL)/api/v1/images/tmdb/")
     }
     
     // 3. Backend Kinopoisk proxy (/kp/ -> /kp_small/)
@@ -276,7 +276,7 @@ func normalizeImageUrl(path: String?, id: String? = nil) -> String? {
         return nil
     }
     
-    let baseUrl = MoviesApi.activeBaseURL
+    let baseUrl = MoviesApi.activeImagesBaseURL
     let isLowQuality = UserDefaults.standard.string(forKey: "posterQuality") == "low"
     
     var rawUrl = path
@@ -591,7 +591,7 @@ struct MediaDetailsDto: Codable {
             return normalizeImageUrl(path: poster, id: id) ?? poster
         }
         guard let validId = id?.replacingOccurrences(of: "kp_", with: ""), !validId.isEmpty else { return nil }
-        return "\(MoviesApi.activeBaseURL)/api/v1/images/backdrops/\(validId)/original"
+        return "\(MoviesApi.activeImagesBaseURL)/api/v1/images/backdrops/\(validId)/original"
     }
 
     var displayBackdropUrls: [String] {
@@ -621,7 +621,7 @@ struct MediaDetailsDto: Codable {
             return normalizeImageUrl(path: poster, id: id) ?? poster
         }
         guard let validId = id?.replacingOccurrences(of: "kp_", with: ""), !validId.isEmpty else { return nil }
-        return "\(MoviesApi.activeBaseURL)/api/v1/images/backdrops/\(validId)/small"
+        return "\(MoviesApi.activeImagesBaseURL)/api/v1/images/backdrops/\(validId)/small"
     }
 
     var displayLogoUrl: String? {

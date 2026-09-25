@@ -54,6 +54,25 @@ class MoviesApi {
         }
     }
 
+    private static let imagesUserDefaultsKey = "sloosh_cached_images_base_url"
+
+    /// Текущий активный базовый URL для картинок (управляется через endpoint.json, кэшируется в UserDefaults)
+    public static var activeImagesBaseURL: String {
+        get {
+            if let cached = UserDefaults.standard.string(forKey: imagesUserDefaultsKey),
+               !cached.isEmpty,
+               !cached.contains("vercel.app") {
+                return cached
+            }
+            return activeBaseURL
+        }
+        set {
+            if !newValue.contains("vercel.app") {
+                UserDefaults.standard.set(newValue, forKey: imagesUserDefaultsKey)
+            }
+        }
+    }
+
     /// Резервные URL бэкенда (зеркала)
     public static var fallbackBaseURLs: [String] {
         get {
@@ -78,7 +97,7 @@ class MoviesApi {
         self.session = URLSession(configuration: config)
     }
 
-    /// Загружает актуальную ссылку на API из GitHub (endpoint.json) без необходимости обновлять приложение
+    /// Загружает актуальную ссылку на API и картинки из GitHub (endpoint.json) без необходимости обновлять приложение
     public func loadRemoteConfig() async {
         let configURLs = [
             "https://raw.githubusercontent.com/sluvskii/iOS-sloosh/main/endpoint.json",
@@ -95,13 +114,22 @@ class MoviesApi {
                 guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
                     continue
                 }
-                if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-                   let remoteBase = (json["apiBaseUrl"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
-                   !remoteBase.isEmpty {
-                    let cleanBase = remoteBase.hasSuffix("/") ? String(remoteBase.dropLast()) : remoteBase
-                    if MoviesApi.activeBaseURL != cleanBase {
-                        print("[MoviesApi] Updated activeBaseURL via remote config to: \(cleanBase)")
-                        MoviesApi.activeBaseURL = cleanBase
+                if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    if let remoteBase = (json["apiBaseUrl"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                       !remoteBase.isEmpty {
+                        let cleanBase = remoteBase.hasSuffix("/") ? String(remoteBase.dropLast()) : remoteBase
+                        if !cleanBase.contains("vercel.app") && MoviesApi.activeBaseURL != cleanBase {
+                            print("[MoviesApi] Updated activeBaseURL via remote config to: \(cleanBase)")
+                            MoviesApi.activeBaseURL = cleanBase
+                        }
+                    }
+                    if let remoteImages = (json["imagesBaseUrl"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                       !remoteImages.isEmpty {
+                        let cleanImages = remoteImages.hasSuffix("/") ? String(remoteImages.dropLast()) : remoteImages
+                        if !cleanImages.contains("vercel.app") && MoviesApi.activeImagesBaseURL != cleanImages {
+                            print("[MoviesApi] Updated activeImagesBaseURL via remote config to: \(cleanImages)")
+                            MoviesApi.activeImagesBaseURL = cleanImages
+                        }
                     }
                     if let fallbacks = json["fallbackUrls"] as? [String] {
                         MoviesApi.fallbackBaseURLs = fallbacks.map { $0.hasSuffix("/") ? String($0.dropLast()) : $0 }

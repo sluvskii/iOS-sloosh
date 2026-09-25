@@ -2258,14 +2258,14 @@ struct EpisodeDetailsSheet: View {
                             if still.hasPrefix("http") {
                                 return URL(string: still)
                             } else {
-                                return URL(string: "\(MoviesApi.activeBaseURL)/api/v1/images/tmdb/w500\(still)")
+                                return URL(string: "\(MoviesApi.activeImagesBaseURL)/api/v1/images/tmdb/w500\(still)")
                             }
                         }
                         if let backdrop = details?.previewBackdropUrl ?? details?.displayBackdropUrl ?? details?.backdrop, !backdrop.isEmpty {
                             if backdrop.hasPrefix("http") {
                                 return URL(string: backdrop)
                             } else {
-                                return URL(string: "\(MoviesApi.activeBaseURL)/api/v1/images/tmdb/w500\(backdrop)")
+                                return URL(string: "\(MoviesApi.activeImagesBaseURL)/api/v1/images/tmdb/w500\(backdrop)")
                             }
                         }
                         return nil
@@ -2599,7 +2599,7 @@ struct EpisodeCellView: View {
             if still.hasPrefix("http") {
                 return URL(string: still)
             } else {
-                return URL(string: "\(MoviesApi.activeBaseURL)/api/v1/images/tmdb/w500\(still)")
+                return URL(string: "\(MoviesApi.activeImagesBaseURL)/api/v1/images/tmdb/w500\(still)")
             }
         }
         let backdrop = details?.previewBackdropUrl ?? details?.displayBackdropUrl ?? details?.backdrop
@@ -2607,7 +2607,7 @@ struct EpisodeCellView: View {
             if backdrop.hasPrefix("http") {
                 return URL(string: backdrop)
             } else {
-                return URL(string: "\(MoviesApi.activeBaseURL)/api/v1/images/tmdb/w500\(backdrop)")
+                return URL(string: "\(MoviesApi.activeImagesBaseURL)/api/v1/images/tmdb/w500\(backdrop)")
             }
         }
         return nil

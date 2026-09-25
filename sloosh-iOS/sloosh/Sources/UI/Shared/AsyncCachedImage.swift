@@ -40,7 +40,7 @@ public final class ImageCache {
     public static func resolveEffectiveUrl(_ targetUrl: URL?) -> URL? {
         guard let original = targetUrl else { return nil }
         let str = original.absoluteString
-        let base = MoviesApi.activeBaseURL
+        let base = MoviesApi.activeImagesBaseURL
         
         // Rewrite legacy/hardcoded vercel URLs to active base URL dynamically
         if str.contains("api-sloosh.vercel.app") {
