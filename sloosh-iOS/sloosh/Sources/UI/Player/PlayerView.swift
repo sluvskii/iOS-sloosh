@@ -435,7 +435,7 @@ class PlayerViewModel: ObservableObject {
             return url
         }
         if let kpId = currentKpId, kpId > 0 {
-            return URL(string: "https://api-sloosh.vercel.app/api/v1/images/logos/\(kpId)/original")
+            return URL(string: "\(MoviesApi.activeBaseURL)/api/v1/images/logos/\(kpId)/original")
         }
         return nil
     }

@@ -40,8 +40,17 @@ public final class ImageCache {
     public static func resolveEffectiveUrl(_ targetUrl: URL?) -> URL? {
         guard let original = targetUrl else { return nil }
         let str = original.absoluteString
+        let base = MoviesApi.activeBaseURL
+        
+        // Rewrite legacy/hardcoded vercel URLs to active base URL dynamically
+        if str.contains("api-sloosh.vercel.app") {
+            let redirected = str.replacingOccurrences(of: "https://api-sloosh.vercel.app", with: base)
+                .replacingOccurrences(of: "http://api-sloosh.vercel.app", with: base)
+            return URL(string: redirected) ?? original
+        }
+        
+        // Proxy raw TMDB images through active base URL
         if str.contains("image.tmdb.org/t/p/") {
-            let base = MoviesApi.activeBaseURL
             let proxied = str.replacingOccurrences(of: "https://image.tmdb.org/t/p/", with: "\(base)/api/v1/images/tmdb/")
                 .replacingOccurrences(of: "http://image.tmdb.org/t/p/", with: "\(base)/api/v1/images/tmdb/")
             return URL(string: proxied) ?? original

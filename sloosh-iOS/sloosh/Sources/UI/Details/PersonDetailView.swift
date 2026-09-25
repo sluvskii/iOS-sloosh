@@ -933,12 +933,7 @@ struct PersonPhotoGalleryView: View {
     }
 
     private func resolveEffectiveUrl(_ targetUrl: URL) -> URL {
-        let str = targetUrl.absoluteString
-        if str.contains("image.tmdb.org/t/p/") {
-            let proxied = str.replacingOccurrences(of: "https://image.tmdb.org/t/p/", with: "https://api-sloosh.vercel.app/api/v1/images/tmdb/")
-            return URL(string: proxied) ?? targetUrl
-        }
-        return targetUrl
+        return ImageCache.resolveEffectiveUrl(targetUrl) ?? targetUrl
     }
 }
 
@@ -1268,12 +1263,7 @@ private final class PhotoPageViewController: UIViewController, UIScrollViewDeleg
     }
 
     private func resolveEffectiveUrl(_ targetUrl: URL) -> URL {
-        let str = targetUrl.absoluteString
-        if str.contains("image.tmdb.org/t/p/") {
-            let proxied = str.replacingOccurrences(of: "https://image.tmdb.org/t/p/", with: "https://api-sloosh.vercel.app/api/v1/images/tmdb/")
-            return URL(string: proxied) ?? targetUrl
-        }
-        return targetUrl
+        return ImageCache.resolveEffectiveUrl(targetUrl) ?? targetUrl
     }
 
     private func loadImage() {
