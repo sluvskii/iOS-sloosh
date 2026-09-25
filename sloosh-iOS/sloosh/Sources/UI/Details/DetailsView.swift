@@ -560,7 +560,6 @@ struct DetailsView: View {
     let navigationTransitionNamespace: Namespace.ID?
     let initialStudio: StudioBrand?
     @StateObject private var viewModel: DetailsViewModel
-    @State private var isContentRevealed: Bool = false
     
     init(
         movieId: String,
@@ -937,8 +936,6 @@ struct DetailsView: View {
                         .animation(.easeInOut(duration: 0.25), value: isLogoAtTop)
                         .allowsHitTesting(false)
                 )
-                .opacity(isContentRevealed ? 1.0 : 0.0)
-                .animation(.easeOut(duration: 0.28), value: isContentRevealed)
             }
             .task {
                 await viewModel.loadDetails(id: movieId, type: mediaType, studio: initialStudio)
@@ -966,21 +963,9 @@ struct DetailsView: View {
             }
             .onAppear {
                 CloudSyncService.shared.syncAllData()
-                if viewModel.details != nil && !isContentRevealed {
-                    withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) {
-                        isContentRevealed = true
-                    }
-                }
                 if !hasSeenSourceSelectionTooltip {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                         showTooltip = true
-                    }
-                }
-            }
-            .onChange(of: viewModel.isLoading) { _, loading in
-                if !loading && viewModel.details != nil && !isContentRevealed {
-                    withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) {
-                        isContentRevealed = true
                     }
                 }
             }
@@ -1532,18 +1517,15 @@ struct DetailsView: View {
                             selectedIndex: $selectedBackdropIndex,
                             progress: backdropTimerProgress
                         )
-                        .opacity(isContentRevealed ? 1.0 : 0.0)
-                        .animation(.easeOut(duration: 0.25), value: isContentRevealed)
 
                         RemoteLogoView(
                             url: URL(string: details.displayLogoUrl ?? ""),
                             fallbackTitle: details.title ?? details.originalTitle ?? "Без названия",
                             alignment: .center
                         )
-                        .opacity(isContentRevealed ? (isLogoAtTop ? 0.0 : 1.0) : 0.0)
-                        .scaleEffect(isContentRevealed ? (isLogoAtTop ? 0.85 : 1.0) : 0.94, anchor: .center)
-                        .blur(radius: isLogoAtTop ? 8 : (isContentRevealed ? 0 : 4))
-                        .animation(.spring(response: 0.4, dampingFraction: 0.84), value: isContentRevealed)
+                        .opacity(isLogoAtTop ? 0.0 : 1.0)
+                        .scaleEffect(isLogoAtTop ? 0.85 : 1.0, anchor: .center)
+                        .blur(radius: isLogoAtTop ? 8 : 0)
                         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: isLogoAtTop)
                         .padding(.bottom, 8)
                         .background(
@@ -1574,45 +1556,26 @@ struct DetailsView: View {
                                 .multilineTextAlignment(.center)
                                 .padding(.horizontal)
                                 .padding(.top, -8)
-                                .opacity(isContentRevealed ? 1.0 : 0.0)
-                                .offset(y: isContentRevealed ? 0 : 6)
-                                .animation(.spring(response: 0.42, dampingFraction: 0.85).delay(0.03), value: isContentRevealed)
                         }
 
                         DetailsPrimaryMetadataRow(details: details, alignment: .center)
-                            .opacity(isContentRevealed ? 1.0 : 0.0)
-                            .offset(y: isContentRevealed ? 0 : 8)
-                            .animation(.spring(response: 0.42, dampingFraction: 0.85).delay(0.06), value: isContentRevealed)
 
                         playAndDownloadRow(for: details)
                             .padding(.top, 8)
                             .padding(.bottom, -4)
-                            .opacity(isContentRevealed ? 1.0 : 0.0)
-                            .scaleEffect(isContentRevealed ? 1.0 : 0.94, anchor: .center)
-                            .offset(y: isContentRevealed ? 0 : 10)
-                            .animation(.spring(response: 0.42, dampingFraction: 0.85).delay(0.09), value: isContentRevealed)
 
                         DetailsInfoSection(details: details, backgroundColor: effectiveBackgroundColor, studio: initialStudio)
                             .padding(.top, 20)
                             .padding(.horizontal)
-                            .opacity(isContentRevealed ? 1.0 : 0.0)
-                            .offset(y: isContentRevealed ? 0 : 12)
-                            .animation(.spring(response: 0.45, dampingFraction: 0.85).delay(0.12), value: isContentRevealed)
 
                         if let cast = details.cast, !cast.isEmpty {
                             ActorsSection(cast: cast, namespace: actorTransitionNamespace)
                                 .padding(.top, 16)
-                                .opacity(isContentRevealed ? 1.0 : 0.0)
-                                .offset(y: isContentRevealed ? 0 : 14)
-                                .animation(.spring(response: 0.45, dampingFraction: 0.85).delay(0.15), value: isContentRevealed)
                         }
 
                         if let crew = details.crew, !crew.isEmpty {
                             CrewSection(crew: crew, namespace: crewTransitionNamespace)
                                 .padding(.top, 16)
-                                .opacity(isContentRevealed ? 1.0 : 0.0)
-                                .offset(y: isContentRevealed ? 0 : 14)
-                                .animation(.spring(response: 0.45, dampingFraction: 0.85).delay(0.18), value: isContentRevealed)
                         }
 
                         if let trailers = details.trailers, !trailers.isEmpty {
@@ -1620,9 +1583,6 @@ struct DetailsView: View {
                                 selectedTrailer = trailer
                             }
                             .padding(.top, 16)
-                            .opacity(isContentRevealed ? 1.0 : 0.0)
-                            .offset(y: isContentRevealed ? 0 : 14)
-                            .animation(.spring(response: 0.45, dampingFraction: 0.85).delay(0.20), value: isContentRevealed)
                         }
 
                         if details.type == "tv" {
@@ -1630,9 +1590,6 @@ struct DetailsView: View {
                                 handleEpisodeSelection(details: details, season: season, episode: episode)
                             }
                             .padding(.top, 16)
-                            .opacity(isContentRevealed ? 1.0 : 0.0)
-                            .offset(y: isContentRevealed ? 0 : 14)
-                            .animation(.spring(response: 0.45, dampingFraction: 0.85).delay(0.22), value: isContentRevealed)
                         }
 
                         if let collection = viewModel.movieCollection ?? details.collection {
@@ -1640,9 +1597,6 @@ struct DetailsView: View {
                                 directPlaybackMovie = movie
                             })
                             .padding(.top, 16)
-                            .opacity(isContentRevealed ? 1.0 : 0.0)
-                            .offset(y: isContentRevealed ? 0 : 14)
-                            .animation(.spring(response: 0.45, dampingFraction: 0.85).delay(0.24), value: isContentRevealed)
                         }
 
                         if let similar = details.similar, !similar.isEmpty {
@@ -1654,9 +1608,6 @@ struct DetailsView: View {
                                 }
                             )
                             .padding(.top, 16)
-                            .opacity(isContentRevealed ? 1.0 : 0.0)
-                            .offset(y: isContentRevealed ? 0 : 14)
-                            .animation(.spring(response: 0.45, dampingFraction: 0.85).delay(0.26), value: isContentRevealed)
                         }
 
                         if let relatedStudio = viewModel.relatedStudio, let items = relatedStudio.items, !items.isEmpty {
@@ -1664,9 +1615,6 @@ struct DetailsView: View {
                                 directPlaybackMovie = movie
                             })
                             .padding(.top, 16)
-                            .opacity(isContentRevealed ? 1.0 : 0.0)
-                            .offset(y: isContentRevealed ? 0 : 14)
-                            .animation(.spring(response: 0.45, dampingFraction: 0.85).delay(0.28), value: isContentRevealed)
                         }
                     }
                     .offset(y: -25)
@@ -1734,18 +1682,15 @@ struct DetailsView: View {
                                     selectedIndex: $selectedBackdropIndex,
                                     progress: backdropTimerProgress
                                 )
-                                .opacity(isContentRevealed ? 1.0 : 0.0)
-                                .animation(.easeOut(duration: 0.25), value: isContentRevealed)
 
                                 RemoteLogoView(
                                     url: URL(string: details.displayLogoUrl ?? ""),
                                     fallbackTitle: details.title ?? details.originalTitle ?? "Без названия",
                                     alignment: .center
                                 )
-                                .opacity(isContentRevealed ? (isLogoAtTop ? 0.0 : 1.0) : 0.0)
-                                .scaleEffect(isContentRevealed ? (isLogoAtTop ? 0.85 : 1.0) : 0.94, anchor: .center)
-                                .blur(radius: isLogoAtTop ? 8 : (isContentRevealed ? 0 : 4))
-                                .animation(.spring(response: 0.4, dampingFraction: 0.84), value: isContentRevealed)
+                                .opacity(isLogoAtTop ? 0.0 : 1.0)
+                                .scaleEffect(isLogoAtTop ? 0.85 : 1.0, anchor: .center)
+                                .blur(radius: isLogoAtTop ? 8 : 0)
                                 .animation(.spring(response: 0.35, dampingFraction: 0.85), value: isLogoAtTop)
                                 .padding(.bottom, 8)
                                 .background(
@@ -1776,30 +1721,17 @@ struct DetailsView: View {
                                         .multilineTextAlignment(.center)
                                         .padding(.horizontal)
                                         .padding(.top, -8)
-                                        .opacity(isContentRevealed ? 1.0 : 0.0)
-                                        .offset(y: isContentRevealed ? 0 : 6)
-                                        .animation(.spring(response: 0.42, dampingFraction: 0.85).delay(0.03), value: isContentRevealed)
                                 }
 
                                 DetailsPrimaryMetadataRow(details: details, alignment: .center)
-                                    .opacity(isContentRevealed ? 1.0 : 0.0)
-                                    .offset(y: isContentRevealed ? 0 : 8)
-                                    .animation(.spring(response: 0.42, dampingFraction: 0.85).delay(0.06), value: isContentRevealed)
 
                                 playAndDownloadRow(for: details)
                                     .padding(.top, 8)
                                     .padding(.bottom, -4)
-                                    .opacity(isContentRevealed ? 1.0 : 0.0)
-                                    .scaleEffect(isContentRevealed ? 1.0 : 0.94, anchor: .center)
-                                    .offset(y: isContentRevealed ? 0 : 10)
-                                    .animation(.spring(response: 0.42, dampingFraction: 0.85).delay(0.09), value: isContentRevealed)
 
                                 DetailsInfoSection(details: details, backgroundColor: effectiveBackgroundColor, studio: initialStudio)
                                     .padding(.top, 20)
                                     .padding(.horizontal)
-                                    .opacity(isContentRevealed ? 1.0 : 0.0)
-                                    .offset(y: isContentRevealed ? 0 : 12)
-                                    .animation(.spring(response: 0.45, dampingFraction: 0.85).delay(0.12), value: isContentRevealed)
                             }
                             .frame(maxWidth: 550)
                             .frame(maxWidth: .infinity, alignment: .center)
@@ -1807,17 +1739,11 @@ struct DetailsView: View {
                             if let cast = details.cast, !cast.isEmpty {
                                 ActorsSection(cast: cast, namespace: actorTransitionNamespace)
                                     .padding(.top, 16)
-                                    .opacity(isContentRevealed ? 1.0 : 0.0)
-                                    .offset(y: isContentRevealed ? 0 : 14)
-                                    .animation(.spring(response: 0.45, dampingFraction: 0.85).delay(0.15), value: isContentRevealed)
                             }
 
                             if let crew = details.crew, !crew.isEmpty {
                                 CrewSection(crew: crew, namespace: crewTransitionNamespace)
                                     .padding(.top, 16)
-                                    .opacity(isContentRevealed ? 1.0 : 0.0)
-                                    .offset(y: isContentRevealed ? 0 : 14)
-                                    .animation(.spring(response: 0.45, dampingFraction: 0.85).delay(0.18), value: isContentRevealed)
                             }
 
                             if let trailers = details.trailers, !trailers.isEmpty {
@@ -1825,9 +1751,6 @@ struct DetailsView: View {
                                     selectedTrailer = trailer
                                 }
                                 .padding(.top, 16)
-                                .opacity(isContentRevealed ? 1.0 : 0.0)
-                                .offset(y: isContentRevealed ? 0 : 14)
-                                .animation(.spring(response: 0.45, dampingFraction: 0.85).delay(0.20), value: isContentRevealed)
                             }
 
                             if details.type == "tv" {
@@ -1840,9 +1763,6 @@ struct DetailsView: View {
                                     handleEpisodeSelection(details: details, season: season, episode: episode)
                                 }
                                 .padding(.top, 16)
-                                .opacity(isContentRevealed ? 1.0 : 0.0)
-                                .offset(y: isContentRevealed ? 0 : 14)
-                                .animation(.spring(response: 0.45, dampingFraction: 0.85).delay(0.22), value: isContentRevealed)
                             }
 
                             if let collection = viewModel.movieCollection ?? details.collection {
@@ -1850,9 +1770,6 @@ struct DetailsView: View {
                                     directPlaybackMovie = movie
                                 })
                                 .padding(.top, 16)
-                                .opacity(isContentRevealed ? 1.0 : 0.0)
-                                .offset(y: isContentRevealed ? 0 : 14)
-                                .animation(.spring(response: 0.45, dampingFraction: 0.85).delay(0.24), value: isContentRevealed)
                             }
 
                             if let similar = details.similar, !similar.isEmpty {
@@ -1864,9 +1781,6 @@ struct DetailsView: View {
                                     }
                                 )
                                 .padding(.top, 16)
-                                .opacity(isContentRevealed ? 1.0 : 0.0)
-                                .offset(y: isContentRevealed ? 0 : 14)
-                                .animation(.spring(response: 0.45, dampingFraction: 0.85).delay(0.26), value: isContentRevealed)
                             }
 
                             if let relatedStudio = viewModel.relatedStudio, let items = relatedStudio.items, !items.isEmpty {
@@ -1874,9 +1788,6 @@ struct DetailsView: View {
                                     directPlaybackMovie = movie
                                 })
                                 .padding(.top, 16)
-                                .opacity(isContentRevealed ? 1.0 : 0.0)
-                                .offset(y: isContentRevealed ? 0 : 14)
-                                .animation(.spring(response: 0.45, dampingFraction: 0.85).delay(0.28), value: isContentRevealed)
                             }
                         }
                         .offset(y: -60)
