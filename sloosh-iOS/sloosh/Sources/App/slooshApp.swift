@@ -76,8 +76,9 @@ struct slooshApp: App {
             ])
         }
         
-        // Упреждающе разогреваем WebKit и подгружаем стрим-токены с бэкенда
+        // Упреждающе подгружаем актуальный адрес бэкенда, разогреваем WebKit и подгружаем стрим-токены
         Task { @MainActor in
+            await MoviesApi.shared.loadRemoteConfig()
             SharedWebViewProvider.shared.prewarm()
             await AllohaRepository.shared.warmup()
         }

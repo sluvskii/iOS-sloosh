@@ -32,8 +32,33 @@ enum NetworkError: LocalizedError {
 class MoviesApi {
     static let shared = MoviesApi()
     
-    // Production base URL on Vercel
-    private let baseURL = "https://api-sloosh.vercel.app"
+    // MARK: - Dynamic Endpoint Resolution
+    private static let defaultBaseURL = "https://api-sloosh.vercel.app"
+    private static let userDefaultsKey = "sloosh_cached_api_base_url"
+    private static let fallbackUrlsKey = "sloosh_cached_fallback_urls"
+
+    /// Текущий активный базовый URL бэкенда (кэшируется в UserDefaults)
+    public static var activeBaseURL: String {
+        get {
+            if let cached = UserDefaults.standard.string(forKey: userDefaultsKey), !cached.isEmpty {
+                return cached
+            }
+            return defaultBaseURL
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: userDefaultsKey)
+        }
+    }
+
+    /// Резервные URL бэкенда (зеркала)
+    public static var fallbackBaseURLs: [String] {
+        get {
+            return UserDefaults.standard.stringArray(forKey: fallbackUrlsKey) ?? []
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: fallbackUrlsKey)
+        }
+    }
     
     /// Мастер-ключ доступа к API sloosh (внедряется при CI-сборке из GitHub Secrets)
     public static var currentApiKey: String = AppSecrets.apiKey
@@ -48,79 +73,110 @@ class MoviesApi {
         config.requestCachePolicy = .useProtocolCachePolicy
         self.session = URLSession(configuration: config)
     }
+
+    /// Загружает актуальную ссылку на API из GitHub (endpoint.json) без необходимости обновлять приложение
+    public func loadRemoteConfig() async {
+        let configURLs = [
+            "https://raw.githubusercontent.com/sluvskii/iOS-sloosh/main/endpoint.json",
+            "https://sluvskii.github.io/iOS-sloosh/endpoint.json"
+        ]
+
+        for urlString in configURLs {
+            guard let url = URL(string: urlString) else { continue }
+            do {
+                var request = URLRequest(url: url)
+                request.timeoutInterval = 6
+                request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+                let (data, response) = try await URLSession.shared.data(for: request)
+                guard let httpResponse = response as? HTTPURLResponse, (200...299).contains(httpResponse.statusCode) else {
+                    continue
+                }
+                if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any],
+                   let remoteBase = (json["apiBaseUrl"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                   !remoteBase.isEmpty {
+                    let cleanBase = remoteBase.hasSuffix("/") ? String(remoteBase.dropLast()) : remoteBase
+                    if MoviesApi.activeBaseURL != cleanBase {
+                        print("[MoviesApi] Updated activeBaseURL via remote config to: \(cleanBase)")
+                        MoviesApi.activeBaseURL = cleanBase
+                    }
+                    if let fallbacks = json["fallbackUrls"] as? [String] {
+                        MoviesApi.fallbackBaseURLs = fallbacks.map { $0.hasSuffix("/") ? String($0.dropLast()) : $0 }
+                    }
+                    return
+                }
+            } catch {
+                // Пытаемся следующий источник зеркала
+            }
+        }
+    }
     
     private func performRequest<T: Codable>(endpoint: String, method: String = "GET", queryItems: [URLQueryItem] = []) async throws -> T {
-        var components = URLComponents(string: "\(baseURL)/\(endpoint)")
-        if !queryItems.isEmpty {
-            components?.queryItems = queryItems
-        }
-        
-        guard let url = components?.url else {
-            throw NetworkError.invalidURL
-        }
-        
-        var request = URLRequest(url: url)
-        request.httpMethod = method
-        if !MoviesApi.currentApiKey.isEmpty {
-            request.setValue(MoviesApi.currentApiKey, forHTTPHeaderField: "X-API-Key")
-        }
-        
-        let maxRetries = 3
+        let baseCandidates = [MoviesApi.activeBaseURL] + MoviesApi.fallbackBaseURLs.filter { $0 != MoviesApi.activeBaseURL }
         var lastError: Error = NetworkError.timeout
-        
-        for attempt in 0..<maxRetries {
-            if attempt > 0 {
-                // Экспоненциальная задержка: 0.5с, 1с, 2с
-                let delay = UInt64(500_000_000) * UInt64(1 << (attempt - 1)) // 0.5s * 2^(attempt-1)
-                try? await Task.sleep(nanoseconds: delay)
+
+        for currentBase in baseCandidates {
+            var components = URLComponents(string: "\(currentBase)/\(endpoint)")
+            if !queryItems.isEmpty {
+                components?.queryItems = queryItems
+            }
+            guard let url = components?.url else { continue }
+            
+            var request = URLRequest(url: url)
+            request.httpMethod = method
+            if !MoviesApi.currentApiKey.isEmpty {
+                request.setValue(MoviesApi.currentApiKey, forHTTPHeaderField: "X-API-Key")
             }
             
-            do {
-                let (data, response) = try await session.data(for: request)
+            let maxRetries = baseCandidates.count > 1 ? 2 : 3
+            
+            for attempt in 0..<maxRetries {
+                if attempt > 0 {
+                    // Экспоненциальная задержка: 0.4с, 0.8с
+                    let delay = UInt64(400_000_000) * UInt64(1 << (attempt - 1))
+                    try? await Task.sleep(nanoseconds: delay)
+                }
                 
-                guard let httpResponse = response as? HTTPURLResponse else {
-                    lastError = NetworkError.serverError(500)
+                do {
+                    let (data, response) = try await session.data(for: request)
+                    
+                    guard let httpResponse = response as? HTTPURLResponse else {
+                        lastError = NetworkError.serverError(500)
+                        continue
+                    }
+                    
+                    // 401 / 403 — ошибка авторизации, не ретраим
+                    if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
+                        throw NetworkError.unauthorized
+                    }
+                    
+                    // 4xx — не ретраим, это клиентская ошибка
+                    if (400...499).contains(httpResponse.statusCode) {
+                        throw NetworkError.serverError(httpResponse.statusCode)
+                    }
+                    
+                    // 5xx — пробуем повторить
+                    if !(200...299).contains(httpResponse.statusCode) {
+                        lastError = NetworkError.serverError(httpResponse.statusCode)
+                        continue
+                    }
+                    
+                    // Успешный ответ! Сохраняем рабочий хост как активный
+                    if currentBase != MoviesApi.activeBaseURL {
+                        MoviesApi.activeBaseURL = currentBase
+                    }
+                    return try self.decoder.decode(T.self, from: data)
+                } catch let error as NetworkError {
+                    throw error
+                } catch let urlError as URLError {
+                    if urlError.code == .cancelled {
+                        throw URLError(.cancelled)
+                    }
+                    lastError = (urlError.code == .timedOut) ? NetworkError.timeout : NetworkError.noInternetConnection
                     continue
+                } catch {
+                    print("Decoding error: \(error)")
+                    throw NetworkError.decodingError
                 }
-                
-                // 401 / 403 — ошибка авторизации, не ретраим
-                if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
-                    throw NetworkError.unauthorized
-                }
-                
-                // 4xx — не ретраим, это клиентская ошибка
-                if (400...499).contains(httpResponse.statusCode) {
-                    throw NetworkError.serverError(httpResponse.statusCode)
-                }
-                
-                // 5xx — ретраим
-                if !(200...299).contains(httpResponse.statusCode) {
-                    lastError = NetworkError.serverError(httpResponse.statusCode)
-                    continue
-                }
-                
-                return try self.decoder.decode(T.self, from: data)
-            } catch let error as NetworkError {
-                // Наши собственные ошибки — пробрасываем немедленно (4xx, invalidURL)
-                throw error
-            } catch let urlError as URLError {
-                if urlError.code == .notConnectedToInternet || urlError.code == .networkConnectionLost {
-                    lastError = NetworkError.noInternetConnection
-                    // При отсутствии интернета нет смысла ретраить немедленно, но
-                    // даём одну-две попытки на случай нестабильного соединения
-                    continue
-                } else if urlError.code == .timedOut {
-                    lastError = NetworkError.timeout
-                    continue
-                } else if urlError.code == .cancelled {
-                    throw URLError(.cancelled)
-                }
-                lastError = NetworkError.noInternetConnection
-                continue
-            } catch {
-                // DecodingError — не ретраим
-                print("Decoding error: \(error)")
-                throw NetworkError.decodingError
             }
         }
         
