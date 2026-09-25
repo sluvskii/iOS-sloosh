@@ -181,6 +181,7 @@ jobs:
             ]
           }
           EOF
+          cp endpoint.json altstore/endpoint.json 2>/dev/null || true
 
       - name: Upload Pages Artifact
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'

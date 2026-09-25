@@ -41,8 +41,9 @@ public final class ImageCache {
         guard let original = targetUrl else { return nil }
         let str = original.absoluteString
         if str.contains("image.tmdb.org/t/p/") {
-            let proxied = str.replacingOccurrences(of: "https://image.tmdb.org/t/p/", with: "https://api-sloosh.vercel.app/api/v1/images/tmdb/")
-                .replacingOccurrences(of: "http://image.tmdb.org/t/p/", with: "https://api-sloosh.vercel.app/api/v1/images/tmdb/")
+            let base = MoviesApi.activeBaseURL
+            let proxied = str.replacingOccurrences(of: "https://image.tmdb.org/t/p/", with: "\(base)/api/v1/images/tmdb/")
+                .replacingOccurrences(of: "http://image.tmdb.org/t/p/", with: "\(base)/api/v1/images/tmdb/")
             return URL(string: proxied) ?? original
         }
         return original
