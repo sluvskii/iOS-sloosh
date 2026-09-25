@@ -886,23 +886,13 @@ struct DetailsView: View {
                                     }
                                 }
                             } label: {
-                                ZStack {
-                                    if viewModel.isFavorite {
-                                        Circle()
-                                            .fill(Color.red.opacity(favoriteBounce ? 0.25 : 0.0))
-                                            .frame(width: 36, height: 36)
-                                            .scaleEffect(favoriteBounce ? 1.35 : 0.8)
-                                    }
-
-                                    Image(systemName: viewModel.isFavorite ? "heart.fill" : "heart")
-                                        .font(.system(size: 21, weight: .medium))
-                                        .foregroundStyle(viewModel.isFavorite ? Color.red : Color.white)
-                                        .symbolEffect(.bounce, value: viewModel.isFavorite)
-                                        .scaleEffect(favoriteBounce ? (viewModel.isFavorite ? 1.25 : 0.88) : 1.0)
-                                        .shadow(color: viewModel.isFavorite ? Color.red.opacity(0.45) : Color.clear, radius: 5, x: 0, y: 1)
-                                }
-                                .frame(width: 44, height: 44)
-                                .contentShape(Rectangle())
+                                Image(systemName: viewModel.isFavorite ? "heart.fill" : "heart")
+                                    .font(.system(size: 21, weight: .medium))
+                                    .foregroundStyle(Color.white)
+                                    .symbolEffect(.bounce, value: viewModel.isFavorite)
+                                    .scaleEffect(favoriteBounce ? 1.25 : 1.0)
+                                    .frame(width: 44, height: 44)
+                                    .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
                             .disabled(viewModel.details == nil)
@@ -1852,80 +1842,118 @@ private struct DetailsSkeletonView: View {
         VStack(spacing: 0) {
             // Backdrop
             Rectangle()
-                .fill(Color.gray.opacity(0.2))
+                .fill(Color.white.opacity(0.08))
                 .frame(height: baseHeight)
                 .shimmer()
                 .mask(BackdropFadeMask())
             
             VStack(alignment: .center, spacing: 12) {
-                // Logo placeholder
-                Capsule()
+                // Page indicator placeholder
+                HStack(spacing: 5) {
+                    Capsule()
+                        .fill(Color.white.opacity(0.18))
+                        .frame(width: 20, height: 3)
+                    Capsule()
+                        .fill(Color.white.opacity(0.08))
+                        .frame(width: 14, height: 3)
+                    Capsule()
+                        .fill(Color.white.opacity(0.08))
+                        .frame(width: 14, height: 3)
+                }
+                .shimmer()
+                .padding(.top, 2)
+
+                // Logo/Title placeholder
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .fill(Color.white.opacity(0.12))
-                    .frame(width: 220, height: 38)
+                    .frame(width: 230, height: 36)
                     .padding(.bottom, 8)
                     .shimmer()
                 
                 // Metadata row placeholder
-                HStack(spacing: 16) {
-                    ForEach(0..<4) { _ in
-                        Rectangle()
-                            .fill(Color.gray.opacity(0.2))
-                            .frame(width: 40, height: 16)
-                            .cornerRadius(4)
-                    }
+                HStack(spacing: 8) {
+                    // Rating badge
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .fill(Color.white.opacity(0.14))
+                        .frame(width: 32, height: 20)
+
+                    // Age rating
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(Color.white.opacity(0.09))
+                        .frame(width: 26, height: 16)
+
+                    // Year
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(Color.white.opacity(0.09))
+                        .frame(width: 38, height: 16)
+
+                    // Country
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(Color.white.opacity(0.09))
+                        .frame(width: 64, height: 16)
+
+                    // Duration
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(Color.white.opacity(0.09))
+                        .frame(width: 56, height: 16)
                 }
                 .shimmer()
-                .padding(.bottom, 4)
                 
-                // Play Button placeholder
-                Capsule()
-                    .fill(Color.gray.opacity(0.2))
-                    .frame(width: 180, height: 50)
-                    .shimmer()
-                    .padding(.top, 8)
-                    .padding(.bottom, -4)
+                // Play Button & Download Button placeholder
+                HStack(spacing: 8) {
+                    Capsule()
+                        .fill(Color.white.opacity(0.16))
+                        .frame(width: 175, height: 50)
+
+                    Circle()
+                        .fill(Color.white.opacity(0.1))
+                        .frame(width: 50, height: 50)
+                }
+                .shimmer()
+                .padding(.top, 8)
+                .padding(.bottom, -4)
                 
                 // Info Section placeholder
                 VStack(alignment: .leading, spacing: 18) {
+                    // Genres
                     VStack(alignment: .leading, spacing: 10) {
-                        Rectangle()
-                            .fill(Color.gray.opacity(0.2))
-                            .frame(width: 80, height: 20)
-                            .cornerRadius(4)
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            .fill(Color.white.opacity(0.12))
+                            .frame(width: 70, height: 20)
                         
                         HStack(spacing: 8) {
-                            ForEach(0..<3) { i in
-                                Capsule()
-                                    .fill(Color.gray.opacity(0.2))
-                                    .frame(width: CGFloat(60 + i * 20), height: 32)
-                            }
+                            Capsule()
+                                .fill(Color.white.opacity(0.09))
+                                .frame(width: 88, height: 32)
+                            Capsule()
+                                .fill(Color.white.opacity(0.09))
+                                .frame(width: 108, height: 32)
+                            Capsule()
+                                .fill(Color.white.opacity(0.09))
+                                .frame(width: 76, height: 32)
                         }
                     }
                     .shimmer()
                     
+                    // Description
                     VStack(alignment: .leading, spacing: 10) {
-                        Rectangle()
-                            .fill(Color.gray.opacity(0.2))
-                            .frame(width: 100, height: 20)
-                            .cornerRadius(4)
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            .fill(Color.white.opacity(0.12))
+                            .frame(width: 95, height: 20)
                         
-                        VStack(alignment: .leading, spacing: 6) {
-                            Rectangle()
-                                .fill(Color.gray.opacity(0.2))
-                                .frame(height: 16)
-                                .cornerRadius(4)
-                            Rectangle()
-                                .fill(Color.gray.opacity(0.2))
-                                .frame(height: 16)
-                                .cornerRadius(4)
-                            Rectangle()
-                                .fill(Color.gray.opacity(0.2))
-                                .frame(height: 16)
-                                .cornerRadius(4)
-                            Rectangle()
-                                .fill(Color.gray.opacity(0.2))
-                                .frame(width: 200, height: 16)
-                                .cornerRadius(4)
+                        VStack(alignment: .leading, spacing: 7) {
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                .fill(Color.white.opacity(0.09))
+                                .frame(height: 15)
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                .fill(Color.white.opacity(0.09))
+                                .frame(height: 15)
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                .fill(Color.white.opacity(0.09))
+                                .frame(height: 15)
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                .fill(Color.white.opacity(0.09))
+                                .frame(width: 220, height: 15)
                         }
                     }
                     .shimmer()
@@ -1933,10 +1961,56 @@ private struct DetailsSkeletonView: View {
                 .padding(.top, 20)
                 .padding(.horizontal)
                 .frame(maxWidth: .infinity, alignment: .leading)
+
+                // Actors Section placeholder
+                VStack(alignment: .leading, spacing: 12) {
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(Color.white.opacity(0.12))
+                        .frame(width: 75, height: 20)
+
+                    HStack(spacing: 10) {
+                        ForEach(0..<5) { _ in
+                            VStack(spacing: 6) {
+                                Circle()
+                                    .fill(Color.white.opacity(0.09))
+                                    .frame(width: 76, height: 76)
+                                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                                    .fill(Color.white.opacity(0.08))
+                                    .frame(width: 62, height: 11)
+                                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                                    .fill(Color.white.opacity(0.06))
+                                    .frame(width: 46, height: 9)
+                            }
+                        }
+                    }
+                }
+                .shimmer()
+                .padding(.top, 16)
+                .padding(.horizontal)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                // Similar Media placeholder
+                VStack(alignment: .leading, spacing: 12) {
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        .fill(Color.white.opacity(0.12))
+                        .frame(width: 140, height: 20)
+
+                    HStack(spacing: 14) {
+                        ForEach(0..<3) { _ in
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(Color.white.opacity(0.08))
+                                .frame(width: 120, height: 180)
+                        }
+                    }
+                }
+                .shimmer()
+                .padding(.top, 16)
+                .padding(.horizontal)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             .frame(maxWidth: verticalSizeClass == .compact ? 550 : .infinity)
             .frame(maxWidth: .infinity, alignment: .center)
-            .offset(y: verticalSizeClass == .compact ? -50 : -25)
+            .offset(y: verticalSizeClass == .compact ? -60 : -25)
         }
     }
 }
@@ -3546,7 +3620,7 @@ class DetailsViewModel: ObservableObject {
                 genres: details.genres?.compactMap { GenreDto(id: $0.lowercased(), name: $0) }
             )
             generator.notificationOccurred(.success)
-            ToastManager.shared.show(title: "Добавлено в избранное", icon: "heart.fill", iconColor: .red, duration: 2.0)
+            ToastManager.shared.show(title: "Добавлено в избранное", icon: "heart.fill", iconColor: .primary, duration: 2.0)
         }
         isFavorite.toggle()
     }
