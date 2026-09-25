@@ -1625,10 +1625,18 @@ struct DetailsView: View {
                     .padding(.bottom, 28)
                     .transition(.opacity)
                 } else {
-                    Text("Не удалось загрузить данные.")
-                        .frame(maxWidth: .infinity, alignment: .center)
-                        .padding(.top, 100)
-                        .transition(.opacity)
+                    AppEmptyStateView(
+                        icon: "exclamationmark.triangle",
+                        title: "Не удалось загрузить",
+                        description: "Проверьте соединение и попробуйте снова",
+                        action: .init(label: "Повторить") {
+                            Task {
+                                await viewModel.loadDetails(id: movieId, type: mediaType, force: true, studio: initialStudio)
+                            }
+                        }
+                    )
+                    .frame(height: 500)
+                    .transition(.opacity)
                 }
             }
             .animation(.easeInOut(duration: 0.35), value: viewModel.isLoading)
@@ -1796,6 +1804,19 @@ struct DetailsView: View {
                         }
                         .offset(y: -60)
                         .padding(.bottom, 28)
+                    } else {
+                        AppEmptyStateView(
+                            icon: "exclamationmark.triangle",
+                            title: "Не удалось загрузить",
+                            description: "Проверьте соединение и попробуйте снова",
+                            action: .init(label: "Повторить") {
+                                Task {
+                                    await viewModel.loadDetails(id: movieId, type: mediaType, force: true, studio: initialStudio)
+                                }
+                            }
+                        )
+                        .frame(height: 500)
+                        .transition(.opacity)
                     }
                 }
             }
