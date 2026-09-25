@@ -25,6 +25,7 @@ struct PlayerControlsView: View {
                 onBackgroundTap?()
             }
             .opacity(showControls && !isSeeking ? 1 : 0)
+            .animation(.easeInOut(duration: 0.24), value: showControls)
             .animation(.easeInOut(duration: 0.2), value: isSeeking)
             .ignoresSafeArea()
 
@@ -138,6 +139,8 @@ struct PlayerControlsView: View {
                     .ignoresSafeArea()
             }
             .opacity(showControls ? 1 : 0)
+            .blur(radius: showControls ? 0 : 16)
+            .animation(.easeInOut(duration: 0.24), value: showControls)
         }
     }
 }

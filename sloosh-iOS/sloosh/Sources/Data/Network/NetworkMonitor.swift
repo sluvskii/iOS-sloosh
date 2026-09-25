@@ -36,6 +36,10 @@ public final class NetworkMonitor: ObservableObject {
                             title: "Подключение восстановлено",
                             icon: "wifi"
                         )
+                        Task {
+                            await MoviesApi.shared.loadRemoteConfig()
+                            await AllohaRepository.shared.warmup()
+                        }
                     }
                 } else {
                     self.hasReportedInitial = true
