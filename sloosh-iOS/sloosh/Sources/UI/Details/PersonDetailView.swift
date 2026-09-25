@@ -1401,7 +1401,7 @@ private struct PersonFilmographySection: View {
                             MoviePosterCard(movie: movie)
                                 .matchedTransitionSource(id: transitionID, in: namespace)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.cardPress)
                         .contextMenu {
                             NavigationLink(
                                 destination: DetailsView(

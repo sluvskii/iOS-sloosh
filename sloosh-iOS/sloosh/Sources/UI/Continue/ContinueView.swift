@@ -19,7 +19,7 @@ struct ContinueView: View {
                                 } label: {
                                     ContinueWatchingCard(item: item)
                                 }
-                                .buttonStyle(ScaleButtonStyle())
+                                .buttonStyle(.cardPress)
                                 .disabled(viewModel.isLaunching)
                                 .contextMenu {
                                     Group {
@@ -747,14 +747,6 @@ private struct ContinueEmptyState: View {
             title: "Пока нечего продолжать",
             description: "Фильмы и серии, которые ты уже начал смотреть, появятся здесь с прогрессом и временем."
         )
-    }
-}
-
-private struct ScaleButtonStyle: ButtonStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? 0.96 : 1)
-            .animation(.easeOut(duration: 0.2), value: configuration.isPressed)
     }
 }
 
