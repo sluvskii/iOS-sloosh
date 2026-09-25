@@ -1,7 +1,7 @@
 {
-  "apiBaseUrl": "https://sloosh-api.okroshka-p.workers.dev",
+  "apiBaseUrl": "https://api.sloosh.workers.dev",
   "fallbackUrls": [
     "https://api-sloosh.vercel.app"
   ],
-  "updatedAt": "2026-09-25T08:18:00Z"
+  "updatedAt": "2026-09-25T08:25:00Z"
 }
