@@ -1625,17 +1625,20 @@ struct DetailsView: View {
                     .padding(.bottom, 28)
                     .transition(.opacity)
                 } else {
-                    AppEmptyStateView(
-                        icon: "exclamationmark.triangle",
-                        title: "Не удалось загрузить",
-                        description: "Проверьте соединение и попробуйте снова",
-                        action: .init(label: "Повторить") {
-                            Task {
-                                await viewModel.loadDetails(id: movieId, type: mediaType, force: true, studio: initialStudio)
+                    GeometryReader { proxy in
+                        AppEmptyStateView(
+                            icon: "exclamationmark.triangle",
+                            title: "Не удалось загрузить",
+                            description: "Проверьте соединение и попробуйте снова",
+                            action: .init(label: "Повторить") {
+                                Task {
+                                    await viewModel.loadDetails(id: movieId, type: mediaType, force: true, studio: initialStudio)
+                                }
                             }
-                        }
-                    )
-                    .frame(height: 500)
+                        )
+                        .frame(width: proxy.size.width, height: proxy.size.height)
+                    }
+                    .frame(height: UIScreen.main.bounds.height * 0.75)
                     .transition(.opacity)
                 }
             }
@@ -1805,17 +1808,20 @@ struct DetailsView: View {
                         .offset(y: -60)
                         .padding(.bottom, 28)
                     } else {
-                        AppEmptyStateView(
-                            icon: "exclamationmark.triangle",
-                            title: "Не удалось загрузить",
-                            description: "Проверьте соединение и попробуйте снова",
-                            action: .init(label: "Повторить") {
-                                Task {
-                                    await viewModel.loadDetails(id: movieId, type: mediaType, force: true, studio: initialStudio)
+                        GeometryReader { proxy in
+                            AppEmptyStateView(
+                                icon: "exclamationmark.triangle",
+                                title: "Не удалось загрузить",
+                                description: "Проверьте соединение и попробуйте снова",
+                                action: .init(label: "Повторить") {
+                                    Task {
+                                        await viewModel.loadDetails(id: movieId, type: mediaType, force: true, studio: initialStudio)
+                                    }
                                 }
-                            }
-                        )
-                        .frame(height: 500)
+                            )
+                            .frame(width: proxy.size.width, height: proxy.size.height)
+                        }
+                        .frame(height: UIScreen.main.bounds.height * 0.75)
                         .transition(.opacity)
                     }
                 }
