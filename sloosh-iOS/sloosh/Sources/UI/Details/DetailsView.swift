@@ -1900,18 +1900,18 @@ private struct DetailsSkeletonView: View {
                 .shimmer()
                 
                 // Play Button & Download Button placeholder
-                HStack(spacing: 10) {
+                HStack(spacing: 8) {
+                    // Capsule sized like real "Смотреть" button: padding(.horizontal, 26) + height 50
                     Capsule()
                         .fill(Color.white.opacity(0.16))
-                        .frame(height: 50)
+                        .frame(width: 160, height: 50)
 
                     Circle()
                         .fill(Color.white.opacity(0.1))
                         .frame(width: 50, height: 50)
                 }
-                .padding(.top, 8)
-                .padding(.horizontal, 16)
                 .shimmer()
+                .padding(.top, 8)
                 .padding(.bottom, -4)
                 
                 // Info Section placeholder
