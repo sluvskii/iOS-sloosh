@@ -1900,17 +1900,18 @@ private struct DetailsSkeletonView: View {
                 .shimmer()
                 
                 // Play Button & Download Button placeholder
-                HStack(spacing: 8) {
+                HStack(spacing: 10) {
                     Capsule()
                         .fill(Color.white.opacity(0.16))
-                        .frame(width: 175, height: 50)
+                        .frame(height: 50)
 
                     Circle()
                         .fill(Color.white.opacity(0.1))
                         .frame(width: 50, height: 50)
                 }
-                .shimmer()
                 .padding(.top, 8)
+                .padding(.horizontal, 16)
+                .shimmer()
                 .padding(.bottom, -4)
                 
                 // Info Section placeholder
@@ -1931,6 +1932,7 @@ private struct DetailsSkeletonView: View {
                             Capsule()
                                 .fill(Color.white.opacity(0.09))
                                 .frame(width: 76, height: 32)
+                            Spacer()
                         }
                     }
                     .shimmer()
@@ -1966,47 +1968,55 @@ private struct DetailsSkeletonView: View {
                 VStack(alignment: .leading, spacing: 12) {
                     RoundedRectangle(cornerRadius: 4, style: .continuous)
                         .fill(Color.white.opacity(0.12))
-                        .frame(width: 75, height: 20)
+                        .frame(width: 75, height: 18)
+                        .padding(.horizontal, 16)
 
-                    HStack(spacing: 10) {
-                        ForEach(0..<5) { _ in
-                            VStack(spacing: 6) {
-                                Circle()
-                                    .fill(Color.white.opacity(0.09))
-                                    .frame(width: 76, height: 76)
-                                RoundedRectangle(cornerRadius: 3, style: .continuous)
-                                    .fill(Color.white.opacity(0.08))
-                                    .frame(width: 62, height: 11)
-                                RoundedRectangle(cornerRadius: 3, style: .continuous)
-                                    .fill(Color.white.opacity(0.06))
-                                    .frame(width: 46, height: 9)
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 10) {
+                            ForEach(0..<5) { _ in
+                                VStack(spacing: 6) {
+                                    Circle()
+                                        .fill(Color.white.opacity(0.09))
+                                        .frame(width: 76, height: 76)
+                                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                                        .fill(Color.white.opacity(0.08))
+                                        .frame(width: 62, height: 11)
+                                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                                        .fill(Color.white.opacity(0.06))
+                                        .frame(width: 46, height: 9)
+                                }
                             }
                         }
+                        .padding(.horizontal, 16)
                     }
                 }
                 .shimmer()
                 .padding(.top, 16)
-                .padding(.horizontal)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
                 // Similar Media placeholder
                 VStack(alignment: .leading, spacing: 12) {
                     RoundedRectangle(cornerRadius: 4, style: .continuous)
                         .fill(Color.white.opacity(0.12))
-                        .frame(width: 140, height: 20)
+                        .frame(width: 140, height: 18)
+                        .padding(.horizontal, 16)
 
-                    HStack(spacing: 14) {
-                        ForEach(0..<3) { _ in
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .fill(Color.white.opacity(0.08))
-                                .frame(width: 120, height: 180)
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 14) {
+                            ForEach(0..<4) { _ in
+                                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                    .fill(Color.white.opacity(0.08))
+                                    .frame(width: 120, height: 180)
+                            }
                         }
+                        .padding(.horizontal, 16)
                     }
                 }
                 .shimmer()
                 .padding(.top, 16)
-                .padding(.horizontal)
                 .frame(maxWidth: .infinity, alignment: .leading)
+
+                Spacer().frame(height: 40)
             }
             .frame(maxWidth: verticalSizeClass == .compact ? 550 : .infinity)
             .frame(maxWidth: .infinity, alignment: .center)
