@@ -33,20 +33,24 @@ class MoviesApi {
     static let shared = MoviesApi()
     
     // MARK: - Dynamic Endpoint Resolution
-    private static let defaultBaseURL = "https://api-sloosh.vercel.app"
+    private static let defaultBaseURL = "https://api.sloosh.workers.dev"
     private static let userDefaultsKey = "sloosh_cached_api_base_url"
     private static let fallbackUrlsKey = "sloosh_cached_fallback_urls"
 
     /// Текущий активный базовый URL бэкенда (кэшируется в UserDefaults)
     public static var activeBaseURL: String {
         get {
-            if let cached = UserDefaults.standard.string(forKey: userDefaultsKey), !cached.isEmpty {
+            if let cached = UserDefaults.standard.string(forKey: userDefaultsKey),
+               !cached.isEmpty,
+               !cached.contains("vercel.app") {
                 return cached
             }
             return defaultBaseURL
         }
         set {
-            UserDefaults.standard.set(newValue, forKey: userDefaultsKey)
+            if !newValue.contains("vercel.app") {
+                UserDefaults.standard.set(newValue, forKey: userDefaultsKey)
+            }
         }
     }
 
