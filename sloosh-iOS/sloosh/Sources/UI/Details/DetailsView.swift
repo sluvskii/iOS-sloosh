@@ -523,29 +523,33 @@ struct RemoteLogoView: View {
     var body: some View {
         AsyncCachedImage(url: url) {
             Text(fallbackTitle)
-                .font(.system(size: isTopBar ? 17 : 32, weight: isTopBar ? .bold : .heavy))
+                .font(.system(size: isTopBar ? 17 : 30, weight: isTopBar ? .bold : .heavy))
                 .lineLimit(isTopBar ? 1 : 2)
                 .multilineTextAlignment(alignment == .leading ? .leading : .center)
                 .padding(.horizontal, alignment == .center ? (isTopBar ? 0 : 16) : 0)
                 .shimmer()
+                .frame(maxWidth: isTopBar ? nil : 300, maxHeight: isTopBar ? 32 : 110, alignment: alignment)
                 .frame(maxWidth: .infinity, alignment: alignment)
         } content: { image in
             Image(uiImage: image)
                 .resizable()
                 .aspectRatio(contentMode: .fit)
-                .frame(maxWidth: isTopBar ? nil : 280, maxHeight: isTopBar ? 32 : 110, alignment: alignment)
+                .frame(maxWidth: isTopBar ? nil : 300, maxHeight: isTopBar ? 32 : 110, alignment: alignment)
                 .padding(.horizontal, alignment == .center ? (isTopBar ? 0 : 16) : 0)
-                .shadow(color: .black.opacity(isTopBar ? 0.0 : 0.3), radius: 8, x: 0, y: 4)
+                .shadow(color: .black.opacity(isTopBar ? 0.0 : 0.35), radius: 8, x: 0, y: 4)
+                .frame(maxWidth: .infinity, alignment: alignment)
         } fallback: {
             Text(fallbackTitle)
-                .font(.system(size: isTopBar ? 17 : 32, weight: isTopBar ? .bold : .heavy))
+                .font(.system(size: isTopBar ? 17 : 30, weight: isTopBar ? .bold : .heavy))
                 .lineLimit(isTopBar ? 1 : 2)
                 .multilineTextAlignment(alignment == .leading ? .leading : .center)
                 .padding(.horizontal, alignment == .center ? (isTopBar ? 0 : 16) : 0)
+                .frame(maxWidth: isTopBar ? nil : 300, maxHeight: isTopBar ? 32 : 110, alignment: alignment)
                 .frame(maxWidth: .infinity, alignment: alignment)
                 .foregroundStyle(Color.white)
                 .shadow(color: .black.opacity(0.8), radius: 6, x: 0, y: 3)
         }
+        .frame(maxWidth: .infinity, alignment: alignment)
     }
 }
 
@@ -555,7 +559,8 @@ struct DetailsView: View {
     let navigationTransitionID: String?
     let navigationTransitionNamespace: Namespace.ID?
     let initialStudio: StudioBrand?
-    @StateObject private var viewModel = DetailsViewModel()
+    @StateObject private var viewModel: DetailsViewModel
+    @State private var isContentRevealed: Bool = false
     
     init(
         movieId: String,
@@ -569,6 +574,8 @@ struct DetailsView: View {
         self.navigationTransitionID = navigationTransitionID
         self.navigationTransitionNamespace = navigationTransitionNamespace
         self.initialStudio = initialStudio
+        let vm = DetailsViewModel(id: movieId, type: mediaType)
+        _viewModel = StateObject(wrappedValue: vm)
     }
 
     init(
@@ -577,11 +584,13 @@ struct DetailsView: View {
         navigationTransitionNamespace: Namespace.ID? = nil,
         initialStudio: StudioBrand? = nil
     ) {
-        self.movieId = movieId
-        self.mediaType = nil
-        self.navigationTransitionID = navigationTransitionID
-        self.navigationTransitionNamespace = navigationTransitionNamespace
-        self.initialStudio = initialStudio
+        self.init(
+            movieId: movieId,
+            mediaType: nil,
+            navigationTransitionID: navigationTransitionID,
+            navigationTransitionNamespace: navigationTransitionNamespace,
+            initialStudio: initialStudio
+        )
     }
     
     @State private var showPlayer = false
@@ -842,7 +851,7 @@ struct DetailsView: View {
             .hideNavigationBarWithRestore()
             .safeAreaInset(edge: .top, spacing: 0) {
                 ZStack {
-                    if let details = viewModel.details, isLogoAtTop {
+                    if let details = viewModel.details {
                         RemoteLogoView(
                             url: URL(string: details.displayLogoUrl ?? ""),
                             fallbackTitle: details.title ?? details.originalTitle ?? "Без названия",
@@ -851,7 +860,11 @@ struct DetailsView: View {
                         )
                         .frame(height: 32)
                         .padding(.horizontal, 68)
-                        .transition(.blurFadeScale)
+                        .opacity(isLogoAtTop ? 1.0 : 0.0)
+                        .scaleEffect(isLogoAtTop ? 1.0 : 0.85, anchor: .center)
+                        .blur(radius: isLogoAtTop ? 0 : 8)
+                        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: isLogoAtTop)
+                        .allowsHitTesting(false)
                     }
                     
                     HStack {
@@ -924,6 +937,8 @@ struct DetailsView: View {
                         .animation(.easeInOut(duration: 0.25), value: isLogoAtTop)
                         .allowsHitTesting(false)
                 )
+                .opacity(isContentRevealed ? 1.0 : 0.0)
+                .animation(.easeOut(duration: 0.28), value: isContentRevealed)
             }
             .task {
                 await viewModel.loadDetails(id: movieId, type: mediaType, studio: initialStudio)
@@ -951,9 +966,21 @@ struct DetailsView: View {
             }
             .onAppear {
                 CloudSyncService.shared.syncAllData()
+                if viewModel.details != nil && !isContentRevealed {
+                    withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) {
+                        isContentRevealed = true
+                    }
+                }
                 if !hasSeenSourceSelectionTooltip {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
                         showTooltip = true
+                    }
+                }
+            }
+            .onChange(of: viewModel.isLoading) { _, loading in
+                if !loading && viewModel.details != nil && !isContentRevealed {
+                    withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) {
+                        isContentRevealed = true
                     }
                 }
             }
@@ -1505,38 +1532,37 @@ struct DetailsView: View {
                             selectedIndex: $selectedBackdropIndex,
                             progress: backdropTimerProgress
                         )
+                        .opacity(isContentRevealed ? 1.0 : 0.0)
+                        .animation(.easeOut(duration: 0.25), value: isContentRevealed)
 
-                        ZStack {
-                            RemoteLogoView(
-                                url: URL(string: details.displayLogoUrl ?? ""),
-                                fallbackTitle: details.title ?? details.originalTitle ?? "Без названия",
-                                alignment: .center
-                            )
-                            .opacity(0)
-                            .allowsHitTesting(false)
-                            if !isLogoAtTop {
-                                RemoteLogoView(
-                                    url: URL(string: details.displayLogoUrl ?? ""),
-                                    fallbackTitle: details.title ?? details.originalTitle ?? "Без названия",
-                                    alignment: .center
-                                )
-                                .transition(.blurFadeScale)
-                            }
-                        }
+                        RemoteLogoView(
+                            url: URL(string: details.displayLogoUrl ?? ""),
+                            fallbackTitle: details.title ?? details.originalTitle ?? "Без названия",
+                            alignment: .center
+                        )
+                        .opacity(isContentRevealed ? (isLogoAtTop ? 0.0 : 1.0) : 0.0)
+                        .scaleEffect(isContentRevealed ? (isLogoAtTop ? 0.85 : 1.0) : 0.94, anchor: .center)
+                        .blur(radius: isLogoAtTop ? 8 : (isContentRevealed ? 0 : 4))
+                        .animation(.spring(response: 0.4, dampingFraction: 0.84), value: isContentRevealed)
+                        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: isLogoAtTop)
                         .padding(.bottom, 8)
                         .background(
                             GeometryReader { geo in
                                 Color.clear
                                     .onChange(of: geo.frame(in: .global).midY) { _, midY in
+                                        guard midY > 0 else { return }
                                         let isAtTop = midY < 80
                                         if isLogoAtTop != isAtTop {
-                                            withAnimation(.easeInOut(duration: 0.3)) {
+                                            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                                                 isLogoAtTop = isAtTop
                                             }
                                         }
                                     }
                                     .onAppear {
-                                        isLogoAtTop = geo.frame(in: .global).midY < 80
+                                        let midY = geo.frame(in: .global).midY
+                                        if midY > 0 {
+                                            isLogoAtTop = midY < 80
+                                        }
                                     }
                             }
                         )
@@ -1548,26 +1574,45 @@ struct DetailsView: View {
                                 .multilineTextAlignment(.center)
                                 .padding(.horizontal)
                                 .padding(.top, -8)
+                                .opacity(isContentRevealed ? 1.0 : 0.0)
+                                .offset(y: isContentRevealed ? 0 : 6)
+                                .animation(.spring(response: 0.42, dampingFraction: 0.85).delay(0.03), value: isContentRevealed)
                         }
 
                         DetailsPrimaryMetadataRow(details: details, alignment: .center)
+                            .opacity(isContentRevealed ? 1.0 : 0.0)
+                            .offset(y: isContentRevealed ? 0 : 8)
+                            .animation(.spring(response: 0.42, dampingFraction: 0.85).delay(0.06), value: isContentRevealed)
 
                         playAndDownloadRow(for: details)
                             .padding(.top, 8)
                             .padding(.bottom, -4)
+                            .opacity(isContentRevealed ? 1.0 : 0.0)
+                            .scaleEffect(isContentRevealed ? 1.0 : 0.94, anchor: .center)
+                            .offset(y: isContentRevealed ? 0 : 10)
+                            .animation(.spring(response: 0.42, dampingFraction: 0.85).delay(0.09), value: isContentRevealed)
 
                         DetailsInfoSection(details: details, backgroundColor: effectiveBackgroundColor, studio: initialStudio)
                             .padding(.top, 20)
                             .padding(.horizontal)
+                            .opacity(isContentRevealed ? 1.0 : 0.0)
+                            .offset(y: isContentRevealed ? 0 : 12)
+                            .animation(.spring(response: 0.45, dampingFraction: 0.85).delay(0.12), value: isContentRevealed)
 
                         if let cast = details.cast, !cast.isEmpty {
                             ActorsSection(cast: cast, namespace: actorTransitionNamespace)
                                 .padding(.top, 16)
+                                .opacity(isContentRevealed ? 1.0 : 0.0)
+                                .offset(y: isContentRevealed ? 0 : 14)
+                                .animation(.spring(response: 0.45, dampingFraction: 0.85).delay(0.15), value: isContentRevealed)
                         }
 
                         if let crew = details.crew, !crew.isEmpty {
                             CrewSection(crew: crew, namespace: crewTransitionNamespace)
                                 .padding(.top, 16)
+                                .opacity(isContentRevealed ? 1.0 : 0.0)
+                                .offset(y: isContentRevealed ? 0 : 14)
+                                .animation(.spring(response: 0.45, dampingFraction: 0.85).delay(0.18), value: isContentRevealed)
                         }
 
                         if let trailers = details.trailers, !trailers.isEmpty {
@@ -1575,6 +1620,9 @@ struct DetailsView: View {
                                 selectedTrailer = trailer
                             }
                             .padding(.top, 16)
+                            .opacity(isContentRevealed ? 1.0 : 0.0)
+                            .offset(y: isContentRevealed ? 0 : 14)
+                            .animation(.spring(response: 0.45, dampingFraction: 0.85).delay(0.20), value: isContentRevealed)
                         }
 
                         if details.type == "tv" {
@@ -1582,6 +1630,9 @@ struct DetailsView: View {
                                 handleEpisodeSelection(details: details, season: season, episode: episode)
                             }
                             .padding(.top, 16)
+                            .opacity(isContentRevealed ? 1.0 : 0.0)
+                            .offset(y: isContentRevealed ? 0 : 14)
+                            .animation(.spring(response: 0.45, dampingFraction: 0.85).delay(0.22), value: isContentRevealed)
                         }
 
                         if let collection = viewModel.movieCollection ?? details.collection {
@@ -1589,6 +1640,9 @@ struct DetailsView: View {
                                 directPlaybackMovie = movie
                             })
                             .padding(.top, 16)
+                            .opacity(isContentRevealed ? 1.0 : 0.0)
+                            .offset(y: isContentRevealed ? 0 : 14)
+                            .animation(.spring(response: 0.45, dampingFraction: 0.85).delay(0.24), value: isContentRevealed)
                         }
 
                         if let similar = details.similar, !similar.isEmpty {
@@ -1600,6 +1654,9 @@ struct DetailsView: View {
                                 }
                             )
                             .padding(.top, 16)
+                            .opacity(isContentRevealed ? 1.0 : 0.0)
+                            .offset(y: isContentRevealed ? 0 : 14)
+                            .animation(.spring(response: 0.45, dampingFraction: 0.85).delay(0.26), value: isContentRevealed)
                         }
 
                         if let relatedStudio = viewModel.relatedStudio, let items = relatedStudio.items, !items.isEmpty {
@@ -1607,6 +1664,9 @@ struct DetailsView: View {
                                 directPlaybackMovie = movie
                             })
                             .padding(.top, 16)
+                            .opacity(isContentRevealed ? 1.0 : 0.0)
+                            .offset(y: isContentRevealed ? 0 : 14)
+                            .animation(.spring(response: 0.45, dampingFraction: 0.85).delay(0.28), value: isContentRevealed)
                         }
                     }
                     .offset(y: -25)
@@ -1674,38 +1734,37 @@ struct DetailsView: View {
                                     selectedIndex: $selectedBackdropIndex,
                                     progress: backdropTimerProgress
                                 )
+                                .opacity(isContentRevealed ? 1.0 : 0.0)
+                                .animation(.easeOut(duration: 0.25), value: isContentRevealed)
 
-                                ZStack {
-                                    RemoteLogoView(
-                                        url: URL(string: details.displayLogoUrl ?? ""),
-                                        fallbackTitle: details.title ?? details.originalTitle ?? "Без названия",
-                                        alignment: .center
-                                    )
-                                    .opacity(0)
-                                    .allowsHitTesting(false)
-                                    if !isLogoAtTop {
-                                        RemoteLogoView(
-                                            url: URL(string: details.displayLogoUrl ?? ""),
-                                            fallbackTitle: details.title ?? details.originalTitle ?? "Без названия",
-                                            alignment: .center
-                                        )
-                                        .transition(.blurFadeScale)
-                                    }
-                                }
+                                RemoteLogoView(
+                                    url: URL(string: details.displayLogoUrl ?? ""),
+                                    fallbackTitle: details.title ?? details.originalTitle ?? "Без названия",
+                                    alignment: .center
+                                )
+                                .opacity(isContentRevealed ? (isLogoAtTop ? 0.0 : 1.0) : 0.0)
+                                .scaleEffect(isContentRevealed ? (isLogoAtTop ? 0.85 : 1.0) : 0.94, anchor: .center)
+                                .blur(radius: isLogoAtTop ? 8 : (isContentRevealed ? 0 : 4))
+                                .animation(.spring(response: 0.4, dampingFraction: 0.84), value: isContentRevealed)
+                                .animation(.spring(response: 0.35, dampingFraction: 0.85), value: isLogoAtTop)
                                 .padding(.bottom, 8)
                                 .background(
                                     GeometryReader { geo in
                                         Color.clear
                                             .onChange(of: geo.frame(in: .global).midY) { _, midY in
+                                                guard midY > 0 else { return }
                                                 let isAtTop = midY < 80
                                                 if isLogoAtTop != isAtTop {
-                                                    withAnimation(.easeInOut(duration: 0.3)) {
+                                                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                                                         isLogoAtTop = isAtTop
                                                     }
                                                 }
                                             }
                                             .onAppear {
-                                                isLogoAtTop = geo.frame(in: .global).midY < 80
+                                                let midY = geo.frame(in: .global).midY
+                                                if midY > 0 {
+                                                    isLogoAtTop = midY < 80
+                                                }
                                             }
                                     }
                                 )
@@ -1717,17 +1776,30 @@ struct DetailsView: View {
                                         .multilineTextAlignment(.center)
                                         .padding(.horizontal)
                                         .padding(.top, -8)
+                                        .opacity(isContentRevealed ? 1.0 : 0.0)
+                                        .offset(y: isContentRevealed ? 0 : 6)
+                                        .animation(.spring(response: 0.42, dampingFraction: 0.85).delay(0.03), value: isContentRevealed)
                                 }
 
                                 DetailsPrimaryMetadataRow(details: details, alignment: .center)
+                                    .opacity(isContentRevealed ? 1.0 : 0.0)
+                                    .offset(y: isContentRevealed ? 0 : 8)
+                                    .animation(.spring(response: 0.42, dampingFraction: 0.85).delay(0.06), value: isContentRevealed)
 
                                 playAndDownloadRow(for: details)
                                     .padding(.top, 8)
                                     .padding(.bottom, -4)
+                                    .opacity(isContentRevealed ? 1.0 : 0.0)
+                                    .scaleEffect(isContentRevealed ? 1.0 : 0.94, anchor: .center)
+                                    .offset(y: isContentRevealed ? 0 : 10)
+                                    .animation(.spring(response: 0.42, dampingFraction: 0.85).delay(0.09), value: isContentRevealed)
 
                                 DetailsInfoSection(details: details, backgroundColor: effectiveBackgroundColor, studio: initialStudio)
                                     .padding(.top, 20)
                                     .padding(.horizontal)
+                                    .opacity(isContentRevealed ? 1.0 : 0.0)
+                                    .offset(y: isContentRevealed ? 0 : 12)
+                                    .animation(.spring(response: 0.45, dampingFraction: 0.85).delay(0.12), value: isContentRevealed)
                             }
                             .frame(maxWidth: 550)
                             .frame(maxWidth: .infinity, alignment: .center)
@@ -1735,11 +1807,17 @@ struct DetailsView: View {
                             if let cast = details.cast, !cast.isEmpty {
                                 ActorsSection(cast: cast, namespace: actorTransitionNamespace)
                                     .padding(.top, 16)
+                                    .opacity(isContentRevealed ? 1.0 : 0.0)
+                                    .offset(y: isContentRevealed ? 0 : 14)
+                                    .animation(.spring(response: 0.45, dampingFraction: 0.85).delay(0.15), value: isContentRevealed)
                             }
 
                             if let crew = details.crew, !crew.isEmpty {
                                 CrewSection(crew: crew, namespace: crewTransitionNamespace)
                                     .padding(.top, 16)
+                                    .opacity(isContentRevealed ? 1.0 : 0.0)
+                                    .offset(y: isContentRevealed ? 0 : 14)
+                                    .animation(.spring(response: 0.45, dampingFraction: 0.85).delay(0.18), value: isContentRevealed)
                             }
 
                             if let trailers = details.trailers, !trailers.isEmpty {
@@ -1747,6 +1825,9 @@ struct DetailsView: View {
                                     selectedTrailer = trailer
                                 }
                                 .padding(.top, 16)
+                                .opacity(isContentRevealed ? 1.0 : 0.0)
+                                .offset(y: isContentRevealed ? 0 : 14)
+                                .animation(.spring(response: 0.45, dampingFraction: 0.85).delay(0.20), value: isContentRevealed)
                             }
 
                             if details.type == "tv" {
@@ -1759,6 +1840,9 @@ struct DetailsView: View {
                                     handleEpisodeSelection(details: details, season: season, episode: episode)
                                 }
                                 .padding(.top, 16)
+                                .opacity(isContentRevealed ? 1.0 : 0.0)
+                                .offset(y: isContentRevealed ? 0 : 14)
+                                .animation(.spring(response: 0.45, dampingFraction: 0.85).delay(0.22), value: isContentRevealed)
                             }
 
                             if let collection = viewModel.movieCollection ?? details.collection {
@@ -1766,6 +1850,9 @@ struct DetailsView: View {
                                     directPlaybackMovie = movie
                                 })
                                 .padding(.top, 16)
+                                .opacity(isContentRevealed ? 1.0 : 0.0)
+                                .offset(y: isContentRevealed ? 0 : 14)
+                                .animation(.spring(response: 0.45, dampingFraction: 0.85).delay(0.24), value: isContentRevealed)
                             }
 
                             if let similar = details.similar, !similar.isEmpty {
@@ -1777,6 +1864,9 @@ struct DetailsView: View {
                                     }
                                 )
                                 .padding(.top, 16)
+                                .opacity(isContentRevealed ? 1.0 : 0.0)
+                                .offset(y: isContentRevealed ? 0 : 14)
+                                .animation(.spring(response: 0.45, dampingFraction: 0.85).delay(0.26), value: isContentRevealed)
                             }
 
                             if let relatedStudio = viewModel.relatedStudio, let items = relatedStudio.items, !items.isEmpty {
@@ -1784,6 +1874,9 @@ struct DetailsView: View {
                                     directPlaybackMovie = movie
                                 })
                                 .padding(.top, 16)
+                                .opacity(isContentRevealed ? 1.0 : 0.0)
+                                .offset(y: isContentRevealed ? 0 : 14)
+                                .animation(.spring(response: 0.45, dampingFraction: 0.85).delay(0.28), value: isContentRevealed)
                             }
                         }
                         .offset(y: -60)
@@ -1840,11 +1933,10 @@ private struct DetailsSkeletonView: View {
                 .mask(BackdropFadeMask())
             
             VStack(alignment: .center, spacing: 12) {
-                // Logo placeholder: replaced with a textual representation of loading to match RemoteLogoView
-                Rectangle()
-                    .fill(Color.gray.opacity(0.2))
-                    .frame(width: 240, height: 40)
-                    .cornerRadius(8)
+                // Logo placeholder
+                Capsule()
+                    .fill(Color.white.opacity(0.12))
+                    .frame(width: 220, height: 38)
                     .padding(.bottom, 8)
                     .shimmer()
                 
@@ -3306,6 +3398,14 @@ class DetailsViewModel: ObservableObject {
     @Published var isFavorite: Bool = false
 
     private let allohaTranslationPreferenceKey = "alloha_last_translation_name"
+
+    init(id: String? = nil, type: String? = nil) {
+        if let id = id, let cached = MoviesRepository.shared.getCachedDetails(id: id, type: type) {
+            self.details = cached
+            self.isLoading = false
+            self.checkFavoriteStatus()
+        }
+    }
 
     // MARK: - Sources cache (5 min TTL)
     private var sourcesCache: [Int: (wrapper: SourceResultWrapper, expiresAt: Date)] = [:]

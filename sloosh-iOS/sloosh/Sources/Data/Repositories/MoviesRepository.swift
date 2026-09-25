@@ -242,6 +242,14 @@ class MoviesRepository: ObservableObject {
 
     // MARK: - Details (two-level: memory → disk → network)
 
+    func getCachedDetails(id: String, type: String? = nil) -> MediaDetailsDto? {
+        let inferredType = type ?? (id.hasPrefix("tv_") ? "tv" : (id.hasPrefix("movie_") ? "movie" : nil))
+        let cacheKey = inferredType != nil ? "\(inferredType!)_\(id)" : id
+        if let hit = detailsMemory[cacheKey] { return hit }
+        if let hit = detailsMemory[id], (inferredType == nil || hit.type == inferredType) { return hit }
+        return nil
+    }
+
     func getDetails(id: String, type: String? = nil) async throws -> MediaDetailsDto? {
         let inferredType = type ?? (id.hasPrefix("tv_") ? "tv" : (id.hasPrefix("movie_") ? "movie" : nil))
         let cacheKey = inferredType != nil ? "\(inferredType!)_\(id)" : id
