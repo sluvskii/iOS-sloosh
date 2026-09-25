@@ -876,19 +876,33 @@ struct DetailsView: View {
                         HStack(spacing: 0) {
                             // Кнопка «Избранное» (слева, как было изначально)
                             Button {
-                                let generator = UIImpactFeedbackGenerator(style: .light)
-                                generator.prepare()
-                                generator.impactOccurred()
-                                favoriteBounce.toggle()
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.5, blendDuration: 0.5)) {
+                                withAnimation(.spring(response: 0.26, dampingFraction: 0.48)) {
+                                    favoriteBounce = true
                                     viewModel.toggleFavorite()
                                 }
+                                DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
+                                    withAnimation(.spring(response: 0.28, dampingFraction: 0.65)) {
+                                        favoriteBounce = false
+                                    }
+                                }
                             } label: {
-                                Image(systemName: viewModel.isFavorite ? "heart.fill" : "heart")
-                                    .font(.system(size: 21, weight: .medium))
-                                    .foregroundStyle(.white)
-                                    .frame(width: 44, height: 44)
-                                    .contentShape(Rectangle())
+                                ZStack {
+                                    if viewModel.isFavorite {
+                                        Circle()
+                                            .fill(Color.red.opacity(favoriteBounce ? 0.25 : 0.0))
+                                            .frame(width: 36, height: 36)
+                                            .scaleEffect(favoriteBounce ? 1.35 : 0.8)
+                                    }
+
+                                    Image(systemName: viewModel.isFavorite ? "heart.fill" : "heart")
+                                        .font(.system(size: 21, weight: .medium))
+                                        .foregroundStyle(viewModel.isFavorite ? Color.red : Color.white)
+                                        .symbolEffect(.bounce, value: viewModel.isFavorite)
+                                        .scaleEffect(favoriteBounce ? (viewModel.isFavorite ? 1.25 : 0.88) : 1.0)
+                                        .shadow(color: viewModel.isFavorite ? Color.red.opacity(0.45) : Color.clear, radius: 5, x: 0, y: 1)
+                                }
+                                .frame(width: 44, height: 44)
+                                .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
                             .disabled(viewModel.details == nil)
@@ -3532,7 +3546,7 @@ class DetailsViewModel: ObservableObject {
                 genres: details.genres?.compactMap { GenreDto(id: $0.lowercased(), name: $0) }
             )
             generator.notificationOccurred(.success)
-            ToastManager.shared.show(title: "Добавлено в избранное", icon: "heart.fill", iconColor: .primary, duration: 2.0)
+            ToastManager.shared.show(title: "Добавлено в избранное", icon: "heart.fill", iconColor: .red, duration: 2.0)
         }
         isFavorite.toggle()
     }
@@ -3953,7 +3967,7 @@ private struct FranchiseCollectionSection: View {
                                 MoviePosterCard(movie: part)
                                     .frame(width: 120)
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(.cardPress)
                             .contextMenu {
                                 Group {
                                     Button {
@@ -4009,7 +4023,7 @@ private struct RelatedStudioSection: View {
                                 MoviePosterCard(movie: movie)
                                     .frame(width: 120)
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(.cardPress)
                             .contextMenu {
                                 Group {
                                     Button {
@@ -4052,7 +4066,7 @@ private struct SimilarMediaSection: View {
                             MoviePosterCard(movie: item)
                                 .frame(width: 120)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(.cardPress)
                         .contextMenu {
                             Group {
                                 Button {

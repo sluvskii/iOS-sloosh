@@ -326,7 +326,7 @@ struct MovieDetailsNavigationLink<Label: View>: View {
             label()
                 .matchedTransitionSource(id: transitionID, in: navigationTransition)
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.cardPress)
     }
 }
 
