@@ -79,17 +79,24 @@ This workspace contains the flagship native iOS client for **sloosh**:
 - **Streaming Source Provider**: Alloha API (with primary and backup token failover).
 
 ### Key Capabilities:
-1. **Edge CDN & Image Caching**:
-   - Automated `Cache-Control` response headers with `stale-while-revalidate` caching on Edge.
-   - Details, collections, and person profiles cached for up to 24 hours (`s-maxage=86400`), cutting response latencies to 15–30 ms.
-   - Images proxied through `/api/v1/images/tmdb/:size/*` and cached on Cloudflare Edge for 7 days (`cacheEverything: true`), bypassing ISP blocks on `image.tmdb.org`.
-2. **Russian Localization Engine**:
+1. **Cloudflare Edge Gateway & Direct TMDB Image CDN**:
+   - `api.sloosh.workers.dev` intercepts `/api/v1/images/tmdb/:size/*` and proxies directly from `image.tmdb.org` with 30-day Edge Caching (`cacheTtl: 2592000`, `max-age=31536000, immutable`, `X-Sloosh-Edge: tmdb-direct`). Bypasses Vercel entirely for images, cutting poster latency to 5–15 ms.
+   - Global Edge Cache API (`caches.default`) for API GET responses (`X-Sloosh-Cache: HIT-EDGE`), returning catalog and details in 5–15 ms without origin round-trips.
+   - Automatic origin retry (400ms delay) on transient Vercel 502/503/504 errors, providing zero-downtime resilience.
+   - Sanitized `Vary: Accept-Encoding` header (removed `Authorization` and `X-API-Key`), unlocking unified global CDN caching across all authorized clients.
+2. **Alloha Stream & ID Resolution Optimization**:
+   - In-memory LRU resolution caches (`allohaResolutionCache`, `kpToTmdbCache`) with 24-hour positive and 2-hour negative TTL.
+   - Reduced query timeout to 2500ms and wrapped `attachAllohaAndIds` in a fast 2500ms `Promise.race` timeout guard. Movie detail screens never hang if Alloha has connectivity issues.
+3. **TMDB Subrequest Memoization (`tmdbFetchCached`)**:
+   - Movie collections (Marvel, Harry Potter, etc.) cached for 24 hours.
+   - Fallback discover queries for similar items cached for 6 hours.
+4. **Russian Localization Engine**:
    - Automated country name translation via `src/utils/countries.ts` (`localizeCountry`, `CountryLocalizer`).
    - Russian genre mapping and bi-directional resolution for TMDB Discover.
    - Cleaned person biographies: emojis stripped, automatically parsed into awards, key projects, and interesting facts.
-3. **Smart Fallback for Similar Media**:
+5. **Smart Fallback for Similar Media**:
    - `/movies/:id` and `/tv/:id` deduplicate recommendations and similar items. If count < 6, automatically falls back to Discover query for top titles in the same primary genre. 100% of titles have similar media.
-4. **Crew & Creator Parsing (`extractCrew`)**:
+6. **Crew & Creator Parsing (`extractCrew`)**:
    - Extracts directors (`Director`), writers (`Writing`, `Screenplay`, `Writer`, `Story`, `Author`, `Novel`), and series creators (`created_by`).
    - Deduplicates members with unified compound roles (e.g. `"Режиссёр, сценарист"`, `"Создатель, сценарист"`).
    - In `/person/:id`, filmography merges both `combined_credits.cast` AND `combined_credits.crew`, guaranteeing that directors and writers have complete filmographies.
@@ -185,14 +192,20 @@ Root: `sloosh-iOS/sloosh/Sources/`
 
 ## Caching Strategy
 
-1. **Edge Gateway CDN (Cloudflare + Vercel)**:
+1. **Cloudflare Edge Gateway & Direct CDN**:
+   - Direct TMDB Image proxy cached on Cloudflare Edge for 30 days (`X-Sloosh-Edge: tmdb-direct`, `max-age=31536000, immutable`), completely bypassing Vercel.
+   - API GET responses cached via Cloudflare Cache API (`caches.default`) with `X-Sloosh-Cache: HIT-EDGE` (5–15 ms latency).
    - Dynamic endpoints and Edge CDN routing with sub-30ms global response time.
-   - TMDB Image proxy cached on Cloudflare Edge for 7 days (`cacheEverything: true`).
-2. **Local iOS Disk Caches**:
+   - `Vary: Accept-Encoding` ensures shared cache hits across all client devices without auth fragmentation.
+2. **Vercel Edge & Backend In-Memory Caches**:
+   - `allohaResolutionCache` (24h positive / 2h negative TTL) + `kpToTmdbCache`.
+   - `tmdbSubrequestCache` for collections (24h) and discover fallbacks (6h).
+   - Details, collections, and person profiles cached for up to 24 hours (`s-maxage=86400`).
+3. **Local iOS Disk Caches**:
    - `MediaDetailsDiskCache`: Located in `Library/Caches/sloosh.mediadetails.v7` (TTL 24 hours).
    - `PersonDetailsDiskCache`: Located in `Library/Caches/sloosh.persondetails.v1` (TTL 24 hours).
    - `ListDiskCache`: Instant cold starts for popular movies, top movies, top TV series, and cartoons.
-3. **Image Caching**:
+4. **Image Caching**:
    - `AsyncCachedImage` + `ImageCache` (memory + disk) with dynamic routing through `MoviesApi.activeImagesBaseURL`.
 
 ---
