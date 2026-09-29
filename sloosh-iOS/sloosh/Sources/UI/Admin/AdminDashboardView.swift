@@ -306,15 +306,13 @@ public struct AdminDashboardView: View {
     private func liveWatchingCard(_ session: LiveSessionItem) -> some View {
         HStack(spacing: 12) {
             if let poster = session.media?.posterUrl, let url = URL(string: poster) {
-                AsyncCachedImage(url: url) { phase in
-                    if let image = phase.image {
-                        image
-                            .resizable()
-                            .scaledToFill()
-                    } else {
-                        Rectangle()
-                            .fill(Color.secondary.opacity(0.2))
-                    }
+                AsyncCachedImage(url: url) {
+                    Rectangle()
+                        .fill(Color.secondary.opacity(0.2))
+                } content: { image in
+                    Image(uiImage: image)
+                        .resizable()
+                        .scaledToFill()
                 }
                 .frame(width: 52, height: 76)
                 .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
@@ -515,12 +513,13 @@ public struct AdminDashboardView: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 12) {
                 if let poster = media.posterUrl, let url = URL(string: poster) {
-                    AsyncCachedImage(url: url) { phase in
-                        if let img = phase.image {
-                            img.resizable().scaledToFill()
-                        } else {
-                            Rectangle().fill(Color.secondary.opacity(0.2))
-                        }
+                    AsyncCachedImage(url: url) {
+                        Rectangle()
+                            .fill(Color.secondary.opacity(0.2))
+                    } content: { image in
+                        Image(uiImage: image)
+                            .resizable()
+                            .scaledToFill()
                     }
                     .frame(width: 44, height: 64)
                     .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
