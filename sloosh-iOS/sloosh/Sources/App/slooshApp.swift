@@ -81,6 +81,7 @@ struct slooshApp: App {
             await MoviesApi.shared.loadRemoteConfig()
             SharedWebViewProvider.shared.prewarm()
             await AllohaRepository.shared.warmup()
+            PlaybackAnalyticsService.shared.sendSessionHeartbeat()
         }
     }
     
@@ -128,6 +129,7 @@ struct slooshApp: App {
                     } else if newPhase == .active {
                         AppDiagnostics.shared.markRunning()
                         UserPresenceService.shared.startHeartbeat()
+                        PlaybackAnalyticsService.shared.sendSessionHeartbeat()
                         Task {
                             await CloudSyncService.shared.syncAllDataAsync()
                         }
@@ -135,6 +137,7 @@ struct slooshApp: App {
                 }
                 .task {
                     UserPresenceService.shared.startHeartbeat()
+                    PlaybackAnalyticsService.shared.sendSessionHeartbeat()
                 }
         }
     }

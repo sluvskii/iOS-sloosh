@@ -7,30 +7,48 @@ import Combine
 public struct AdminOverviewStats: Sendable, Equatable {
     public var totalUsers: Int = 0
     public var onlineUsers: Int = 0
+    public var watchingNowCount: Int = 0
+    public var guestUsersCount: Int = 0
     public var totalChannels: Int = 0
     public var totalPosts: Int = 0
     public var totalViews: Int = 0
     public var totalReactions: Int = 0
+    public var topGlobalTranslation: String = "—"
     public var topChannels: [ChannelModel] = []
+    public var liveWatchingSessions: [LiveSessionItem] = []
+    public var mediaAnalytics: [MediaAnalyticsStats] = []
+    public var globalTranslations: [GlobalTranslationStat] = []
     public var diagnosticsCount: Int = 0
 
     public init(
         totalUsers: Int = 0,
         onlineUsers: Int = 0,
+        watchingNowCount: Int = 0,
+        guestUsersCount: Int = 0,
         totalChannels: Int = 0,
         totalPosts: Int = 0,
         totalViews: Int = 0,
         totalReactions: Int = 0,
+        topGlobalTranslation: String = "—",
         topChannels: [ChannelModel] = [],
+        liveWatchingSessions: [LiveSessionItem] = [],
+        mediaAnalytics: [MediaAnalyticsStats] = [],
+        globalTranslations: [GlobalTranslationStat] = [],
         diagnosticsCount: Int = 0
     ) {
         self.totalUsers = totalUsers
         self.onlineUsers = onlineUsers
+        self.watchingNowCount = watchingNowCount
+        self.guestUsersCount = guestUsersCount
         self.totalChannels = totalChannels
         self.totalPosts = totalPosts
         self.totalViews = totalViews
         self.totalReactions = totalReactions
+        self.topGlobalTranslation = topGlobalTranslation
         self.topChannels = topChannels
+        self.liveWatchingSessions = liveWatchingSessions
+        self.mediaAnalytics = mediaAnalytics
+        self.globalTranslations = globalTranslations
         self.diagnosticsCount = diagnosticsCount
     }
 }
@@ -109,6 +127,9 @@ public final class AdminRepository: ObservableObject {
     @Published public private(set) var stats = AdminOverviewStats()
     @Published public private(set) var users: [AdminUserItem] = []
     @Published public private(set) var channels: [ChannelModel] = []
+    @Published public private(set) var liveSessions: [LiveSessionItem] = []
+    @Published public private(set) var mediaAnalytics: [MediaAnalyticsStats] = []
+    @Published public private(set) var globalTranslations: [GlobalTranslationStat] = []
     @Published public private(set) var isLoading: Bool = false
 
     private init() {}
@@ -126,23 +147,38 @@ public final class AdminRepository: ObservableObject {
         async let fetchedUsers = fetchAllUsers()
         async let fetchedChannels = fetchAllChannels()
         async let postsStats = fetchPostsStats()
+        async let liveSessionsData = PlaybackAnalyticsService.shared.fetchLiveSessions()
+        async let topMediaData = PlaybackAnalyticsService.shared.fetchTopMediaAnalytics()
+        async let globalTransData = PlaybackAnalyticsService.shared.fetchGlobalTranslationStats()
 
-        let (allUsers, allChannels, (postsCount, viewsCount, reactionsCount)) = await (fetchedUsers, fetchedChannels, postsStats)
+        let (allUsers, allChannels, (postsCount, viewsCount, reactionsCount), (onlineLive, watchingLive, guestCount), topMediaList, globalTransList) = await (fetchedUsers, fetchedChannels, postsStats, liveSessionsData, topMediaData, globalTransData)
 
-        let onlineCount = allUsers.filter { $0.isCurrentlyOnline }.count
+        let registeredOnlineCount = allUsers.filter { $0.isCurrentlyOnline }.count
+        let totalOnlineCount = registeredOnlineCount + guestCount
         let sortedTop = allChannels.sorted { $0.subscriberCount > $1.subscriberCount }
         let top5 = Array(sortedTop.prefix(5))
+        let topTranslationName = globalTransList.first?.translation ?? "—"
 
         self.users = allUsers
         self.channels = allChannels
+        self.liveSessions = onlineLive
+        self.mediaAnalytics = topMediaList
+        self.globalTranslations = globalTransList
+
         self.stats = AdminOverviewStats(
             totalUsers: allUsers.count,
-            onlineUsers: onlineCount,
+            onlineUsers: totalOnlineCount,
+            watchingNowCount: watchingLive.count,
+            guestUsersCount: guestCount,
             totalChannels: allChannels.count,
             totalPosts: postsCount,
             totalViews: viewsCount,
             totalReactions: reactionsCount,
+            topGlobalTranslation: topTranslationName,
             topChannels: top5,
+            liveWatchingSessions: watchingLive,
+            mediaAnalytics: topMediaList,
+            globalTranslations: globalTransList,
             diagnosticsCount: AppDiagnostics.shared.recentLogs.count
         )
     }

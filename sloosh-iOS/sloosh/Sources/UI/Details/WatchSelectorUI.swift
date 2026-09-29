@@ -4,6 +4,7 @@ struct WatchSelectorChip: View, Equatable {
     let title: String
     let isSelected: Bool
     let isAvailable: Bool
+    var badge: String? = nil
     let action: () -> Void
 
     @Environment(\.colorScheme) private var colorScheme
@@ -12,7 +13,8 @@ struct WatchSelectorChip: View, Equatable {
     static func == (lhs: WatchSelectorChip, rhs: WatchSelectorChip) -> Bool {
         lhs.title == rhs.title &&
         lhs.isSelected == rhs.isSelected &&
-        lhs.isAvailable == rhs.isAvailable
+        lhs.isAvailable == rhs.isAvailable &&
+        lhs.badge == rhs.badge
     }
 
     var body: some View {
@@ -20,13 +22,19 @@ struct WatchSelectorChip: View, Equatable {
             Self.feedback.selectionChanged()
             action()
         } label: {
-            Text(title)
-                .font(.system(size: 13.5, weight: .semibold))
-                .lineLimit(1)
-                .truncationMode(.tail)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .frame(height: 32)
+            HStack(spacing: 5) {
+                if let badge, !badge.isEmpty {
+                    Text(badge)
+                        .font(.system(size: 11, weight: .bold))
+                }
+                Text(title)
+                    .font(.system(size: 13.5, weight: .semibold))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .frame(height: 32)
                 .foregroundStyle(
                     isSelected
                         ? (colorScheme == .dark ? Color.black : Color.white)

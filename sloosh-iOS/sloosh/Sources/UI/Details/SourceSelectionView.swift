@@ -353,6 +353,7 @@ struct SingleSourceContentView: View {
 
     @AppStorage("preferredVideoQuality") private var preferredQuality: VideoQualityPreference = .ask
     @State private var showQualitySelection = false
+    @State private var mediaStats: MediaAnalyticsStats? = nil
 
     // Precomputed immutable caches (calculated once on init)
     let allTranslations: [TranslationChipItem]
@@ -733,6 +734,23 @@ struct SingleSourceContentView: View {
                 finishAction(quality: selectedQuality)
             }
         }
+        .task {
+            let key = mediaKey
+            if key != "unknown" {
+                mediaStats = await PlaybackAnalyticsService.shared.fetchMediaStats(mediaKey: key)
+            }
+        }
+    }
+
+    private func translationBadge(for name: String) -> String? {
+        guard allTranslations.count > 1,
+              let stats = mediaStats,
+              let top = stats.topTranslation,
+              top.count >= 2,
+              allohaTranslationNamesMatch(name, top.translation) else {
+            return nil
+        }
+        return "🔥 Топ"
     }
 
     @ViewBuilder
@@ -748,7 +766,8 @@ struct SingleSourceContentView: View {
                         WatchSelectorChip(
                             title: item.displayName,
                             isSelected: selectedTranslationName == item.name,
-                            isAvailable: isTranslationAvailable(item.name)
+                            isAvailable: isTranslationAvailable(item.name),
+                            badge: translationBadge(for: item.name)
                         ) {
                             selectTranslation(item.name)
                         }
