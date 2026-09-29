@@ -1,4 +1,4 @@
-﻿{
+{
   "rules": {
     ".read": false,
     ".write": false,
@@ -80,6 +80,25 @@
         ".read": "auth != null && auth.uid == $uid",
         ".write": "auth != null && auth.uid == $uid"
       }
+    },
+
+    "active_sessions": {
+      ".read": "auth != null",
+      "$sessionId": {
+        ".write": true
+      }
+    },
+
+    "media_stats": {
+      ".read": true,
+      "$mediaKey": {
+        ".write": true
+      }
+    },
+
+    "global_stats": {
+      ".read": true,
+      ".write": true
     }
   }
 }

@@ -1104,6 +1104,8 @@ class PlayerViewModel: ObservableObject {
         guard !isPreparedForDismiss else { return }
         isPreparedForDismiss = true
 
+        PlaybackAnalyticsService.shared.stopWatching()
+
         // 1. Быстрая остановка аудио и видео
         player?.pause()
         isPlaying = false
@@ -1141,6 +1143,7 @@ class PlayerViewModel: ObservableObject {
         prepareForDismiss()
         guard !isCleaningUp else { return }
         isCleaningUp = true
+        PlaybackAnalyticsService.shared.stopWatching()
 
         // Читаем параметры прогресса до обнуления
         let mediaId = currentMediaId
@@ -2245,6 +2248,18 @@ class PlayerViewModel: ObservableObject {
                             let targetVoice = self.targetVoiceover ?? self._currentTranslationName ?? self.availableVoiceovers.first ?? "Дубляж"
                             self.selectAudioTrackInPlayer(named: targetVoice)
                             self.syncNativeSubtitleTracks()
+
+                            if let root = self.rootMediaKey {
+                                let titleToReport = self.fallbackTitle.isEmpty ? "Без названия" : self.fallbackTitle
+                                PlaybackAnalyticsService.shared.startWatching(
+                                    mediaKey: root,
+                                    title: titleToReport,
+                                    season: self.currentSeason,
+                                    episode: self.currentEpisode,
+                                    translation: targetVoice,
+                                    posterUrl: self.posterUrl
+                                )
+                            }
                         }
                     }
                 }
@@ -3184,6 +3199,13 @@ class PlayerViewModel: ObservableObject {
         }
         if let finalName, !finalName.isEmpty, !isOriginalOrEnglishTranslation(finalName) {
             UserDefaults.standard.set(finalName, forKey: "\(sourceKey)_last_translation_name")
+        }
+        if let voice = finalName, !voice.isEmpty {
+            PlaybackAnalyticsService.shared.updateWatching(
+                season: currentSeason,
+                episode: currentEpisode,
+                translation: voice
+            )
         }
     }
 
