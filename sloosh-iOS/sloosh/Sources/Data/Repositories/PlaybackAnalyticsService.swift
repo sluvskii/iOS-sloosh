@@ -225,7 +225,7 @@ public final class PlaybackAnalyticsService: ObservableObject {
             "userId": isAuth ? (currentUser?.id as Any) : NSNull(),
             "displayName": isAuth ? (currentUser?.displayName ?? "") : "Гость (iOS)",
             "tag": isAuth ? (currentUser?.tag as Any) : NSNull(),
-            "avatarUrl": isAuth ? (currentUser?.avatarUrl as Any) : NSNull(),
+            "avatarUrl": isAuth ? (currentUser?.photoURL as Any) : NSNull(),
             "platform": "iOS",
             "appVersion": Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "2.0",
             "lastSeenMs": nowMs,
@@ -356,7 +356,7 @@ public final class PlaybackAnalyticsService: ObservableObject {
             "userId": isAuth ? (currentUser?.id as Any) : NSNull(),
             "displayName": isAuth ? (currentUser?.displayName ?? "") : "Гость (iOS)",
             "tag": isAuth ? (currentUser?.tag as Any) : NSNull(),
-            "avatarUrl": isAuth ? (currentUser?.avatarUrl as Any) : NSNull(),
+            "avatarUrl": isAuth ? (currentUser?.photoURL as Any) : NSNull(),
             "platform": "iOS",
             "appVersion": Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "2.0",
             "lastSeenMs": nowMs,
@@ -420,7 +420,7 @@ public final class PlaybackAnalyticsService: ObservableObject {
             ]
             if let url2 = await makeURL(path: "global_stats/translations"),
                let data2 = try? JSONSerialization.data(withJSONObject: globalPatch) {
-                var req = URLRequest(url2: url2)
+                var req = URLRequest(url: url2)
                 req.httpMethod = "PATCH"
                 req.setValue("application/json", forHTTPHeaderField: "Content-Type")
                 req.httpBody = data2
