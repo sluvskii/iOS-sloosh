@@ -7,7 +7,7 @@ public struct AdminDashboardView: View {
     @Environment(\.dismiss) private var dismiss
     @Namespace private var tabNamespace
 
-    @State private var selectedTab: AdminTab = .overview
+    @State private var selectedTab: AdminTab = .analytics
     @State private var userSearchQuery: String = ""
     @State private var channelSearchQuery: String = ""
     @State private var analyticsSearchQuery: String = ""
@@ -16,18 +16,16 @@ public struct AdminDashboardView: View {
     @State private var showDeleteChannelAlert: Bool = false
 
     private enum AdminTab: String, CaseIterable, Identifiable {
-        case overview = "Обзор"
         case analytics = "Аналитика"
         case users = "Пользователи"
         case channels = "Каналы"
-        case diagnostics = "Логи"
+        case diagnostics = "Система"
 
         var id: String { rawValue }
 
         var icon: String {
             switch self {
-            case .overview: return "chart.bar.fill"
-            case .analytics: return "play.tv.fill"
+            case .analytics: return "chart.xyaxis.line"
             case .users: return "person.2.fill"
             case .channels: return "megaphone.fill"
             case .diagnostics: return "waveform.path.ecg"
@@ -41,9 +39,6 @@ public struct AdminDashboardView: View {
         NavigationStack {
             ZStack {
                 switch selectedTab {
-                case .overview:
-                    overviewTab
-                        .transition(.opacity)
                 case .analytics:
                     analyticsTab
                         .transition(.opacity)
@@ -68,7 +63,7 @@ public struct AdminDashboardView: View {
                             maxBlurRadius: 16,
                             direction: .blurredTopClearBottom,
                             tintColor: Color(UIColor.systemBackground),
-                            tintOpacity: 0.8
+                            tintOpacity: 0.82
                         )
                         .ignoresSafeArea(edges: .top)
                     }
@@ -113,190 +108,61 @@ public struct AdminDashboardView: View {
         .presentationDragIndicator(.visible)
     }
 
-    // MARK: - Floating Liquid Glass Tab Selector
+    // MARK: - Native Liquid Glass Segmented Tab Selector
 
     private var tabSelector: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 4) {
-                ForEach(AdminTab.allCases) { tab in
-                    let isSelected = selectedTab == tab
-                    Button {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
-                            selectedTab = tab
-                        }
-                    } label: {
-                        HStack(spacing: 5) {
-                            Image(systemName: tab.icon)
-                                .font(.system(size: 12, weight: .semibold))
+        HStack(spacing: 3) {
+            ForEach(AdminTab.allCases) { tab in
+                let isSelected = selectedTab == tab
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                        selectedTab = tab
+                    }
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: tab.icon)
+                            .font(.system(size: 11, weight: .semibold))
 
-                            Text(tab.rawValue)
-                                .font(.system(size: 13, weight: isSelected ? .semibold : .medium))
-                                .lineLimit(1)
-                                .fixedSize(horizontal: true, vertical: false)
-
-                            if tab == .analytics && repo.stats.watchingNowCount > 0 {
-                                HStack(spacing: 3) {
-                                    Circle()
-                                        .fill(Color.green)
-                                        .frame(width: 5, height: 5)
-                                    Text("\(repo.stats.watchingNowCount)")
-                                }
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundColor(.green)
-                                .padding(.horizontal, 5)
-                                .padding(.vertical, 1.5)
-                                .background(Color.green.opacity(0.18))
-                                .clipShape(Capsule())
-                            }
-
-                            if tab == .users && repo.users.count > 0 {
-                                Text("\(repo.users.count)")
-                                    .font(.system(size: 10, weight: .bold))
-                                    .foregroundColor(.secondary)
-                                    .padding(.horizontal, 5)
-                                    .padding(.vertical, 1.5)
-                                    .background(Color.primary.opacity(0.08))
-                                    .clipShape(Capsule())
-                            }
-                        }
-                        .foregroundStyle(isSelected ? Color.primary : Color.secondary)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 7)
-                        .background {
-                            if isSelected {
-                                Capsule()
-                                    .fill(Color.white.opacity(0.16))
-                                    .matchedGeometryEffect(id: "selectedAdminTab", in: tabNamespace)
-                            }
+                        Text(tab.rawValue)
+                            .font(.system(size: 12.5, weight: isSelected ? .semibold : .medium))
+                            .lineLimit(1)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 7)
+                    .foregroundStyle(isSelected ? Color.primary : Color.secondary)
+                    .background {
+                        if isSelected {
+                            Capsule()
+                                .fill(Color.primary.opacity(0.12))
+                                .matchedGeometryEffect(id: "selectedAdminTab", in: tabNamespace)
                         }
                     }
-                    .buttonStyle(.plain)
                 }
+                .buttonStyle(.plain)
             }
-            .padding(4)
-            .glassEffect(.regular.interactive(), in: Capsule())
-            .padding(.horizontal, 16)
         }
+        .padding(3)
+        .glassEffect(.regular.interactive(), in: Capsule())
+        .padding(.horizontal, 16)
     }
 
-    // MARK: - Tab 1: Overview & Live Stats
+    // MARK: - Tab 1: Analytics & Live Activity
 
-    private var overviewTab: some View {
+    private var analyticsTab: some View {
         ScrollView {
-            VStack(spacing: 16) {
-                // Row 1: Two Hero KPI Cards
-                HStack(spacing: 12) {
-                    heroUserStatCard
-                    heroLiveStatCard
-                }
+            VStack(spacing: 20) {
+                // 1. Unified Hero KPI Dashboard (3-column)
+                unifiedKpiCard
 
-                // Row 2: Featured Full-Width Spotlight Card for Top Translation
-                featuredTranslationCard
+                // 2. Section: Сейчас смотрят (Now Playing Feed)
+                liveWatchingSection
 
-                // Row 3: Secondary Metrics Grid (3 equal columns)
-                HStack(spacing: 10) {
-                    compactStatCard(
-                        title: "Каналы",
-                        value: "\(repo.stats.totalChannels)",
-                        subtitle: "Публичные",
-                        icon: "megaphone.fill",
-                        color: .orange
-                    )
+                // 3. Section: Рейтинг озвучек платформы
+                globalTranslationsSection
 
-                    compactStatCard(
-                        title: "Посты",
-                        value: "\(repo.stats.totalPosts)",
-                        subtitle: "\(formatCount(repo.stats.totalViews)) просм.",
-                        icon: "doc.text.fill",
-                        color: .blue
-                    )
-
-                    compactStatCard(
-                        title: "Реакции",
-                        value: "\(repo.stats.totalReactions)",
-                        subtitle: "Отклики",
-                        icon: "heart.fill",
-                        color: .red
-                    )
-                }
-
-                // Live Watching Section (Now Playing)
-                if !repo.stats.liveWatchingSessions.isEmpty {
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack(spacing: 8) {
-                            Circle()
-                                .fill(Color.green)
-                                .frame(width: 8, height: 8)
-                            Text("Смотрят прямо сейчас")
-                                .font(.system(size: 17, weight: .bold))
-                                .foregroundColor(.primary)
-                            Spacer()
-                            Text("\(repo.stats.liveWatchingSessions.count) зрителей")
-                                .font(.system(size: 13, weight: .medium))
-                                .foregroundColor(.secondary)
-                        }
-                        .padding(.horizontal, 4)
-
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            LazyHStack(spacing: 12) {
-                                ForEach(repo.stats.liveWatchingSessions) { session in
-                                    liveWatchingCard(session)
-                                }
-                            }
-                            .padding(.horizontal, 2)
-                        }
-                    }
-                    .padding(.top, 4)
-                }
-
-                // Top Channels Section
-                if !repo.stats.topChannels.isEmpty {
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("Топ каналов по аудитории")
-                            .font(.system(size: 17, weight: .bold))
-                            .foregroundColor(.primary)
-                            .padding(.horizontal, 4)
-
-                        VStack(spacing: 0) {
-                            ForEach(Array(repo.stats.topChannels.enumerated()), id: \.element.id) { index, channel in
-                                HStack(spacing: 12) {
-                                    Text("#\(index + 1)")
-                                        .font(.system(size: 14, weight: .bold))
-                                        .foregroundColor(index == 0 ? Color.slooshAccent : .secondary)
-                                        .frame(width: 24)
-
-                                    SlooshAvatarView(channel: channel, size: 40)
-
-                                    VStack(alignment: .leading, spacing: 2) {
-                                        Text(channel.name)
-                                            .font(.system(size: 15, weight: .semibold))
-                                            .foregroundColor(.primary)
-                                            .lineLimit(1)
-                                        Text(channel.displayTag)
-                                           .font(.system(size: 12))
-                                            .foregroundColor(Color.slooshAccent)
-                                    }
-
-                                    Spacer()
-
-                                    Text(channel.formattedSubscriberCount)
-                                        .font(.system(size: 13, weight: .medium))
-                                        .foregroundColor(.secondary)
-                                }
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 12)
-
-                                if index < repo.stats.topChannels.count - 1 {
-                                    Divider()
-                                        .padding(.leading, 52)
-                                }
-                            }
-                        }
-                        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                    }
-                    .padding(.top, 4)
-                }
+                // 4. Section: Выбор озвучки по тайтлам
+                mediaAnalyticsSection
             }
             .padding(.horizontal, 16)
             .padding(.top, 8)
@@ -305,270 +171,281 @@ public struct AdminDashboardView: View {
         .scrollContentBackground(.hidden)
     }
 
-    private var heroUserStatCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                ZStack {
-                    Circle()
-                        .fill(Color.slooshAccent.opacity(0.14))
-                        .frame(width: 38, height: 38)
-                    Image(systemName: "person.2.fill")
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundColor(Color.slooshAccent)
-                }
-
-                Spacer()
-
-                if repo.stats.onlineUsers > 0 {
-                    HStack(spacing: 4) {
-                        Circle()
-                            .fill(Color.green)
-                            .frame(width: 6, height: 6)
-                        Text("\(repo.stats.onlineUsers)")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(.green)
-                    }
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3)
-                    .background(Color.green.opacity(0.14))
-                    .clipShape(Capsule())
-                }
-            }
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text("\(repo.stats.totalUsers)")
-                    .font(.system(size: 28, weight: .bold))
-                    .foregroundColor(.primary)
-
-                Text("Пользователи")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(.primary)
-
-                Text("\(repo.stats.onlineUsers) в сети" + (repo.stats.guestUsersCount > 0 ? " (гостей: \(repo.stats.guestUsersCount))" : ""))
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
-            }
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .frame(minHeight: 116)
-        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-    }
-
-    private var heroLiveStatCard: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                ZStack {
-                    Circle()
-                        .fill(Color.green.opacity(0.14))
-                        .frame(width: 38, height: 38)
-                    Image(systemName: "play.tv.fill")
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundColor(.green)
-                }
-
-                Spacer()
-
-                if repo.stats.watchingNowCount > 0 {
-                    HStack(spacing: 4) {
-                        Circle()
-                            .fill(Color.green)
-                            .frame(width: 6, height: 6)
-                        Text("LIVE")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundColor(.green)
-                    }
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3)
-                    .background(Color.green.opacity(0.14))
-                    .clipShape(Capsule())
-                }
-            }
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text("\(repo.stats.watchingNowCount)")
-                    .font(.system(size: 28, weight: .bold))
-                    .foregroundColor(.primary)
-
-                Text("Смотрят сейчас")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(.primary)
-
-                Text(repo.stats.watchingNowCount > 0 ? "Активные сессии" : "Нет активных сессий")
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
-            }
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .frame(minHeight: 116)
-        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-    }
-
-    private var featuredTranslationCard: some View {
-        HStack(spacing: 12) {
-            ZStack {
-                Circle()
-                    .fill(Color.purple.opacity(0.16))
-                    .frame(width: 42, height: 42)
-                Image(systemName: "waveform")
-                    .font(.system(size: 18, weight: .bold))
-                    .foregroundColor(.purple)
-            }
-
+    private var unifiedKpiCard: some View {
+        HStack(spacing: 0) {
+            // Col 1: Аудитория
             VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 6) {
-                    Text("ТОП ОЗВУЧКА")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(.purple)
-                        .tracking(0.6)
+                Text("АУДИТОРИЯ")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(.secondary)
+                    .tracking(0.6)
 
-                    Text("• Платформа")
-                        .font(.system(size: 11))
+                Text("\(repo.stats.totalUsers)")
+                    .font(.system(size: 24, weight: .bold, design: .rounded))
+                    .foregroundColor(.primary)
+
+                Text("\(repo.stats.onlineUsers) в сети" + (repo.stats.guestUsersCount > 0 ? " • \(repo.stats.guestUsersCount) г." : ""))
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Divider()
+                .frame(height: 38)
+                .padding(.horizontal, 12)
+
+            // Col 2: Смотрят сейчас
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 4) {
+                    Circle()
+                        .fill(repo.stats.watchingNowCount > 0 ? Color.primary : Color.secondary)
+                        .frame(width: 5, height: 5)
+                        .opacity(repo.stats.watchingNowCount > 0 ? 0.9 : 0.4)
+
+                    Text("СМОТРЯТ")
+                        .font(.system(size: 10, weight: .bold))
                         .foregroundColor(.secondary)
+                        .tracking(0.6)
                 }
+
+                Text("\(repo.stats.watchingNowCount)")
+                    .font(.system(size: 24, weight: .bold, design: .rounded))
+                    .foregroundColor(.primary)
+
+                Text(repo.stats.watchingNowCount > 0 ? "активных сессий" : "нет просмотров")
+                    .font(.system(size: 11, weight: .medium))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            Divider()
+                .frame(height: 38)
+                .padding(.horizontal, 12)
+
+            // Col 3: Топ озвучка
+            VStack(alignment: .leading, spacing: 3) {
+                Text("ТОП ОЗВУЧКА")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(.secondary)
+                    .tracking(0.6)
 
                 Text(repo.stats.topGlobalTranslation)
-                    .font(.system(size: 16, weight: .bold))
+                    .font(.system(size: 15, weight: .bold))
                     .foregroundColor(.primary)
                     .lineLimit(1)
 
-                Text("Лидер просмотров по всей платформе")
-                    .font(.system(size: 11))
+                Text("выбор большинства")
+                    .font(.system(size: 11, weight: .medium))
                     .foregroundColor(.secondary)
                     .lineLimit(1)
             }
-
-            Spacer(minLength: 8)
-
-            HStack(spacing: 3) {
-                Image(systemName: "crown.fill")
-                    .font(.system(size: 11))
-                    .foregroundColor(.yellow)
-                Text("#1")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundColor(.primary)
-            }
-            .padding(.horizontal, 9)
-            .padding(.vertical, 5)
-            .background(Color.white.opacity(0.08))
-            .clipShape(Capsule())
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 
-    private func compactStatCard(title: String, value: String, subtitle: String, icon: String, color: Color) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
-                ZStack {
-                    Circle()
-                        .fill(color.opacity(0.14))
-                        .frame(width: 26, height: 26)
-                    Image(systemName: icon)
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundColor(color)
+    private var liveWatchingSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Text("Сейчас смотрят")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundColor(.primary)
+
+                if repo.stats.watchingNowCount > 0 {
+                    HStack(spacing: 3) {
+                        Circle()
+                            .fill(Color.primary)
+                            .frame(width: 4, height: 4)
+                        Text("\(repo.stats.watchingNowCount)")
+                    }
+                    .font(.system(size: 11, weight: .bold, design: .rounded))
+                    .foregroundColor(.primary)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
+                    .background(Color.primary.opacity(0.08))
+                    .clipShape(Capsule())
                 }
 
                 Spacer()
+
+                if repo.stats.liveWatchingSessions.count > 1 {
+                    Text("В реальном времени")
+                        .font(.system(size: 12))
+                        .foregroundColor(.secondary)
+                }
             }
+            .padding(.horizontal, 2)
 
-            VStack(alignment: .leading, spacing: 1) {
-                Text(value)
-                    .font(.system(size: 20, weight: .bold))
-                    .foregroundColor(.primary)
+            if repo.stats.liveWatchingSessions.isEmpty {
+                HStack(spacing: 10) {
+                    Image(systemName: "play.slash")
+                        .font(.system(size: 16))
+                        .foregroundColor(.secondary)
 
-                Text(title)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(.primary)
-                    .lineLimit(1)
+                    Text("Сейчас никто не воспроизводит видео")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(.secondary)
 
-                Text(subtitle)
-                    .font(.system(size: 10))
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
+                    Spacer()
+                }
+                .padding(14)
+                .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    LazyHStack(spacing: 10) {
+                        ForEach(repo.stats.liveWatchingSessions) { session in
+                            liveWatchingCard(session)
+                        }
+                    }
+                    .padding(.horizontal, 2)
+                }
             }
         }
-        .padding(10)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .frame(minHeight: 88)
-        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     private func liveWatchingCard(_ session: LiveSessionItem) -> some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             if let poster = session.media?.posterUrl, let url = URL(string: poster) {
                 AsyncCachedImage(url: url) {
                     Rectangle()
-                        .fill(Color.secondary.opacity(0.2))
+                        .fill(Color.secondary.opacity(0.18))
                 } content: { image in
                     Image(uiImage: image)
                         .resizable()
                         .scaledToFill()
                 }
-                .frame(width: 48, height: 70)
+                .frame(width: 44, height: 64)
                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             } else {
                 ZStack {
                     RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(Color.secondary.opacity(0.15))
+                        .fill(Color.secondary.opacity(0.12))
                     Image(systemName: "film")
-                        .font(.system(size: 18))
+                        .font(.system(size: 16))
                         .foregroundColor(.secondary)
                 }
-                .frame(width: 48, height: 70)
+                .frame(width: 44, height: 64)
             }
 
             VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 5) {
+                HStack(spacing: 4) {
                     Circle()
-                        .fill(Color.green)
-                        .frame(width: 6, height: 6)
-                    Text("LIVE")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(.green)
-                    Spacer()
+                        .fill(Color.primary.opacity(0.8))
+                        .frame(width: 4, height: 4)
+
+                    Text(session.displayTitle)
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
                 }
 
                 Text(session.media?.title ?? "Видео")
-                    .font(.system(size: 14, weight: .bold))
+                    .font(.system(size: 13.5, weight: .semibold))
                     .foregroundColor(.primary)
                     .lineLimit(1)
 
                 if let epTitle = session.media?.displayEpisodeTitle {
                     Text(epTitle)
-                        .font(.system(size: 12, weight: .medium))
+                        .font(.system(size: 11.5))
                         .foregroundColor(.secondary)
                         .lineLimit(1)
                 }
 
-                HStack(spacing: 6) {
-                    if let trans = session.media?.translation {
-                        Text(trans)
-                            .font(.system(size: 11, weight: .semibold))
-                            .foregroundColor(Color.slooshAccent)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Color.slooshAccent.opacity(0.14))
-                            .clipShape(Capsule())
-                    }
-
-                    Text("• \(session.displayTitle)")
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary)
-                        .lineLimit(1)
+                if let trans = session.media?.translation {
+                    Text(trans)
+                        .font(.system(size: 10.5, weight: .medium))
+                        .foregroundColor(.primary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.primary.opacity(0.08))
+                        .clipShape(Capsule())
                 }
             }
-            .frame(width: 170, alignment: .leading)
+            .frame(width: 160, alignment: .leading)
         }
         .padding(10)
-        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
-    // MARK: - Tab 2: Analytics & Translation Statistics
+    private var globalTranslationsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Рейтинг озвучек")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundColor(.primary)
+
+                Text("Выбор зрителей по всей платформе")
+                    .font(.system(size: 12))
+                    .foregroundColor(.secondary)
+            }
+            .padding(.horizontal, 2)
+
+            if repo.globalTranslations.isEmpty {
+                HStack(spacing: 10) {
+                    Image(systemName: "waveform")
+                        .font(.system(size: 16))
+                        .foregroundColor(.secondary)
+
+                    Text("Данные накапливаются при первых просмотрах")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(.secondary)
+
+                    Spacer()
+                }
+                .padding(14)
+                .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            } else {
+                VStack(spacing: 10) {
+                    ForEach(Array(repo.globalTranslations.prefix(6).enumerated()), id: \.element.id) { index, item in
+                        translationRankRow(rank: index + 1, item: item)
+                        if index < min(5, repo.globalTranslations.count - 1) {
+                            Divider()
+                        }
+                    }
+                }
+                .padding(14)
+                .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            }
+        }
+    }
+
+    private func translationRankRow(rank: Int, item: GlobalTranslationStat) -> some View {
+        VStack(spacing: 5) {
+            HStack {
+                Text("#\(rank)")
+                    .font(.system(size: 12, weight: .bold, design: .monospaced))
+                    .foregroundColor(rank == 1 ? .primary : .secondary)
+                    .frame(width: 22, alignment: .leading)
+
+                Text(item.translation)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.primary)
+
+                Spacer()
+
+                Text("\(String(format: "%.0f", item.percentage))% • \(item.count) чел.")
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundColor(.secondary)
+            }
+
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule()
+                        .fill(Color.primary.opacity(0.06))
+                        .frame(height: 4)
+
+                    Capsule()
+                        .fill(Color.primary.opacity(rank == 1 ? 0.85 : 0.45))
+                        .frame(width: max(6, geo.size.width * CGFloat(item.percentage / 100.0)), height: 4)
+                }
+            }
+            .frame(height: 4)
+        }
+    }
 
     private var filteredMediaAnalytics: [MediaAnalyticsStats] {
         let q = analyticsSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -578,170 +455,90 @@ public struct AdminDashboardView: View {
         }
     }
 
-    private var analyticsTab: some View {
-        ScrollView {
-            VStack(spacing: 20) {
-                // Section 1: Global Translations Popularity
-                VStack(alignment: .leading, spacing: 12) {
-                    HStack(spacing: 8) {
-                        Image(systemName: "waveform.badge.magnifyingglass")
-                            .font(.system(size: 16, weight: .bold))
-                            .foregroundColor(Color.slooshAccent)
-                        Text("Рейтинг озвучек (Платформа)")
-                            .font(.system(size: 17, weight: .bold))
-                            .foregroundColor(.primary)
-                    }
-                    .padding(.horizontal, 4)
+    private var mediaAnalyticsSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Статистика по тайтлам")
+                .font(.system(size: 16, weight: .bold))
+                .foregroundColor(.primary)
+                .padding(.horizontal, 2)
 
-                    if repo.globalTranslations.isEmpty {
-                        VStack(spacing: 8) {
-                            Image(systemName: "chart.bar.xaxis")
-                                .font(.system(size: 32))
-                                .foregroundColor(.secondary)
-                            Text("Данные собираются при первых просмотрах")
-                                .font(.system(size: 14))
-                                .foregroundColor(.secondary)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 24)
-                        .glassEffect(in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                    } else {
-                        VStack(spacing: 12) {
-                            ForEach(Array(repo.globalTranslations.enumerated()), id: \.element.id) { index, item in
-                                translationRankRow(rank: index + 1, item: item)
-                                if index < repo.globalTranslations.count - 1 {
-                                    Divider()
-                                }
-                            }
-                        }
-                        .padding(14)
-                        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                    }
-                }
-
-                // Section 2: Movie & Series Breakdown with Search
-                VStack(alignment: .leading, spacing: 12) {
-                    Text("Выбор озвучки по фильмам и сериалам")
-                        .font(.system(size: 17, weight: .bold))
-                        .foregroundColor(.primary)
-                        .padding(.horizontal, 4)
-
-                    HStack(spacing: 8) {
-                        Image(systemName: "magnifyingglass")
-                            .foregroundColor(.secondary)
-                        TextField("Поиск фильма или сериала...", text: $analyticsSearchQuery)
-                            .font(.system(size: 15))
-                        if !analyticsSearchQuery.isEmpty {
-                            Button { analyticsSearchQuery = "" } label: {
-                                Image(systemName: "xmark.circle.fill")
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                    }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .glassEffect(in: Capsule())
-
-                    if filteredMediaAnalytics.isEmpty {
-                        VStack(spacing: 10) {
-                            Image(systemName: "film.stack")
-                                .font(.system(size: 32))
-                                .foregroundColor(.secondary)
-                            Text(analyticsSearchQuery.isEmpty ? "Пока нет данных о выборе озвучек" : "Ничего не найдено")
-                                .font(.system(size: 14, weight: .medium))
-                                .foregroundColor(.secondary)
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 32)
-                        .glassEffect(in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-                    } else {
-                        LazyVStack(spacing: 12) {
-                            ForEach(filteredMediaAnalytics) { mediaStats in
-                                mediaAnalyticsCard(mediaStats)
-                            }
-                        }
-                    }
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.top, 8)
-            .padding(.bottom, 32)
-        }
-        .scrollContentBackground(.hidden)
-    }
-
-    private func translationRankRow(rank: Int, item: GlobalTranslationStat) -> some View {
-        VStack(spacing: 6) {
-            HStack {
-                Text("#\(rank)")
-                    .font(.system(size: 13, weight: .bold))
-                    .foregroundColor(rank == 1 ? Color.slooshAccent : .secondary)
-                    .frame(width: 24, alignment: .leading)
-
-                Text(item.translation)
-                    .font(.system(size: 15, weight: .semibold))
-                    .foregroundColor(.primary)
-
-                Spacer()
-
-                Text("\(item.count) чел. (\(String(format: "%.0f", item.percentage))%)")
-                    .font(.system(size: 13, weight: .medium))
+            // Search Bar
+            HStack(spacing: 8) {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 14))
                     .foregroundColor(.secondary)
-            }
 
-            // Visual Progress Bar
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(Color.primary.opacity(0.08))
-                        .frame(height: 6)
+                TextField("Поиск фильма или сериала...", text: $analyticsSearchQuery)
+                    .font(.system(size: 14))
 
-                    Capsule()
-                        .fill(rank == 1 ? Color.slooshAccent : Color.slooshAccent.opacity(0.7))
-                        .frame(width: max(8, geo.size.width * CGFloat(item.percentage / 100.0)), height: 6)
+                if !analyticsSearchQuery.isEmpty {
+                    Button { analyticsSearchQuery = "" } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 14))
+                            .foregroundColor(.secondary)
+                    }
                 }
             }
-            .frame(height: 6)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            .glassEffect(in: Capsule())
+
+            if filteredMediaAnalytics.isEmpty {
+                VStack(spacing: 6) {
+                    Image(systemName: "film.stack")
+                        .font(.system(size: 24))
+                        .foregroundColor(.secondary)
+                    Text(analyticsSearchQuery.isEmpty ? "Пока нет данных о выборе озвучек" : "Ничего не найдено")
+                        .font(.system(size: 13, weight: .medium))
+                        .foregroundColor(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 24)
+                .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+            } else {
+                LazyVStack(spacing: 10) {
+                    ForEach(filteredMediaAnalytics) { mediaStats in
+                        mediaAnalyticsCard(mediaStats)
+                    }
+                }
+            }
         }
     }
 
     private func mediaAnalyticsCard(_ media: MediaAnalyticsStats) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 12) {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
                 if let poster = media.posterUrl, let url = URL(string: poster) {
                     AsyncCachedImage(url: url) {
                         Rectangle()
-                            .fill(Color.secondary.opacity(0.2))
+                            .fill(Color.secondary.opacity(0.18))
                     } content: { image in
                         Image(uiImage: image)
                             .resizable()
                             .scaledToFill()
                     }
-                    .frame(width: 44, height: 64)
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                    .frame(width: 38, height: 54)
+                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
                 }
 
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: 2) {
                     Text(media.title)
-                        .font(.system(size: 15, weight: .bold))
+                        .font(.system(size: 14.5, weight: .semibold))
                         .foregroundColor(.primary)
                         .lineLimit(1)
 
-                    Text("Всего выборов: \(media.totalPlays)")
-                        .font(.system(size: 12))
+                    Text("Выборов: \(media.totalPlays)")
+                        .font(.system(size: 11.5))
                         .foregroundColor(.secondary)
 
                     if let top = media.topTranslation {
                         HStack(spacing: 4) {
-                            Text("Лидер:")
+                            Text("Топ:")
                                 .font(.system(size: 11))
                                 .foregroundColor(.secondary)
-                            Text(top.translation)
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(Color.slooshAccent)
-                            Text("(\(String(format: "%.0f", top.percentage))%)")
+                            Text("\(top.translation) (\(String(format: "%.0f", top.percentage))%)")
                                 .font(.system(size: 11, weight: .semibold))
-                                .foregroundColor(Color.slooshAccent)
+                                .foregroundColor(.primary)
                         }
                     }
                 }
@@ -752,26 +549,26 @@ public struct AdminDashboardView: View {
             if !media.translations.isEmpty {
                 Divider()
 
-                VStack(spacing: 6) {
+                VStack(spacing: 5) {
                     ForEach(media.translations) { vote in
                         HStack {
                             Text(vote.translation)
-                                .font(.system(size: 13, weight: .medium))
+                                .font(.system(size: 12.5, weight: .medium))
                                 .foregroundColor(.primary)
                             Spacer()
-                            Text("\(vote.count) чел. • \(String(format: "%.0f", vote.percentage))%")
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundColor(vote.id == media.topTranslation?.id ? Color.slooshAccent : .secondary)
+                            Text("\(String(format: "%.0f", vote.percentage))% • \(vote.count) чел.")
+                                .font(.system(size: 11.5, weight: .medium))
+                                .foregroundColor(vote.id == media.topTranslation?.id ? .primary : .secondary)
                         }
                     }
                 }
             }
         }
-        .padding(14)
+        .padding(12)
         .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
-    // MARK: - Tab 3: Users Management
+    // MARK: - Tab 2: Users Management
 
     private var filteredUsers: [AdminUserItem] {
         let query = userSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -787,39 +584,70 @@ public struct AdminDashboardView: View {
     private var usersTab: some View {
         ScrollView {
             VStack(spacing: 12) {
-                // Floating Search field
-                HStack(spacing: 8) {
-                    Image(systemName: "magnifyingglass")
+                // Header Summary Card
+                HStack {
+                    Text("\(repo.users.count) пользователей")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(.primary)
+
+                    Text("•")
+                        .font(.system(size: 11))
                         .foregroundColor(.secondary)
 
-                    TextField("Поиск по имени, @тегу или ID...", text: $userSearchQuery)
-                        .font(.system(size: 15))
+                    Text("\(repo.stats.onlineUsers) онлайн")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundColor(.secondary)
+
+                    let banned = repo.users.filter { $0.isBanned }.count
+                    if banned > 0 {
+                        Text("•")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+
+                        Text("\(banned) в бане")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(.secondary)
+                    }
+
+                    Spacer()
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .glassEffect(in: Capsule())
+
+                // Search Bar
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass")
+                        .font(.system(size: 14))
+                        .foregroundColor(.secondary)
+
+                    TextField("Поиск по имени, @тегу, email или ID...", text: $userSearchQuery)
+                        .font(.system(size: 14))
 
                     if !userSearchQuery.isEmpty {
-                        Button {
-                            userSearchQuery = ""
-                        } label: {
+                        Button { userSearchQuery = "" } label: {
                             Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 14))
                                 .foregroundColor(.secondary)
                         }
                     }
                 }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
                 .glassEffect(in: Capsule())
 
-                // Users list
+                // List
                 if filteredUsers.isEmpty {
-                    VStack(spacing: 12) {
-                        Image(systemName: "person.slash.fill")
-                            .font(.system(size: 36))
+                    VStack(spacing: 8) {
+                        Image(systemName: "person.slash")
+                            .font(.system(size: 28))
                             .foregroundColor(.secondary)
                         Text("Пользователи не найдены")
-                            .font(.system(size: 15, weight: .medium))
+                            .font(.system(size: 13, weight: .medium))
                             .foregroundColor(.secondary)
                     }
                     .frame(maxWidth: .infinity)
-                    .padding(.top, 40)
+                    .padding(.vertical, 36)
                 } else {
                     LazyVStack(spacing: 8) {
                         ForEach(filteredUsers) { user in
@@ -840,47 +668,49 @@ public struct AdminDashboardView: View {
     }
 
     private func userRow(_ user: AdminUserItem) -> some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             SlooshAvatarView(
                 avatarSource: user.avatarUrl,
                 fallbackText: user.displayTitle,
-                size: 44,
+                size: 40,
                 showOnline: true,
                 isOnline: user.isCurrentlyOnline
             )
 
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text(user.displayTitle)
-                        .font(.system(size: 15, weight: .semibold))
+                        .font(.system(size: 14.5, weight: .semibold))
                         .foregroundColor(.primary)
                         .lineLimit(1)
 
                     if user.isBanned {
-                        Text("БАН")
+                        Text("Бан")
                             .font(.system(size: 9, weight: .bold))
-                            .foregroundColor(.white)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(Color.red)
+                            .foregroundColor(.secondary)
+                            .padding(.horizontal, 5)
+                            .padding(.vertical, 1.5)
+                            .background(Color.primary.opacity(0.08))
                             .clipShape(Capsule())
                     }
                 }
 
-                HStack(spacing: 6) {
+                HStack(spacing: 4) {
                     if !user.displayTag.isEmpty {
                         Text(user.displayTag)
-                            .font(.system(size: 12, weight: .medium))
-                            .foregroundColor(Color.slooshAccent)
+                            .font(.system(size: 11.5, weight: .medium))
+                            .foregroundColor(.secondary)
                     }
 
-                    Text("•")
-                        .font(.system(size: 11))
-                        .foregroundColor(.secondary)
+                    if !user.displayTag.isEmpty && !user.statusDescription.isEmpty {
+                        Text("•")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+                    }
 
                     Text(user.statusDescription)
                         .font(.system(size: 11))
-                        .foregroundColor(user.isCurrentlyOnline ? Color.slooshAccent : .secondary)
+                        .foregroundColor(.secondary)
                 }
             }
 
@@ -890,7 +720,7 @@ public struct AdminDashboardView: View {
                 Button {
                     UIPasteboard.general.string = user.id
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    ToastManager.shared.show(title: "ID скопирован", icon: "doc.on.doc.fill", iconColor: Color.slooshAccent)
+                    ToastManager.shared.show(title: "ID скопирован", icon: "doc.on.doc")
                 } label: {
                     Label("Скопировать ID", systemImage: "doc.on.doc")
                 }
@@ -899,7 +729,7 @@ public struct AdminDashboardView: View {
                     Button {
                         UIPasteboard.general.string = "@\(tag)"
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        ToastManager.shared.show(title: "Тег скопирован", icon: "at", iconColor: Color.slooshAccent)
+                        ToastManager.shared.show(title: "Тег скопирован", icon: "at")
                     } label: {
                         Label("Скопировать @тег", systemImage: "at")
                     }
@@ -918,21 +748,21 @@ public struct AdminDashboardView: View {
                         _ = await repo.toggleBanUser(userId: user.id, isBanned: !user.isBanned)
                     }
                 } label: {
-                    Label(user.isBanned ? "Разблокировать" : "Заблокировать (Бан)", systemImage: user.isBanned ? "checkmark.circle" : "nosign")
+                    Label(user.isBanned ? "Разблокировать" : "Заблокировать", systemImage: user.isBanned ? "checkmark.circle" : "nosign")
                 }
             } label: {
                 Image(systemName: "ellipsis")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.system(size: 14, weight: .semibold))
                     .foregroundColor(.secondary)
                     .padding(8)
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
-    // MARK: - Tab 4: Channels Moderation
+    // MARK: - Tab 3: Channels Moderation & Messenger Metrics
 
     private var filteredChannels: [ChannelModel] {
         let query = channelSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -947,39 +777,53 @@ public struct AdminDashboardView: View {
     private var channelsTab: some View {
         ScrollView {
             VStack(spacing: 12) {
-                // Floating Search field
+                // Unified Messenger Stats Card (4-column)
+                HStack(spacing: 0) {
+                    channelStatPod(title: "КАНАЛЫ", value: "\(repo.stats.totalChannels)")
+                    Divider().frame(height: 28).padding(.horizontal, 8)
+                    channelStatPod(title: "ПОСТЫ", value: "\(repo.stats.totalPosts)")
+                    Divider().frame(height: 28).padding(.horizontal, 8)
+                    channelStatPod(title: "ПРОСМОТРЫ", value: formatCount(repo.stats.totalViews))
+                    Divider().frame(height: 28).padding(.horizontal, 8)
+                    channelStatPod(title: "РЕАКЦИИ", value: "\(repo.stats.totalReactions)")
+                }
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+                // Search Bar
                 HStack(spacing: 8) {
                     Image(systemName: "magnifyingglass")
+                        .font(.system(size: 14))
                         .foregroundColor(.secondary)
 
                     TextField("Поиск по названию или @тегу канала...", text: $channelSearchQuery)
-                        .font(.system(size: 15))
+                        .font(.system(size: 14))
 
                     if !channelSearchQuery.isEmpty {
-                        Button {
-                            channelSearchQuery = ""
-                        } label: {
+                        Button { channelSearchQuery = "" } label: {
                             Image(systemName: "xmark.circle.fill")
+                                .font(.system(size: 14))
                                 .foregroundColor(.secondary)
                         }
                     }
                 }
-                .padding(.horizontal, 14)
-                .padding(.vertical, 10)
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
                 .glassEffect(in: Capsule())
 
-                // Channels list
+                // List
                 if filteredChannels.isEmpty {
-                    VStack(spacing: 12) {
+                    VStack(spacing: 8) {
                         Image(systemName: "megaphone")
-                            .font(.system(size: 36))
+                            .font(.system(size: 28))
                             .foregroundColor(.secondary)
                         Text("Каналы не найдены")
-                            .font(.system(size: 15, weight: .medium))
+                            .font(.system(size: 13, weight: .medium))
                             .foregroundColor(.secondary)
                     }
                     .frame(maxWidth: .infinity)
-                    .padding(.top, 40)
+                    .padding(.vertical, 36)
                 } else {
                     LazyVStack(spacing: 8) {
                         ForEach(filteredChannels) { channel in
@@ -1009,27 +853,41 @@ public struct AdminDashboardView: View {
         }
     }
 
-    private func channelRow(_ channel: ChannelModel) -> some View {
-        HStack(spacing: 12) {
-            SlooshAvatarView(channel: channel, size: 44)
+    private func channelStatPod(title: String, value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.system(size: 9, weight: .bold))
+                .foregroundColor(.secondary)
+                .tracking(0.5)
+            Text(value)
+                .font(.system(size: 16, weight: .bold, design: .rounded))
+                .foregroundColor(.primary)
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
 
-            VStack(alignment: .leading, spacing: 3) {
+    private func channelRow(_ channel: ChannelModel) -> some View {
+        HStack(spacing: 10) {
+            SlooshAvatarView(channel: channel, size: 40)
+
+            VStack(alignment: .leading, spacing: 2) {
                 Text(channel.name)
-                    .font(.system(size: 15, weight: .semibold))
+                    .font(.system(size: 14.5, weight: .semibold))
                     .foregroundColor(.primary)
                     .lineLimit(1)
 
-                HStack(spacing: 6) {
+                HStack(spacing: 4) {
                     Text(channel.displayTag)
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundColor(Color.slooshAccent)
+                        .font(.system(size: 11.5, weight: .medium))
+                        .foregroundColor(.secondary)
 
                     Text("•")
-                        .font(.system(size: 11))
+                        .font(.system(size: 10))
                         .foregroundColor(.secondary)
 
                     Text(channel.formattedSubscriberCount)
-                        .font(.system(size: 12))
+                        .font(.system(size: 11.5))
                         .foregroundColor(.secondary)
                 }
             }
@@ -1041,73 +899,88 @@ public struct AdminDashboardView: View {
                 showDeleteChannelAlert = true
             } label: {
                 Image(systemName: "trash")
-                    .font(.system(size: 14))
-                    .foregroundColor(.red.opacity(0.85))
+                    .font(.system(size: 13))
+                    .foregroundColor(.secondary)
                     .padding(8)
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
-        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
-    // MARK: - Tab 5: Diagnostics & System Logs
+    // MARK: - Tab 4: System Diagnostics
 
     private var diagnosticsTab: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 16) {
-                // Header status
+            VStack(alignment: .leading, spacing: 14) {
+                // Subsystems status
+                HStack(spacing: 12) {
+                    systemSubpod(title: "Сеть", status: "В норме")
+                    systemSubpod(title: "Медиа-сервер", status: "В норме")
+                    systemSubpod(title: "База данных", status: "В норме")
+                }
+                .padding(12)
+                .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+                // Header with Clear
                 HStack {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Журнал диагностики")
-                            .font(.system(size: 17, weight: .bold))
+                            .font(.system(size: 16, weight: .bold))
                             .foregroundColor(.primary)
                         Text("Системные события и ошибки приложения")
-                            .font(.system(size: 13))
+                            .font(.system(size: 12))
                             .foregroundColor(.secondary)
                     }
+
                     Spacer()
 
                     Button("Очистить") {
                         AppDiagnostics.shared.clearLogs()
                     }
-                    .font(.system(size: 14, weight: .medium))
-                    .foregroundColor(.red)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundColor(.secondary)
                 }
+                .padding(.horizontal, 2)
+                .padding(.top, 4)
 
                 let logs = AppDiagnostics.shared.recentLogs
                 if logs.isEmpty {
-                    VStack(spacing: 12) {
-                        Image(systemName: "checkmark.shield.fill")
-                            .font(.system(size: 40))
-                            .foregroundColor(Color.slooshAccent)
-                        Text("Ошибок не зафиксировано")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundColor(.primary)
-                        Text("Все подсистемы (Сеть, Alloha, HLS, БД) работают штатно.")
-                            .font(.system(size: 13))
+                    HStack(spacing: 10) {
+                        Image(systemName: "checkmark.shield")
+                            .font(.system(size: 20))
                             .foregroundColor(.secondary)
-                            .multilineTextAlignment(.center)
+
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("Ошибок не зафиксировано")
+                                .font(.system(size: 13.5, weight: .semibold))
+                                .foregroundColor(.primary)
+                            Text("Все компоненты работают штатно")
+                                .font(.system(size: 12))
+                                .foregroundColor(.secondary)
+                        }
+
+                        Spacer()
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 40)
-                    .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                    .padding(14)
+                    .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                 } else {
-                    VStack(spacing: 8) {
+                    VStack(spacing: 6) {
                         ForEach(Array(logs.enumerated()), id: \.offset) { _, log in
                             HStack(alignment: .top, spacing: 8) {
-                                Image(systemName: "exclamationmark.triangle.fill")
-                                    .font(.system(size: 12))
-                                    .foregroundColor(.orange)
+                                Image(systemName: "info.circle")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
                                     .padding(.top, 2)
 
                                 Text(log)
-                                    .font(.system(size: 12, design: .monospaced))
+                                    .font(.system(size: 11.5, design: .monospaced))
                                     .foregroundColor(.primary)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                             }
-                            .padding(12)
-                            .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                            .padding(10)
+                            .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                         }
                     }
                 }
@@ -1117,6 +990,21 @@ public struct AdminDashboardView: View {
             .padding(.bottom, 32)
         }
         .scrollContentBackground(.hidden)
+    }
+
+    private func systemSubpod(title: String, status: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.system(size: 10, weight: .bold))
+                .foregroundColor(.secondary)
+            HStack(spacing: 4) {
+                Circle().fill(Color.primary.opacity(0.7)).frame(width: 4, height: 4)
+                Text(status)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.primary)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func formatCount(_ count: Int) -> String {
@@ -1145,37 +1033,37 @@ private struct AdminUserDetailSheet: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 20) {
-                    // Header Avatar & Name
-                    VStack(spacing: 10) {
+                VStack(spacing: 18) {
+                    // Avatar & Names
+                    VStack(spacing: 8) {
                         SlooshAvatarView(
                             avatarSource: user.avatarUrl,
                             fallbackText: user.displayTitle,
-                            size: 80,
+                            size: 72,
                             showOnline: true,
                             isOnline: user.isCurrentlyOnline
                         )
 
-                        VStack(spacing: 4) {
+                        VStack(spacing: 3) {
                             Text(user.displayTitle)
-                                .font(.system(size: 22, weight: .bold))
+                                .font(.system(size: 20, weight: .bold))
                                 .foregroundColor(.primary)
 
                             if !user.displayTag.isEmpty {
                                 Text(user.displayTag)
-                                    .font(.system(size: 15, weight: .medium))
-                                    .foregroundColor(Color.slooshAccent)
+                                    .font(.system(size: 14, weight: .medium))
+                                    .foregroundColor(.secondary)
                             }
 
                             Text(user.statusDescription)
-                                .font(.system(size: 13))
-                                .foregroundColor(user.isCurrentlyOnline ? Color.slooshAccent : .secondary)
+                                .font(.system(size: 12))
+                                .foregroundColor(.secondary)
                         }
                     }
-                    .padding(.top, 16)
+                    .padding(.top, 12)
 
                     // Details Card
-                    VStack(spacing: 12) {
+                    VStack(spacing: 10) {
                         detailRow(title: "User ID", value: user.id, canCopy: true)
                         Divider()
                         detailRow(title: "Тег", value: user.displayTag.isEmpty ? "Не указан" : user.displayTag, canCopy: !user.displayTag.isEmpty)
@@ -1186,39 +1074,35 @@ private struct AdminUserDetailSheet: View {
                         Divider()
                         detailRow(title: "Каналов создано", value: "\(user.channelsCount)", canCopy: false)
                         Divider()
-                        detailRow(title: "Статус аккаунта", value: isBannedState ? "Заблокирован 🚫" : "Активен ✅", canCopy: false)
+                        detailRow(title: "Статус", value: isBannedState ? "Заблокирован" : "Активен", canCopy: false)
                     }
-                    .padding(16)
+                    .padding(14)
                     .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                     .padding(.horizontal, 16)
 
-                    // Action Buttons
-                    VStack(spacing: 10) {
-                        Button {
-                            Task {
-                                let newBan = !isBannedState
-                                let success = await repo.toggleBanUser(userId: user.id, isBanned: newBan)
-                                if success {
-                                    isBannedState = newBan
-                                    ToastManager.shared.show(
-                                        title: newBan ? "Пользователь заблокирован" : "Пользователь разблокирован",
-                                        icon: newBan ? "nosign" : "checkmark.circle.fill",
-                                        iconColor: newBan ? .red : Color.slooshAccent
-                                    )
-                                }
+                    // Moderation Button
+                    Button {
+                        Task {
+                            let newBan = !isBannedState
+                            let success = await repo.toggleBanUser(userId: user.id, isBanned: newBan)
+                            if success {
+                                isBannedState = newBan
+                                ToastManager.shared.show(
+                                    title: newBan ? "Пользователь заблокирован" : "Пользователь разблокирован",
+                                    icon: newBan ? "nosign" : "checkmark.circle"
+                                )
                             }
-                        } label: {
-                            HStack {
-                                Image(systemName: isBannedState ? "checkmark.circle.fill" : "nosign")
-                                Text(isBannedState ? "Разблокировать пользователя" : "Заблокировать (Бан)")
-                            }
-                            .font(.system(size: 16, weight: .bold))
-                            .foregroundColor(.white)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 50)
-                            .background(isBannedState ? Color.green : Color.red)
-                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
                         }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: isBannedState ? "checkmark.circle" : "nosign")
+                            Text(isBannedState ? "Разблокировать доступ" : "Заблокировать пользователя")
+                        }
+                        .font(.system(size: 14.5, weight: .semibold))
+                        .foregroundColor(isBannedState ? .primary : .red.opacity(0.9))
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 13)
+                        .glassEffect(in: Capsule())
                     }
                     .padding(.horizontal, 16)
                 }
@@ -1232,7 +1116,7 @@ private struct AdminUserDetailSheet: View {
                     Button("Закрыть") {
                         dismiss()
                     }
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(.primary)
                 }
             }
@@ -1244,13 +1128,13 @@ private struct AdminUserDetailSheet: View {
     private func detailRow(title: String, value: String, canCopy: Bool) -> some View {
         HStack {
             Text(title)
-                .font(.system(size: 14))
+                .font(.system(size: 13.5))
                 .foregroundColor(.secondary)
 
             Spacer()
 
             Text(value)
-                .font(.system(size: 14, weight: .semibold))
+                .font(.system(size: 13.5, weight: .semibold))
                 .foregroundColor(.primary)
                 .lineLimit(1)
 
@@ -1258,11 +1142,11 @@ private struct AdminUserDetailSheet: View {
                 Button {
                     UIPasteboard.general.string = value
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    ToastManager.shared.show(title: "Скопировано", icon: "doc.on.doc.fill", iconColor: Color.slooshAccent)
+                    ToastManager.shared.show(title: "Скопировано", icon: "doc.on.doc")
                 } label: {
                     Image(systemName: "doc.on.doc")
                         .font(.system(size: 12))
-                        .foregroundColor(Color.slooshAccent)
+                        .foregroundColor(.secondary)
                 }
             }
         }
