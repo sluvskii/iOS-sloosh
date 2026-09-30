@@ -80,15 +80,15 @@ public struct AdminDashboardView: View {
     // MARK: - Custom Top Header (Liquid Glass & Progressive Variable Blur)
 
     private var customTopHeader: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: 12) {
             // Header Bar (Title & Actions)
             ZStack {
                 Text("Панель управления")
-                    .font(.system(size: 16, weight: .semibold))
+                    .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(.primary)
 
                 HStack {
-                    // Refresh Button
+                    // Refresh Button (44x44 circular glass)
                     Button {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         Task {
@@ -98,45 +98,44 @@ public struct AdminDashboardView: View {
                         ZStack {
                             if repo.isLoading {
                                 ProgressView()
-                                    .scaleEffect(0.8)
+                                    .scaleEffect(0.9)
                             } else {
                                 Image(systemName: "arrow.clockwise")
-                                    .font(.system(size: 13, weight: .semibold))
+                                    .font(.system(size: 18, weight: .semibold))
                                     .foregroundStyle(.primary)
                             }
                         }
-                        .frame(width: 32, height: 32)
+                        .frame(width: 44, height: 44)
                         .glassEffect(.regular.interactive(), in: .circle)
                     }
                     .buttonStyle(.plain)
 
                     Spacer()
 
-                    // Close Button
+                    // Close Button (44x44 circular glass)
                     Button {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         dismiss()
                     } label: {
-                        Text("Готово")
-                            .font(.system(size: 13.5, weight: .semibold))
+                        Image(systemName: "xmark")
+                            .font(.system(size: 16, weight: .semibold))
                             .foregroundStyle(.primary)
-                            .padding(.horizontal, 13)
-                            .frame(height: 32)
-                            .glassEffect(.regular.interactive(), in: .capsule)
+                            .frame(width: 44, height: 44)
+                            .glassEffect(.regular.interactive(), in: .circle)
                     }
                     .buttonStyle(.plain)
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.top, 10)
+            .padding(.top, 24)
 
             // Category Text Tabs
             tabSelector
-                .padding(.bottom, 2)
+                .padding(.bottom, 4)
         }
         .padding(.bottom, 2)
         .background(
-            VariableBlurView(tintOpacity: 1.0)
+            VariableBlurView(tintColor: .clear, tintOpacity: 0.0)
                 .padding(.bottom, -30)
                 .ignoresSafeArea(edges: .top)
         )
