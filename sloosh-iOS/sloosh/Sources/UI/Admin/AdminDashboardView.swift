@@ -1,10 +1,11 @@
 import SwiftUI
 
-// MARK: - Admin Dashboard View (iOS 26+ Liquid Glass)
+// MARK: - Admin Dashboard View (iOS 26+ Edge-to-Edge Liquid Glass)
 
 public struct AdminDashboardView: View {
     @StateObject private var repo = AdminRepository.shared
     @Environment(\.dismiss) private var dismiss
+    @Namespace private var tabNamespace
 
     @State private var selectedTab: AdminTab = .overview
     @State private var userSearchQuery: String = ""
@@ -39,36 +40,43 @@ public struct AdminDashboardView: View {
     public var body: some View {
         NavigationStack {
             ZStack {
-                Color(UIColor.systemBackground).ignoresSafeArea()
-
-                VStack(spacing: 0) {
-                    tabSelector
-                        .padding(.top, 8)
-                        .padding(.bottom, 12)
-
-                    TabView(selection: $selectedTab) {
-                        overviewTab
-                            .tag(AdminTab.overview)
-
-                        analyticsTab
-                            .tag(AdminTab.analytics)
-
-                        usersTab
-                            .tag(AdminTab.users)
-
-                        channelsTab
-                            .tag(AdminTab.channels)
-
-                        diagnosticsTab
-                            .tag(AdminTab.diagnostics)
-                    }
-                    .tabViewStyle(.page(indexDisplayMode: .never))
+                switch selectedTab {
+                case .overview:
+                    overviewTab
+                        .transition(.opacity)
+                case .analytics:
+                    analyticsTab
+                        .transition(.opacity)
+                case .users:
+                    usersTab
+                        .transition(.opacity)
+                case .channels:
+                    channelsTab
+                        .transition(.opacity)
+                case .diagnostics:
+                    diagnosticsTab
+                        .transition(.opacity)
                 }
+            }
+            .animation(.easeInOut(duration: 0.2), value: selectedTab)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                tabSelector
+                    .padding(.top, 4)
+                    .padding(.bottom, 8)
+                    .background {
+                        VariableBlurView(
+                            maxBlurRadius: 16,
+                            direction: .blurredTopClearBottom,
+                            tintColor: Color(UIColor.systemBackground),
+                            tintOpacity: 0.8
+                        )
+                        .ignoresSafeArea(edges: .top)
+                    }
             }
             .navigationTitle("Панель управления")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarLeading) {
+                ToolbarItem(placement: .topBarLeading) {
                     Button {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         Task {
@@ -81,17 +89,17 @@ public struct AdminDashboardView: View {
                         } else {
                             Image(systemName: "arrow.clockwise")
                                 .font(.system(size: 15, weight: .semibold))
-                                .foregroundColor(.primary)
+                                .foregroundStyle(.primary)
                         }
                     }
                 }
 
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItem(placement: .confirmationAction) {
                     Button("Готово") {
                         dismiss()
                     }
                     .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(Color.slooshAccent)
+                    .foregroundStyle(.primary)
                 }
             }
             .sheet(item: $selectedUserForDetails) { user in
@@ -101,13 +109,15 @@ public struct AdminDashboardView: View {
                 await repo.fetchOverviewStats()
             }
         }
+        .presentationBackground { Color.clear.glassEffect(in: .rect) }
+        .presentationDragIndicator(.visible)
     }
 
-    // MARK: - Scrollable Liquid Glass Tab Selector
+    // MARK: - Floating Liquid Glass Tab Selector
 
     private var tabSelector: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
+            HStack(spacing: 4) {
                 ForEach(AdminTab.allCases) { tab in
                     let isSelected = selectedTab == tab
                     Button {
@@ -116,52 +126,56 @@ public struct AdminDashboardView: View {
                             selectedTab = tab
                         }
                     } label: {
-                        HStack(spacing: 6) {
+                        HStack(spacing: 5) {
                             Image(systemName: tab.icon)
-                                .font(.system(size: 13, weight: .semibold))
+                                .font(.system(size: 12, weight: .semibold))
 
                             Text(tab.rawValue)
-                                .font(.system(size: 14, weight: isSelected ? .bold : .medium))
+                                .font(.system(size: 13, weight: isSelected ? .semibold : .medium))
                                 .lineLimit(1)
                                 .fixedSize(horizontal: true, vertical: false)
 
                             if tab == .analytics && repo.stats.watchingNowCount > 0 {
-                                HStack(spacing: 4) {
+                                HStack(spacing: 3) {
                                     Circle()
                                         .fill(Color.green)
-                                        .frame(width: 6, height: 6)
+                                        .frame(width: 5, height: 5)
                                     Text("\(repo.stats.watchingNowCount)")
                                 }
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(isSelected ? .black.opacity(0.8) : .green)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(isSelected ? Color.black.opacity(0.12) : Color.green.opacity(0.15))
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundColor(.green)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 1.5)
+                                .background(Color.green.opacity(0.18))
                                 .clipShape(Capsule())
                             }
 
                             if tab == .users && repo.users.count > 0 {
                                 Text("\(repo.users.count)")
-                                    .font(.system(size: 11, weight: .bold))
-                                    .foregroundColor(isSelected ? .black.opacity(0.8) : .secondary)
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(isSelected ? Color.black.opacity(0.12) : Color.primary.opacity(0.08))
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundColor(.secondary)
+                                    .padding(.horizontal, 5)
+                                    .padding(.vertical, 1.5)
+                                    .background(Color.primary.opacity(0.08))
                                     .clipShape(Capsule())
                             }
                         }
-                        .foregroundColor(isSelected ? .black : .primary)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 9)
-                        .background(
-                            Capsule()
-                                .fill(isSelected ? Color.slooshAccent : Color.clear)
-                        )
-                        .glassEffect(in: Capsule())
+                        .foregroundStyle(isSelected ? Color.primary : Color.secondary)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 7)
+                        .background {
+                            if isSelected {
+                                Capsule()
+                                    .fill(Color.white.opacity(0.16))
+                                    .matchedGeometryEffect(id: "selectedAdminTab", in: tabNamespace)
+                            }
+                        }
                     }
-                    .buttonStyle(PeakPressButtonStyle())
+                    .buttonStyle(.plain)
                 }
             }
+            .padding(4)
+            .glassEffect(.regular.interactive(), in: Capsule())
             .padding(.horizontal, 16)
         }
     }
@@ -170,53 +184,38 @@ public struct AdminDashboardView: View {
 
     private var overviewTab: some View {
         ScrollView {
-            VStack(spacing: 18) {
-                // Key metrics grid
-                LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)], spacing: 12) {
-                    statCard(
-                        title: "Пользователи",
-                        value: "\(repo.stats.totalUsers)",
-                        subtitle: "\(repo.stats.onlineUsers) в сети (гостей: \(repo.stats.guestUsersCount))",
-                        icon: "person.2.fill",
-                        color: Color.slooshAccent
-                    )
+            VStack(spacing: 16) {
+                // Row 1: Two Hero KPI Cards
+                HStack(spacing: 12) {
+                    heroUserStatCard
+                    heroLiveStatCard
+                }
 
-                    statCard(
-                        title: "Смотрят сейчас",
-                        value: "\(repo.stats.watchingNowCount)",
-                        subtitle: "Активное воспроизведение",
-                        icon: "play.tv.fill",
-                        color: .green
-                    )
+                // Row 2: Featured Full-Width Spotlight Card for Top Translation
+                featuredTranslationCard
 
-                    statCard(
-                        title: "Топ озвучка",
-                        value: repo.stats.topGlobalTranslation,
-                        subtitle: "Лидер по платформе",
-                        icon: "waveform",
-                        color: .purple
-                    )
-
-                    statCard(
+                // Row 3: Secondary Metrics Grid (3 equal columns)
+                HStack(spacing: 10) {
+                    compactStatCard(
                         title: "Каналы",
                         value: "\(repo.stats.totalChannels)",
-                        subtitle: "Публичные и авторские",
+                        subtitle: "Публичные",
                         icon: "megaphone.fill",
                         color: .orange
                     )
 
-                    statCard(
-                        title: "Всего постов",
+                    compactStatCard(
+                        title: "Посты",
                         value: "\(repo.stats.totalPosts)",
-                        subtitle: "\(formatCount(repo.stats.totalViews)) просмотров",
+                        subtitle: "\(formatCount(repo.stats.totalViews)) просм.",
                         icon: "doc.text.fill",
                         color: .blue
                     )
 
-                    statCard(
+                    compactStatCard(
                         title: "Реакции",
                         value: "\(repo.stats.totalReactions)",
-                        subtitle: "Эмодзи отклики",
+                        subtitle: "Отклики",
                         icon: "heart.fill",
                         color: .red
                     )
@@ -248,6 +247,7 @@ public struct AdminDashboardView: View {
                             .padding(.horizontal, 2)
                         }
                     }
+                    .padding(.top, 4)
                 }
 
                 // Top Channels Section
@@ -266,7 +266,7 @@ public struct AdminDashboardView: View {
                                         .foregroundColor(index == 0 ? Color.slooshAccent : .secondary)
                                         .frame(width: 24)
 
-                                    SlooshAvatarView(channel: channel, size: 42)
+                                    SlooshAvatarView(channel: channel, size: 40)
 
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(channel.name)
@@ -274,7 +274,7 @@ public struct AdminDashboardView: View {
                                             .foregroundColor(.primary)
                                             .lineLimit(1)
                                         Text(channel.displayTag)
-                                            .font(.system(size: 12))
+                                           .font(.system(size: 12))
                                             .foregroundColor(Color.slooshAccent)
                                     }
 
@@ -289,18 +289,213 @@ public struct AdminDashboardView: View {
 
                                 if index < repo.stats.topChannels.count - 1 {
                                     Divider()
-                                        .padding(.leading, 50)
+                                        .padding(.leading, 52)
                                 }
                             }
                         }
-                        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                     }
+                    .padding(.top, 4)
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.top, 4)
-            .padding(.bottom, 24)
+            .padding(.top, 8)
+            .padding(.bottom, 32)
         }
+        .scrollContentBackground(.hidden)
+    }
+
+    private var heroUserStatCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                ZStack {
+                    Circle()
+                        .fill(Color.slooshAccent.opacity(0.14))
+                        .frame(width: 38, height: 38)
+                    Image(systemName: "person.2.fill")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(Color.slooshAccent)
+                }
+
+                Spacer()
+
+                if repo.stats.onlineUsers > 0 {
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(Color.green)
+                            .frame(width: 6, height: 6)
+                        Text("\(repo.stats.onlineUsers)")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(.green)
+                    }
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(Color.green.opacity(0.14))
+                    .clipShape(Capsule())
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(repo.stats.totalUsers)")
+                    .font(.system(size: 28, weight: .bold))
+                    .foregroundColor(.primary)
+
+                Text("Пользователи")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.primary)
+
+                Text("\(repo.stats.onlineUsers) в сети" + (repo.stats.guestUsersCount > 0 ? " (гостей: \(repo.stats.guestUsersCount))" : ""))
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(minHeight: 116)
+        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private var heroLiveStatCard: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                ZStack {
+                    Circle()
+                        .fill(Color.green.opacity(0.14))
+                        .frame(width: 38, height: 38)
+                    Image(systemName: "play.tv.fill")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(.green)
+                }
+
+                Spacer()
+
+                if repo.stats.watchingNowCount > 0 {
+                    HStack(spacing: 4) {
+                        Circle()
+                            .fill(Color.green)
+                            .frame(width: 6, height: 6)
+                        Text("LIVE")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundColor(.green)
+                    }
+                    .padding(.horizontal, 7)
+                    .padding(.vertical, 3)
+                    .background(Color.green.opacity(0.14))
+                    .clipShape(Capsule())
+                }
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("\(repo.stats.watchingNowCount)")
+                    .font(.system(size: 28, weight: .bold))
+                    .foregroundColor(.primary)
+
+                Text("Смотрят сейчас")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.primary)
+
+                Text(repo.stats.watchingNowCount > 0 ? "Активные сессии" : "Нет активных сессий")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(minHeight: 116)
+        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private var featuredTranslationCard: some View {
+        HStack(spacing: 12) {
+            ZStack {
+                Circle()
+                    .fill(Color.purple.opacity(0.16))
+                    .frame(width: 42, height: 42)
+                Image(systemName: "waveform")
+                    .font(.system(size: 18, weight: .bold))
+                    .foregroundColor(.purple)
+            }
+
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text("ТОП ОЗВУЧКА")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(.purple)
+                        .tracking(0.6)
+
+                    Text("• Платформа")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                }
+
+                Text(repo.stats.topGlobalTranslation)
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundColor(.primary)
+                    .lineLimit(1)
+
+                Text("Лидер просмотров по всей платформе")
+                    .font(.system(size: 11))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 8)
+
+            HStack(spacing: 3) {
+                Image(systemName: "crown.fill")
+                    .font(.system(size: 11))
+                    .foregroundColor(.yellow)
+                Text("#1")
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundColor(.primary)
+            }
+            .padding(.horizontal, 9)
+            .padding(.vertical, 5)
+            .background(Color.white.opacity(0.08))
+            .clipShape(Capsule())
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+    }
+
+    private func compactStatCard(title: String, value: String, subtitle: String, icon: String, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                ZStack {
+                    Circle()
+                        .fill(color.opacity(0.14))
+                        .frame(width: 26, height: 26)
+                    Image(systemName: icon)
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(color)
+                }
+
+                Spacer()
+            }
+
+            VStack(alignment: .leading, spacing: 1) {
+                Text(value)
+                    .font(.system(size: 20, weight: .bold))
+                    .foregroundColor(.primary)
+
+                Text(title)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.primary)
+                    .lineLimit(1)
+
+                Text(subtitle)
+                    .font(.system(size: 10))
+                    .foregroundColor(.secondary)
+                    .lineLimit(1)
+            }
+        }
+        .padding(10)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(minHeight: 88)
+        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
     }
 
     private func liveWatchingCard(_ session: LiveSessionItem) -> some View {
@@ -314,24 +509,24 @@ public struct AdminDashboardView: View {
                         .resizable()
                         .scaledToFill()
                 }
-                .frame(width: 52, height: 76)
-                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .frame(width: 48, height: 70)
+                .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             } else {
                 ZStack {
-                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    RoundedRectangle(cornerRadius: 8, style: .continuous)
                         .fill(Color.secondary.opacity(0.15))
                     Image(systemName: "film")
-                        .font(.system(size: 20))
+                        .font(.system(size: 18))
                         .foregroundColor(.secondary)
                 }
-                .frame(width: 52, height: 76)
+                .frame(width: 48, height: 70)
             }
 
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 5) {
                     Circle()
                         .fill(Color.green)
-                        .frame(width: 7, height: 7)
+                        .frame(width: 6, height: 6)
                     Text("LIVE")
                         .font(.system(size: 10, weight: .bold))
                         .foregroundColor(.green)
@@ -409,7 +604,7 @@ public struct AdminDashboardView: View {
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 24)
-                        .glassEffect(in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        .glassEffect(in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                     } else {
                         VStack(spacing: 12) {
                             ForEach(Array(repo.globalTranslations.enumerated()), id: \.element.id) { index, item in
@@ -420,7 +615,7 @@ public struct AdminDashboardView: View {
                             }
                         }
                         .padding(14)
-                        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                     }
                 }
 
@@ -445,7 +640,7 @@ public struct AdminDashboardView: View {
                     }
                     .padding(.horizontal, 14)
                     .padding(.vertical, 10)
-                    .glassEffect(in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                    .glassEffect(in: Capsule())
 
                     if filteredMediaAnalytics.isEmpty {
                         VStack(spacing: 10) {
@@ -458,7 +653,7 @@ public struct AdminDashboardView: View {
                         }
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 32)
-                        .glassEffect(in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        .glassEffect(in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                     } else {
                         LazyVStack(spacing: 12) {
                             ForEach(filteredMediaAnalytics) { mediaStats in
@@ -469,9 +664,10 @@ public struct AdminDashboardView: View {
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.top, 4)
-            .padding(.bottom, 24)
+            .padding(.top, 8)
+            .padding(.bottom, 32)
         }
+        .scrollContentBackground(.hidden)
     }
 
     private func translationRankRow(rank: Int, item: GlobalTranslationStat) -> some View {
@@ -489,7 +685,7 @@ public struct AdminDashboardView: View {
                 Spacer()
 
                 Text("\(item.count) чел. (\(String(format: "%.0f", item.percentage))%)")
-                    .font(.system(size: 13, weight: .medium, design: .rounded))
+                    .font(.system(size: 13, weight: .medium))
                     .foregroundColor(.secondary)
             }
 
@@ -564,7 +760,7 @@ public struct AdminDashboardView: View {
                                 .foregroundColor(.primary)
                             Spacer()
                             Text("\(vote.count) чел. • \(String(format: "%.0f", vote.percentage))%")
-                                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                                .font(.system(size: 12, weight: .semibold))
                                 .foregroundColor(vote.id == media.topTranslation?.id ? Color.slooshAccent : .secondary)
                         }
                     }
@@ -572,46 +768,10 @@ public struct AdminDashboardView: View {
             }
         }
         .padding(14)
-        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
-    private func statCard(title: String, value: String, subtitle: String, icon: String, color: Color) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                ZStack {
-                    Circle()
-                        .fill(color.opacity(0.16))
-                        .frame(width: 38, height: 38)
-
-                    Image(systemName: icon)
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundColor(color)
-                }
-
-                Spacer()
-            }
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(value)
-                    .font(.system(size: 26, weight: .bold, design: .rounded))
-                    .foregroundColor(.primary)
-
-                Text(title)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundColor(.primary)
-
-                Text(subtitle)
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary)
-                    .lineLimit(1)
-            }
-        }
-        .padding(14)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
-    }
-
-    // MARK: - Tab 2: Users Management
+    // MARK: - Tab 3: Users Management
 
     private var filteredUsers: [AdminUserItem] {
         let query = userSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -625,43 +785,42 @@ public struct AdminDashboardView: View {
     }
 
     private var usersTab: some View {
-        VStack(spacing: 10) {
-            // Floating Search field
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundColor(.secondary)
+        ScrollView {
+            VStack(spacing: 12) {
+                // Floating Search field
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundColor(.secondary)
 
-                TextField("Поиск по имени, @тегу или ID...", text: $userSearchQuery)
-                    .font(.system(size: 15))
+                    TextField("Поиск по имени, @тегу или ID...", text: $userSearchQuery)
+                        .font(.system(size: 15))
 
-                if !userSearchQuery.isEmpty {
-                    Button {
-                        userSearchQuery = ""
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundColor(.secondary)
+                    if !userSearchQuery.isEmpty {
+                        Button {
+                            userSearchQuery = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundColor(.secondary)
+                        }
                     }
                 }
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .glassEffect(in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .padding(.horizontal, 16)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .glassEffect(in: Capsule())
 
-            // Users list
-            if filteredUsers.isEmpty {
-                VStack(spacing: 12) {
-                    Image(systemName: "person.slash.fill")
-                        .font(.system(size: 36))
-                        .foregroundColor(.secondary)
-                    Text("Пользователи не найдены")
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundColor(.secondary)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .padding(.top, 40)
-            } else {
-                ScrollView {
+                // Users list
+                if filteredUsers.isEmpty {
+                    VStack(spacing: 12) {
+                        Image(systemName: "person.slash.fill")
+                            .font(.system(size: 36))
+                            .foregroundColor(.secondary)
+                        Text("Пользователи не найдены")
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundColor(.secondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 40)
+                } else {
                     LazyVStack(spacing: 8) {
                         ForEach(filteredUsers) { user in
                             userRow(user)
@@ -671,12 +830,13 @@ public struct AdminDashboardView: View {
                                 }
                         }
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 4)
-                    .padding(.bottom, 24)
                 }
             }
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+            .padding(.bottom, 32)
         }
+        .scrollContentBackground(.hidden)
     }
 
     private func userRow(_ user: AdminUserItem) -> some View {
@@ -684,7 +844,7 @@ public struct AdminDashboardView: View {
             SlooshAvatarView(
                 avatarSource: user.avatarUrl,
                 fallbackText: user.displayTitle,
-                size: 46,
+                size: 44,
                 showOnline: true,
                 isOnline: user.isCurrentlyOnline
             )
@@ -769,10 +929,10 @@ public struct AdminDashboardView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
-    // MARK: - Tab 3: Channels Moderation
+    // MARK: - Tab 4: Channels Moderation
 
     private var filteredChannels: [ChannelModel] {
         let query = channelSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -785,54 +945,54 @@ public struct AdminDashboardView: View {
     }
 
     private var channelsTab: some View {
-        VStack(spacing: 10) {
-            // Floating Search field
-            HStack(spacing: 8) {
-                Image(systemName: "magnifyingglass")
-                    .foregroundColor(.secondary)
+        ScrollView {
+            VStack(spacing: 12) {
+                // Floating Search field
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundColor(.secondary)
 
-                TextField("Поиск по названию или @тегу канала...", text: $channelSearchQuery)
-                    .font(.system(size: 15))
+                    TextField("Поиск по названию или @тегу канала...", text: $channelSearchQuery)
+                        .font(.system(size: 15))
 
-                if !channelSearchQuery.isEmpty {
-                    Button {
-                        channelSearchQuery = ""
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundColor(.secondary)
+                    if !channelSearchQuery.isEmpty {
+                        Button {
+                            channelSearchQuery = ""
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundColor(.secondary)
+                        }
                     }
                 }
-            }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
-            .glassEffect(in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .padding(.horizontal, 16)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 10)
+                .glassEffect(in: Capsule())
 
-            // Channels list
-            if filteredChannels.isEmpty {
-                VStack(spacing: 12) {
-                    Image(systemName: "megaphone")
-                        .font(.system(size: 36))
-                        .foregroundColor(.secondary)
-                    Text("Каналы не найдены")
-                        .font(.system(size: 15, weight: .medium))
-                        .foregroundColor(.secondary)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .padding(.top, 40)
-            } else {
-                ScrollView {
+                // Channels list
+                if filteredChannels.isEmpty {
+                    VStack(spacing: 12) {
+                        Image(systemName: "megaphone")
+                            .font(.system(size: 36))
+                            .foregroundColor(.secondary)
+                        Text("Каналы не найдены")
+                            .font(.system(size: 15, weight: .medium))
+                            .foregroundColor(.secondary)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.top, 40)
+                } else {
                     LazyVStack(spacing: 8) {
                         ForEach(filteredChannels) { channel in
                             channelRow(channel)
                         }
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 4)
-                    .padding(.bottom, 24)
                 }
             }
+            .padding(.horizontal, 16)
+            .padding(.top, 8)
+            .padding(.bottom, 32)
         }
+        .scrollContentBackground(.hidden)
         .confirmationDialog(
             "Удалить канал?",
             isPresented: $showDeleteChannelAlert,
@@ -851,7 +1011,7 @@ public struct AdminDashboardView: View {
 
     private func channelRow(_ channel: ChannelModel) -> some View {
         HStack(spacing: 12) {
-            SlooshAvatarView(channel: channel, size: 46)
+            SlooshAvatarView(channel: channel, size: 44)
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(channel.name)
@@ -888,10 +1048,10 @@ public struct AdminDashboardView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 10)
-        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
-    // MARK: - Tab 4: Diagnostics & System Logs
+    // MARK: - Tab 5: Diagnostics & System Logs
 
     private var diagnosticsTab: some View {
         ScrollView {
@@ -931,7 +1091,7 @@ public struct AdminDashboardView: View {
                     }
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 40)
-                    .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                 } else {
                     VStack(spacing: 8) {
                         ForEach(Array(logs.enumerated()), id: \.offset) { _, log in
@@ -953,9 +1113,10 @@ public struct AdminDashboardView: View {
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.top, 4)
-            .padding(.bottom, 24)
+            .padding(.top, 8)
+            .padding(.bottom, 32)
         }
+        .scrollContentBackground(.hidden)
     }
 
     private func formatCount(_ count: Int) -> String {
@@ -1028,7 +1189,7 @@ private struct AdminUserDetailSheet: View {
                         detailRow(title: "Статус аккаунта", value: isBannedState ? "Заблокирован 🚫" : "Активен ✅", canCopy: false)
                     }
                     .padding(16)
-                    .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+                    .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                     .padding(.horizontal, 16)
 
                     // Action Buttons
@@ -1063,17 +1224,21 @@ private struct AdminUserDetailSheet: View {
                 }
                 .padding(.bottom, 32)
             }
+            .scrollContentBackground(.hidden)
             .navigationTitle("Профиль пользователя")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .navigationBarTrailing) {
+                ToolbarItem(placement: .confirmationAction) {
                     Button("Закрыть") {
                         dismiss()
                     }
-                    .foregroundColor(Color.slooshAccent)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.primary)
                 }
             }
         }
+        .presentationBackground { Color.clear.glassEffect(in: .rect) }
+        .presentationDragIndicator(.visible)
     }
 
     private func detailRow(title: String, value: String, canCopy: Bool) -> some View {
