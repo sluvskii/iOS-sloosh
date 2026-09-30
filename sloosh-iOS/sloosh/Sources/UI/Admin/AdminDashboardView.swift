@@ -62,45 +62,9 @@ public struct AdminDashboardView: View {
                 }
             }
             .animation(.easeInOut(duration: 0.2), value: selectedTab)
+            .toolbar(.hidden, for: .navigationBar)
             .safeAreaInset(edge: .top, spacing: 0) {
-                tabSelector
-                    .padding(.top, 4)
-                    .padding(.bottom, 2)
-                    .background(
-                        VariableBlurView(tintOpacity: 1.0)
-                            .padding(.bottom, -30)
-                            .ignoresSafeArea(edges: .top)
-                    )
-            }
-            .toolbarBackground(.hidden, for: .navigationBar)
-            .navigationTitle("Панель управления")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        Task {
-                            await repo.fetchOverviewStats()
-                        }
-                    } label: {
-                        if repo.isLoading {
-                            ProgressView()
-                                .scaleEffect(0.8)
-                        } else {
-                            Image(systemName: "arrow.clockwise")
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(.primary)
-                        }
-                    }
-                }
-
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Готово") {
-                        dismiss()
-                    }
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundStyle(.primary)
-                }
+                customTopHeader
             }
             .sheet(item: $selectedUserForDetails) { user in
                 AdminUserDetailSheet(user: user)
@@ -111,6 +75,71 @@ public struct AdminDashboardView: View {
         }
         .presentationBackground { Color.clear.glassEffect(in: .rect) }
         .presentationDragIndicator(.visible)
+    }
+
+    // MARK: - Custom Top Header (Liquid Glass & Progressive Variable Blur)
+
+    private var customTopHeader: some View {
+        VStack(spacing: 8) {
+            // Header Bar (Title & Actions)
+            ZStack {
+                Text("Панель управления")
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(.primary)
+
+                HStack {
+                    // Refresh Button
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        Task {
+                            await repo.fetchOverviewStats()
+                        }
+                    } label: {
+                        ZStack {
+                            if repo.isLoading {
+                                ProgressView()
+                                    .scaleEffect(0.8)
+                            } else {
+                                Image(systemName: "arrow.clockwise")
+                                    .font(.system(size: 13, weight: .semibold))
+                                    .foregroundStyle(.primary)
+                            }
+                        }
+                        .frame(width: 32, height: 32)
+                        .glassEffect(.regular.interactive(), in: .circle)
+                    }
+                    .buttonStyle(.plain)
+
+                    Spacer()
+
+                    // Close Button
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        dismiss()
+                    } label: {
+                        Text("Готово")
+                            .font(.system(size: 13.5, weight: .semibold))
+                            .foregroundStyle(.primary)
+                            .padding(.horizontal, 13)
+                            .frame(height: 32)
+                            .glassEffect(.regular.interactive(), in: .capsule)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 10)
+
+            // Category Text Tabs
+            tabSelector
+                .padding(.bottom, 2)
+        }
+        .padding(.bottom, 2)
+        .background(
+            VariableBlurView(tintOpacity: 1.0)
+                .padding(.bottom, -30)
+                .ignoresSafeArea(edges: .top)
+        )
     }
 
     // MARK: - Native Liquid Glass Text Tab Selector (Matching HomeView)
