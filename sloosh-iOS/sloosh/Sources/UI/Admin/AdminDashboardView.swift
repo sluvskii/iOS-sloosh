@@ -5,7 +5,7 @@ import SwiftUI
 public struct AdminDashboardView: View {
     @StateObject private var repo = AdminRepository.shared
     @Environment(\.dismiss) private var dismiss
-    @Namespace private var tabNamespace
+    @Environment(\.colorScheme) private var colorScheme
 
     @State private var selectedTab: AdminTab = .analytics
     @State private var userSearchQuery: String = ""
@@ -14,6 +14,14 @@ public struct AdminDashboardView: View {
     @State private var selectedUserForDetails: AdminUserItem? = nil
     @State private var channelToDelete: ChannelModel? = nil
     @State private var showDeleteChannelAlert: Bool = false
+
+    @ScaledMetric(relativeTo: .headline) private var tabTitleSize: CGFloat = 20
+    private let tabTitleHeight: CGFloat = 34
+    private let tabSpacing: CGFloat = 16
+    private let tabEdgeContentInset: CGFloat = 16
+    private var tabScrollAnimation: Animation {
+        .spring(response: 0.35, dampingFraction: 0.75, blendDuration: 0.1)
+    }
 
     private enum AdminTab: String, CaseIterable, Identifiable {
         case analytics = "Аналитика"
@@ -57,17 +65,14 @@ public struct AdminDashboardView: View {
             .safeAreaInset(edge: .top, spacing: 0) {
                 tabSelector
                     .padding(.top, 4)
-                    .padding(.bottom, 8)
-                    .background {
-                        VariableBlurView(
-                            maxBlurRadius: 16,
-                            direction: .blurredTopClearBottom,
-                            tintColor: Color(UIColor.systemBackground),
-                            tintOpacity: 0.82
-                        )
-                        .ignoresSafeArea(edges: .top)
-                    }
+                    .padding(.bottom, 2)
+                    .background(
+                        VariableBlurView(tintOpacity: 1.0)
+                            .padding(.bottom, -30)
+                            .ignoresSafeArea(edges: .top)
+                    )
             }
+            .toolbarBackground(.hidden, for: .navigationBar)
             .navigationTitle("Панель управления")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -108,43 +113,78 @@ public struct AdminDashboardView: View {
         .presentationDragIndicator(.visible)
     }
 
-    // MARK: - Native Liquid Glass Segmented Tab Selector
+    // MARK: - Native Liquid Glass Text Tab Selector (Matching HomeView)
+
+    private func layeredTabTitle(
+        _ text: String,
+        size: CGFloat,
+        weight: Font.Weight,
+        isSelected: Bool
+    ) -> some View {
+        let isDark = colorScheme == .dark
+        let opacity = isSelected ? (isDark ? 0.95 : 0.9) : (isDark ? 0.45 : 0.4)
+        let color = isDark ? Color.white.opacity(opacity) : Color.black.opacity(opacity)
+        let blendMode: BlendMode = isDark ? .plusLighter : .plusDarker
+
+        return Text(text)
+            .font(.system(size: size, weight: weight))
+            .tracking(-0.6)
+            .foregroundStyle(color)
+            .blendMode(blendMode)
+    }
 
     private var tabSelector: some View {
-        HStack(spacing: 3) {
-            ForEach(AdminTab.allCases) { tab in
-                let isSelected = selectedTab == tab
-                Button {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
-                        selectedTab = tab
-                    }
-                } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: tab.icon)
-                            .font(.system(size: 11, weight: .semibold))
+        ScrollViewReader { scrollProxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(alignment: .center, spacing: tabSpacing) {
+                    ForEach(Array(AdminTab.allCases.enumerated()), id: \.element) { index, tab in
+                        let isSelected = selectedTab == tab
+                        let isFirst = index == 0
+                        let isLast = index == AdminTab.allCases.count - 1
 
-                        Text(tab.rawValue)
-                            .font(.system(size: 12.5, weight: isSelected ? .semibold : .medium))
+                        Button {
+                            withAnimation(tabScrollAnimation) {
+                                guard !isSelected else { return }
+                                selectedTab = tab
+                            }
+                        } label: {
+                            layeredTabTitle(
+                                tab.rawValue,
+                                size: tabTitleSize,
+                                weight: isSelected ? .bold : .semibold,
+                                isSelected: isSelected
+                            )
                             .lineLimit(1)
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 7)
-                    .foregroundStyle(isSelected ? Color.primary : Color.secondary)
-                    .background {
-                        if isSelected {
-                            Capsule()
-                                .fill(Color.primary.opacity(0.12))
-                                .matchedGeometryEffect(id: "selectedAdminTab", in: tabNamespace)
+                            .fixedSize(horizontal: true, vertical: false)
+                            .frame(height: tabTitleHeight, alignment: .center)
+                            .contentShape(Rectangle())
                         }
+                        .buttonStyle(AdminTabScaleButtonStyle())
+                        .padding(.horizontal, 4)
+                        .padding(.vertical, 2)
+                        .id(tab)
+                        .accessibilityAddTraits(isSelected ? .isSelected : [])
+                        .padding(.leading, isFirst ? tabEdgeContentInset : 0)
+                        .padding(.trailing, isLast ? tabEdgeContentInset : 0)
                     }
                 }
-                .buttonStyle(.plain)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .scrollTargetLayout()
+            }
+            .frame(height: tabTitleHeight + 4, alignment: .topLeading)
+            .scrollClipDisabled()
+            .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+            .animation(tabScrollAnimation, value: selectedTab)
+            .onAppear {
+                scrollProxy.scrollTo(selectedTab, anchor: .center)
+            }
+            .onChange(of: selectedTab) { _, newTab in
+                withAnimation(tabScrollAnimation) {
+                    scrollProxy.scrollTo(newTab, anchor: .center)
+                }
             }
         }
-        .padding(3)
-        .glassEffect(.regular.interactive(), in: Capsule())
-        .padding(.horizontal, 16)
+        .sensoryFeedback(.selection, trigger: selectedTab)
     }
 
     // MARK: - Tab 1: Analytics & Live Activity
@@ -1150,5 +1190,16 @@ private struct AdminUserDetailSheet: View {
                 }
             }
         }
+    }
+}
+
+// MARK: - Admin Tab Scale Button Style (Tactile Spring Feedback)
+
+private struct AdminTabScaleButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.94 : 1.0)
+            .opacity(configuration.isPressed ? 0.8 : 1.0)
+            .animation(.spring(response: 0.25, dampingFraction: 0.7), value: configuration.isPressed)
     }
 }
