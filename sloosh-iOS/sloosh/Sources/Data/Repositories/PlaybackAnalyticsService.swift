@@ -448,11 +448,16 @@ public final class PlaybackAnalyticsService: ObservableObject {
         var onlineItems: [LiveSessionItem] = []
         var watchingItems: [LiveSessionItem] = []
         var guestCount = 0
+        var deadSessionIdsToDelete: [String] = []
+        let deadThresholdMs: Int64 = 7 * 86_400 * 1000 // 7 days
 
         for (sId, val) in rawDict {
             guard let dict = val as? [String: Any] else { continue }
             let lastSeen = (dict["lastSeenMs"] as? NSNumber)?.int64Value ?? 0
             if nowMs - lastSeen > activeThresholdMs {
+                if nowMs - lastSeen > deadThresholdMs {
+                    deadSessionIdsToDelete.append(sId)
+                }
                 continue // Inactive / stale session
             }
 
@@ -516,6 +521,20 @@ public final class PlaybackAnalyticsService: ObservableObject {
         // Sort watching items by most recently updated
         watchingItems.sort { ($0.media?.updatedAtMs ?? 0) > ($1.media?.updatedAtMs ?? 0) }
         onlineItems.sort { $0.lastSeenMs > $1.lastSeenMs }
+
+        // Automatically prune dead sessions (> 7 days inactive) in background
+        if !deadSessionIdsToDelete.isEmpty {
+            Task { [weak self] in
+                guard let self = self else { return }
+                for deadId in deadSessionIdsToDelete.prefix(30) {
+                    if let url = await self.makeURL(path: "active_sessions/\(deadId)") {
+                        var req = URLRequest(url: url)
+                        req.httpMethod = "DELETE"
+                        _ = try? await URLSession.shared.data(for: req)
+                    }
+                }
+            }
+        }
 
         return (onlineItems, watchingItems, guestCount)
     }
