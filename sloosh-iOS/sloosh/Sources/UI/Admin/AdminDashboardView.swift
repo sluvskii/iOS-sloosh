@@ -127,7 +127,7 @@ public struct AdminDashboardView: View {
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.top, 24)
+            .padding(.top, 16)
 
             // Category Text Tabs
             tabSelector
