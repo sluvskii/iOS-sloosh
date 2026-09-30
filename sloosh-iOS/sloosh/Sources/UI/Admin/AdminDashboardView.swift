@@ -36,7 +36,7 @@ public struct AdminDashboardView: View {
         case channels = "Каналы"
         case diagnostics = "Система"
 
-        var id: String { rawValue }
+        var id: Self { self }
 
         var icon: String {
             switch self {
@@ -54,9 +54,10 @@ public struct AdminDashboardView: View {
         NavigationStack {
             ScrollView(.horizontal, showsIndicators: false) {
                 LazyHStack(spacing: 0) {
-                    ForEach(AdminTab.allCases) { tab in
+                    ForEach(AdminTab.allCases, id: \.self) { tab in
                         tabContentView(for: tab)
                             .containerRelativeFrame(.horizontal)
+                            .id(tab)
                     }
                 }
                 .scrollTargetLayout()
@@ -65,8 +66,10 @@ public struct AdminDashboardView: View {
             .scrollPosition(id: Binding(
                 get: { selectedTab },
                 set: { newValue in
-                    if let newValue = newValue {
-                        selectedTab = newValue
+                    if let newValue = newValue, selectedTab != newValue {
+                        withAnimation(tabScrollAnimation) {
+                            selectedTab = newValue
+                        }
                     }
                 }
             ))
