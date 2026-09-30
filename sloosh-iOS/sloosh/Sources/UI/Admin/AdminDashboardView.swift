@@ -86,44 +86,24 @@ public struct AdminDashboardView: View {
                 Text("Панель управления")
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(.primary)
+                    .allowsHitTesting(false)
 
                 HStack {
-                    // Refresh Button (44x44 circular glass)
-                    Button {
+                    // Refresh Button (44x44 TelegramGlassIconButton)
+                    AdminRefreshButton(repo: repo) {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         Task {
                             await repo.fetchOverviewStats()
                         }
-                    } label: {
-                        ZStack {
-                            if repo.isLoading {
-                                ProgressView()
-                                    .scaleEffect(0.9)
-                            } else {
-                                Image(systemName: "arrow.clockwise")
-                                    .font(.system(size: 18, weight: .semibold))
-                                    .foregroundStyle(.primary)
-                            }
-                        }
-                        .frame(width: 44, height: 44)
-                        .glassEffect(.regular.interactive(), in: .circle)
                     }
-                    .buttonStyle(.plain)
 
                     Spacer()
 
-                    // Close Button (44x44 circular glass)
-                    Button {
+                    // Close Button (44x44 TelegramGlassIconButton)
+                    TelegramGlassIconButton(systemName: "xmark", iconSize: 17, buttonSize: 44) {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         dismiss()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 16, weight: .semibold))
-                            .foregroundStyle(.primary)
-                            .frame(width: 44, height: 44)
-                            .glassEffect(.regular.interactive(), in: .circle)
                     }
-                    .buttonStyle(.plain)
                 }
             }
             .padding(.horizontal, 16)
@@ -1231,3 +1211,29 @@ private struct AdminTabScaleButtonStyle: ButtonStyle {
             .animation(.spring(response: 0.25, dampingFraction: 0.7), value: configuration.isPressed)
     }
 }
+
+// MARK: - Admin Refresh Button (UIKit-backed Telegram Glass Button)
+
+private struct AdminRefreshButton: View {
+    @ObservedObject var repo: AdminRepository
+    let action: () -> Void
+
+    var body: some View {
+        ZStack {
+            TelegramGlassIconButton(
+                systemName: repo.isLoading ? "" : "arrow.clockwise",
+                iconSize: 18,
+                buttonSize: 44
+            ) {
+                action()
+            }
+
+            if repo.isLoading {
+                ProgressView()
+                    .scaleEffect(0.9)
+                    .allowsHitTesting(false)
+            }
+        }
+    }
+}
+
