@@ -14,6 +14,13 @@ public struct AdminDashboardView: View {
     @State private var selectedUserForDetails: AdminUserItem? = nil
     @State private var channelToDelete: ChannelModel? = nil
     @State private var showDeleteChannelAlert: Bool = false
+    @State private var scrollOffsets: [AdminTab: CGFloat] = [:]
+
+    private var blurOpacity: Double {
+        let offset = scrollOffsets[selectedTab] ?? 0
+        let progress = max(0, offset) / 30.0
+        return min(1.0, Double(progress))
+    }
 
     @ScaledMetric(relativeTo: .headline) private var tabTitleSize: CGFloat = 20
     private let tabTitleHeight: CGFloat = 34
@@ -45,23 +52,24 @@ public struct AdminDashboardView: View {
 
     public var body: some View {
         NavigationStack {
-            ZStack {
-                switch selectedTab {
-                case .analytics:
-                    analyticsTab
-                        .transition(.opacity)
-                case .users:
-                    usersTab
-                        .transition(.opacity)
-                case .channels:
-                    channelsTab
-                        .transition(.opacity)
-                case .diagnostics:
-                    diagnosticsTab
-                        .transition(.opacity)
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(spacing: 0) {
+                    ForEach(AdminTab.allCases) { tab in
+                        tabContentView(for: tab)
+                            .containerRelativeFrame(.horizontal)
+                    }
                 }
+                .scrollTargetLayout()
             }
-            .animation(.easeInOut(duration: 0.2), value: selectedTab)
+            .scrollTargetBehavior(.paging)
+            .scrollPosition(id: Binding(
+                get: { selectedTab },
+                set: { newValue in
+                    if let newValue = newValue {
+                        selectedTab = newValue
+                    }
+                }
+            ))
             .toolbar(.hidden, for: .navigationBar)
             .safeAreaInset(edge: .top, spacing: 0) {
                 customTopHeader
@@ -75,6 +83,20 @@ public struct AdminDashboardView: View {
         }
         .presentationBackground { Color.clear.glassEffect(in: .rect) }
         .presentationDragIndicator(.visible)
+    }
+
+    @ViewBuilder
+    private func tabContentView(for tab: AdminTab) -> some View {
+        switch tab {
+        case .analytics:
+            analyticsTab
+        case .users:
+            usersTab
+        case .channels:
+            channelsTab
+        case .diagnostics:
+            diagnosticsTab
+        }
     }
 
     // MARK: - Custom Top Header (Liquid Glass & Progressive Variable Blur)
@@ -118,6 +140,8 @@ public struct AdminDashboardView: View {
             VariableBlurView(tintColor: .clear, tintOpacity: 0.0)
                 .padding(.bottom, -30)
                 .ignoresSafeArea(edges: .top)
+                .opacity(blurOpacity)
+                .animation(.easeInOut(duration: 0.2), value: blurOpacity)
         )
     }
 
@@ -217,6 +241,11 @@ public struct AdminDashboardView: View {
             .padding(.bottom, 32)
         }
         .scrollContentBackground(.hidden)
+        .onScrollGeometryChange(for: CGFloat.self) { geometry in
+            geometry.contentOffset.y + geometry.contentInsets.top
+        } action: { _, newOffset in
+            scrollOffsets[.analytics] = newOffset
+        }
     }
 
     private var unifiedKpiCard: some View {
@@ -713,6 +742,11 @@ public struct AdminDashboardView: View {
             .padding(.bottom, 32)
         }
         .scrollContentBackground(.hidden)
+        .onScrollGeometryChange(for: CGFloat.self) { geometry in
+            geometry.contentOffset.y + geometry.contentInsets.top
+        } action: { _, newOffset in
+            scrollOffsets[.users] = newOffset
+        }
     }
 
     private func userRow(_ user: AdminUserItem) -> some View {
@@ -885,6 +919,11 @@ public struct AdminDashboardView: View {
             .padding(.bottom, 32)
         }
         .scrollContentBackground(.hidden)
+        .onScrollGeometryChange(for: CGFloat.self) { geometry in
+            geometry.contentOffset.y + geometry.contentInsets.top
+        } action: { _, newOffset in
+            scrollOffsets[.channels] = newOffset
+        }
         .confirmationDialog(
             "Удалить канал?",
             isPresented: $showDeleteChannelAlert,
@@ -1038,6 +1077,11 @@ public struct AdminDashboardView: View {
             .padding(.bottom, 32)
         }
         .scrollContentBackground(.hidden)
+        .onScrollGeometryChange(for: CGFloat.self) { geometry in
+            geometry.contentOffset.y + geometry.contentInsets.top
+        } action: { _, newOffset in
+            scrollOffsets[.diagnostics] = newOffset
+        }
     }
 
     private func systemSubpod(title: String, status: String) -> some View {
