@@ -130,28 +130,47 @@ struct SourceSelectionView: View {
             }
             .animation(.easeInOut(duration: 0.25), value: isLoading)
             .animation(.easeInOut(duration: 0.25), value: selectedSource)
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(action: { dismiss() }) {
-                        Image(systemName: "xmark")
+            .toolbar(.hidden, for: .navigationBar)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                headerBar
+                    .padding(.horizontal, 16)
+                    .padding(.top, 12)
+                    .padding(.bottom, 8)
+                    .background {
+                        VariableBlurView(
+                            maxBlurRadius: 16,
+                            direction: .blurredTopClearBottom,
+                            tintColor: Color(UIColor.systemBackground),
+                            tintOpacity: 0.85
+                        )
+                        .ignoresSafeArea(edges: .top)
                     }
-                    .tint(.primary)
-                }
-
-                ToolbarItem(placement: .principal) {
-                    headerTitleOrLogoView
-                }
-
-                ToolbarItem(placement: .topBarTrailing) {
-                    sourceCornerButton
-                }
             }
             .scrollContentBackground(.hidden)
             .background(Color.clear)
         }
         .presentationBackground { Color.clear.glassEffect(in: .rect) }
         .presentationDragIndicator(.visible)
+    }
+
+    private var headerBar: some View {
+        HStack(spacing: 12) {
+            TelegramGlassIconButton(
+                systemName: "xmark",
+                iconSize: 13,
+                buttonSize: 34
+            ) {
+                dismiss()
+            }
+
+            Spacer(minLength: 8)
+
+            headerTitleOrLogoView
+
+            Spacer(minLength: 8)
+
+            sourceCornerButton
+        }
     }
 
     @ViewBuilder
@@ -201,9 +220,17 @@ struct SourceSelectionView: View {
                 }
             }
         } label: {
-            Image(systemName: "server.rack")
+            ZStack {
+                Circle()
+                    .fill(Color.clear)
+                    .frame(width: 34, height: 34)
+                    .glassEffect(.regular.interactive(), in: .circle)
+
+                Image(systemName: "server.rack")
+                    .font(.system(size: 14, weight: .medium))
+                    .foregroundStyle(.primary)
+            }
         }
-        .tint(.primary)
         .disabled(isLoading)
         .opacity(isLoading ? 0.45 : 1.0)
     }
@@ -230,6 +257,7 @@ struct SourceSelectionView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .scrollContentBackground(.hidden)
         .contentMargins(.horizontal, 20, for: .scrollContent)
         .contentMargins(.top, 16, for: .scrollContent)
         .contentMargins(.bottom, 28, for: .scrollContent)
@@ -722,6 +750,7 @@ struct SingleSourceContentView: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .scrollContentBackground(.hidden)
         .contentMargins(.horizontal, 20, for: .scrollContent)
         .contentMargins(.top, 16, for: .scrollContent)
         .contentMargins(.bottom, 28, for: .scrollContent)
