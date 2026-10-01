@@ -21,7 +21,6 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var showLogsShareSheet = false
     @State private var showClearCacheDialog = false
-    @State private var isSyncingConfig = false
     
     private var blurOpacity: Double {
         let progress = max(0, scrollOffset) / 30.0
@@ -270,54 +269,6 @@ struct SettingsView: View {
                         Text("О приложении")
                     }
                 }
-            }
-            
-            Section("Сеть и сервер") {
-                HStack(spacing: 12) {
-                    Image(systemName: "network")
-                        .foregroundStyle(Color.slooshAccent)
-                        .font(.system(size: 18))
-                        .frame(width: 24)
-                    Text("Шлюз API")
-                        .font(.body)
-                    Spacer()
-                    Text(URL(string: MoviesApi.activeBaseURL)?.host ?? MoviesApi.activeBaseURL)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
-                }
-
-                Button {
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    Task {
-                        isSyncingConfig = true
-                        await MoviesApi.shared.loadRemoteConfig(force: true)
-                        await AllohaRepository.shared.warmup()
-                        isSyncingConfig = false
-                        UINotificationFeedbackGenerator().notificationOccurred(.success)
-                        ToastManager.shared.show(
-                            title: "Конфигурация обновлена",
-                            subtitle: "Актуальные адреса и ключи синхронизированы",
-                            icon: "checkmark.circle.fill",
-                            iconColor: Color.slooshAccent
-                        )
-                    }
-                } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: "arrow.triangle.2.circlepath")
-                            .foregroundStyle(Color.slooshAccent)
-                            .font(.system(size: 18))
-                            .frame(width: 24)
-                        if isSyncingConfig {
-                            ProgressView()
-                                .tint(Color.slooshAccent)
-                        } else {
-                            Text("Синхронизировать конфигурацию")
-                                .foregroundStyle(.primary)
-                        }
-                    }
-                }
-                .disabled(isSyncingConfig)
             }
             
             Section("Диагностика") {
