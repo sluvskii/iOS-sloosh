@@ -11,6 +11,7 @@ private enum AppTab: Hashable {
 
 struct ContentView: View {
     @AppStorage("tabBarShowsLabels") private var tabBarShowsLabels = false
+    @AppStorage("tabBarMinimizeOnScroll") private var tabBarMinimizeOnScroll = true
     @State private var selectedTab: AppTab = .home
     @ObservedObject private var deepLinkManager = DeepLinkManager.shared
     @ObservedObject private var authRepo = AuthRepository.shared
@@ -92,7 +93,7 @@ struct ContentView: View {
                 }
                 .id("\(tabBarShowsLabels)_\(authRepo.isAuthenticated)_\(avatarVersion)")
                 .tabViewStyle(.tabBarOnly)
-                .tabBarMinimizeBehavior(.onScrollDown)
+                .tabBarMinimizeBehavior(tabBarMinimizeOnScroll ? .onScrollDown : .never)
                 .tint(Color.slooshAccent)
                 
                 if UIDevice.current.userInterfaceIdiom == .phone && proxy.safeAreaInsets.top > 20 {
