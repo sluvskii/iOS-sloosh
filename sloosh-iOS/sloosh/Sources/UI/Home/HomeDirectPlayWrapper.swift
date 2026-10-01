@@ -115,7 +115,7 @@ struct HomeDirectPlayWrapper: View {
             )
             onPlay(config)
         }
-        .presentationDetents([.medium, .large])
+        .presentationDetents([.fraction(0.62)])
         .presentationDragIndicator(.visible)
         .task {
             if let initialKpId = initialKpId, initialKpId > 0 {
