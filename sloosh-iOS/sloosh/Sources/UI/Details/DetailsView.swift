@@ -872,7 +872,6 @@ struct DetailsView: View {
                 sourceID: navigationTransitionID,
                 in: navigationTransitionNamespace
             )
-            .environment(\.colorScheme, .dark)
             .ignoresSafeArea(edges: .top)
             .hideNavigationBarWithRestore()
             .safeAreaInset(edge: .top, spacing: 0) {
@@ -1223,8 +1222,7 @@ struct DetailsView: View {
             }
         }
 
-
-
+        .environment(\.colorScheme, .dark)
         .preferredColorScheme(.dark)
     }
 
@@ -3789,6 +3787,7 @@ private struct CrewSection: View {
                             destination: PersonDetailView(
                                 personId: member.id,
                                 initialName: member.name,
+                                initialPhoto: member.photo,
                                 navigationTransitionID: transitionID,
                                 navigationTransitionNamespace: namespace
                             )
@@ -3897,6 +3896,7 @@ private struct ActorsSection: View {
                             destination: PersonDetailView(
                                 personId: actor.id,
                                 initialName: actor.name,
+                                initialPhoto: actor.photo,
                                 navigationTransitionID: transitionID,
                                 navigationTransitionNamespace: namespace
                             )

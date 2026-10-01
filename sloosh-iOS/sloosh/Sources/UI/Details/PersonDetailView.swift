@@ -22,24 +22,40 @@ struct PersonDetailView: View {
         showPhotoGallery = true
     }
 
+    let initialPhoto: String?
+
     init(
         personId: Int,
         initialName: String? = nil,
+        initialPhoto: String? = nil,
         navigationTransitionID: String? = nil,
         navigationTransitionNamespace: Namespace.ID? = nil
     ) {
         self.personId = personId
         self.initialName = initialName
+        self.initialPhoto = initialPhoto
         self.navigationTransitionID = navigationTransitionID
         self.navigationTransitionNamespace = navigationTransitionNamespace
         _viewModel = StateObject(wrappedValue: PersonDetailViewModel(personId: personId))
+
+        if let initialPhoto, let url = URL(string: initialPhoto) {
+            let key = url.absoluteString
+            if let cached = Self.dominantColorCacheLock.withLock({ Self.dominantColorCache[key] }) {
+                _dominantColor = State(initialValue: cached)
+            }
+        }
+    }
+
+    private var personBaseBackgroundColor: UIColor {
+        UIColor.systemBackground.resolvedColor(with: UITraitCollection(userInterfaceStyle: .dark))
     }
 
     private var effectiveBackgroundColor: Color {
+        let background = personBaseBackgroundColor
         if let dominant = dominantColor {
-            return Color(uiColor: dominant).opacity(0.35)
+            return Color(dominant.blended(with: background, fraction: 0.35))
         } else {
-            return Color(red: 0.05, green: 0.05, blue: 0.05)
+            return Color(background)
         }
     }
 
@@ -71,7 +87,7 @@ struct PersonDetailView: View {
         }
         if let cachedColor {
             await MainActor.run {
-                withAnimation(.easeInOut(duration: 0.25)) {
+                withAnimation(.easeInOut(duration: 0.35)) {
                     self.dominantColor = cachedColor
                 }
             }
@@ -86,31 +102,57 @@ struct PersonDetailView: View {
                 Self.dominantColorCache[key] = color
             }
             await MainActor.run {
-                withAnimation(.easeInOut(duration: 0.25)) {
+                withAnimation(.easeInOut(duration: 0.35)) {
                     self.dominantColor = color
                 }
             }
             return
         }
 
-        // 3. Если нет в памяти — загружаем через URLSession
-        do {
-            let targetUrl = effectiveUrl ?? url
-            let request = URLRequest(url: targetUrl, cachePolicy: .returnCacheDataElseLoad)
-            let (data, response) = try await URLSession.shared.data(for: request)
-            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200,
-                  let image = UIImage(data: data),
-                  let color = image.averageColor else { return }
-            Self.dominantColorCacheLock.withLock {
-                Self.dominantColorCache[key] = color
+        // 3. Загружаем из кеша URLSession со сверхбыстрым даунсемплингом 32px
+        let color = await Task.detached(priority: .userInitiated) { () -> UIColor? in
+            do {
+                let targetUrl = effectiveUrl ?? url
+                var request = URLRequest(url: targetUrl, cachePolicy: .returnCacheDataElseLoad)
+                request.setValue("Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15", forHTTPHeaderField: "User-Agent")
+                let (data, response) = try await URLSession.shared.data(for: request)
+                guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else {
+                    return nil
+                }
+
+                let options: [CFString: Any] = [
+                    kCGImageSourceCreateThumbnailFromImageAlways: true,
+                    kCGImageSourceShouldCacheImmediately: true,
+                    kCGImageSourceCreateThumbnailWithTransform: true,
+                    kCGImageSourceThumbnailMaxPixelSize: 32
+                ]
+
+                var avg: UIColor? = nil
+                if let source = CGImageSourceCreateWithData(data as CFData, nil),
+                   let thumbCg = CGImageSourceCreateThumbnailAtIndex(source, 0, options as CFDictionary) {
+                    avg = UIImage(cgImage: thumbCg).averageColor
+                } else if let image = UIImage(data: data) {
+                    avg = image.averageColor
+                }
+
+                if let avg {
+                    Self.dominantColorCacheLock.withLock {
+                        Self.dominantColorCache[key] = avg
+                    }
+                }
+                return avg
+            } catch {
+                return nil
             }
-            if Task.isCancelled { return }
+        }.value
+
+        if let color, !Task.isCancelled {
             await MainActor.run {
-                withAnimation(.easeInOut(duration: 0.25)) {
+                withAnimation(.easeInOut(duration: 0.35)) {
                     self.dominantColor = color
                 }
             }
-        } catch { }
+        }
     }
 
     private func savePhotoToLibrary(_ urlString: String) async {
@@ -187,7 +229,6 @@ struct PersonDetailView: View {
             }
             .scrollIndicators(.hidden)
         }
-        .environment(\.colorScheme, .dark)
         .ignoresSafeArea(edges: .top)
         .hideNavigationBarWithRestore()
         .fullWidthSwipeBack()
@@ -238,6 +279,9 @@ struct PersonDetailView: View {
             .navigationTransition(.zoom(sourceID: "person_photo_\(selectedPhotoIndex)", in: photoGalleryNamespace))
         }
         .task {
+            if let photo = initialPhoto ?? viewModel.details?.photo {
+                await preloadDominantColor(from: photo)
+            }
             await viewModel.loadDetails()
             if let photo = viewModel.details?.photo {
                 await preloadDominantColor(from: photo)
@@ -249,6 +293,8 @@ struct PersonDetailView: View {
                 await preloadDominantColor(from: photo)
             }
         }
+        .environment(\.colorScheme, .dark)
+        .preferredColorScheme(.dark)
     }
 
     // MARK: - Person Content

@@ -50,7 +50,8 @@ private struct TelegramUIButtonRepresentable: UIViewRepresentable {
         let config = UIImage.SymbolConfiguration(pointSize: iconSize, weight: .medium)
         let image = UIImage(systemName: systemName, withConfiguration: config)?.withRenderingMode(.alwaysTemplate)
         button.setImage(image, for: .normal)
-        button.tintColor = tintColor != nil ? UIColor(tintColor!) : UIColor.label
+        button.overrideUserInterfaceStyle = context.environment.colorScheme == .dark ? .dark : .unspecified
+        button.tintColor = tintColor != nil ? UIColor(tintColor!) : (context.environment.colorScheme == .dark ? .white : .label)
         
         button.action = action
         return button
@@ -62,7 +63,8 @@ private struct TelegramUIButtonRepresentable: UIViewRepresentable {
             let config = UIImage.SymbolConfiguration(pointSize: iconSize, weight: .medium)
             let image = UIImage(systemName: systemName, withConfiguration: config)?.withRenderingMode(.alwaysTemplate)
             button.setImage(image, for: .normal)
-            button.tintColor = tintColor != nil ? UIColor(tintColor!) : UIColor.label
+            button.overrideUserInterfaceStyle = context.environment.colorScheme == .dark ? .dark : .unspecified
+            button.tintColor = tintColor != nil ? UIColor(tintColor!) : (context.environment.colorScheme == .dark ? .white : .label)
         }
     }
 }
