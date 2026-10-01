@@ -757,21 +757,16 @@ class PlayerViewModel: ObservableObject {
         // Сбрасываем кэш audioVariants — будет обновлён после resolve нового стрима
         self.resolvedAudioVariants = []
 
-        // ВАЖНО: availableVoiceovers должны совпадать с тем, что пользователь видел
-        // в SourceSelectionView. SourceSelectionView использует allTranslationNames —
-        // глобальный список уникальных озвучек по всем эпизодам сезона.
-        // voices (параметр) = result.allTranslationNames, переданный из DetailsView.
-        // Для сериалов — приоритет отдаём voices (глобальный список), чтобы списки совпадали.
-        // Для фильмов — берём из movie.translations (они и так глобальны).
-        if !voices.isEmpty {
-            self.availableVoiceovers = voices
-        } else if let seriesResult = self.seriesResult, let s = season, let e = episode {
-            if let seasonObj = seriesResult.seasons.first(where: { $0.season == s }),
-               let epObj = seasonObj.episodes.first(where: { $0.episode == e }) {
-                self.availableVoiceovers = epObj.translations.map { $0.name }
-            }
+        // Настраиваем availableVoiceovers: для сериалов берем озвучки конкретного эпизода,
+        // чтобы их порядок и индексы точно совпадали с аудиодорожками HLS манифеста (особенно для Источника 2)
+        if let seriesResult = self.seriesResult, let s = season, let e = episode,
+           let seasonObj = seriesResult.seasons.first(where: { $0.season == s }),
+           let epObj = seasonObj.episodes.first(where: { $0.episode == e }) {
+            self.availableVoiceovers = epObj.translations.map { $0.name }
         } else if let seriesResult = self.seriesResult, let movie = seriesResult.movie {
             self.availableVoiceovers = movie.translations.map { $0.name }
+        } else if !voices.isEmpty {
+            self.availableVoiceovers = voices
         }
 
         if (kpId != nil || self.rootMediaKey != nil), let selectedVoiceover, !selectedVoiceover.isEmpty {
@@ -805,7 +800,7 @@ class PlayerViewModel: ObservableObject {
                 // Online direct stream (e.g. Collaps / Source 2)
                 let effectiveHeaders = customHeaders ?? self.customHeaders ?? CollapsRepository.streamHeaders
                 self.customHeaders = effectiveHeaders
-                if !voices.isEmpty {
+                if self.availableVoiceovers.isEmpty && !voices.isEmpty {
                     self.availableVoiceovers = voices
                 }
                 if !subtitles.isEmpty {
@@ -1187,20 +1182,25 @@ class PlayerViewModel: ObservableObject {
 
         clearNowPlaying()
 
+        let finalMediaId = mediaId
+        let finalPos = pos
+        let finalDur = dur
+        let finalVoiceover = voiceover
+        let finalIsSeekPending = isSeekPending
+
         // Отложенная очистка: даём UI-анимации закрытия завершиться без малейших микрофризов
         Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: 350_000_000)
-            guard let self else { return }
-            self.player = nil
-            self.legibleDelegate = nil
-            self.legibleOutput = nil
+            self?.player = nil
+            self?.legibleDelegate = nil
+            self?.legibleOutput = nil
 
-            if !isSeekPending, let mediaId = mediaId, pos > 1 {
+            if !finalIsSeekPending, let finalMediaId, finalPos > 1 {
                 PlaybackProgressStore.shared.save(
-                    mediaId: mediaId,
-                    positionSec: pos,
-                    durationSec: dur,
-                    voiceover: voiceover,
+                    mediaId: finalMediaId,
+                    positionSec: finalPos,
+                    durationSec: finalDur,
+                    voiceover: finalVoiceover,
                     forceDiskSave: true
                 )
             }
@@ -1441,7 +1441,12 @@ class PlayerViewModel: ObservableObject {
     /// Переключает озвучку без закрытия плеера с сохранением позиции воспроизведения и качества видео
     func switchVoiceover(to name: String, at index: Int? = nil) {
         logDebug("switchVoiceover: switching to '\(name)' at index \(index ?? -1)")
-        let savedTime = self.player?.currentTime().seconds ?? self.currentTime
+        let savedTime: Double = {
+            if self.isInitialSeekPending, let pending = self.pendingSeekPosition { return pending }
+            if self.isUserSeeking { return self.currentTime }
+            let pos = self.player?.currentTime().seconds ?? 0
+            return (pos > 0 && pos.isFinite && !pos.isNaN) ? pos : self.currentTime
+        }()
         let canonicalName: String = {
             if let matched = self.availableVoiceovers.first(where: { allohaTranslationNamesMatch($0, name, exactOnly: true) })
                 ?? self.availableVoiceovers.first(where: { allohaTranslationNamesMatch($0, name, exactOnly: false) }) {
@@ -1500,15 +1505,15 @@ class PlayerViewModel: ObservableObject {
                 self.currentTime = savedTime
 
                 if streamUrl == self.originalStreamURL {
-                    self.selectAudioTrackInPlayer(named: name)
+                    let resolvedIndex = index
+                        ?? self.availableVoiceovers.firstIndex(where: { allohaTranslationNamesMatch($0, name, exactOnly: true) })
+                        ?? self.availableVoiceovers.firstIndex(where: { allohaTranslationNamesMatch($0, name, exactOnly: false) })
+                    self.selectAudioTrackInPlayer(named: name, at: resolvedIndex)
                     return
                 }
 
                 let (targetPlaybackUrl, activeBitrate) = self.selectPreservedPlaybackTarget(fallbackUrl: streamUrl)
                 reloadPlayback(to: targetPlaybackUrl, preferredPeakBitRate: activeBitrate)
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-                    self?.selectAudioTrackInPlayer(named: name)
-                }
                 return
             }
 
@@ -2249,7 +2254,9 @@ class PlayerViewModel: ObservableObject {
                         await MainActor.run {
                             self.syncNativeAudioTracks()
                             let targetVoice = self.targetVoiceover ?? self._currentTranslationName ?? self.availableVoiceovers.first ?? "Дубляж"
-                            self.selectAudioTrackInPlayer(named: targetVoice)
+                            let voiceIndex = self.availableVoiceovers.firstIndex(where: { allohaTranslationNamesMatch($0, targetVoice, exactOnly: true) })
+                                ?? self.availableVoiceovers.firstIndex(where: { allohaTranslationNamesMatch($0, targetVoice, exactOnly: false) })
+                            self.selectAudioTrackInPlayer(named: targetVoice, at: voiceIndex)
                             self.syncNativeSubtitleTracks()
 
                             if let root = self.rootMediaKey {
@@ -2362,7 +2369,7 @@ class PlayerViewModel: ObservableObject {
         guard let mediaId = currentMediaId else { return }
 
         timeObserver = player.addPeriodicTimeObserver(
-            forInterval: CMTime(seconds: 0.25, preferredTimescale: 600),
+            forInterval: CMTime(seconds: 0.1, preferredTimescale: 600),
             queue: .main
         ) { [weak self, weak player] time in
             MainActor.assumeIsolated {
@@ -2370,7 +2377,7 @@ class PlayerViewModel: ObservableObject {
                 if self.isUserSeeking || self.isInitialSeekPending { return }
                 let t = player.currentTime().seconds
                 if t.isFinite && !t.isNaN && t >= 0 {
-                    if abs(self.currentTime - t) >= 0.25 {
+                    if abs(self.currentTime - t) >= 0.1 {
                         self.currentTime = t
                     }
                     if !self.activeSubtitleCues.isEmpty {
@@ -2971,8 +2978,11 @@ class PlayerViewModel: ObservableObject {
             return
         }
         
-        // Match by track index (crucial for Collaps where rus0, rus1 map to availableVoiceovers[0], availableVoiceovers[1])
-        let trackIndex = index ?? self.availableVoiceovers.firstIndex(of: name)
+        // Match by track index (crucial for Collaps / Source 2 where rus0, rus1 map to availableVoiceovers[0], availableVoiceovers[1])
+        let trackIndex = index
+            ?? self.availableVoiceovers.firstIndex(of: name)
+            ?? self.availableVoiceovers.firstIndex(where: { allohaTranslationNamesMatch($0, name, exactOnly: true) })
+            ?? self.availableVoiceovers.firstIndex(where: { allohaTranslationNamesMatch($0, name, exactOnly: false) })
         if let trackIndex, trackIndex >= 0, trackIndex < options.count {
             item.select(options[trackIndex], in: group)
             persistVoiceoverSelection(canonicalName)

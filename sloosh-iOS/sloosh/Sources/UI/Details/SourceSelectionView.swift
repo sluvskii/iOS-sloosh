@@ -701,7 +701,10 @@ struct SingleSourceContentView: View {
             guard let s = selectedSeason, let e = selectedEpisode, let tName = selectedTranslationName else { return }
             guard let seasonObj = result.seasons.first(where: { $0.season == s }),
                   let epObj = seasonObj.episodes.first(where: { $0.episode == e }),
-                  let translation = epObj.translations.first(where: { allohaTranslationNamesMatch($0.name, tName, exactOnly: true) }) else { return }
+                  let translation = epObj.translations.first(where: { allohaTranslationNamesMatch($0.name, tName, exactOnly: true) })
+                      ?? epObj.translations.first(where: { allohaTranslationNamesMatch($0.name, tName, exactOnly: false) })
+                      ?? epObj.translations.first(where: { $0.name == tName })
+                      ?? epObj.translations.first else { return }
 
             if mode == .play {
                 PlaybackProgressStore.shared.saveLastPlayed(mediaKey: currentKey, season: s, episode: e)
@@ -716,7 +719,10 @@ struct SingleSourceContentView: View {
             onCommit(translation, s, e, quality, subs, customHeaders)
         } else if let movie = result.movie {
             guard let tName = selectedTranslationName,
-                  let translation = movie.translations.first(where: { $0.name == tName }) else { return }
+                  let translation = movie.translations.first(where: { $0.name == tName })
+                      ?? movie.translations.first(where: { allohaTranslationNamesMatch($0.name, tName, exactOnly: true) })
+                      ?? movie.translations.first(where: { allohaTranslationNamesMatch($0.name, tName, exactOnly: false) })
+                      ?? movie.translations.first else { return }
 
             if mode == .play {
                 PlaybackProgressStore.shared.saveLastPlayed(mediaKey: currentKey, season: nil, episode: nil)

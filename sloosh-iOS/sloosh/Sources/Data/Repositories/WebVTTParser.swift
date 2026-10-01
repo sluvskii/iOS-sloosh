@@ -130,23 +130,24 @@ public enum WebVTTParser {
 
         while low <= high {
             let mid = (low + high) / 2
-            if cues[mid].end >= time {
+            if cues[mid].start <= time {
                 candidateIdx = mid
-                high = mid - 1
-            } else {
                 low = mid + 1
+            } else {
+                high = mid - 1
             }
         }
 
         if candidateIdx >= 0 {
             var matchingTexts: [String] = []
-            for i in candidateIdx..<min(cues.count, candidateIdx + 6) {
+            let startIndex = max(0, candidateIdx - 8)
+            let endIndex = min(cues.count - 1, candidateIdx + 4)
+            for i in startIndex...endIndex {
                 let c = cues[i]
                 if c.start <= time && time <= c.end {
-                    matchingTexts.append(c.text)
-                }
-                if c.start > time + 5.0 {
-                    break
+                    if !matchingTexts.contains(c.text) {
+                        matchingTexts.append(c.text)
+                    }
                 }
             }
             if !matchingTexts.isEmpty {
