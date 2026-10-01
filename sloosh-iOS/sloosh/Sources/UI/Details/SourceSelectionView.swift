@@ -25,11 +25,6 @@ struct SourceSelectionView: View {
 
     @AppStorage("preferredStreamSource") private var preferredSource: MediaStreamSource = .source1
     @State private var selectedSource: MediaStreamSource
-    @State private var isScrolled: Bool = false
-
-    private var blurOpacity: Double {
-        isScrolled ? 1.0 : 0.0
-    }
 
     // Backward compatibility init
     init(
@@ -146,8 +141,6 @@ struct SourceSelectionView: View {
                         VariableBlurView(tintColor: .clear, tintOpacity: 0.0)
                             .padding(.bottom, -30)
                             .ignoresSafeArea(edges: .top)
-                            .opacity(blurOpacity)
-                            .animation(.easeInOut(duration: 0.2), value: blurOpacity)
                     )
             }
             .scrollContentBackground(.hidden)
@@ -272,11 +265,6 @@ struct SourceSelectionView: View {
         .contentMargins(.horizontal, 20, for: .scrollContent)
         .contentMargins(.top, 16, for: .scrollContent)
         .contentMargins(.bottom, 28, for: .scrollContent)
-        .onScrollGeometryChange(for: Bool.self) { geometry in
-            (geometry.contentOffset.y + geometry.contentInsets.top) > 8
-        } action: { _, hasScrolled in
-            isScrolled = hasScrolled
-        }
     }
 
     @ViewBuilder
@@ -312,8 +300,7 @@ struct SourceSelectionView: View {
                     details: details,
                     episodeSubtitles: [:],
                     movieSubtitles: [],
-                    customHeaders: [:],
-                    isScrolled: $isScrolled
+                    customHeaders: [:]
                 ) { translation, season, episode, quality, subs, headers in
                     onAction(translation, season, episode, quality, .source1, subs, headers)
                     dismiss()
@@ -331,8 +318,7 @@ struct SourceSelectionView: View {
                     details: details,
                     episodeSubtitles: source2Result?.episodeSubtitles ?? [:],
                     movieSubtitles: source2Result?.movieSubtitles ?? [],
-                    customHeaders: CollapsRepository.streamHeaders,
-                    isScrolled: $isScrolled
+                    customHeaders: CollapsRepository.streamHeaders
                 ) { translation, season, episode, quality, subs, headers in
                     onAction(translation, season, episode, quality, .source2, subs, headers)
                     dismiss()
@@ -391,7 +377,6 @@ struct SingleSourceContentView: View {
     let episodeSubtitles: [EpisodeKey: [PlaybackSubtitle]]
     let movieSubtitles: [PlaybackSubtitle]
     let customHeaders: [String: String]
-    @Binding var isScrolled: Bool
     let onCommit: (AllohaTranslation, Int?, Int?, VideoQualityPreference, [PlaybackSubtitle], [String: String]) -> Void
 
     @State private var selectedSeason: Int?
@@ -419,7 +404,6 @@ struct SingleSourceContentView: View {
         episodeSubtitles: [EpisodeKey: [PlaybackSubtitle]],
         movieSubtitles: [PlaybackSubtitle],
         customHeaders: [String: String],
-        isScrolled: Binding<Bool> = .constant(false),
         onCommit: @escaping (AllohaTranslation, Int?, Int?, VideoQualityPreference, [PlaybackSubtitle], [String: String]) -> Void
     ) {
         self.mode = mode
@@ -430,7 +414,6 @@ struct SingleSourceContentView: View {
         self.episodeSubtitles = episodeSubtitles
         self.movieSubtitles = movieSubtitles
         self.customHeaders = customHeaders
-        self._isScrolled = isScrolled
         self.onCommit = onCommit
 
         var transItems: [TranslationChipItem] = []
@@ -775,11 +758,6 @@ struct SingleSourceContentView: View {
         .contentMargins(.horizontal, 20, for: .scrollContent)
         .contentMargins(.top, 16, for: .scrollContent)
         .contentMargins(.bottom, 28, for: .scrollContent)
-        .onScrollGeometryChange(for: Bool.self) { geometry in
-            (geometry.contentOffset.y + geometry.contentInsets.top) > 8
-        } action: { _, hasScrolled in
-            isScrolled = hasScrolled
-        }
         .safeAreaInset(edge: .bottom) {
             bottomActionButton
         }
