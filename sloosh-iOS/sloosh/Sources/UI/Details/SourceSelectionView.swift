@@ -1,4 +1,5 @@
 import SwiftUI
+import Foundation
 
 enum SourceSelectionMode {
     case play
@@ -231,12 +232,11 @@ struct SourceSelectionView: View {
         .opacity(isLoading ? 0.45 : 1.0)
         .confirmationDialog("Источник видео", isPresented: $showSourcePicker, titleVisibility: .visible) {
             ForEach(MediaStreamSource.allCases) { source in
-                Button {
-                    selectSource(source)
-                } label: {
-                    Text(selectedSource == source ? "✓ \(source.title)" : source.title)
+                if isSourceAvailable(source) {
+                    Button(selectedSource == source ? "✓ \(source.title)" : source.title) {
+                        selectSource(source)
+                    }
                 }
-                .disabled(!isSourceAvailable(source))
             }
             Button("Отмена", role: .cancel) {}
         }
@@ -271,11 +271,7 @@ struct SourceSelectionView: View {
         .onScrollGeometryChange(for: Bool.self) { geometry in
             (geometry.contentOffset.y + geometry.contentInsets.top) > 8
         } action: { _, hasScrolled in
-            if isScrolled != hasScrolled {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    isScrolled = hasScrolled
-                }
-            }
+            isScrolled = hasScrolled
         }
     }
 
@@ -552,13 +548,12 @@ final class ParsedSingleSource {
     }
 }
 
+@MainActor
 final class SingleSourceDataCache {
     static let shared = SingleSourceDataCache()
     private init() {}
 
     private var cache: [String: ParsedSingleSource] = [:]
-    private var keysOrder: [String] = []
-    private let lock = NSLock()
 
     func data(
         for result: AllohaApiResult,
@@ -567,12 +562,9 @@ final class SingleSourceDataCache {
         details: MediaDetailsDto?
     ) -> ParsedSingleSource {
         let key = cacheKey(result: result, source: source, kpId: kpId, details: details)
-        lock.lock()
         if let existing = cache[key] {
-            lock.unlock()
             return existing
         }
-        lock.unlock()
 
         let parsed = ParsedSingleSource(
             result: result,
@@ -580,14 +572,7 @@ final class SingleSourceDataCache {
             kpId: kpId,
             details: details
         )
-        lock.lock()
         cache[key] = parsed
-        keysOrder.append(key)
-        if keysOrder.count > 40 {
-            let oldest = keysOrder.removeFirst()
-            cache.removeValue(forKey: oldest)
-        }
-        lock.unlock()
         return parsed
     }
 
@@ -879,11 +864,7 @@ struct SingleSourceContentView: View {
         .onScrollGeometryChange(for: Bool.self) { geometry in
             (geometry.contentOffset.y + geometry.contentInsets.top) > 8
         } action: { _, hasScrolled in
-            if isScrolled != hasScrolled {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    isScrolled = hasScrolled
-                }
-            }
+            isScrolled = hasScrolled
         }
         .safeAreaInset(edge: .bottom) {
             bottomActionButton
