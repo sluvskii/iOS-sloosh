@@ -24,11 +24,11 @@ struct SourceSelectionView: View {
 
     @AppStorage("preferredStreamSource") private var preferredSource: MediaStreamSource = .source1
     @State private var selectedSource: MediaStreamSource
-    @State private var scrollOffset: CGFloat = 0
+    @State private var isScrolled: Bool = false
+    @State private var showSourcePicker: Bool = false
 
     private var blurOpacity: Double {
-        let progress = max(0, scrollOffset) / 25.0
-        return min(1.0, Double(progress))
+        isScrolled ? 1.0 : 0.0
     }
 
     // Backward compatibility init
@@ -163,14 +163,19 @@ struct SourceSelectionView: View {
                 .allowsHitTesting(false)
 
             HStack {
-                TelegramGlassIconButton(
-                    systemName: "xmark",
-                    iconSize: 17,
-                    buttonSize: 44
-                ) {
+                Button {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     dismiss()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Circle())
                 }
+                .buttonStyle(.glassPress)
+                .glassEffect(.regular.interactive(), in: .circle)
+                .accessibilityLabel("Закрыть")
 
                 Spacer()
 
@@ -210,35 +215,31 @@ struct SourceSelectionView: View {
 
     @ViewBuilder
     private var sourceCornerButton: some View {
-        Menu {
-            Section("Источник") {
-                ForEach(MediaStreamSource.allCases) { source in
-                    Button {
-                        selectSource(source)
-                    } label: {
-                        if selectedSource == source {
-                            Label(source.title, systemImage: "checkmark")
-                        } else {
-                            Text(source.title)
-                        }
-                    }
-                    .disabled(isLoading ? false : !isSourceAvailable(source))
-                }
-            }
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            showSourcePicker = true
         } label: {
-            ZStack {
-                Circle()
-                    .fill(Color.clear)
-                    .frame(width: 44, height: 44)
-                    .glassEffect(.regular.interactive(), in: .circle)
-
-                Image(systemName: "server.rack")
-                    .font(.system(size: 17, weight: .medium))
-                    .foregroundStyle(.primary)
-            }
+            Image(systemName: "server.rack")
+                .font(.system(size: 20, weight: .semibold))
+                .foregroundStyle(.primary)
+                .frame(width: 44, height: 44)
+                .contentShape(Circle())
         }
+        .buttonStyle(.glassPress)
+        .glassEffect(.regular.interactive(), in: .circle)
         .disabled(isLoading)
         .opacity(isLoading ? 0.45 : 1.0)
+        .confirmationDialog("Источник видео", isPresented: $showSourcePicker, titleVisibility: .visible) {
+            ForEach(MediaStreamSource.allCases) { source in
+                Button {
+                    selectSource(source)
+                } label: {
+                    Text(selectedSource == source ? "✓ \(source.title)" : source.title)
+                }
+                .disabled(!isSourceAvailable(source))
+            }
+            Button("Отмена", role: .cancel) {}
+        }
     }
 
     @ViewBuilder
@@ -267,10 +268,14 @@ struct SourceSelectionView: View {
         .contentMargins(.horizontal, 20, for: .scrollContent)
         .contentMargins(.top, 16, for: .scrollContent)
         .contentMargins(.bottom, 28, for: .scrollContent)
-        .onScrollGeometryChange(for: CGFloat.self) { geometry in
-            geometry.contentOffset.y + geometry.contentInsets.top
-        } action: { _, newOffset in
-            scrollOffset = newOffset
+        .onScrollGeometryChange(for: Bool.self) { geometry in
+            (geometry.contentOffset.y + geometry.contentInsets.top) > 8
+        } action: { _, hasScrolled in
+            if isScrolled != hasScrolled {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    isScrolled = hasScrolled
+                }
+            }
         }
     }
 
@@ -308,7 +313,7 @@ struct SourceSelectionView: View {
                     episodeSubtitles: [:],
                     movieSubtitles: [],
                     customHeaders: [:],
-                    scrollOffset: $scrollOffset
+                    isScrolled: $isScrolled
                 ) { translation, season, episode, quality, subs, headers in
                     onAction(translation, season, episode, quality, .source1, subs, headers)
                     dismiss()
@@ -327,7 +332,7 @@ struct SourceSelectionView: View {
                     episodeSubtitles: source2Result?.episodeSubtitles ?? [:],
                     movieSubtitles: source2Result?.movieSubtitles ?? [],
                     customHeaders: CollapsRepository.streamHeaders,
-                    scrollOffset: $scrollOffset
+                    isScrolled: $isScrolled
                 ) { translation, season, episode, quality, subs, headers in
                     onAction(translation, season, episode, quality, .source2, subs, headers)
                     dismiss()
@@ -375,59 +380,25 @@ struct SourceSelectionView: View {
     }
 }
 
-// MARK: - Single Source Content View
+// MARK: - Memoized Single Source Data Cache
 
-struct SingleSourceContentView: View {
-    let mode: SourceSelectionMode
-    let source: MediaStreamSource
-    let result: AllohaApiResult
-    let kpId: Int?
-    let details: MediaDetailsDto?
-    let episodeSubtitles: [EpisodeKey: [PlaybackSubtitle]]
-    let movieSubtitles: [PlaybackSubtitle]
-    let customHeaders: [String: String]
-    @Binding var scrollOffset: CGFloat
-    let onCommit: (AllohaTranslation, Int?, Int?, VideoQualityPreference, [PlaybackSubtitle], [String: String]) -> Void
-
-    @State private var selectedSeason: Int?
-    @State private var selectedEpisode: Int?
-    @State private var selectedTranslationName: String?
-
-    @AppStorage("preferredVideoQuality") private var preferredQuality: VideoQualityPreference = .ask
-    @State private var showQualitySelection = false
-    @State private var mediaStats: MediaAnalyticsStats? = nil
-
-    // Precomputed immutable caches (calculated once on init)
+final class ParsedSingleSource {
     let allTranslations: [TranslationChipItem]
     let allSeasons: [Int]
     let seasonEpisodes: [Int: [Int]]
     let seasonTranslationsMap: [Int: Set<String>]
     let episodeTranslationsMap: [EpisodeKey: Set<String>]
     let movieTranslationNames: Set<String>
+    let initialSeason: Int?
+    let initialEpisode: Int?
+    let initialTranslationName: String?
 
     init(
-        mode: SourceSelectionMode,
-        source: MediaStreamSource,
         result: AllohaApiResult,
+        source: MediaStreamSource,
         kpId: Int?,
-        details: MediaDetailsDto?,
-        episodeSubtitles: [EpisodeKey: [PlaybackSubtitle]],
-        movieSubtitles: [PlaybackSubtitle],
-        customHeaders: [String: String],
-        scrollOffset: Binding<CGFloat> = .constant(0),
-        onCommit: @escaping (AllohaTranslation, Int?, Int?, VideoQualityPreference, [PlaybackSubtitle], [String: String]) -> Void
+        details: MediaDetailsDto?
     ) {
-        self.mode = mode
-        self.source = source
-        self.result = result
-        self.kpId = kpId
-        self.details = details
-        self.episodeSubtitles = episodeSubtitles
-        self.movieSubtitles = movieSubtitles
-        self.customHeaders = customHeaders
-        self._scrollOffset = scrollOffset
-        self.onCommit = onCommit
-
         var transItems: [TranslationChipItem] = []
         var seasonsList: [Int] = []
         var sEpisodes: [Int: [Int]] = [:]
@@ -457,8 +428,6 @@ struct SingleSourceContentView: View {
             }
             seasonsList = result.seasons.map { $0.season }.sorted()
 
-            // Precompute canonical Set<String> for each episode and season
-            // This turns every runtime check into a pure O(1) set lookup
             for season in result.seasons {
                 var seasonMatchedNames = Set<String>()
                 for ep in season.episodes {
@@ -499,9 +468,210 @@ struct SingleSourceContentView: View {
             details: details,
             sourceKey: source == .source2 ? "collaps" : "alloha"
         )
-        _selectedSeason = State(initialValue: initial.season)
-        _selectedEpisode = State(initialValue: initial.episode)
-        _selectedTranslationName = State(initialValue: initial.translationName)
+        self.initialSeason = initial.season
+        self.initialEpisode = initial.episode
+        self.initialTranslationName = initial.translationName
+    }
+
+    static func computeInitialSelection(
+        result: AllohaApiResult,
+        kpId: Int?,
+        details: MediaDetailsDto?,
+        sourceKey: String
+    ) -> (season: Int?, episode: Int?, translationName: String?) {
+        let validKp = (kpId ?? 0) > 0 ? (kpId ?? 0) : (details?.ids?.kp ?? details?.externalIds?.kp ?? 0)
+        let currentKey: String
+        if validKp > 0 {
+            currentKey = "kp_\(validKp)"
+        } else if let detailsId = details?.id, !detailsId.isEmpty {
+            currentKey = detailsId.hasPrefix("kp_") || detailsId.hasPrefix("tmdb_") ? detailsId : "tmdb_\(detailsId)"
+        } else if let tmdb = details?.externalIds?.tmdb ?? details?.ids?.tmdb, tmdb > 0 {
+            currentKey = "tmdb_\(tmdb)"
+        } else {
+            currentKey = "unknown"
+        }
+
+        var savedVoiceover = PlaybackProgressStore.shared.loadLastVoiceover(mediaKey: currentKey, source: sourceKey)
+        if savedVoiceover == nil, let kpId, kpId > 0 {
+            savedVoiceover = PlaybackProgressStore.shared.loadLastVoiceover(kpId: kpId, source: sourceKey)
+        }
+        if savedVoiceover == nil && sourceKey == "alloha",
+           let globalVoiceover = UserDefaults.standard.string(forKey: "alloha_last_translation_name"),
+           !isOriginalOrEnglishTranslation(globalVoiceover) {
+            savedVoiceover = globalVoiceover
+        }
+
+        if result.isSerial {
+            var initialSeason = result.seasons.first?.season
+            var initialEpisode: Int? = nil
+
+            if let lastSeason = PlaybackProgressStore.shared.loadLastSeason(mediaKey: currentKey) ?? (kpId.flatMap { $0 > 0 ? PlaybackProgressStore.shared.loadLastSeason(kpId: $0) : nil }),
+               result.seasons.contains(where: { $0.season == lastSeason }) {
+                initialSeason = lastSeason
+            }
+
+            if let lastEpisode = PlaybackProgressStore.shared.loadLastEpisode(mediaKey: currentKey) ?? (kpId.flatMap { $0 > 0 ? PlaybackProgressStore.shared.loadLastEpisode(kpId: $0) : nil }) {
+                initialEpisode = lastEpisode
+
+                let sNum = initialSeason ?? 1
+                let mediaId = "\(currentKey)_s\(sNum)_e\(lastEpisode)"
+                if PlaybackProgressStore.shared.loadWatched(mediaId: mediaId) {
+                    let allEpisodes = result.seasons
+                        .flatMap { s in s.episodes.map { (s.season, $0.episode) } }
+                        .sorted {
+                            if $0.0 != $1.0 { return $0.0 < $1.0 }
+                            return $0.1 < $1.1
+                        }
+
+                    if let currentIdx = allEpisodes.firstIndex(where: { $0.0 == initialSeason && $0.1 == lastEpisode }),
+                       currentIdx + 1 < allEpisodes.count {
+                        let nextEp = allEpisodes[currentIdx + 1]
+                        initialSeason = nextEp.0
+                        initialEpisode = nextEp.1
+                    }
+                }
+            }
+
+            if let seasonNum = initialSeason, let season = result.seasons.first(where: { $0.season == seasonNum }) {
+                let episodeToSelect = initialEpisode.flatMap { epNum in
+                    season.episodes.first(where: { $0.episode == epNum })
+                } ?? season.episodes.first
+
+                let epNum = episodeToSelect?.episode
+                let tName = episodeToSelect.flatMap { ep in
+                    bestTranslation(in: ep.translations, preferredName: savedVoiceover)?.name
+                }
+                return (seasonNum, epNum, tName)
+            }
+            return (initialSeason, initialEpisode, nil)
+        } else if let movie = result.movie {
+            let tName = bestTranslation(in: movie.translations, preferredName: savedVoiceover)?.name
+            return (nil, nil, tName)
+        }
+        return (nil, nil, nil)
+    }
+}
+
+final class SingleSourceDataCache {
+    static let shared = SingleSourceDataCache()
+    private init() {}
+
+    private var cache: [String: ParsedSingleSource] = [:]
+    private var keysOrder: [String] = []
+    private let lock = NSLock()
+
+    func data(
+        for result: AllohaApiResult,
+        source: MediaStreamSource,
+        kpId: Int?,
+        details: MediaDetailsDto?
+    ) -> ParsedSingleSource {
+        let key = cacheKey(result: result, source: source, kpId: kpId, details: details)
+        lock.lock()
+        if let existing = cache[key] {
+            lock.unlock()
+            return existing
+        }
+        lock.unlock()
+
+        let parsed = ParsedSingleSource(
+            result: result,
+            source: source,
+            kpId: kpId,
+            details: details
+        )
+        lock.lock()
+        cache[key] = parsed
+        keysOrder.append(key)
+        if keysOrder.count > 40 {
+            let oldest = keysOrder.removeFirst()
+            cache.removeValue(forKey: oldest)
+        }
+        lock.unlock()
+        return parsed
+    }
+
+    private func cacheKey(
+        result: AllohaApiResult,
+        source: MediaStreamSource,
+        kpId: Int?,
+        details: MediaDetailsDto?
+    ) -> String {
+        let sid = source.rawValue
+        let idVal = result.id
+        let kpVal = kpId ?? 0
+        let detId = details?.id ?? ""
+        let seasonsCount = result.seasons.count
+        let movieTransCount = result.movie?.translations.count ?? 0
+        return "\(sid)_\(idVal)_\(kpVal)_\(detId)_\(seasonsCount)_\(movieTransCount)"
+    }
+}
+
+// MARK: - Single Source Content View
+
+struct SingleSourceContentView: View {
+    let mode: SourceSelectionMode
+    let source: MediaStreamSource
+    let result: AllohaApiResult
+    let kpId: Int?
+    let details: MediaDetailsDto?
+    let episodeSubtitles: [EpisodeKey: [PlaybackSubtitle]]
+    let movieSubtitles: [PlaybackSubtitle]
+    let customHeaders: [String: String]
+    @Binding var isScrolled: Bool
+    let onCommit: (AllohaTranslation, Int?, Int?, VideoQualityPreference, [PlaybackSubtitle], [String: String]) -> Void
+
+    @State private var selectedSeason: Int?
+    @State private var selectedEpisode: Int?
+    @State private var selectedTranslationName: String?
+
+    @AppStorage("preferredVideoQuality") private var preferredQuality: VideoQualityPreference = .ask
+    @State private var showQualitySelection = false
+    @State private var mediaStats: MediaAnalyticsStats? = nil
+
+    let parsedData: ParsedSingleSource
+
+    var allTranslations: [TranslationChipItem] { parsedData.allTranslations }
+    var allSeasons: [Int] { parsedData.allSeasons }
+    var seasonEpisodes: [Int: [Int]] { parsedData.seasonEpisodes }
+    var seasonTranslationsMap: [Int: Set<String>] { parsedData.seasonTranslationsMap }
+    var episodeTranslationsMap: [EpisodeKey: Set<String>] { parsedData.episodeTranslationsMap }
+    var movieTranslationNames: Set<String> { parsedData.movieTranslationNames }
+
+    init(
+        mode: SourceSelectionMode,
+        source: MediaStreamSource,
+        result: AllohaApiResult,
+        kpId: Int?,
+        details: MediaDetailsDto?,
+        episodeSubtitles: [EpisodeKey: [PlaybackSubtitle]],
+        movieSubtitles: [PlaybackSubtitle],
+        customHeaders: [String: String],
+        isScrolled: Binding<Bool> = .constant(false),
+        onCommit: @escaping (AllohaTranslation, Int?, Int?, VideoQualityPreference, [PlaybackSubtitle], [String: String]) -> Void
+    ) {
+        self.mode = mode
+        self.source = source
+        self.result = result
+        self.kpId = kpId
+        self.details = details
+        self.episodeSubtitles = episodeSubtitles
+        self.movieSubtitles = movieSubtitles
+        self.customHeaders = customHeaders
+        self._isScrolled = isScrolled
+        self.onCommit = onCommit
+
+        let parsed = SingleSourceDataCache.shared.data(
+            for: result,
+            source: source,
+            kpId: kpId,
+            details: details
+        )
+        self.parsedData = parsed
+
+        _selectedSeason = State(initialValue: parsed.initialSeason)
+        _selectedEpisode = State(initialValue: parsed.initialEpisode)
+        _selectedTranslationName = State(initialValue: parsed.initialTranslationName)
         _showQualitySelection = State(initialValue: false)
     }
 
@@ -625,76 +795,12 @@ struct SingleSourceContentView: View {
         details: MediaDetailsDto?,
         sourceKey: String
     ) -> (season: Int?, episode: Int?, translationName: String?) {
-        let validKp = (kpId ?? 0) > 0 ? (kpId ?? 0) : (details?.ids?.kp ?? details?.externalIds?.kp ?? 0)
-        let currentKey: String
-        if validKp > 0 {
-            currentKey = "kp_\(validKp)"
-        } else if let detailsId = details?.id, !detailsId.isEmpty {
-            currentKey = detailsId.hasPrefix("kp_") || detailsId.hasPrefix("tmdb_") ? detailsId : "tmdb_\(detailsId)"
-        } else if let tmdb = details?.externalIds?.tmdb ?? details?.ids?.tmdb, tmdb > 0 {
-            currentKey = "tmdb_\(tmdb)"
-        } else {
-            currentKey = "unknown"
-        }
-
-        var savedVoiceover = PlaybackProgressStore.shared.loadLastVoiceover(mediaKey: currentKey, source: sourceKey)
-        if savedVoiceover == nil, let kpId, kpId > 0 {
-            savedVoiceover = PlaybackProgressStore.shared.loadLastVoiceover(kpId: kpId, source: sourceKey)
-        }
-        if savedVoiceover == nil && sourceKey == "alloha",
-           let globalVoiceover = UserDefaults.standard.string(forKey: "alloha_last_translation_name"),
-           !isOriginalOrEnglishTranslation(globalVoiceover) {
-            savedVoiceover = globalVoiceover
-        }
-
-        if result.isSerial {
-            var initialSeason = result.seasons.first?.season
-            var initialEpisode: Int? = nil
-
-            if let lastSeason = PlaybackProgressStore.shared.loadLastSeason(mediaKey: currentKey) ?? (kpId.flatMap { $0 > 0 ? PlaybackProgressStore.shared.loadLastSeason(kpId: $0) : nil }),
-               result.seasons.contains(where: { $0.season == lastSeason }) {
-                initialSeason = lastSeason
-            }
-
-            if let lastEpisode = PlaybackProgressStore.shared.loadLastEpisode(mediaKey: currentKey) ?? (kpId.flatMap { $0 > 0 ? PlaybackProgressStore.shared.loadLastEpisode(kpId: $0) : nil }) {
-                initialEpisode = lastEpisode
-
-                let sNum = initialSeason ?? 1
-                let mediaId = "\(currentKey)_s\(sNum)_e\(lastEpisode)"
-                if PlaybackProgressStore.shared.loadWatched(mediaId: mediaId) {
-                    let allEpisodes = result.seasons
-                        .flatMap { s in s.episodes.map { (s.season, $0.episode) } }
-                        .sorted {
-                            if $0.0 != $1.0 { return $0.0 < $1.0 }
-                            return $0.1 < $1.1
-                        }
-
-                    if let currentIdx = allEpisodes.firstIndex(where: { $0.0 == initialSeason && $0.1 == lastEpisode }),
-                       currentIdx + 1 < allEpisodes.count {
-                        let nextEp = allEpisodes[currentIdx + 1]
-                        initialSeason = nextEp.0
-                        initialEpisode = nextEp.1
-                    }
-                }
-            }
-
-            if let seasonNum = initialSeason, let season = result.seasons.first(where: { $0.season == seasonNum }) {
-                let episodeToSelect = initialEpisode.flatMap { epNum in
-                    season.episodes.first(where: { $0.episode == epNum })
-                } ?? season.episodes.first
-
-                let epNum = episodeToSelect?.episode
-                let tName = episodeToSelect.flatMap { ep in
-                    bestTranslation(in: ep.translations, preferredName: savedVoiceover)?.name
-                }
-                return (seasonNum, epNum, tName)
-            }
-            return (initialSeason, initialEpisode, nil)
-        } else if let movie = result.movie {
-            let tName = bestTranslation(in: movie.translations, preferredName: savedVoiceover)?.name
-            return (nil, nil, tName)
-        }
-        return (nil, nil, nil)
+        ParsedSingleSource.computeInitialSelection(
+            result: result,
+            kpId: kpId,
+            details: details,
+            sourceKey: sourceKey
+        )
     }
 
     func actionSelected() {
@@ -770,10 +876,14 @@ struct SingleSourceContentView: View {
         .contentMargins(.horizontal, 20, for: .scrollContent)
         .contentMargins(.top, 16, for: .scrollContent)
         .contentMargins(.bottom, 28, for: .scrollContent)
-        .onScrollGeometryChange(for: CGFloat.self) { geometry in
-            geometry.contentOffset.y + geometry.contentInsets.top
-        } action: { _, newOffset in
-            scrollOffset = newOffset
+        .onScrollGeometryChange(for: Bool.self) { geometry in
+            (geometry.contentOffset.y + geometry.contentInsets.top) > 8
+        } action: { _, hasScrolled in
+            if isScrolled != hasScrolled {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    isScrolled = hasScrolled
+                }
+            }
         }
         .safeAreaInset(edge: .bottom) {
             bottomActionButton
