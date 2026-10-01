@@ -198,6 +198,8 @@ struct DownloadsView: View {
                 mediaKey: item.kpId > 0 ? "kp_\(item.kpId)" : item.id,
                 posterUrl: item.posterUrl
             )
+            .preferredColorScheme(.dark)
+            .environment(\.colorScheme, .dark)
         }
     }
     

@@ -163,6 +163,8 @@ struct StudioCatalogView: View {
         }
         .fullScreenCover(item: $viewModel.playerConfig) { config in
             PlayerView(config: config)
+                .preferredColorScheme(.dark)
+                .environment(\.colorScheme, .dark)
         }
     }
 }

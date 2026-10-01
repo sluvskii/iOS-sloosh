@@ -126,6 +126,8 @@ struct SearchView: View {
                 viewModel.playerConfig = nil
             }) { config in
                 PlayerView(config: config)
+                    .preferredColorScheme(.dark)
+                    .environment(\.colorScheme, .dark)
             }
         }
     }

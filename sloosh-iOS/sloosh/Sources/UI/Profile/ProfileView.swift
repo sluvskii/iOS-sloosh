@@ -230,6 +230,8 @@ struct ProfileView: View {
                 playerConfig = nil
             }) { config in
                 PlayerView(config: config)
+                    .preferredColorScheme(.dark)
+                    .environment(\.colorScheme, .dark)
             }
             .onAppear {
                 Task {

@@ -15,6 +15,7 @@ struct PlayerPresenter: UIViewControllerRepresentable {
             context.coordinator.dismissPlayer()
         })
         let hc = PlayerHostingController(rootView: container)
+        hc.overrideUserInterfaceStyle = .dark
         hc.onDismissed = {
             context.coordinator.didDismiss()
         }
@@ -23,7 +24,7 @@ struct PlayerPresenter: UIViewControllerRepresentable {
     }
 
     func updateUIViewController(_ uiViewController: PlayerHostingController<PlayerContainerView>, context: Context) {
-        // vm обновляется через @ObservedObject, перерисовка SwiftUI-view автоматическая
+        uiViewController.overrideUserInterfaceStyle = .dark
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(vm: vm, onDismiss: onDismiss) }
@@ -167,6 +168,8 @@ struct PlayerView: View {
             dismissEnv()
         }
         .ignoresSafeArea()
+        .preferredColorScheme(.dark)
+        .environment(\.colorScheme, .dark)
         .onDisappear {
             viewModel.cleanup()
         }

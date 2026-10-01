@@ -212,6 +212,8 @@ public struct ChannelDetailView: View {
             activePlayerConfig = nil
         }) { config in
             PlayerView(config: config)
+                .preferredColorScheme(.dark)
+                .environment(\.colorScheme, .dark)
         }
         .confirmationDialog(
             "Удалить пост?",

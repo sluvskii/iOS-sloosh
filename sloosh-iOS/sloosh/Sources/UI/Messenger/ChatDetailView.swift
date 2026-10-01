@@ -69,6 +69,8 @@ public struct ChatDetailView: View {
             activePlayerConfig = nil
         }) { config in
             PlayerView(config: config)
+                .preferredColorScheme(.dark)
+                .environment(\.colorScheme, .dark)
         }
         .task {
             let chatId = repo.getOrCreateChatId(peerUserId: peerUser.id)
