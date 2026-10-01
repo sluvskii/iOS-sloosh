@@ -274,11 +274,7 @@ final class CollapsParser {
 
         // Extract audio names for movie if present (e.g. audio: {"names": ["Дублированный", ...], "order": [...]})
         var voices: [String] = []
-        if let audioPattern = try? NSRegularExpression(pattern: #"(?i)\baudio\s*:\s*(\{[^\r\n]+\})"#, options: []),
-           let match = audioPattern.firstMatch(in: html, options: [], range: NSRange(html.startIndex..., in: html)),
-           let range = Range(match.range(at: 1), in: html),
-           let data = String(html[range]).data(using: .utf8),
-           let audioObj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] {
+        if let audioObj = extractJsonObject(from: html, key: "audio") {
             voices = extractOrderedVoices(from: audioObj)
         }
         if voices.isEmpty {
@@ -288,11 +284,7 @@ final class CollapsParser {
         // Extract subtitles for movie if present (e.g. cc: [{url: "...", name: "..."}])
         var collapsSubs: [CollapsSubtitle] = []
         var playbackSubs: [PlaybackSubtitle] = []
-        if let ccPattern = try? NSRegularExpression(pattern: #"(?i)\bcc\s*:\s*(\[[^\r\n]+\])"#, options: []),
-           let match = ccPattern.firstMatch(in: html, options: [], range: NSRange(html.startIndex..., in: html)),
-           let range = Range(match.range(at: 1), in: html),
-           let data = String(html[range]).data(using: .utf8),
-           let ccArray = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
+        if let ccArray = extractJsonArray(from: html, key: "cc") {
             for subObj in ccArray {
                 var url = (subObj["url"] as? String ?? subObj["src"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !url.isEmpty else { continue }
@@ -457,6 +449,61 @@ final class CollapsParser {
                 }
             }
             index = payload.index(after: index)
+        }
+        return nil
+    }
+
+    private static func extractJsonObject(from html: String, key: String) -> [String: Any]? {
+        guard let pattern = try? NSRegularExpression(pattern: #"(?i)\b\#(key)\s*:\s*\{"#, options: []),
+              let match = pattern.firstMatch(in: html, options: [], range: NSRange(html.startIndex..., in: html)) else {
+            return nil
+        }
+        let startNSRange = NSRange(location: match.range.location + match.range.length - 1, length: 1)
+        guard let startIndex = Range(startNSRange, in: html)?.lowerBound,
+              let endIndex = balancedObjectEnd(from: startIndex, in: html) else { return nil }
+        let jsonStr = String(html[startIndex...endIndex])
+        guard let data = jsonStr.data(using: .utf8),
+              let obj = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return nil }
+        return obj
+    }
+
+    private static func extractJsonArray(from html: String, key: String) -> [[String: Any]]? {
+        guard let pattern = try? NSRegularExpression(pattern: #"(?i)\b\#(key)\s*:\s*\["#, options: []),
+              let match = pattern.firstMatch(in: html, options: [], range: NSRange(html.startIndex..., in: html)) else {
+            return nil
+        }
+        let startNSRange = NSRange(location: match.range.location + match.range.length - 1, length: 1)
+        guard let startIndex = Range(startNSRange, in: html)?.lowerBound else { return nil }
+
+        var depth = 0
+        var isQuoted = false
+        var isEscaped = false
+        var index = startIndex
+
+        while index < html.endIndex {
+            let character = html[index]
+            if isEscaped {
+                isEscaped = false
+            } else if character == "\\" {
+                isEscaped = true
+            } else if character == "\"" || character == "'" {
+                isQuoted.toggle()
+            } else if !isQuoted {
+                if character == "[" {
+                    depth += 1
+                } else if character == "]" {
+                    depth -= 1
+                    if depth == 0 {
+                        let jsonStr = String(html[startIndex...index])
+                        if let data = jsonStr.data(using: .utf8),
+                           let arr = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] {
+                            return arr
+                        }
+                        return nil
+                    }
+                }
+            }
+            index = html.index(after: index)
         }
         return nil
     }
