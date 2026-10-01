@@ -12,6 +12,15 @@ struct TranslationChipItem: Identifiable, Hashable {
     let displayName: String
 }
 
+struct PendingPlaybackCommit {
+    let translation: AllohaTranslation
+    let season: Int?
+    let episode: Int?
+    let subtitles: [PlaybackSubtitle]
+    let customHeaders: [String: String]
+    let source: MediaStreamSource
+}
+
 struct SourceSelectionView: View {
     let mode: SourceSelectionMode
     let isLoading: Bool
@@ -25,6 +34,20 @@ struct SourceSelectionView: View {
 
     @AppStorage("preferredStreamSource") private var preferredSource: MediaStreamSource = .source1
     @State private var selectedSource: MediaStreamSource
+
+    @AppStorage("preferredVideoQuality") private var preferredQuality: VideoQualityPreference = .ask
+    @State private var isSelectingQuality: Bool = false
+    @State private var selectedQuality: VideoQualityPreference = .auto
+    @State private var rememberQualityChoice: Bool = false
+    @State private var pendingCommit: PendingPlaybackCommit? = nil
+
+    private let availableQualities: [VideoQualityPreference] = [
+        .auto,
+        .q1080,
+        .q720,
+        .q480,
+        .q360
+    ]
 
     // Backward compatibility init
     init(
@@ -46,6 +69,11 @@ struct SourceSelectionView: View {
             onAction(translation, season, episode, quality)
         }
         _selectedSource = State(initialValue: .source1)
+
+        let savedQualityRaw = UserDefaults.standard.string(forKey: "preferredVideoQuality") ?? ""
+        let savedQuality = VideoQualityPreference(rawValue: savedQualityRaw) ?? .auto
+        let initialQuality = (savedQuality == .ask) ? .auto : savedQuality
+        _selectedQuality = State(initialValue: initialQuality)
     }
 
     init(
@@ -70,6 +98,11 @@ struct SourceSelectionView: View {
         let saved = UserDefaults.standard.string(forKey: "preferredStreamSource")
         let preferred = MediaStreamSource(rawValue: saved ?? "") ?? .source1
         _selectedSource = State(initialValue: preferred)
+
+        let savedQualityRaw = UserDefaults.standard.string(forKey: "preferredVideoQuality") ?? ""
+        let savedQuality = VideoQualityPreference(rawValue: savedQualityRaw) ?? .auto
+        let initialQuality = (savedQuality == .ask) ? .auto : savedQuality
+        _selectedQuality = State(initialValue: initialQuality)
     }
 
     private func selectSource(_ source: MediaStreamSource) {
@@ -118,19 +151,17 @@ struct SourceSelectionView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                if isLoading {
-                    skeletonContentView
-                        .transition(.opacity)
-                } else if !hasAnySource {
-                    emptyContentView
-                        .transition(.opacity)
-                } else {
-                    currentSourceContentView
-                        .transition(.opacity)
-                }
+                sourcesContentView
+                    .opacity(isSelectingQuality ? 0 : 1)
+                    .offset(x: isSelectingQuality ? -50 : 0)
+                    .allowsHitTesting(!isSelectingQuality)
+
+                qualitySelectionContentView
+                    .opacity(isSelectingQuality ? 1 : 0)
+                    .offset(x: isSelectingQuality ? 0 : 50)
+                    .allowsHitTesting(isSelectingQuality)
             }
-            .animation(.easeInOut(duration: 0.25), value: isLoading)
-            .animation(.easeInOut(duration: 0.25), value: selectedSource)
+            .animation(.spring(response: 0.35, dampingFraction: 0.82), value: isSelectingQuality)
             .toolbar(.hidden, for: .navigationBar)
             .safeAreaInset(edge: .top, spacing: 0) {
                 headerBar
@@ -153,27 +184,50 @@ struct SourceSelectionView: View {
 
     private var headerBar: some View {
         ZStack {
-            headerTitleOrLogoView
-                .allowsHitTesting(false)
+            if isSelectingQuality {
+                Text("Качество видео")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(1)
+                    .frame(maxWidth: 220)
+                    .transition(.opacity)
+            } else {
+                headerTitleOrLogoView
+                    .allowsHitTesting(false)
+                    .transition(.opacity)
+            }
 
             HStack {
                 Button {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    dismiss()
+                    if isSelectingQuality {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                            isSelectingQuality = false
+                        }
+                    } else {
+                        dismiss()
+                    }
                 } label: {
-                    Image(systemName: "xmark")
+                    Image(systemName: isSelectingQuality ? "chevron.left" : "xmark")
                         .font(.system(size: 20, weight: .semibold))
                         .foregroundStyle(.primary)
                         .frame(width: 44, height: 44)
                         .contentShape(Circle())
+                        .contentTransition(.symbolEffect(.replace))
                 }
                 .buttonStyle(.glassPress)
                 .glassEffect(.regular.interactive(), in: .circle)
-                .accessibilityLabel("Закрыть")
+                .accessibilityLabel(isSelectingQuality ? "Назад" : "Закрыть")
 
                 Spacer()
 
-                sourceCornerButton
+                if isSelectingQuality {
+                    Color.clear
+                        .frame(width: 44, height: 44)
+                } else {
+                    sourceCornerButton
+                        .transition(.opacity)
+                }
             }
         }
     }
@@ -289,6 +343,24 @@ struct SourceSelectionView: View {
     }
 
     @ViewBuilder
+    private var sourcesContentView: some View {
+        ZStack {
+            if isLoading {
+                skeletonContentView
+                    .transition(.opacity)
+            } else if !hasAnySource {
+                emptyContentView
+                    .transition(.opacity)
+            } else {
+                currentSourceContentView
+                    .transition(.opacity)
+            }
+        }
+        .animation(.easeInOut(duration: 0.25), value: isLoading)
+        .animation(.easeInOut(duration: 0.25), value: selectedSource)
+    }
+
+    @ViewBuilder
     private var currentSourceContentView: some View {
         if selectedSource == .source1 {
             if let res1 = source1Result, (!res1.seasons.isEmpty || res1.movie != nil) {
@@ -301,9 +373,15 @@ struct SourceSelectionView: View {
                     episodeSubtitles: [:],
                     movieSubtitles: [],
                     customHeaders: [:]
-                ) { translation, season, episode, quality, subs, headers in
-                    onAction(translation, season, episode, quality, .source1, subs, headers)
-                    dismiss()
+                ) { translation, season, episode, subs, headers in
+                    handleCommit(
+                        translation: translation,
+                        season: season,
+                        episode: episode,
+                        subs: subs,
+                        headers: headers,
+                        source: .source1
+                    )
                 }
             } else {
                 sourceUnavailableView(for: .source1)
@@ -319,14 +397,171 @@ struct SourceSelectionView: View {
                     episodeSubtitles: source2Result?.episodeSubtitles ?? [:],
                     movieSubtitles: source2Result?.movieSubtitles ?? [],
                     customHeaders: CollapsRepository.streamHeaders
-                ) { translation, season, episode, quality, subs, headers in
-                    onAction(translation, season, episode, quality, .source2, subs, headers)
-                    dismiss()
+                ) { translation, season, episode, subs, headers in
+                    handleCommit(
+                        translation: translation,
+                        season: season,
+                        episode: episode,
+                        subs: subs,
+                        headers: headers,
+                        source: .source2
+                    )
                 }
             } else {
                 sourceUnavailableView(for: .source2)
             }
         }
+    }
+
+    private func handleCommit(
+        translation: AllohaTranslation,
+        season: Int?,
+        episode: Int?,
+        subs: [PlaybackSubtitle],
+        headers: [String: String],
+        source: MediaStreamSource
+    ) {
+        if preferredQuality == .ask {
+            pendingCommit = PendingPlaybackCommit(
+                translation: translation,
+                season: season,
+                episode: episode,
+                subtitles: subs,
+                customHeaders: headers,
+                source: source
+            )
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                isSelectingQuality = true
+            }
+        } else {
+            onAction(translation, season, episode, preferredQuality, source, subs, headers)
+            dismiss()
+        }
+    }
+
+    @ViewBuilder
+    private var qualitySelectionContentView: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                qualitySection
+
+                rememberChoiceSection
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .scrollContentBackground(.hidden)
+        .contentMargins(.horizontal, 20, for: .scrollContent)
+        .contentMargins(.top, 16, for: .scrollContent)
+        .contentMargins(.bottom, 28, for: .scrollContent)
+        .safeAreaInset(edge: .bottom) {
+            qualityBottomActionButton
+        }
+    }
+
+    private var qualitySection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Качество")
+                .font(.system(size: 20, weight: .bold))
+                .foregroundColor(.primary)
+
+            FlowLayout(spacing: 8) {
+                ForEach(availableQualities) { quality in
+                    WatchSelectorChip(
+                        title: quality.title,
+                        isSelected: selectedQuality == quality,
+                        isAvailable: true,
+                        badge: qualityBadge(for: quality)
+                    ) {
+                        selectedQuality = quality
+                    }
+                    .equatable()
+                }
+            }
+        }
+    }
+
+    private func qualityBadge(for quality: VideoQualityPreference) -> String? {
+        switch quality {
+        case .auto:
+            return "Реком."
+        case .q1080:
+            return "HD"
+        default:
+            return nil
+        }
+    }
+
+    private var rememberChoiceSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Toggle(isOn: $rememberQualityChoice) {
+                HStack(spacing: 10) {
+                    Image(systemName: "checkmark.circle.fill")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(Color.slooshAccent)
+                    Text("Запомнить выбор")
+                        .font(.system(size: 16, weight: .semibold))
+                        .foregroundStyle(.primary)
+                }
+            }
+            .tint(Color.slooshAccent)
+
+            Text("Вы всегда можете изменить качество по умолчанию в настройках.")
+                .font(.system(size: 13, weight: .regular))
+                .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 14)
+        .background(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .fill(Color(UIColor.secondarySystemFill).opacity(0.45))
+        )
+        .glassEffect(.regular, in: .rect(cornerRadius: 18))
+    }
+
+    private var qualityBottomActionButton: some View {
+        Button(action: {
+            confirmQualityAndCommit()
+        }) {
+            HStack(spacing: 8) {
+                Image(systemName: mode == .play ? "play.fill" : "arrow.down.circle.fill")
+                    .font(.system(size: 18, weight: .black))
+                Text(mode == .play ? "Смотреть" : "Скачать")
+                    .font(.system(size: 19, weight: .heavy))
+            }
+            .foregroundStyle(Color.black)
+            .padding(.horizontal, 26)
+            .frame(height: 50)
+            .background(
+                Capsule()
+                    .fill(Color.white.opacity(0.94))
+            )
+            .glassEffect(.regular.interactive(), in: .capsule)
+            .shadow(color: Color.black.opacity(0.22), radius: 10, x: 0, y: 4)
+        }
+        .buttonStyle(.glassPress)
+        .padding(.bottom, 8)
+    }
+
+    private func confirmQualityAndCommit() {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        if rememberQualityChoice {
+            preferredQuality = selectedQuality
+            UserDefaults.standard.set(selectedQuality.rawValue, forKey: "preferredVideoQuality")
+        }
+        guard let pending = pendingCommit else {
+            dismiss()
+            return
+        }
+        onAction(
+            pending.translation,
+            pending.season,
+            pending.episode,
+            selectedQuality,
+            pending.source,
+            pending.subtitles,
+            pending.customHeaders
+        )
+        dismiss()
     }
 
     @ViewBuilder
@@ -377,14 +612,11 @@ struct SingleSourceContentView: View {
     let episodeSubtitles: [EpisodeKey: [PlaybackSubtitle]]
     let movieSubtitles: [PlaybackSubtitle]
     let customHeaders: [String: String]
-    let onCommit: (AllohaTranslation, Int?, Int?, VideoQualityPreference, [PlaybackSubtitle], [String: String]) -> Void
+    let onCommit: (AllohaTranslation, Int?, Int?, [PlaybackSubtitle], [String: String]) -> Void
 
     @State private var selectedSeason: Int?
     @State private var selectedEpisode: Int?
     @State private var selectedTranslationName: String?
-
-    @AppStorage("preferredVideoQuality") private var preferredQuality: VideoQualityPreference = .ask
-    @State private var showQualitySelection = false
     @State private var mediaStats: MediaAnalyticsStats? = nil
 
     // Precomputed immutable caches (calculated once on init)
@@ -404,7 +636,7 @@ struct SingleSourceContentView: View {
         episodeSubtitles: [EpisodeKey: [PlaybackSubtitle]],
         movieSubtitles: [PlaybackSubtitle],
         customHeaders: [String: String],
-        onCommit: @escaping (AllohaTranslation, Int?, Int?, VideoQualityPreference, [PlaybackSubtitle], [String: String]) -> Void
+        onCommit: @escaping (AllohaTranslation, Int?, Int?, [PlaybackSubtitle], [String: String]) -> Void
     ) {
         self.mode = mode
         self.source = source
@@ -490,7 +722,6 @@ struct SingleSourceContentView: View {
         _selectedSeason = State(initialValue: initial.season)
         _selectedEpisode = State(initialValue: initial.episode)
         _selectedTranslationName = State(initialValue: initial.translationName)
-        _showQualitySelection = State(initialValue: false)
     }
 
     var allEpisodes: [Int] {
@@ -686,14 +917,10 @@ struct SingleSourceContentView: View {
     }
 
     func actionSelected() {
-        if preferredQuality == .ask {
-            showQualitySelection = true
-        } else {
-            finishAction(quality: preferredQuality)
-        }
+        finishAction()
     }
 
-    func finishAction(quality: VideoQualityPreference) {
+    func finishAction() {
         let currentKey = mediaKey
         let sourceKey = source == .source2 ? "collaps" : "alloha"
 
@@ -716,7 +943,7 @@ struct SingleSourceContentView: View {
             }
 
             let subs = episodeSubtitles[EpisodeKey(season: s, episode: e)] ?? []
-            onCommit(translation, s, e, quality, subs, customHeaders)
+            onCommit(translation, s, e, subs, customHeaders)
         } else if let movie = result.movie {
             guard let tName = selectedTranslationName,
                   let translation = movie.translations.first(where: { $0.name == tName })
@@ -734,7 +961,7 @@ struct SingleSourceContentView: View {
             }
 
             let subs = movieSubtitles
-            onCommit(translation, nil, nil, quality, subs, customHeaders)
+            onCommit(translation, nil, nil, subs, customHeaders)
         }
     }
 
@@ -766,12 +993,6 @@ struct SingleSourceContentView: View {
         .contentMargins(.bottom, 28, for: .scrollContent)
         .safeAreaInset(edge: .bottom) {
             bottomActionButton
-        }
-        .sheet(isPresented: $showQualitySelection) {
-            QualitySelectionSheet { selectedQuality in
-                showQualitySelection = false
-                finishAction(quality: selectedQuality)
-            }
         }
         .task {
             let key = mediaKey
