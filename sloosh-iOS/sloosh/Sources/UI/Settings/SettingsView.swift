@@ -10,6 +10,7 @@ struct SettingsView: View {
     @AppStorage("posterQuality") private var posterQuality: PosterQuality = .high
     @AppStorage("appTheme") private var appTheme: AppTheme = .system
     @AppStorage("showOriginalTitle") private var showOriginalTitle = true
+    @AppStorage("autoAdvanceBackdrops") private var autoAdvanceBackdrops = false
     @ObservedObject private var iconManager = AppIconManager.shared
     @ObservedObject private var cacheManager = CacheManager.shared
     @State private var tabBarShowsLabelsDraft = false
@@ -144,6 +145,19 @@ struct SettingsView: View {
                             .frame(width: 24)
                         
                         Text("Оригинальное название")
+                            .font(.body)
+                    }
+                }
+
+                // Автоперелистывание постеров
+                Toggle(isOn: $autoAdvanceBackdrops) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "photo.stack")
+                            .foregroundStyle(Color.slooshAccent)
+                            .font(.system(size: 18))
+                            .frame(width: 24)
+                        
+                        Text("Автоперелистывание постеров")
                             .font(.body)
                     }
                 }

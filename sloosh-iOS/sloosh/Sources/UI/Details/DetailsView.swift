@@ -484,6 +484,7 @@ struct BackdropPageIndicator: View {
     let count: Int
     @Binding var selectedIndex: Int
     let progress: CGFloat
+    var isAutoAdvance: Bool = false
     
     private let activeWidth: CGFloat = 18
     private let inactiveWidth: CGFloat = 5
@@ -501,9 +502,14 @@ struct BackdropPageIndicator: View {
                             .fill(Color.white.opacity(0.32))
                         
                         if isSelected {
-                            Rectangle()
-                                .fill(Color.white)
-                                .frame(width: activeWidth * max(0.0, min(1.0, progress)))
+                            if isAutoAdvance {
+                                Rectangle()
+                                    .fill(Color.white)
+                                    .frame(width: activeWidth * max(0.0, min(1.0, progress)))
+                            } else {
+                                Capsule()
+                                    .fill(Color.white)
+                            }
                         }
                     }
                     .frame(width: currentWidth, height: pillHeight)
@@ -636,9 +642,14 @@ struct DetailsView: View {
     @State private var pendingDirectPlayerConfig: PlayerConfig? = nil
     @State private var directPlaybackTitle: String? = nil
     @State private var selectedTrailer: TrailerVideoDto? = nil
-    
+    @AppStorage("autoAdvanceBackdrops") private var autoAdvanceBackdrops = false
+
     private var isAnyModalPresented: Bool {
         showSourceSheet || showPlayer || showShareToFriendSheet || selectedTrailer != nil || directPlaybackMovie != nil
+    }
+
+    private var isBackdropPaused: Bool {
+        isAnyModalPresented || !autoAdvanceBackdrops
     }
 
     @Environment(\.verticalSizeClass) private var verticalSizeClass
@@ -1522,7 +1533,7 @@ struct DetailsView: View {
                             selectedIndex: $selectedBackdropIndex,
                             timerProgress: $backdropTimerProgress,
                             isHeaderVisible: isHeaderVisible,
-                            isPaused: isAnyModalPresented
+                            isPaused: isBackdropPaused
                         )
                         .offset(y: offset)
                     }
@@ -1537,7 +1548,8 @@ struct DetailsView: View {
                         BackdropPageIndicator(
                             count: details.displayBackdropUrls.count,
                             selectedIndex: $selectedBackdropIndex,
-                            progress: backdropTimerProgress
+                            progress: backdropTimerProgress,
+                            isAutoAdvance: autoAdvanceBackdrops && !isAnyModalPresented
                         )
 
                         RemoteLogoView(
@@ -1698,7 +1710,7 @@ struct DetailsView: View {
                                 selectedIndex: $selectedBackdropIndex,
                                 timerProgress: $backdropTimerProgress,
                                 isHeaderVisible: isHeaderVisible,
-                                isPaused: isAnyModalPresented
+                                isPaused: isBackdropPaused
                             )
                             .offset(y: offset)
                         }
@@ -1714,7 +1726,8 @@ struct DetailsView: View {
                                 BackdropPageIndicator(
                                     count: details.displayBackdropUrls.count,
                                     selectedIndex: $selectedBackdropIndex,
-                                    progress: backdropTimerProgress
+                                    progress: backdropTimerProgress,
+                                    isAutoAdvance: autoAdvanceBackdrops && !isAnyModalPresented
                                 )
 
                                 RemoteLogoView(
