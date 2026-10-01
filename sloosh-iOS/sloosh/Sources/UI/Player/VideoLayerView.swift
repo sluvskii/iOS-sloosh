@@ -59,6 +59,15 @@ final class PlayerLayerView: UIView {
     }
 }
 
+extension PlayerLayerView: AVPictureInPictureControllerDelegate {
+    func pictureInPictureControllerDidStopPictureInPicture(_ pictureInPictureController: AVPictureInPictureController) {
+        if UIApplication.shared.applicationState == .background {
+            stashedPlayer = playerLayer.player
+            playerLayer.player = nil
+        }
+    }
+}
+
 // MARK: - SwiftUI обёртка
 
 struct VideoLayerView: UIViewRepresentable {
@@ -76,6 +85,7 @@ struct VideoLayerView: UIViewRepresentable {
         if AVPictureInPictureController.isPictureInPictureSupported() {
             let pip = AVPictureInPictureController(playerLayer: view.playerLayer)
             pip?.canStartPictureInPictureAutomaticallyFromInline = true
+            pip?.delegate = view
             view.pipController = pip
             DispatchQueue.main.async {
                 pipController = pip

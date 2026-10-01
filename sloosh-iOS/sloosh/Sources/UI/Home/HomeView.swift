@@ -261,7 +261,10 @@ struct HomeCategoryContentView: View {
             .onScrollGeometryChange(for: CGFloat.self) { geometry in
                 geometry.contentOffset.y + geometry.contentInsets.top
             } action: { oldOffset, newOffset in
-                scrollOffset = newOffset
+                let shouldUpdateBlur = (newOffset >= 0 && newOffset <= 35) || (oldOffset >= 0 && oldOffset <= 35) || (oldOffset < 0 && newOffset >= 0) || (oldOffset > 35 && newOffset <= 35)
+                if shouldUpdateBlur {
+                    scrollOffset = newOffset
+                }
                 
                 let now = Date()
                 guard now.timeIntervalSince(debouncer.lastStateChangeTime) > debouncer.debounceInterval else { return }
