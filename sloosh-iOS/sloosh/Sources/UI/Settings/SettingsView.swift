@@ -5,6 +5,7 @@ struct SettingsView: View {
     @AppStorage("preferredVideoQuality") private var preferredQuality: VideoQualityPreference = .ask
     @AppStorage("autoplayNextEpisode") private var autoplayNextEpisode = true
     @AppStorage("tabBarShowsLabels") private var tabBarShowsLabels = false
+    @AppStorage("tabBarMinimizeOnScroll") private var tabBarMinimizeOnScroll = true
     @AppStorage("cardStyle") private var cardStyle: CardStyle = .classic
     @AppStorage("cardDensity") private var cardDensity: CardDensity = .regular
     @AppStorage("posterQuality") private var posterQuality: PosterQuality = .high
@@ -118,6 +119,19 @@ struct SettingsView: View {
                             .frame(width: 24)
                         
                         Text("Названия вкладок")
+                            .font(.body)
+                    }
+                }
+                
+                // Скрывать вкладки при скролле
+                Toggle(isOn: $tabBarMinimizeOnScroll) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "dock.arrow.down.rectangle")
+                            .foregroundStyle(Color.slooshAccent)
+                            .font(.system(size: 18))
+                            .frame(width: 24)
+                        
+                        Text("Скрывать вкладки при скролле")
                             .font(.body)
                     }
                 }
