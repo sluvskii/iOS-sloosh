@@ -1056,7 +1056,7 @@ struct DetailsView: View {
                         showSourceSheet = false
                     }
                 }
-                .presentationDetents([.medium, .large])
+                .presentationDetents([.fraction(0.62)])
             }
             .fullScreenCover(isPresented: $showPlayer, onDismiss: {
                 showPlayer = false

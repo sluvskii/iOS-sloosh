@@ -153,6 +153,7 @@ struct SourceSelectionView: View {
             .scrollContentBackground(.hidden)
             .background(Color.clear)
         }
+        .presentationDetents([.fraction(0.62)])
         .presentationBackground { Color.clear.glassEffect(in: .rect) }
         .presentationDragIndicator(.visible)
     }
@@ -232,11 +233,14 @@ struct SourceSelectionView: View {
             }
         } label: {
             Image(systemName: "server.rack")
+                .renderingMode(.template)
                 .font(.system(size: 20, weight: .semibold))
-                .foregroundStyle(.primary)
+                .foregroundStyle(Color.primary)
                 .frame(width: 44, height: 44)
                 .contentShape(Circle())
         }
+        .tint(Color.primary)
+        .foregroundStyle(Color.primary)
         .glassEffect(.regular.interactive(), in: .circle)
         .disabled(isLoading)
         .opacity(isLoading ? 0.45 : 1.0)
