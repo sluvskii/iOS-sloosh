@@ -114,6 +114,8 @@ struct GenreCatalogView: View {
             viewModel.playerConfig = nil
         }) { config in
             PlayerView(config: config)
+                .preferredColorScheme(.dark)
+                .environment(\.colorScheme, .dark)
         }
         .task {
             if viewModel.items.isEmpty {

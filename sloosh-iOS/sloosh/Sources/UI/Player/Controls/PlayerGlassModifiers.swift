@@ -12,6 +12,7 @@ struct GlassCircleEffect: ViewModifier {
         content
             .frame(width: diameter, height: diameter)
             .glassEffect(.regular.interactive(), in: .circle)
+            .environment(\.colorScheme, .dark)
     }
 }
 
@@ -20,6 +21,7 @@ struct GlassCapsuleModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .glassEffect(.regular, in: .capsule)
+            .environment(\.colorScheme, .dark)
     }
 }
 
@@ -28,6 +30,7 @@ struct GlassGroupModifier: ViewModifier {
     func body(content: Content) -> some View {
         content
             .glassEffect(.regular, in: .capsule)
+            .environment(\.colorScheme, .dark)
     }
 }
 

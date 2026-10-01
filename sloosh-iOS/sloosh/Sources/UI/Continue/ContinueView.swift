@@ -90,6 +90,8 @@ struct ContinueView: View {
                         backdropUrl: playback.backdropUrl,
                         logoUrl: playback.logoUrl
                     )
+                    .preferredColorScheme(.dark)
+                    .environment(\.colorScheme, .dark)
                 } else {
                     ZStack {
                         Color.black.edgesIgnoringSafeArea(.all)
@@ -97,6 +99,8 @@ struct ContinueView: View {
                             .progressViewStyle(CircularProgressViewStyle(tint: .white))
                             .scaleEffect(1.5)
                     }
+                    .preferredColorScheme(.dark)
+                    .environment(\.colorScheme, .dark)
                 }
             }
             .alert("Не удалось начать воспроизведение", isPresented: launchErrorBinding) {

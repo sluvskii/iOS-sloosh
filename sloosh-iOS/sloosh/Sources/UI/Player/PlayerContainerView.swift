@@ -80,6 +80,8 @@ struct PlayerContainerView: View {
                 .allowsHitTesting(showControls)
             }
         }
+        .environment(\.colorScheme, .dark)
+        .preferredColorScheme(.dark)
         .onAppear { scheduleAutoHide() }
         .onDisappear { hideTask?.cancel(); tapTask?.cancel() }
         .onChange(of: vm.isPlaying) { _, playing in

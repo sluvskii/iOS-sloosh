@@ -15,13 +15,25 @@ final class PlayerHostingController<Content: View>: UIHostingController<Content>
     override var prefersStatusBarHidden: Bool { true }
     override var prefersHomeIndicatorAutoHidden: Bool { true }
 
+    override init(rootView: Content) {
+        super.init(rootView: rootView)
+        overrideUserInterfaceStyle = .dark
+    }
+
+    @MainActor required dynamic init?(coder aDecoder: NSCoder) {
+        super.init(coder: aDecoder)
+        overrideUserInterfaceStyle = .dark
+    }
+
     override func viewDidLoad() {
         super.viewDidLoad()
+        overrideUserInterfaceStyle = .dark
         view.backgroundColor = .black
     }
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
+        overrideUserInterfaceStyle = .dark
         AppDelegate.lockToLandscape()
     }
 
