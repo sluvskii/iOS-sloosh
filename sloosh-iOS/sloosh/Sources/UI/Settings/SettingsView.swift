@@ -362,8 +362,11 @@ struct SettingsView: View {
         }
         .onScrollGeometryChange(for: CGFloat.self) { geometry in
             geometry.contentOffset.y + geometry.contentInsets.top
-        } action: { _, newOffset in
-            scrollOffset = newOffset
+        } action: { oldOffset, newOffset in
+            let shouldUpdate = (newOffset >= 0 && newOffset <= 35) || (oldOffset >= 0 && oldOffset <= 35) || (oldOffset < 0 && newOffset >= 0) || (oldOffset > 35 && newOffset <= 35)
+            if shouldUpdate {
+                scrollOffset = newOffset
+            }
         }
         .scrollEdgeEffectStyle(.soft, for: .all)
         .onAppear {
