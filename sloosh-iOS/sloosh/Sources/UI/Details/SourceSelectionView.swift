@@ -26,7 +26,6 @@ struct SourceSelectionView: View {
     @AppStorage("preferredStreamSource") private var preferredSource: MediaStreamSource = .source1
     @State private var selectedSource: MediaStreamSource
     @State private var isScrolled: Bool = false
-    @State private var showSourcePicker: Bool = false
 
     private var blurOpacity: Double {
         isScrolled ? 1.0 : 0.0
@@ -216,9 +215,21 @@ struct SourceSelectionView: View {
 
     @ViewBuilder
     private var sourceCornerButton: some View {
-        Button {
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            showSourcePicker = true
+        Menu {
+            Section("Источник") {
+                ForEach(MediaStreamSource.allCases) { source in
+                    Button {
+                        selectSource(source)
+                    } label: {
+                        if selectedSource == source {
+                            Label(source.title, systemImage: "checkmark")
+                        } else {
+                            Text(source.title)
+                        }
+                    }
+                    .disabled(isLoading ? false : !isSourceAvailable(source))
+                }
+            }
         } label: {
             Image(systemName: "server.rack")
                 .font(.system(size: 20, weight: .semibold))
@@ -226,20 +237,9 @@ struct SourceSelectionView: View {
                 .frame(width: 44, height: 44)
                 .contentShape(Circle())
         }
-        .buttonStyle(.glassPress)
         .glassEffect(.regular.interactive(), in: .circle)
         .disabled(isLoading)
         .opacity(isLoading ? 0.45 : 1.0)
-        .confirmationDialog("Источник видео", isPresented: $showSourcePicker, titleVisibility: .visible) {
-            ForEach(MediaStreamSource.allCases) { source in
-                if isSourceAvailable(source) {
-                    Button(selectedSource == source ? "✓ \(source.title)" : source.title) {
-                        selectSource(source)
-                    }
-                }
-            }
-            Button("Отмена", role: .cancel) {}
-        }
     }
 
     @ViewBuilder
