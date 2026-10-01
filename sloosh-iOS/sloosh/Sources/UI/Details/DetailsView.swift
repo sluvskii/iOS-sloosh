@@ -903,6 +903,7 @@ struct DetailsView: View {
                         HStack(spacing: 0) {
                             // Кнопка «Избранное» (слева, как было изначально)
                             Button {
+                                guard viewModel.details != nil else { return }
                                 withAnimation(.spring(response: 0.26, dampingFraction: 0.48)) {
                                     favoriteBounce = true
                                     viewModel.toggleFavorite()
@@ -915,19 +916,19 @@ struct DetailsView: View {
                             } label: {
                                 Image(systemName: viewModel.isFavorite ? "heart.fill" : "heart")
                                     .font(.system(size: 21, weight: .medium))
-                                    .foregroundStyle(Color.white)
+                                    .foregroundStyle(Color.primary)
                                     .symbolEffect(.bounce, value: viewModel.isFavorite)
                                     .scaleEffect(favoriteBounce ? 1.25 : 1.0)
                                     .frame(width: 44, height: 44)
                                     .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
-                            .disabled(viewModel.details == nil)
                             .accessibilityLabel(viewModel.isFavorite ? "Убрать из избранного" : "Добавить в избранное")
                             .frame(width: 44, height: 44)
 
                             // Кнопка «Поделиться» (справа, растворяется с блюром)
                             Button {
+                                guard viewModel.details != nil, !isLogoAtTop else { return }
                                 let generator = UIImpactFeedbackGenerator(style: .medium)
                                 generator.prepare()
                                 generator.impactOccurred()
@@ -935,7 +936,7 @@ struct DetailsView: View {
                             } label: {
                                 Image(systemName: "square.and.arrow.up")
                                     .font(.system(size: 20, weight: .medium))
-                                    .foregroundStyle(.white)
+                                    .foregroundStyle(Color.primary)
                                     .frame(width: 44, height: 44)
                                     .blur(radius: isLogoAtTop ? 12 : 0)
                                     .opacity(isLogoAtTop ? 0 : 1)
@@ -943,7 +944,6 @@ struct DetailsView: View {
                                     .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
-                            .disabled(viewModel.details == nil || isLogoAtTop)
                             .accessibilityLabel("Поделиться фильмом")
                             .frame(width: isLogoAtTop ? 0 : 44, height: 44)
                             .clipped()
