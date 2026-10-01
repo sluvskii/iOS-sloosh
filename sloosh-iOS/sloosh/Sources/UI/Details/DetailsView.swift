@@ -55,6 +55,7 @@ struct BackdropCarouselView: View {
     @Binding var selectedIndex: Int
     @Binding var timerProgress: CGFloat
     var isHeaderVisible: Bool = true
+    var isPaused: Bool = false
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -74,6 +75,7 @@ struct BackdropCarouselView: View {
                     selectedIndex: $selectedIndex,
                     timerProgress: $timerProgress,
                     isHeaderVisible: isHeaderVisible,
+                    isPaused: isPaused,
                     scenePhase: scenePhase
                 )
             }
@@ -89,6 +91,7 @@ private struct BackdropPagingRepresentable: UIViewControllerRepresentable {
     @Binding var selectedIndex: Int
     @Binding var timerProgress: CGFloat
     var isHeaderVisible: Bool
+    var isPaused: Bool = false
     var scenePhase: ScenePhase
 
     func makeCoordinator() -> Coordinator {
@@ -116,8 +119,10 @@ private struct BackdropPagingRepresentable: UIViewControllerRepresentable {
         pageVC.setViewControllers([initialVC], direction: .forward, animated: false)
 
         // Запускаем таймер на следующем тике runloop, когда вью уже смонтирована в окно
-        DispatchQueue.main.async { [weak coordinator = context.coordinator] in
-            coordinator?.startTimer()
+        if !isPaused {
+            DispatchQueue.main.async { [weak coordinator = context.coordinator] in
+                coordinator?.startTimer()
+            }
         }
         return pageVC
     }
@@ -140,12 +145,15 @@ private struct BackdropPagingRepresentable: UIViewControllerRepresentable {
                 pageVC.setViewControllers([targetVC], direction: direction, animated: true) { [weak coordinator] _ in
                     coordinator?.isTransitioning = false
                 }
-                coordinator.startTimer()
+                if !isPaused {
+                    coordinator.startTimer()
+                }
             }
         }
 
         let isAppActive = scenePhase == .active
-        if !isHeaderVisible || !isAppActive {
+        let canAutoScroll = isHeaderVisible && isAppActive && !isPaused
+        if !canAutoScroll {
             coordinator.stopTimer()
         } else if coordinator.timerTask == nil && !coordinator.isUserDragging && !coordinator.isTransitioning {
             DispatchQueue.main.async { [weak coordinator] in
@@ -201,7 +209,9 @@ private struct BackdropPagingRepresentable: UIViewControllerRepresentable {
                     }
                 }
             }
-            startTimer()
+            if !parent.isPaused {
+                startTimer()
+            }
         }
 
         // MARK: - UIScrollViewDelegate (Real-time gesture & drag tracking)
@@ -293,7 +303,7 @@ private struct BackdropPagingRepresentable: UIViewControllerRepresentable {
 
         func startTimer() {
             stopTimer()
-            guard parent.urls.count > 1, parent.isHeaderVisible, parent.scenePhase == .active, !isUserDragging else { return }
+            guard parent.urls.count > 1, parent.isHeaderVisible, parent.scenePhase == .active, !parent.isPaused, !isUserDragging else { return }
 
             // Prefetch adjacent backdrops
             let count = parent.urls.count
@@ -315,7 +325,7 @@ private struct BackdropPagingRepresentable: UIViewControllerRepresentable {
             timerTask = Task { @MainActor [weak self] in
                 try? await Task.sleep(nanoseconds: 5_000_000_000)
                 guard let self = self, !Task.isCancelled else { return }
-                guard self.parent.isHeaderVisible, self.parent.scenePhase == .active, !self.isUserDragging, !self.isTransitioning else { return }
+                guard self.parent.isHeaderVisible, self.parent.scenePhase == .active, !self.parent.isPaused, !self.isUserDragging, !self.isTransitioning else { return }
                 guard let pageVC = self.pageViewController, self.parent.urls.count > 1 else { return }
 
                 let count = self.parent.urls.count
@@ -346,7 +356,9 @@ private struct BackdropPagingRepresentable: UIViewControllerRepresentable {
                 }
 
                 // 3. Сразу запускаем таймер прогресса для новой активной полоски
-                self.startTimer()
+                if !self.parent.isPaused {
+                    self.startTimer()
+                }
             }
         }
 
@@ -624,6 +636,10 @@ struct DetailsView: View {
     @State private var pendingDirectPlayerConfig: PlayerConfig? = nil
     @State private var directPlaybackTitle: String? = nil
     @State private var selectedTrailer: TrailerVideoDto? = nil
+    
+    private var isAnyModalPresented: Bool {
+        showSourceSheet || showPlayer || showShareToFriendSheet || selectedTrailer != nil || directPlaybackMovie != nil
+    }
 
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     @Environment(\.dismiss) private var dismiss
@@ -952,6 +968,7 @@ struct DetailsView: View {
                 await preloadDominantColor(for: details)
             }
             .onChange(of: selectedBackdropIndex) { _, newIndex in
+                guard !isAnyModalPresented else { return }
                 guard let details = viewModel.details else { return }
                 let urls = details.displayBackdropUrls
                 guard newIndex >= 0 && newIndex < urls.count else { return }
@@ -1504,7 +1521,8 @@ struct DetailsView: View {
                             height: height,
                             selectedIndex: $selectedBackdropIndex,
                             timerProgress: $backdropTimerProgress,
-                            isHeaderVisible: isHeaderVisible
+                            isHeaderVisible: isHeaderVisible,
+                            isPaused: isAnyModalPresented
                         )
                         .offset(y: offset)
                     }
@@ -1679,7 +1697,8 @@ struct DetailsView: View {
                                 height: height,
                                 selectedIndex: $selectedBackdropIndex,
                                 timerProgress: $backdropTimerProgress,
-                                isHeaderVisible: isHeaderVisible
+                                isHeaderVisible: isHeaderVisible,
+                                isPaused: isAnyModalPresented
                             )
                             .offset(y: offset)
                         }
