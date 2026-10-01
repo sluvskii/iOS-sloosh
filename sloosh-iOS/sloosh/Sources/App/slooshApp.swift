@@ -131,6 +131,7 @@ struct slooshApp: App {
                         UserPresenceService.shared.startHeartbeat()
                         PlaybackAnalyticsService.shared.sendSessionHeartbeat()
                         Task {
+                            await MoviesApi.shared.loadRemoteConfigIfNeeded()
                             await CloudSyncService.shared.syncAllDataAsync()
                         }
                     }

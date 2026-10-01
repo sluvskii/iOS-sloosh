@@ -785,7 +785,9 @@ class HomeViewModel: ObservableObject {
         let key = HomeCacheKey(category: category, filter: selectedFilter, searchFilters: searchFilters)
         cachedCursors[key] = nil
         cachedCanLoadMore[key] = true
-        await loadData(for: category, force: true)
+        async let configSync: Void = MoviesApi.shared.loadRemoteConfig()
+        async let dataLoad: Void = loadData(for: category, force: true)
+        _ = await (configSync, dataLoad)
     }
     
     private func initialCursor(for key: HomeCacheKey) -> InfiniteCursor {

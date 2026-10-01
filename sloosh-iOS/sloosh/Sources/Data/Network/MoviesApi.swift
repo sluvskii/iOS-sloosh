@@ -1,4 +1,13 @@
 import Foundation
+import SwiftUI
+
+public struct RemoteNotice: Codable, Equatable, Identifiable {
+    public let id: String
+    public let title: String?
+    public let message: String
+    public let type: String?
+    public let actionUrl: String?
+}
 
 enum NetworkError: LocalizedError {
     case invalidURL
@@ -83,8 +92,26 @@ class MoviesApi {
         }
     }
     
-    /// Мастер-ключ доступа к API sloosh (внедряется при CI-сборке из GitHub Secrets)
-    public static var currentApiKey: String = AppSecrets.apiKey
+    private static let apiKeyUserDefaultsKey = "sloosh_cached_api_key"
+
+    /// Мастер-ключ доступа к API sloosh (внедряется при CI-сборке из GitHub Secrets или динамически из endpoint.json)
+    public static var currentApiKey: String {
+        get {
+            if let cached = UserDefaults.standard.string(forKey: apiKeyUserDefaultsKey),
+               !cached.isEmpty {
+                return cached
+            }
+            return AppSecrets.apiKey
+        }
+        set {
+            UserDefaults.standard.set(newValue, forKey: apiKeyUserDefaultsKey)
+        }
+    }
+    
+    /// Активное системное объявление / статус обслуживания
+    public private(set) var currentNotice: RemoteNotice?
+    private var lastRemoteConfigCheckDate: Date?
+    private let remoteConfigTtl: TimeInterval = 300 // 5 минут кэша между проверками
     
     private let session: URLSession
     private let decoder = JSONDecoder()
@@ -97,11 +124,21 @@ class MoviesApi {
         self.session = URLSession(configuration: config)
     }
 
-    /// Загружает актуальную ссылку на API и картинки из GitHub (endpoint.json) без необходимости обновлять приложение
-    public func loadRemoteConfig() async {
+    /// Проверяет удалённый конфиг, если прошло больше 5 минут с последней проверки
+    public func loadRemoteConfigIfNeeded() async {
+        let now = Date()
+        if let last = lastRemoteConfigCheckDate, now.timeIntervalSince(last) < remoteConfigTtl {
+            return
+        }
+        await loadRemoteConfig()
+    }
+
+    /// Загружает актуальную ссылку на API, картинки, балансер и ключи из GitHub/Pages/jsDelivr (endpoint.json) без обновления приложения
+    public func loadRemoteConfig(force: Bool = false) async {
         let configURLs = [
             "https://raw.githubusercontent.com/sluvskii/iOS-sloosh/main/endpoint.json",
-            "https://sluvskii.github.io/iOS-sloosh/endpoint.json"
+            "https://sluvskii.github.io/iOS-sloosh/endpoint.json",
+            "https://cdn.jsdelivr.net/gh/sluvskii/iOS-sloosh@main/endpoint.json"
         ]
 
         for urlString in configURLs {
@@ -115,6 +152,9 @@ class MoviesApi {
                     continue
                 }
                 if let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] {
+                    self.lastRemoteConfigCheckDate = Date()
+                    
+                    // 1. API Base URL
                     if let remoteBase = (json["apiBaseUrl"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
                        !remoteBase.isEmpty {
                         let cleanBase = remoteBase.hasSuffix("/") ? String(remoteBase.dropLast()) : remoteBase
@@ -123,6 +163,8 @@ class MoviesApi {
                             MoviesApi.activeBaseURL = cleanBase
                         }
                     }
+                    
+                    // 2. Images Base URL
                     if let remoteImages = (json["imagesBaseUrl"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
                        !remoteImages.isEmpty {
                         let cleanImages = remoteImages.hasSuffix("/") ? String(remoteImages.dropLast()) : remoteImages
@@ -131,9 +173,75 @@ class MoviesApi {
                             MoviesApi.activeImagesBaseURL = cleanImages
                         }
                     }
+                    
+                    // 3. Fallback URLs (зеркала)
                     if let fallbacks = json["fallbackUrls"] as? [String] {
                         MoviesApi.fallbackBaseURLs = fallbacks.map { $0.hasSuffix("/") ? String($0.dropLast()) : $0 }
                     }
+                    
+                    // 4. Balancer Base URL
+                    if let balancer = (json["balancerBaseUrl"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                       !balancer.isEmpty {
+                        let cleanBalancer = balancer.hasSuffix("/") ? String(balancer.dropLast()) : balancer
+                        if AllohaRepository.activeBalancerBaseURL != cleanBalancer {
+                            print("[MoviesApi] Updated balancerBaseURL to: \(cleanBalancer)")
+                            AllohaRepository.activeBalancerBaseURL = cleanBalancer
+                        }
+                    }
+                    
+                    // 5. Dynamic API Key override (на случай смены/ротации ключа без выпуска IPA)
+                    if let remoteKey = (json["apiKey"] as? String ?? json["clientApiKey"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                       !remoteKey.isEmpty {
+                        if MoviesApi.currentApiKey != remoteKey {
+                            print("[MoviesApi] Updated currentApiKey via remote config")
+                            MoviesApi.currentApiKey = remoteKey
+                        }
+                    }
+                    
+                    // 6. Fallback Stream Tokens (на случай сбоев бэкенда)
+                    if let tokens = json["streamTokens"] as? [String], !tokens.isEmpty {
+                        AllohaRepository.shared.updateFallbackTokens(tokens)
+                    }
+                    
+                    // 7. System Notice (объявления / тех. работы)
+                    if let noticeDict = json["notice"] as? [String: Any],
+                       let id = noticeDict["id"] as? String,
+                       let message = noticeDict["message"] as? String {
+                        let title = noticeDict["title"] as? String
+                        let type = noticeDict["type"] as? String
+                        let actionUrl = noticeDict["actionUrl"] as? String
+                        let notice = RemoteNotice(id: id, title: title, message: message, type: type, actionUrl: actionUrl)
+                        self.currentNotice = notice
+                        
+                        let dismissedKey = "sloosh_dismissed_notice_\(id)"
+                        if !UserDefaults.standard.bool(forKey: dismissedKey) {
+                            let icon: String
+                            let color: Color
+                            switch type {
+                            case "warning":
+                                icon = "exclamationmark.triangle.fill"
+                                color = .orange
+                            case "error", "critical":
+                                icon = "xmark.octagon.fill"
+                                color = .red
+                            default:
+                                icon = "info.circle.fill"
+                                color = Color.slooshAccent
+                            }
+                            await MainActor.run {
+                                ToastManager.shared.show(
+                                    title: title ?? "Сообщение системы",
+                                    subtitle: message,
+                                    icon: icon,
+                                    iconColor: color,
+                                    duration: 8.0
+                                )
+                            }
+                        }
+                    } else {
+                        self.currentNotice = nil
+                    }
+                    
                     return
                 }
             } catch {
@@ -142,9 +250,15 @@ class MoviesApi {
         }
     }
     
-    private func performRequest<T: Codable>(endpoint: String, method: String = "GET", queryItems: [URLQueryItem] = []) async throws -> T {
+    private func performRequest<T: Codable>(
+        endpoint: String,
+        method: String = "GET",
+        queryItems: [URLQueryItem] = [],
+        allowSelfHealingRetry: Bool = true
+    ) async throws -> T {
         let baseCandidates = [MoviesApi.activeBaseURL] + MoviesApi.fallbackBaseURLs.filter { $0 != MoviesApi.activeBaseURL }
         var lastError: Error = NetworkError.timeout
+        var shouldTryRemoteConfigHealing = false
 
         for currentBase in baseCandidates {
             var components = URLComponents(string: "\(currentBase)/\(endpoint)")
@@ -176,9 +290,11 @@ class MoviesApi {
                         continue
                     }
                     
-                    // 401 / 403 — ошибка авторизации, не ретраим
+                    // 401 / 403 — ошибка авторизации. Возможно, ключ или эндпоинт устарели
                     if httpResponse.statusCode == 401 || httpResponse.statusCode == 403 {
-                        throw NetworkError.unauthorized
+                        shouldTryRemoteConfigHealing = true
+                        lastError = NetworkError.unauthorized
+                        break
                     }
                     
                     // 4xx — не ретраим, это клиентская ошибка
@@ -198,6 +314,11 @@ class MoviesApi {
                     }
                     return try self.decoder.decode(T.self, from: data)
                 } catch let error as NetworkError {
+                    if case .unauthorized = error {
+                        shouldTryRemoteConfigHealing = true
+                        lastError = error
+                        break
+                    }
                     throw error
                 } catch let urlError as URLError {
                     if urlError.code == .cancelled {
@@ -212,6 +333,33 @@ class MoviesApi {
             }
         }
         
+        // Self-Healing: если все кандидаты упали или получен 401/403, пробуем один раз
+        // обновить remote config с GitHub/Pages/jsDelivr и повторить запрос,
+        // если обновились хосты или API-ключ!
+        if allowSelfHealingRetry && (shouldTryRemoteConfigHealing || !baseCandidates.isEmpty) {
+            let previousBase = MoviesApi.activeBaseURL
+            let previousKey = MoviesApi.currentApiKey
+            let previousFallbacks = MoviesApi.fallbackBaseURLs
+            
+            await loadRemoteConfig(force: true)
+            
+            let configChanged = (MoviesApi.activeBaseURL != previousBase) ||
+                                (MoviesApi.currentApiKey != previousKey) ||
+                                (MoviesApi.fallbackBaseURLs != previousFallbacks)
+            
+            if configChanged {
+                #if DEBUG
+                print("[MoviesApi] Self-healing triggered: config updated, retrying request to \(endpoint)...")
+                #endif
+                return try await performRequest(
+                    endpoint: endpoint,
+                    method: method,
+                    queryItems: queryItems,
+                    allowSelfHealingRetry: false
+                )
+            }
+        }
+
         throw lastError
     }
     
