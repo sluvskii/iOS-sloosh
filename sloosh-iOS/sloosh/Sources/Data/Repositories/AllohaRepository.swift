@@ -584,7 +584,9 @@ class AllohaTrustedSessionDelegate: NSObject, @preconcurrency URLSessionDelegate
             return
         }
         let host = challenge.protectionSpace.host.lowercased()
-        let isTrustedHost = Self.trustedHosts.contains(where: { host == $0 || host.hasSuffix("." + $0) })
+        let dynamicBalancerHost = URL(string: AllohaRepository.activeBalancerBaseURL)?.host?.lowercased()
+        let isDynamicHost = dynamicBalancerHost.map { host == $0 || host.hasSuffix("." + $0) } ?? false
+        let isTrustedHost = isDynamicHost || Self.trustedHosts.contains(where: { host == $0 || host.hasSuffix("." + $0) })
         if isTrustedHost {
             completionHandler(.useCredential, URLCredential(trust: serverTrust))
         } else {
@@ -613,8 +615,30 @@ typealias TrustAllSessionDelegate = AllohaTrustedSessionDelegate
 final class AllohaRepository: @unchecked Sendable {
     static let shared = AllohaRepository()
     
-    // Dynamic stream tokens delivered securely from the backend API (zero tokens in client binary)
+    // MARK: - Dynamic Balancer Endpoint
+    private static let balancerUserDefaultsKey = "sloosh_cached_balancer_base_url"
+
+    /// Активный базовый адрес балансера (по умолчанию https://api.alloha.tv, управляется через endpoint.json)
+    public static var activeBalancerBaseURL: String {
+        get {
+            if let cached = UserDefaults.standard.string(forKey: balancerUserDefaultsKey),
+               !cached.isEmpty {
+                return cached
+            }
+            return "https://api.alloha.tv"
+        }
+        set {
+            let clean = newValue.hasSuffix("/") ? String(newValue.dropLast()) : newValue
+            UserDefaults.standard.set(clean, forKey: balancerUserDefaultsKey)
+        }
+    }
+
+    // Dynamic stream tokens delivered securely from the backend API or remote config fallback
     private var remoteTokens: [String] = []
+    private static let fallbackTokensKey = "sloosh_cached_fallback_stream_tokens"
+    private var fallbackTokens: [String] = {
+        return UserDefaults.standard.stringArray(forKey: fallbackTokensKey) ?? []
+    }()
     private var lastFetchDate: Date?
     private let tokensFetchTtl: TimeInterval = 10 * 60 // 10 minutes cache
     private var activeFetchTask: Task<[String], Never>?
@@ -622,6 +646,21 @@ final class AllohaRepository: @unchecked Sendable {
     private var failedTokens: [String: Date] = [:]
     private let tokenCooldownDuration: TimeInterval = 5 * 60 // 5 minutes cooldown
     private let tokenQueue = DispatchQueue(label: "ru.sloosh.alloharepo.tokens", attributes: .concurrent)
+
+    /// Обновляет резервные токены потоков из remote config (endpoint.json)
+    func updateFallbackTokens(_ tokens: [String]) {
+        let valid = tokens.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        guard !valid.isEmpty else { return }
+        tokenQueue.async(flags: .barrier) { [weak self] in
+            guard let self = self else { return }
+            self.fallbackTokens = valid
+            UserDefaults.standard.set(valid, forKey: Self.fallbackTokensKey)
+            if self.remoteTokens.isEmpty {
+                self.remoteTokens = valid
+                self.lastFetchDate = Date()
+            }
+        }
+    }
 
     /// Background prefetch of streaming tokens upon app launch
     func warmup() async {
@@ -663,7 +702,22 @@ final class AllohaRepository: @unchecked Sendable {
                     print("[AllohaRepository] Failed to fetch stream tokens from backend: \(error)")
                     #endif
                 }
-                return self.tokenQueue.sync { self.remoteTokens }
+                let existing = self.tokenQueue.sync { self.remoteTokens }
+                if !existing.isEmpty {
+                    return existing
+                }
+                let fallbacks = self.tokenQueue.sync { self.fallbackTokens }
+                if !fallbacks.isEmpty {
+                    #if DEBUG
+                    print("[AllohaRepository] Using \(fallbacks.count) fallback stream tokens from remote config")
+                    #endif
+                    self.tokenQueue.async(flags: .barrier) {
+                        self.remoteTokens = fallbacks
+                        self.lastFetchDate = Date()
+                    }
+                    return fallbacks
+                }
+                return []
             }
             self.activeFetchTask = task
             return task
@@ -859,7 +913,7 @@ final class AllohaRepository: @unchecked Sendable {
             for (key, val) in params {
                 queryItems.append(URLQueryItem(name: key, value: val))
             }
-            guard var comps = URLComponents(string: "https://api.alloha.tv/") else {
+            guard var comps = URLComponents(string: "\(AllohaRepository.activeBalancerBaseURL)/") else {
                 throw URLError(.badURL)
             }
             comps.queryItems = queryItems
