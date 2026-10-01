@@ -24,6 +24,12 @@ struct SourceSelectionView: View {
 
     @AppStorage("preferredStreamSource") private var preferredSource: MediaStreamSource = .source1
     @State private var selectedSource: MediaStreamSource
+    @State private var scrollOffset: CGFloat = 0
+
+    private var blurOpacity: Double {
+        let progress = max(0, scrollOffset) / 25.0
+        return min(1.0, Double(progress))
+    }
 
     // Backward compatibility init
     init(
@@ -134,17 +140,15 @@ struct SourceSelectionView: View {
             .safeAreaInset(edge: .top, spacing: 0) {
                 headerBar
                     .padding(.horizontal, 16)
-                    .padding(.top, 12)
+                    .padding(.top, 16)
                     .padding(.bottom, 8)
-                    .background {
-                        VariableBlurView(
-                            maxBlurRadius: 16,
-                            direction: .blurredTopClearBottom,
-                            tintColor: Color(UIColor.systemBackground),
-                            tintOpacity: 0.85
-                        )
-                        .ignoresSafeArea(edges: .top)
-                    }
+                    .background(
+                        VariableBlurView(tintColor: .clear, tintOpacity: 0.0)
+                            .padding(.bottom, -30)
+                            .ignoresSafeArea(edges: .top)
+                            .opacity(blurOpacity)
+                            .animation(.easeInOut(duration: 0.2), value: blurOpacity)
+                    )
             }
             .scrollContentBackground(.hidden)
             .background(Color.clear)
@@ -154,22 +158,24 @@ struct SourceSelectionView: View {
     }
 
     private var headerBar: some View {
-        HStack(spacing: 12) {
-            TelegramGlassIconButton(
-                systemName: "xmark",
-                iconSize: 13,
-                buttonSize: 34
-            ) {
-                dismiss()
-            }
-
-            Spacer(minLength: 8)
-
+        ZStack {
             headerTitleOrLogoView
+                .allowsHitTesting(false)
 
-            Spacer(minLength: 8)
+            HStack {
+                TelegramGlassIconButton(
+                    systemName: "xmark",
+                    iconSize: 17,
+                    buttonSize: 44
+                ) {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    dismiss()
+                }
 
-            sourceCornerButton
+                Spacer()
+
+                sourceCornerButton
+            }
         }
     }
 
@@ -183,11 +189,11 @@ struct SourceSelectionView: View {
                 Image(uiImage: image)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
-                    .frame(maxHeight: 26)
+                    .frame(maxHeight: 28)
             } fallback: {
                 fallbackHeaderTitle
             }
-            .frame(maxWidth: 180)
+            .frame(maxWidth: 220)
         } else {
             fallbackHeaderTitle
         }
@@ -195,11 +201,11 @@ struct SourceSelectionView: View {
 
     private var fallbackHeaderTitle: some View {
         Text(currentTitle)
-            .font(.system(size: 16, weight: .semibold))
+            .font(.system(size: 18, weight: .semibold))
             .foregroundStyle(.primary)
             .lineLimit(1)
             .truncationMode(.tail)
-            .frame(maxWidth: 180)
+            .frame(maxWidth: 220)
     }
 
     @ViewBuilder
@@ -223,11 +229,11 @@ struct SourceSelectionView: View {
             ZStack {
                 Circle()
                     .fill(Color.clear)
-                    .frame(width: 34, height: 34)
+                    .frame(width: 44, height: 44)
                     .glassEffect(.regular.interactive(), in: .circle)
 
                 Image(systemName: "server.rack")
-                    .font(.system(size: 14, weight: .medium))
+                    .font(.system(size: 17, weight: .medium))
                     .foregroundStyle(.primary)
             }
         }
@@ -261,6 +267,11 @@ struct SourceSelectionView: View {
         .contentMargins(.horizontal, 20, for: .scrollContent)
         .contentMargins(.top, 16, for: .scrollContent)
         .contentMargins(.bottom, 28, for: .scrollContent)
+        .onScrollGeometryChange(for: CGFloat.self) { geometry in
+            geometry.contentOffset.y + geometry.contentInsets.top
+        } action: { _, newOffset in
+            scrollOffset = newOffset
+        }
     }
 
     @ViewBuilder
@@ -296,7 +307,8 @@ struct SourceSelectionView: View {
                     details: details,
                     episodeSubtitles: [:],
                     movieSubtitles: [],
-                    customHeaders: [:]
+                    customHeaders: [:],
+                    scrollOffset: $scrollOffset
                 ) { translation, season, episode, quality, subs, headers in
                     onAction(translation, season, episode, quality, .source1, subs, headers)
                     dismiss()
@@ -314,7 +326,8 @@ struct SourceSelectionView: View {
                     details: details,
                     episodeSubtitles: source2Result?.episodeSubtitles ?? [:],
                     movieSubtitles: source2Result?.movieSubtitles ?? [],
-                    customHeaders: CollapsRepository.streamHeaders
+                    customHeaders: CollapsRepository.streamHeaders,
+                    scrollOffset: $scrollOffset
                 ) { translation, season, episode, quality, subs, headers in
                     onAction(translation, season, episode, quality, .source2, subs, headers)
                     dismiss()
@@ -373,6 +386,7 @@ struct SingleSourceContentView: View {
     let episodeSubtitles: [EpisodeKey: [PlaybackSubtitle]]
     let movieSubtitles: [PlaybackSubtitle]
     let customHeaders: [String: String]
+    @Binding var scrollOffset: CGFloat
     let onCommit: (AllohaTranslation, Int?, Int?, VideoQualityPreference, [PlaybackSubtitle], [String: String]) -> Void
 
     @State private var selectedSeason: Int?
@@ -400,6 +414,7 @@ struct SingleSourceContentView: View {
         episodeSubtitles: [EpisodeKey: [PlaybackSubtitle]],
         movieSubtitles: [PlaybackSubtitle],
         customHeaders: [String: String],
+        scrollOffset: Binding<CGFloat> = .constant(0),
         onCommit: @escaping (AllohaTranslation, Int?, Int?, VideoQualityPreference, [PlaybackSubtitle], [String: String]) -> Void
     ) {
         self.mode = mode
@@ -410,6 +425,7 @@ struct SingleSourceContentView: View {
         self.episodeSubtitles = episodeSubtitles
         self.movieSubtitles = movieSubtitles
         self.customHeaders = customHeaders
+        self._scrollOffset = scrollOffset
         self.onCommit = onCommit
 
         var transItems: [TranslationChipItem] = []
@@ -754,6 +770,11 @@ struct SingleSourceContentView: View {
         .contentMargins(.horizontal, 20, for: .scrollContent)
         .contentMargins(.top, 16, for: .scrollContent)
         .contentMargins(.bottom, 28, for: .scrollContent)
+        .onScrollGeometryChange(for: CGFloat.self) { geometry in
+            geometry.contentOffset.y + geometry.contentInsets.top
+        } action: { _, newOffset in
+            scrollOffset = newOffset
+        }
         .safeAreaInset(edge: .bottom) {
             bottomActionButton
         }
