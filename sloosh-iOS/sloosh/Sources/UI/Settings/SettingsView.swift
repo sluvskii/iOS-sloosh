@@ -15,6 +15,7 @@ struct SettingsView: View {
     @AppStorage("autoAdvanceBackdrops") private var autoAdvanceBackdrops = false
     @ObservedObject private var iconManager = AppIconManager.shared
     @ObservedObject private var cacheManager = CacheManager.shared
+    @ObservedObject private var subtitleSettings = SubtitleSettings.shared
     @State private var tabBarShowsLabelsDraft = false
     @State private var applyTabBarLabelsTask: Task<Void, Never>?
     @State private var scrollOffset: CGFloat = 0
@@ -217,6 +218,39 @@ struct SettingsView: View {
                         
                         Text("Автопереход к серии")
                             .font(.body)
+                    }
+                }
+
+                // Размер субтитров
+                HStack(spacing: 12) {
+                    Image(systemName: "captions.bubble.fill")
+                        .foregroundStyle(Color.slooshAccent)
+                        .font(.system(size: 18))
+                        .frame(width: 24)
+                    
+                    Picker("Размер субтитров", selection: $subtitleSettings.fontSize) {
+                        ForEach(SubtitleFontSize.allCases) { size in
+                            Text(size.title).tag(size)
+                        }
+                    }
+                }
+
+                // Сбросить положение субтитров (если были смещены)
+                if subtitleSettings.hasCustomPosition {
+                    Button(role: .destructive) {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                            subtitleSettings.resetPosition()
+                        }
+                    } label: {
+                        HStack(spacing: 12) {
+                            Image(systemName: "arrow.counterclockwise")
+                                .foregroundStyle(.red)
+                                .font(.system(size: 18))
+                                .frame(width: 24)
+                            
+                            Text("Сбросить положение субтитров")
+                                .foregroundStyle(.red)
+                        }
                     }
                 }
             }

@@ -169,6 +169,36 @@ struct BottomRowView: View, Equatable {
                     Text(sub.label).tag(sub.url)
                 }
             }
+
+            if currentSubtitleUrl != nil {
+                Section("Размер текста") {
+                    ForEach(SubtitleFontSize.allCases) { size in
+                        Button {
+                            SubtitleSettings.shared.fontSize = size
+                            onInteraction?()
+                        } label: {
+                            if SubtitleSettings.shared.fontSize == size {
+                                Label(size.title, systemImage: "checkmark")
+                            } else {
+                                Text(size.title)
+                            }
+                        }
+                    }
+                }
+
+                if SubtitleSettings.shared.hasCustomPosition {
+                    Section {
+                        Button(role: .destructive) {
+                            withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+                                SubtitleSettings.shared.resetPosition()
+                            }
+                            onInteraction?()
+                        } label: {
+                            Label("Сбросить положение", systemImage: "arrow.counterclockwise")
+                        }
+                    }
+                }
+            }
         } label: {
             Image(systemName: currentSubtitleUrl != nil ? "captions.bubble.fill" : "captions.bubble")
                 .font(.system(size: 17, weight: .medium))
