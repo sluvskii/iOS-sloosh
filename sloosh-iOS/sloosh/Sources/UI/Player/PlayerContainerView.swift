@@ -54,7 +54,7 @@ struct PlayerContainerView: View {
                             toggleControls()
                         }
                     )
-                    .zIndex(4)
+                    .zIndex(7)
                 }
 
                 // 6. Multi-tap Seek feedback

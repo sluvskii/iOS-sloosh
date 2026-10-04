@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Нативный оверлей субтитров в кинематографическом стиле с поддержкой свободного перемещения
+/// Нативный оверлей субтитров в кинематографическом стиле (чистый текст без фоновых рамок)
 struct SubtitleOverlayView: View {
     let text: String
     let showControls: Bool
@@ -10,160 +10,175 @@ struct SubtitleOverlayView: View {
     @ObservedObject private var settings = SubtitleSettings.shared
 
     @State private var dragTranslation: CGSize = .zero
+    @State private var dragStartOffset: CGSize = .zero
     @State private var isDragging: Bool = false
 
     var body: some View {
         GeometryReader { geometry in
             ZStack(alignment: .bottom) {
-                // Полностью прозрачный фон без перехвата нажатий вне плашки субтитров
+                // Полностью прозрачный фон без перехвата касаний
                 Color.clear
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .allowsHitTesting(false)
 
-                subtitlePlatter(in: geometry)
+                subtitleContent(in: geometry)
                     .offset(
-                        x: effectiveOffsetX(in: geometry),
-                        y: effectiveOffsetY(in: geometry)
+                        x: effectiveX(in: geometry),
+                        y: effectiveY(in: geometry)
                     )
+                    .padding(.bottom, baseBottomPadding(in: geometry))
+                    .animation(isDragging ? nil : .spring(response: 0.30, dampingFraction: 0.88), value: showControls)
+                    .animation(isDragging ? nil : .spring(response: 0.32, dampingFraction: 0.82), value: settings.customOffsetX)
+                    .animation(isDragging ? nil : .spring(response: 0.32, dampingFraction: 0.82), value: settings.customOffsetY)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 
-    // MARK: - Platter View
+    // MARK: - Subtitle Content View
 
-    private func subtitlePlatter(in geometry: GeometryProxy) -> some View {
+    private func subtitleContent(in geometry: GeometryProxy) -> some View {
         VStack(spacing: 3) {
-            // Индикатор перемещения и кнопка сброса
-            if showControls || isDragging {
-                HStack(spacing: 8) {
-                    Capsule()
-                        .fill(Color.white.opacity(isDragging ? 0.75 : 0.35))
-                        .frame(width: 24, height: 3)
-
-                    if settings.hasCustomPosition {
-                        Button {
-                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
-                                settings.resetPosition()
-                                dragTranslation = .zero
-                            }
-                        } label: {
-                            Image(systemName: "arrow.counterclockwise")
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundStyle(.white.opacity(0.80))
-                        }
-                        .buttonStyle(.plain)
-                        .transition(.scale.combined(with: .opacity))
-                    }
-                }
-                .padding(.top, 3)
-                .transition(.opacity)
+            // Тонкий аккуратный индикатор только во время активного перемещения
+            if isDragging {
+                Capsule()
+                    .fill(Color.white.opacity(0.85))
+                    .frame(width: 24, height: 3)
+                    .shadow(color: Color.black.opacity(0.85), radius: 2, x: 0, y: 1)
+                    .transition(.opacity.combined(with: .scale(scale: 0.8)))
             }
 
             Text(text)
                 .font(.system(size: settings.fontSize.pointSize, weight: .semibold, design: .default))
-                .tracking(0.25)
+                .tracking(0.2)
                 .foregroundColor(.white)
                 .multilineTextAlignment(.center)
-                .lineSpacing(4)
-                .shadow(color: Color.black.opacity(0.95), radius: 1.5, x: 0, y: 1)
-                .shadow(color: Color.black.opacity(0.80), radius: 6, x: 0, y: 2)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 7)
+                .lineSpacing(3.5)
+                // 360-градусный четкий контур для безупречной читаемости на любом фоне без подложки
+                .shadow(color: Color.black.opacity(0.95), radius: 0.8, x: 0, y: 1)
+                .shadow(color: Color.black.opacity(0.95), radius: 0.8, x: 0, y: -1)
+                .shadow(color: Color.black.opacity(0.95), radius: 0.8, x: 1, y: 0)
+                .shadow(color: Color.black.opacity(0.95), radius: 0.8, x: -1, y: 0)
+                .shadow(color: Color.black.opacity(0.90), radius: 0.8, x: 0.7, y: 0.7)
+                .shadow(color: Color.black.opacity(0.90), radius: 0.8, x: -0.7, y: 0.7)
+                .shadow(color: Color.black.opacity(0.90), radius: 0.8, x: 0.7, y: -0.7)
+                .shadow(color: Color.black.opacity(0.90), radius: 0.8, x: -0.7, y: -0.7)
+                // Мягкие кинематографические тени для глубокого контраста
+                .shadow(color: Color.black.opacity(0.85), radius: 3.5, x: 0, y: 1.5)
+                .shadow(color: Color.black.opacity(0.60), radius: 8.0, x: 0, y: 3.0)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 6)
+                .frame(maxWidth: min(geometry.size.width - 120, 680))
+                .fixedSize(horizontal: false, vertical: true)
         }
-        .padding(.horizontal, 4)
-        .padding(.bottom, 2)
-        .background(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .fill(Color.black.opacity(0.62))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 12, style: .continuous)
-                        .stroke(
-                            isDragging ? Color.white.opacity(0.40) : Color.white.opacity(0.09),
-                            lineWidth: isDragging ? 1.5 : 0.75
-                        )
-                )
-                .shadow(color: Color.black.opacity(0.35), radius: 8, x: 0, y: 4)
-        )
-        .frame(maxWidth: min(geometry.size.width - 64, 760))
-        .scaleEffect(isDragging ? 1.025 : 1.0)
+        .scaleEffect(isDragging ? 1.03 : 1.0)
         .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
         .gesture(
             DragGesture(minimumDistance: 4)
                 .onChanged { value in
                     if !isDragging {
                         isDragging = true
+                        let startX = settings.hasCustomPosition ? settings.customOffsetX : 0
+                        let startY: CGFloat
+                        if settings.hasCustomPosition {
+                            var y = settings.customOffsetY
+                            if showControls && y > -36 { y -= 40 }
+                            startY = y
+                        } else {
+                            startY = showControls ? -40 : 0
+                        }
+                        dragStartOffset = CGSize(width: startX, height: startY)
+                        dragTranslation = .zero
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     }
                     dragTranslation = value.translation
                 }
                 .onEnded { value in
-                    isDragging = false
-                    let newX = clampX(settings.customOffsetX + value.translation.width, in: geometry)
-                    let newY = clampY(settings.customOffsetY + value.translation.height, in: geometry)
-                    withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
-                        settings.setCustomOffset(x: newX, y: newY)
+                    let finalX = clampX(dragStartOffset.width + value.translation.width, in: geometry)
+                    let finalY = clampY(dragStartOffset.height + value.translation.height, in: geometry)
+
+                    let defaultY: CGFloat = showControls ? -40 : 0
+                    let isNearDefault = abs(finalX) < 24 && abs(finalY - defaultY) < 28
+
+                    if isNearDefault {
+                        withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                            settings.resetPosition()
+                            dragTranslation = .zero
+                            dragStartOffset = .zero
+                            isDragging = false
+                        }
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    } else {
+                        let normalizedY = (showControls && finalY > -76) ? (finalY + 40) : finalY
+                        settings.setCustomOffset(x: Double(finalX), y: Double(normalizedY))
                         dragTranslation = .zero
+                        dragStartOffset = .zero
+                        isDragging = false
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     }
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 }
         )
         .onTapGesture(count: 2) {
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
+            withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
                 settings.resetPosition()
                 dragTranslation = .zero
+                dragStartOffset = .zero
             }
         }
         .onTapGesture(count: 1) {
             onTap?()
         }
         .animation(.easeInOut(duration: 0.12), value: text)
-        .animation(.easeInOut(duration: 0.20), value: showControls)
     }
 
-    // MARK: - Offset Calculations
+    // MARK: - Position Calculations
 
-    private func effectiveOffsetX(in geometry: GeometryProxy) -> CGFloat {
+    private func baseBottomPadding(in geometry: GeometryProxy) -> CGFloat {
+        // Минимальный естественный отступ снизу над Home Indicator
+        let safeBottom = max(geometry.safeAreaInsets.bottom, 10)
+        return safeBottom + 6
+    }
+
+    private func effectiveX(in geometry: GeometryProxy) -> CGFloat {
         if isDragging {
-            return clampX(settings.customOffsetX + dragTranslation.width, in: geometry)
+            let rawX = dragStartOffset.width + dragTranslation.width
+            return clampX(rawX, in: geometry)
         }
-        return clampX(settings.customOffsetX, in: geometry)
+        if settings.hasCustomPosition {
+            return clampX(settings.customOffsetX, in: geometry)
+        }
+        return 0
     }
 
-    private func effectiveOffsetY(in geometry: GeometryProxy) -> CGFloat {
+    private func effectiveY(in geometry: GeometryProxy) -> CGFloat {
         if isDragging {
-            let targetY = settings.customOffsetY + dragTranslation.height
-            return clampY(targetY, in: geometry)
+            let rawY = dragStartOffset.height + dragTranslation.height
+            return clampY(rawY, in: geometry)
         }
 
         if settings.hasCustomPosition {
             var y = settings.customOffsetY
             // Если субтитры перетащены близко к нижней панели, аккуратно приподнимаем при показе контролов
-            if showControls && y > -75 {
-                y -= 48
+            if showControls && y > -36 {
+                y -= 40
             }
             return clampY(y, in: geometry)
         }
 
-        // Стандартное адаптивное положение
-        let zoomExtra: CGFloat = isZoomedToFill ? 8 : 0
-        let baseBottom = showControls ? -(104 + zoomExtra) : -(34 + zoomExtra)
-        return baseBottom
+        // Стандартное адаптивное смещение: при показе контролов приподнимаем над полосой таймлайна (+40pt)
+        return showControls ? -40 : 0
     }
 
     private func clampX(_ x: CGFloat, in geometry: GeometryProxy) -> CGFloat {
-        let halfWidth = geometry.size.width / 2.0
-        let margin: CGFloat = 60.0
-        let limit = max(40.0, halfWidth - margin)
-        return min(limit, max(-limit, x))
+        let maxHorizontal = max(24, (geometry.size.width / 2.0) - 60)
+        return min(maxHorizontal, max(-maxHorizontal, x))
     }
 
     private func clampY(_ y: CGFloat, in geometry: GeometryProxy) -> CGFloat {
-        let screenHeight = geometry.size.height
-        let topLimit = -(screenHeight - 80.0) // граница сверху у верхнего бара
-        let bottomLimit: CGFloat = 15.0       // граница снизу
-        return min(bottomLimit, max(topLimit, y))
+        let topSafeArea = geometry.safeAreaInsets.top
+        let maxTop = -(geometry.size.height - topSafeArea - 70)
+        let maxBottom: CGFloat = 6.0
+        return min(maxBottom, max(maxTop, y))
     }
 }
