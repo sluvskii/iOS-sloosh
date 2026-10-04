@@ -34,17 +34,6 @@ struct PlayerContainerView: View {
                 .onAppear { vm.pipController = pipController }
                 .onChange(of: pipController) { _, newVal in vm.pipController = newVal }
 
-            // 2.1. Субтитры (поверх видеослоя, под жестами и контролами)
-            if let subtitleText = vm.currentSubtitleText, !subtitleText.isEmpty {
-                SubtitleOverlayView(
-                    text: subtitleText,
-                    showControls: showControls,
-                    isZoomedToFill: isZoomedToFill
-                )
-                .allowsHitTesting(false)
-                .zIndex(1)
-            }
-
             // 3. (Буферизация перенесена в саму кнопку Play)
 
             // 4. Ошибка (показываем поверх видео, скрываем всё остальное)
@@ -55,9 +44,23 @@ struct PlayerContainerView: View {
                 // 5. Жесты (двойной тап = перемотка, одинарный = контролы)
                 gestureLayer
 
+                // 5.1. Субтитры (интерактивный оверлей с поддержкой перемещения)
+                if let subtitleText = vm.currentSubtitleText, !subtitleText.isEmpty {
+                    SubtitleOverlayView(
+                        text: subtitleText,
+                        showControls: showControls,
+                        isZoomedToFill: isZoomedToFill,
+                        onTap: {
+                            toggleControls()
+                        }
+                    )
+                    .zIndex(4)
+                }
+
                 // 6. Multi-tap Seek feedback
                 MultiSeekFeedbackView(side: activeTapSide, seconds: multiSeekSeconds)
                     .allowsHitTesting(false)
+                    .zIndex(5)
 
                 // 7. Контролы
                 let isSeeking = multiSeekSeconds != nil || isInteracting
@@ -78,6 +81,7 @@ struct PlayerContainerView: View {
                     }
                 )
                 .allowsHitTesting(showControls)
+                .zIndex(6)
             }
         }
         .environment(\.colorScheme, .dark)
