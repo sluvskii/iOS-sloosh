@@ -24,9 +24,6 @@ final class SubtitleSettings: ObservableObject {
     static let shared = SubtitleSettings()
 
     @AppStorage("sloosh_subtitle_font_size") var fontSizeRaw: String = SubtitleFontSize.medium.rawValue
-    @AppStorage("sloosh_subtitle_offset_x") var customOffsetX: Double = 0.0
-    @AppStorage("sloosh_subtitle_offset_y") var customOffsetY: Double = 0.0
-    @AppStorage("sloosh_subtitle_has_custom_position") var hasCustomPosition: Bool = false
 
     var fontSize: SubtitleFontSize {
         get {
@@ -36,19 +33,5 @@ final class SubtitleSettings: ObservableObject {
             fontSizeRaw = newValue.rawValue
             objectWillChange.send()
         }
-    }
-
-    func setCustomOffset(x: Double, y: Double) {
-        customOffsetX = x
-        customOffsetY = y
-        hasCustomPosition = (abs(x) > 6.0 || abs(y) > 6.0)
-        objectWillChange.send()
-    }
-
-    func resetPosition() {
-        customOffsetX = 0.0
-        customOffsetY = 0.0
-        hasCustomPosition = false
-        objectWillChange.send()
     }
 }
