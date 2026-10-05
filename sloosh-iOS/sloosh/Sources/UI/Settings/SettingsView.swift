@@ -234,25 +234,6 @@ struct SettingsView: View {
                         }
                     }
                 }
-
-                // Сбросить положение субтитров (если были смещены)
-                if subtitleSettings.hasCustomPosition {
-                    Button(role: .destructive) {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
-                            subtitleSettings.resetPosition()
-                        }
-                    } label: {
-                        HStack(spacing: 12) {
-                            Image(systemName: "arrow.counterclockwise")
-                                .foregroundStyle(.red)
-                                .font(.system(size: 18))
-                                .frame(width: 24)
-                            
-                            Text("Сбросить положение субтитров")
-                                .foregroundStyle(.red)
-                        }
-                    }
-                }
             }
             
             Section("Хранилище") {

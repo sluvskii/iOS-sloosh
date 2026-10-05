@@ -44,17 +44,15 @@ struct PlayerContainerView: View {
                 // 5. Жесты (двойной тап = перемотка, одинарный = контролы)
                 gestureLayer
 
-                // 5.1. Субтитры (интерактивный оверлей с поддержкой перемещения)
+                // 5.1. Субтитры (чистый оверлей под контролами, не перехватывает клики)
                 if let subtitleText = vm.currentSubtitleText, !subtitleText.isEmpty {
                     SubtitleOverlayView(
                         text: subtitleText,
                         showControls: showControls,
-                        isZoomedToFill: isZoomedToFill,
-                        onTap: {
-                            toggleControls()
-                        }
+                        isZoomedToFill: isZoomedToFill
                     )
-                    .zIndex(7)
+                    .allowsHitTesting(false)
+                    .zIndex(2)
                 }
 
                 // 6. Multi-tap Seek feedback

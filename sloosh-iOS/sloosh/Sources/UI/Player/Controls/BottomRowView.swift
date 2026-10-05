@@ -185,19 +185,6 @@ struct BottomRowView: View, Equatable {
                         }
                     }
                 }
-
-                if SubtitleSettings.shared.hasCustomPosition {
-                    Section {
-                        Button(role: .destructive) {
-                            withAnimation(.spring(response: 0.35, dampingFraction: 0.82)) {
-                                SubtitleSettings.shared.resetPosition()
-                            }
-                            onInteraction?()
-                        } label: {
-                            Label("Сбросить положение", systemImage: "arrow.counterclockwise")
-                        }
-                    }
-                }
             }
         } label: {
             Image(systemName: currentSubtitleUrl != nil ? "captions.bubble.fill" : "captions.bubble")
