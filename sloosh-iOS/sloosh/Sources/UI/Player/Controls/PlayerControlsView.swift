@@ -12,6 +12,8 @@ struct PlayerControlsView: View {
     var isSeeking: Bool
     var onInteraction: (() -> Void)? = nil
 
+    @ObservedObject private var subtitleSettings = SubtitleSettings.shared
+
     var body: some View {
         ZStack {
             // Лёгкое затемнение фона, когда контролы видны
@@ -110,6 +112,7 @@ struct PlayerControlsView: View {
                                     currentQualityKey: vm.currentQualityKey,
                                     availableSubtitles: vm.availableSubtitles,
                                     currentSubtitleUrl: vm.currentSubtitle?.url,
+                                    subtitleFontSize: subtitleSettings.fontSize,
                                     isMovie: vm.isMovie,
                                     seriesResult: vm.seriesResult,
                                     currentSeason: vm.currentSeason,
