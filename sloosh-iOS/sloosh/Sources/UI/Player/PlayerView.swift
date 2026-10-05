@@ -353,8 +353,6 @@ class PlayerViewModel: ObservableObject {
     @Published var currentSubtitleText: String?
     private var activeSubtitleCues: [SubtitleCue] = []
     private var subtitleFetchTask: Task<Void, Never>?
-    private var legibleDelegate: LegibleOutputDelegate?
-    private var legibleOutput: AVPlayerItemLegibleOutput?
 
     // MARK: - PiP
     @Published var isPiPActive = false
@@ -1192,8 +1190,6 @@ class PlayerViewModel: ObservableObject {
         Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: 350_000_000)
             self?.player = nil
-            self?.legibleDelegate = nil
-            self?.legibleOutput = nil
 
             if !finalIsSeekPending, let finalMediaId, finalPos > 1 {
                 PlaybackProgressStore.shared.save(
@@ -1291,7 +1287,11 @@ class PlayerViewModel: ObservableObject {
             return
         }
 
-        applySubtitleToPlayer(subtitle)
+        let didSelectNative = applySubtitleToPlayer(subtitle)
+        if didSelectNative {
+            logDebug("setSubtitle: native track applied to AVPlayer, external VTT fetch skipped")
+            return
+        }
 
         if subtitle.url.hasPrefix("http://") || subtitle.url.hasPrefix("https://") {
             loadExternalSubtitles(from: subtitle.url)
@@ -1352,12 +1352,13 @@ class PlayerViewModel: ObservableObject {
         }
     }
 
-    private func applySubtitleToPlayer(_ subtitle: PlaybackSubtitle?) {
+    @discardableResult
+    private func applySubtitleToPlayer(_ subtitle: PlaybackSubtitle?) -> Bool {
         guard let player = player,
               let item = player.currentItem,
               let group = item.asset.mediaSelectionGroup(forMediaCharacteristic: .legible) else {
             logDebug("applySubtitleToPlayer: legible group not available yet")
-            return
+            return false
         }
 
         guard let subtitle = subtitle else {
@@ -1365,21 +1366,11 @@ class PlayerViewModel: ObservableObject {
                 item.select(nil, in: group)
             }
             logDebug("applySubtitleToPlayer: disabled subtitles (selected nil)")
-            return
+            return false
         }
 
         let options = group.options
         logDebug("applySubtitleToPlayer: target='\(subtitle.label)', url='\(subtitle.url)', available options=\(options.map { $0.displayName })")
-
-        // External VTT/SRT — rendered by SubtitleOverlayView.
-        // MUST deselect native legible track to prevent double subtitle rendering.
-        if subtitle.url.hasPrefix("http://") || subtitle.url.hasPrefix("https://") {
-            if group.allowsEmptySelection {
-                item.select(nil, in: group)
-            }
-            logDebug("applySubtitleToPlayer: external VTT — deselected native legible track to prevent duplicate rendering")
-            return
-        }
 
         // 0. Native track index if url is "native_X"
         if subtitle.url.hasPrefix("native_"),
@@ -1388,16 +1379,21 @@ class PlayerViewModel: ObservableObject {
            idx < options.count {
             item.select(options[idx], in: group)
             logDebug("applySubtitleToPlayer: selected native index [\(idx)] '\(options[idx].displayName)'")
-            return
+            activeSubtitleCues = []
+            currentSubtitleText = nil
+            return true
         }
 
         // 1. Exact match by displayName
+        let cleanTarget = subtitle.label.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if let option = options.first(where: {
-            $0.displayName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == subtitle.label.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            $0.displayName.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == cleanTarget
         }) {
             item.select(option, in: group)
-            logDebug("applySubtitleToPlayer: selected exact match option '\(option.displayName)'")
-            return
+            logDebug("applySubtitleToPlayer: selected exact match native option '\(option.displayName)'")
+            activeSubtitleCues = []
+            currentSubtitleText = nil
+            return true
         }
 
         // 2. Fuzzy match by name containment
@@ -1407,8 +1403,10 @@ class PlayerViewModel: ObservableObject {
             return optName.contains(subLabel) || subLabel.contains(optName)
         }) {
             item.select(option, in: group)
-            logDebug("applySubtitleToPlayer: selected fuzzy match option '\(option.displayName)'")
-            return
+            logDebug("applySubtitleToPlayer: selected fuzzy match native option '\(option.displayName)'")
+            activeSubtitleCues = []
+            currentSubtitleText = nil
+            return true
         }
 
         // 3. Match by index in availableSubtitles
@@ -1416,7 +1414,9 @@ class PlayerViewModel: ObservableObject {
            idx < options.count {
             item.select(options[idx], in: group)
             logDebug("applySubtitleToPlayer: selected index match [\(idx)] '\(options[idx].displayName)'")
-            return
+            activeSubtitleCues = []
+            currentSubtitleText = nil
+            return true
         }
 
         // 4. Match by language code
@@ -1426,15 +1426,17 @@ class PlayerViewModel: ObservableObject {
                $0.extendedLanguageTag?.lowercased().hasPrefix(subtitle.lang.lowercased()) == true
            }) {
             item.select(option, in: group)
-            logDebug("applySubtitleToPlayer: selected language match option '\(option.displayName)'")
-            return
+            logDebug("applySubtitleToPlayer: selected language match native option '\(option.displayName)'")
+            activeSubtitleCues = []
+            currentSubtitleText = nil
+            return true
         }
 
-        // 5. Fallback to first option if nothing matched
-        if let first = options.first {
-            item.select(first, in: group)
-            logDebug("applySubtitleToPlayer: fallback selected first option '\(first.displayName)'")
+        // Ни одна нативная дорожка не подошла — сбрасываем выбор в AVPlayer (будет воспроизведено через SubtitleOverlayView)
+        if group.allowsEmptySelection {
+            item.select(nil, in: group)
         }
+        return false
     }
 
 
@@ -2084,28 +2086,6 @@ class PlayerViewModel: ObservableObject {
         statusObserver?.invalidate()
         bufferObserver?.invalidate()
 
-        let delegate = LegibleOutputDelegate { [weak self] lines in
-            Task { @MainActor [weak self] in
-                guard let self else { return }
-                guard self.activeSubtitleCues.isEmpty else { return }
-                guard self.currentSubtitle != nil else {
-                    if self.currentSubtitleText != nil {
-                        self.currentSubtitleText = nil
-                    }
-                    return
-                }
-                let clean = lines.joined(separator: "\n")
-                let final = clean.isEmpty ? nil : clean
-                if self.currentSubtitleText != final {
-                    self.currentSubtitleText = final
-                }
-            }
-        }
-        let legible = AVPlayerItemLegibleOutput()
-        legible.setDelegate(delegate, queue: DispatchQueue.main)
-        playerItem.add(legible)
-        self.legibleDelegate = delegate
-        self.legibleOutput = legible
         
         if let playbackEndObserver {
             NotificationCenter.default.removeObserver(playbackEndObserver)
@@ -3257,24 +3237,4 @@ class PlayerViewModel: ObservableObject {
     }
 }
 
-private final class LegibleOutputDelegate: NSObject, AVPlayerItemLegibleOutputPushDelegate, @unchecked Sendable {
-    private let onStrings: @Sendable ([String]) -> Void
-
-    init(onStrings: @escaping @Sendable ([String]) -> Void) {
-        self.onStrings = onStrings
-        super.init()
-    }
-
-    func legibleOutput(
-        _ output: AVPlayerItemLegibleOutput,
-        didOutputAttributedStrings strings: [NSAttributedString],
-        nativeDurationForSampleRanges nativeDurationProvider: [NSValue],
-        forItemTime itemTime: CMTime
-    ) {
-        let plain = strings
-            .map { $0.string.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-        onStrings(plain)
-    }
-}
 

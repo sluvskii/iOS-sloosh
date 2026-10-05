@@ -1,6 +1,7 @@
 import SwiftUI
 
-/// Нативный оверлей субтитров в кинематографическом стиле (чистый текст, без рамок, без размытых теней и без перехвата касаний)
+/// Нативный оверлей субтитров в эталонном стиле iOS (Apple TV / Safari / AVKit)
+/// Каждая строка реплики обрамлена в аккуратную полупрозрачную черную плашку со скругленными углами
 struct SubtitleOverlayView: View {
     let text: String
     let showControls: Bool
@@ -11,21 +12,11 @@ struct SubtitleOverlayView: View {
     var body: some View {
         GeometryReader { geometry in
             ZStack(alignment: .bottom) {
-                // Прозрачный фоновый контейнер
+                // Прозрачный контейнер на весь экран без перехвата касаний
                 Color.clear
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-                Text(text)
-                    .font(.system(size: settings.fontSize.pointSize, weight: .semibold, design: .default))
-                    .tracking(0.2)
-                    .foregroundColor(.white)
-                    .multilineTextAlignment(.center)
-                    .lineSpacing(3.5)
-                    // Аккуратная тонкая тень для четкости без гигантского размытого ореола
-                    .shadow(color: Color.black.opacity(0.95), radius: 1.0, x: 0, y: 1)
-                    .shadow(color: Color.black.opacity(0.60), radius: 1.5, x: 0, y: 1.5)
-                    .padding(.horizontal, 24)
-                    .frame(maxWidth: min(geometry.size.width - 96, 720))
+                subtitleLinesView(in: geometry)
                     .padding(.bottom, effectiveBottomPadding(in: geometry))
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -35,15 +26,41 @@ struct SubtitleOverlayView: View {
         .animation(.easeInOut(duration: 0.12), value: text)
     }
 
+    // MARK: - Subtitle Lines (Эталонный нативный вид iOS)
+
+    private func subtitleLinesView(in geometry: GeometryProxy) -> some View {
+        let lines = text
+            .components(separatedBy: "\n")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+
+        return VStack(spacing: 4) {
+            ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
+                Text(line)
+                    .font(.system(size: settings.fontSize.pointSize, weight: .medium, design: .default))
+                    .foregroundColor(.white)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 3.5)
+                    .background(
+                        RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            .fill(Color.black.opacity(0.72))
+                    )
+            }
+        }
+        .frame(maxWidth: min(geometry.size.width - 64, 760))
+    }
+
     // MARK: - Responsive Padding
 
     private func effectiveBottomPadding(in geometry: GeometryProxy) -> CGFloat {
         let safeBottom = max(geometry.safeAreaInsets.bottom, 12)
         let zoomExtra: CGFloat = isZoomedToFill ? 8 : 0
 
-        // В покое — аккуратно внизу экрана над Home Indicator (~28pt)
-        // При показе контролов — плавно приподнимаем над таймлайном (+76pt)
-        let basePadding = safeBottom + 12 + zoomExtra
-        return showControls ? (basePadding + 76) : basePadding
+        // В покое — аккуратно внизу экрана над Home Indicator (~24-28pt)
+        // При показе контролов — плавно приподнимаем над таймлайном (+68pt)
+        let basePadding = safeBottom + 10 + zoomExtra
+        return showControls ? (basePadding + 68) : basePadding
     }
 }
