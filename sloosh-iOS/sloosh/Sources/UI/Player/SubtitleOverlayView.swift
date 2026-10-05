@@ -24,6 +24,7 @@ struct SubtitleOverlayView: View {
         .allowsHitTesting(false)
         .animation(.spring(response: 0.32, dampingFraction: 0.86), value: showControls)
         .animation(.easeInOut(duration: 0.12), value: text)
+        .animation(.easeInOut(duration: 0.15), value: settings.fontSize)
     }
 
     // MARK: - Subtitle Lines (Эталонный нативный вид iOS)
@@ -40,7 +41,8 @@ struct SubtitleOverlayView: View {
                     .font(.system(size: settings.fontSize.pointSize, weight: .medium, design: .default))
                     .foregroundColor(.white)
                     .multilineTextAlignment(.center)
-                    .lineLimit(2)
+                    .lineLimit(3)
+                    .fixedSize(horizontal: false, vertical: true)
                     .padding(.horizontal, 9)
                     .padding(.vertical, 3.5)
                     .background(

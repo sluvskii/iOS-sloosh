@@ -353,6 +353,8 @@ class PlayerViewModel: ObservableObject {
     @Published var currentSubtitleText: String?
     private var activeSubtitleCues: [SubtitleCue] = []
     private var subtitleFetchTask: Task<Void, Never>?
+    private var legibleDelegate: LegibleOutputDelegate?
+    private var legibleOutput: AVPlayerItemLegibleOutput?
 
     // MARK: - PiP
     @Published var isPiPActive = false
@@ -1190,6 +1192,8 @@ class PlayerViewModel: ObservableObject {
         Task { @MainActor [weak self] in
             try? await Task.sleep(nanoseconds: 350_000_000)
             self?.player = nil
+            self?.legibleDelegate = nil
+            self?.legibleOutput = nil
 
             if !finalIsSeekPending, let finalMediaId, finalPos > 1 {
                 PlaybackProgressStore.shared.save(
@@ -1369,6 +1373,15 @@ class PlayerViewModel: ObservableObject {
             return false
         }
 
+        // External VTT subtitles are loaded and rendered by our custom parser and overlay
+        if subtitle.url.hasPrefix("http://") || subtitle.url.hasPrefix("https://") {
+            if group.allowsEmptySelection {
+                item.select(nil, in: group)
+            }
+            logDebug("applySubtitleToPlayer: external VTT subtitle '\(subtitle.label)' — deselected native track")
+            return false
+        }
+
         let options = group.options
         logDebug("applySubtitleToPlayer: target='\(subtitle.label)', url='\(subtitle.url)', available options=\(options.map { $0.displayName })")
 
@@ -1380,7 +1393,6 @@ class PlayerViewModel: ObservableObject {
             item.select(options[idx], in: group)
             logDebug("applySubtitleToPlayer: selected native index [\(idx)] '\(options[idx].displayName)'")
             activeSubtitleCues = []
-            currentSubtitleText = nil
             return true
         }
 
@@ -1392,7 +1404,6 @@ class PlayerViewModel: ObservableObject {
             item.select(option, in: group)
             logDebug("applySubtitleToPlayer: selected exact match native option '\(option.displayName)'")
             activeSubtitleCues = []
-            currentSubtitleText = nil
             return true
         }
 
@@ -1405,7 +1416,6 @@ class PlayerViewModel: ObservableObject {
             item.select(option, in: group)
             logDebug("applySubtitleToPlayer: selected fuzzy match native option '\(option.displayName)'")
             activeSubtitleCues = []
-            currentSubtitleText = nil
             return true
         }
 
@@ -1415,7 +1425,6 @@ class PlayerViewModel: ObservableObject {
             item.select(options[idx], in: group)
             logDebug("applySubtitleToPlayer: selected index match [\(idx)] '\(options[idx].displayName)'")
             activeSubtitleCues = []
-            currentSubtitleText = nil
             return true
         }
 
@@ -1428,7 +1437,6 @@ class PlayerViewModel: ObservableObject {
             item.select(option, in: group)
             logDebug("applySubtitleToPlayer: selected language match native option '\(option.displayName)'")
             activeSubtitleCues = []
-            currentSubtitleText = nil
             return true
         }
 
@@ -2086,7 +2094,30 @@ class PlayerViewModel: ObservableObject {
         statusObserver?.invalidate()
         bufferObserver?.invalidate()
 
-        
+        let delegate = LegibleOutputDelegate { [weak self] lines in
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                guard self.activeSubtitleCues.isEmpty else { return }
+                guard self.currentSubtitle != nil else {
+                    if self.currentSubtitleText != nil {
+                        self.currentSubtitleText = nil
+                    }
+                    return
+                }
+                let clean = lines.joined(separator: "\n")
+                let final = clean.isEmpty ? nil : clean
+                if self.currentSubtitleText != final {
+                    self.currentSubtitleText = final
+                }
+            }
+        }
+        let legible = AVPlayerItemLegibleOutput()
+        legible.suppressesPlayerRendering = true
+        legible.setDelegate(delegate, queue: DispatchQueue.main)
+        playerItem.add(legible)
+        self.legibleDelegate = delegate
+        self.legibleOutput = legible
+
         if let playbackEndObserver {
             NotificationCenter.default.removeObserver(playbackEndObserver)
             self.playbackEndObserver = nil
@@ -3234,6 +3265,27 @@ class PlayerViewModel: ObservableObject {
         if label.lowercased().hasSuffix("p") { return label }
         if Int(label) != nil { return "\(label)p" }
         return label
+    }
+}
+
+private final class LegibleOutputDelegate: NSObject, AVPlayerItemLegibleOutputPushDelegate, @unchecked Sendable {
+    private let onStrings: @Sendable ([String]) -> Void
+
+    init(onStrings: @escaping @Sendable ([String]) -> Void) {
+        self.onStrings = onStrings
+        super.init()
+    }
+
+    func legibleOutput(
+        _ output: AVPlayerItemLegibleOutput,
+        didOutputAttributedStrings strings: [NSAttributedString],
+        nativeDurationForSampleRanges nativeDurationProvider: [NSValue],
+        forItemTime itemTime: CMTime
+    ) {
+        let plain = strings
+            .map { $0.string.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        onStrings(plain)
     }
 }
 

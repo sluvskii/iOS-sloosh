@@ -7,14 +7,13 @@ enum SubtitleFontSize: String, CaseIterable, Identifiable, Codable {
     case large = "Крупный"
 
     var id: String { rawValue }
-
     var title: String { rawValue }
 
     var pointSize: CGFloat {
         switch self {
-        case .small: return 17
-        case .medium: return 21
-        case .large: return 25
+        case .small: return 18
+        case .medium: return 24
+        case .large: return 30
         }
     }
 }
@@ -23,15 +22,16 @@ enum SubtitleFontSize: String, CaseIterable, Identifiable, Codable {
 final class SubtitleSettings: ObservableObject {
     static let shared = SubtitleSettings()
 
-    @AppStorage("sloosh_subtitle_font_size") var fontSizeRaw: String = SubtitleFontSize.medium.rawValue
+    private static let key = "sloosh_subtitle_font_size"
 
-    var fontSize: SubtitleFontSize {
-        get {
-            SubtitleFontSize(rawValue: fontSizeRaw) ?? .medium
+    @Published var fontSize: SubtitleFontSize {
+        didSet {
+            UserDefaults.standard.set(fontSize.rawValue, forKey: Self.key)
         }
-        set {
-            fontSizeRaw = newValue.rawValue
-            objectWillChange.send()
-        }
+    }
+
+    private init() {
+        let saved = UserDefaults.standard.string(forKey: Self.key) ?? SubtitleFontSize.medium.rawValue
+        self.fontSize = SubtitleFontSize(rawValue: saved) ?? .medium
     }
 }

@@ -13,6 +13,7 @@ struct BottomRowView: View, Equatable {
     let currentQualityKey: String?
     let availableSubtitles: [PlaybackSubtitle]
     let currentSubtitleUrl: String?
+    let subtitleFontSize: SubtitleFontSize
     let isMovie: Bool
     let seriesResult: AllohaApiResult?
     let currentSeason: Int?
@@ -26,6 +27,7 @@ struct BottomRowView: View, Equatable {
         lhs.currentTranslationName == rhs.currentTranslationName &&
         lhs.currentQualityKey == rhs.currentQualityKey &&
         lhs.currentSubtitleUrl == rhs.currentSubtitleUrl &&
+        lhs.subtitleFontSize == rhs.subtitleFontSize &&
         lhs.isMovie == rhs.isMovie &&
         lhs.currentSeason == rhs.currentSeason &&
         lhs.currentEpisode == rhs.currentEpisode &&
@@ -174,10 +176,12 @@ struct BottomRowView: View, Equatable {
                 Section("Размер текста") {
                     ForEach(SubtitleFontSize.allCases) { size in
                         Button {
-                            SubtitleSettings.shared.fontSize = size
+                            withAnimation(.easeInOut(duration: 0.15)) {
+                                SubtitleSettings.shared.fontSize = size
+                            }
                             onInteraction?()
                         } label: {
-                            if SubtitleSettings.shared.fontSize == size {
+                            if subtitleFontSize == size {
                                 Label(size.title, systemImage: "checkmark")
                             } else {
                                 Text(size.title)
