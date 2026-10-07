@@ -233,9 +233,6 @@ struct MediaDto: Codable, Identifiable {
             if yearInt > currentYear {
                 return true
             }
-            if yearInt == currentYear && (rating == nil || rating == 0) {
-                return true
-            }
         }
         return false
     }
@@ -555,10 +552,6 @@ struct MediaDetailsDto: Codable {
         if let year = year {
             let currentYear = Calendar.current.component(.year, from: Date())
             if year > currentYear {
-                return true
-            }
-            let currentRating = rating ?? 0
-            if year == currentYear && currentRating == 0 {
                 return true
             }
         }
