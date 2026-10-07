@@ -27,17 +27,28 @@ public final class MediaOverridesRepository: ObservableObject {
 
     // MARK: - In-Memory & Local Cache
 
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var threadSafeOverrides: [String: MediaArtworkOverride] = [:]
+
+    private func syncThreadSafe() {
+        Self.lock.withLock {
+            Self.threadSafeOverrides = self.overrides
+        }
+    }
+
     private func loadFromCache() {
         if let data = UserDefaults.standard.data(forKey: cacheKey),
            let cached = try? JSONDecoder().decode([String: MediaArtworkOverride].self, from: data) {
             self.overrides = cached
         }
+        syncThreadSafe()
     }
 
     private func saveToCache() {
         if let data = try? JSONEncoder().encode(overrides) {
             UserDefaults.standard.set(data, forKey: cacheKey)
         }
+        syncThreadSafe()
         NotificationCenter.default.post(name: .mediaArtworkOverridesDidChange, object: nil)
     }
 
@@ -66,29 +77,32 @@ public final class MediaOverridesRepository: ObservableObject {
 
     // MARK: - Resolution Lookup
 
-    public func override(for rawId: String?, tmdbId: Int? = nil, kpId: Int? = nil) -> MediaArtworkOverride? {
-        // 1. Direct raw ID match (e.g. "kp_1236041", "88396")
-        if let rawId = rawId, !rawId.isEmpty {
-            if let found = overrides[rawId] { return found }
-            let clean = rawId.replacingOccurrences(of: "kp_", with: "").replacingOccurrences(of: "tmdb_", with: "")
-            if let found = overrides[clean] { return found }
-        }
-
-        // 2. TMDB ID match
-        if let tmdbId = tmdbId, tmdbId > 0 {
-            if let found = overrides["\(tmdbId)"] ?? overrides["tmdb_\(tmdbId)"] {
-                return found
+    nonisolated public func override(for rawId: String?, tmdbId: Int? = nil, kpId: Int? = nil) -> MediaArtworkOverride? {
+        Self.lock.withLock {
+            let map = Self.threadSafeOverrides
+            // 1. Direct raw ID match (e.g. "kp_1236041", "88396")
+            if let rawId = rawId, !rawId.isEmpty {
+                if let found = map[rawId] { return found }
+                let clean = rawId.replacingOccurrences(of: "kp_", with: "").replacingOccurrences(of: "tmdb_", with: "")
+                if let found = map[clean] { return found }
             }
-        }
 
-        // 3. Kinopoisk ID match
-        if let kpId = kpId, kpId > 0 {
-            if let found = overrides["kp_\(kpId)"] ?? overrides["\(kpId)"] {
-                return found
+            // 2. TMDB ID match
+            if let tmdbId = tmdbId, tmdbId > 0 {
+                if let found = map["\(tmdbId)"] ?? map["tmdb_\(tmdbId)"] {
+                    return found
+                }
             }
-        }
 
-        return nil
+            // 3. Kinopoisk ID match
+            if let kpId = kpId, kpId > 0 {
+                if let found = map["kp_\(kpId)"] ?? map["\(kpId)"] {
+                    return found
+                }
+            }
+
+            return nil
+        }
     }
 
     // MARK: - Cloud Sync (Firebase Realtime Database)
