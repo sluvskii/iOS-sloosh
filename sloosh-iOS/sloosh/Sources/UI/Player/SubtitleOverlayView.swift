@@ -21,6 +21,7 @@ struct SubtitleOverlayView: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+        .ignoresSafeArea()
         .allowsHitTesting(false)
         .animation(.spring(response: 0.32, dampingFraction: 0.86), value: showControls)
         .animation(.easeInOut(duration: 0.12), value: text)
@@ -35,7 +36,10 @@ struct SubtitleOverlayView: View {
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
 
-        return VStack(spacing: 4) {
+        let horizontalSafe = max(geometry.safeAreaInsets.leading, geometry.safeAreaInsets.trailing) * 2
+        let maxSubtitleWidth = min(geometry.size.width - max(horizontalSafe + 32, 64), 760)
+
+        return VStack(spacing: 3) {
             ForEach(Array(lines.enumerated()), id: \.offset) { _, line in
                 Text(line)
                     .font(.system(size: settings.fontSize.pointSize, weight: .medium, design: .default))
@@ -43,26 +47,29 @@ struct SubtitleOverlayView: View {
                     .multilineTextAlignment(.center)
                     .lineLimit(3)
                     .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 9)
-                    .padding(.vertical, 3.5)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 3)
                     .background(
                         RoundedRectangle(cornerRadius: 5, style: .continuous)
                             .fill(Color.black.opacity(0.72))
                     )
             }
         }
-        .frame(maxWidth: min(geometry.size.width - 64, 760))
+        .frame(maxWidth: maxSubtitleWidth)
     }
 
     // MARK: - Responsive Padding
 
     private func effectiveBottomPadding(in geometry: GeometryProxy) -> CGFloat {
-        let safeBottom = max(geometry.safeAreaInsets.bottom, 12)
-        let zoomExtra: CGFloat = isZoomedToFill ? 8 : 0
+        let safeBottom = geometry.safeAreaInsets.bottom
+        let zoomExtra: CGFloat = isZoomedToFill ? 4 : 0
 
-        // В покое — аккуратно внизу экрана над Home Indicator (~24-28pt)
-        // При показе контролов — плавно приподнимаем над таймлайном (+68pt)
-        let basePadding = safeBottom + 10 + zoomExtra
-        return showControls ? (basePadding + 68) : basePadding
+        // В покое: аккуратно прямо над Home Indicator (21 + 3 = 24pt на iPhone, 10pt на iPad)
+        let basePadding: CGFloat = (safeBottom > 0 ? (safeBottom + 3) : 10) + zoomExtra
+
+        // При показе контролов: плавно приподнимаем над таймлайном (~68-70pt)
+        let controlsPadding: CGFloat = max(basePadding + 44, 68)
+
+        return showControls ? controlsPadding : basePadding
     }
 }
