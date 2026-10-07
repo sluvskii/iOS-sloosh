@@ -18,11 +18,16 @@ struct MediaArtworkPickerSheet: View {
     @State private var selectedTab: ArtworkTab = .logo
     @State private var selectedLogoUrl: String?
     @State private var selectedPosterUrl: String?
+    @State private var selectedBackdropUrl: String?
+    @State private var selectedCarouselUrls: [String] = []
+
     @State private var customUrlText: String = ""
     @State private var selectedLanguageFilter: String = "ALL"
 
     @State private var logos: [MediaImageItemDto] = []
     @State private var posters: [MediaImageItemDto] = []
+    @State private var backdrops: [MediaImageItemDto] = []
+
     @State private var isLoading: Bool = false
     @State private var isSaving: Bool = false
     @State private var errorMessage: String? = nil
@@ -31,12 +36,14 @@ struct MediaArtworkPickerSheet: View {
     enum ArtworkTab: String, CaseIterable, Identifiable {
         case logo = "Логотип"
         case poster = "Постер"
+        case backdrop = "Задники"
 
         var id: Self { self }
         var icon: String {
             switch self {
             case .logo: return "text.below.photo"
             case .poster: return "photo.fill"
+            case .backdrop: return "rectangle.on.rectangle.angled"
             }
         }
     }
@@ -51,7 +58,9 @@ struct MediaArtworkPickerSheet: View {
         defaultPosterUrl: String? = nil,
         defaultLogoUrl: String? = nil,
         preloadedLogos: [MediaImageItemDto]? = nil,
-        preloadedPosters: [MediaImageItemDto]? = nil
+        preloadedPosters: [MediaImageItemDto]? = nil,
+        preloadedBackdrops: [MediaImageItemDto]? = nil,
+        initialCarouselUrls: [String]? = nil
     ) {
         self.mediaId = mediaId
         self.mediaType = mediaType
@@ -63,6 +72,8 @@ struct MediaArtworkPickerSheet: View {
         self.defaultLogoUrl = defaultLogoUrl
         _logos = State(initialValue: preloadedLogos ?? [])
         _posters = State(initialValue: preloadedPosters ?? [])
+        _backdrops = State(initialValue: preloadedBackdrops ?? [])
+        _selectedCarouselUrls = State(initialValue: initialCarouselUrls ?? [])
     }
 
     init(details: MediaDetailsDto) {
@@ -80,7 +91,9 @@ struct MediaArtworkPickerSheet: View {
             defaultPosterUrl: details.displayPosterUrl,
             defaultLogoUrl: details.displayLogoUrl,
             preloadedLogos: details.availableLogos,
-            preloadedPosters: details.availablePosters
+            preloadedPosters: details.availablePosters,
+            preloadedBackdrops: details.availableBackdrops,
+            initialCarouselUrls: details.displayBackdropUrls
         )
     }
 
@@ -99,7 +112,7 @@ struct MediaArtworkPickerSheet: View {
                     // 1. Live Preview Stage
                     livePreviewSection
 
-                    // 2. Tab Segment Picker (Логотип / Постер)
+                    // 2. Tab Segment Picker (Логотип / Постер / Задники)
                     tabPickerSection
 
                     // 3. Language Filter Pills
@@ -108,10 +121,15 @@ struct MediaArtworkPickerSheet: View {
                     // 4. Custom Direct URL Input
                     customUrlSection
 
-                    // 5. Grid of Available Options
+                    // 5. Active Carousel Management (Only in Backdrop tab)
+                    if selectedTab == .backdrop {
+                        activeCarouselSection
+                    }
+
+                    // 6. Grid of Available Options
                     imageGridSection
 
-                    // 6. Action Buttons (Сохранить / Сбросить)
+                    // 7. Action Buttons (Сохранить / Сбросить)
                     actionsSection
                 }
                 .padding(.horizontal, 16)
@@ -176,9 +194,21 @@ struct MediaArtworkPickerSheet: View {
         if let existing = activeOverride {
             self.selectedLogoUrl = existing.logoUrl ?? defaultLogoUrl
             self.selectedPosterUrl = existing.posterUrl ?? defaultPosterUrl
+            self.selectedBackdropUrl = existing.backdropUrl ?? backdropUrl
+            if let customBackdrops = existing.backdropUrls, !customBackdrops.isEmpty {
+                self.selectedCarouselUrls = customBackdrops
+            } else if self.selectedCarouselUrls.isEmpty {
+                if let b = self.selectedBackdropUrl, !b.isEmpty {
+                    self.selectedCarouselUrls = [b]
+                }
+            }
         } else {
             self.selectedLogoUrl = defaultLogoUrl
             self.selectedPosterUrl = defaultPosterUrl
+            self.selectedBackdropUrl = backdropUrl
+            if self.selectedCarouselUrls.isEmpty, let b = backdropUrl, !b.isEmpty {
+                self.selectedCarouselUrls = [b]
+            }
         }
     }
 
@@ -191,123 +221,232 @@ struct MediaArtworkPickerSheet: View {
                     .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(.secondary)
                 Spacer()
-                Text(selectedTab == .logo ? "На тёмном фоне" : "Карточка")
+                Text(previewSubtitle)
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.secondary)
             }
             .padding(.horizontal, 4)
 
             ZStack {
-                // Backdrop background
-                if let bg = backdropUrl, let url = URL(string: bg) {
-                    AsyncCachedImage(url: url) {
-                        Rectangle().fill(Color.black.opacity(0.85))
-                    } content: { img in
-                        Image(uiImage: img)
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                    } fallback: {
-                        Rectangle().fill(Color.black.opacity(0.85))
-                    }
+                if selectedTab == .backdrop {
+                    backdropPreviewContent
+                } else if selectedTab == .logo {
+                    logoPreviewContent
                 } else {
-                    Color.black.opacity(0.85)
-                }
-
-                // Dark cinematic gradient overlay
-                LinearGradient(
-                    colors: [
-                        Color.black.opacity(0.3),
-                        Color.black.opacity(0.88)
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-
-                // Foreground Content according to active tab
-                if selectedTab == .logo {
-                    VStack(spacing: 12) {
-                        Spacer()
-                        if let logoUrl = selectedLogoUrl, !logoUrl.isEmpty, let url = URL(string: logoUrl) {
-                            AsyncCachedImage(url: url) {
-                                ProgressView().controlSize(.small)
-                            } content: { img in
-                                Image(uiImage: img)
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fit)
-                                    .frame(maxHeight: 70)
-                                    .shadow(color: .black.opacity(0.5), radius: 6, x: 0, y: 3)
-                            } fallback: {
-                                Text(title)
-                                    .font(.system(size: 20, weight: .bold))
-                                    .foregroundStyle(.white)
-                            }
-                        } else {
-                            Text(title)
-                                .font(.system(size: 20, weight: .bold))
-                                .foregroundStyle(.white)
-                                .shadow(color: .black.opacity(0.8), radius: 6)
-                        }
-
-                        Text("Логотип отображается над информацией о фильме")
-                            .font(.system(size: 11))
-                            .foregroundStyle(.white.opacity(0.65))
-                            .padding(.bottom, 8)
-                    }
-                    .padding(16)
-                } else {
-                    HStack(spacing: 16) {
-                        if let posterUrl = selectedPosterUrl, !posterUrl.isEmpty, let url = URL(string: posterUrl) {
-                            AsyncCachedImage(url: url) {
-                                RoundedRectangle(cornerRadius: 10)
-                                    .fill(Color.white.opacity(0.1))
-                                    .frame(width: 80, height: 120)
-                            } content: { img in
-                                Image(uiImage: img)
-                                    .resizable()
-                                    .aspectRatio(contentMode: .fill)
-                                    .frame(width: 80, height: 120)
-                                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                                    .shadow(color: .black.opacity(0.4), radius: 8, x: 0, y: 4)
-                            } fallback: {
-                                RoundedRectangle(cornerRadius: 10)
-                                    .fill(Color.white.opacity(0.1))
-                                    .frame(width: 80, height: 120)
-                            }
-                        }
-
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(title)
-                                .font(.system(size: 16, weight: .bold))
-                                .foregroundStyle(.white)
-                                .lineLimit(2)
-
-                            Text("Основной постер каталога")
-                                .font(.system(size: 12))
-                                .foregroundStyle(.white.opacity(0.7))
-
-                            if let poster = selectedPosterUrl, !poster.isEmpty {
-                                Text("Выбран пользователем")
-                                    .font(.system(size: 10.5, weight: .medium))
-                                    .foregroundStyle(Color.slooshAccent)
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(Color.slooshAccent.opacity(0.18))
-                                    .clipShape(Capsule())
-                            }
-                        }
-
-                        Spacer()
-                    }
-                    .padding(16)
+                    posterPreviewContent
                 }
             }
-            .frame(height: 170)
+            .frame(height: 175)
             .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 18, style: .continuous)
                     .stroke(Color.white.opacity(0.12), lineWidth: 1)
             )
             .shadow(color: .black.opacity(0.2), radius: 10, x: 0, y: 4)
+        }
+    }
+
+    private var previewSubtitle: String {
+        switch selectedTab {
+        case .logo: return "На тёмном фоне"
+        case .poster: return "Карточка"
+        case .backdrop: return "Шапка фильма"
+        }
+    }
+
+    private var logoPreviewContent: some View {
+        ZStack {
+            backdropBaseLayer
+
+            LinearGradient(
+                colors: [Color.black.opacity(0.3), Color.black.opacity(0.88)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+
+            VStack(spacing: 12) {
+                Spacer()
+                if let logoUrl = selectedLogoUrl, !logoUrl.isEmpty, let url = URL(string: logoUrl) {
+                    AsyncCachedImage(url: url) {
+                        ProgressView().controlSize(.small)
+                    } content: { img in
+                        Image(uiImage: img)
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(maxHeight: 70)
+                            .shadow(color: .black.opacity(0.5), radius: 6, x: 0, y: 3)
+                    } fallback: {
+                        Text(title)
+                            .font(.system(size: 20, weight: .bold))
+                            .foregroundStyle(.white)
+                    }
+                } else {
+                    Text(title)
+                        .font(.system(size: 20, weight: .bold))
+                        .foregroundStyle(.white)
+                        .shadow(color: .black.opacity(0.8), radius: 6)
+                }
+
+                Text("Логотип отображается над информацией о фильме")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.white.opacity(0.65))
+                    .padding(.bottom, 8)
+            }
+            .padding(16)
+        }
+    }
+
+    private var posterPreviewContent: some View {
+        ZStack {
+            backdropBaseLayer
+
+            LinearGradient(
+                colors: [Color.black.opacity(0.4), Color.black.opacity(0.9)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+
+            HStack(spacing: 16) {
+                if let posterUrl = selectedPosterUrl, !posterUrl.isEmpty, let url = URL(string: posterUrl) {
+                    AsyncCachedImage(url: url) {
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(Color.white.opacity(0.1))
+                            .frame(width: 80, height: 120)
+                    } content: { img in
+                        Image(uiImage: img)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: 80, height: 120)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                            .shadow(color: .black.opacity(0.4), radius: 8, x: 0, y: 4)
+                    } fallback: {
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(Color.white.opacity(0.1))
+                            .frame(width: 80, height: 120)
+                    }
+                }
+
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(title)
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundStyle(.white)
+                        .lineLimit(2)
+
+                    Text("Основной постер каталога")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.white.opacity(0.7))
+
+                    if let poster = selectedPosterUrl, !poster.isEmpty {
+                        Text("Выбран пользователем")
+                            .font(.system(size: 10.5, weight: .medium))
+                            .foregroundStyle(Color.slooshAccent)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2)
+                            .background(Color.slooshAccent.opacity(0.18))
+                            .clipShape(Capsule())
+                    }
+                }
+
+                Spacer()
+            }
+            .padding(16)
+        }
+    }
+
+    private var backdropPreviewContent: some View {
+        ZStack {
+            if let currentBg = selectedBackdropUrl ?? backdropUrl, let url = URL(string: currentBg) {
+                AsyncCachedImage(url: url) {
+                    Rectangle().fill(Color.black.opacity(0.85))
+                } content: { img in
+                    Image(uiImage: img)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                } fallback: {
+                    Rectangle().fill(Color.black.opacity(0.85))
+                }
+            } else {
+                Color.black.opacity(0.85)
+            }
+
+            LinearGradient(
+                colors: [Color.black.opacity(0.25), Color.black.opacity(0.82)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+
+            VStack {
+                HStack {
+                    HStack(spacing: 4) {
+                        Image(systemName: "star.fill")
+                            .font(.system(size: 10))
+                        Text("Основной задник")
+                            .font(.system(size: 11, weight: .semibold))
+                    }
+                    .foregroundStyle(Color.slooshAccent)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.black.opacity(0.65))
+                    .clipShape(Capsule())
+
+                    Spacer()
+
+                    Text("Карусель: \(selectedCarouselUrls.count) шт.")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.black.opacity(0.65))
+                        .clipShape(Capsule())
+                }
+                .padding(12)
+
+                Spacer()
+
+                if let logoUrl = selectedLogoUrl, !logoUrl.isEmpty, let url = URL(string: logoUrl) {
+                    AsyncCachedImage(url: url) {
+                        EmptyView()
+                    } content: { img in
+                        Image(uiImage: img)
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(maxHeight: 46)
+                            .shadow(color: .black.opacity(0.8), radius: 6, x: 0, y: 3)
+                    } fallback: {
+                        Text(title)
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundStyle(.white)
+                    }
+                } else {
+                    Text(title)
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(.white)
+                        .shadow(color: .black.opacity(0.8), radius: 6)
+                }
+
+                Text("Главный кадр и порядок карусели в шапке фильма")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.white.opacity(0.7))
+                    .padding(.bottom, 10)
+            }
+        }
+    }
+
+    private var backdropBaseLayer: some View {
+        Group {
+            if let bg = selectedBackdropUrl ?? backdropUrl, let url = URL(string: bg) {
+                AsyncCachedImage(url: url) {
+                    Rectangle().fill(Color.black.opacity(0.85))
+                } content: { img in
+                    Image(uiImage: img)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                } fallback: {
+                    Rectangle().fill(Color.black.opacity(0.85))
+                }
+            } else {
+                Color.black.opacity(0.85)
+            }
         }
     }
 
@@ -335,8 +474,7 @@ struct MediaArtworkPickerSheet: View {
                     .padding(.vertical, 10)
                     .background {
                         if isSelected {
-                            Capsule()
-                                .fill(Color.white.opacity(0.18))
+                            Capsule().fill(Color.white.opacity(0.18))
                         }
                     }
                     .clipShape(Capsule())
@@ -351,7 +489,13 @@ struct MediaArtworkPickerSheet: View {
     // MARK: - Language Filter Section
 
     private var availableLanguagesForCurrentTab: [String] {
-        let items = (selectedTab == .logo) ? logos : posters
+        let items: [MediaImageItemDto]
+        switch selectedTab {
+        case .logo: items = logos
+        case .poster: items = posters
+        case .backdrop: items = backdrops
+        }
+
         let hasNoText = items.contains { $0.iso_639_1 == nil || $0.iso_639_1?.isEmpty == true }
         let langs = Set(items.compactMap { $0.iso_639_1?.uppercased() }.filter { !$0.isEmpty })
         var result = ["ALL"]
@@ -421,7 +565,7 @@ struct MediaArtworkPickerSheet: View {
 
     private var customUrlSection: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("Или укажите прямую ссылку на изображение:")
+            Text(customUrlPrompt)
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 4)
@@ -439,7 +583,7 @@ struct MediaArtworkPickerSheet: View {
                 Button {
                     applyCustomUrl()
                 } label: {
-                    Text("Выбрать")
+                    Text(selectedTab == .backdrop ? "Добавить" : "Выбрать")
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(Color.primary)
                         .padding(.horizontal, 14)
@@ -451,6 +595,14 @@ struct MediaArtworkPickerSheet: View {
         }
     }
 
+    private var customUrlPrompt: String {
+        switch selectedTab {
+        case .logo: return "Или укажите прямую ссылку на логотип (PNG):"
+        case .poster: return "Или укажите прямую ссылку на постер:"
+        case .backdrop: return "Или укажите прямую ссылку на кадр/задник:"
+        }
+    }
+
     private func applyCustomUrl() {
         let trimmed = customUrlText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
@@ -458,8 +610,301 @@ struct MediaArtworkPickerSheet: View {
         withAnimation {
             if selectedTab == .logo {
                 selectedLogoUrl = trimmed
-            } else {
+            } else if selectedTab == .poster {
                 selectedPosterUrl = trimmed
+            } else {
+                selectedBackdropUrl = trimmed
+                if !selectedCarouselUrls.contains(trimmed) {
+                    selectedCarouselUrls.insert(trimmed, at: 0)
+                }
+            }
+            customUrlText = ""
+        }
+    }
+
+    // MARK: - Active Carousel Section (Карусель задников)
+
+    private var activeCarouselSection: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .center) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Карусель в шапке (\(selectedCarouselUrls.count))")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(.primary)
+                    Text("Кадры сменяются по очереди. #1 — основной фон.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                }
+
+                Spacer()
+
+                // Deduplicate button
+                Button {
+                    removeDuplicateBackdrops()
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "wand.and.stars")
+                            .font(.system(size: 11))
+                        Text("Убрать дубликаты")
+                            .font(.system(size: 11.5, weight: .semibold))
+                    }
+                    .foregroundStyle(Color.slooshAccent)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+                    .glassEffect(in: Capsule())
+                }
+            }
+            .padding(.horizontal, 4)
+
+            if selectedCarouselUrls.isEmpty {
+                HStack(spacing: 10) {
+                    Image(systemName: "photo.badge.plus")
+                        .font(.system(size: 18))
+                        .foregroundStyle(.secondary)
+                    Text("Карусель пуста. Добавьте кадры из списка ниже.")
+                        .font(.system(size: 13))
+                        .foregroundStyle(.secondary)
+                }
+                .padding(14)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+            } else {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 12) {
+                        ForEach(Array(selectedCarouselUrls.enumerated()), id: \.offset) { index, url in
+                            carouselItemCard(url: url, index: index)
+                        }
+                    }
+                    .padding(.vertical, 4)
+                    .padding(.horizontal, 2)
+                }
+            }
+        }
+        .padding(.vertical, 4)
+    }
+
+    private func carouselItemCard(url: String, index: Int) -> some View {
+        let isPrimary = (index == 0) || (selectedBackdropUrl == url)
+
+        return VStack(spacing: 6) {
+            ZStack(alignment: .topTrailing) {
+                if let u = URL(string: url) {
+                    AsyncCachedImage(url: u) {
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(Color.white.opacity(0.1))
+                    } content: { img in
+                        Image(uiImage: img)
+                            .resizable()
+                            .aspectRatio(16/9, contentMode: .fill)
+                            .frame(width: 140, height: 79)
+                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                    } fallback: {
+                        RoundedRectangle(cornerRadius: 10)
+                            .fill(Color.white.opacity(0.1))
+                            .frame(width: 140, height: 79)
+                    }
+                }
+
+                // Delete from carousel button
+                Button {
+                    removeFromCarousel(at: index)
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 17))
+                        .foregroundStyle(.white)
+                        .background(Circle().fill(Color.black.opacity(0.7)))
+                        .padding(5)
+                }
+                .buttonStyle(.plain)
+
+                // Index / Primary badge
+                VStack {
+                    Spacer()
+                    HStack {
+                        if isPrimary {
+                            HStack(spacing: 3) {
+                                Image(systemName: "star.fill")
+                                    .font(.system(size: 9))
+                                Text("#1 Основной")
+                                    .font(.system(size: 9.5, weight: .bold))
+                            }
+                            .foregroundStyle(Color.black)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 2.5)
+                            .background(Color.slooshAccent)
+                            .clipShape(Capsule())
+                        } else {
+                            Text("#\(index + 1)")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2.5)
+                                .background(Color.black.opacity(0.75))
+                                .clipShape(Capsule())
+                        }
+                        Spacer()
+                    }
+                    .padding(5)
+                }
+            }
+            .frame(width: 140, height: 79)
+
+            // Reordering and Promote controls
+            HStack(spacing: 6) {
+                // Move Left
+                Button {
+                    moveCarouselItem(from: index, up: true)
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(index == 0 ? Color.secondary.opacity(0.3) : Color.primary)
+                        .frame(width: 26, height: 26)
+                        .background(Color.white.opacity(0.08))
+                        .clipShape(Circle())
+                }
+                .disabled(index == 0)
+                .buttonStyle(.plain)
+
+                // Make Primary
+                if !isPrimary {
+                    Button {
+                        makeBackdropPrimary(url: url)
+                    } label: {
+                        Text("Сделать основным")
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(Color.slooshAccent)
+                            .lineLimit(1)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 4)
+                            .background(Color.slooshAccent.opacity(0.12))
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    Spacer()
+                }
+
+                // Move Right
+                Button {
+                    moveCarouselItem(from: index, up: false)
+                } label: {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(index == selectedCarouselUrls.count - 1 ? Color.secondary.opacity(0.3) : Color.primary)
+                        .frame(width: 26, height: 26)
+                        .background(Color.white.opacity(0.08))
+                        .clipShape(Circle())
+                }
+                .disabled(index == selectedCarouselUrls.count - 1)
+                .buttonStyle(.plain)
+            }
+            .frame(width: 140)
+        }
+        .padding(6)
+        .background {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .fill(isPrimary ? Color.slooshAccent.opacity(0.12) : Color.white.opacity(0.04))
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 14, style: .continuous)
+                .stroke(isPrimary ? Color.slooshAccent : Color.white.opacity(0.08), lineWidth: isPrimary ? 1.5 : 1)
+        }
+    }
+
+    private func removeDuplicateBackdrops() {
+        var seen = Set<String>()
+        var uniqueList: [String] = []
+
+        for raw in selectedCarouselUrls {
+            let clean = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            if clean.isEmpty { continue }
+
+            // Extract file name or path segment for fuzzy duplicate detection
+            let key: String = {
+                if let url = URL(string: clean) {
+                    return url.lastPathComponent.lowercased()
+                }
+                return clean.lowercased()
+            }()
+
+            if !seen.contains(key) && !seen.contains(clean) {
+                seen.insert(key)
+                seen.insert(clean)
+                uniqueList.append(clean)
+            }
+        }
+
+        let removedCount = selectedCarouselUrls.count - uniqueList.count
+        if removedCount > 0 {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                selectedCarouselUrls = uniqueList
+                if let current = selectedBackdropUrl, !uniqueList.contains(current) {
+                    selectedBackdropUrl = uniqueList.first
+                }
+            }
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            ToastManager.shared.show(
+                title: "Дубликаты удалены",
+                subtitle: "Убрано повторяющихся кадров: \(removedCount)",
+                icon: "checkmark.circle.fill"
+            )
+        } else {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            ToastManager.shared.show(
+                title: "Всё чисто",
+                subtitle: "В карусели нет дублирующихся кадров",
+                icon: "sparkles"
+            )
+        }
+    }
+
+    private func moveCarouselItem(from index: Int, up: Bool) {
+        let target = up ? (index - 1) : (index + 1)
+        guard target >= 0, target < selectedCarouselUrls.count else { return }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
+            selectedCarouselUrls.swapAt(index, target)
+            if index == 0 || target == 0 {
+                selectedBackdropUrl = selectedCarouselUrls.first
+            }
+        }
+    }
+
+    private func removeFromCarousel(at index: Int) {
+        guard index >= 0, index < selectedCarouselUrls.count else { return }
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
+            let removed = selectedCarouselUrls.remove(at: index)
+            if selectedBackdropUrl == removed {
+                selectedBackdropUrl = selectedCarouselUrls.first
+            }
+        }
+    }
+
+    private func makeBackdropPrimary(url: String) {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        withAnimation(.spring(response: 0.28, dampingFraction: 0.75)) {
+            selectedBackdropUrl = url
+            if let idx = selectedCarouselUrls.firstIndex(of: url) {
+                selectedCarouselUrls.remove(at: idx)
+            }
+            selectedCarouselUrls.insert(url, at: 0)
+        }
+    }
+
+    private func toggleBackdropInCarousel(url: String) {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
+            if let idx = selectedCarouselUrls.firstIndex(of: url) {
+                selectedCarouselUrls.remove(at: idx)
+                if selectedBackdropUrl == url {
+                    selectedBackdropUrl = selectedCarouselUrls.first
+                }
+            } else {
+                selectedCarouselUrls.append(url)
+                if selectedBackdropUrl == nil {
+                    selectedBackdropUrl = url
+                }
             }
         }
     }
@@ -467,7 +912,13 @@ struct MediaArtworkPickerSheet: View {
     // MARK: - Grid of Available Options
 
     private var filteredItems: [MediaImageItemDto] {
-        let raw = (selectedTab == .logo) ? logos : posters
+        let raw: [MediaImageItemDto]
+        switch selectedTab {
+        case .logo: raw = logos
+        case .poster: raw = posters
+        case .backdrop: raw = backdrops
+        }
+
         if selectedLanguageFilter == "ALL" {
             return raw
         }
@@ -481,15 +932,14 @@ struct MediaArtworkPickerSheet: View {
     private var imageGridSection: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text(selectedTab == .logo ? "Доступные логотипы (TMDB)" : "Доступные постеры (TMDB)")
+                Text(gridSectionTitle)
                     .font(.system(size: 14, weight: .semibold))
                     .foregroundStyle(.primary)
 
                 Spacer()
 
                 if isLoading {
-                    ProgressView()
-                        .controlSize(.small)
+                    ProgressView().controlSize(.small)
                 } else {
                     Text("\(filteredItems.count)")
                         .font(.system(size: 12))
@@ -512,9 +962,19 @@ struct MediaArtworkPickerSheet: View {
                 .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
             } else if selectedTab == .logo {
                 logoGrid
-            } else {
+            } else if selectedTab == .poster {
                 posterGrid
+            } else {
+                backdropGrid
             }
+        }
+    }
+
+    private var gridSectionTitle: String {
+        switch selectedTab {
+        case .logo: return "Доступные логотипы (TMDB)"
+        case .poster: return "Доступные постеры (TMDB)"
+        case .backdrop: return "Каталог всех задников (TMDB)"
         }
     }
 
@@ -539,7 +999,6 @@ struct MediaArtworkPickerSheet: View {
                 } label: {
                     VStack(spacing: 8) {
                         ZStack(alignment: .topTrailing) {
-                            // Dark preview background for logo
                             RoundedRectangle(cornerRadius: 12, style: .continuous)
                                 .fill(Color.black.opacity(0.65))
                                 .frame(height: 90)
@@ -560,7 +1019,6 @@ struct MediaArtworkPickerSheet: View {
                                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                             }
 
-                            // Language Pill
                             if let lang = item.iso_639_1?.uppercased(), !lang.isEmpty {
                                 Text(lang)
                                     .font(.system(size: 10, weight: .bold))
@@ -573,7 +1031,6 @@ struct MediaArtworkPickerSheet: View {
                             }
                         }
 
-                        // Status / Selected Indicator
                         HStack(spacing: 4) {
                             if isSelected {
                                 Image(systemName: "checkmark.circle.fill")
@@ -687,6 +1144,116 @@ struct MediaArtworkPickerSheet: View {
         }
     }
 
+    // MARK: - Backdrop Grid (2 columns 16:9)
+
+    private var backdropGrid: some View {
+        let columns = [
+            GridItem(.flexible(), spacing: 10),
+            GridItem(.flexible(), spacing: 10)
+        ]
+
+        return LazyVGrid(columns: columns, spacing: 10) {
+            ForEach(filteredItems) { item in
+                let fullUrl = item.fullUrl
+                let inCarouselIndex = selectedCarouselUrls.firstIndex(of: fullUrl)
+                let isInCarousel = inCarouselIndex != nil
+                let isPrimary = (selectedBackdropUrl == fullUrl) || (inCarouselIndex == 0)
+
+                VStack(spacing: 6) {
+                    ZStack(alignment: .topTrailing) {
+                        if let url = URL(string: fullUrl) {
+                            AsyncCachedImage(url: url) {
+                                RoundedRectangle(cornerRadius: 10)
+                                    .fill(Color.white.opacity(0.1))
+                                    .aspectRatio(16/9, contentMode: .fit)
+                            } content: { img in
+                                Image(uiImage: img)
+                                    .resizable()
+                                    .aspectRatio(16/9, contentMode: .fill)
+                                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                            } fallback: {
+                                RoundedRectangle(cornerRadius: 10)
+                                    .fill(Color.white.opacity(0.1))
+                                    .aspectRatio(16/9, contentMode: .fit)
+                            }
+                        }
+
+                        // Top buttons: Promote to Primary (left) & In Carousel Checkmark (right)
+                        VStack {
+                            HStack {
+                                Button {
+                                    makeBackdropPrimary(url: fullUrl)
+                                } label: {
+                                    Image(systemName: isPrimary ? "star.fill" : "star")
+                                        .font(.system(size: 11, weight: .bold))
+                                        .foregroundStyle(isPrimary ? Color.slooshAccent : .white)
+                                        .padding(6)
+                                        .background(Circle().fill(Color.black.opacity(0.7)))
+                                }
+                                .buttonStyle(.plain)
+
+                                Spacer()
+
+                                if let lang = item.iso_639_1?.uppercased(), !lang.isEmpty {
+                                    Text(lang)
+                                        .font(.system(size: 8.5, weight: .bold))
+                                        .foregroundStyle(.white)
+                                        .padding(.horizontal, 5)
+                                        .padding(.vertical, 2)
+                                        .background(Color.black.opacity(0.7))
+                                        .clipShape(Capsule())
+                                }
+                            }
+                            .padding(5)
+
+                            Spacer()
+                        }
+                    }
+                    .frame(height: 92)
+
+                    // Card Bottom Info & Action
+                    HStack(spacing: 4) {
+                        if let w = item.width, let h = item.height {
+                            Text("\(w)×\(h)")
+                                .font(.system(size: 10))
+                                .foregroundStyle(.secondary)
+                        }
+
+                        Spacer()
+
+                        Button {
+                            toggleBackdropInCarousel(url: fullUrl)
+                        } label: {
+                            HStack(spacing: 3) {
+                                Image(systemName: isInCarousel ? "checkmark" : "plus")
+                                    .font(.system(size: 9.5, weight: .bold))
+                                Text(isInCarousel ? "В карусели" : "Добавить")
+                                    .font(.system(size: 10.5, weight: .semibold))
+                            }
+                            .foregroundStyle(isInCarousel ? Color.slooshAccent : Color.primary)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(isInCarousel ? Color.slooshAccent.opacity(0.16) : Color.white.opacity(0.08))
+                            .clipShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                    .padding(.horizontal, 4)
+                    .padding(.bottom, 2)
+                }
+                .padding(6)
+                .background {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(isPrimary ? Color.slooshAccent.opacity(0.12) : (isInCarousel ? Color.white.opacity(0.06) : Color.white.opacity(0.03)))
+                }
+                .overlay {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .stroke(isPrimary ? Color.slooshAccent : (isInCarousel ? Color.white.opacity(0.18) : Color.white.opacity(0.06)), lineWidth: isPrimary ? 1.5 : 1)
+                }
+            }
+        }
+    }
+
     // MARK: - Actions Section
 
     private var actionsSection: some View {
@@ -696,11 +1263,10 @@ struct MediaArtworkPickerSheet: View {
             } label: {
                 HStack(spacing: 8) {
                     if isSaving {
-                        ProgressView()
-                            .controlSize(.small)
+                        ProgressView().controlSize(.small)
                     } else {
                         Image(systemName: "checkmark.seal.fill")
-                        Text("Сохранить как основной")
+                        Text("Сохранить оформление")
                     }
                 }
                 .font(.system(size: 15, weight: .semibold))
@@ -774,11 +1340,27 @@ struct MediaArtworkPickerSheet: View {
                         self.posters = merged
                     }
 
+                    if let incomingBackdrops = data.backdrops, !incomingBackdrops.isEmpty {
+                        var merged = incomingBackdrops
+                        for existing in self.backdrops {
+                            if !merged.contains(where: { $0.url == existing.url }) {
+                                merged.append(existing)
+                            }
+                        }
+                        self.backdrops = merged
+                    }
+
                     if self.selectedLogoUrl == nil, let firstLogo = self.logos.first {
                         self.selectedLogoUrl = firstLogo.fullUrl
                     }
                     if self.selectedPosterUrl == nil, let firstPoster = self.posters.first {
                         self.selectedPosterUrl = firstPoster.fullUrl
+                    }
+                    if self.selectedCarouselUrls.isEmpty && !self.backdrops.isEmpty {
+                        self.selectedCarouselUrls = Array(self.backdrops.prefix(6).map { $0.fullUrl })
+                    }
+                    if self.selectedBackdropUrl == nil {
+                        self.selectedBackdropUrl = self.selectedCarouselUrls.first ?? self.backdrops.first?.fullUrl
                     }
                 }
             }
@@ -808,6 +1390,21 @@ struct MediaArtworkPickerSheet: View {
                                 }
                                 self.posters = merged
                             }
+                            if let incomingBackdrops = fallbackData.backdrops, !incomingBackdrops.isEmpty {
+                                var merged = incomingBackdrops
+                                for existing in self.backdrops {
+                                    if !merged.contains(where: { $0.url == existing.url }) {
+                                        merged.append(existing)
+                                    }
+                                }
+                                self.backdrops = merged
+                            }
+                            if self.selectedCarouselUrls.isEmpty && !self.backdrops.isEmpty {
+                                self.selectedCarouselUrls = Array(self.backdrops.prefix(6).map { $0.fullUrl })
+                            }
+                            if self.selectedBackdropUrl == nil {
+                                self.selectedBackdropUrl = self.selectedCarouselUrls.first ?? self.backdrops.first?.fullUrl
+                            }
                         }
                     }
                 } catch {
@@ -829,7 +1426,8 @@ struct MediaArtworkPickerSheet: View {
                 title: title,
                 posterUrl: selectedPosterUrl,
                 logoUrl: selectedLogoUrl,
-                backdropUrl: backdropUrl
+                backdropUrl: selectedBackdropUrl,
+                backdropUrls: selectedCarouselUrls.isEmpty ? nil : selectedCarouselUrls
             )
 
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
@@ -863,7 +1461,7 @@ struct MediaArtworkPickerSheet: View {
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             ToastManager.shared.show(
                 title: "Оригинал восстановлен",
-                subtitle: "Сброшено к стандартным постерам TMDB",
+                subtitle: "Сброшено к стандартным изображениям TMDB",
                 icon: "arrow.counterclockwise"
             )
             dismiss()
