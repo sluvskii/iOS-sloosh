@@ -367,13 +367,14 @@ struct MediaDetailsDto: Codable {
     let seasons: [TvSeasonSummaryDto]?
     let availableLogos: [MediaImageItemDto]?
     let availablePosters: [MediaImageItemDto]?
+    let availableBackdrops: [MediaImageItemDto]?
     
     enum CodingKeys: String, CodingKey {
         case id, title, originalTitle, description, type, year, releaseDate
         case genres, countries, duration, poster, backdrop, backdrops, logo, cast, directors, writers, crew, trailers
         case ratings, ids, externalIds, productionCompanies, networks, collection, similar
         case budget, revenue, ageRating, status, nextEpisodeToAir, seasons
-        case availableLogos, availablePosters
+        case availableLogos, availablePosters, availableBackdrops
     }
 
     init(
@@ -410,7 +411,8 @@ struct MediaDetailsDto: Codable {
         nextEpisodeToAir: TvNextEpisodeDto? = nil,
         seasons: [TvSeasonSummaryDto]? = nil,
         availableLogos: [MediaImageItemDto]? = nil,
-        availablePosters: [MediaImageItemDto]? = nil
+        availablePosters: [MediaImageItemDto]? = nil,
+        availableBackdrops: [MediaImageItemDto]? = nil
     ) {
         self.id = id
         self.title = title
@@ -446,6 +448,7 @@ struct MediaDetailsDto: Codable {
         self.seasons = seasons
         self.availableLogos = availableLogos
         self.availablePosters = availablePosters
+        self.availableBackdrops = availableBackdrops
     }
 
     init(from decoder: Decoder) throws {
@@ -539,6 +542,7 @@ struct MediaDetailsDto: Codable {
         self.seasons = try? container.decodeIfPresent([TvSeasonSummaryDto].self, forKey: .seasons)
         self.availableLogos = try? container.decodeIfPresent([MediaImageItemDto].self, forKey: .availableLogos)
         self.availablePosters = try? container.decodeIfPresent([MediaImageItemDto].self, forKey: .availablePosters)
+        self.availableBackdrops = try? container.decodeIfPresent([MediaImageItemDto].self, forKey: .availableBackdrops)
     }
     
     var rating: Double? {
@@ -620,6 +624,15 @@ struct MediaDetailsDto: Codable {
     }
     
     var displayBackdropUrl: String? {
+        if let id = id,
+           let override = MediaOverridesRepository.shared.override(for: id, tmdbId: externalIds?.tmdb, kpId: externalIds?.kp) {
+            if let customBackdrop = override.backdropUrl, !customBackdrop.isEmpty {
+                return customBackdrop
+            }
+            if let first = override.backdropUrls?.first, !first.isEmpty {
+                return first
+            }
+        }
         if let backdrop = backdrop, !backdrop.isEmpty {
             return normalizeImageUrl(path: backdrop, id: id) ?? backdrop
         }
@@ -631,6 +644,25 @@ struct MediaDetailsDto: Codable {
     }
 
     var displayBackdropUrls: [String] {
+        if let id = id,
+           let override = MediaOverridesRepository.shared.override(for: id, tmdbId: externalIds?.tmdb, kpId: externalIds?.kp) {
+            if let customList = override.backdropUrls, !customList.isEmpty {
+                return customList
+            }
+            if let single = override.backdropUrl, !single.isEmpty {
+                var list = [single]
+                if let backdrops = backdrops, !backdrops.isEmpty {
+                    for b in backdrops {
+                        let norm = normalizeImageUrl(path: b, id: id) ?? b
+                        if !list.contains(norm) && norm != single {
+                            list.append(norm)
+                        }
+                    }
+                }
+                return list
+            }
+        }
+
         var list: [String] = []
         if let backdrops = backdrops, !backdrops.isEmpty {
             for b in backdrops {

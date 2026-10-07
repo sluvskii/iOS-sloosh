@@ -1336,6 +1336,37 @@ public struct AdminDashboardView: View {
                 }
                 .padding(.top, 2)
             }
+
+            // Preview of Backdrops if present
+            if let backdrops = override.backdropUrls, !backdrops.isEmpty {
+                HStack(spacing: 8) {
+                    Text("Карусель задников:")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                    Text("\(backdrops.count) шт.")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.primary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.white.opacity(0.1))
+                        .clipShape(Capsule())
+                }
+                .padding(.top, 2)
+            } else if let backdrop = override.backdropUrl, !backdrop.isEmpty {
+                HStack(spacing: 8) {
+                    Text("Кастомный фон:")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                    Text("1 кадр")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(.primary)
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 2)
+                        .background(Color.white.opacity(0.1))
+                        .clipShape(Capsule())
+                }
+                .padding(.top, 2)
+            }
         }
         .padding(12)
         .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 14, style: .continuous))

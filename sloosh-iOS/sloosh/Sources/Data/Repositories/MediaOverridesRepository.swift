@@ -117,7 +117,8 @@ public final class MediaOverridesRepository: ObservableObject {
         title: String? = nil,
         posterUrl: String? = nil,
         logoUrl: String? = nil,
-        backdropUrl: String? = nil
+        backdropUrl: String? = nil,
+        backdropUrls: [String]? = nil
     ) async throws {
         let item = MediaArtworkOverride(
             mediaId: mediaId,
@@ -127,6 +128,7 @@ public final class MediaOverridesRepository: ObservableObject {
             posterUrl: posterUrl,
             logoUrl: logoUrl,
             backdropUrl: backdropUrl,
+            backdropUrls: backdropUrls,
             updatedAt: Date().timeIntervalSince1970,
             updatedBy: AuthRepository.shared.currentUser?.displayName ?? "admin"
         )
