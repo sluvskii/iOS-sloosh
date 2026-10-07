@@ -40,7 +40,7 @@ final class CollapsParser {
         ]
         for pattern in blockedPatterns {
             if let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]),
-               regex.firstMatch(in: lower, range: NSRange(lower.startIndex..., in: lower)) != nil {
+               regex.firstMatch(in: lower, options: [], range: NSRange(lower.startIndex..., in: lower)) != nil {
                 return true
             }
         }
