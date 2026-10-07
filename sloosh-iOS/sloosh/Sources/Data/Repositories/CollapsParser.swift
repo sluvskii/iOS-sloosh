@@ -12,11 +12,6 @@ final class CollapsParser {
         let trimmed = embedHtml.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
 
-        if isContentBlocked(in: trimmed) {
-            AppDiagnostics.shared.log("CollapsParser: content is blocked by copyright holder")
-            return nil
-        }
-
         // 1. Try parsing as TV series
         if let seasonsJson = extractSeasonsJson(from: trimmed),
            let seriesData = parseSeries(seasonsJson: seasonsJson, title: defaultTitle) {
@@ -29,22 +24,6 @@ final class CollapsParser {
         }
 
         return nil
-    }
-
-    private static func isContentBlocked(in html: String) -> Bool {
-        let lower = html.lowercased()
-        let blockedPatterns = [
-            #"\bblocked\s*:\s*(true|1|!0)\b"#,
-            #"\"blocked\"\s*:\s*(true|1)"#,
-            #"\bblocked\s*:\s*['\"][^'\"]*заблокирован[^'\"]*['\"]"#
-        ]
-        for pattern in blockedPatterns {
-            if let regex = try? NSRegularExpression(pattern: pattern, options: [.caseInsensitive]),
-               regex.firstMatch(in: lower, options: [], range: NSRange(lower.startIndex..., in: lower)) != nil {
-                return true
-            }
-        }
-        return false
     }
 
     // MARK: - TV Series Extraction
