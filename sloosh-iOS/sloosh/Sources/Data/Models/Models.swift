@@ -3,6 +3,7 @@ import SwiftUI
 
 struct ApiEnvelope<T: Codable>: Codable {
     let success: Bool?
+    let status: String?
     let data: T?
 }
 

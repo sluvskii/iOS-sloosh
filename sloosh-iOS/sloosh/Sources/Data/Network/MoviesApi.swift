@@ -257,6 +257,7 @@ class MoviesApi {
         endpoint: String,
         method: String = "GET",
         queryItems: [URLQueryItem] = [],
+        body: Data? = nil,
         allowSelfHealingRetry: Bool = true
     ) async throws -> T {
         let baseCandidates = [MoviesApi.activeBaseURL] + MoviesApi.fallbackBaseURLs.filter { $0 != MoviesApi.activeBaseURL }
@@ -272,6 +273,10 @@ class MoviesApi {
             
             var request = URLRequest(url: url)
             request.httpMethod = method
+            if let body = body {
+                request.httpBody = body
+                request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            }
             if !MoviesApi.currentApiKey.isEmpty {
                 request.setValue(MoviesApi.currentApiKey, forHTTPHeaderField: "X-API-Key")
             }
@@ -358,6 +363,7 @@ class MoviesApi {
                     endpoint: endpoint,
                     method: method,
                     queryItems: queryItems,
+                    body: body,
                     allowSelfHealingRetry: false
                 )
             }
@@ -539,6 +545,29 @@ class MoviesApi {
     func getStreamTokens() async throws -> [String] {
         let envelope: ApiEnvelope<StreamConfigDto> = try await performRequest(endpoint: "api/v1/config/streams")
         return envelope.data?.tokens ?? []
+    }
+
+    // MARK: - Media Artwork Overrides (Admin & Dynamic Sync)
+
+    func getMediaOverrides() async throws -> ApiEnvelope<[String: MediaArtworkOverride]> {
+        return try await performRequest(endpoint: "api/v1/admin/overrides")
+    }
+
+    func saveMediaOverride(_ override: MediaArtworkOverride) async throws -> ApiEnvelope<MediaArtworkOverride> {
+        let body = try JSONEncoder().encode(override)
+        return try await performRequest(
+            endpoint: "api/v1/admin/overrides",
+            method: "POST",
+            body: body
+        )
+    }
+
+    func deleteMediaOverride(id: String) async throws -> ApiEnvelope<[String: Bool]> {
+        let cleanId = id.trimmingCharacters(in: .whitespacesAndNewlines)
+        return try await performRequest(
+            endpoint: "api/v1/admin/overrides/\(cleanId)",
+            method: "DELETE"
+        )
     }
 }
 

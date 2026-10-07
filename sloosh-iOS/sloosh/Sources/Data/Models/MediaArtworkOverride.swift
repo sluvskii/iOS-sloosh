@@ -11,7 +11,7 @@ public struct MediaArtworkOverride: Codable, Equatable, Sendable, Identifiable {
     public var posterUrl: String?
     public var logoUrl: String?
     public var backdropUrl: String?
-    public var updatedAt: TimeInterval
+    public var updatedAt: TimeInterval?
     public var updatedBy: String?
 
     public init(
@@ -22,7 +22,7 @@ public struct MediaArtworkOverride: Codable, Equatable, Sendable, Identifiable {
         posterUrl: String? = nil,
         logoUrl: String? = nil,
         backdropUrl: String? = nil,
-        updatedAt: TimeInterval = Date().timeIntervalSince1970,
+        updatedAt: TimeInterval? = Date().timeIntervalSince1970,
         updatedBy: String? = nil
     ) {
         self.mediaId = mediaId
