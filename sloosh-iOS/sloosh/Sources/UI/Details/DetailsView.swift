@@ -747,13 +747,11 @@ struct DetailsView: View {
             }
         }
 
-        if AuthRepository.shared.isAdmin {
-            Divider()
-            Button {
-                showArtworkPickerSheet = true
-            } label: {
-                Label("Сменить постер и логотип", systemImage: "paintbrush.fill")
-            }
+        Divider()
+        Button {
+            showArtworkPickerSheet = true
+        } label: {
+            Label("Настроить оформление", systemImage: "paintbrush.fill")
         }
 
         Divider()
@@ -929,25 +927,6 @@ struct DetailsView: View {
                         Spacer()
                         
                         HStack(spacing: 0) {
-                            if AuthRepository.shared.isAdmin {
-                                Button {
-                                    guard viewModel.details != nil else { return }
-                                    let generator = UIImpactFeedbackGenerator(style: .medium)
-                                    generator.prepare()
-                                    generator.impactOccurred()
-                                    showArtworkPickerSheet = true
-                                } label: {
-                                    Image(systemName: "paintbrush.fill")
-                                        .font(.system(size: 18, weight: .medium))
-                                        .foregroundStyle(Color.primary)
-                                        .frame(width: 44, height: 44)
-                                        .contentShape(Rectangle())
-                                }
-                                .buttonStyle(.plain)
-                                .accessibilityLabel("Сменить постер и логотип")
-                                .frame(width: 44, height: 44)
-                            }
-
                             // Кнопка «Избранное» (слева, как было изначально)
                             Button {
                                 guard viewModel.details != nil else { return }
@@ -997,7 +976,7 @@ struct DetailsView: View {
                             .allowsHitTesting(!isLogoAtTop)
                         }
                         .padding(.horizontal, isLogoAtTop ? 0 : 2)
-                        .frame(width: (isLogoAtTop ? 44 : 92) + (AuthRepository.shared.isAdmin ? 44 : 0), height: 44)
+                        .frame(width: isLogoAtTop ? 44 : 92, height: 44)
                         .clipShape(Capsule())
                         .glassEffect(.regular.interactive(), in: .capsule)
                         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: isLogoAtTop)
