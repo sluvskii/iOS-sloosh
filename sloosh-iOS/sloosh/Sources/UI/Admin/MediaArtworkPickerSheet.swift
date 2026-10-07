@@ -96,7 +96,7 @@ struct MediaArtworkPickerSheet: View {
         _selectedCarouselUrls = State(initialValue: initialCarouselUrls ?? [])
     }
 
-    init(details: MediaDetails) {
+    init(details: MediaDetailsDto) {
         let cleanId = details.id ?? ""
         let isTv = details.type?.lowercased() == "tv" || (details.seasons != nil && !(details.seasons?.isEmpty ?? true))
         let inferredType = isTv ? "tv" : "movie"
