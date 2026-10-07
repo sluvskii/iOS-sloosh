@@ -53,25 +53,47 @@ public struct MediaImageItemDto: Codable, Identifiable, Equatable, Sendable {
 
     enum CodingKeys: String, CodingKey {
         case url
-        case filePath = "file_path"
+        case filePath
+        case filePathSnake = "file_path"
         case width
         case height
-        case aspectRatio = "aspect_ratio"
-        case iso6391 = "iso_639_1"
-        case voteAverage = "vote_average"
-        case voteCount = "vote_count"
+        case aspectRatio
+        case aspectRatioSnake = "aspect_ratio"
+        case iso6391
+        case iso6391Snake = "iso_639_1"
+        case voteAverage
+        case voteAverageSnake = "vote_average"
+        case voteCount
+        case voteCountSnake = "vote_count"
     }
 
     public init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         self.url = try container.decode(String.self, forKey: .url)
-        self.filePath = try? container.decodeIfPresent(String.self, forKey: .filePath)
+        self.filePath = (try? container.decodeIfPresent(String.self, forKey: .filePath))
+            ?? (try? container.decodeIfPresent(String.self, forKey: .filePathSnake))
         self.width = try? container.decodeIfPresent(Int.self, forKey: .width)
         self.height = try? container.decodeIfPresent(Int.self, forKey: .height)
-        self.aspectRatio = try? container.decodeIfPresent(Double.self, forKey: .aspectRatio)
-        self.iso6391 = try? container.decodeIfPresent(String.self, forKey: .iso6391)
-        self.voteAverage = try? container.decodeIfPresent(Double.self, forKey: .voteAverage)
-        self.voteCount = try? container.decodeIfPresent(Int.self, forKey: .voteCount)
+        self.aspectRatio = (try? container.decodeIfPresent(Double.self, forKey: .aspectRatio))
+            ?? (try? container.decodeIfPresent(Double.self, forKey: .aspectRatioSnake))
+        self.iso6391 = (try? container.decodeIfPresent(String.self, forKey: .iso6391))
+            ?? (try? container.decodeIfPresent(String.self, forKey: .iso6391Snake))
+        self.voteAverage = (try? container.decodeIfPresent(Double.self, forKey: .voteAverage))
+            ?? (try? container.decodeIfPresent(Double.self, forKey: .voteAverageSnake))
+        self.voteCount = (try? container.decodeIfPresent(Int.self, forKey: .voteCount))
+            ?? (try? container.decodeIfPresent(Int.self, forKey: .voteCountSnake))
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(url, forKey: .url)
+        try container.encodeIfPresent(filePath, forKey: .filePath)
+        try container.encodeIfPresent(width, forKey: .width)
+        try container.encodeIfPresent(height, forKey: .height)
+        try container.encodeIfPresent(aspectRatio, forKey: .aspectRatio)
+        try container.encodeIfPresent(iso6391, forKey: .iso6391)
+        try container.encodeIfPresent(voteAverage, forKey: .voteAverage)
+        try container.encodeIfPresent(voteCount, forKey: .voteCount)
     }
 
     public init(

@@ -26,6 +26,7 @@ struct MediaArtworkPickerSheet: View {
     @State private var isLoading: Bool = false
     @State private var isSaving: Bool = false
     @State private var errorMessage: String? = nil
+    @State private var hasLoadedFullImages: Bool = false
 
     enum ArtworkTab: String, CaseIterable, Identifiable {
         case logo = "Логотип"
@@ -130,19 +131,33 @@ struct MediaArtworkPickerSheet: View {
                 }
 
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        Task { await saveChanges() }
-                    } label: {
-                        if isSaving {
-                            ProgressView()
-                                .controlSize(.small)
-                        } else {
-                            Text("Сохранить")
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(Color.slooshAccent)
+                    HStack(spacing: 12) {
+                        Button {
+                            Task {
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                await loadAvailableImagesIfNeeded(force: true)
+                            }
+                        } label: {
+                            Image(systemName: "arrow.clockwise")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundStyle(.secondary)
                         }
+                        .disabled(isLoading)
+
+                        Button {
+                            Task { await saveChanges() }
+                        } label: {
+                            if isSaving {
+                                ProgressView()
+                                    .controlSize(.small)
+                            } else {
+                                Text("Сохранить")
+                                    .font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(Color.slooshAccent)
+                            }
+                        }
+                        .disabled(isSaving)
                     }
-                    .disabled(isSaving)
                 }
             }
             .task {
@@ -337,10 +352,12 @@ struct MediaArtworkPickerSheet: View {
 
     private var availableLanguagesForCurrentTab: [String] {
         let items = (selectedTab == .logo) ? logos : posters
+        let hasNoText = items.contains { $0.iso_639_1 == nil || $0.iso_639_1?.isEmpty == true }
         let langs = Set(items.compactMap { $0.iso_639_1?.uppercased() }.filter { !$0.isEmpty })
         var result = ["ALL"]
         if langs.contains("RU") { result.append("RU") }
         if langs.contains("EN") { result.append("EN") }
+        if hasNoText { result.append("NONE") }
         for l in langs.sorted() where l != "RU" && l != "EN" {
             result.append(l)
         }
@@ -360,6 +377,15 @@ struct MediaArtworkPickerSheet: View {
                             case "ALL": return "Все"
                             case "RU": return "🇷🇺 Русский"
                             case "EN": return "🇺🇸 Английский"
+                            case "NONE": return "✨ Без текста"
+                            case "UK": return "🇺🇦 Украинский"
+                            case "DE": return "🇩🇪 Немецкий"
+                            case "FR": return "🇫🇷 Французский"
+                            case "ES": return "🇪🇸 Испанский"
+                            case "IT": return "🇮🇹 Итальянский"
+                            case "JA": return "🇯🇵 Японский"
+                            case "KO": return "🇰🇷 Корейский"
+                            case "ZH": return "🇨🇳 Китайский"
                             default: return lang
                             }
                         }()
@@ -444,6 +470,9 @@ struct MediaArtworkPickerSheet: View {
         let raw = (selectedTab == .logo) ? logos : posters
         if selectedLanguageFilter == "ALL" {
             return raw
+        }
+        if selectedLanguageFilter == "NONE" {
+            return raw.filter { $0.iso_639_1 == nil || $0.iso_639_1?.isEmpty == true }
         }
         return raw.filter { $0.iso_639_1?.uppercased() == selectedLanguageFilter }
     }
@@ -704,21 +733,87 @@ struct MediaArtworkPickerSheet: View {
 
     // MARK: - Data Loading & Actions
 
-    private func loadAvailableImagesIfNeeded() async {
-        guard logos.isEmpty && posters.isEmpty else { return }
+    private func loadAvailableImagesIfNeeded(force: Bool = false) async {
+        if hasLoadedFullImages && !force { return }
         isLoading = true
         defer { isLoading = false }
 
+        let effectiveId: String = {
+            if let tmdb = tmdbId, tmdb > 0 {
+                return "\(tmdb)"
+            }
+            if let kp = kpId, kp > 0 {
+                return "kp_\(kp)"
+            }
+            return mediaId
+        }()
+
         do {
-            let res = try await MoviesApi.shared.getMediaImages(id: mediaId, type: mediaType)
+            let res = try await MoviesApi.shared.getMediaImages(id: effectiveId, type: mediaType)
             if let data = res.data {
                 await MainActor.run {
-                    self.logos = data.logos ?? []
-                    self.posters = data.posters ?? []
+                    self.hasLoadedFullImages = true
+
+                    if let incomingLogos = data.logos, !incomingLogos.isEmpty {
+                        var merged = incomingLogos
+                        for existing in self.logos {
+                            if !merged.contains(where: { $0.url == existing.url }) {
+                                merged.append(existing)
+                            }
+                        }
+                        self.logos = merged
+                    }
+
+                    if let incomingPosters = data.posters, !incomingPosters.isEmpty {
+                        var merged = incomingPosters
+                        for existing in self.posters {
+                            if !merged.contains(where: { $0.url == existing.url }) {
+                                merged.append(existing)
+                            }
+                        }
+                        self.posters = merged
+                    }
+
+                    if self.selectedLogoUrl == nil, let firstLogo = self.logos.first {
+                        self.selectedLogoUrl = firstLogo.fullUrl
+                    }
+                    if self.selectedPosterUrl == nil, let firstPoster = self.posters.first {
+                        self.selectedPosterUrl = firstPoster.fullUrl
+                    }
                 }
             }
         } catch {
-            AppDiagnostics.shared.log("MediaArtworkPickerSheet: failed to load images: \(error)")
+            AppDiagnostics.shared.log("MediaArtworkPickerSheet: failed to load images for id=\(effectiveId): \(error)")
+            if effectiveId != mediaId && !mediaId.isEmpty {
+                do {
+                    let fallbackRes = try await MoviesApi.shared.getMediaImages(id: mediaId, type: mediaType)
+                    if let fallbackData = fallbackRes.data {
+                        await MainActor.run {
+                            self.hasLoadedFullImages = true
+                            if let incomingLogos = fallbackData.logos, !incomingLogos.isEmpty {
+                                var merged = incomingLogos
+                                for existing in self.logos {
+                                    if !merged.contains(where: { $0.url == existing.url }) {
+                                        merged.append(existing)
+                                    }
+                                }
+                                self.logos = merged
+                            }
+                            if let incomingPosters = fallbackData.posters, !incomingPosters.isEmpty {
+                                var merged = incomingPosters
+                                for existing in self.posters {
+                                    if !merged.contains(where: { $0.url == existing.url }) {
+                                        merged.append(existing)
+                                    }
+                                }
+                                self.posters = merged
+                            }
+                        }
+                    }
+                } catch {
+                    AppDiagnostics.shared.log("MediaArtworkPickerSheet: fallback also failed for id=\(mediaId): \(error)")
+                }
+            }
         }
     }
 
