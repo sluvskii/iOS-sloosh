@@ -11,9 +11,9 @@ private enum ArtworkTab: String, CaseIterable, Identifiable {
 
     var icon: String {
         switch self {
-        case .logo: return "photo.badge.checkmark"
-        case .poster: return "rectangle.portrait"
-        case .backdrop: return "rectangle.split.2x1"
+        case .logo: return "photo"
+        case .poster: return "rectangle.portrait.fill"
+        case .backdrop: return "rectangle.split.2x1.fill"
         }
     }
 }
@@ -140,7 +140,7 @@ struct MediaArtworkPickerSheet: View {
                     // 3. Language Filter Pills (Full bleed edge-to-edge)
                     languageFilterSection
 
-                    // 4. Custom Direct URL Input (Consistent 16pt margin)
+                    // 4. Custom Direct URL Input (Capsule styled)
                     customUrlSection
                         .padding(.horizontal, 16)
 
@@ -239,13 +239,14 @@ struct MediaArtworkPickerSheet: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("Предпросмотр")
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(.secondary)
                 Spacer()
                 Text(previewSubtitle)
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.secondary)
             }
+            .padding(.horizontal, 4)
 
             ZStack {
                 if selectedTab == .backdrop {
@@ -257,19 +258,19 @@ struct MediaArtworkPickerSheet: View {
                 }
             }
             .frame(height: 180)
-            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                RoundedRectangle(cornerRadius: 20, style: .continuous)
                     .stroke(Color.white.opacity(0.12), lineWidth: 1)
             )
-            .shadow(color: .black.opacity(0.2), radius: 10, x: 0, y: 4)
+            .shadow(color: .black.opacity(0.3), radius: 12, x: 0, y: 4)
         }
     }
 
     private var previewSubtitle: String {
         switch selectedTab {
         case .logo: return "На тёмном фоне"
-        case .poster: return "Карточка"
+        case .poster: return "Карточка фильма"
         case .backdrop: return "Шапка фильма"
         }
     }
@@ -284,8 +285,9 @@ struct MediaArtworkPickerSheet: View {
                 endPoint: .bottom
             )
 
-            VStack(spacing: 10) {
+            VStack {
                 Spacer()
+
                 if let logoUrl = selectedLogoUrl, !logoUrl.isEmpty, let url = URL(string: logoUrl) {
                     AsyncCachedImage(url: url) {
                         ProgressView().controlSize(.small)
@@ -293,24 +295,21 @@ struct MediaArtworkPickerSheet: View {
                         Image(uiImage: img)
                             .resizable()
                             .aspectRatio(contentMode: .fit)
-                            .frame(maxHeight: 65)
-                            .shadow(color: .black.opacity(0.6), radius: 6, x: 0, y: 3)
+                            .frame(maxHeight: 70)
+                            .shadow(color: .black.opacity(0.7), radius: 8, x: 0, y: 4)
                     } fallback: {
                         Text(title)
-                            .font(.system(size: 20, weight: .bold))
+                            .font(.system(size: 22, weight: .bold))
                             .foregroundStyle(.white)
                     }
                 } else {
                     Text(title)
-                        .font(.system(size: 20, weight: .bold))
+                        .font(.system(size: 22, weight: .bold))
                         .foregroundStyle(.white)
                         .shadow(color: .black.opacity(0.8), radius: 6)
                 }
 
-                Text("Логотип отображается над описанием фильма")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.white.opacity(0.65))
-                    .padding(.bottom, 12)
+                Spacer()
             }
             .padding(16)
         }
@@ -318,36 +317,46 @@ struct MediaArtworkPickerSheet: View {
 
     private var posterPreviewContent: some View {
         ZStack {
-            backdropBaseLayer
+            // Ambient blurred background using backdrop or poster
+            if let bg = selectedBackdropUrl ?? backdropUrl ?? selectedPosterUrl, let url = URL(string: bg) {
+                AsyncCachedImage(url: url) {
+                    Color.black.opacity(0.85)
+                } content: { img in
+                    Image(uiImage: img)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .blur(radius: 24)
+                        .overlay(Color.black.opacity(0.55))
+                } fallback: {
+                    Color.black.opacity(0.85)
+                }
+            } else {
+                Color.black.opacity(0.85)
+            }
 
-            LinearGradient(
-                colors: [Color.black.opacity(0.45), Color.black.opacity(0.9)],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-
+            // Balanced centered lockup: poster card on left, title & category on right
             HStack(spacing: 16) {
                 if let posterUrl = selectedPosterUrl, !posterUrl.isEmpty, let url = URL(string: posterUrl) {
                     AsyncCachedImage(url: url) {
-                        RoundedRectangle(cornerRadius: 10)
-                            .fill(Color.white.opacity(0.1))
-                            .frame(width: 80, height: 120)
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(Color.white.opacity(0.08))
+                            .frame(width: 86, height: 128)
                     } content: { img in
                         Image(uiImage: img)
                             .resizable()
                             .aspectRatio(contentMode: .fill)
-                            .frame(width: 80, height: 120)
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
-                            .shadow(color: .black.opacity(0.4), radius: 8, x: 0, y: 4)
+                            .frame(width: 86, height: 128)
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .shadow(color: .black.opacity(0.6), radius: 10, x: 0, y: 5)
                     } fallback: {
-                        RoundedRectangle(cornerRadius: 10)
-                            .fill(Color.white.opacity(0.1))
-                            .frame(width: 80, height: 120)
+                        RoundedRectangle(cornerRadius: 12)
+                            .fill(Color.white.opacity(0.08))
+                            .frame(width: 86, height: 128)
                     }
                 } else {
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(Color.white.opacity(0.1))
-                        .frame(width: 80, height: 120)
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color.white.opacity(0.08))
+                        .frame(width: 86, height: 128)
                         .overlay {
                             Image(systemName: "photo")
                                 .font(.system(size: 24))
@@ -359,19 +368,20 @@ struct MediaArtworkPickerSheet: View {
                     Text(title)
                         .font(.system(size: 17, weight: .bold))
                         .foregroundStyle(.white)
-                        .lineLimit(2)
+                        .lineLimit(3)
 
-                    Text("Выбранный постер в каталоге и карточках")
-                        .font(.system(size: 11))
-                        .foregroundStyle(.white.opacity(0.65))
-
-                    Spacer()
+                    HStack(spacing: 5) {
+                        Image(systemName: "rectangle.portrait.fill")
+                            .font(.system(size: 10))
+                        Text("Основной постер")
+                            .font(.system(size: 12, weight: .medium))
+                    }
+                    .foregroundStyle(.secondary)
                 }
-                .padding(.vertical, 8)
 
                 Spacer()
             }
-            .padding(16)
+            .padding(.horizontal, 20)
         }
     }
 
@@ -392,7 +402,7 @@ struct MediaArtworkPickerSheet: View {
             }
 
             LinearGradient(
-                colors: [Color.black.opacity(0.25), Color.black.opacity(0.82)],
+                colors: [Color.black.opacity(0.15), Color.black.opacity(0.85)],
                 startPoint: .top,
                 endPoint: .bottom
             )
@@ -402,22 +412,26 @@ struct MediaArtworkPickerSheet: View {
                     HStack(spacing: 4) {
                         Image(systemName: "star.fill")
                             .font(.system(size: 9))
-                        Text("Основной фон")
-                            .font(.system(size: 10.5, weight: .semibold))
+                        Text("Основной кадр")
+                            .font(.system(size: 11, weight: .semibold))
                     }
                     .foregroundStyle(.black)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 4.5)
                     .background(Capsule().fill(Color.white))
 
                     Spacer()
 
-                    Text("Карусель: \(selectedCarouselUrls.count) кадров")
-                        .font(.system(size: 11, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.9))
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(Capsule().fill(Color.black.opacity(0.68)))
+                    HStack(spacing: 4) {
+                        Image(systemName: "photo.stack")
+                            .font(.system(size: 10))
+                        Text("\(selectedCarouselUrls.count) в карусели")
+                            .font(.system(size: 11, weight: .medium))
+                    }
+                    .foregroundStyle(.white.opacity(0.9))
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 4.5)
+                    .background(Capsule().fill(Color.black.opacity(0.68)))
                 }
                 .padding(12)
 
@@ -430,26 +444,21 @@ struct MediaArtworkPickerSheet: View {
                         Image(uiImage: img)
                             .resizable()
                             .aspectRatio(contentMode: .fit)
-                            .frame(maxHeight: 48)
+                            .frame(maxHeight: 56)
                             .shadow(color: .black.opacity(0.8), radius: 6, x: 0, y: 3)
                     } fallback: {
                         Text(title)
-                            .font(.system(size: 18, weight: .bold))
+                            .font(.system(size: 19, weight: .bold))
                             .foregroundStyle(.white)
                     }
                 } else {
                     Text(title)
-                        .font(.system(size: 18, weight: .bold))
+                        .font(.system(size: 19, weight: .bold))
                         .foregroundStyle(.white)
                         .shadow(color: .black.opacity(0.8), radius: 6)
                 }
-
-                Text("Первый кадр карусели в шапке фильма")
-                    .font(.system(size: 11))
-                    .foregroundStyle(.white.opacity(0.7))
-                    .padding(.top, 4)
-                    .padding(.bottom, 12)
             }
+            .padding(.bottom, 16)
         }
     }
 
@@ -471,7 +480,7 @@ struct MediaArtworkPickerSheet: View {
         }
     }
 
-    // MARK: - Tab Picker Section
+    // MARK: - Tab Picker Section (Fully rounded Capsule)
 
     private var tabPickerSection: some View {
         HStack(spacing: 6) {
@@ -507,7 +516,7 @@ struct MediaArtworkPickerSheet: View {
         .glassEffect(in: Capsule())
     }
 
-    // MARK: - Language Filter Section (Full bleed edge-to-edge)
+    // MARK: - Language Filter Section (Full bleed edge-to-edge Capsules)
 
     private var availableLanguagesForCurrentTab: [String] {
         let items: [MediaImageItemDto]
@@ -582,7 +591,7 @@ struct MediaArtworkPickerSheet: View {
         }
     }
 
-    // MARK: - Custom URL Section (Compact inline input)
+    // MARK: - Custom URL Section (Fully rounded Capsule bar & button)
 
     private var customUrlSection: some View {
         HStack(spacing: 8) {
@@ -591,15 +600,14 @@ struct MediaArtworkPickerSheet: View {
                     .font(.system(size: 12))
                     .foregroundStyle(.secondary)
 
-                TextField("Вставить свою прямую ссылку...", text: $customUrlText)
+                TextField("Вставить прямую ссылку на изображение...", text: $customUrlText)
                     .font(.system(size: 13))
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 9)
-            .background(Color.white.opacity(0.06))
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(Capsule().fill(Color.white.opacity(0.06)))
 
             if !customUrlText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 Button {
@@ -608,9 +616,9 @@ struct MediaArtworkPickerSheet: View {
                     Text("Применить")
                         .font(.system(size: 13, weight: .semibold))
                         .foregroundStyle(.primary)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 9)
-                        .glassEffect(in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .glassEffect(.regular.interactive(), in: .capsule)
                 }
                 .buttonStyle(.plain)
                 .transition(.opacity.combined(with: .scale))
@@ -654,8 +662,7 @@ struct MediaArtworkPickerSheet: View {
                             .foregroundStyle(.secondary)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
-                            .background(Color.white.opacity(0.1))
-                            .clipShape(Capsule())
+                            .background(Capsule().fill(Color.white.opacity(0.1)))
                     }
 
                     Text("Первый кадр (#1) является основным фоном")
@@ -676,8 +683,8 @@ struct MediaArtworkPickerSheet: View {
                                 .font(.system(size: 12, weight: .medium))
                         }
                         .foregroundStyle(.primary)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
                         .glassEffect(in: Capsule())
                     }
                     .buttonStyle(.plain)
@@ -697,7 +704,7 @@ struct MediaArtworkPickerSheet: View {
                 }
                 .padding(14)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
                 .padding(.horizontal, 16)
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -721,29 +728,29 @@ struct MediaArtworkPickerSheet: View {
             ZStack(alignment: .topTrailing) {
                 if let u = URL(string: url) {
                     AsyncCachedImage(url: u) {
-                        RoundedRectangle(cornerRadius: 12)
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
                             .fill(Color.white.opacity(0.08))
                     } content: { img in
                         Image(uiImage: img)
                             .resizable()
                             .aspectRatio(16/9, contentMode: .fill)
                             .frame(width: 170, height: 96)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     } fallback: {
-                        RoundedRectangle(cornerRadius: 12)
+                        RoundedRectangle(cornerRadius: 12, style: .continuous)
                             .fill(Color.white.opacity(0.08))
                             .frame(width: 170, height: 96)
                     }
                 }
 
-                // Delete from carousel button (Top-Right)
+                // Delete from carousel button (Fully rounded Circle)
                 Button {
                     removeFromCarousel(at: index)
                 } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 10, weight: .bold))
                         .foregroundStyle(.white)
-                        .frame(width: 22, height: 22)
+                        .frame(width: 24, height: 24)
                         .background(Circle().fill(Color.black.opacity(0.72)))
                         .padding(6)
                 }
@@ -794,17 +801,17 @@ struct MediaArtworkPickerSheet: View {
                 }
             }
 
-            // Bottom Reordering & Counter Row (Spacious, zero wrapping!)
+            // Bottom Reordering & Counter Row (Fully rounded Circle buttons, zero text wrapping!)
             HStack(spacing: 8) {
-                // Move Left
+                // Move Left (Circle)
                 Button {
                     moveCarouselItem(from: index, up: true)
                 } label: {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 11, weight: .bold))
                         .foregroundStyle(index == 0 ? Color.white.opacity(0.2) : Color.white)
-                        .frame(width: 28, height: 26)
-                        .background(RoundedRectangle(cornerRadius: 7).fill(Color.white.opacity(0.08)))
+                        .frame(width: 28, height: 28)
+                        .background(Circle().fill(Color.white.opacity(0.1)))
                 }
                 .disabled(index == 0)
                 .buttonStyle(.plain)
@@ -812,21 +819,21 @@ struct MediaArtworkPickerSheet: View {
                 Spacer()
 
                 Text("\(index + 1) из \(selectedCarouselUrls.count)")
-                    .font(.system(size: 11, weight: .medium))
+                    .font(.system(size: 11.5, weight: .semibold))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
 
                 Spacer()
 
-                // Move Right
+                // Move Right (Circle)
                 Button {
                     moveCarouselItem(from: index, up: false)
                 } label: {
                     Image(systemName: "chevron.right")
                         .font(.system(size: 11, weight: .bold))
                         .foregroundStyle(index == selectedCarouselUrls.count - 1 ? Color.white.opacity(0.2) : Color.white)
-                        .frame(width: 28, height: 26)
-                        .background(RoundedRectangle(cornerRadius: 7).fill(Color.white.opacity(0.08)))
+                        .frame(width: 28, height: 28)
+                        .background(Circle().fill(Color.white.opacity(0.1)))
                 }
                 .disabled(index == selectedCarouselUrls.count - 1)
                 .buttonStyle(.plain)
@@ -835,11 +842,11 @@ struct MediaArtworkPickerSheet: View {
         }
         .padding(6)
         .background {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .fill(isPrimary ? Color.white.opacity(0.08) : Color.white.opacity(0.03))
         }
         .overlay {
-            RoundedRectangle(cornerRadius: 14, style: .continuous)
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
                 .stroke(isPrimary ? Color.white.opacity(0.85) : Color.white.opacity(0.08), lineWidth: isPrimary ? 1.5 : 1)
         }
     }
@@ -990,7 +997,7 @@ struct MediaArtworkPickerSheet: View {
                 }
                 .padding(16)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             } else if selectedTab == .logo {
                 logoGrid
             } else if selectedTab == .poster {
@@ -1071,8 +1078,8 @@ struct MediaArtworkPickerSheet: View {
                                     Text(lang)
                                         .font(.system(size: 9, weight: .bold))
                                         .foregroundStyle(.white)
-                                        .padding(.horizontal, 5)
-                                        .padding(.vertical, 2.5)
+                                        .padding(.horizontal, 6)
+                                        .padding(.vertical, 3)
                                         .background(Capsule().fill(Color.black.opacity(0.68)))
                                         .padding(6)
                                 }
@@ -1082,21 +1089,21 @@ struct MediaArtworkPickerSheet: View {
                         HStack {
                             if let w = item.width, let h = item.height {
                                 Text("\(w)×\(h)")
-                                    .font(.system(size: 10.5))
+                                    .font(.system(size: 11, weight: .medium))
                                     .foregroundStyle(.secondary)
                                     .lineLimit(1)
                             }
                             Spacer()
                         }
-                        .padding(.horizontal, 2)
+                        .padding(.horizontal, 4)
                     }
                     .padding(6)
                     .background {
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
                             .fill(isSelected ? Color.white.opacity(0.08) : Color.white.opacity(0.03))
                     }
                     .overlay {
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        RoundedRectangle(cornerRadius: 16, style: .continuous)
                             .stroke(isSelected ? Color.white.opacity(0.85) : Color.white.opacity(0.06), lineWidth: isSelected ? 1.5 : 1)
                     }
                 }
@@ -1129,16 +1136,16 @@ struct MediaArtworkPickerSheet: View {
                         ZStack(alignment: .topTrailing) {
                             if let url = URL(string: fullUrl) {
                                 AsyncCachedImage(url: url) {
-                                    RoundedRectangle(cornerRadius: 10)
+                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
                                         .fill(Color.white.opacity(0.08))
                                         .aspectRatio(2/3, contentMode: .fit)
                                 } content: { img in
                                     Image(uiImage: img)
                                         .resizable()
                                         .aspectRatio(2/3, contentMode: .fit)
-                                        .clipShape(RoundedRectangle(cornerRadius: 10))
+                                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                                 } fallback: {
-                                    RoundedRectangle(cornerRadius: 10)
+                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
                                         .fill(Color.white.opacity(0.08))
                                         .aspectRatio(2/3, contentMode: .fit)
                                 }
@@ -1149,7 +1156,7 @@ struct MediaArtworkPickerSheet: View {
                                     Image(systemName: "checkmark")
                                         .font(.system(size: 9, weight: .bold))
                                         .foregroundStyle(.black)
-                                        .frame(width: 20, height: 20)
+                                        .frame(width: 22, height: 22)
                                         .background(Circle().fill(Color.white))
                                         .padding(5)
                                 }
@@ -1170,18 +1177,18 @@ struct MediaArtworkPickerSheet: View {
 
                         if let w = item.width, let h = item.height {
                             Text("\(w)×\(h)")
-                                .font(.system(size: 10))
+                                .font(.system(size: 10.5, weight: .medium))
                                 .foregroundStyle(isSelected ? .white : .secondary)
                                 .lineLimit(1)
                         }
                     }
                     .padding(5)
                     .background {
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
                             .fill(isSelected ? Color.white.opacity(0.08) : Color.white.opacity(0.03))
                     }
                     .overlay {
-                        RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
                             .stroke(isSelected ? Color.white.opacity(0.85) : Color.white.opacity(0.06), lineWidth: isSelected ? 1.5 : 1)
                     }
                 }
@@ -1190,7 +1197,7 @@ struct MediaArtworkPickerSheet: View {
         }
     }
 
-    // MARK: - Backdrop Grid (2 columns 16:9)
+    // MARK: - Backdrop Grid (2 columns 16:9, Pure Circular Action Buttons)
 
     private var backdropGrid: some View {
         let columns = [
@@ -1210,16 +1217,16 @@ struct MediaArtworkPickerSheet: View {
                     ZStack(alignment: .topTrailing) {
                         if let url = URL(string: fullUrl) {
                             AsyncCachedImage(url: url) {
-                                RoundedRectangle(cornerRadius: 10)
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
                                     .fill(Color.white.opacity(0.08))
                                     .aspectRatio(16/9, contentMode: .fit)
                             } content: { img in
                                 Image(uiImage: img)
                                     .resizable()
                                     .aspectRatio(16/9, contentMode: .fill)
-                                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                             } fallback: {
-                                RoundedRectangle(cornerRadius: 10)
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
                                     .fill(Color.white.opacity(0.08))
                                     .aspectRatio(16/9, contentMode: .fit)
                             }
@@ -1270,42 +1277,39 @@ struct MediaArtworkPickerSheet: View {
                         makeBackdropPrimary(url: fullUrl)
                     }
 
-                    // Card Bottom: Resolution (Left) & Carousel Toggle Button (Right)
+                    // Card Bottom: Resolution (Left) & Pure Circular Action Button (Right, never wraps!)
                     HStack(alignment: .center) {
                         if let w = item.width, let h = item.height {
                             Text("\(w)×\(h)")
-                                .font(.system(size: 10.5))
+                                .font(.system(size: 11, weight: .medium))
                                 .foregroundStyle(.secondary)
                                 .lineLimit(1)
                         }
 
                         Spacer()
 
+                        // Circular toggle button: checkmark if added, plus if not
                         Button {
                             toggleBackdropInCarousel(url: fullUrl)
                         } label: {
-                            HStack(spacing: 3) {
-                                Image(systemName: isInCarousel ? "checkmark" : "plus")
-                                    .font(.system(size: 9.5, weight: .bold))
-                                Text(isInCarousel ? "В карусели" : "В карусель")
-                                    .font(.system(size: 10.5, weight: isInCarousel ? .semibold : .medium))
-                            }
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 3.5)
-                            .background(Capsule().fill(isInCarousel ? Color.white.opacity(0.2) : Color.white.opacity(0.08)))
+                            Image(systemName: isInCarousel ? "checkmark" : "plus")
+                                .font(.system(size: 11.5, weight: .bold))
+                                .foregroundStyle(isInCarousel ? Color.black : Color.white)
+                                .frame(width: 28, height: 28)
+                                .background(Circle().fill(isInCarousel ? Color.white : Color.white.opacity(0.12)))
                         }
                         .buttonStyle(.plain)
+                        .accessibilityLabel(isInCarousel ? "Убрать из карусели" : "Добавить в карусель")
                     }
-                    .padding(.horizontal, 2)
+                    .padding(.horizontal, 4)
                 }
                 .padding(6)
                 .background {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
                         .fill(isPrimary ? Color.white.opacity(0.08) : (isInCarousel ? Color.white.opacity(0.05) : Color.white.opacity(0.03)))
                 }
                 .overlay {
-                    RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
                         .stroke(
                             isPrimary ? Color.white.opacity(0.85) : (isInCarousel ? Color.white.opacity(0.22) : Color.white.opacity(0.06)),
                             lineWidth: isPrimary ? 1.5 : 1
@@ -1315,7 +1319,7 @@ struct MediaArtworkPickerSheet: View {
         }
     }
 
-    // MARK: - Reset Action Section
+    // MARK: - Reset Action Section (Fully rounded Capsule)
 
     private var resetActionSection: some View {
         Button(role: .destructive) {
