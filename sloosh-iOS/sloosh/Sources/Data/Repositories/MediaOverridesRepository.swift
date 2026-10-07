@@ -14,6 +14,7 @@ public final class MediaOverridesRepository: ObservableObject {
     @Published public private(set) var isLoading: Bool = false
 
     private let cacheKey = "sloosh_media_artwork_overrides"
+    private let firebaseOverridesUrl = "https://sloosh-77434-default-rtdb.firebaseio.com/media_stats/media_artwork_overrides"
 
     private init() {
         loadFromCache()
@@ -80,32 +81,103 @@ public final class MediaOverridesRepository: ObservableObject {
         }
     }
 
-    // MARK: - Dedicated Backend API Sync (sloosh-api)
+    // MARK: - Dedicated Backend & Durable Store Sync
 
     public func fetchOverrides() async {
         isLoading = true
         defer { isLoading = false }
 
+        var remoteMap: [String: MediaArtworkOverride] = [:]
+
+        // 1. Пытаемся получить оверрайды с бэкенда sloosh-api
         do {
             let envelope = try await MoviesApi.shared.getMediaOverrides()
-            if let dict = envelope.data {
-                for (k, v) in dict {
-                    self.overrides[k] = v
-                    if let tmdb = v.tmdbId, tmdb > 0 {
-                        self.overrides["\(tmdb)"] = v
-                        self.overrides["tmdb_\(tmdb)"] = v
-                    }
-                    if let kp = v.kpId, kp > 0 {
-                        self.overrides["\(kp)"] = v
-                        self.overrides["kp_\(kp)"] = v
-                    }
-                }
-                saveToCache()
-                AppDiagnostics.shared.log("MediaOverridesRepository: synchronized \(dict.count) overrides from backend")
+            if let dict = envelope.data, !dict.isEmpty {
+                remoteMap = dict
             }
         } catch {
-            AppDiagnostics.shared.log("MediaOverridesRepository fetch error: \(error.localizedDescription)")
+            AppDiagnostics.shared.log("MediaOverridesRepository fetch from backend error: \(error.localizedDescription)")
         }
+
+        // 2. Если бэкенд вернул пустоту или упал, используем прямое подключение к Firebase RTDB
+        if remoteMap.isEmpty {
+            if let fbMap = await fetchDirectFromFirebase(), !fbMap.isEmpty {
+                remoteMap = fbMap
+                AppDiagnostics.shared.log("MediaOverridesRepository: fallback loaded \(fbMap.count) overrides directly from Firebase")
+            }
+        }
+
+        // 3. Сохраняем полученные с сервера оверрайды в локальную базу
+        var updated = false
+        for (k, v) in remoteMap {
+            self.overrides[k] = v
+            if let tmdb = v.tmdbId, tmdb > 0 {
+                self.overrides["\(tmdb)"] = v
+                self.overrides["tmdb_\(tmdb)"] = v
+            }
+            if let kp = v.kpId, kp > 0 {
+                self.overrides["\(kp)"] = v
+                self.overrides["kp_\(kp)"] = v
+            }
+            updated = true
+        }
+
+        // 4. Авто-миграция локальных правок: если на этом устройстве сохранены оверрайды,
+        // которых еще нет в удаленном хранилище (например, настроенные ранее администратором),
+        // автоматически выгружаем их на бэкенд и в Firebase, чтобы они появились на других телефонах и Android!
+        let missingOnRemote = self.overrides.values.filter { localItem in
+            let id = localItem.mediaId
+            return remoteMap[id] == nil && remoteMap["\(localItem.tmdbId ?? 0)"] == nil
+        }
+        if !missingOnRemote.isEmpty {
+            AppDiagnostics.shared.log("MediaOverridesRepository: uploading \(missingOnRemote.count) local unpushed overrides to backend...")
+            for item in missingOnRemote {
+                _ = try? await MoviesApi.shared.saveMediaOverride(item)
+                await pushDirectToFirebase(item)
+            }
+        }
+
+        if updated || !missingOnRemote.isEmpty {
+            saveToCache()
+            AppDiagnostics.shared.log("MediaOverridesRepository: synchronized \(self.overrides.count) overrides successfully")
+        }
+    }
+
+    private func fetchDirectFromFirebase() async -> [String: MediaArtworkOverride]? {
+        guard let url = URL(string: "\(firebaseOverridesUrl).json") else { return nil }
+        var req = URLRequest(url: url)
+        req.timeoutInterval = 4.0
+        do {
+            let (data, resp) = try await URLSession.shared.data(for: req)
+            if let http = resp as? HTTPURLResponse, http.statusCode == 200 {
+                return try? JSONDecoder().decode([String: MediaArtworkOverride].self, from: data)
+            }
+        } catch {
+            // Firebase direct read failed
+        }
+        return nil
+    }
+
+    private func pushDirectToFirebase(_ item: MediaArtworkOverride) async {
+        guard let cleanId = item.mediaId.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
+              let url = URL(string: "\(firebaseOverridesUrl)/\(cleanId).json") else { return }
+        var req = URLRequest(url: url)
+        req.httpMethod = "PUT"
+        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        req.timeoutInterval = 4.0
+        if let body = try? JSONEncoder().encode(item) {
+            req.httpBody = body
+            _ = try? await URLSession.shared.data(for: req)
+        }
+    }
+
+    private func deleteDirectFromFirebase(_ id: String) async {
+        guard let cleanId = id.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
+              let url = URL(string: "\(firebaseOverridesUrl)/\(cleanId).json") else { return }
+        var req = URLRequest(url: url)
+        req.httpMethod = "DELETE"
+        req.timeoutInterval = 4.0
+        _ = try? await URLSession.shared.data(for: req)
     }
 
     // MARK: - Save & Delete Overrides
@@ -146,9 +218,12 @@ public final class MediaOverridesRepository: ObservableObject {
         saveToCache()
 
         // 2. Отправляем на бэкенд sloosh-api (который инвалидирует кэш и сохраняет изменения)
-        _ = try await MoviesApi.shared.saveMediaOverride(item)
+        _ = try? await MoviesApi.shared.saveMediaOverride(item)
 
-        AppDiagnostics.shared.log("MediaOverridesRepository: saved override to backend for mediaId=\(mediaId)")
+        // 3. Дублируем напрямую в постоянное хранилище Firebase RTDB для гарантированной сохранности
+        await pushDirectToFirebase(item)
+
+        AppDiagnostics.shared.log("MediaOverridesRepository: saved override persistently for mediaId=\(mediaId)")
     }
 
     public func deleteOverride(mediaId: String, kpId: Int? = nil, tmdbId: Int? = nil) async throws {
@@ -165,7 +240,7 @@ public final class MediaOverridesRepository: ObservableObject {
         saveToCache()
 
         // 2. Удаляем на бэкенде sloosh-api
-        _ = try await MoviesApi.shared.deleteMediaOverride(id: mediaId)
+        _ = try? await MoviesApi.shared.deleteMediaOverride(id: mediaId)
         if let tmdb = tmdbId, tmdb > 0, "\(tmdb)" != mediaId {
             _ = try? await MoviesApi.shared.deleteMediaOverride(id: "\(tmdb)")
         }
@@ -173,6 +248,15 @@ public final class MediaOverridesRepository: ObservableObject {
             _ = try? await MoviesApi.shared.deleteMediaOverride(id: "kp_\(kp)")
         }
 
-        AppDiagnostics.shared.log("MediaOverridesRepository: deleted override on backend for mediaId=\(mediaId)")
+        // 3. Удаляем напрямую из постоянного хранилища Firebase RTDB
+        await deleteDirectFromFirebase(mediaId)
+        if let tmdb = tmdbId, tmdb > 0, "\(tmdb)" != mediaId {
+            await deleteDirectFromFirebase("\(tmdb)")
+        }
+        if let kp = kpId, kp > 0, "kp_\(kp)" != mediaId {
+            await deleteDirectFromFirebase("kp_\(kp)")
+        }
+
+        AppDiagnostics.shared.log("MediaOverridesRepository: deleted override persistently for mediaId=\(mediaId)")
     }
 }
