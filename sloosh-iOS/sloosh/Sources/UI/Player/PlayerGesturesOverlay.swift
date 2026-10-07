@@ -2,8 +2,11 @@ import SwiftUI
 import MediaPlayer
 
 struct PlayerGesturesModifier: ViewModifier {
+    var isCustomEnabled: Bool? = nil
     var onInteractionBegan: (() -> Void)?
     var onInteractionEnded: (() -> Void)?
+    
+    @AppStorage("playerVolumeBrightnessGestures") private var storedEnabled = true
     
     @State private var showIndicator = false
     @State private var indicatorValue: Double = 0
@@ -20,11 +23,17 @@ struct PlayerGesturesModifier: ViewModifier {
     enum TapSide { case left, right }
     
     private let volumeManager = VolumeManager.shared
+    
+    private var isEnabled: Bool {
+        isCustomEnabled ?? storedEnabled
+    }
 
+    @ViewBuilder
     func body(content: Content) -> some View {
-        GeometryReader { geo in
-            ZStack(alignment: .top) {
-                content
+        if isEnabled {
+            GeometryReader { geo in
+                ZStack(alignment: .top) {
+                    content
                     .simultaneousGesture(
                         DragGesture(minimumDistance: 15)
                             .onChanged { value in
@@ -90,6 +99,8 @@ struct PlayerGesturesModifier: ViewModifier {
                     ))
                 }
             }
+        } else {
+            content
         }
     }
     
@@ -124,10 +135,12 @@ struct PlayerGesturesModifier: ViewModifier {
 
 extension View {
     func playerGestures(
+        isEnabled: Bool? = nil,
         onInteractionBegan: (() -> Void)? = nil,
         onInteractionEnded: (() -> Void)? = nil
     ) -> some View {
         self.modifier(PlayerGesturesModifier(
+            isCustomEnabled: isEnabled,
             onInteractionBegan: onInteractionBegan,
             onInteractionEnded: onInteractionEnded
         ))
