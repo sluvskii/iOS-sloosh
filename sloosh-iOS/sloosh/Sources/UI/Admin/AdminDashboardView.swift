@@ -1038,7 +1038,7 @@ public struct AdminDashboardView: View {
                 // 1. Stats Bar
                 HStack(spacing: 12) {
                     channelStatPod(title: "ПЕРЕОПРЕДЕЛЕНИЙ", value: "\(uniqueArtworkOverrides.count)")
-                    channelStatPod(title: "СИНХРОНИЗАЦИЯ", value: "Firebase")
+                    channelStatPod(title: "СИНХРОНИЗАЦИЯ", value: "sloosh-api")
                 }
                 .padding(14)
                 .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
@@ -1093,7 +1093,7 @@ public struct AdminDashboardView: View {
                             .font(.system(size: 13))
                             .foregroundColor(.secondary)
 
-                        TextField("Или прямой ID (TMDB: 88396, KP: 1236041)...", text: $artworkDirectId)
+                        TextField("Или прямой ID (TMDB или Кинопоиск)...", text: $artworkDirectId)
                             .font(.system(size: 13))
                             .onSubmit {
                                 Task { await loadDirectMediaId() }
