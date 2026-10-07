@@ -51,6 +51,7 @@ struct PlayerContainerView: View {
                         showControls: showControls,
                         isZoomedToFill: isZoomedToFill
                     )
+                    .ignoresSafeArea()
                     .allowsHitTesting(false)
                     .zIndex(2)
                 }
