@@ -28,17 +28,33 @@ struct RemoteBackdropView: View {
     let fallbackUrl: URL?
     let width: CGFloat
     let height: CGFloat
+    var focalX: CGFloat = 0.5
+    var focalY: CGFloat = 0.5
 
     var body: some View {
         AsyncCachedImage(url: url, fallbackUrl: fallbackUrl) {
             Color.black.opacity(0.3)
                 .frame(width: width, height: height)
         } content: { image in
-            Image(uiImage: image)
-                .resizable()
-                .aspectRatio(contentMode: .fill)
-                .frame(width: width, height: height)
-                .clipped()
+            GeometryReader { _ in
+                let imgSize = image.size
+                let scale = (imgSize.width > 0 && imgSize.height > 0)
+                    ? max(width / imgSize.width, height / imgSize.height)
+                    : 1.0
+                let scaledW = imgSize.width * scale
+                let scaledH = imgSize.height * scale
+                let excessW = max(0, scaledW - width)
+                let excessH = max(0, scaledH - height)
+                let originX = -excessW * focalX
+                let originY = -excessH * focalY
+
+                Image(uiImage: image)
+                    .resizable()
+                    .frame(width: scaledW, height: scaledH)
+                    .offset(x: originX, y: originY)
+            }
+            .frame(width: width, height: height)
+            .clipped()
         } fallback: {
             Color.black.opacity(0.3)
                 .frame(width: width, height: height)
@@ -52,6 +68,8 @@ struct BackdropCarouselView: View {
     let fallbackUrl: URL?
     let width: CGFloat
     let height: CGFloat
+    var focalX: CGFloat = 0.5
+    var focalY: CGFloat = 0.5
     @Binding var selectedIndex: Int
     @Binding var timerProgress: CGFloat
     var isHeaderVisible: Bool = true
@@ -66,12 +84,16 @@ struct BackdropCarouselView: View {
                     url: firstUrl,
                     fallbackUrl: fallbackUrl,
                     width: width,
-                    height: height
+                    height: height,
+                    focalX: focalX,
+                    focalY: focalY
                 )
             } else {
                 BackdropPagingRepresentable(
                     urls: urls,
                     fallbackUrl: fallbackUrl,
+                    focalX: focalX,
+                    focalY: focalY,
                     selectedIndex: $selectedIndex,
                     timerProgress: $timerProgress,
                     isHeaderVisible: isHeaderVisible,
@@ -80,7 +102,7 @@ struct BackdropCarouselView: View {
                 )
             }
         }
-        .id(urls.joined(separator: "|"))
+        .id("\(urls.joined(separator: "|"))_\(focalX)_\(focalY)")
         .frame(width: width, height: height)
         .mask(BackdropFadeMask())
     }
@@ -89,6 +111,8 @@ struct BackdropCarouselView: View {
 private struct BackdropPagingRepresentable: UIViewControllerRepresentable {
     let urls: [String]
     let fallbackUrl: URL?
+    var focalX: CGFloat = 0.5
+    var focalY: CGFloat = 0.5
     @Binding var selectedIndex: Int
     @Binding var timerProgress: CGFloat
     var isHeaderVisible: Bool
@@ -117,6 +141,8 @@ private struct BackdropPagingRepresentable: UIViewControllerRepresentable {
         let initialIndex = (selectedIndex >= 0 && selectedIndex < urls.count) ? selectedIndex : 0
         context.coordinator.currentIndex = initialIndex
         context.coordinator.currentUrls = urls
+        context.coordinator.currentFocalX = focalX
+        context.coordinator.currentFocalY = focalY
         let initialVC = context.coordinator.makeSlideVC(index: initialIndex)
         pageVC.setViewControllers([initialVC], direction: .forward, animated: false)
 
@@ -136,9 +162,11 @@ private struct BackdropPagingRepresentable: UIViewControllerRepresentable {
         let count = urls.count
         guard count > 1 else { return }
 
-        // Если список URL изменился (динамический оверрайд из сети или сохраненный пресет)
-        if coordinator.currentUrls != urls {
+        // Если список URL или точка фокусировки изменились
+        if coordinator.currentUrls != urls || coordinator.currentFocalX != focalX || coordinator.currentFocalY != focalY {
             coordinator.currentUrls = urls
+            coordinator.currentFocalX = focalX
+            coordinator.currentFocalY = focalY
             let targetIndex = (selectedIndex >= 0 && selectedIndex < count) ? selectedIndex : 0
             coordinator.currentIndex = targetIndex
             let targetVC = coordinator.makeSlideVC(index: targetIndex)
@@ -182,6 +210,8 @@ private struct BackdropPagingRepresentable: UIViewControllerRepresentable {
         weak var pageViewController: UIPageViewController?
         var currentIndex: Int = 0
         var currentUrls: [String] = []
+        var currentFocalX: CGFloat = 0.5
+        var currentFocalY: CGFloat = 0.5
         var isUserDragging: Bool = false
         var isTransitioning: Bool = false
         var timerTask: Task<Void, Never>?
@@ -190,6 +220,8 @@ private struct BackdropPagingRepresentable: UIViewControllerRepresentable {
             self.parent = parent
             self.currentIndex = (parent.selectedIndex >= 0 && parent.selectedIndex < parent.urls.count) ? parent.selectedIndex : 0
             self.currentUrls = parent.urls
+            self.currentFocalX = parent.focalX
+            self.currentFocalY = parent.focalY
         }
 
         func makeSlideVC(index: Int) -> BackdropSlideViewController {
@@ -197,7 +229,9 @@ private struct BackdropPagingRepresentable: UIViewControllerRepresentable {
             return BackdropSlideViewController(
                 index: safeIndex,
                 urlString: parent.urls[safeIndex],
-                fallbackUrl: parent.fallbackUrl
+                fallbackUrl: parent.fallbackUrl,
+                focalX: parent.focalX,
+                focalY: parent.focalY
             )
         }
 
@@ -389,13 +423,17 @@ private final class BackdropSlideViewController: UIViewController {
     let index: Int
     let urlString: String
     let fallbackUrl: URL?
+    var focalX: CGFloat = 0.5
+    var focalY: CGFloat = 0.5
     private let imageView = UIImageView()
     private var loadTask: Task<Void, Never>?
 
-    init(index: Int, urlString: String, fallbackUrl: URL?) {
+    init(index: Int, urlString: String, fallbackUrl: URL?, focalX: CGFloat = 0.5, focalY: CGFloat = 0.5) {
         self.index = index
         self.urlString = urlString
         self.fallbackUrl = fallbackUrl
+        self.focalX = focalX
+        self.focalY = focalY
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -404,19 +442,37 @@ private final class BackdropSlideViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = UIColor.black.withAlphaComponent(0.3)
+        view.clipsToBounds = true
         imageView.contentMode = .scaleAspectFill
         imageView.clipsToBounds = true
-        imageView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(imageView)
 
-        NSLayoutConstraint.activate([
-            imageView.topAnchor.constraint(equalTo: view.topAnchor),
-            imageView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            imageView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            imageView.trailingAnchor.constraint(equalTo: view.trailingAnchor)
-        ])
-
         loadImage()
+    }
+
+    override func viewDidLayoutSubviews() {
+        super.viewDidLayoutSubviews()
+        updateImageLayout()
+    }
+
+    private func updateImageLayout() {
+        let bounds = view.bounds
+        guard bounds.width > 0, bounds.height > 0 else { return }
+
+        guard let img = imageView.image, img.size.width > 0, img.size.height > 0 else {
+            imageView.frame = bounds
+            return
+        }
+
+        let scale = max(bounds.width / img.size.width, bounds.height / img.size.height)
+        let scaledW = img.size.width * scale
+        let scaledH = img.size.height * scale
+        let excessW = max(0, scaledW - bounds.width)
+        let excessH = max(0, scaledH - bounds.height)
+        let originX = -excessW * focalX
+        let originY = -excessH * focalY
+
+        imageView.frame = CGRect(x: originX, y: originY, width: scaledW, height: scaledH)
     }
 
     private func loadImage() {
@@ -431,6 +487,7 @@ private final class BackdropSlideViewController: UIViewController {
         // 1. Instant check from RAM cache
         if let cached = ImageCache.shared.image(forKey: key) ?? ImageCache.shared.image(forKey: url.absoluteString) {
             self.imageView.image = cached
+            self.updateImageLayout()
             return
         }
 
@@ -449,6 +506,7 @@ private final class BackdropSlideViewController: UIViewController {
                 if !Task.isCancelled {
                     await MainActor.run {
                         self.imageView.image = decoded
+                        self.updateImageLayout()
                     }
                 }
                 return
@@ -467,6 +525,7 @@ private final class BackdropSlideViewController: UIViewController {
                     if !Task.isCancelled {
                         await MainActor.run {
                             self.imageView.image = decoded
+                            self.updateImageLayout()
                         }
                     }
                     return
@@ -489,6 +548,7 @@ private final class BackdropSlideViewController: UIViewController {
         let key = effectiveFallback?.absoluteString ?? fallback.absoluteString
         if let cached = ImageCache.shared.image(forKey: key) ?? ImageCache.shared.image(forKey: fallback.absoluteString) {
             self.imageView.image = cached
+            self.updateImageLayout()
         }
     }
 
@@ -766,15 +826,14 @@ struct DetailsView: View {
     @ViewBuilder
     private func backdropContextMenuPreview(for details: MediaDetailsDto) -> some View {
         let activeBackdrop = currentBackdropUrl(for: details)
-        AsyncCachedImage(url: URL(string: activeBackdrop ?? details.displayPosterUrl ?? ""),
-                         fallbackUrl: URL(string: details.displayPosterUrl ?? "")) {
-            Rectangle().fill(Color.gray.opacity(0.3)).frame(width: 300, height: 200)
-        } content: { image in
-            Image(uiImage: image).resizable().aspectRatio(contentMode: .fill)
-                .frame(width: 300, height: 200).clipped()
-        } fallback: {
-            Rectangle().fill(Color.gray.opacity(0.3)).frame(width: 300, height: 200)
-        }
+        RemoteBackdropView(
+            url: URL(string: activeBackdrop ?? details.displayPosterUrl ?? ""),
+            fallbackUrl: URL(string: details.displayPosterUrl ?? ""),
+            width: 300,
+            height: 200,
+            focalX: details.displayBackdropFocusX,
+            focalY: details.displayBackdropFocusY
+        )
     }
 
     @AppStorage("hasSeenSourceSelectionTooltip") private var hasSeenSourceSelectionTooltip = false
@@ -1571,6 +1630,8 @@ struct DetailsView: View {
                             fallbackUrl: URL(string: details.displayPosterUrl ?? ""),
                             width: geometry.size.width,
                             height: height,
+                            focalX: details.displayBackdropFocusX,
+                            focalY: details.displayBackdropFocusY,
                             selectedIndex: $selectedBackdropIndex,
                             timerProgress: $backdropTimerProgress,
                             isHeaderVisible: isHeaderVisible,
@@ -1748,6 +1809,8 @@ struct DetailsView: View {
                                 fallbackUrl: URL(string: details.displayPosterUrl ?? ""),
                                 width: geometry.size.width,
                                 height: height,
+                                focalX: details.displayBackdropFocusX,
+                                focalY: details.displayBackdropFocusY,
                                 selectedIndex: $selectedBackdropIndex,
                                 timerProgress: $backdropTimerProgress,
                                 isHeaderVisible: isHeaderVisible,

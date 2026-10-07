@@ -46,6 +46,8 @@ struct MediaArtworkPickerSheet: View {
     @State private var selectedPosterUrl: String?
     @State private var selectedBackdropUrl: String?
     @State private var selectedCarouselUrls: [String] = []
+    @State private var selectedFocusX: CGFloat = 0.5
+    @State private var selectedFocusY: CGFloat = 0.5
 
     // Live preview backdrop (can be any backdrop the user taps to inspect)
     @State private var previewBackdropUrl: String?
@@ -140,8 +142,10 @@ struct MediaArtworkPickerSheet: View {
                     // 3. Language Filter Pills (Full bleed edge-to-edge)
                     languageFilterSection
 
-                    // 4. Active Carousel Management (Only in Backdrop tab)
+                    // 4. Backdrop Focus & Active Carousel Management (Only in Backdrop tab)
                     if selectedTab == .backdrop {
+                        backdropFocusSection
+                            .padding(.horizontal, 16)
                         activeCarouselSection
                     }
 
@@ -214,6 +218,8 @@ struct MediaArtworkPickerSheet: View {
             self.selectedLogoUrl = existing.logoUrl ?? defaultLogoUrl
             self.selectedPosterUrl = existing.posterUrl ?? defaultPosterUrl
             self.selectedBackdropUrl = existing.backdropUrl ?? backdropUrl
+            self.selectedFocusX = CGFloat(existing.backdropFocusX ?? 0.5)
+            self.selectedFocusY = CGFloat(existing.backdropFocusY ?? 0.5)
             if let customBackdrops = existing.backdropUrls, !customBackdrops.isEmpty {
                 self.selectedCarouselUrls = customBackdrops
             } else if self.selectedCarouselUrls.isEmpty {
@@ -225,6 +231,8 @@ struct MediaArtworkPickerSheet: View {
             self.selectedLogoUrl = defaultLogoUrl
             self.selectedPosterUrl = defaultPosterUrl
             self.selectedBackdropUrl = backdropUrl
+            self.selectedFocusX = 0.5
+            self.selectedFocusY = 0.5
             if self.selectedCarouselUrls.isEmpty, let b = backdropUrl, !b.isEmpty {
                 self.selectedCarouselUrls = [b]
             }
@@ -376,66 +384,125 @@ struct MediaArtworkPickerSheet: View {
     }
 
     private var backdropPreviewContent: some View {
-        ZStack {
-            // Live active preview backdrop (changes on tap on any backdrop!)
-            if let bg = activePreviewBackdrop, let url = URL(string: bg) {
-                AsyncCachedImage(url: url) {
-                    Rectangle().fill(Color.black.opacity(0.85))
-                } content: { img in
-                    Image(uiImage: img)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                } fallback: {
-                    Rectangle().fill(Color.black.opacity(0.85))
-                }
-            } else {
-                Color.black.opacity(0.85)
-            }
+        GeometryReader { outerGeo in
+            let w = outerGeo.size.width
+            let h = outerGeo.size.height
 
-            LinearGradient(
-                colors: [Color.black.opacity(0.1), Color.black.opacity(0.85)],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-
-            // Centered bottom logo presentation, exactly matching DetailsView
-            VStack {
-                Spacer()
-
-                if let logoUrl = selectedLogoUrl, !logoUrl.isEmpty, let url = URL(string: logoUrl) {
+            ZStack {
+                // Live active preview backdrop (changes on tap on any backdrop!)
+                if let bg = activePreviewBackdrop, let url = URL(string: bg) {
                     AsyncCachedImage(url: url) {
-                        EmptyView()
+                        Rectangle().fill(Color.black.opacity(0.85))
                     } content: { img in
+                        let imgSize = img.size
+                        let scale = (imgSize.width > 0 && imgSize.height > 0)
+                            ? max(w / imgSize.width, h / imgSize.height)
+                            : 1.0
+                        let scaledW = imgSize.width * scale
+                        let scaledH = imgSize.height * scale
+                        let excessW = max(0, scaledW - w)
+                        let excessH = max(0, scaledH - h)
+                        let originX = -excessW * selectedFocusX
+                        let originY = -excessH * selectedFocusY
+
                         Image(uiImage: img)
                             .resizable()
-                            .aspectRatio(contentMode: .fit)
-                            .frame(maxHeight: 56)
-                            .shadow(color: .black.opacity(0.8), radius: 6, x: 0, y: 3)
+                            .frame(width: scaledW, height: scaledH)
+                            .offset(x: originX, y: originY)
                     } fallback: {
+                        Rectangle().fill(Color.black.opacity(0.85))
+                    }
+                } else {
+                    Color.black.opacity(0.85)
+                }
+
+                LinearGradient(
+                    colors: [Color.black.opacity(0.1), Color.black.opacity(0.85)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+
+                // Subtle focal crosshair indicator on the preview
+                ZStack {
+                    Circle()
+                        .stroke(Color.white.opacity(0.8), lineWidth: 1.5)
+                        .background(Circle().fill(Color.white.opacity(0.2)))
+                        .frame(width: 22, height: 22)
+
+                    Circle()
+                        .fill(Color.white)
+                        .frame(width: 4, height: 4)
+                }
+                .position(x: w * selectedFocusX, y: h * selectedFocusY)
+                .allowsHitTesting(false)
+                .animation(.spring(response: 0.25, dampingFraction: 0.8), value: selectedFocusX)
+                .animation(.spring(response: 0.25, dampingFraction: 0.8), value: selectedFocusY)
+
+                // Centered bottom logo presentation, exactly matching DetailsView
+                VStack {
+                    Spacer()
+
+                    if let logoUrl = selectedLogoUrl, !logoUrl.isEmpty, let url = URL(string: logoUrl) {
+                        AsyncCachedImage(url: url) {
+                            EmptyView()
+                        } content: { img in
+                            Image(uiImage: img)
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(maxHeight: 56)
+                                .shadow(color: .black.opacity(0.8), radius: 6, x: 0, y: 3)
+                        } fallback: {
+                            Text(title)
+                                .font(.system(size: 19, weight: .bold))
+                                .foregroundStyle(.white)
+                        }
+                    } else {
                         Text(title)
                             .font(.system(size: 19, weight: .bold))
                             .foregroundStyle(.white)
+                            .shadow(color: .black.opacity(0.8), radius: 6)
                     }
-                } else {
-                    Text(title)
-                        .font(.system(size: 19, weight: .bold))
-                        .foregroundStyle(.white)
-                        .shadow(color: .black.opacity(0.8), radius: 6)
+                }
+                .padding(.bottom, 18)
+            }
+            .contentShape(Rectangle())
+            .onTapGesture(coordinateSpace: .local) { location in
+                guard w > 0, h > 0 else { return }
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                let fx = min(max(location.x / w, 0.0), 1.0)
+                let fy = min(max(location.y / h, 0.0), 1.0)
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
+                    selectedFocusX = fx
+                    selectedFocusY = fy
                 }
             }
-            .padding(.bottom, 18)
         }
     }
 
     private var backdropBaseLayer: some View {
-        Group {
+        GeometryReader { geo in
+            let w = geo.size.width
+            let h = geo.size.height
+
             if let bg = activePreviewBackdrop, let url = URL(string: bg) {
                 AsyncCachedImage(url: url) {
                     Rectangle().fill(Color.black.opacity(0.85))
                 } content: { img in
+                    let imgSize = img.size
+                    let scale = (imgSize.width > 0 && imgSize.height > 0)
+                        ? max(w / imgSize.width, h / imgSize.height)
+                        : 1.0
+                    let scaledW = imgSize.width * scale
+                    let scaledH = imgSize.height * scale
+                    let excessW = max(0, scaledW - w)
+                    let excessH = max(0, scaledH - h)
+                    let originX = -excessW * selectedFocusX
+                    let originY = -excessH * selectedFocusY
+
                     Image(uiImage: img)
                         .resizable()
-                        .aspectRatio(contentMode: .fill)
+                        .frame(width: scaledW, height: scaledH)
+                        .offset(x: originX, y: originY)
                 } fallback: {
                     Rectangle().fill(Color.black.opacity(0.85))
                 }
@@ -553,6 +620,161 @@ struct MediaArtworkPickerSheet: View {
             }
             .contentMargins(.horizontal, 16, for: .scrollContent)
         }
+    }
+
+    // MARK: - Focal Point Alignment Section
+
+    private var backdropFocusSection: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 6) {
+                Image(systemName: "scope")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.secondary)
+
+                Text("Фокусировка кадра")
+                    .font(.system(size: 14, weight: .bold))
+                    .foregroundStyle(.primary)
+
+                Spacer()
+
+                if abs(selectedFocusX - 0.5) > 0.01 || abs(selectedFocusY - 0.5) > 0.01 {
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                            selectedFocusX = 0.5
+                            selectedFocusY = 0.5
+                        }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: "arrow.counterclockwise")
+                                .font(.system(size: 10, weight: .bold))
+                            Text("По центру")
+                                .font(.system(size: 11, weight: .semibold))
+                        }
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 9)
+                        .padding(.vertical, 4.5)
+                        .background(Capsule().fill(Color.white.opacity(0.12)))
+                    }
+                    .buttonStyle(.plain)
+                    .transition(.opacity.combined(with: .scale(scale: 0.9)))
+                }
+            }
+
+            VStack(spacing: 12) {
+                // Vertical Framing (По высоте)
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("По высоте")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(.secondary)
+
+                        Spacer()
+
+                        Text("\(Int(round(selectedFocusY * 100)))%")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(abs(selectedFocusY - 0.5) < 0.02 ? Color.secondary : Color.white)
+                            .monospacedDigit()
+                    }
+
+                    HStack(spacing: 6) {
+                        focusPresetButton(title: "Сверху", icon: "arrow.up.to.line", isSelected: abs(selectedFocusY - 0.0) < 0.04) {
+                            withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
+                                selectedFocusY = 0.0
+                            }
+                        }
+                        focusPresetButton(title: "Центр", icon: "align.vertical.center", isSelected: abs(selectedFocusY - 0.5) < 0.04) {
+                            withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
+                                selectedFocusY = 0.5
+                            }
+                        }
+                        focusPresetButton(title: "Снизу", icon: "arrow.down.to.line", isSelected: abs(selectedFocusY - 1.0) < 0.04) {
+                            withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
+                                selectedFocusY = 1.0
+                            }
+                        }
+                    }
+
+                    Slider(value: $selectedFocusY, in: 0.0...1.0)
+                        .tint(.white)
+                }
+
+                Divider()
+                    .overlay(Color.white.opacity(0.08))
+
+                // Horizontal Framing (По ширине)
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("По ширине")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(.secondary)
+
+                        Spacer()
+
+                        Text("\(Int(round(selectedFocusX * 100)))%")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(abs(selectedFocusX - 0.5) < 0.02 ? Color.secondary : Color.white)
+                            .monospacedDigit()
+                    }
+
+                    HStack(spacing: 6) {
+                        focusPresetButton(title: "Слева", icon: "arrow.left.to.line", isSelected: abs(selectedFocusX - 0.0) < 0.04) {
+                            withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
+                                selectedFocusX = 0.0
+                            }
+                        }
+                        focusPresetButton(title: "Центр", icon: "align.horizontal.center", isSelected: abs(selectedFocusX - 0.5) < 0.04) {
+                            withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
+                                selectedFocusX = 0.5
+                            }
+                        }
+                        focusPresetButton(title: "Справа", icon: "arrow.right.to.line", isSelected: abs(selectedFocusX - 1.0) < 0.04) {
+                            withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
+                                selectedFocusX = 1.0
+                            }
+                        }
+                    }
+
+                    Slider(value: $selectedFocusX, in: 0.0...1.0)
+                        .tint(.white)
+                }
+            }
+            .padding(14)
+            .background {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(Color.white.opacity(0.04))
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(Color.white.opacity(0.08), lineWidth: 1)
+            }
+        }
+    }
+
+    private func focusPresetButton(title: String, icon: String, isSelected: Bool, action: @escaping () -> Void) -> some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            action()
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: icon)
+                    .font(.system(size: 10.5, weight: .semibold))
+                Text(title)
+                    .font(.system(size: 12, weight: isSelected ? .bold : .medium))
+            }
+            .foregroundStyle(isSelected ? Color.primary : Color.secondary)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 7)
+            .background {
+                if isSelected {
+                    Capsule().fill(Color.white.opacity(0.2))
+                } else {
+                    Capsule().fill(Color.white.opacity(0.05))
+                }
+            }
+            .clipShape(Capsule())
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Active Carousel Section (Карусель задников)
@@ -1355,7 +1577,9 @@ struct MediaArtworkPickerSheet: View {
                 posterUrl: selectedPosterUrl,
                 logoUrl: selectedLogoUrl,
                 backdropUrl: selectedBackdropUrl,
-                backdropUrls: selectedCarouselUrls.isEmpty ? nil : selectedCarouselUrls
+                backdropUrls: selectedCarouselUrls.isEmpty ? nil : selectedCarouselUrls,
+                backdropFocusX: Double(selectedFocusX),
+                backdropFocusY: Double(selectedFocusY)
             )
 
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
