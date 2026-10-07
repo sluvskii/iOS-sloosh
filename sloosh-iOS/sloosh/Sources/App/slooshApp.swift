@@ -82,6 +82,7 @@ struct slooshApp: App {
             SharedWebViewProvider.shared.prewarm()
             await AllohaRepository.shared.warmup()
             PlaybackAnalyticsService.shared.sendSessionHeartbeat()
+            await MediaOverridesRepository.shared.fetchOverrides()
         }
     }
     
@@ -133,6 +134,7 @@ struct slooshApp: App {
                         Task {
                             await MoviesApi.shared.loadRemoteConfigIfNeeded()
                             await CloudSyncService.shared.syncAllDataAsync()
+                            await MediaOverridesRepository.shared.fetchOverrides()
                         }
                     }
                 }

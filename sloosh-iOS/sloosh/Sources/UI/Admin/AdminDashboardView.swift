@@ -11,6 +11,13 @@ public struct AdminDashboardView: View {
     @State private var userSearchQuery: String = ""
     @State private var channelSearchQuery: String = ""
     @State private var analyticsSearchQuery: String = ""
+    @State private var artworkSearchQuery: String = ""
+    @State private var artworkDirectId: String = ""
+    @State private var artworkSearchResults: [MediaDto] = []
+    @State private var isSearchingArtworks: Bool = false
+    @State private var selectedMediaDetailsForPicker: MediaDetailsDto? = nil
+    @State private var showArtworkPickerForAdmin: Bool = false
+    @State private var isLoadingMediaForAdmin: Bool = false
     @State private var selectedUserForDetails: AdminUserItem? = nil
     @State private var channelToDelete: ChannelModel? = nil
     @State private var showDeleteChannelAlert: Bool = false
@@ -34,6 +41,7 @@ public struct AdminDashboardView: View {
         case analytics = "Аналитика"
         case users = "Пользователи"
         case channels = "Каналы"
+        case artworks = "Оформление"
         case diagnostics = "Система"
 
         var id: Self { self }
@@ -43,6 +51,7 @@ public struct AdminDashboardView: View {
             case .analytics: return "chart.xyaxis.line"
             case .users: return "person.2.fill"
             case .channels: return "megaphone.fill"
+            case .artworks: return "paintbrush.fill"
             case .diagnostics: return "waveform.path.ecg"
             }
         }
@@ -80,6 +89,11 @@ public struct AdminDashboardView: View {
             .sheet(item: $selectedUserForDetails) { user in
                 AdminUserDetailSheet(user: user)
             }
+            .sheet(isPresented: $showArtworkPickerForAdmin) {
+                if let details = selectedMediaDetailsForPicker {
+                    MediaArtworkPickerSheet(details: details)
+                }
+            }
             .task {
                 await repo.fetchOverviewStats()
             }
@@ -97,6 +111,8 @@ public struct AdminDashboardView: View {
             usersTab
         case .channels:
             channelsTab
+        case .artworks:
+            artworksTab
         case .diagnostics:
             diagnosticsTab
         }
@@ -997,6 +1013,379 @@ public struct AdminDashboardView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 8)
         .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    // MARK: - Tab: Media Artworks (Постеры и логотипы)
+
+    @ObservedObject private var overridesRepo = MediaOverridesRepository.shared
+
+    private var uniqueArtworkOverrides: [MediaArtworkOverride] {
+        var seen = Set<String>()
+        var list: [MediaArtworkOverride] = []
+        for override in overridesRepo.overrides.values {
+            let key = "\(override.tmdbId ?? 0)_\(override.kpId ?? 0)_\(override.title ?? override.mediaId)"
+            if !seen.contains(key) {
+                seen.insert(key)
+                list.append(override)
+            }
+        }
+        return list.sorted { ($0.updatedAt ?? 0) > ($1.updatedAt ?? 0) }
+    }
+
+    private var artworksTab: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                // 1. Stats Bar
+                HStack(spacing: 12) {
+                    channelStatPod(title: "ПЕРЕОПРЕДЕЛЕНИЙ", value: "\(uniqueArtworkOverrides.count)")
+                    channelStatPod(title: "СИНХРОНИЗАЦИЯ", value: "Firebase")
+                }
+                .padding(14)
+                .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+
+                // 2. Search Movie for Customization
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Найти тайтл для настройки")
+                        .font(.system(size: 16, weight: .bold))
+                        .foregroundColor(.primary)
+                        .padding(.horizontal, 2)
+
+                    HStack(spacing: 8) {
+                        Image(systemName: "magnifyingglass")
+                            .font(.system(size: 14))
+                            .foregroundColor(.secondary)
+
+                        TextField("Название фильма или сериала...", text: $artworkSearchQuery)
+                            .font(.system(size: 14))
+                            .onSubmit {
+                                Task { await performArtworkSearch() }
+                            }
+
+                        if !artworkSearchQuery.isEmpty {
+                            Button {
+                                artworkSearchQuery = ""
+                                artworkSearchResults = []
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                                    .font(.system(size: 14))
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+
+                        Button {
+                            Task { await performArtworkSearch() }
+                        } label: {
+                            Text("Найти")
+                                .font(.system(size: 13, weight: .semibold))
+                                .foregroundColor(.primary)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 4)
+                                .glassEffect(in: Capsule())
+                        }
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .glassEffect(in: Capsule())
+
+                    // Direct ID lookup field
+                    HStack(spacing: 8) {
+                        Image(systemName: "number")
+                            .font(.system(size: 13))
+                            .foregroundColor(.secondary)
+
+                        TextField("Или прямой ID (TMDB: 88396, KP: 1236041)...", text: $artworkDirectId)
+                            .font(.system(size: 13))
+                            .onSubmit {
+                                Task { await loadDirectMediaId() }
+                            }
+
+                        Button {
+                            Task { await loadDirectMediaId() }
+                        } label: {
+                            Text("Открыть")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundColor(.primary)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 4)
+                                .glassEffect(in: Capsule())
+                        }
+                        .disabled(artworkDirectId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .glassEffect(in: Capsule())
+                }
+
+                // Loading or Results
+                if isSearchingArtworks || isLoadingMediaForAdmin {
+                    HStack {
+                        Spacer()
+                        ProgressView()
+                            .controlSize(.regular)
+                        Spacer()
+                    }
+                    .padding(.vertical, 16)
+                } else if !artworkSearchResults.isEmpty {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("Результаты поиска (\(artworkSearchResults.count))")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundColor(.secondary)
+                            .padding(.horizontal, 2)
+
+                        ForEach(artworkSearchResults) { media in
+                            artworkSearchResultRow(media)
+                        }
+                    }
+                }
+
+                // 3. Active Overrides Section
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack {
+                        Text("Активные переопределения")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundColor(.primary)
+
+                        Spacer()
+
+                        Text("\(uniqueArtworkOverrides.count)")
+                            .font(.system(size: 13, weight: .medium))
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(.horizontal, 2)
+
+                    if uniqueArtworkOverrides.isEmpty {
+                        HStack(spacing: 10) {
+                            Image(systemName: "photo.on.rectangle.angled")
+                                .font(.system(size: 18))
+                                .foregroundColor(.secondary)
+                            Text("Нет активных переопределений")
+                                .font(.system(size: 13))
+                                .foregroundColor(.secondary)
+                        }
+                        .padding(14)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    } else {
+                        ForEach(uniqueArtworkOverrides, id: \.mediaId) { override in
+                            artworkOverrideCard(override)
+                        }
+                    }
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.top, 12)
+            .padding(.bottom, 24)
+        }
+    }
+
+    private func artworkSearchResultRow(_ media: MediaDto) -> some View {
+        HStack(spacing: 10) {
+            if let poster = media.displayPosterUrl, let url = URL(string: poster) {
+                AsyncCachedImage(url: url) {
+                    RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(0.1))
+                } content: { img in
+                    Image(uiImage: img)
+                        .resizable()
+                        .aspectRatio(2/3, contentMode: .fit)
+                        .clipShape(RoundedRectangle(cornerRadius: 6))
+                } fallback: {
+                    RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(0.1))
+                }
+                .frame(width: 36, height: 54)
+            } else {
+                RoundedRectangle(cornerRadius: 6)
+                    .fill(Color.white.opacity(0.08))
+                    .frame(width: 36, height: 54)
+            }
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(media.displayTitle)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(.primary)
+                    .lineLimit(1)
+
+                HStack(spacing: 4) {
+                    if let y = media.year?.stringValue, !y.isEmpty {
+                        Text(y)
+                            .font(.system(size: 11.5))
+                            .foregroundColor(.secondary)
+                    }
+                    if let t = media.type {
+                        Text("•")
+                            .font(.system(size: 10))
+                            .foregroundColor(.secondary)
+                        Text(t == "tv" ? "Сериал" : "Фильм")
+                            .font(.system(size: 11.5))
+                            .foregroundColor(.secondary)
+                    }
+                }
+            }
+
+            Spacer()
+
+            Button {
+                Task { await openMediaForCustomization(id: media.originalId?.stringValue ?? media.id, type: media.type) }
+            } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "paintbrush.fill")
+                    Text("Настроить")
+                }
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(.primary)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .glassEffect(in: Capsule())
+            }
+        }
+        .padding(10)
+        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private func artworkOverrideCard(_ override: MediaArtworkOverride) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                if let poster = override.posterUrl, let url = URL(string: poster) {
+                    AsyncCachedImage(url: url) {
+                        RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(0.1))
+                    } content: { img in
+                        Image(uiImage: img)
+                            .resizable()
+                            .aspectRatio(2/3, contentMode: .fit)
+                            .clipShape(RoundedRectangle(cornerRadius: 6))
+                    } fallback: {
+                        RoundedRectangle(cornerRadius: 6).fill(Color.white.opacity(0.1))
+                    }
+                    .frame(width: 36, height: 54)
+                }
+
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(override.title ?? "ID: \(override.mediaId)")
+                        .font(.system(size: 14.5, weight: .semibold))
+                        .foregroundColor(.primary)
+                        .lineLimit(1)
+
+                    HStack(spacing: 6) {
+                        if let tmdb = override.tmdbId {
+                            Text("TMDB: \(tmdb)")
+                                .font(.system(size: 10.5, weight: .medium))
+                                .foregroundColor(.secondary)
+                        }
+                        if let kp = override.kpId {
+                            Text("KP: \(kp)")
+                                .font(.system(size: 10.5, weight: .medium))
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+
+                Spacer()
+
+                Button {
+                    Task { await openMediaForCustomization(id: override.mediaId, type: nil) }
+                } label: {
+                    Image(systemName: "pencil")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(.primary)
+                        .padding(8)
+                        .glassEffect(in: Circle())
+                }
+
+                Button {
+                    Task {
+                        try? await overridesRepo.deleteOverride(
+                            mediaId: override.mediaId,
+                            kpId: override.kpId,
+                            tmdbId: override.tmdbId
+                        )
+                        ToastManager.shared.show(title: "Переопределение сброшено", icon: "arrow.counterclockwise")
+                    }
+                } label: {
+                    Image(systemName: "trash")
+                        .font(.system(size: 13))
+                        .foregroundColor(.red.opacity(0.85))
+                        .padding(8)
+                        .glassEffect(in: Circle())
+                }
+            }
+
+            // Preview of Logo if present
+            if let logo = override.logoUrl, let url = URL(string: logo) {
+                HStack(spacing: 8) {
+                    Text("Кастомный логотип:")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(Color.black.opacity(0.7))
+                            .frame(height: 28)
+
+                        AsyncCachedImage(url: url) {
+                            ProgressView().controlSize(.small)
+                        } content: { img in
+                            Image(uiImage: img)
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(height: 20)
+                                .padding(.horizontal, 8)
+                        } fallback: {
+                            Image(systemName: "photo")
+                        }
+                    }
+                    .frame(maxWidth: 160)
+                }
+                .padding(.top, 2)
+            }
+        }
+        .padding(12)
+        .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+
+    private func performArtworkSearch() async {
+        let q = artworkSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !q.isEmpty else { return }
+        isSearchingArtworks = true
+        defer { isSearchingArtworks = false }
+
+        do {
+            let res = try await MoviesApi.shared.searchMovies(query: q)
+            if let items = res.data?.items {
+                await MainActor.run {
+                    self.artworkSearchResults = items
+                }
+            }
+        } catch {
+            AppDiagnostics.shared.log("Artwork search error: \(error)")
+        }
+    }
+
+    private func loadDirectMediaId() async {
+        let raw = artworkDirectId.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !raw.isEmpty else { return }
+        await openMediaForCustomization(id: raw, type: nil)
+    }
+
+    private func openMediaForCustomization(id: String, type: String?) async {
+        isLoadingMediaForAdmin = true
+        defer { isLoadingMediaForAdmin = false }
+
+        do {
+            let res = try await MoviesApi.shared.getDetails(id: id, type: type)
+            if let details = res.data {
+                await MainActor.run {
+                    self.selectedMediaDetailsForPicker = details
+                    self.showArtworkPickerForAdmin = true
+                }
+            }
+        } catch {
+            await MainActor.run {
+                ToastManager.shared.show(
+                    title: "Не удалось загрузить тайтл",
+                    subtitle: error.localizedDescription,
+                    icon: "exclamationmark.triangle"
+                )
+            }
+        }
     }
 
     // MARK: - Tab 4: System Diagnostics

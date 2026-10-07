@@ -242,6 +242,9 @@ class MoviesApi {
                         self.currentNotice = nil
                     }
                     
+                    Task {
+                        await MediaOverridesRepository.shared.fetchOverrides()
+                    }
                     return
                 }
             } catch {
@@ -413,6 +416,26 @@ class MoviesApi {
             queryItems.append(URLQueryItem(name: "type", value: t))
         }
         
+        return try await performRequest(endpoint: endpoint, queryItems: queryItems)
+    }
+    
+    func getMediaImages(id: String, type: String? = nil) async throws -> ApiEnvelope<MediaImagesResponseDto> {
+        let cleanId = id.replacingOccurrences(of: "tv_", with: "").replacingOccurrences(of: "movie_", with: "")
+        let inferredType = type ?? (id.hasPrefix("tv_") ? "tv" : (id.hasPrefix("movie_") ? "movie" : nil))
+        
+        let endpoint: String
+        if inferredType == "tv" {
+            endpoint = "api/v1/tv/\(cleanId)/images"
+        } else if inferredType == "movie" {
+            endpoint = "api/v1/movie/\(cleanId)/images"
+        } else {
+            endpoint = "api/v1/media/\(cleanId)/images"
+        }
+        
+        var queryItems: [URLQueryItem] = []
+        if let t = inferredType {
+            queryItems.append(URLQueryItem(name: "type", value: t))
+        }
         return try await performRequest(endpoint: endpoint, queryItems: queryItems)
     }
     
