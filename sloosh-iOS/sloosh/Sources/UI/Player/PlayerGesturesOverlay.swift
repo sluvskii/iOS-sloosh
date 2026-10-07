@@ -30,47 +30,50 @@ struct PlayerGesturesModifier: ViewModifier {
 
     @ViewBuilder
     func body(content: Content) -> some View {
-        if isEnabled {
-            GeometryReader { geo in
-                ZStack(alignment: .top) {
+        GeometryReader { geo in
+            ZStack(alignment: .top) {
+                if isEnabled {
                     content
-                    .simultaneousGesture(
-                        DragGesture(minimumDistance: 15)
-                            .onChanged { value in
-                                hideTask?.cancel()
-                                hideTask = nil
-                                
-                                if !isDragging {
-                                    isDragging = true
-                                    onInteractionBegan?()
-                                    let screen = (UIApplication.shared.connectedScenes.first as? UIWindowScene)?.screen
-                                    cachedScreen = screen
-                                    initialBrightness = screen?.brightness ?? 0.5
-                                    initialVolume = volumeManager.currentVolume
-                                    draggingSide = value.startLocation.x > (screen?.bounds.width ?? 393) / 2 ? .right : .left
+                        .simultaneousGesture(
+                            DragGesture(minimumDistance: 15)
+                                .onChanged { value in
+                                    hideTask?.cancel()
+                                    hideTask = nil
+                                    
+                                    if !isDragging {
+                                        isDragging = true
+                                        onInteractionBegan?()
+                                        let screen = (UIApplication.shared.connectedScenes.first as? UIWindowScene)?.screen
+                                        cachedScreen = screen
+                                        initialBrightness = screen?.brightness ?? 0.5
+                                        initialVolume = volumeManager.currentVolume
+                                        draggingSide = value.startLocation.x > (screen?.bounds.width ?? 393) / 2 ? .right : .left
+                                    }
+                                    handleDrag(value: value, height: geo.size.height)
                                 }
-                                handleDrag(value: value, height: geo.size.height)
-                            }
-                            .onEnded { _ in
-                                isDragging = false
-                                cachedScreen = nil
-                                onInteractionEnded?()
-                                
-                                hideTask?.cancel()
-                                hideTask = Task {
-                                    try? await Task.sleep(for: .seconds(1.0))
-                                    guard !Task.isCancelled else { return }
-                                    await MainActor.run {
-                                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                                            showIndicator = false
+                                .onEnded { _ in
+                                    isDragging = false
+                                    cachedScreen = nil
+                                    onInteractionEnded?()
+                                    
+                                    hideTask?.cancel()
+                                    hideTask = Task {
+                                        try? await Task.sleep(for: .seconds(1.0))
+                                        guard !Task.isCancelled else { return }
+                                        await MainActor.run {
+                                            withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+                                                showIndicator = false
+                                            }
                                         }
                                     }
                                 }
-                            }
-                    )
+                        )
+                } else {
+                    content
+                }
                 
                 // Верхний индикатор (подобен системному), только для яркости (левая сторона)
-                if showIndicator && draggingSide == .left {
+                if isEnabled && showIndicator && draggingSide == .left {
                     HStack(spacing: 12) {
                         Image(systemName: indicatorIcon)
                             .font(.system(size: 16, weight: .semibold))
@@ -99,8 +102,6 @@ struct PlayerGesturesModifier: ViewModifier {
                     ))
                 }
             }
-        } else {
-            content
         }
     }
     

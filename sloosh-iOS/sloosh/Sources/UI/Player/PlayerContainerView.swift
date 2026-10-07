@@ -130,7 +130,14 @@ struct PlayerContainerView: View {
                 .contentShape(Rectangle())
                 .onTapGesture { handleTap(side: .right) }
         }
-        .playerGestures()
+        .playerGestures(
+            onInteractionBegan: {
+                isInteracting = true
+            },
+            onInteractionEnded: {
+                isInteracting = false
+            }
+        )
     }
 
     private func handleTap(side: TapSide) {
