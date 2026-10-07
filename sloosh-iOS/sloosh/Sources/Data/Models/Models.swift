@@ -192,6 +192,11 @@ struct MediaDto: Codable, Identifiable {
     }
     
     var displayPosterUrl: String? {
+        if let origId = originalId?.stringValue,
+           let overridePoster = MediaOverridesRepository.shared.override(for: origId, tmdbId: externalIds?.tmdb, kpId: externalIds?.kp)?.posterUrl,
+           !overridePoster.isEmpty {
+            return overridePoster
+        }
         if let p = poster, !p.isEmpty {
             return normalizeImageUrl(path: p, id: originalId?.stringValue)
         }
@@ -359,12 +364,15 @@ struct MediaDetailsDto: Codable {
     let status: String?
     let nextEpisodeToAir: TvNextEpisodeDto?
     let seasons: [TvSeasonSummaryDto]?
+    let availableLogos: [MediaImageItemDto]?
+    let availablePosters: [MediaImageItemDto]?
     
     enum CodingKeys: String, CodingKey {
         case id, title, originalTitle, description, type, year, releaseDate
         case genres, countries, duration, poster, backdrop, backdrops, logo, cast, directors, writers, crew, trailers
         case ratings, ids, externalIds, productionCompanies, networks, collection, similar
         case budget, revenue, ageRating, status, nextEpisodeToAir, seasons
+        case availableLogos, availablePosters
     }
 
     init(
@@ -399,7 +407,9 @@ struct MediaDetailsDto: Codable {
         ageRating: String? = nil,
         status: String? = nil,
         nextEpisodeToAir: TvNextEpisodeDto? = nil,
-        seasons: [TvSeasonSummaryDto]? = nil
+        seasons: [TvSeasonSummaryDto]? = nil,
+        availableLogos: [MediaImageItemDto]? = nil,
+        availablePosters: [MediaImageItemDto]? = nil
     ) {
         self.id = id
         self.title = title
@@ -433,6 +443,8 @@ struct MediaDetailsDto: Codable {
         self.status = status
         self.nextEpisodeToAir = nextEpisodeToAir
         self.seasons = seasons
+        self.availableLogos = availableLogos
+        self.availablePosters = availablePosters
     }
 
     init(from decoder: Decoder) throws {
@@ -524,6 +536,8 @@ struct MediaDetailsDto: Codable {
         self.status = try? container.decodeIfPresent(String.self, forKey: .status)
         self.nextEpisodeToAir = try? container.decodeIfPresent(TvNextEpisodeDto.self, forKey: .nextEpisodeToAir)
         self.seasons = try? container.decodeIfPresent([TvSeasonSummaryDto].self, forKey: .seasons)
+        self.availableLogos = try? container.decodeIfPresent([MediaImageItemDto].self, forKey: .availableLogos)
+        self.availablePosters = try? container.decodeIfPresent([MediaImageItemDto].self, forKey: .availablePosters)
     }
     
     var rating: Double? {
@@ -596,7 +610,12 @@ struct MediaDetailsDto: Codable {
     }
 
     var displayPosterUrl: String? {
-        normalizeImageUrl(path: poster, id: id)
+        if let id = id,
+           let overridePoster = MediaOverridesRepository.shared.override(for: id, tmdbId: externalIds?.tmdb, kpId: externalIds?.kp)?.posterUrl,
+           !overridePoster.isEmpty {
+            return overridePoster
+        }
+        return normalizeImageUrl(path: poster, id: id)
     }
     
     var displayBackdropUrl: String? {
@@ -641,6 +660,11 @@ struct MediaDetailsDto: Codable {
     }
 
     var displayLogoUrl: String? {
+        if let id = id,
+           let overrideLogo = MediaOverridesRepository.shared.override(for: id, tmdbId: externalIds?.tmdb, kpId: externalIds?.kp)?.logoUrl,
+           !overrideLogo.isEmpty {
+            return overrideLogo
+        }
         if let logo = logo, !logo.isEmpty {
             return normalizeImageUrl(path: logo, id: id) ?? logo
         }
