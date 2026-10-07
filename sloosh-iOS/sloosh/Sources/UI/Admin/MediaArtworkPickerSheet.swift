@@ -878,90 +878,94 @@ struct MediaArtworkPickerSheet: View {
 
         return LazyVGrid(columns: columns, spacing: 12) {
             ForEach(filteredItems, id: \.url) { item in
-                let fullUrl = item.fullUrl
-                let isSelected = (selectedLogoUrl == fullUrl)
-
-                Button {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
-                        selectedLogoUrl = fullUrl
-                    }
-                } label: {
-                    VStack(spacing: 8) {
-                        ZStack(alignment: .topTrailing) {
-                            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                                .fill(Color.black.opacity(0.65))
-                                .frame(height: 90)
-
-                            if let url = URL(string: fullUrl) {
-                                AsyncCachedImage(url: url) {
-                                    ProgressView().controlSize(.small)
-                                } content: { img in
-                                    Image(uiImage: img)
-                                        .resizable()
-                                        .aspectRatio(contentMode: .fit)
-                                        .frame(height: 60)
-                                        .padding(8)
-                                } fallback: {
-                                    Image(systemName: "photo")
-                                        .foregroundStyle(.secondary)
-                                }
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            }
-
-                            HStack {
-                                if isSelected {
-                                    HStack(spacing: 3) {
-                                        Image(systemName: "checkmark")
-                                            .font(.system(size: 8.5, weight: .bold))
-                                        Text("Выбран")
-                                            .font(.system(size: 9.5, weight: .bold))
-                                    }
-                                    .foregroundStyle(.black)
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 3)
-                                    .background(Capsule().fill(Color.white))
-                                    .padding(6)
-                                }
-
-                                Spacer()
-
-                                if let lang = item.iso_639_1?.uppercased(), !lang.isEmpty {
-                                    Text(lang)
-                                        .font(.system(size: 9, weight: .bold))
-                                        .foregroundStyle(.white)
-                                        .padding(.horizontal, 6)
-                                        .padding(.vertical, 3)
-                                        .background(Capsule().fill(Color.black.opacity(0.68)))
-                                        .padding(6)
-                                }
-                            }
-                        }
-
-                        HStack {
-                            if let w = item.width, let h = item.height {
-                                Text("\(w)×\(h)")
-                                    .font(.system(size: 11, weight: .medium))
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                            }
-                            Spacer()
-                        }
-                        .padding(.horizontal, 4)
-                    }
-                    .padding(6)
-                    .background {
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .fill(isSelected ? Color.white.opacity(0.08) : Color.white.opacity(0.03))
-                    }
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .stroke(isSelected ? Color.white.opacity(0.85) : Color.white.opacity(0.06), lineWidth: isSelected ? 1.5 : 1)
-                    }
-                }
-                .buttonStyle(.plain)
+                logoCatalogCard(item: item)
             }
         }
+    }
+
+    private func logoCatalogCard(item: MediaImageItemDto) -> some View {
+        let fullUrl = item.fullUrl
+        let isSelected = (selectedLogoUrl == fullUrl)
+
+        return Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
+                selectedLogoUrl = fullUrl
+            }
+        } label: {
+            VStack(spacing: 8) {
+                ZStack(alignment: .topTrailing) {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(Color.black.opacity(0.65))
+                        .frame(height: 90)
+
+                    if let url = URL(string: fullUrl) {
+                        AsyncCachedImage(url: url) {
+                            ProgressView().controlSize(.small)
+                        } content: { img in
+                            Image(uiImage: img)
+                                .resizable()
+                                .aspectRatio(contentMode: .fit)
+                                .frame(height: 60)
+                                .padding(8)
+                        } fallback: {
+                            Image(systemName: "photo")
+                                .foregroundStyle(.secondary)
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
+
+                    HStack {
+                        if isSelected {
+                            HStack(spacing: 3) {
+                                Image(systemName: "checkmark")
+                                    .font(.system(size: 8.5, weight: .bold))
+                                Text("Выбран")
+                                    .font(.system(size: 9.5, weight: .bold))
+                            }
+                            .foregroundStyle(.black)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(Capsule().fill(Color.white))
+                            .padding(6)
+                        }
+
+                        Spacer()
+
+                        if let lang = item.iso_639_1?.uppercased(), !lang.isEmpty {
+                            Text(lang)
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 3)
+                                .background(Capsule().fill(Color.black.opacity(0.68)))
+                                .padding(6)
+                        }
+                    }
+                }
+
+                HStack {
+                    if let w = item.width, let h = item.height {
+                        Text("\(w)×\(h)")
+                            .font(.system(size: 11, weight: .medium))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                    Spacer()
+                }
+                .padding(.horizontal, 4)
+            }
+            .padding(6)
+            .background {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .fill(isSelected ? Color.white.opacity(0.08) : Color.white.opacity(0.03))
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .stroke(isSelected ? Color.white.opacity(0.85) : Color.white.opacity(0.06), lineWidth: isSelected ? 1.5 : 1)
+            }
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Poster Grid (3 columns)
@@ -975,78 +979,82 @@ struct MediaArtworkPickerSheet: View {
 
         return LazyVGrid(columns: columns, spacing: 10) {
             ForEach(filteredItems, id: \.url) { item in
-                let fullUrl = item.fullUrl
-                let isSelected = (selectedPosterUrl == fullUrl)
-
-                Button {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
-                        selectedPosterUrl = fullUrl
-                    }
-                } label: {
-                    VStack(spacing: 6) {
-                        ZStack(alignment: .topTrailing) {
-                            if let url = URL(string: fullUrl) {
-                                AsyncCachedImage(url: url) {
-                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                        .fill(Color.white.opacity(0.08))
-                                        .aspectRatio(2/3, contentMode: .fit)
-                                } content: { img in
-                                    Image(uiImage: img)
-                                        .resizable()
-                                        .aspectRatio(2/3, contentMode: .fit)
-                                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                                } fallback: {
-                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                        .fill(Color.white.opacity(0.08))
-                                        .aspectRatio(2/3, contentMode: .fit)
-                                }
-                            }
-
-                            HStack {
-                                if isSelected {
-                                    Image(systemName: "checkmark")
-                                        .font(.system(size: 9, weight: .bold))
-                                        .foregroundStyle(.black)
-                                        .frame(width: 22, height: 22)
-                                        .background(Circle().fill(Color.white))
-                                        .padding(5)
-                                }
-
-                                Spacer()
-
-                                if let lang = item.iso_639_1?.uppercased(), !lang.isEmpty {
-                                    Text(lang)
-                                        .font(.system(size: 9, weight: .bold))
-                                        .foregroundStyle(.white)
-                                        .padding(.horizontal, 5)
-                                        .padding(.vertical, 2.5)
-                                        .background(Capsule().fill(Color.black.opacity(0.68)))
-                                        .padding(5)
-                                }
-                            }
-                        }
-
-                        if let w = item.width, let h = item.height {
-                            Text("\(w)×\(h)")
-                                .font(.system(size: 10.5, weight: .medium))
-                                .foregroundStyle(isSelected ? .white : .secondary)
-                                .lineLimit(1)
-                        }
-                    }
-                    .padding(5)
-                    .background {
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .fill(isSelected ? Color.white.opacity(0.08) : Color.white.opacity(0.03))
-                    }
-                    .overlay {
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
-                            .stroke(isSelected ? Color.white.opacity(0.85) : Color.white.opacity(0.06), lineWidth: isSelected ? 1.5 : 1)
-                    }
-                }
-                .buttonStyle(.plain)
+                posterCatalogCard(item: item)
             }
         }
+    }
+
+    private func posterCatalogCard(item: MediaImageItemDto) -> some View {
+        let fullUrl = item.fullUrl
+        let isSelected = (selectedPosterUrl == fullUrl)
+
+        return Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
+                selectedPosterUrl = fullUrl
+            }
+        } label: {
+            VStack(spacing: 6) {
+                ZStack(alignment: .topTrailing) {
+                    if let url = URL(string: fullUrl) {
+                        AsyncCachedImage(url: url) {
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(Color.white.opacity(0.08))
+                                .aspectRatio(2/3, contentMode: .fit)
+                        } content: { img in
+                            Image(uiImage: img)
+                                .resizable()
+                                .aspectRatio(2/3, contentMode: .fit)
+                                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        } fallback: {
+                            RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                .fill(Color.white.opacity(0.08))
+                                .aspectRatio(2/3, contentMode: .fit)
+                        }
+                    }
+
+                    HStack {
+                        if isSelected {
+                            Image(systemName: "checkmark")
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundStyle(.black)
+                                .frame(width: 22, height: 22)
+                                .background(Circle().fill(Color.white))
+                                .padding(5)
+                        }
+
+                        Spacer()
+
+                        if let lang = item.iso_639_1?.uppercased(), !lang.isEmpty {
+                            Text(lang)
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 2.5)
+                                .background(Capsule().fill(Color.black.opacity(0.68)))
+                                .padding(5)
+                        }
+                    }
+                }
+
+                if let w = item.width, let h = item.height {
+                    Text("\(w)×\(h)")
+                        .font(.system(size: 10.5, weight: .medium))
+                        .foregroundStyle(isSelected ? .white : .secondary)
+                        .lineLimit(1)
+                }
+            }
+            .padding(5)
+            .background {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .fill(isSelected ? Color.white.opacity(0.08) : Color.white.opacity(0.03))
+            }
+            .overlay {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(isSelected ? Color.white.opacity(0.85) : Color.white.opacity(0.06), lineWidth: isSelected ? 1.5 : 1)
+            }
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Backdrop Grid (2 columns 16:9, Pure Circular Action Buttons)
@@ -1059,119 +1067,135 @@ struct MediaArtworkPickerSheet: View {
 
         return LazyVGrid(columns: columns, spacing: 12) {
             ForEach(filteredItems, id: \.url) { item in
-                let fullUrl = item.fullUrl
-                let inCarouselIndex = selectedCarouselUrls.firstIndex(of: fullUrl)
-                let isInCarousel = inCarouselIndex != nil
-                let isPrimary = (inCarouselIndex == 0) || (selectedBackdropUrl == fullUrl)
-                let isCurrentPreview = (previewBackdropUrl == fullUrl)
+                backdropCatalogCard(item: item)
+            }
+        }
+    }
 
-                VStack(spacing: 6) {
-                    // 16:9 Thumbnail
-                    ZStack(alignment: .topTrailing) {
-                        if let url = URL(string: fullUrl) {
-                            AsyncCachedImage(url: url) {
-                                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                    .fill(Color.white.opacity(0.08))
-                                    .aspectRatio(16/9, contentMode: .fit)
-                            } content: { img in
-                                Image(uiImage: img)
-                                    .resizable()
-                                    .aspectRatio(16/9, contentMode: .fill)
-                                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
-                            } fallback: {
-                                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                    .fill(Color.white.opacity(0.08))
-                                    .aspectRatio(16/9, contentMode: .fit)
-                            }
-                        }
+    private func backdropCatalogCard(item: MediaImageItemDto) -> some View {
+        let fullUrl = item.fullUrl
+        let inCarouselIndex = selectedCarouselUrls.firstIndex(of: fullUrl)
+        let isInCarousel = inCarouselIndex != nil
+        let isPrimary = (inCarouselIndex == 0) || (selectedBackdropUrl == fullUrl)
+        let isCurrentPreview = (previewBackdropUrl == fullUrl)
 
-                        // Top Badges (Left: Primary or Index; Right: Language)
-                        VStack {
-                            HStack {
-                                if isPrimary {
-                                    HStack(spacing: 3) {
-                                        Image(systemName: "star.fill")
-                                            .font(.system(size: 8.5))
-                                        Text("Главный")
-                                            .font(.system(size: 9.5, weight: .bold))
-                                    }
-                                    .foregroundStyle(.black)
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 3)
-                                    .background(Capsule().fill(Color.white))
-                                } else if let idx = inCarouselIndex {
-                                    Text("#\(idx + 1)")
-                                        .font(.system(size: 10, weight: .bold))
-                                        .foregroundStyle(.white)
-                                        .padding(.horizontal, 6)
-                                        .padding(.vertical, 3)
-                                        .background(Capsule().fill(Color.black.opacity(0.68)))
-                                }
+        let strokeColor: Color = {
+            if isPrimary { return Color.white.opacity(0.85) }
+            if isCurrentPreview { return Color.white.opacity(0.4) }
+            if isInCarousel { return Color.white.opacity(0.22) }
+            return Color.white.opacity(0.06)
+        }()
 
-                                Spacer()
+        let strokeLineWidth: CGFloat = (isPrimary || isCurrentPreview) ? 1.5 : 1.0
 
-                                if let lang = item.iso_639_1?.uppercased(), !lang.isEmpty {
-                                    Text(lang)
-                                        .font(.system(size: 9, weight: .bold))
-                                        .foregroundStyle(.white)
-                                        .padding(.horizontal, 5)
-                                        .padding(.vertical, 2.5)
-                                        .background(Capsule().fill(Color.black.opacity(0.68)))
-                                }
-                            }
-                            .padding(5)
-                            Spacer()
-                        }
+        let fillColor: Color = {
+            if isPrimary { return Color.white.opacity(0.08) }
+            if isInCarousel { return Color.white.opacity(0.05) }
+            return Color.white.opacity(0.03)
+        }()
+
+        return VStack(spacing: 6) {
+            // 16:9 Thumbnail
+            ZStack(alignment: .topTrailing) {
+                if let url = URL(string: fullUrl) {
+                    AsyncCachedImage(url: url) {
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(Color.white.opacity(0.08))
+                            .aspectRatio(16/9, contentMode: .fit)
+                    } content: { img in
+                        Image(uiImage: img)
+                            .resizable()
+                            .aspectRatio(16/9, contentMode: .fill)
+                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    } fallback: {
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(Color.white.opacity(0.08))
+                            .aspectRatio(16/9, contentMode: .fit)
                     }
-                    .frame(height: 94)
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        // Tapping backdrop thumbnail shows it live in the preview stage above!
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
-                            previewBackdropUrl = fullUrl
-                        }
-                    }
+                }
 
-                    // Card Bottom: Resolution (Left) & Pure Circular Action Button (Right, never wraps!)
-                    HStack(alignment: .center) {
-                        if let w = item.width, let h = item.height {
-                            Text("\(w)×\(h)")
-                                .font(.system(size: 11, weight: .medium))
-                                .foregroundStyle(.secondary)
-                                .lineLimit(1)
+                // Top Badges (Left: Primary or Index; Right: Language)
+                VStack {
+                    HStack {
+                        if isPrimary {
+                            HStack(spacing: 3) {
+                                Image(systemName: "star.fill")
+                                    .font(.system(size: 8.5))
+                                Text("Главный")
+                                    .font(.system(size: 9.5, weight: .bold))
+                            }
+                            .foregroundStyle(.black)
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(Capsule().fill(Color.white))
+                        } else if let idx = inCarouselIndex {
+                            Text("#\(idx + 1)")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 3)
+                                .background(Capsule().fill(Color.black.opacity(0.68)))
                         }
 
                         Spacer()
 
-                        // Circular toggle button: checkmark if added, plus if not
-                        Button {
-                            toggleBackdropInCarousel(url: fullUrl)
-                        } label: {
-                            Image(systemName: isInCarousel ? "checkmark" : "plus")
-                                .font(.system(size: 11.5, weight: .bold))
-                                .foregroundStyle(isInCarousel ? Color.black : Color.white)
-                                .frame(width: 28, height: 28)
-                                .background(Circle().fill(isInCarousel ? Color.white : Color.white.opacity(0.12)))
+                        if let lang = item.iso_639_1?.uppercased(), !lang.isEmpty {
+                            Text(lang)
+                                .font(.system(size: 9, weight: .bold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 2.5)
+                                .background(Capsule().fill(Color.black.opacity(0.68)))
                         }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel(isInCarousel ? "Убрать из карусели" : "Добавить в карусель")
                     }
-                    .padding(.horizontal, 4)
-                }
-                .padding(6)
-                .background {
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .fill(isPrimary ? Color.white.opacity(0.08) : (isInCarousel ? Color.white.opacity(0.05) : Color.white.opacity(0.03)))
-                }
-                .overlay {
-                    RoundedRectangle(cornerRadius: 16, style: .continuous)
-                        .stroke(
-                            isPrimary ? Color.white.opacity(0.85) : (isCurrentPreview ? Color.white.opacity(0.4) : (isInCarousel ? Color.white.opacity(0.22) : Color.white.opacity(0.06))),
-                            lineWidth: (isPrimary || isCurrentPreview) ? 1.5 : 1
-                        )
+                    .padding(5)
+                    Spacer()
                 }
             }
+            .frame(height: 94)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                // Tapping backdrop thumbnail shows it live in the preview stage above!
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                    previewBackdropUrl = fullUrl
+                }
+            }
+
+            // Card Bottom: Resolution (Left) & Pure Circular Action Button (Right, never wraps!)
+            HStack(alignment: .center) {
+                if let w = item.width, let h = item.height {
+                    Text("\(w)×\(h)")
+                        .font(.system(size: 11, weight: .medium))
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+
+                Spacer()
+
+                // Circular toggle button: checkmark if added, plus if not
+                Button {
+                    toggleBackdropInCarousel(url: fullUrl)
+                } label: {
+                    Image(systemName: isInCarousel ? "checkmark" : "plus")
+                        .font(.system(size: 11.5, weight: .bold))
+                        .foregroundStyle(isInCarousel ? Color.black : Color.white)
+                        .frame(width: 28, height: 28)
+                        .background(Circle().fill(isInCarousel ? Color.white : Color.white.opacity(0.12)))
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(isInCarousel ? "Убрать из карусели" : "Добавить в карусель")
+            }
+            .padding(.horizontal, 4)
+        }
+        .padding(6)
+        .background {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(fillColor)
+        }
+        .overlay {
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .stroke(strokeColor, lineWidth: strokeLineWidth)
         }
     }
 
