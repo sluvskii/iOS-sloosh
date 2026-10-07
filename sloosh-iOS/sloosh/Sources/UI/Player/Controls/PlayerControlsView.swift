@@ -144,6 +144,7 @@ struct PlayerControlsView: View {
             .opacity(showControls ? 1 : 0)
             .blur(radius: showControls ? 0 : 16)
             .animation(.easeInOut(duration: 0.24), value: showControls)
+            .tint(.white)
         }
     }
 }

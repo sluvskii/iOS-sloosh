@@ -66,6 +66,7 @@ struct BottomRowView: View, Equatable {
         .frame(height: 44)
         .clipShape(Capsule())
         .glassEffect(.regular.interactive(), in: .capsule)
+        .tint(.white)
     }
 
     // MARK: - Скорость
@@ -155,39 +156,42 @@ struct BottomRowView: View, Equatable {
 
     private var subtitlesMenu: some View {
         Menu {
-            Picker("Субтитры", selection: Binding(
-                get: { currentSubtitleUrl ?? "none" },
-                set: { url in
-                    if url == "none" {
-                        vm.setSubtitle(nil)
-                    } else if let sub = availableSubtitles.first(where: { $0.url == url }) {
-                        vm.setSubtitle(sub)
+            Section {
+                Picker("Субтитры", selection: Binding(
+                    get: { currentSubtitleUrl ?? "none" },
+                    set: { url in
+                        if url == "none" {
+                            vm.setSubtitle(nil)
+                        } else if let sub = availableSubtitles.first(where: { $0.url == url }) {
+                            vm.setSubtitle(sub)
+                        }
+                        onInteraction?()
                     }
-                    onInteraction?()
-                }
-            )) {
-                Text("Выключены").tag("none")
-                ForEach(availableSubtitles, id: \.url) { sub in
-                    Text(sub.label).tag(sub.url)
+                )) {
+                    Text("Выключены").tag("none")
+                    ForEach(availableSubtitles, id: \.url) { sub in
+                        Text(sub.label).tag(sub.url)
+                    }
                 }
             }
 
-            if currentSubtitleUrl != nil {
-                Section("Размер текста") {
-                    ForEach(SubtitleFontSize.allCases) { size in
-                        Button {
+            Section {
+                Menu {
+                    Picker("Размер", selection: Binding(
+                        get: { subtitleFontSize },
+                        set: { size in
                             withAnimation(.easeInOut(duration: 0.15)) {
                                 SubtitleSettings.shared.fontSize = size
                             }
                             onInteraction?()
-                        } label: {
-                            if subtitleFontSize == size {
-                                Label(size.title, systemImage: "checkmark")
-                            } else {
-                                Text(size.title)
-                            }
+                        }
+                    )) {
+                        ForEach(SubtitleFontSize.allCases) { size in
+                            Text(size.title).tag(size)
                         }
                     }
+                } label: {
+                    Label("Размер текста", systemImage: "textformat.size")
                 }
             }
         } label: {
