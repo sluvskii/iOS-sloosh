@@ -330,12 +330,13 @@ class MoviesRepository: ObservableObject {
         let response = try await MoviesApi.shared.searchMovies(query: query, page: page)
         let rawResults = response.data?.results ?? []
 
-        // Фильтруем результаты без плакатов или без названия, или с дефолтным "no-poster"
+        // Фильтруем результаты без плакатов или без названия, или с дефолтным "no-poster" (для невышедших допускаем отсутствие постера)
         let filtered = rawResults.filter { item in
-            let poster = item.posterUrl ?? item.poster_path ?? ""
+            let poster = item.displayPosterUrl ?? item.posterUrl ?? item.poster_path ?? item.displayBackdropUrl ?? ""
             let hasPoster = !poster.isEmpty && !poster.lowercased().contains("no-poster")
-            let hasTitle = !(item.title ?? item.name ?? "").isEmpty
-            return hasPoster && hasTitle
+            let title = (item.title ?? item.name ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let hasTitle = !title.isEmpty
+            return hasTitle && (hasPoster || item.isUnreleased)
         }
 
         // Выполняем точный/подстрочный поиск по названию (для умного фолбэка)

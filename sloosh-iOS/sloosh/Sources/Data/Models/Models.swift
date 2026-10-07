@@ -216,15 +216,24 @@ struct MediaDto: Codable, Identifiable {
 
     var isUnreleased: Bool {
         if let releaseDate = releaseDate, !releaseDate.isEmpty {
-            let formatter = ISO8601DateFormatter()
-            formatter.formatOptions = [.withFullDate]
-            if let date = formatter.date(from: releaseDate) {
+            let isoFormatter = ISO8601DateFormatter()
+            isoFormatter.formatOptions = [.withFullDate]
+            if let date = isoFormatter.date(from: releaseDate) {
+                return date > Date()
+            }
+            let df = DateFormatter()
+            df.locale = Locale(identifier: "en_US_POSIX")
+            df.dateFormat = "yyyy-MM-dd"
+            if let date = df.date(from: releaseDate) {
                 return date > Date()
             }
         }
         if let yearInt = year?.intValue {
             let currentYear = Calendar.current.component(.year, from: Date())
             if yearInt > currentYear {
+                return true
+            }
+            if yearInt == currentYear && (rating == nil || rating == 0) {
                 return true
             }
         }
@@ -527,15 +536,24 @@ struct MediaDetailsDto: Codable {
             }
         }
         if let releaseDate = releaseDate, !releaseDate.isEmpty {
-            let formatter = ISO8601DateFormatter()
-            formatter.formatOptions = [.withFullDate]
-            if let date = formatter.date(from: releaseDate) {
+            let isoFormatter = ISO8601DateFormatter()
+            isoFormatter.formatOptions = [.withFullDate]
+            if let date = isoFormatter.date(from: releaseDate) {
+                return date > Date()
+            }
+            let df = DateFormatter()
+            df.locale = Locale(identifier: "en_US_POSIX")
+            df.dateFormat = "yyyy-MM-dd"
+            if let date = df.date(from: releaseDate) {
                 return date > Date()
             }
         }
         if let year = year {
             let currentYear = Calendar.current.component(.year, from: Date())
             if year > currentYear {
+                return true
+            }
+            if year == currentYear && (rating == nil || rating == 0) {
                 return true
             }
         }
