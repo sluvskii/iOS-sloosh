@@ -48,6 +48,32 @@ public struct MediaImageItemDto: Codable, Identifiable, Equatable, Sendable {
     public let voteAverage: Double?
     public let voteCount: Int?
 
+    public var fullUrl: String { url }
+    public var iso_639_1: String? { iso6391 }
+
+    enum CodingKeys: String, CodingKey {
+        case url
+        case filePath = "file_path"
+        case width
+        case height
+        case aspectRatio = "aspect_ratio"
+        case iso6391 = "iso_639_1"
+        case voteAverage = "vote_average"
+        case voteCount = "vote_count"
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.url = try container.decode(String.self, forKey: .url)
+        self.filePath = try? container.decodeIfPresent(String.self, forKey: .filePath)
+        self.width = try? container.decodeIfPresent(Int.self, forKey: .width)
+        self.height = try? container.decodeIfPresent(Int.self, forKey: .height)
+        self.aspectRatio = try? container.decodeIfPresent(Double.self, forKey: .aspectRatio)
+        self.iso6391 = try? container.decodeIfPresent(String.self, forKey: .iso6391)
+        self.voteAverage = try? container.decodeIfPresent(Double.self, forKey: .voteAverage)
+        self.voteCount = try? container.decodeIfPresent(Int.self, forKey: .voteCount)
+    }
+
     public init(
         url: String,
         filePath: String? = nil,
@@ -70,14 +96,14 @@ public struct MediaImageItemDto: Codable, Identifiable, Equatable, Sendable {
 }
 
 public struct MediaImagesResponseDto: Codable, Sendable {
-    public let logos: [MediaImageItemDto]
-    public let posters: [MediaImageItemDto]
-    public let backdrops: [MediaImageItemDto]
+    public let logos: [MediaImageItemDto]?
+    public let posters: [MediaImageItemDto]?
+    public let backdrops: [MediaImageItemDto]?
 
     public init(
-        logos: [MediaImageItemDto] = [],
-        posters: [MediaImageItemDto] = [],
-        backdrops: [MediaImageItemDto] = []
+        logos: [MediaImageItemDto]? = nil,
+        posters: [MediaImageItemDto]? = nil,
+        backdrops: [MediaImageItemDto]? = nil
     ) {
         self.logos = logos
         self.posters = posters
