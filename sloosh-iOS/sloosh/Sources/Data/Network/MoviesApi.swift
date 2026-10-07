@@ -550,7 +550,11 @@ class MoviesApi {
     // MARK: - Media Artwork Overrides (Admin & Dynamic Sync)
 
     func getMediaOverrides() async throws -> ApiEnvelope<[String: MediaArtworkOverride]> {
-        return try await performRequest(endpoint: "api/v1/admin/overrides")
+        let ts = Int(Date().timeIntervalSince1970)
+        return try await performRequest(
+            endpoint: "api/v1/admin/overrides",
+            queryItems: [URLQueryItem(name: "_t", value: String(ts))]
+        )
     }
 
     func saveMediaOverride(_ override: MediaArtworkOverride) async throws -> ApiEnvelope<MediaArtworkOverride> {
