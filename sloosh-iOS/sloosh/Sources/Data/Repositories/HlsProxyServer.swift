@@ -713,12 +713,18 @@ class HlsProxyServer {
         let packetSize = 188
         guard data.count >= packetSize * 50 else { return data }
 
-        return data.withUnsafeBytes { rawBuffer -> Data in
+        struct TrimPlan {
+            let patOffset: Int
+            let pmtOffset: Int?
+            let cutOffset: Int
+        }
+
+        let plan: TrimPlan? = data.withUnsafeBytes { rawBuffer -> TrimPlan? in
             guard let ptr = rawBuffer.bindMemory(to: UInt8.self).baseAddress, ptr[0] == 0x47 else {
-                return data
+                return nil
             }
 
-            let numPackets = data.count / packetSize
+            let numPackets = rawBuffer.count / packetSize
             var patOffset: Int?
             var pmtOffset: Int?
             let videoPid = 256
@@ -735,7 +741,7 @@ class HlsProxyServer {
                 }
             }
 
-            guard let pat = patOffset else { return data }
+            guard let pat = patOffset else { return nil }
 
             // 2. Track video frames (PUSI=1 on videoPid) to locate IDR keyframes
             var idrPackets: [(frameIdx: Int, packetIdx: Int, pts: Double?)] = []
@@ -821,22 +827,26 @@ class HlsProxyServer {
 
                 if (hasPromoJump || target.frameIdx >= 15) && target.packetIdx < 400 {
                     let secondIdrOffset = target.packetIdx * packetSize
-                    if secondIdrOffset < data.count {
-                        var trimmed = Data()
-                        let patSlice = data.subdata(in: (data.startIndex + pat)..<(data.startIndex + pat + packetSize))
-                        trimmed.append(patSlice)
-                        if let pmt = pmtOffset {
-                            let pmtSlice = data.subdata(in: (data.startIndex + pmt)..<(data.startIndex + pmt + packetSize))
-                            trimmed.append(pmtSlice)
-                        }
-                        trimmed.append(data.subdata(in: (data.startIndex + secondIdrOffset)..<data.endIndex))
-                        AppDiagnostics.shared.log("HlsProxyServer: sanitized Collaps intro promo from seg-1 (\(data.count) -> \(trimmed.count) bytes)")
-                        return trimmed
+                    if secondIdrOffset < rawBuffer.count {
+                        return TrimPlan(patOffset: pat, pmtOffset: pmtOffset, cutOffset: secondIdrOffset)
                     }
                 }
             }
 
-            return data
+            return nil
         }
+
+        guard let plan else { return data }
+
+        var trimmed = Data()
+        let patSlice = data.subdata(in: (data.startIndex + plan.patOffset)..<(data.startIndex + plan.patOffset + packetSize))
+        trimmed.append(patSlice)
+        if let pmt = plan.pmtOffset {
+            let pmtSlice = data.subdata(in: (data.startIndex + pmt)..<(data.startIndex + pmt + packetSize))
+            trimmed.append(pmtSlice)
+        }
+        trimmed.append(data.subdata(in: (data.startIndex + plan.cutOffset)..<data.endIndex))
+        AppDiagnostics.shared.log("HlsProxyServer: sanitized Collaps intro promo from seg-1 (\(data.count) -> \(trimmed.count) bytes)")
+        return trimmed
     }
 }

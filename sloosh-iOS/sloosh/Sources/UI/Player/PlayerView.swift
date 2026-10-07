@@ -1235,6 +1235,7 @@ class PlayerViewModel: ObservableObject {
         let current = player.currentTime().seconds
         let validCurrent = (current.isFinite && !current.isNaN && current >= 0) ? current : currentTime
         let minTime: Double = (streamSource == .source2) ? 3.5 : 0.0
+        let target: Double
         if currentDuration > 0 {
             target = max(minTime, min(currentDuration, validCurrent + seconds))
         } else if let dur = player.currentItem?.duration.seconds, dur.isFinite, dur > 0 {
