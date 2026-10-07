@@ -85,6 +85,7 @@ struct PlayerContainerView: View {
         }
         .environment(\.colorScheme, .dark)
         .preferredColorScheme(.dark)
+        .tint(.white)
         .onAppear { scheduleAutoHide() }
         .onDisappear { hideTask?.cancel(); tapTask?.cancel() }
         .onChange(of: vm.isPlaying) { _, playing in

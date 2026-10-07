@@ -29,11 +29,13 @@ final class PlayerHostingController<Content: View>: UIHostingController<Content>
         super.viewDidLoad()
         overrideUserInterfaceStyle = .dark
         view.backgroundColor = .black
+        view.tintColor = .white
     }
 
     override func viewWillAppear(_ animated: Bool) {
         super.viewWillAppear(animated)
         overrideUserInterfaceStyle = .dark
+        view.tintColor = .white
         AppDelegate.lockToLandscape()
     }
 
