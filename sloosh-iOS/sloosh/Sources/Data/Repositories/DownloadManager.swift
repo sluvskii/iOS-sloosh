@@ -175,6 +175,9 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     
     var backgroundCompletionHandler: (() -> Void)?
     
+    private var assemblingItemIds = Set<String>()
+    private var isRecalculatingDiskSizes = false
+    
     private override init() {
         super.init()
         
@@ -191,7 +194,15 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     }
     
     func recalculateDiskSizesInBackground() {
+        guard !isRecalculatingDiskSizes else { return }
+        isRecalculatingDiskSizes = true
+        
         Task.detached(priority: .background) {
+            defer {
+                Task { @MainActor in
+                    DownloadManager.shared.isRecalculatingDiskSizes = false
+                }
+            }
             let fm = FileManager.default
             guard let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
             
@@ -210,6 +221,18 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
                     }
                 } else if let files = try? fm.contentsOfDirectory(atPath: taskDir.path), files.contains(where: { $0.hasPrefix("segment_") }) {
                     await DownloadManager.shared.finalizeAndAssembleMP4(for: item.id)
+                    if !fm.fileExists(atPath: finalMp4.path) {
+                        var totalDisk: Int64 = 0
+                        for f in files {
+                            if let attrs = try? fm.attributesOfItem(atPath: taskDir.appendingPathComponent(f).path),
+                               let s = attrs[.size] as? Int64 {
+                                totalDisk += s
+                            }
+                        }
+                        if totalDisk > 0 && item.totalBytes != totalDisk {
+                            updatedSizes[item.id] = totalDisk
+                        }
+                    }
                 } else if let files = try? fm.contentsOfDirectory(atPath: taskDir.path), !files.isEmpty {
                     var totalDisk: Int64 = 0
                     for f in files {
@@ -1218,6 +1241,10 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
     }
 
     func finalizeAndAssembleMP4(for itemId: String) async {
+        guard !assemblingItemIds.contains(itemId) else { return }
+        assemblingItemIds.insert(itemId)
+        defer { assemblingItemIds.remove(itemId) }
+        
         guard let item = downloads.first(where: { $0.id == itemId }) else { return }
         let fm = FileManager.default
         guard let docs = fm.urls(for: .documentDirectory, in: .userDomainMask).first else { return }
@@ -1281,6 +1308,32 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         
         guard !segmentFiles.isEmpty else { return }
         
+        // Check available disk space to prevent filling disk or failing midway
+        var totalSegmentBytes: Int64 = 0
+        for segName in segmentFiles {
+            if let attrs = try? fm.attributesOfItem(atPath: taskDir.appendingPathComponent(segName).path),
+               let s = attrs[.size] as? Int64 {
+                totalSegmentBytes += s
+            }
+        }
+        
+        let freeBytes: Int64 = {
+            if let values = try? docs.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]),
+               let avail = values.volumeAvailableCapacityForImportantUsage {
+                return avail
+            }
+            if let attrs = try? fm.attributesOfFileSystem(forPath: docs.path),
+               let free = attrs[.systemFreeSize] as? Int64 {
+                return free
+            }
+            return Int64.max
+        }()
+        
+        if totalSegmentBytes > 0 && freeBytes < (totalSegmentBytes + 50_000_000) {
+            AppDiagnostics.shared.log("finalizeAndAssembleMP4: Недостаточно места на устройстве (свободно ~\(freeBytes / 1_000_000) МБ, требуется ~\(totalSegmentBytes / 1_000_000) МБ). Сборка MP4 отложена.")
+            return
+        }
+        
         let keyFile = taskDir.appendingPathComponent("key.bin")
         let keyData = (try? Data(contentsOf: keyFile))
         let isFmp4Init = (keyData != nil && (isFmp4Data(keyData!) || keyData!.count > 16))
@@ -1292,17 +1345,28 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
         if isFmp4Segments {
             let tempStitchedUrl = tempDir.appendingPathComponent("\(UUID().uuidString).mp4")
             fm.createFile(atPath: tempStitchedUrl.path, contents: nil)
+            var writeSuccess = false
             if let fileHandle = try? FileHandle(forWritingTo: tempStitchedUrl) {
-                if let keyData, isFmp4Init {
-                    fileHandle.write(keyData)
-                }
-                for segName in segmentFiles {
-                    let segUrl = taskDir.appendingPathComponent(segName)
-                    if let segData = try? Data(contentsOf: segUrl) {
-                        fileHandle.write(segData)
+                defer { try? fileHandle.close() }
+                do {
+                    if let keyData, isFmp4Init {
+                        try fileHandle.write(contentsOf: keyData)
                     }
+                    for segName in segmentFiles {
+                        let segUrl = taskDir.appendingPathComponent(segName)
+                        if let segData = try? Data(contentsOf: segUrl) {
+                            try fileHandle.write(contentsOf: segData)
+                        }
+                    }
+                    writeSuccess = true
+                } catch {
+                    AppDiagnostics.shared.log("finalizeAndAssembleMP4 fmp4 write error: \(error.localizedDescription)")
                 }
-                try? fileHandle.close()
+            }
+            
+            guard writeSuccess else {
+                try? fm.removeItem(at: tempStitchedUrl)
+                return
             }
             
             do {
@@ -1317,20 +1381,31 @@ final class DownloadManager: NSObject, ObservableObject, URLSessionDownloadDeleg
             let mergedTsUrl = tempDir.appendingPathComponent("\(UUID().uuidString).ts")
             fm.createFile(atPath: mergedTsUrl.path, contents: nil)
             
+            var writeSuccess = false
             if let fileHandle = try? FileHandle(forWritingTo: mergedTsUrl) {
-                for (seqIdx, segName) in segmentFiles.enumerated() {
-                    let segUrl = taskDir.appendingPathComponent(segName)
-                    if let rawData = try? Data(contentsOf: segUrl) {
-                        let finalData: Data
-                        if isEncrypted, let key = keyData {
-                            finalData = decryptHlsSegment(data: rawData, key: key, sequence: seqIdx) ?? rawData
-                        } else {
-                            finalData = rawData
+                defer { try? fileHandle.close() }
+                do {
+                    for (seqIdx, segName) in segmentFiles.enumerated() {
+                        let segUrl = taskDir.appendingPathComponent(segName)
+                        if let rawData = try? Data(contentsOf: segUrl) {
+                            let finalData: Data
+                            if isEncrypted, let key = keyData {
+                                finalData = decryptHlsSegment(data: rawData, key: key, sequence: seqIdx) ?? rawData
+                            } else {
+                                finalData = rawData
+                            }
+                            try fileHandle.write(contentsOf: finalData)
                         }
-                        fileHandle.write(finalData)
                     }
+                    writeSuccess = true
+                } catch {
+                    AppDiagnostics.shared.log("finalizeAndAssembleMP4 ts write error: \(error.localizedDescription)")
                 }
-                try? fileHandle.close()
+            }
+            
+            guard writeSuccess else {
+                try? fm.removeItem(at: mergedTsUrl)
+                return
             }
             
             do {
