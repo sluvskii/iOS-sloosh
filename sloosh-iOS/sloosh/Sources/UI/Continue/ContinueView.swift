@@ -2,6 +2,7 @@ import SwiftUI
 
 struct ContinueView: View {
     @StateObject private var viewModel = ContinueViewModel()
+    @ObservedObject private var mediaOverrides = MediaOverridesRepository.shared
 
     var body: some View {
         NavigationStack {
@@ -144,15 +145,27 @@ private struct ContinueWatchingItem: Identifiable {
     }
 
     var posterUrl: String? {
-        metadata?.posterUrl
+        let key = record.rootMediaKey
+        if let override = MediaOverridesRepository.shared.override(for: key, tmdbId: tmdbId, kpId: kpId)?.posterUrl, !override.isEmpty {
+            return override
+        }
+        return metadata?.posterUrl
     }
 
     var backdropUrl: String? {
-        metadata?.backdropUrl
+        let key = record.rootMediaKey
+        if let override = MediaOverridesRepository.shared.override(for: key, tmdbId: tmdbId, kpId: kpId)?.backdropUrl, !override.isEmpty {
+            return override
+        }
+        return metadata?.backdropUrl
     }
 
     var logoUrl: String? {
-        metadata?.logoUrl
+        let key = record.rootMediaKey
+        if let override = MediaOverridesRepository.shared.override(for: key, tmdbId: tmdbId, kpId: kpId)?.logoUrl, !override.isEmpty {
+            return override
+        }
+        return metadata?.logoUrl
     }
 
     var progressFraction: Double {
@@ -581,6 +594,7 @@ private struct ContinuePresentation: Identifiable {
 
 private struct ContinueWatchingCard: View {
     let item: ContinueWatchingItem
+    @ObservedObject private var mediaOverrides = MediaOverridesRepository.shared
 
     var body: some View {
         ZStack(alignment: .bottomLeading) {

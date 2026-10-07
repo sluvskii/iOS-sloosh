@@ -3,6 +3,7 @@ import Combine
 
 struct SearchView: View {
     @StateObject private var viewModel = SearchViewModel()
+    @ObservedObject private var mediaOverrides = MediaOverridesRepository.shared
     @State private var pendingPlayerConfig: PlayerConfig? = nil
     @State private var showFilters = false
     @Namespace private var navigationTransition
