@@ -2,7 +2,7 @@ import SwiftUI
 
 // MARK: - Media Artwork Picker Sheet (iOS 26+ Liquid Glass Admin Tool)
 
-public struct MediaArtworkPickerSheet: View {
+struct MediaArtworkPickerSheet: View {
     let mediaId: String
     let mediaType: String?
     let title: String
@@ -27,12 +27,12 @@ public struct MediaArtworkPickerSheet: View {
     @State private var isSaving: Bool = false
     @State private var errorMessage: String? = nil
 
-    public enum ArtworkTab: String, CaseIterable, Identifiable {
+    enum ArtworkTab: String, CaseIterable, Identifiable {
         case logo = "Логотип"
         case poster = "Постер"
 
-        public var id: Self { self }
-        public var icon: String {
+        var id: Self { self }
+        var icon: String {
             switch self {
             case .logo: return "text.below.photo"
             case .poster: return "photo.fill"
@@ -40,7 +40,7 @@ public struct MediaArtworkPickerSheet: View {
         }
     }
 
-    public init(
+    init(
         mediaId: String,
         mediaType: String? = nil,
         title: String,
@@ -64,7 +64,7 @@ public struct MediaArtworkPickerSheet: View {
         _posters = State(initialValue: preloadedPosters ?? [])
     }
 
-    public init(details: MediaDetailsDto) {
+    init(details: MediaDetailsDto) {
         let cleanId = details.id ?? ""
         let isTv = details.type?.lowercased() == "tv" || (details.seasons != nil && !(details.seasons?.isEmpty ?? true))
         let inferredType = isTv ? "tv" : "movie"
@@ -91,7 +91,7 @@ public struct MediaArtworkPickerSheet: View {
         activeOverride != nil
     }
 
-    public var body: some View {
+    var body: some View {
         NavigationStack {
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: 20) {
