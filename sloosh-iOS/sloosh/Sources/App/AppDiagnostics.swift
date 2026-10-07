@@ -52,7 +52,7 @@ class AppDiagnostics: ObservableObject {
                 }
                 
                 if let fileHandle = try? FileHandle(forWritingTo: self.logsFileURL) {
-                    fileHandle.seekToEndOfFile()
+                    _ = try? fileHandle.seekToEnd()
                     try? fileHandle.write(contentsOf: data)
                     try? fileHandle.close()
                 }
