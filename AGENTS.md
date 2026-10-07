@@ -34,17 +34,18 @@ This workspace contains the flagship native iOS client for **sloosh**:
    - In code, `AppSecrets.apiKey` defaults to `""`.
    - During official GitHub Actions CI builds, `${{ secrets.SLOOSH_API_KEY }}` is dynamically injected into `AppSecrets.swift` prior to compilation.
    - Forks built without secrets compile with an empty key and receive `401 Unauthorized` from the backend, protecting infrastructure from abuse.
-2. **Dynamic Streaming Tokens**:
+2. **Dynamic Streaming Tokens & Fallbacks**:
    - Balancer streaming tokens are **never** bundled in the iOS application binary.
    - At startup and on demand, the client fetches the active pool of tokens from `GET /api/v1/config/streams` (authenticated via `X-API-Key`).
    - The client implements in-memory caching (10 min TTL), background prewarming (`slooshApp.swift`), and smart runtime failover with 5-minute cooldown on exhausted/banned tokens.
-3. **Dynamic Remote Endpoint Resolution & Failover**:
-   - The app does **not** hardcode a single immutable API or image host.
-   - At startup, `MoviesApi.shared.loadRemoteConfig()` checks `https://raw.githubusercontent.com/sluvskii/iOS-sloosh/main/endpoint.json` (and GitHub Pages backup).
-   - `endpoint.json` dynamically provides `apiBaseUrl`, `imagesBaseUrl`, and `fallbackUrls`.
-   - Active hosts are cached in `UserDefaults` (`sloosh_cached_api_base_url`, `sloosh_cached_images_base_url`). Any legacy host containing `vercel.app` is automatically sanitized/discarded.
-   - If a host becomes unreachable or blocked by an ISP, the client automatically fails over to `fallbackUrls`.
-   - If an endpoint changes, updating `endpoint.json` in the GitHub repo instantly switches all client devices **without rebuilding or reinstalling `.ipa`**.
+   - `endpoint.json` also supports emergency `streamTokens` fallback if the backend API token endpoint is temporarily unreachable.
+3. **Dynamic Remote Endpoint Resolution, Self-Healing & Zero-Update Hot-Fixing**:
+   - The app does **not** hardcode a single immutable API, balancer, or image host.
+   - At startup, `MoviesApi.shared.loadRemoteConfig()` checks `https://raw.githubusercontent.com/sluvskii/iOS-sloosh/main/endpoint.json` (and GitHub Pages / jsDelivr backups).
+   - `endpoint.json` dynamically provides `apiBaseUrl`, `imagesBaseUrl`, `fallbackUrls`, `balancerBaseUrl` (customizable balancer proxy host), emergency `apiKey` rotation, `streamTokens`, and broadcast `notice` banners.
+   - Active hosts are cached in `UserDefaults` (`sloosh_cached_api_base_url`, `sloosh_cached_images_base_url`, `sloosh_cached_balancer_base_url`). Legacy hosts containing `vercel.app` are automatically sanitized.
+   - **Self-Healing Architecture**: If API requests fail due to `401 Unauthorized`, `403 Forbidden`, or server downtime, `MoviesApi` triggers an automatic force-reload of remote config and immediately retries the request once if endpoints or keys were updated, fixing outages with zero app updates.
+   - **System Notices**: `endpoint.json` can deliver broadcast announcements (`info`, `warning`, `error`, `critical`) shown once per notice ID via `ToastManager`.
 4. **Repository Confidentiality**:
    - `sluvskii/iOS-sloosh` is the public client repository.
    - `sluvskii/sloosh-api` is the private backend repository. Server endpoints, edge routing, and scraping algorithms remain completely confidential.
@@ -59,15 +60,19 @@ This workspace contains the flagship native iOS client for **sloosh**:
   - Top floating components (category tabs, sticky bars) use `.safeAreaBar(edge: .top)` or `.safeAreaInset(edge: .top)`.
   - Let the system handle Liquid Glass blur and morphing automatically during scroll. Do not add redundant opaque backgrounds or dark overlays.
   - Floating pills, action buttons, and sheet backgrounds use `.glassEffect(in:)` with `.capsule` or `.rect(cornerRadius:)`.
-  - Floating navigation tab bar uses `.tabBarMinimizeBehavior(.onScrollDown)` for auto-hide on scroll (configured in `ContentView`).
+  - Floating navigation tab bar uses `.tabBarMinimizeBehavior(tabBarMinimizeOnScroll ? .onScrollDown : .never)` for auto-hide on scroll (user-configurable toggle in Settings `tabBarMinimizeOnScroll`, default `true`).
+  - Dark Cinematic Isolation: All player presentations (`PlayerHostingController`, `PlayerView`, `PlayerContainerView`, and parent `.fullScreenCover` callers) as well as `DetailsView` and `PersonDetailView` strictly enforce `.environment(\.colorScheme, .dark)` and `.preferredColorScheme(.dark)`, ensuring Liquid Glass controls, menus, and text never become washed out in light system theme.
+  - In-Sheet Quality Selection: `SourceSelectionView` seamlessly animates between audio/translation selection and video quality selection within the same sheet (`isSelectingQuality`) with spring animation, back button, and "Remember choice" preference, eliminating double-sheet popups.
   - Native zoom transitions: use `.navigationTransition(.zoom(sourceID:in:))` and `.matchedTransitionSource(id:in:)` for seamless card-to-detail and avatar-to-person transitions.
   - Top and bottom insets: respect natural safe areas via `.safeAreaInset` without manually stacking artificial window padding.
   - Full-width swipe back: interactive pop gesture across the entire screen via `.fullWidthSwipeBack()`.
   - Loading skeletons: Metal-accelerated smooth light beam via `.shimmer()` (`Shimmer.metal`).
-- **Subtitles Typography & Motion**:
-  - Subtitle styling in `SubtitleOverlayView.swift` strictly uses clean standard typography (`design: .default`, `weight: .semibold`, size ~21pt) — **NO rounded font**.
-  - Crisp outline drop-shadows with subtle dark translucent backing (`black.opacity(0.55)`).
-  - Responsive positioning: automatically animates smoothly upwards (+108pt) when player controls appear and drops down (+36pt) when controls fade out.
+  - Performance: `AsyncCachedImage` decodes images off the main thread using `UIImage.byPreparingForDisplay()` before SwiftUI rendering, eliminating scroll hitches.
+- **Subtitles Typography & Motion (Apple TV / Native AVKit Style)**:
+  - Subtitle styling in `SubtitleOverlayView.swift` strictly follows native Apple TV / AVKit captions: clean standard typography (`design: .default`, `weight: .medium`) with each line individually wrapped in a rounded dark translucent plate (`Color.black.opacity(0.72)`, `cornerRadius: 5`).
+  - Dynamically adjustable font sizing via `SubtitleSettings.shared`: Small (18pt), Medium (24pt), Large (30pt), directly selectable from the player's subtitle menu in `BottomRowView.swift`.
+  - Responsive positioning: automatically animates smoothly upwards (+68pt) above player controls and drops down above the Home indicator when controls fade out. Passive touch handling (`allowsHitTesting(false)`).
+  - Native AVPlayer suppression: `AVPlayerItemLegibleOutput` has `suppressesPlayerRendering = true` to prevent double rendering while synchronizing cues.
 
 ---
 
@@ -155,10 +160,13 @@ Root: `sloosh-iOS/sloosh/Sources/`
   - `GenreCatalogView.swift` & `StudioCatalogView.swift`: Interactive genre and studio catalog navigation.
   - `ShareToFriendSheet.swift`: In-app messenger sharing sheet.
 - `Player/`:
-  - `PlayerView.swift`: Fullscreen custom AVPlayerViewController wrapper. Handles audio track selection, subtitle parsing, Picture-in-Picture, and playback state.
-  - `SubtitleOverlayView.swift`: Premium cinema subtitle rendering with smooth responsive controls animation. Prevents dual rendering by deselecting native AVPlayer legible tracks during custom VTT playback. Filters empty "CC" Closed Captions tracks.
-  - `PlayerContainerView.swift`: Double-tap seeking, brightness/volume gestures overlay, top/bottom control bars.
-  - `Controls/`: `TopBarView`, `BottomRowView`, `SeekBarView`, `CenterControlsView`, `PlayerControlsView`, `PlayerPickerSheets`.
+  - `PlayerHostingController.swift`: Custom landscape `UIHostingController` with locked `overrideUserInterfaceStyle = .dark` and orientation control.
+  - `PlayerView.swift`: Fullscreen custom player wrapper. Strict `.environment(\.colorScheme, .dark)` and `.preferredColorScheme(.dark)`, audio track switching with timecode preservation.
+  - `SubtitleOverlayView.swift`: Apple TV-style native cinema subtitle rendering with individual rounded translucent dark plates.
+  - `SubtitleSettings.swift`: Subtitle appearance and font size state management (`small`, `medium`, `large`).
+  - `VideoLayerView.swift`: Hardware-accelerated `AVPlayerLayer` wrapper with `AVPictureInPictureControllerDelegate` and background stashing.
+  - `PlayerContainerView.swift`: Double-tap seeking, gestures overlay, controls coordinator, and dark theme enforcement.
+  - `Controls/`: `TopBarView`, `BottomRowView` (audio, quality, subtitle size & track menus), `SeekBarView`, `CenterControlsView`, `PlayerControlsView`, `PlayerGlassModifiers`.
 - `Continue/`:
   - `ContinueView.swift`: "Продолжить просмотр" grid with resume timecodes and batch deletion.
 - `Search/`:
