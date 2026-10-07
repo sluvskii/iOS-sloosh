@@ -91,7 +91,7 @@ struct ContentView: View {
                         profileTabLabel()
                     }
                 }
-                .id("\(tabBarShowsLabels)_\(authRepo.isAuthenticated)_\(avatarVersion)")
+                .id("\(tabBarShowsLabels)_\(tabBarMinimizeOnScroll)_\(authRepo.isAuthenticated)_\(avatarVersion)")
                 .tabViewStyle(.tabBarOnly)
                 .tabBarMinimizeBehavior(tabBarMinimizeOnScroll ? .onScrollDown : .never)
                 .tint(Color.slooshAccent)
