@@ -1234,13 +1234,13 @@ class PlayerViewModel: ObservableObject {
         guard let player else { return }
         let current = player.currentTime().seconds
         let validCurrent = (current.isFinite && !current.isNaN && current >= 0) ? current : currentTime
-        let target: Double
+        let minTime: Double = (streamSource == .source2) ? 3.5 : 0.0
         if currentDuration > 0 {
-            target = max(0, min(currentDuration, validCurrent + seconds))
+            target = max(minTime, min(currentDuration, validCurrent + seconds))
         } else if let dur = player.currentItem?.duration.seconds, dur.isFinite, dur > 0 {
-            target = max(0, min(dur, validCurrent + seconds))
+            target = max(minTime, min(dur, validCurrent + seconds))
         } else {
-            target = max(0, validCurrent + seconds)
+            target = max(minTime, validCurrent + seconds)
         }
         seek(to: target)
     }
@@ -1248,10 +1248,12 @@ class PlayerViewModel: ObservableObject {
 
     func seek(to seconds: Double) {
         guard let player else { return }
-        let time = CMTime(seconds: seconds, preferredTimescale: 600)
+        let minTime: Double = (streamSource == .source2) ? 3.5 : 0.0
+        let effectiveSeconds = max(minTime, seconds)
+        let time = CMTime(seconds: effectiveSeconds, preferredTimescale: 600)
         isUserSeeking = true
-        currentTime = seconds
-        updateSubtitleCue(at: seconds)
+        currentTime = effectiveSeconds
+        updateSubtitleCue(at: effectiveSeconds)
         player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
             MainActor.assumeIsolated {
                 guard let self else { return }
@@ -2312,6 +2314,7 @@ class PlayerViewModel: ObservableObject {
         guard let player = self.player else { return }
         guard item === player.currentItem else { return }
 
+        let minStartTime: Double = (streamSource == .source2) ? 3.5 : 0.0
         let targetSeek: Double = {
             if self.isInitialSeekPending, let pending = self.pendingSeekPosition, pending > 2 {
                 return pending
@@ -2323,7 +2326,7 @@ class PlayerViewModel: ObservableObject {
                 let s = PlaybackProgressStore.shared.load(mediaId: mediaId)
                 if s > 2 { return s }
             }
-            return 0
+            return minStartTime
         }()
 
         guard targetSeek > 2 else {

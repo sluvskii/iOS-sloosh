@@ -464,6 +464,8 @@ class HlsProxyServer {
                 if isSub {
                     contentType = "text/vtt"
                     finalData = self.normalizeSubtitleData(data)
+                } else if realUrl.lastPathComponent.lowercased().contains("seg-1-v1.ts") || realUrl.lastPathComponent.lowercased().contains("seg-1.ts") {
+                    finalData = Self.sanitizeCollapsIntroSegment(finalData)
                 }
 
                 self.sendResponse(data: finalData, statusCode: statusCode, contentType: contentType, contentRange: contentRange, connection: connection)
@@ -480,6 +482,8 @@ class HlsProxyServer {
         let lines = content.components(separatedBy: .newlines)
         var result = [String]()
         var skipNextUri = false
+        var hasEmittedStartOffset = false
+        let isCollaps = baseUrl.host?.contains("interkh.com") == true || baseUrl.absoluteString.contains("interkh")
         
         for line in lines {
             if line.isEmpty {
@@ -487,6 +491,14 @@ class HlsProxyServer {
                 continue
             }
             if line.hasPrefix("#") {
+                // If this is a Collaps media playlist without EXT-X-START, inject start offset
+                if isCollaps && !hasEmittedStartOffset && line.hasPrefix("#EXTINF:") {
+                    if !result.contains(where: { $0.hasPrefix("#EXT-X-START") }) {
+                        result.append("#EXT-X-START:TIME-OFFSET=3.5,PRECISE=YES")
+                    }
+                    hasEmittedStartOffset = true
+                }
+
                 // Filter AV1 streams from master playlist — not supported on iOS AVPlayer.
                 // Skip the #EXT-X-STREAM-INF header and its following URI line.
                 if line.hasPrefix("#EXT-X-STREAM-INF") {
@@ -693,5 +705,130 @@ class HlsProxyServer {
             }
             return "video/mp4"
         }
+    }
+
+    /// Strips injected promotional static intro frames (e.g. Lift banner in Collaps / interkh.com)
+    /// from the first video segment (seg-1-v1.ts), starting directly at the clean movie IDR keyframe.
+    static func sanitizeCollapsIntroSegment(_ data: Data) -> Data {
+        let packetSize = 188
+        guard data.count >= packetSize * 50, data[0] == 0x47 else {
+            return data
+        }
+
+        let numPackets = data.count / packetSize
+        var headerPackets = Data()
+        var patFound = false
+        var pmtFound = false
+        let videoPid = 256
+
+        // 1. Collect PAT (PID 0) and PMT (PID 4095 or Program Map)
+        for i in 0..<min(50, numPackets) {
+            let offset = i * packetSize
+            let pkt = data.subdata(in: offset..<(offset + packetSize))
+            let pid = (Int(pkt[1] & 0x1F) << 8) | Int(pkt[2])
+            if pid == 0 && !patFound {
+                headerPackets.append(pkt)
+                patFound = true
+            } else if (pid == 4095 || (pid > 0 && pid < 256 && (pkt[1] & 0x40) != 0)) && !pmtFound {
+                headerPackets.append(pkt)
+                pmtFound = true
+            }
+        }
+
+        guard patFound else { return data }
+
+        // 2. Track video frames (PUSI=1 on videoPid) to locate IDR keyframes
+        var idrPackets: [(frameIdx: Int, packetIdx: Int, pts: Double?)] = []
+        var ptsList: [Double?] = []
+
+        for i in 0..<numPackets {
+            let offset = i * packetSize
+            let byte1 = data[offset + 1]
+            let byte2 = data[offset + 2]
+            let pid = (Int(byte1 & 0x1F) << 8) | Int(byte2)
+            let pusi = (byte1 & 0x40) != 0
+
+            if pid == videoPid && pusi {
+                let byte3 = data[offset + 3]
+                var pStart = 4
+                if (byte3 & 0x20) != 0 {
+                    pStart += 1 + Int(data[offset + 4])
+                }
+
+                if pStart + 14 <= packetSize {
+                    if data[offset + pStart] == 0 && data[offset + pStart + 1] == 0 && data[offset + pStart + 2] == 1 {
+                        let ptsFlags = (data[offset + pStart + 7] >> 6) & 0x03
+                        let pesHeaderLen = Int(data[offset + pStart + 8])
+                        var ptsVal: Double? = nil
+
+                        if (ptsFlags == 2 || ptsFlags == 3) && pStart + 14 <= packetSize {
+                            let b9 = UInt64(data[offset + pStart + 9])
+                            let b10 = UInt64(data[offset + pStart + 10])
+                            let b11 = UInt64(data[offset + pStart + 11])
+                            let b12 = UInt64(data[offset + pStart + 12])
+                            let b13 = UInt64(data[offset + pStart + 13])
+
+                            let ptsRaw = (((b9 >> 1) & 0x07) << 30) |
+                                         (b10 << 22) |
+                                         (((b11 >> 1) & 0x7F) << 15) |
+                                         (b12 << 7) |
+                                         ((b13 >> 1) & 0x7F)
+                            ptsVal = Double(ptsRaw) / 90000.0
+                        }
+                        ptsList.append(ptsVal)
+
+                        let payloadStart = offset + pStart + 9 + pesHeaderLen
+                        let payloadEnd = offset + packetSize
+                        if payloadStart < payloadEnd - 4 {
+                            var hasIdrOrSps = false
+                            for k in payloadStart..<(payloadEnd - 4) {
+                                if data[k] == 0 && data[k + 1] == 0 && data[k + 2] == 1 {
+                                    let nalType = data[k + 3] & 0x1F
+                                    if nalType == 5 || nalType == 7 {
+                                        hasIdrOrSps = true
+                                        break
+                                    }
+                                } else if data[k] == 0 && data[k + 1] == 0 && data[k + 2] == 0 && data[k + 3] == 1 {
+                                    let nalType = data[k + 4] & 0x1F
+                                    if nalType == 5 || nalType == 7 {
+                                        hasIdrOrSps = true
+                                        break
+                                    }
+                                }
+                            }
+                            if hasIdrOrSps {
+                                idrPackets.append((frameIdx: ptsList.count - 1, packetIdx: i, pts: ptsVal))
+                                if idrPackets.count >= 2 {
+                                    break
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 3. If a second IDR is found within the preamble and preceded by promo jump or static frames:
+        if idrPackets.count >= 2 {
+            let target = idrPackets[1]
+            var hasPromoJump = false
+            if ptsList.count > 1, let pts0 = ptsList[0], let pts1 = ptsList[1] {
+                if abs(pts1 - pts0) > 0.4 {
+                    hasPromoJump = true
+                }
+            }
+
+            if (hasPromoJump || target.frameIdx >= 15) && target.packetIdx < 400 {
+                let secondIdrOffset = target.packetIdx * packetSize
+                if secondIdrOffset < data.count {
+                    var trimmed = headerPackets
+                    trimmed.append(data.subdata(in: secondIdrOffset..<data.count))
+                    AppDiagnostics.shared.log("HlsProxyServer: sanitized Collaps intro promo from seg-1 (\(data.count) -> \(trimmed.count) bytes)")
+                    return trimmed
+                }
+            }
+        }
+
+        return data
     }
 }
