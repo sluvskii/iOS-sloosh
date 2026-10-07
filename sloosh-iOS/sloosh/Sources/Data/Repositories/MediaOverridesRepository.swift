@@ -1,6 +1,7 @@
 import Foundation
 import SwiftUI
 import Combine
+import UIKit
 
 public extension Notification.Name {
     static let mediaArtworkOverridesDidChange = Notification.Name("sloosh_media_artwork_overrides_did_change")
@@ -16,10 +17,142 @@ public final class MediaOverridesRepository: ObservableObject {
     private let cacheKey = "sloosh_media_artwork_overrides"
     private let firebaseOverridesUrl = "https://sloosh-77434-default-rtdb.firebaseio.com/media_stats/media_artwork_overrides"
 
+    private var streamTask: Task<Void, Never>?
+    private var heartbeatTask: Task<Void, Never>?
+    private var cancellables = Set<AnyCancellable>()
+
     private init() {
         loadFromCache()
         Task {
             await fetchOverrides()
+            startRealtimeStream()
+            startHeartbeat()
+        }
+        setupLifecycleObservers()
+    }
+
+    private func setupLifecycleObservers() {
+        NotificationCenter.default.publisher(for: UIApplication.didBecomeActiveNotification)
+            .sink { [weak self] _ in
+                Task { [weak self] in
+                    await self?.fetchOverrides()
+                    self?.startRealtimeStream()
+                }
+            }
+            .store(in: &cancellables)
+    }
+
+    private func startHeartbeat() {
+        heartbeatTask?.cancel()
+        heartbeatTask = Task { [weak self] in
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: 30_000_000_000) // Every 30 seconds
+                if Task.isCancelled { break }
+                await self?.fetchOverrides()
+            }
+        }
+    }
+
+    private func startRealtimeStream() {
+        streamTask?.cancel()
+        streamTask = Task { [weak self] in
+            while !Task.isCancelled {
+                guard let url = URL(string: "\(self?.firebaseOverridesUrl ?? "https://sloosh-77434-default-rtdb.firebaseio.com/media_stats/media_artwork_overrides").json") else { break }
+                var req = URLRequest(url: url)
+                req.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+                req.timeoutInterval = 300
+
+                do {
+                    let (asyncBytes, response) = try await URLSession.shared.bytes(for: req)
+                    guard let http = response as? HTTPURLResponse, http.statusCode == 200 else {
+                        try? await Task.sleep(nanoseconds: 5_000_000_000)
+                        continue
+                    }
+
+                    var currentEvent = ""
+                    for try await line in asyncBytes.lines {
+                        if Task.isCancelled { break }
+                        let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+                        if trimmed.hasPrefix("event: ") {
+                            currentEvent = String(trimmed.dropFirst(7)).trimmingCharacters(in: .whitespaces)
+                        } else if trimmed.hasPrefix("data: ") {
+                            let dataStr = String(trimmed.dropFirst(6)).trimmingCharacters(in: .whitespaces)
+                            if currentEvent == "put" || currentEvent == "patch" {
+                                await self?.handleStreamPayload(dataStr)
+                            }
+                        }
+                    }
+                } catch {
+                    // Stream dropped or network switched
+                }
+
+                if Task.isCancelled { break }
+                try? await Task.sleep(nanoseconds: 3_000_000_000)
+            }
+        }
+    }
+
+    private func handleStreamPayload(_ jsonString: String) {
+        guard let data = jsonString.data(using: .utf8),
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let path = json["path"] as? String else {
+            return
+        }
+
+        let rawData = json["data"]
+
+        if path == "/" {
+            if let dict = rawData as? [String: Any] {
+                if let encoded = try? JSONSerialization.data(withJSONObject: dict),
+                   let items = try? JSONDecoder().decode([String: MediaArtworkOverride].self, from: encoded) {
+                    for (k, v) in items {
+                        self.overrides[k] = v
+                        if let tmdb = v.tmdbId, tmdb > 0 {
+                            self.overrides["\(tmdb)"] = v
+                            self.overrides["tmdb_\(tmdb)"] = v
+                        }
+                        if let kp = v.kpId, kp > 0 {
+                            self.overrides["\(kp)"] = v
+                            self.overrides["kp_\(kp)"] = v
+                        }
+                    }
+                    saveToCache()
+                    AppDiagnostics.shared.log("MediaOverridesRepository: live SSE initial sync (\(items.count) items)")
+                }
+            } else if rawData == nil || (rawData is NSNull) {
+                self.overrides.removeAll()
+                saveToCache()
+            }
+        } else {
+            let key = path.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            guard !key.isEmpty else { return }
+
+            if rawData == nil || (rawData is NSNull) {
+                self.overrides.removeValue(forKey: key)
+                self.overrides.removeValue(forKey: "tmdb_\(key)")
+                self.overrides.removeValue(forKey: "kp_\(key)")
+                saveToCache()
+                AppDiagnostics.shared.log("MediaOverridesRepository: live SSE deleted \(key)")
+            } else if let dict = rawData as? [String: Any] {
+                var finalDict = dict
+                if finalDict["mediaId"] == nil {
+                    finalDict["mediaId"] = key
+                }
+                if let encoded = try? JSONSerialization.data(withJSONObject: finalDict),
+                   let item = try? JSONDecoder().decode(MediaArtworkOverride.self, from: encoded) {
+                    self.overrides[item.mediaId] = item
+                    if let tmdb = item.tmdbId, tmdb > 0 {
+                        self.overrides["\(tmdb)"] = item
+                        self.overrides["tmdb_\(tmdb)"] = item
+                    }
+                    if let kp = item.kpId, kp > 0 {
+                        self.overrides["\(kp)"] = item
+                        self.overrides["kp_\(kp)"] = item
+                    }
+                    saveToCache()
+                    AppDiagnostics.shared.log("MediaOverridesRepository: live SSE updated \(item.mediaId)")
+                }
+            }
         }
     }
 

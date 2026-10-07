@@ -52,6 +52,7 @@ struct ScrollOffsetPreferenceKey: PreferenceKey {
 struct HomeView: View {
     @StateObject private var viewModel = HomeViewModel()
     @ObservedObject private var deepLinkManager = DeepLinkManager.shared
+    @ObservedObject private var mediaOverrides = MediaOverridesRepository.shared
     @Namespace private var navigationTransition
     @State private var isFilterCollapsed = false
     @State private var scrollOffsets: [HomeCategory: CGFloat] = [:]
@@ -516,6 +517,7 @@ extension RemotePosterView where Overlay == EmptyView {
 
 struct MoviePosterCard: View {
     let movie: MediaDto
+    @ObservedObject private var mediaOverrides = MediaOverridesRepository.shared
     @AppStorage("cardStyle") private var cardStyle: CardStyle = .classic
 
     var body: some View {

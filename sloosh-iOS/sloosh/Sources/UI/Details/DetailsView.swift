@@ -80,6 +80,7 @@ struct BackdropCarouselView: View {
                 )
             }
         }
+        .id(urls.joined(separator: "|"))
         .frame(width: width, height: height)
         .mask(BackdropFadeMask())
     }
@@ -115,6 +116,7 @@ private struct BackdropPagingRepresentable: UIViewControllerRepresentable {
         context.coordinator.pageViewController = pageVC
         let initialIndex = (selectedIndex >= 0 && selectedIndex < urls.count) ? selectedIndex : 0
         context.coordinator.currentIndex = initialIndex
+        context.coordinator.currentUrls = urls
         let initialVC = context.coordinator.makeSlideVC(index: initialIndex)
         pageVC.setViewControllers([initialVC], direction: .forward, animated: false)
 
@@ -133,6 +135,19 @@ private struct BackdropPagingRepresentable: UIViewControllerRepresentable {
 
         let count = urls.count
         guard count > 1 else { return }
+
+        // Если список URL изменился (динамический оверрайд из сети или сохраненный пресет)
+        if coordinator.currentUrls != urls {
+            coordinator.currentUrls = urls
+            let targetIndex = (selectedIndex >= 0 && selectedIndex < count) ? selectedIndex : 0
+            coordinator.currentIndex = targetIndex
+            let targetVC = coordinator.makeSlideVC(index: targetIndex)
+            pageVC.setViewControllers([targetVC], direction: .forward, animated: false)
+            if !isPaused {
+                coordinator.startTimer()
+            }
+            return
+        }
 
         // Если selectedIndex изменился извне (например, по тапу на полоску индикатора)
         if !coordinator.isUserDragging && !coordinator.isTransitioning {
@@ -166,6 +181,7 @@ private struct BackdropPagingRepresentable: UIViewControllerRepresentable {
         var parent: BackdropPagingRepresentable
         weak var pageViewController: UIPageViewController?
         var currentIndex: Int = 0
+        var currentUrls: [String] = []
         var isUserDragging: Bool = false
         var isTransitioning: Bool = false
         var timerTask: Task<Void, Never>?
@@ -173,6 +189,7 @@ private struct BackdropPagingRepresentable: UIViewControllerRepresentable {
         init(_ parent: BackdropPagingRepresentable) {
             self.parent = parent
             self.currentIndex = (parent.selectedIndex >= 0 && parent.selectedIndex < parent.urls.count) ? parent.selectedIndex : 0
+            self.currentUrls = parent.urls
         }
 
         func makeSlideVC(index: Int) -> BackdropSlideViewController {
@@ -567,6 +584,7 @@ struct RemoteLogoView: View {
                 .foregroundStyle(Color.white)
                 .shadow(color: .black.opacity(0.8), radius: 6, x: 0, y: 3)
         }
+        .id(url?.absoluteString ?? fallbackTitle)
         .frame(maxWidth: .infinity, alignment: alignment)
     }
 }
@@ -1006,6 +1024,17 @@ struct DetailsView: View {
                 ImageCache.prefetch(urls: details.displayBackdropUrls.compactMap { URL(string: $0) })
                 preloadAllBackdropColors(for: details)
                 await preloadDominantColor(for: details)
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .mediaArtworkOverridesDidChange)) { _ in
+                guard let details = viewModel.details else { return }
+                withAnimation(.easeInOut(duration: 0.35)) {
+                    selectedBackdropIndex = 0
+                }
+                ImageCache.prefetch(urls: details.displayBackdropUrls.compactMap { URL(string: $0) })
+                preloadAllBackdropColors(for: details)
+                Task {
+                    await preloadDominantColor(for: details)
+                }
             }
             .onChange(of: selectedBackdropIndex) { _, newIndex in
                 guard !isAnyModalPresented else { return }
