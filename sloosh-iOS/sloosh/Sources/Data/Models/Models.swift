@@ -529,6 +529,10 @@ struct MediaDetailsDto: Codable {
         self.seasons = try? container.decodeIfPresent([TvSeasonSummaryDto].self, forKey: .seasons)
     }
     
+    var rating: Double? {
+        ratings?.kp ?? ratings?.imdb ?? ratings?.tmdb
+    }
+
     var isUnreleased: Bool {
         if let status = status?.lowercased() {
             if ["planned", "in production", "post production", "rumored", "upcoming"].contains(status) {
@@ -553,7 +557,8 @@ struct MediaDetailsDto: Codable {
             if year > currentYear {
                 return true
             }
-            if year == currentYear && (rating == nil || rating == 0) {
+            let currentRating = rating ?? 0
+            if year == currentYear && currentRating == 0 {
                 return true
             }
         }
