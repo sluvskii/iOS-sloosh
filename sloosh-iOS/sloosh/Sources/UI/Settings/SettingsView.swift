@@ -5,6 +5,7 @@ struct SettingsView: View {
     @AppStorage("preferredStreamSource") private var preferredSource: MediaStreamSource = .source1
     @AppStorage("preferredVideoQuality") private var preferredQuality: VideoQualityPreference = .ask
     @AppStorage("autoplayNextEpisode") private var autoplayNextEpisode = true
+    @AppStorage("playerVolumeBrightnessGestures") private var playerVolumeBrightnessGestures = true
     @AppStorage("tabBarShowsLabels") private var tabBarShowsLabels = false
     @AppStorage("tabBarMinimizeOnScroll") private var tabBarMinimizeOnScroll = true
     @AppStorage("cardStyle") private var cardStyle: CardStyle = .classic
@@ -217,6 +218,19 @@ struct SettingsView: View {
                             .frame(width: 24)
                         
                         Text("Автопереход к серии")
+                            .font(.body)
+                    }
+                }
+
+                // Жесты яркости и громкости
+                Toggle(isOn: $playerVolumeBrightnessGestures) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "slider.vertical.3")
+                            .foregroundStyle(Color.slooshAccent)
+                            .font(.system(size: 18))
+                            .frame(width: 24)
+                        
+                        Text("Жесты яркости и громкости")
                             .font(.body)
                     }
                 }
