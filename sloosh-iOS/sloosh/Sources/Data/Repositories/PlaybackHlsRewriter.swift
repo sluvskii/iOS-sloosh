@@ -85,6 +85,14 @@ class PlaybackHlsRewriter {
             }
         }
 
+        if !output.contains(where: { $0.hasPrefix("#EXT-X-START") }) && (master.contains("interkh.com") || master.contains("interkh") || voices.contains(where: { $0.contains("Дорожка") })) {
+            if let verIdx = output.firstIndex(where: { $0.hasPrefix("#EXT-X-VERSION") }) {
+                output.insert("#EXT-X-START:TIME-OFFSET=3.5,PRECISE=YES", at: verIdx + 1)
+            } else if let extm3uIdx = output.firstIndex(where: { $0.hasPrefix("#EXTM3U") }) {
+                output.insert("#EXT-X-START:TIME-OFFSET=3.5,PRECISE=YES", at: extm3uIdx + 1)
+            }
+        }
+
         if !subtitles.isEmpty {
             for sub in subtitles {
                 let lang = sub.lang.isEmpty ? "ru" : sub.lang
