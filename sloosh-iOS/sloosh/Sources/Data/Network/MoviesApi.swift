@@ -513,6 +513,10 @@ class MoviesApi {
         if let yearTo = filters.yearTo, yearTo >= 1880 {
             queryItems.append(URLQueryItem(name: "yearTo", value: String(yearTo)))
         }
+
+        if let studio = filters.studio, !studio.isEmpty {
+            queryItems.append(URLQueryItem(name: "studio", value: studio))
+        }
         
         // api/v2/search — серверный движок каталога с поддержкой параметров фильтров
         return try await performRequest(endpoint: "api/v2/search", queryItems: queryItems)

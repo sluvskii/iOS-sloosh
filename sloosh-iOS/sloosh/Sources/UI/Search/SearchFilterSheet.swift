@@ -35,14 +35,14 @@ struct SearchFilterSheet: View {
     @State private var scrollOffset: CGFloat = 0
 
     private var blurOpacity: Double {
-        let progress = max(0, scrollOffset) / 15.0
+        let progress = max(0, scrollOffset) / 20.0
         return min(1.0, Double(progress))
     }
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 10) {
+                VStack(spacing: 12) {
                     // 1. Content Type (for Search context)
                     if context == .search {
                         typeSection
@@ -55,7 +55,7 @@ struct SearchFilterSheet: View {
                     ratingAndYearWheelCard
                 }
                 .padding(.horizontal, 16)
-                .padding(.top, 8)
+                .padding(.top, 12)
                 .padding(.bottom, 16)
             }
             .scrollBounceBehavior(.always)
@@ -70,8 +70,8 @@ struct SearchFilterSheet: View {
             .safeAreaInset(edge: .top, spacing: 0) {
                 headerBar
                     .padding(.horizontal, 16)
-                    .padding(.top, 10)
-                    .padding(.bottom, 6)
+                    .padding(.top, 14)
+                    .padding(.bottom, 8)
                     .background(
                         VariableBlurView(tintColor: .clear, tintOpacity: 0.0)
                             .padding(.bottom, -30)
@@ -82,7 +82,7 @@ struct SearchFilterSheet: View {
             }
             .background(Color.clear)
         }
-        .presentationDetents(context == .search ? [.height(460)] : [.height(385)])
+        .presentationDetents(context == .search ? [.height(568)] : [.height(484)])
         .presentationBackground { Color.clear.glassEffect(in: .rect) }
         .presentationDragIndicator(.visible)
     }
@@ -282,7 +282,7 @@ struct SearchFilterSheet: View {
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 8)
+            .padding(.vertical, 10)
 
             Divider()
                 .padding(.leading, 52)
@@ -362,7 +362,7 @@ struct SearchFilterSheet: View {
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 8)
+            .padding(.vertical, 10)
 
             Divider()
                 .padding(.leading, 52)
@@ -442,13 +442,114 @@ struct SearchFilterSheet: View {
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 8)
+            .padding(.vertical, 10)
+
+            Divider()
+                .padding(.leading, 52)
+                .opacity(0.5)
+
+            // Studio / Streaming
+            HStack(spacing: 12) {
+                Image(systemName: "tv")
+                    .font(.system(size: 15, weight: .semibold))
+                    .frame(width: 24, height: 24, alignment: .center)
+                    .foregroundColor(.secondary)
+
+                Text("Студия")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundColor(.primary)
+
+                Spacer()
+
+                Menu {
+                    Button {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                            filters.studio = nil
+                        }
+                    } label: {
+                        HStack {
+                            Text("Любая")
+                            if filters.studio == nil {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+
+                    Section("Студии") {
+                        ForEach(StudioBrand.all.filter { !$0.isNetwork }) { brand in
+                            let isSelected = filters.studio == brand.id
+                            Button {
+                                let generator = UIImpactFeedbackGenerator(style: .light)
+                                generator.prepare()
+                                generator.impactOccurred()
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                    filters.studio = isSelected ? nil : brand.id
+                                }
+                            } label: {
+                                HStack {
+                                    Text(brand.name)
+                                    if isSelected {
+                                        Image(systemName: "checkmark")
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Section("Стриминги") {
+                        ForEach(StudioBrand.all.filter { $0.isNetwork }) { brand in
+                            let isSelected = filters.studio == brand.id
+                            Button {
+                                let generator = UIImpactFeedbackGenerator(style: .light)
+                                generator.prepare()
+                                generator.impactOccurred()
+                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                    filters.studio = isSelected ? nil : brand.id
+                                }
+                            } label: {
+                                HStack {
+                                    Text(brand.name)
+                                    if isSelected {
+                                        Image(systemName: "checkmark")
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Text(currentStudioTitle)
+                            .font(.system(size: 13, weight: .semibold))
+                            .lineLimit(1)
+                        Image(systemName: "chevron.up.chevron.down")
+                            .font(.system(size: 10, weight: .semibold))
+                            .foregroundColor(.secondary)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 7)
+                    .foregroundColor(.primary)
+                    .background(
+                        Capsule()
+                            .fill(Color(UIColor.secondarySystemFill).opacity(0.6))
+                    )
+                    .glassEffect(.regular.interactive(), in: .capsule)
+                }
+            }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 10)
         }
         .background(
             RoundedRectangle(cornerRadius: 22, style: .continuous)
                 .fill(Color(UIColor.secondarySystemFill).opacity(0.45))
         )
         .glassEffect(.regular, in: .rect(cornerRadius: 22))
+    }
+
+    private var currentStudioTitle: String {
+        guard let studioId = filters.studio, let brand = StudioBrand.find(by: studioId) else {
+            return "Любая"
+        }
+        return brand.name
     }
 
     private var currentGenreTitle: String {
@@ -529,7 +630,7 @@ struct SearchFilterSheet: View {
                 .frame(maxWidth: .infinity, alignment: .center)
             }
             .padding(.horizontal, 16)
-            .padding(.top, 10)
+            .padding(.top, 12)
 
             // Dual Wheel Drum
             HStack(spacing: 0) {
@@ -545,7 +646,7 @@ struct SearchFilterSheet: View {
 
                 Rectangle()
                     .fill(Color(UIColor.separator).opacity(0.3))
-                    .frame(width: 1, height: 68)
+                    .frame(width: 1, height: 72)
                     .padding(.horizontal, 4)
 
                 Picker("Год", selection: $filters.yearFrom) {
@@ -558,8 +659,8 @@ struct SearchFilterSheet: View {
                 .frame(maxWidth: .infinity)
                 .clipped()
             }
-            .frame(height: 112)
-            .padding(.bottom, 4)
+            .frame(height: 116)
+            .padding(.bottom, 6)
         }
         .background(
             RoundedRectangle(cornerRadius: 22, style: .continuous)

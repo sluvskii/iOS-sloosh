@@ -432,6 +432,49 @@ class MoviesRepository: ObservableObject {
             )
         } else if !filters.isEmpty {
             // Режим 2: Просмотр каталога по фильтрам (v2 Discover/Filter Engine)
+            if let studioId = filters.studio, !studioId.isEmpty {
+                do {
+                    let collectionRes = try await getCollection(id: studioId, page: page)
+                    let studioItems = collectionRes.items
+                    if !studioItems.isEmpty {
+                        var filteredResults = applyFilters(studioItems, filters: filters)
+                        if filteredResults.isEmpty && (filters.genres != nil || filters.type != nil) {
+                            filteredResults = studioItems
+                        }
+
+                        if filters.order == "YEAR" {
+                            filteredResults.sort { a, b in
+                                let yearA = a.effectiveYear ?? 0
+                                let yearB = b.effectiveYear ?? 0
+                                if yearA != yearB { return yearA > yearB }
+                                let dateA = a.releaseDate ?? ""
+                                let dateB = b.releaseDate ?? ""
+                                if !dateA.isEmpty && !dateB.isEmpty && dateA != dateB { return dateA > dateB }
+                                return a.effectiveRating > b.effectiveRating
+                            }
+                        } else if filters.order == "RATING" {
+                            filteredResults.sort { a, b in
+                                let ratingA = a.effectiveRating
+                                let ratingB = b.effectiveRating
+                                if ratingA != ratingB { return ratingA > ratingB }
+                                return (a.effectiveYear ?? 0) > (b.effectiveYear ?? 0)
+                            }
+                        }
+
+                        return MediaResponse(
+                            page: page,
+                            results: filteredResults,
+                            pages: collectionRes.totalPages,
+                            total: filteredResults.count,
+                            total_pages: collectionRes.totalPages,
+                            total_results: filteredResults.count
+                        )
+                    }
+                } catch {
+                    // Fallback to discoverMovies on error
+                }
+            }
+
             let response = try await MoviesApi.shared.discoverMovies(filters: filters, page: page)
             guard let data = response.data else {
                 return MediaResponse(page: page, results: [], pages: 1, total: 0, total_pages: 1, total_results: 0)
