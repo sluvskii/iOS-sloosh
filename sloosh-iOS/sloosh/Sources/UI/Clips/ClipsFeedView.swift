@@ -31,15 +31,16 @@ final class ClipPlaybackCoordinator: ObservableObject {
 
         resolvePlaybackTask = Task { [weak self] in
             guard let self else { return }
-            guard let playUrl = await ClipStreamResolver.shared.resolveStreamUrl(for: clip) else {
+            guard let resolved = await ClipStreamResolver.shared.resolveStream(for: clip) else {
                 self.isResolving = false
                 return
             }
             guard !Task.isCancelled, self.currentClipId == clip.id else { return }
 
-            let asset = AVURLAsset(url: playUrl)
+            let options: [String: Any]? = resolved.headers.isEmpty ? nil : ["AVURLAssetHTTPHeaderFieldsKey": resolved.headers]
+            let asset = AVURLAsset(url: resolved.url, options: options)
             let item = AVPlayerItem(asset: asset)
-            item.preferredForwardBufferDuration = 2.0
+            item.preferredForwardBufferDuration = 1.0
 
             let player = AVPlayer(playerItem: item)
             player.isMuted = self.isMuted
@@ -48,7 +49,10 @@ final class ClipPlaybackCoordinator: ObservableObject {
             self.activePlayer = player
             self.isPlaying = true
 
-            // Observe item status
+            // Start player immediately
+            player.play()
+
+            // Observe item status for ready to play & initial seek
             self.playerStatusObserver = item.observe(\.status, options: [.new, .initial]) { [weak self, weak player] observedItem, _ in
                 Task { @MainActor [weak self] in
                     guard let self, self.currentClipId == clip.id, let player else { return }
@@ -495,29 +499,24 @@ public struct ClipsFeedView: View {
                     .padding(.vertical, 1)
             }
 
-            // Liquid Glass Watch Full Movie Button
+            // Pure Liquid Glass Watch Full Movie Button
             Button {
                 openFullMovie(clip: clip)
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "play.fill")
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.system(size: 11, weight: .bold))
 
                     Text("Смотреть с этого момента")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.system(size: 13, weight: .semibold))
                 }
                 .foregroundStyle(.white)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-                .background(Color.black.opacity(0.45))
-                .glassEffect(.regular.interactive(), in: .capsule)
-                .overlay(
-                    Capsule()
-                        .stroke(Color.white.opacity(0.2), lineWidth: 0.5)
-                )
+                .padding(.horizontal, 16)
+                .padding(.vertical, 9)
             }
+            .glassEffect(.regular.interactive(), in: .capsule)
             .buttonStyle(.glassPress)
-            .padding(.top, 2)
+            .padding(.top, 4)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
