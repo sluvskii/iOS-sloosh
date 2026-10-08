@@ -46,15 +46,20 @@ struct SearchFilterSheet: View {
                 if context == .search {
                     Section {
                         contentTypeRow
+                            .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
                     }
                 }
 
                 // 2. Main Parameters Card (Сортировка, Студия, Жанр, Страна)
                 Section {
                     sortRow
+                        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
                     studioRow
+                        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
                     genreRow
+                        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
                     countryRow
+                        .listRowInsets(EdgeInsets(top: 6, leading: 16, bottom: 6, trailing: 16))
                 }
 
                 // 3. Dual Wheel Drum Picker (Рейтинг и Год выпуска)
@@ -66,6 +71,7 @@ struct SearchFilterSheet: View {
             .listStyle(.insetGrouped)
             .scrollContentBackground(.hidden)
             .environment(\.defaultMinListHeaderHeight, .leastNonzeroMagnitude)
+            .environment(\.defaultMinListRowHeight, 38)
             .scrollBounceBehavior(.always)
             .scrollEdgeEffectStyle(.soft, for: .all)
             .onScrollGeometryChange(for: CGFloat.self) { geometry in
@@ -89,7 +95,7 @@ struct SearchFilterSheet: View {
             }
             .background(Color.clear)
         }
-        .presentationDetents(context == .search ? [.height(568)] : [.height(484)])
+        .presentationDetents(context == .search ? [.height(540)] : [.height(460)])
         .presentationBackground { Color.clear.glassEffect(in: .rect) }
         .presentationDragIndicator(.visible)
     }
@@ -145,15 +151,16 @@ struct SearchFilterSheet: View {
     // MARK: - Content Type Row (Segmented)
 
     private var contentTypeRow: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 12) {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 10) {
                 Image(systemName: "play.rectangle.on.rectangle")
                     .foregroundStyle(Color.slooshAccent)
-                    .font(.system(size: 18))
-                    .frame(width: 24)
+                    .font(.system(size: 15, weight: .semibold))
+                    .frame(width: 22)
 
                 Text("Тип контента")
-                    .font(.body)
+                    .font(.system(size: 14, weight: .semibold))
+                    .foregroundStyle(.secondary)
             }
 
             Picker("Тип контента", selection: $filters.type) {
@@ -165,20 +172,20 @@ struct SearchFilterSheet: View {
             }
             .pickerStyle(.segmented)
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 2)
     }
 
-    // MARK: - Filter Rows (Settings Style: Only Trailing Value Animates)
+    // MARK: - Filter Rows (Compact & Refined, Only Trailing Value Animates)
 
     private var sortRow: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             Image(systemName: "arrow.up.arrow.down")
                 .foregroundStyle(Color.slooshAccent)
-                .font(.system(size: 18))
-                .frame(width: 24)
+                .font(.system(size: 15, weight: .semibold))
+                .frame(width: 22)
 
             Text("Сортировка")
-                .font(.body)
+                .font(.system(size: 15, weight: .regular))
                 .foregroundStyle(Color.primary)
 
             Spacer()
@@ -245,29 +252,27 @@ struct SearchFilterSheet: View {
             } label: {
                 HStack(spacing: 6) {
                     Text(currentSortTitle)
-                        .font(.body)
+                        .font(.system(size: 15, weight: .regular))
                         .lineLimit(1)
                         .foregroundStyle(Color.slooshAccent)
                     Image(systemName: "chevron.up.chevron.down")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(Color.slooshAccent)
                 }
-                .padding(.vertical, 8)
-                .padding(.leading, 16)
                 .contentShape(Rectangle())
             }
         }
     }
 
     private var studioRow: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             Image(systemName: "tv")
                 .foregroundStyle(Color.slooshAccent)
-                .font(.system(size: 18))
-                .frame(width: 24)
+                .font(.system(size: 15, weight: .semibold))
+                .frame(width: 22)
 
             Text("Студия")
-                .font(.body)
+                .font(.system(size: 15, weight: .regular))
                 .foregroundStyle(Color.primary)
 
             Spacer()
@@ -333,29 +338,27 @@ struct SearchFilterSheet: View {
             } label: {
                 HStack(spacing: 6) {
                     Text(currentStudioTitle)
-                        .font(.body)
+                        .font(.system(size: 15, weight: .regular))
                         .lineLimit(1)
                         .foregroundStyle(Color.slooshAccent)
                     Image(systemName: "chevron.up.chevron.down")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(Color.slooshAccent)
                 }
-                .padding(.vertical, 8)
-                .padding(.leading, 16)
                 .contentShape(Rectangle())
             }
         }
     }
 
     private var genreRow: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             Image(systemName: "theatermasks")
                 .foregroundStyle(Color.slooshAccent)
-                .font(.system(size: 18))
-                .frame(width: 24)
+                .font(.system(size: 15, weight: .semibold))
+                .frame(width: 22)
 
             Text("Жанр")
-                .font(.body)
+                .font(.system(size: 15, weight: .regular))
                 .foregroundStyle(Color.primary)
 
             Spacer()
@@ -407,29 +410,27 @@ struct SearchFilterSheet: View {
             } label: {
                 HStack(spacing: 6) {
                     Text(currentGenreTitle)
-                        .font(.body)
+                        .font(.system(size: 15, weight: .regular))
                         .lineLimit(1)
                         .foregroundStyle(Color.slooshAccent)
                     Image(systemName: "chevron.up.chevron.down")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(Color.slooshAccent)
                 }
-                .padding(.vertical, 8)
-                .padding(.leading, 16)
                 .contentShape(Rectangle())
             }
         }
     }
 
     private var countryRow: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 10) {
             Image(systemName: "globe")
                 .foregroundStyle(Color.slooshAccent)
-                .font(.system(size: 18))
-                .frame(width: 24)
+                .font(.system(size: 15, weight: .semibold))
+                .frame(width: 22)
 
             Text("Страна")
-                .font(.body)
+                .font(.system(size: 15, weight: .regular))
                 .foregroundStyle(Color.primary)
 
             Spacer()
@@ -481,15 +482,13 @@ struct SearchFilterSheet: View {
             } label: {
                 HStack(spacing: 6) {
                     Text(currentCountryTitle)
-                        .font(.body)
+                        .font(.system(size: 15, weight: .regular))
                         .lineLimit(1)
                         .foregroundStyle(Color.slooshAccent)
                     Image(systemName: "chevron.up.chevron.down")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(Color.slooshAccent)
                 }
-                .padding(.vertical, 8)
-                .padding(.leading, 16)
                 .contentShape(Rectangle())
             }
         }
@@ -503,10 +502,10 @@ struct SearchFilterSheet: View {
             HStack(spacing: 0) {
                 HStack(spacing: 6) {
                     Image(systemName: "star.fill")
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(Color.slooshAccent)
                     Text("Рейтинг")
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.system(size: 13, weight: .semibold))
                         .foregroundColor(.primary)
                 }
                 .frame(maxWidth: .infinity, alignment: .center)
@@ -517,15 +516,15 @@ struct SearchFilterSheet: View {
 
                 HStack(spacing: 6) {
                     Image(systemName: "calendar")
-                        .font(.system(size: 13, weight: .semibold))
+                        .font(.system(size: 12, weight: .semibold))
                         .foregroundStyle(Color.slooshAccent)
                     Text("Год выпуска")
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.system(size: 13, weight: .semibold))
                         .foregroundColor(.primary)
                 }
                 .frame(maxWidth: .infinity, alignment: .center)
             }
-            .padding(.top, 10)
+            .padding(.top, 8)
 
             // Dual Wheel Drum
             HStack(spacing: 0) {
@@ -541,7 +540,7 @@ struct SearchFilterSheet: View {
 
                 Rectangle()
                     .fill(Color(UIColor.separator).opacity(0.3))
-                    .frame(width: 1, height: 72)
+                    .frame(width: 1, height: 68)
                     .padding(.horizontal, 4)
 
                 Picker("Год", selection: $filters.yearFrom) {
@@ -554,8 +553,8 @@ struct SearchFilterSheet: View {
                 .frame(maxWidth: .infinity)
                 .clipped()
             }
-            .frame(height: 116)
-            .padding(.bottom, 6)
+            .frame(height: 112)
+            .padding(.bottom, 4)
         }
     }
 
