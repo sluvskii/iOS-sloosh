@@ -46,12 +46,13 @@ public final class ClipStreamResolver {
         // 1. Direct stream URL: instant resolution (< 10ms) without spinning up a headless WKWebView
         if let directStr = clip.streamUrl, !directStr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
            let directUrl = URL(string: directStr.trimmingCharacters(in: .whitespacesAndNewlines)) {
+            let realUrl = extractRealUrl(from: directUrl)
             HlsProxyServer.shared.start(
                 headers: [:],
                 mediaId: "clip_\(clip.id)",
                 preferredVoiceName: clip.translationName
             )
-            let finalUrl = proxiedPlaybackURL(for: directUrl) ?? directUrl
+            let finalUrl = proxiedPlaybackURL(for: realUrl) ?? realUrl
             cache[clip.id] = CachedStream(
                 streamUrl: finalUrl,
                 headers: [:],
@@ -154,5 +155,26 @@ public final class ClipStreamResolver {
 
         let baseString = "http://127.0.0.1:\(HlsProxyServer.shared.port.rawValue)/proxy/\(pathSuffix)?url=\(encoded)"
         return URL(string: baseString)
+    }
+
+    private func extractRealUrl(from url: URL) -> URL {
+        guard let host = url.host?.lowercased(), (host == "127.0.0.1" || host == "localhost"),
+              let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              let queryItem = components.queryItems?.first(where: { $0.name == "url" }),
+              let base64String = queryItem.value else {
+            return url
+        }
+        var base64 = base64String
+            .replacingOccurrences(of: "-", with: "+")
+            .replacingOccurrences(of: "_", with: "/")
+        while base64.count % 4 != 0 {
+            base64.append("=")
+        }
+        guard let data = Data(base64Encoded: base64),
+              let urlString = String(data: data, encoding: .utf8),
+              let realUrl = URL(string: urlString) else {
+            return url
+        }
+        return realUrl
     }
 }

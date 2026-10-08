@@ -39,11 +39,12 @@ final class ClipPlaybackCoordinator: ObservableObject {
 
             let asset = AVURLAsset(url: playUrl)
             let item = AVPlayerItem(asset: asset)
-            item.preferredForwardBufferDuration = 4.0
+            item.preferredForwardBufferDuration = 2.0
 
             let player = AVPlayer(playerItem: item)
             player.isMuted = self.isMuted
-            player.automaticallyWaitsToMinimizeStalling = true
+            player.actionAtItemEnd = .none
+            player.automaticallyWaitsToMinimizeStalling = false
             self.activePlayer = player
             self.isPlaying = true
 
@@ -59,7 +60,8 @@ final class ClipPlaybackCoordinator: ObservableObject {
                             self.didPerformInitialSeek = true
                             if clip.startTime > 0.5 {
                                 let sTime = CMTime(seconds: clip.startTime, preferredTimescale: 600)
-                                player.seek(to: sTime, toleranceBefore: .zero, toleranceAfter: .zero) { _ in
+                                let tol = CMTime(seconds: 0.5, preferredTimescale: 600)
+                                player.seek(to: sTime, toleranceBefore: tol, toleranceAfter: tol) { _ in
                                     player.play()
                                 }
                             } else {
@@ -97,7 +99,8 @@ final class ClipPlaybackCoordinator: ObservableObject {
                 // Loop back to start ONLY when video reaches or exceeds clip.endTime
                 if currentSec >= clip.endTime {
                     let sTime = CMTime(seconds: clip.startTime, preferredTimescale: 600)
-                    player.seek(to: sTime, toleranceBefore: .zero, toleranceAfter: .zero) { _ in
+                    let tol = CMTime(seconds: 0.5, preferredTimescale: 600)
+                    player.seek(to: sTime, toleranceBefore: tol, toleranceAfter: tol) { _ in
                         player.play()
                     }
                 }
@@ -297,9 +300,11 @@ public struct ClipsFeedView: View {
 
     private func clipCard(_ clip: MovieClip, size: CGSize, safeArea: EdgeInsets) -> some View {
         let isCurrent = (currentClipId == clip.id)
+        let topSafeArea = max(safeArea.top, (UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.windows.first?.safeAreaInsets.top }.first ?? 47.0))
+        let bottomSafeArea = max(safeArea.bottom, (UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.windows.first?.safeAreaInsets.bottom }.first ?? 34.0))
 
         return ZStack {
-            // 1. Base Layer: High-Res Backdrop/Poster (Pre-loaded underneath for seamless transition)
+            // 1. Base Layer: High-Res Backdrop/Poster
             if let backdrop = clip.backdropPath ?? clip.posterPath, let url = URL(string: backdrop) {
                 AsyncCachedImage(url: url) {
                     Color.black
@@ -324,7 +329,7 @@ public struct ClipsFeedView: View {
                     .clipped()
                     .ignoresSafeArea()
                     .opacity(playback.isVideoReady ? 1.0 : 0.0)
-                    .animation(.easeInOut(duration: 0.25), value: playback.isVideoReady)
+                    .animation(.easeInOut(duration: 0.2), value: playback.isVideoReady)
             }
 
             // 3. Loading Spinner Indicator (subtle, centered)
@@ -336,23 +341,23 @@ public struct ClipsFeedView: View {
             }
 
             // 4. Cinematic Dark Gradients for Readability
-            VStack {
+            VStack(spacing: 0) {
                 LinearGradient(
-                    colors: [.black.opacity(0.45), .clear],
+                    colors: [.black.opacity(0.55), .clear],
                     startPoint: .top,
                     endPoint: .bottom
                 )
-                .frame(height: 90)
+                .frame(height: topSafeArea + 50)
                 .ignoresSafeArea(edges: .top)
 
                 Spacer()
 
                 LinearGradient(
-                    colors: [.clear, .black.opacity(0.4), .black.opacity(0.85)],
+                    colors: [.clear, .black.opacity(0.4), .black.opacity(0.9)],
                     startPoint: .top,
                     endPoint: .bottom
                 )
-                .frame(height: 240)
+                .frame(height: bottomSafeArea + 240)
                 .ignoresSafeArea(edges: .bottom)
             }
             .allowsHitTesting(false)
@@ -371,9 +376,9 @@ public struct ClipsFeedView: View {
             // 6. Play / Pause Centered Indicator
             if !playback.isPlaying && isCurrent && playback.isVideoReady {
                 Image(systemName: "play.fill")
-                    .font(.system(size: 32, weight: .bold))
+                    .font(.system(size: 30, weight: .bold))
                     .foregroundStyle(.white)
-                    .frame(width: 64, height: 64)
+                    .frame(width: 60, height: 60)
                     .background(Color.black.opacity(0.45))
                     .glassEffect(.regular.interactive(), in: .circle)
                     .clipShape(Circle())
@@ -394,59 +399,56 @@ public struct ClipsFeedView: View {
                     .allowsHitTesting(false)
             }
 
-            // 8. Main Overlay UI Layer
-            VStack(spacing: 0) {
-                // Top Bar: Sleek Glass Mute Button
-                topBarView(safeArea: safeArea)
+            // 8. Top Bar: Discreet Glass Mute Button
+            VStack {
+                HStack {
+                    Spacer()
+
+                    Button {
+                        playback.toggleMute()
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    } label: {
+                        Image(systemName: playback.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 36, height: 36)
+                            .background(Color.black.opacity(0.4))
+                            .clipShape(Circle())
+                    }
+                    .buttonStyle(.glassPress)
+                    .glassEffect(.regular.interactive(), in: .circle)
+                }
+                .padding(.top, topSafeArea + 8)
+                .padding(.trailing, 16)
 
                 Spacer()
+            }
 
-                // Bottom Content: Info on left, Action buttons on right
-                HStack(alignment: .bottom, spacing: 14) {
+            // 9. Bottom Overlays (Info, Right Rail, Scrubber)
+            VStack(spacing: 0) {
+                Spacer()
+
+                // Content Row: Info on left, Actions on right
+                HStack(alignment: .bottom, spacing: 12) {
                     leftInfoView(clip: clip)
 
-                    Spacer(minLength: 8)
+                    Spacer(minLength: 4)
 
                     rightRailView(clip: clip)
                 }
                 .padding(.horizontal, 16)
-                .padding(.bottom, 12)
+                .padding(.bottom, 8)
 
-                // 9. Real-Time Scrubber Progress Bar (Cleanly floats above tab bar)
+                // Real-Time Scrubber Progress Bar
                 if isCurrent {
                     progressBarView
                         .padding(.horizontal, 16)
-                        .padding(.bottom, max(safeArea.bottom, 16) + 48)
+                        .padding(.bottom, bottomSafeArea + 58)
                 } else {
-                    Spacer().frame(height: max(safeArea.bottom, 16) + 48)
+                    Spacer().frame(height: bottomSafeArea + 58)
                 }
             }
         }
-    }
-
-    // MARK: - Top Bar
-
-    private func topBarView(safeArea: EdgeInsets) -> some View {
-        HStack {
-            Spacer()
-
-            // Discreet Glass Mute Button
-            Button {
-                playback.toggleMute()
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            } label: {
-                Image(systemName: playback.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .frame(width: 36, height: 36)
-                    .background(Color.black.opacity(0.4))
-                    .clipShape(Circle())
-            }
-            .buttonStyle(.glassPress)
-            .glassEffect(.regular.interactive(), in: .circle)
-        }
-        .padding(.top, max(safeArea.top, 20) + 8)
-        .padding(.horizontal, 16)
     }
 
     // MARK: - Left Info View
@@ -490,7 +492,7 @@ public struct ClipsFeedView: View {
                             isTextExpanded.toggle()
                         }
                     }
-                    .padding(.vertical, 2)
+                    .padding(.vertical, 1)
             }
 
             // Liquid Glass Watch Full Movie Button
@@ -515,14 +517,15 @@ public struct ClipsFeedView: View {
                 )
             }
             .buttonStyle(.glassPress)
-            .padding(.top, 4)
+            .padding(.top, 2)
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     // MARK: - Right Rail View
 
     private func rightRailView(clip: MovieClip) -> some View {
-        VStack(spacing: 18) {
+        VStack(spacing: 16) {
             // Author Avatar
             authorAvatarView(clip)
 
@@ -535,7 +538,7 @@ public struct ClipsFeedView: View {
             // Share Button
             shareButtonView(clip)
         }
-        .padding(.bottom, 2)
+        .frame(width: 50)
     }
 
     // MARK: - Scrubber Progress Bar
@@ -569,16 +572,16 @@ public struct ClipsFeedView: View {
                 } fallback: {
                     Circle().fill(Color.white.opacity(0.2))
                 }
-                .frame(width: 40, height: 40)
+                .frame(width: 38, height: 38)
                 .clipShape(Circle())
                 .overlay(Circle().stroke(Color.white.opacity(0.25), lineWidth: 1.5))
             } else {
                 Circle()
                     .fill(Color.white.opacity(0.15))
-                    .frame(width: 40, height: 40)
+                    .frame(width: 38, height: 38)
                     .overlay(
                         Text(String(clip.authorName.prefix(1)).uppercased())
-                            .font(.system(size: 15, weight: .bold))
+                            .font(.system(size: 14, weight: .bold))
                             .foregroundStyle(.white)
                     )
                     .overlay(Circle().stroke(Color.white.opacity(0.25), lineWidth: 1.5))
