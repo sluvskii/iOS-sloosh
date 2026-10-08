@@ -152,14 +152,63 @@ struct SearchFilterSheet: View {
 
                 Menu {
                     if context == .search {
-                        Button("Релевантность") { filters.order = nil }
-                        Button("По популярности") { filters.order = "NUM_VOTE" }
+                        Button {
+                            let generator = UIImpactFeedbackGenerator(style: .light)
+                            generator.prepare()
+                            generator.impactOccurred()
+                            filters.order = nil
+                        } label: {
+                            HStack {
+                                Text("Релевантность")
+                                if filters.order == nil { Image(systemName: "checkmark") }
+                            }
+                        }
                     } else {
-                        Button("Смотрят сейчас") { filters.order = nil }
-                        Button("По популярности") { filters.order = "NUM_VOTE" }
+                        Button {
+                            let generator = UIImpactFeedbackGenerator(style: .light)
+                            generator.prepare()
+                            generator.impactOccurred()
+                            filters.order = nil
+                        } label: {
+                            HStack {
+                                Text("Смотрят сейчас")
+                                if filters.order == nil { Image(systemName: "checkmark") }
+                            }
+                        }
                     }
-                    Button("По рейтингу") { filters.order = "RATING" }
-                    Button("По году выпуска") { filters.order = "YEAR" }
+                    Button {
+                        let generator = UIImpactFeedbackGenerator(style: .light)
+                        generator.prepare()
+                        generator.impactOccurred()
+                        filters.order = "NUM_VOTE"
+                    } label: {
+                        HStack {
+                            Text("По популярности")
+                            if filters.order == "NUM_VOTE" { Image(systemName: "checkmark") }
+                        }
+                    }
+                    Button {
+                        let generator = UIImpactFeedbackGenerator(style: .light)
+                        generator.prepare()
+                        generator.impactOccurred()
+                        filters.order = "RATING"
+                    } label: {
+                        HStack {
+                            Text("По рейтингу")
+                            if filters.order == "RATING" { Image(systemName: "checkmark") }
+                        }
+                    }
+                    Button {
+                        let generator = UIImpactFeedbackGenerator(style: .light)
+                        generator.prepare()
+                        generator.impactOccurred()
+                        filters.order = "YEAR"
+                    } label: {
+                        HStack {
+                            Text("По году выпуска")
+                            if filters.order == "YEAR" { Image(systemName: "checkmark") }
+                        }
+                    }
                 } label: {
                     HStack(spacing: 6) {
                         Text(currentSortTitle)

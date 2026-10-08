@@ -366,7 +366,26 @@ class SearchViewModel: ObservableObject {
                     } else {
                         let existing = Set(results.map(\.id))
                         let uniqueItems = newResults.filter { !existing.contains($0.id) }
-                        results.append(contentsOf: uniqueItems)
+                        var merged = results + uniqueItems
+                        if searchFilters.order == "YEAR" {
+                            merged.sort { a, b in
+                                let yearA = a.effectiveYear ?? 0
+                                let yearB = b.effectiveYear ?? 0
+                                if yearA != yearB { return yearA > yearB }
+                                let dateA = a.releaseDate ?? ""
+                                let dateB = b.releaseDate ?? ""
+                                if !dateA.isEmpty && !dateB.isEmpty && dateA != dateB { return dateA > dateB }
+                                return a.effectiveRating > b.effectiveRating
+                            }
+                        } else if searchFilters.order == "RATING" {
+                            merged.sort { a, b in
+                                let ratingA = a.effectiveRating
+                                let ratingB = b.effectiveRating
+                                if ratingA != ratingB { return ratingA > ratingB }
+                                return (a.effectiveYear ?? 0) > (b.effectiveYear ?? 0)
+                            }
+                        }
+                        results = merged
                     }
 
                     if saveHistory && !newResults.isEmpty && page == 1 {

@@ -566,7 +566,7 @@ struct MoviePosterCard: View {
                     .multilineTextAlignment(.leading)
                     .foregroundColor(.primary)
 
-                let yearStr = movie.year?.stringValue
+                let yearStr = movie.displayYear
                 let genreStr = movie.genres?.first?.name?.capitalized
                 
                 if let y = yearStr, let g = genreStr {
@@ -621,7 +621,7 @@ struct MoviePosterCard: View {
                         .allowsTightening(true)
                         .multilineTextAlignment(.leading)
                     
-                    let yearStr = movie.year?.stringValue
+                    let yearStr = movie.displayYear
                     let genreStr = movie.genres?.first?.name?.capitalized
                     
                     if let y = yearStr, let g = genreStr {
@@ -863,14 +863,31 @@ class HomeViewModel: ObservableObject {
             }
 
             if force {
-                if !newItems.isEmpty {
-                    cachedItems[key] = newItems
-                }
+                cachedItems[key] = newItems
             } else {
                 let currentItems = cachedItems[key] ?? []
                 let existingIds = Set(currentItems.map { $0.id })
                 let uniqueNewItems = newItems.filter { !existingIds.contains($0.id) }
-                cachedItems[key] = currentItems + uniqueNewItems
+                var merged = currentItems + uniqueNewItems
+                if key.searchFilters.order == "YEAR" {
+                    merged.sort { a, b in
+                        let yearA = a.effectiveYear ?? 0
+                        let yearB = b.effectiveYear ?? 0
+                        if yearA != yearB { return yearA > yearB }
+                        let dateA = a.releaseDate ?? ""
+                        let dateB = b.releaseDate ?? ""
+                        if !dateA.isEmpty && !dateB.isEmpty && dateA != dateB { return dateA > dateB }
+                        return a.effectiveRating > b.effectiveRating
+                    }
+                } else if key.searchFilters.order == "RATING" {
+                    merged.sort { a, b in
+                        let ratingA = a.effectiveRating
+                        let ratingB = b.effectiveRating
+                        if ratingA != ratingB { return ratingA > ratingB }
+                        return (a.effectiveYear ?? 0) > (b.effectiveYear ?? 0)
+                    }
+                }
+                cachedItems[key] = merged
             }
             cachedCursors[key] = cursor
             cachedCanLoadMore[key] = canLoad
@@ -1005,7 +1022,12 @@ class HomeViewModel: ObservableObject {
                     return try await MoviesRepository.shared.getTopMovies(page: cursor.page, force: force)
                 }
             case .tvShows:
-                return try await MoviesRepository.shared.getTopTv(page: cursor.page, force: force)
+                switch filter {
+                case .popular:
+                    return try await MoviesRepository.shared.getPopularTv(page: cursor.page, force: force)
+                case .topRated:
+                    return try await MoviesRepository.shared.getTopTv(page: cursor.page, force: force)
+                }
             case .cartoons:
                 return try await MoviesRepository.shared.getCartoons(page: cursor.page, force: force)
             case .anime:
@@ -1102,13 +1124,14 @@ class HomeViewModel: ObservableObject {
 
     private func filterValidItems(_ items: [MediaDto]) -> [MediaDto] {
         return items.filter { item in
-            let poster = item.poster ?? item.posterUrl ?? item.poster_path ?? ""
+            let poster = item.displayPosterUrl ?? item.poster ?? item.posterUrl ?? item.poster_path ?? ""
             let hasPoster = !poster.isEmpty && !poster.lowercased().contains("no-poster")
-            let hasTitle = !(item.title ?? item.name ?? "").isEmpty
-            let rating = item.rating ?? 0
+            let title = (item.title ?? item.name ?? item.originalTitle ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+            let hasTitle = !title.isEmpty
+            let rating = item.effectiveRating
             let hasValidRating = rating >= 0.0
             
-            return hasPoster && hasTitle && hasValidRating
+            return (hasPoster || item.isUnreleased) && hasTitle && hasValidRating
         }
     }
 
@@ -1117,9 +1140,9 @@ class HomeViewModel: ObservableObject {
         case .all, .anime:
             return items
         case .movies:
-            return items.filter { $0.type == "movie" && !isCartoon($0) }
+            return items.filter { $0.isMovieType && !isCartoon($0) }
         case .tvShows:
-            return items.filter { $0.type == "tv" && !isCartoon($0) }
+            return items.filter { $0.isTvType && !isCartoon($0) }
         case .cartoons:
             return items.filter { isCartoon($0) && !isAnime($0) }
         }

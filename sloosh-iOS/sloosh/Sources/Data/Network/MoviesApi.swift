@@ -384,6 +384,10 @@ class MoviesApi {
         return try await performRequest(endpoint: "api/v1/tv/top-rated", queryItems: [URLQueryItem(name: "page", value: String(page))])
     }
     
+    func getPopularTv(page: Int = 1) async throws -> ApiEnvelope<MediaResponse> {
+        return try await performRequest(endpoint: "api/v1/tv/popular", queryItems: [URLQueryItem(name: "page", value: String(page))])
+    }
+    
     func getCartoons(page: Int = 1) async throws -> ApiEnvelope<MediaResponse> {
         return try await performRequest(endpoint: "api/v1/cartoons", queryItems: [URLQueryItem(name: "page", value: String(page))])
     }
@@ -494,12 +498,20 @@ class MoviesApi {
             queryItems.append(URLQueryItem(name: "countries", value: countries))
         }
 
-        if let ratingFrom = filters.ratingFrom, ratingFrom > 1.0 {
+        if let ratingFrom = filters.ratingFrom, ratingFrom > 0 {
             queryItems.append(URLQueryItem(name: "ratingFrom", value: String(format: "%.1f", ratingFrom)))
         }
 
-        if let yearFrom = filters.yearFrom, yearFrom > 1980 {
+        if let ratingTo = filters.ratingTo, ratingTo > 0 {
+            queryItems.append(URLQueryItem(name: "ratingTo", value: String(format: "%.1f", ratingTo)))
+        }
+
+        if let yearFrom = filters.yearFrom, yearFrom >= 1880 {
             queryItems.append(URLQueryItem(name: "yearFrom", value: String(yearFrom)))
+        }
+
+        if let yearTo = filters.yearTo, yearTo >= 1880 {
+            queryItems.append(URLQueryItem(name: "yearTo", value: String(yearTo)))
         }
         
         // api/v2/search — серверный движок каталога с поддержкой параметров фильтров
