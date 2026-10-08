@@ -35,14 +35,14 @@ struct SearchFilterSheet: View {
     @State private var scrollOffset: CGFloat = 0
 
     private var blurOpacity: Double {
-        let progress = max(0, scrollOffset) / 20.0
+        let progress = max(0, scrollOffset) / 15.0
         return min(1.0, Double(progress))
     }
 
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 12) {
+                VStack(spacing: 10) {
                     // 1. Content Type (for Search context)
                     if context == .search {
                         typeSection
@@ -55,7 +55,7 @@ struct SearchFilterSheet: View {
                     ratingAndYearWheelCard
                 }
                 .padding(.horizontal, 16)
-                .padding(.top, 12)
+                .padding(.top, 8)
                 .padding(.bottom, 16)
             }
             .scrollBounceBehavior(.always)
@@ -70,8 +70,8 @@ struct SearchFilterSheet: View {
             .safeAreaInset(edge: .top, spacing: 0) {
                 headerBar
                     .padding(.horizontal, 16)
-                    .padding(.top, 14)
-                    .padding(.bottom, 8)
+                    .padding(.top, 10)
+                    .padding(.bottom, 6)
                     .background(
                         VariableBlurView(tintColor: .clear, tintOpacity: 0.0)
                             .padding(.bottom, -30)
@@ -82,7 +82,7 @@ struct SearchFilterSheet: View {
             }
             .background(Color.clear)
         }
-        .presentationDetents(context == .search ? [.height(520)] : [.height(436)])
+        .presentationDetents(context == .search ? [.height(460)] : [.height(385)])
         .presentationBackground { Color.clear.glassEffect(in: .rect) }
         .presentationDragIndicator(.visible)
     }
@@ -282,7 +282,7 @@ struct SearchFilterSheet: View {
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 10)
+            .padding(.vertical, 8)
 
             Divider()
                 .padding(.leading, 52)
@@ -362,7 +362,7 @@ struct SearchFilterSheet: View {
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 10)
+            .padding(.vertical, 8)
 
             Divider()
                 .padding(.leading, 52)
@@ -442,7 +442,7 @@ struct SearchFilterSheet: View {
                 }
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 10)
+            .padding(.vertical, 8)
         }
         .background(
             RoundedRectangle(cornerRadius: 22, style: .continuous)
@@ -529,7 +529,7 @@ struct SearchFilterSheet: View {
                 .frame(maxWidth: .infinity, alignment: .center)
             }
             .padding(.horizontal, 16)
-            .padding(.top, 12)
+            .padding(.top, 10)
 
             // Dual Wheel Drum
             HStack(spacing: 0) {
@@ -545,7 +545,7 @@ struct SearchFilterSheet: View {
 
                 Rectangle()
                     .fill(Color(UIColor.separator).opacity(0.3))
-                    .frame(width: 1, height: 72)
+                    .frame(width: 1, height: 68)
                     .padding(.horizontal, 4)
 
                 Picker("Год", selection: $filters.yearFrom) {
@@ -558,8 +558,8 @@ struct SearchFilterSheet: View {
                 .frame(maxWidth: .infinity)
                 .clipped()
             }
-            .frame(height: 116)
-            .padding(.bottom, 6)
+            .frame(height: 112)
+            .padding(.bottom, 4)
         }
         .background(
             RoundedRectangle(cornerRadius: 22, style: .continuous)
