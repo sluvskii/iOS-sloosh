@@ -11,6 +11,12 @@ public struct ClipsFeedView: View {
     @State private var activePlayer: AVPlayer?
     @State private var pipController: AVPictureInPictureController? = nil
     @State private var timeObserver: Any?
+    @State private var playerStatusObserver: NSKeyValueObservation?
+    @State private var playerTimeStatusObserver: NSKeyValueObservation?
+    @State private var resolvePlaybackTask: Task<Void, Never>?
+
+    @State private var isVideoReady: Bool = false
+    @State private var isResolving: Bool = false
     @State private var isMuted: Bool = false
     @State private var isPlaying: Bool = true
     @State private var showCommentsForClip: MovieClip?
@@ -47,6 +53,7 @@ public struct ClipsFeedView: View {
             await clipsRepo.fetchFeed()
             if currentClipId == nil, let first = clipsRepo.clips.first {
                 currentClipId = first.id
+                setupPlayer(for: first)
             }
         }
         .sheet(item: $showCommentsForClip) { clip in
@@ -87,7 +94,13 @@ public struct ClipsFeedView: View {
                 .padding(.horizontal, 40)
 
             Button {
-                Task { await clipsRepo.fetchFeed(forceRefresh: true) }
+                Task {
+                    await clipsRepo.fetchFeed(forceRefresh: true)
+                    if let first = clipsRepo.clips.first {
+                        currentClipId = first.id
+                        setupPlayer(for: first)
+                    }
+                }
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "arrow.clockwise")
@@ -132,11 +145,8 @@ public struct ClipsFeedView: View {
         let isCurrent = (currentClipId == clip.id)
 
         return ZStack {
-            // 1. Background Video Player or Poster Backdrop
-            if isCurrent, let player = activePlayer {
-                VideoLayerView(player: player, pipController: $pipController, videoGravity: .resizeAspectFill)
-                    .ignoresSafeArea()
-            } else if let backdrop = clip.backdropPath ?? clip.posterPath, let url = URL(string: backdrop) {
+            // 1. Base Layer: High-Res Backdrop/Poster (Always rendered underneath to eliminate black screen)
+            if let backdrop = clip.backdropPath ?? clip.posterPath, let url = URL(string: backdrop) {
                 AsyncCachedImage(url: url) {
                     Color.black
                 } content: { img in
@@ -151,10 +161,26 @@ public struct ClipsFeedView: View {
                 Color.black.ignoresSafeArea()
             }
 
-            // 2. Subtle Dark Gradient for text readability
+            // 2. Hardware Video Player Layer (Fades in smoothly when ready to play)
+            if isCurrent, let player = activePlayer {
+                VideoLayerView(player: player, pipController: $pipController, videoGravity: .resizeAspectFill)
+                    .ignoresSafeArea()
+                    .opacity(isVideoReady ? 1.0 : 0.0)
+                    .animation(.easeInOut(duration: 0.25), value: isVideoReady)
+            }
+
+            // 3. Loading spinner indicator while resolving or buffering
+            if isCurrent && (isResolving || !isVideoReady) {
+                ProgressView()
+                    .tint(.white)
+                    .scaleEffect(1.3)
+                    .shadow(color: .black.opacity(0.8), radius: 6)
+            }
+
+            // 4. Subtle Dark Gradient for top and bottom readability
             VStack {
                 LinearGradient(
-                    colors: [.black.opacity(0.6), .clear],
+                    colors: [.black.opacity(0.65), .clear],
                     startPoint: .top,
                     endPoint: .center
                 )
@@ -164,16 +190,16 @@ public struct ClipsFeedView: View {
                 Spacer()
 
                 LinearGradient(
-                    colors: [.clear, .black.opacity(0.4), .black.opacity(0.85)],
+                    colors: [.clear, .black.opacity(0.4), .black.opacity(0.88)],
                     startPoint: .top,
                     endPoint: .bottom
                 )
-                .frame(height: 320)
+                .frame(height: 340)
                 .ignoresSafeArea(edges: .bottom)
             }
             .allowsHitTesting(false)
 
-            // 3. Double-tap gesture layer for like & single-tap for pause/play
+            // 5. Double-tap gesture layer for like & single-tap for pause/play
             Color.clear
                 .contentShape(Rectangle())
                 .onTapGesture(count: 2, coordinateSpace: .local) { location in
@@ -183,8 +209,8 @@ public struct ClipsFeedView: View {
                     togglePlayPause()
                 }
 
-            // 4. Play/Pause Indicator
-            if !isPlaying && isCurrent {
+            // 6. Play/Pause Indicator
+            if !isPlaying && isCurrent && isVideoReady {
                 Image(systemName: "play.fill")
                     .font(.system(size: 48))
                     .foregroundStyle(.white.opacity(0.85))
@@ -195,7 +221,7 @@ public struct ClipsFeedView: View {
                     .allowsHitTesting(false)
             }
 
-            // 5. Big Heart Animation on Double-Tap
+            // 7. Big Heart Animation on Double-Tap
             if showBigHeart {
                 Image(systemName: "heart.fill")
                     .font(.system(size: 80))
@@ -208,7 +234,7 @@ public struct ClipsFeedView: View {
                     .allowsHitTesting(false)
             }
 
-            // 6. UI Overlays (Right Side Actions + Bottom Info)
+            // 8. UI Overlays (Top Bar + Bottom Info + Right Rail Actions)
             VStack {
                 // Top Bar
                 HStack {
@@ -247,9 +273,9 @@ public struct ClipsFeedView: View {
 
                 // Bottom Content
                 HStack(alignment: .bottom, spacing: 16) {
-                    // Left Info: Title, author, caption, CTA button
+                    // Left Info: Title, season/ep tags, caption, author, CTA button
                     VStack(alignment: .leading, spacing: 10) {
-                        // Film title & season/ep
+                        // Film title & tags
                         VStack(alignment: .leading, spacing: 4) {
                             Text(clip.title)
                                 .font(.system(size: 18, weight: .bold))
@@ -296,7 +322,7 @@ public struct ClipsFeedView: View {
                                 .foregroundStyle(.white.opacity(0.65))
                         }
 
-                        // KILLER BUTTON: «Смотреть фильм с этого момента»
+                        // KILLER BUTTON: «Смотреть с этого момента»
                         Button {
                             openFullMovie(clip: clip)
                         } label: {
@@ -318,7 +344,7 @@ public struct ClipsFeedView: View {
 
                     Spacer()
 
-                    // Right Rail Action Buttons (Like, Comments, Share)
+                    // Right Rail Action Buttons (Author Avatar, Like, Comments, Share)
                     VStack(spacing: 18) {
                         // Author Avatar
                         authorAvatarView(clip)
@@ -430,36 +456,66 @@ public struct ClipsFeedView: View {
         }
     }
 
-    // MARK: - Playback Logic
+    // MARK: - Dynamic Playback Logic
 
     private func setupPlayer(for clip: MovieClip) {
         cleanupActivePlayer()
+        isResolving = true
+        isVideoReady = false
 
-        guard let urlString = clip.streamUrl, let url = URL(string: urlString) else {
-            // If direct stream URL is not saved, resolve on the fly if needed
-            return
-        }
+        resolvePlaybackTask = Task { @MainActor in
+            guard let playUrl = await ClipStreamResolver.shared.resolveStreamUrl(for: clip) else {
+                self.isResolving = false
+                return
+            }
+            guard !Task.isCancelled, currentClipId == clip.id else { return }
 
-        let item = AVPlayerItem(url: url)
-        item.preferredForwardBufferDuration = 10.0
-        let player = AVPlayer(playerItem: item)
-        player.isMuted = isMuted
-        self.activePlayer = player
-        self.isPlaying = true
+            let item = AVPlayerItem(url: playUrl)
+            item.preferredForwardBufferDuration = 10.0
+            let player = AVPlayer(playerItem: item)
+            player.isMuted = isMuted
+            player.automaticallyWaitsToMinimizeStalling = true
+            self.activePlayer = player
+            self.isPlaying = true
 
-        let startCM = CMTime(seconds: clip.startTime, preferredTimescale: 600)
-        player.seek(to: startCM, toleranceBefore: .zero, toleranceAfter: .zero) { _ in
-            player.play()
-        }
+            let startCM = CMTime(seconds: clip.startTime, preferredTimescale: 600)
+            player.seek(to: startCM, toleranceBefore: .zero, toleranceAfter: .zero) { _ in
+                if !Task.isCancelled {
+                    player.play()
+                }
+            }
 
-        // Loop observer
-        let interval = CMTime(seconds: 0.25, preferredTimescale: 600)
-        timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak player] time in
-            guard let player = player else { return }
-            let currentSec = CMTimeGetSeconds(time)
-            if currentSec >= clip.endTime || currentSec < clip.startTime {
-                let sTime = CMTime(seconds: clip.startTime, preferredTimescale: 600)
-                player.seek(to: sTime, toleranceBefore: .zero, toleranceAfter: .zero)
+            // Observe item status
+            playerStatusObserver = item.observe(\.status, options: [.new]) { [weak self] observedItem, _ in
+                Task { @MainActor [weak self] in
+                    guard let self, self.currentClipId == clip.id else { return }
+                    if observedItem.status == .readyToPlay {
+                        self.isVideoReady = true
+                        self.isResolving = false
+                    }
+                }
+            }
+
+            // Observe timeControlStatus
+            playerTimeStatusObserver = player.observe(\.timeControlStatus, options: [.new]) { [weak self] observedPlayer, _ in
+                Task { @MainActor [weak self] in
+                    guard let self, self.currentClipId == clip.id else { return }
+                    if observedPlayer.timeControlStatus == .playing {
+                        self.isVideoReady = true
+                        self.isResolving = false
+                    }
+                }
+            }
+
+            // Loop observer strictly within clip range [startTime, endTime]
+            let interval = CMTime(seconds: 0.2, preferredTimescale: 600)
+            timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self, weak player] time in
+                guard let self, let player else { return }
+                let currentSec = CMTimeGetSeconds(time)
+                if currentSec >= clip.endTime || currentSec < max(0, clip.startTime - 1.0) {
+                    let sTime = CMTime(seconds: clip.startTime, preferredTimescale: 600)
+                    player.seek(to: sTime, toleranceBefore: .zero, toleranceAfter: .zero)
+                }
             }
         }
     }
@@ -493,12 +549,21 @@ public struct ClipsFeedView: View {
     }
 
     private func cleanupActivePlayer() {
+        resolvePlaybackTask?.cancel()
+        resolvePlaybackTask = nil
+        playerStatusObserver?.invalidate()
+        playerStatusObserver = nil
+        playerTimeStatusObserver?.invalidate()
+        playerTimeStatusObserver = nil
+
         if let observer = timeObserver, let player = activePlayer {
             player.removeTimeObserver(observer)
             timeObserver = nil
         }
         activePlayer?.pause()
         activePlayer = nil
+        isVideoReady = false
+        isResolving = false
     }
 
     private func triggerDoubleTapLike(for clip: MovieClip, at location: CGPoint) {
@@ -543,7 +608,7 @@ public struct ClipsFeedView: View {
             season: clip.season,
             episode: clip.episode,
             voiceover: clip.translationName,
-            streamUrl: clip.streamUrl,
+            streamUrl: nil, // Clear direct streamUrl so PlayerView resolves fresh session without 403 errors
             voices: clip.translationName != nil ? [clip.translationName!] : [],
             posterUrl: clip.posterPath,
             backdropUrl: clip.backdropPath,
