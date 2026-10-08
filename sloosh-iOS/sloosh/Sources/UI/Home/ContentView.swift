@@ -94,7 +94,7 @@ struct ContentView: View {
                 .tabBarMinimizeBehavior(tabBarMinimizeOnScroll ? .onScrollDown : .never)
                 .tint(Color.slooshAccent)
                 
-                if UIDevice.current.userInterfaceIdiom == .phone && proxy.safeAreaInsets.top > 20 {
+                if UIDevice.current.userInterfaceIdiom == .phone && proxy.safeAreaInsets.top > 20 && selectedTab != .clips {
                     // Telegram DeviceMetrics thresholds:
                     // Dynamic Island (iPhone 14 Pro/Max, 15, 16): statusBarHeight >= 54pt
                     // Standard Notch (iPhone X, XS, 11, 12, 13, 14): statusBarHeight >= 44pt
