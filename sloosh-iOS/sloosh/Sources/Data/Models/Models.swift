@@ -1515,6 +1515,7 @@ struct SearchFilters: Equatable, Hashable {
     var yearTo: Int?
     var genres: String?
     var countries: String?
+    var studio: String?
     
     var selectedGenres: Set<String> {
         get {
@@ -1545,6 +1546,6 @@ struct SearchFilters: Equatable, Hashable {
     }
 
     var isEmpty: Bool {
-        return type == nil && order == nil && ratingFrom == nil && ratingTo == nil && yearFrom == nil && yearTo == nil && genres == nil && countries == nil
+        return type == nil && order == nil && ratingFrom == nil && ratingTo == nil && yearFrom == nil && yearTo == nil && genres == nil && countries == nil && studio == nil
     }
 }
