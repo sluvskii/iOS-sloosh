@@ -93,6 +93,7 @@ struct PlayerView: View {
     let logoUrl: String?
     let streamSource: MediaStreamSource
     let episodeSubtitles: [EpisodeKey: [PlaybackSubtitle]]
+    let initialPlaybackTime: Double?
 
     @StateObject private var viewModel = PlayerViewModel()
     @Environment(\.dismiss) private var dismissEnv
@@ -116,7 +117,8 @@ struct PlayerView: View {
         backdropUrl: String? = nil,
         logoUrl: String? = nil,
         streamSource: MediaStreamSource = .source1,
-        episodeSubtitles: [EpisodeKey: [PlaybackSubtitle]] = [:]
+        episodeSubtitles: [EpisodeKey: [PlaybackSubtitle]] = [:],
+        initialPlaybackTime: Double? = nil
     ) {
         self.iframeUrl = iframeUrl
         self.fallbackTitle = fallbackTitle
@@ -137,6 +139,7 @@ struct PlayerView: View {
         self.logoUrl = logoUrl
         self.streamSource = streamSource
         self.episodeSubtitles = episodeSubtitles
+        self.initialPlaybackTime = initialPlaybackTime
     }
 
     init(config: PlayerConfig) {
@@ -159,7 +162,8 @@ struct PlayerView: View {
             backdropUrl: config.backdropUrl,
             logoUrl: config.logoUrl,
             streamSource: config.source,
-            episodeSubtitles: config.episodeSubtitles
+            episodeSubtitles: config.episodeSubtitles,
+            initialPlaybackTime: config.initialPlaybackTime
         )
     }
 
@@ -186,6 +190,12 @@ struct PlayerView: View {
             viewModel.logoUrl = logoUrl
             viewModel.streamSource = streamSource
             viewModel.episodeSubtitles = episodeSubtitles
+
+            if let initTime = initialPlaybackTime, initTime > 0 {
+                viewModel.pendingSeekPosition = initTime
+                viewModel.isInitialSeekPending = true
+                viewModel.currentTime = initTime
+            }
 
             if iframeUrl != nil || directStreamUrl != nil {
                 viewModel.load(
@@ -399,9 +409,17 @@ class PlayerViewModel: ObservableObject {
     private var currentIframeUrl: String?
     /// Все audioVariants из последнего resolve. Нужны для мгновенного переключения озвучки без re-resolve.
     private var resolvedAudioVariants: [[String: Any]] = []
-    private var isInitialSeekPending = false
-    private var pendingSeekPosition: Double?
+    var isInitialSeekPending = false
+    var pendingSeekPosition: Double?
     private var wasPlayingBeforeReload: Bool = false
+
+    public var activeIframeUrl: String? {
+        currentIframeUrl
+    }
+
+    public var activeStreamUrlString: String? {
+        originalStreamURL?.absoluteString ?? currentPlaybackSourceURL?.absoluteString ?? targetDirectStreamUrl
+    }
 
     var rootMediaKey: String? {
         if let key = mediaKey, !key.isEmpty {

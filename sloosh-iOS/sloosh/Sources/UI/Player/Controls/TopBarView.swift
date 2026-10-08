@@ -10,6 +10,7 @@ struct TopBarView: View {
     @ObservedObject var vm: PlayerViewModel
     let onDismiss: () -> Void
     @Binding var isInteracting: Bool
+    @State private var showClipTrimmer = false
     
     // Tips
 
@@ -20,11 +21,12 @@ struct TopBarView: View {
                 .padding(.horizontal, 148)
                 .allowsHitTesting(false)
 
-            // Левая группа: закрыть + (PiP | AirPlay)
+            // Левая группа: закрыть + (PiP | AirPlay) и правая группа: создать момент
             HStack(alignment: .center, spacing: 8) {
                 closeButton
                 dualActionsGroup
                 Spacer()
+                clipButton
             }
             .padding(.horizontal, 8)
         }
@@ -107,6 +109,44 @@ struct TopBarView: View {
         .frame(height: 44)
         .clipShape(Capsule())
         .glassEffect(.regular.interactive(), in: .capsule)
+    }
+
+    // MARK: - Создать момент (вырезать клип)
+
+    private var clipButton: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            vm.player?.pause()
+            showClipTrimmer = true
+        } label: {
+            Image(systemName: "scissors")
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 44, height: 44)
+                .contentShape(Circle())
+        }
+        .buttonStyle(.glassPress)
+        .glassEffect(.regular.interactive(), in: .circle)
+        .accessibilityLabel("Создать момент")
+        .sheet(isPresented: $showClipTrimmer) {
+            ClipTrimmerSheetView(
+                mediaId: vm.tmdbId ?? vm.currentKpId ?? 0,
+                mediaType: vm.isMovie ? "movie" : "tv",
+                title: vm.fallbackTitle,
+                posterPath: vm.posterUrl,
+                backdropPath: vm.backdropUrl,
+                logoPath: vm.logoUrl,
+                season: vm.currentSeason,
+                episode: vm.currentEpisode,
+                translationName: vm.currentTranslationName,
+                currentPlaybackTime: vm.currentTime,
+                totalDuration: vm.currentDuration,
+                streamUrl: vm.activeStreamUrlString,
+                iframeUrl: vm.activeIframeUrl,
+                kpId: vm.currentKpId,
+                tmdbId: vm.tmdbId
+            )
+        }
     }
 }
 
