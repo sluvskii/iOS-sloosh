@@ -368,6 +368,7 @@ class PlayerViewModel: ObservableObject {
 
     // MARK: - PiP
     @Published var isPiPActive = false
+    @Published var isShowingClipTrimmer = false
     var pipController: AVPictureInPictureController?
 
     // MARK: - Meta

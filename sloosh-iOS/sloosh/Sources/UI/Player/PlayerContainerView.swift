@@ -102,6 +102,25 @@ struct PlayerContainerView: View {
                 scheduleAutoHide()
             }
         }
+        .sheet(isPresented: $vm.isShowingClipTrimmer) {
+            ClipTrimmerSheetView(
+                mediaId: vm.tmdbId ?? vm.currentKpId ?? 0,
+                mediaType: vm.isMovie ? "movie" : "tv",
+                title: vm.fallbackTitle,
+                posterPath: vm.posterUrl,
+                backdropPath: vm.backdropUrl,
+                logoPath: vm.logoUrl,
+                season: vm.currentSeason,
+                episode: vm.currentEpisode,
+                translationName: vm.currentTranslationName,
+                currentPlaybackTime: vm.currentTime,
+                totalDuration: vm.currentDuration,
+                streamUrl: vm.activeStreamUrlString,
+                iframeUrl: vm.activeIframeUrl,
+                kpId: vm.currentKpId,
+                tmdbId: vm.tmdbId
+            )
+        }
         .gesture(
             MagnificationGesture()
                 .onEnded { val in
