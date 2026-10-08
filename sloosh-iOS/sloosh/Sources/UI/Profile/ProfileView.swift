@@ -21,9 +21,11 @@ enum FavoriteCategory: String, CaseIterable {
 struct ProfileView: View {
     @StateObject private var favoritesRepo = FavoritesRepository.shared
     @StateObject private var authRepo = AuthRepository.shared
+    @ObservedObject private var messengerRepo = MessengerRepository.shared
     @State private var selectedCategory: FavoriteCategory = .all
     @SceneStorage("profileShowsSettings") private var showsSettings = false
     @SceneStorage("profileShowsDownloads") private var showsDownloads = false
+    @State private var showsMessenger = false
     @State private var showAuthSheet = false
     @State private var showSignOutAlert = false
     @State private var showEditProfileSheet = false
@@ -128,8 +130,36 @@ struct ProfileView: View {
 
                             Spacer()
 
-                            // Двойная капсула: Загрузки + Настройки
+                            // Тройная капсула: Чаты + Загрузки + Настройки
                             HStack(spacing: 0) {
+                                Button {
+                                    let generator = UIImpactFeedbackGenerator(style: .medium)
+                                    generator.prepare()
+                                    generator.impactOccurred()
+                                    showsMessenger = true
+                                } label: {
+                                    ZStack(alignment: .topTrailing) {
+                                        Image(systemName: "bubble.left.and.bubble.right.fill")
+                                            .font(.system(size: 19, weight: .medium))
+                                            .foregroundStyle(.primary)
+                                            .frame(width: 44, height: 44)
+                                            .contentShape(Rectangle())
+
+                                        if messengerRepo.totalUnreadCount > 0 {
+                                            Text("\(messengerRepo.totalUnreadCount)")
+                                                .font(.system(size: 10, weight: .bold))
+                                                .foregroundStyle(.white)
+                                                .padding(.horizontal, 4)
+                                                .padding(.vertical, 1)
+                                                .background(Color.red)
+                                                .clipShape(Capsule())
+                                                .offset(x: -4, y: 6)
+                                        }
+                                    }
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel("Чаты")
+
                                 Button {
                                     let generator = UIImpactFeedbackGenerator(style: .medium)
                                     generator.prepare()
@@ -182,6 +212,9 @@ struct ProfileView: View {
                         .opacity(blurOpacity)
                         .animation(.easeInOut(duration: 0.2), value: blurOpacity)
                 )
+            }
+            .navigationDestination(isPresented: $showsMessenger) {
+                MessengerView()
             }
             .navigationDestination(isPresented: $showsDownloads) {
                 DownloadsView()

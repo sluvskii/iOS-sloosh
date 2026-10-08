@@ -4,7 +4,7 @@ import UIKit
 private enum AppTab: Hashable {
     case home
     case search
-    case messenger
+    case clips
     case continueWatching
     case profile
 }
@@ -73,13 +73,11 @@ struct ContentView: View {
                     } label: {
                         tabLabel("Поиск", systemImage: "magnifyingglass")
                     }
-                    Tab(value: .messenger) {
-                        MessengerView()
-                            .tint(Color.primary)
+                    Tab(value: .clips) {
+                        ClipsFeedView()
                     } label: {
-                        tabLabel("Чаты", systemImage: "bubble.left.and.bubble.right.fill")
+                        tabLabel("Моменты", systemImage: "sparkles.tv.fill")
                     }
-                    .badge(messengerRepo.totalUnreadCount)
                     Tab(value: .continueWatching) {
                         ContinueView()
                     } label: {

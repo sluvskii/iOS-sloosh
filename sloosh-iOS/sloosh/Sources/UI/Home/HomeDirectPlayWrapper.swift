@@ -21,19 +21,20 @@ struct PlayerConfig: Identifiable {
     let logoUrl: String?
     let source: MediaStreamSource
     let episodeSubtitles: [EpisodeKey: [PlaybackSubtitle]]
+    let initialPlaybackTime: Double?
 
     init(
         iframeUrl: String?,
         title: String,
-        kpId: Int?,
-        season: Int?,
-        episode: Int?,
-        voiceover: String?,
-        streamUrl: String?,
-        voices: [String],
-        subtitles: [PlaybackSubtitle],
-        quality: VideoQualityPreference?,
-        seriesResult: AllohaApiResult?,
+        kpId: Int? = nil,
+        season: Int? = nil,
+        episode: Int? = nil,
+        voiceover: String? = nil,
+        streamUrl: String? = nil,
+        voices: [String] = [],
+        subtitles: [PlaybackSubtitle] = [],
+        quality: VideoQualityPreference? = nil,
+        seriesResult: AllohaApiResult? = nil,
         customHeaders: [String: String]? = nil,
         mediaKey: String? = nil,
         tmdbId: Int? = nil,
@@ -41,7 +42,8 @@ struct PlayerConfig: Identifiable {
         backdropUrl: String? = nil,
         logoUrl: String? = nil,
         source: MediaStreamSource = .source1,
-        episodeSubtitles: [EpisodeKey: [PlaybackSubtitle]] = [:]
+        episodeSubtitles: [EpisodeKey: [PlaybackSubtitle]] = [:],
+        initialPlaybackTime: Double? = nil
     ) {
         self.iframeUrl = iframeUrl
         self.title = title
@@ -62,6 +64,7 @@ struct PlayerConfig: Identifiable {
         self.logoUrl = logoUrl
         self.source = source
         self.episodeSubtitles = episodeSubtitles
+        self.initialPlaybackTime = initialPlaybackTime
     }
 }
 
