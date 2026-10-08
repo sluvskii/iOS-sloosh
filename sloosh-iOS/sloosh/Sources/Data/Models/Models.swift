@@ -680,24 +680,6 @@ struct MediaDetailsDto: Codable {
         }
         return list
     }
-
-    var displayBackdropFocusX: CGFloat {
-        if let id = id,
-           let override = MediaOverridesRepository.shared.override(for: id, tmdbId: externalIds?.tmdb, kpId: externalIds?.kp),
-           let fx = override.backdropFocusX {
-            return CGFloat(max(0.0, min(1.0, fx)))
-        }
-        return 0.5
-    }
-
-    var displayBackdropFocusY: CGFloat {
-        if let id = id,
-           let override = MediaOverridesRepository.shared.override(for: id, tmdbId: externalIds?.tmdb, kpId: externalIds?.kp),
-           let fy = override.backdropFocusY {
-            return CGFloat(max(0.0, min(1.0, fy)))
-        }
-        return 0.5
-    }
     
     var previewBackdropUrl: String? {
         if let backdrop = backdrop, !backdrop.isEmpty {
