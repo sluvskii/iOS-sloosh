@@ -43,9 +43,26 @@ public final class ClipStreamResolver {
     }
 
     private func doResolve(clip: MovieClip) async -> URL? {
+        // 1. Direct stream URL: instant resolution (< 10ms) without spinning up a headless WKWebView
+        if let directStr = clip.streamUrl, !directStr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+           let directUrl = URL(string: directStr.trimmingCharacters(in: .whitespacesAndNewlines)) {
+            HlsProxyServer.shared.start(
+                headers: [:],
+                mediaId: "clip_\(clip.id)",
+                preferredVoiceName: clip.translationName
+            )
+            let finalUrl = proxiedPlaybackURL(for: directUrl) ?? directUrl
+            cache[clip.id] = CachedStream(
+                streamUrl: finalUrl,
+                headers: [:],
+                expiresAt: Date().addingTimeInterval(cacheTtl)
+            )
+            return finalUrl
+        }
+
         var targetIframe = clip.iframeUrl
 
-        // If iframeUrl is not directly present, query Alloha catalog
+        // 2. If iframeUrl is not directly present, query Alloha catalog
         if targetIframe == nil || targetIframe?.isEmpty == true {
             if let kpId = clip.kpId, kpId > 0 {
                 if let res = try? await AllohaRepository.shared.fetchByKpId(kpId: kpId, tmdbId: clip.tmdbId, title: clip.title) {
@@ -70,11 +87,6 @@ public final class ClipStreamResolver {
         }
 
         guard let iframe = targetIframe, !iframe.isEmpty else {
-            // Emergency fallback to direct streamUrl with proxy if available
-            if let directStr = clip.streamUrl, let directUrl = URL(string: directStr) {
-                HlsProxyServer.shared.start(headers: [:], mediaId: "clip_\(clip.id)")
-                return proxiedPlaybackURL(for: directUrl) ?? directUrl
-            }
             return nil
         }
 
