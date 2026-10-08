@@ -175,7 +175,7 @@ public struct ClipsFeedView: View {
             // 3. Double-tap gesture layer for like & single-tap for pause/play
             Color.clear
                 .contentShape(Rectangle())
-                .onTapGesture(count: 2) { location in
+                .onTapGesture(count: 2, coordinateSpace: .local) { location in
                     triggerDoubleTapLike(for: clip, at: location)
                 }
                 .onTapGesture(count: 1) {
