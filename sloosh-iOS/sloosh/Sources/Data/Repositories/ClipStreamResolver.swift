@@ -72,7 +72,7 @@ public final class ClipStreamResolver {
                                 ?? epObj.translations.first(where: { allohaTranslationNamesMatch($0.name, trName, exactOnly: false) }) {
                             targetIframe = tr.iframeUrl
                         } else {
-                            targetIframe = epObj.translations.first?.iframeUrl ?? epObj.iframeUrl
+                            targetIframe = epObj.translations.first?.iframeUrl
                         }
                     }
                 } else if let movie = res.movie {
