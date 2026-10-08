@@ -54,7 +54,7 @@ public final class ClipsRepository: ObservableObject {
         }
         defer { isLoading = false }
 
-        guard let url = await makeURL(path: "clips") else { return }
+        guard let url = await makeURL(path: "media_stats/clips") else { return }
 
         do {
             var request = URLRequest(url: url)
@@ -84,7 +84,7 @@ public final class ClipsRepository: ObservableObject {
     // MARK: - Publish Clip
 
     public func publishClip(_ clip: MovieClip) async throws {
-        guard let url = await makeURL(path: "clips/\(clip.id)") else {
+        guard let url = await makeURL(path: "media_stats/clips/\(clip.id)") else {
             throw URLError(.badURL)
         }
 
@@ -145,7 +145,7 @@ public final class ClipsRepository: ObservableObject {
 
         // Network sync
         Task {
-            if let likeUrl = await makeURL(path: "clips_likes/\(clipId)/\(userId)") {
+            if let likeUrl = await makeURL(path: "media_stats/clips_likes/\(clipId)/\(userId)") {
                 var likeReq = URLRequest(url: likeUrl)
                 likeReq.httpMethod = newIsLiked ? "PUT" : "DELETE"
                 if newIsLiked {
@@ -155,7 +155,7 @@ public final class ClipsRepository: ObservableObject {
                 _ = try? await URLSession.shared.data(for: likeReq)
             }
 
-            if let countUrl = await makeURL(path: "clips/\(clipId)/likesCount") {
+            if let countUrl = await makeURL(path: "media_stats/clips/\(clipId)/likesCount") {
                 var countReq = URLRequest(url: countUrl)
                 countReq.httpMethod = "PUT"
                 countReq.httpBody = try? JSONEncoder().encode(currentCount)
@@ -170,7 +170,7 @@ public final class ClipsRepository: ObservableObject {
     // MARK: - Comments
 
     public func fetchComments(for clipId: String) async -> [ClipComment] {
-        guard let url = await makeURL(path: "clips_comments/\(clipId)") else { return [] }
+        guard let url = await makeURL(path: "media_stats/clips_comments/\(clipId)") else { return [] }
 
         do {
             var request = URLRequest(url: url)
@@ -207,7 +207,7 @@ public final class ClipsRepository: ObservableObject {
             text: text
         )
 
-        guard let url = await makeURL(path: "clips_comments/\(clipId)/\(comment.id)") else {
+        guard let url = await makeURL(path: "media_stats/clips_comments/\(clipId)/\(comment.id)") else {
             throw URLError(.badURL)
         }
 
@@ -227,7 +227,7 @@ public final class ClipsRepository: ObservableObject {
             let newCount = clips[idx].commentsCount
             saveFeedToDisk(clips)
 
-            if let countUrl = await makeURL(path: "clips/\(clipId)/commentsCount") {
+            if let countUrl = await makeURL(path: "media_stats/clips/\(clipId)/commentsCount") {
                 var countReq = URLRequest(url: countUrl)
                 countReq.httpMethod = "PUT"
                 countReq.httpBody = try? JSONEncoder().encode(newCount)
@@ -242,7 +242,7 @@ public final class ClipsRepository: ObservableObject {
     // MARK: - Delete Clip
 
     public func deleteClip(clipId: String) async throws {
-        guard let url = await makeURL(path: "clips/\(clipId)") else {
+        guard let url = await makeURL(path: "media_stats/clips/\(clipId)") else {
             throw URLError(.badURL)
         }
 

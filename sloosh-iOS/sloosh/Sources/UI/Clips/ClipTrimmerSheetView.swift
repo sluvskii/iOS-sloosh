@@ -1,6 +1,5 @@
 import SwiftUI
 import UIKit
-import AVKit
 import Combine
 
 public struct ClipTrimmerSheetView: View {
@@ -29,11 +28,7 @@ public struct ClipTrimmerSheetView: View {
     @State private var endTime: Double
     @State private var caption: String = ""
     @State private var isPublishing: Bool = false
-    @State private var previewPlayer: AVPlayer?
-    @State private var pipController: AVPictureInPictureController? = nil
-    @State private var timeObserver: Any?
-    @State private var isMuted: Bool = false
-    @State private var isPlaying: Bool = true
+    @State private var publishErrorMessage: String? = nil
 
     private let minDuration: Double = 5.0
     private let maxDuration: Double = 60.0
@@ -76,7 +71,8 @@ public struct ClipTrimmerSheetView: View {
 
         // Default window: ±15 sec around current playback time
         let defaultStart = max(0.0, currentPlaybackTime - 15.0)
-        let defaultEnd = min(totalDuration > 0 ? totalDuration : currentPlaybackTime + 15.0, defaultStart + 30.0)
+        let resolvedTotal = totalDuration > 0 ? totalDuration : max(currentPlaybackTime + 60.0, 120.0)
+        let defaultEnd = min(resolvedTotal, defaultStart + 30.0)
         _startTime = State(initialValue: defaultStart)
         _endTime = State(initialValue: max(defaultStart + 10.0, defaultEnd))
     }
@@ -93,6 +89,10 @@ public struct ClipTrimmerSheetView: View {
         return String(format: "%02d:%02d – %02d:%02d", sMin, sSec, eMin, eSec)
     }
 
+    private var maxSliderBound: Double {
+        totalDuration > 0 ? totalDuration : max(currentPlaybackTime + 120.0, 300.0)
+    }
+
     public var body: some View {
         NavigationStack {
             ZStack {
@@ -100,12 +100,12 @@ public struct ClipTrimmerSheetView: View {
 
                 ScrollView {
                     VStack(spacing: 20) {
-                        // 1. Live Preview Video Box
-                        previewVideoCard
-                            .frame(height: 220)
-                            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        // 1. Hero Artwork Card
+                        heroArtworkCard
+                            .frame(height: 200)
+                            .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
                             .overlay(
-                                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                                RoundedRectangle(cornerRadius: 18, style: .continuous)
                                     .stroke(Color.white.opacity(0.12), lineWidth: 1)
                             )
                             .padding(.horizontal, 16)
@@ -123,7 +123,7 @@ public struct ClipTrimmerSheetView: View {
                             }
 
                             // Range Slider UI
-                            VStack(spacing: 12) {
+                            VStack(spacing: 14) {
                                 // Start Time Slider
                                 HStack(spacing: 10) {
                                     Text("Начало")
@@ -135,15 +135,13 @@ public struct ClipTrimmerSheetView: View {
                                         value: $startTime,
                                         in: 0...max(0, endTime - minDuration),
                                         step: 0.5
-                                    ) {
-                                        Text("Начало")
-                                    }
+                                    )
                                     .tint(Color.slooshAccent)
                                     .onChange(of: startTime) { _, newStart in
+                                        publishErrorMessage = nil
                                         if endTime - newStart > maxDuration {
                                             endTime = newStart + maxDuration
                                         }
-                                        seekPreviewToStart()
                                     }
 
                                     Text(formatSeconds(startTime))
@@ -161,13 +159,12 @@ public struct ClipTrimmerSheetView: View {
 
                                     Slider(
                                         value: $endTime,
-                                        in: (startTime + minDuration)...(totalDuration > 0 ? totalDuration : startTime + maxDuration),
+                                        in: (startTime + minDuration)...maxSliderBound,
                                         step: 0.5
-                                    ) {
-                                        Text("Конец")
-                                    }
+                                    )
                                     .tint(Color.slooshAccent)
                                     .onChange(of: endTime) { _, newEnd in
+                                        publishErrorMessage = nil
                                         if newEnd - startTime > maxDuration {
                                             startTime = max(0, newEnd - maxDuration)
                                         }
@@ -236,7 +233,7 @@ public struct ClipTrimmerSheetView: View {
                                 } fallback: {
                                     Color.white.opacity(0.1)
                                 }
-                                .frame(width: 40, height: 60)
+                                .frame(width: 44, height: 64)
                                 .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                             }
 
@@ -267,7 +264,26 @@ public struct ClipTrimmerSheetView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                         .padding(.horizontal, 16)
 
-                        // 5. Publish Button
+                        // 5. Error Banner (if any)
+                        if let error = publishErrorMessage {
+                            HStack(spacing: 8) {
+                                Image(systemName: "exclamationmark.triangle.fill")
+                                    .font(.system(size: 15))
+                                    .foregroundStyle(.red)
+                                Text(error)
+                                    .font(.system(size: 13, weight: .medium))
+                                    .foregroundStyle(.red.opacity(0.9))
+                                    .fixedSize(horizontal: false, vertical: true)
+                                Spacer()
+                            }
+                            .padding(12)
+                            .background(Color.red.opacity(0.12))
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .padding(.horizontal, 16)
+                            .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                        }
+
+                        // 6. Publish Button
                         Button {
                             publishMoment()
                         } label: {
@@ -290,7 +306,7 @@ public struct ClipTrimmerSheetView: View {
                         }
                         .disabled(isPublishing)
                         .padding(.horizontal, 16)
-                        .padding(.top, 6)
+                        .padding(.top, 4)
                         .padding(.bottom, 30)
                     }
                     .padding(.top, 16)
@@ -306,92 +322,82 @@ public struct ClipTrimmerSheetView: View {
                     .foregroundStyle(.white.opacity(0.8))
                 }
             }
-            .onAppear {
-                setupPreviewPlayer()
-            }
-            .onDisappear {
-                cleanupPlayer()
-            }
         }
+        .presentationDetents([.large])
         .preferredColorScheme(.dark)
         .environment(\.colorScheme, .dark)
     }
 
-    // MARK: - Preview Video Card
+    // MARK: - Hero Artwork Card
 
-    private var previewVideoCard: some View {
+    private var heroArtworkCard: some View {
         ZStack {
-            if let player = previewPlayer {
-                VideoLayerView(player: player, pipController: $pipController, videoGravity: .resizeAspectFill)
-                    .allowsHitTesting(false)
-            } else {
-                Color.black
-                ProgressView()
-                    .tint(.white)
-            }
-
-            // Overlay controls
-            VStack {
-                HStack {
-                    Spacer()
-                    Button {
-                        isMuted.toggle()
-                        previewPlayer?.isMuted = isMuted
-                    } label: {
-                        Image(systemName: isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
-                            .font(.system(size: 14, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .frame(width: 36, height: 36)
-                            .contentShape(Circle())
-                    }
-                    .buttonStyle(.glassPress)
-                    .glassEffect(.regular.interactive(), in: .circle)
-                    .padding(10)
+            if let backdrop = backdropPath ?? posterPath, let url = URL(string: backdrop) {
+                AsyncCachedImage(url: url) {
+                    Color.white.opacity(0.08)
+                } content: { img in
+                    Image(uiImage: img)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                } fallback: {
+                    Color.white.opacity(0.08)
                 }
+            } else {
+                Color.white.opacity(0.08)
+            }
+
+            // Cinematic Dark Gradients
+            LinearGradient(
+                colors: [Color.black.opacity(0.2), Color.black.opacity(0.75)],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+
+            // Center Info Overlay
+            VStack(spacing: 8) {
                 Spacer()
+
+                if let logo = logoPath, let url = URL(string: logo) {
+                    AsyncCachedImage(url: url) {
+                        Text(title)
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundStyle(.white)
+                    } content: { img in
+                        Image(uiImage: img)
+                            .resizable()
+                            .aspectRatio(contentMode: .fit)
+                            .frame(maxHeight: 44)
+                    } fallback: {
+                        Text(title)
+                            .font(.system(size: 18, weight: .bold))
+                            .foregroundStyle(.white)
+                    }
+                } else {
+                    Text(title)
+                        .font(.system(size: 18, weight: .bold))
+                        .foregroundStyle(.white)
+                        .shadow(color: .black.opacity(0.8), radius: 4)
+                }
+
+                // Timecode pill badge
+                HStack(spacing: 6) {
+                    Image(systemName: "scissors")
+                        .font(.system(size: 12, weight: .semibold))
+                    Text(formattedRange)
+                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                    Text("• \(Int(clipDuration)) сек")
+                        .font(.system(size: 13, weight: .medium))
+                }
+                .foregroundStyle(Color.slooshAccent)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 6)
+                .background(Color.black.opacity(0.65))
+                .clipShape(Capsule())
+                .overlay(Capsule().stroke(Color.white.opacity(0.15), lineWidth: 1))
+                .padding(.bottom, 14)
             }
+            .padding(.horizontal, 16)
         }
-    }
-
-    // MARK: - Playback Helpers
-
-    private func setupPreviewPlayer() {
-        guard let urlString = streamUrl, let url = URL(string: urlString) else { return }
-        let playerItem = AVPlayerItem(url: url)
-        let player = AVPlayer(playerItem: playerItem)
-        player.isMuted = isMuted
-        self.previewPlayer = player
-
-        let startCM = CMTime(seconds: startTime, preferredTimescale: 600)
-        player.seek(to: startCM, toleranceBefore: .zero, toleranceAfter: .zero) { _ in
-            player.play()
-        }
-
-        // Loop observer
-        let interval = CMTime(seconds: 0.25, preferredTimescale: 600)
-        timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak player] time in
-            guard let player = player else { return }
-            let currentSec = CMTimeGetSeconds(time)
-            if currentSec >= self.endTime || currentSec < self.startTime {
-                let sTime = CMTime(seconds: self.startTime, preferredTimescale: 600)
-                player.seek(to: sTime, toleranceBefore: .zero, toleranceAfter: .zero)
-            }
-        }
-    }
-
-    private func seekPreviewToStart() {
-        guard let player = previewPlayer else { return }
-        let startCM = CMTime(seconds: startTime, preferredTimescale: 600)
-        player.seek(to: startCM, toleranceBefore: .zero, toleranceAfter: .zero)
-    }
-
-    private func cleanupPlayer() {
-        if let observer = timeObserver, let player = previewPlayer {
-            player.removeTimeObserver(observer)
-            timeObserver = nil
-        }
-        previewPlayer?.pause()
-        previewPlayer = nil
     }
 
     private func formatSeconds(_ seconds: Double) -> String {
@@ -405,6 +411,7 @@ public struct ClipTrimmerSheetView: View {
     private func publishMoment() {
         guard !isPublishing else { return }
         isPublishing = true
+        publishErrorMessage = nil
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
 
         let user = authRepo.currentUser
@@ -438,12 +445,16 @@ public struct ClipTrimmerSheetView: View {
             do {
                 try await clipsRepo.publishClip(clip)
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
-                ToastManager.shared.show(title: "Момент успешно опубликован!", icon: "sparkles.tv.fill", iconColor: Color.slooshAccent)
-                onPublished?()
                 dismiss()
+                onPublished?()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+                    ToastManager.shared.show(title: "Момент опубликован в ленту! ✨", icon: "sparkles.tv.fill", iconColor: Color.slooshAccent)
+                }
             } catch {
                 UINotificationFeedbackGenerator().notificationOccurred(.error)
-                ToastManager.shared.show(title: "Ошибка публикации момента", icon: "exclamationmark.triangle.fill", iconColor: .red)
+                withAnimation {
+                    publishErrorMessage = "Не удалось сохранить момент. Проверьте подключение к сети."
+                }
                 isPublishing = false
             }
         }

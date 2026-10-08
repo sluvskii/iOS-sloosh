@@ -10,7 +10,6 @@ struct TopBarView: View {
     @ObservedObject var vm: PlayerViewModel
     let onDismiss: () -> Void
     @Binding var isInteracting: Bool
-    @State private var showClipTrimmer = false
     
     // Tips
 
@@ -117,7 +116,7 @@ struct TopBarView: View {
         Button {
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             vm.player?.pause()
-            showClipTrimmer = true
+            vm.isShowingClipTrimmer = true
         } label: {
             Image(systemName: "scissors")
                 .font(.system(size: 17, weight: .semibold))
@@ -128,25 +127,6 @@ struct TopBarView: View {
         .buttonStyle(.glassPress)
         .glassEffect(.regular.interactive(), in: .circle)
         .accessibilityLabel("Создать момент")
-        .sheet(isPresented: $showClipTrimmer) {
-            ClipTrimmerSheetView(
-                mediaId: vm.tmdbId ?? vm.currentKpId ?? 0,
-                mediaType: vm.isMovie ? "movie" : "tv",
-                title: vm.fallbackTitle,
-                posterPath: vm.posterUrl,
-                backdropPath: vm.backdropUrl,
-                logoPath: vm.logoUrl,
-                season: vm.currentSeason,
-                episode: vm.currentEpisode,
-                translationName: vm.currentTranslationName,
-                currentPlaybackTime: vm.currentTime,
-                totalDuration: vm.currentDuration,
-                streamUrl: vm.activeStreamUrlString,
-                iframeUrl: vm.activeIframeUrl,
-                kpId: vm.currentKpId,
-                tmdbId: vm.tmdbId
-            )
-        }
     }
 }
 
