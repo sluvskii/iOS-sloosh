@@ -132,7 +132,7 @@ public struct ClipsFeedView: View {
         return ZStack {
             // 1. Background Video Player or Poster Backdrop
             if isCurrent, let player = activePlayer {
-                CustomVideoLayerView(player: player)
+                VideoLayerView(player: player, pipController: .constant(nil), videoGravity: .resizeAspectFill)
                     .ignoresSafeArea()
             } else if let backdrop = clip.backdropPath ?? clip.posterPath, let url = URL(string: backdrop) {
                 AsyncCachedImage(url: url) {
@@ -549,33 +549,5 @@ public struct ClipsFeedView: View {
             initialPlaybackTime: clip.startTime
         )
         self.fullPlayerConfig = config
-    }
-}
-
-// MARK: - UIKit AVPlayerLayer Host for Fast Feed Rendering
-
-private struct CustomVideoLayerView: UIViewRepresentable {
-    let player: AVPlayer
-
-    func makeUIView(context: Context) -> PlayerUIView {
-        let view = PlayerUIView()
-        view.playerLayer.player = player
-        view.playerLayer.videoGravity = .resizeAspectFill
-        return view
-    }
-
-    func updateUIView(_ uiView: PlayerUIView, context: Context) {
-        if uiView.playerLayer.player !== player {
-            uiView.playerLayer.player = player
-        }
-    }
-
-    class PlayerUIView: UIView {
-        override static var layerClass: AnyClass {
-            AVPlayerLayer.self
-        }
-        var playerLayer: AVPlayerLayer {
-            layer as! AVPlayerLayer
-        }
     }
 }
