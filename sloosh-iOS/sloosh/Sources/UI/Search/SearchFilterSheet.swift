@@ -78,7 +78,7 @@ struct SearchFilterSheet: View {
             .safeAreaInset(edge: .top, spacing: 0) {
                 headerBar
                     .padding(.horizontal, 16)
-                    .padding(.top, 8)
+                    .padding(.top, 14)
                     .padding(.bottom, -6)
                     .background(
                         VariableBlurView(tintColor: .clear, tintOpacity: 0.0)
@@ -90,7 +90,7 @@ struct SearchFilterSheet: View {
             }
             .background(Color.clear)
         }
-        .presentationDetents(context == .search ? [.height(550)] : [.height(466)])
+        .presentationDetents(context == .search ? [.height(568)] : [.height(484)])
         .presentationBackground { Color.clear.glassEffect(in: .rect) }
         .presentationDragIndicator(.visible)
     }
