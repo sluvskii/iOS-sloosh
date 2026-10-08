@@ -29,6 +29,7 @@ public struct ClipTrimmerSheetView: View {
     @State private var caption: String = ""
     @State private var isPublishing: Bool = false
     @State private var previewPlayer: AVPlayer?
+    @State private var pipController: AVPictureInPictureController? = nil
     @State private var timeObserver: Any?
     @State private var isMuted: Bool = false
     @State private var isPlaying: Bool = true
@@ -320,8 +321,8 @@ public struct ClipTrimmerSheetView: View {
     private var previewVideoCard: some View {
         ZStack {
             if let player = previewPlayer {
-                VideoPlayer(player: player)
-                    .disabled(true)
+                VideoLayerView(player: player, pipController: $pipController, videoGravity: .resizeAspectFill)
+                    .allowsHitTesting(false)
             } else {
                 Color.black
                 ProgressView()
