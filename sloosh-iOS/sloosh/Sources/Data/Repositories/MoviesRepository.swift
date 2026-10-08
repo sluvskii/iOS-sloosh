@@ -8,6 +8,7 @@ class MoviesRepository: ObservableObject {
     // MARK: - List caches (in-memory, session-scoped)
     private var popularCache: [Int: [MediaDto]] = [:]
     private var topMoviesCache: [Int: [MediaDto]] = [:]
+    private var popularTvCache: [Int: [MediaDto]] = [:]
     private var topTvCache: [Int: [MediaDto]] = [:]
     private var cartoonsCache: [Int: [MediaDto]] = [:]
     private var popularAnimeCache: [Int: [MediaDto]] = [:]
@@ -40,6 +41,7 @@ class MoviesRepository: ObservableObject {
     func clearMemoryCache() {
         popularCache.removeAll()
         topMoviesCache.removeAll()
+        popularTvCache.removeAll()
         topTvCache.removeAll()
         cartoonsCache.removeAll()
         popularAnimeCache.removeAll()
@@ -134,6 +136,28 @@ class MoviesRepository: ObservableObject {
             }
             throw error
         }
+    }
+
+    func getPopularTv(page: Int = 1, force: Bool = false) async throws -> [MediaDto] {
+        if !force {
+            if let cached = popularTvCache[page] { return cached }
+            if let diskCached = await listDiskCache.load(key: "tv_popular_\(page)") {
+                popularTvCache[page] = diskCached
+                return diskCached
+            }
+        }
+        do {
+            let response = try await MoviesApi.shared.getPopularTv(page: page)
+            let results = response.data?.results ?? []
+            if !results.isEmpty {
+                popularTvCache[page] = results
+                await listDiskCache.save(results, key: "tv_popular_\(page)")
+                return results
+            }
+        } catch {
+            // Fallback to top TV if popular endpoint is unavailable
+        }
+        return try await getTopTv(page: page, force: force)
     }
 
     func getCartoons(page: Int = 1, force: Bool = false) async throws -> [MediaDto] {
@@ -369,12 +393,35 @@ class MoviesRepository: ObservableObject {
                 return MediaResponse(page: page, results: [], pages: 1, total: 0, total_pages: 1, total_results: 0)
             }
             
-            // Если заданы фильтры, мягко фильтруем результаты поиска на клиенте
+            // Если заданы фильтры, фильтруем результаты поиска на клиенте
             guard !filters.isEmpty, let rawResults = data.results else {
                 return data
             }
             
-            let filteredResults = applyFilters(rawResults, filters: filters)
+            var filteredResults = applyFilters(rawResults, filters: filters)
+            if filteredResults.isEmpty && !rawResults.isEmpty && (filters.genres != nil || filters.type != nil) {
+                filteredResults = rawResults
+            }
+
+            if filters.order == "YEAR" {
+                filteredResults.sort { a, b in
+                    let yearA = a.effectiveYear ?? 0
+                    let yearB = b.effectiveYear ?? 0
+                    if yearA != yearB { return yearA > yearB }
+                    let dateA = a.releaseDate ?? ""
+                    let dateB = b.releaseDate ?? ""
+                    if !dateA.isEmpty && !dateB.isEmpty && dateA != dateB { return dateA > dateB }
+                    return a.effectiveRating > b.effectiveRating
+                }
+            } else if filters.order == "RATING" {
+                filteredResults.sort { a, b in
+                    let ratingA = a.effectiveRating
+                    let ratingB = b.effectiveRating
+                    if ratingA != ratingB { return ratingA > ratingB }
+                    return (a.effectiveYear ?? 0) > (b.effectiveYear ?? 0)
+                }
+            }
+
             return MediaResponse(
                 page: data.page,
                 results: filteredResults,
@@ -390,13 +437,35 @@ class MoviesRepository: ObservableObject {
                 return MediaResponse(page: page, results: [], pages: 1, total: 0, total_pages: 1, total_results: 0)
             }
             
-            // Дополнительная клиентская фильтрация (например, по точному порогу рейтинга или года)
+            // Дополнительная клиентская фильтрация и точная сортировка
             if let rawResults = data.results {
-                let filteredResults = applyFilters(rawResults, filters: filters)
-                let finalResults = (filteredResults.isEmpty && !rawResults.isEmpty && filters.genres != nil) ? rawResults : filteredResults
+                var filteredResults = applyFilters(rawResults, filters: filters)
+                if filteredResults.isEmpty && !rawResults.isEmpty && (filters.genres != nil || filters.type != nil) {
+                    filteredResults = rawResults
+                }
+
+                if filters.order == "YEAR" {
+                    filteredResults.sort { a, b in
+                        let yearA = a.effectiveYear ?? 0
+                        let yearB = b.effectiveYear ?? 0
+                        if yearA != yearB { return yearA > yearB }
+                        let dateA = a.releaseDate ?? ""
+                        let dateB = b.releaseDate ?? ""
+                        if !dateA.isEmpty && !dateB.isEmpty && dateA != dateB { return dateA > dateB }
+                        return a.effectiveRating > b.effectiveRating
+                    }
+                } else if filters.order == "RATING" {
+                    filteredResults.sort { a, b in
+                        let ratingA = a.effectiveRating
+                        let ratingB = b.effectiveRating
+                        if ratingA != ratingB { return ratingA > ratingB }
+                        return (a.effectiveYear ?? 0) > (b.effectiveYear ?? 0)
+                    }
+                }
+
                 return MediaResponse(
                     page: data.page,
-                    results: finalResults,
+                    results: filteredResults,
                     pages: data.pages,
                     total: data.total,
                     total_pages: data.total_pages,
@@ -474,13 +543,14 @@ class MoviesRepository: ObservableObject {
         }
 
         // 2. Rating check: valid rating (at least 5.0) or recent release
-        if let rating = item.rating, rating > 0 {
-            if rating < 5.0 {
+        let effRating = item.effectiveRating
+        if effRating > 0 {
+            if effRating < 5.0 {
                 return false
             }
         } else {
             let currentYear = Calendar.current.component(.year, from: Date())
-            let itemYear = item.year?.intValue ?? Int(item.year?.stringValue ?? "") ?? 0
+            let itemYear = item.effectiveYear ?? 0
             if itemYear < currentYear - 1 {
                 return false
             }
@@ -488,11 +558,7 @@ class MoviesRepository: ObservableObject {
 
         // 3. Year check: must have a valid release year (not in distant future or missing)
         let currentYear = Calendar.current.component(.year, from: Date())
-        if let year = item.year?.intValue {
-            if year < 1930 || year > currentYear + 1 {
-                return false
-            }
-        } else if let yearStr = item.year?.stringValue, let year = Int(yearStr) {
+        if let year = item.effectiveYear {
             if year < 1930 || year > currentYear + 1 {
                 return false
             }
@@ -570,9 +636,9 @@ class MoviesRepository: ObservableObject {
             if let type = filters.type {
                 switch type {
                 case "FILM", "movie":
-                    if item.type != "movie" || (isCartoon(item) && !isAnime(item)) { return false }
+                    if !item.isMovieType || (isCartoon(item) && !isAnime(item)) { return false }
                 case "TV_SERIES", "tv":
-                    if item.type != "tv" || (isCartoon(item) && !isAnime(item)) { return false }
+                    if !item.isTvType || (isCartoon(item) && !isAnime(item)) { return false }
                 case "CARTOON", "cartoon":
                     if !isCartoon(item) || isAnime(item) { return false }
                 case "ANIME", "anime":
@@ -583,30 +649,28 @@ class MoviesRepository: ObservableObject {
             }
             
             // Фильтр по рейтингу
+            let rating = item.effectiveRating
             if let minRating = filters.ratingFrom {
-                let rating = item.rating ?? item.ratings?.kp ?? item.ratings?.imdb ?? 0.0
                 if rating < minRating { return false }
             }
             if let maxRating = filters.ratingTo {
-                let rating = item.rating ?? item.ratings?.kp ?? item.ratings?.imdb ?? 0.0
                 if rating > maxRating { return false }
             }
             
             // Фильтр по году
-            let parsedYear: Int? = {
-                guard let y = item.year else { return nil }
-                switch y {
-                case .int(let val): return val
-                case .string(let str): return Int(str)
-                case .double(let dbl): return Int(dbl)
+            if let minYear = filters.yearFrom {
+                if let year = item.effectiveYear {
+                    if year < minYear { return false }
+                } else {
+                    return false
                 }
-            }()
-            
-            if let minYear = filters.yearFrom, let year = parsedYear {
-                if year < minYear { return false }
             }
-            if let maxYear = filters.yearTo, let year = parsedYear {
-                if year > maxYear { return false }
+            if let maxYear = filters.yearTo {
+                if let year = item.effectiveYear {
+                    if year > maxYear { return false }
+                } else {
+                    return false
+                }
             }
             
             // Фильтр по жанрам

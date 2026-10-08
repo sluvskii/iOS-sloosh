@@ -220,6 +220,74 @@ struct MediaDto: Codable, Identifiable {
         return displayPosterUrl
     }
 
+    var effectiveYear: Int? {
+        if let y = year?.intValue, y > 1880, y < 2100 {
+            return y
+        }
+        if let yStr = year?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) {
+            if let y = Int(yStr), y > 1880, y < 2100 {
+                return y
+            }
+            if yStr.count >= 4, let y = Int(yStr.prefix(4)), y > 1880, y < 2100 {
+                return y
+            }
+        }
+        if let rel = releaseDate?.trimmingCharacters(in: .whitespacesAndNewlines), rel.count >= 4 {
+            let prefix = String(rel.prefix(4))
+            if let y = Int(prefix), y > 1880, y < 2100 {
+                return y
+            }
+        }
+        return nil
+    }
+
+    var displayYear: String? {
+        if let y = effectiveYear {
+            return String(y)
+        }
+        return nil
+    }
+
+    var effectiveRating: Double {
+        if let r = rating, r > 0 { return r }
+        if let kp = ratings?.kp, kp > 0 { return kp }
+        if let imdb = ratings?.imdb, imdb > 0 { return imdb }
+        if let tmdb = ratings?.tmdb, tmdb > 0 { return tmdb }
+        return 0.0
+    }
+
+    var isMovieType: Bool {
+        if let t = type?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+            if t == "movie" || t == "film" || t == "cinema" {
+                return true
+            }
+            if t == "tv" || t == "tv_series" || t == "series" || t == "mini_series" || t == "show" || t == "serial" {
+                return false
+            }
+        }
+        if let origId = originalId?.stringValue {
+            if origId.hasPrefix("tv_") { return false }
+            if origId.hasPrefix("movie_") { return true }
+        }
+        return true
+    }
+
+    var isTvType: Bool {
+        if let t = type?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+            if t == "tv" || t == "tv_series" || t == "series" || t == "mini_series" || t == "show" || t == "serial" {
+                return true
+            }
+            if t == "movie" || t == "film" || t == "cinema" {
+                return false
+            }
+        }
+        if let origId = originalId?.stringValue {
+            if origId.hasPrefix("tv_") { return true }
+            if origId.hasPrefix("movie_") { return false }
+        }
+        return false
+    }
+
     var isUnreleased: Bool {
         if let releaseDate = releaseDate, !releaseDate.isEmpty {
             let isoFormatter = ISO8601DateFormatter()
@@ -234,7 +302,7 @@ struct MediaDto: Codable, Identifiable {
                 return date > Date()
             }
         }
-        if let yearInt = year?.intValue {
+        if let yearInt = effectiveYear {
             let currentYear = Calendar.current.component(.year, from: Date())
             if yearInt > currentYear {
                 return true
