@@ -13,6 +13,7 @@ final class ClipPlaybackCoordinator: ObservableObject {
     @Published var isPlaying: Bool = true
     @Published var isMuted: Bool = false
     @Published var clipProgress: Double = 0.0
+    @Published var hasError: Bool = false
 
     private var currentClipId: String?
     private var timeObserver: Any?
@@ -20,26 +21,32 @@ final class ClipPlaybackCoordinator: ObservableObject {
     private var playerTimeStatusObserver: NSKeyValueObservation?
     private var resolvePlaybackTask: Task<Void, Never>?
     private var didPerformInitialSeek: Bool = false
+    private var retryCount: Int = 0
 
-    func setupPlayer(for clip: MovieClip) {
+    func setupPlayer(for clip: MovieClip, isRetry: Bool = false) {
         cleanup()
         currentClipId = clip.id
         isResolving = true
         isVideoReady = false
+        hasError = false
         clipProgress = 0.0
         didPerformInitialSeek = false
+        if !isRetry {
+            retryCount = 0
+        }
 
         resolvePlaybackTask = Task { [weak self] in
             guard let self else { return }
-            guard let playUrl = await ClipStreamResolver.shared.resolveStreamUrl(for: clip) else {
+            guard let playbackInfo = await ClipStreamResolver.shared.resolveClip(for: clip) else {
                 self.isResolving = false
+                self.hasError = true
                 return
             }
             guard !Task.isCancelled, self.currentClipId == clip.id else { return }
 
-            let asset = AVURLAsset(url: playUrl)
+            let asset = AVURLAsset(url: playbackInfo.url, options: ["AVURLAssetHTTPHeaderFieldsKey": playbackInfo.headers])
             let item = AVPlayerItem(asset: asset)
-            item.preferredForwardBufferDuration = 5.0
+            item.preferredForwardBufferDuration = 3.0
 
             let player = AVPlayer(playerItem: item)
             player.isMuted = self.isMuted
@@ -55,6 +62,7 @@ final class ClipPlaybackCoordinator: ObservableObject {
                     if observedItem.status == .readyToPlay {
                         self.isResolving = false
                         self.isVideoReady = true
+                        self.hasError = false
 
                         if !self.didPerformInitialSeek {
                             self.didPerformInitialSeek = true
@@ -71,7 +79,14 @@ final class ClipPlaybackCoordinator: ObservableObject {
                         }
                     } else if observedItem.status == .failed {
                         print("[ClipPlayback] AVPlayerItem failed: \(String(describing: observedItem.error))")
-                        self.isResolving = false
+                        if self.retryCount < 1 {
+                            self.retryCount += 1
+                            ClipStreamResolver.shared.invalidate(clipId: clip.id)
+                            self.setupPlayer(for: clip, isRetry: true)
+                        } else {
+                            self.isResolving = false
+                            self.hasError = true
+                        }
                     }
                 }
             }
@@ -83,6 +98,7 @@ final class ClipPlaybackCoordinator: ObservableObject {
                     if observedPlayer.timeControlStatus == .playing {
                         self.isVideoReady = true
                         self.isResolving = false
+                        self.hasError = false
                     }
                 }
             }
@@ -156,6 +172,7 @@ final class ClipPlaybackCoordinator: ObservableObject {
         activePlayer = nil
         isVideoReady = false
         isResolving = false
+        hasError = false
         clipProgress = 0.0
         didPerformInitialSeek = false
     }
@@ -334,11 +351,38 @@ public struct ClipsFeedView: View {
             }
 
             // 3. Loading Spinner Indicator (subtle, centered)
-            if isCurrent && (playback.isResolving || !playback.isVideoReady) {
+            if isCurrent && (playback.isResolving || !playback.isVideoReady) && !playback.hasError {
                 ProgressView()
                     .tint(.white)
                     .scaleEffect(1.2)
                     .shadow(color: .black.opacity(0.8), radius: 6)
+            }
+
+            // 3b. Playback Error & Retry Indicator
+            if isCurrent && playback.hasError {
+                Button {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    playback.setupPlayer(for: clip, isRetry: false)
+                } label: {
+                    VStack(spacing: 8) {
+                        Image(systemName: "arrow.clockwise.circle.fill")
+                            .font(.system(size: 38))
+                            .foregroundStyle(.white)
+
+                        Text("Ошибка загрузки")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundStyle(.white)
+
+                        Text("Нажмите, чтобы повторить")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundStyle(Color.slooshAccent)
+                    }
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 14)
+                    .background(Color.black.opacity(0.65))
+                    .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 16))
+                }
+                .buttonStyle(.plain)
             }
 
             // 4. Cinematic Dark Gradients for Readability
@@ -691,7 +735,7 @@ public struct ClipsFeedView: View {
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
 
         let config = PlayerConfig(
-            iframeUrl: clip.iframeUrl,
+            iframeUrl: nil,
             title: clip.title,
             kpId: clip.kpId,
             season: clip.season,
@@ -699,6 +743,7 @@ public struct ClipsFeedView: View {
             voiceover: clip.translationName,
             streamUrl: nil,
             voices: clip.translationName != nil ? [clip.translationName!] : [],
+            tmdbId: clip.tmdbId,
             posterUrl: clip.posterPath,
             backdropUrl: clip.backdropPath,
             logoUrl: clip.logoPath,

@@ -197,7 +197,7 @@ struct PlayerView: View {
                 viewModel.currentTime = initTime
             }
 
-            if iframeUrl != nil || directStreamUrl != nil {
+            if iframeUrl != nil || directStreamUrl != nil || (kpId != nil && kpId! > 0) || (tmdbId != nil && tmdbId! > 0) {
                 viewModel.load(
                     iframeUrl: iframeUrl,
                     kpId: kpId,
@@ -744,7 +744,10 @@ class PlayerViewModel: ObservableObject {
         self.isAdvancingToNextEpisode = false
         self.hasRetriedPlayback = false
         self.wasPlayingBeforeReload = true
-        if let mediaId = self.currentMediaId {
+        if self.isInitialSeekPending, let initSeek = self.pendingSeekPosition, initSeek > 0 {
+            self.currentTime = initSeek
+            logDebug("beginLoad: preserved explicit initial seek to \(initSeek)s")
+        } else if let mediaId = self.currentMediaId {
             let saved = PlaybackProgressStore.shared.load(mediaId: mediaId)
             if saved > 2 {
                 self.pendingSeekPosition = saved
@@ -840,6 +843,51 @@ class PlayerViewModel: ObservableObject {
             }
         } else if let iframe = iframeUrl, !iframe.isEmpty {
             startParsing(iframeUrl: iframe, voices: voices, subtitles: subtitles)
+        } else if (kpId != nil && kpId! > 0) || (tmdbId != nil && tmdbId! > 0) {
+            // Dynamic fetch from AllohaRepository if iframeUrl was not provided
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                do {
+                    let res = try await AllohaRepository.shared.fetchByKpId(kpId: kpId ?? 0, tmdbId: tmdbId, title: self.fallbackTitle)
+                    self.seriesResult = res
+                    var targetIframe: String? = nil
+                    var availableVoices: [String] = []
+                    if let s = season, let e = episode,
+                       let seasonObj = res.seasons.first(where: { $0.season == s }),
+                       let epObj = seasonObj.episodes.first(where: { $0.episode == e }) {
+                        availableVoices = epObj.translations.map { $0.name }
+                        if let trName = selectedVoiceover,
+                           let tr = epObj.translations.first(where: { allohaTranslationNamesMatch($0.name, trName, exactOnly: true) })
+                                ?? epObj.translations.first(where: { allohaTranslationNamesMatch($0.name, trName, exactOnly: false) }) {
+                            targetIframe = tr.iframeUrl
+                        } else {
+                            targetIframe = epObj.translations.first?.iframeUrl ?? epObj.iframeUrl
+                        }
+                    } else if let movie = res.movie {
+                        availableVoices = movie.translations.map { $0.name }
+                        if let trName = selectedVoiceover,
+                           let tr = movie.translations.first(where: { allohaTranslationNamesMatch($0.name, trName, exactOnly: true) })
+                                ?? movie.translations.first(where: { allohaTranslationNamesMatch($0.name, trName, exactOnly: false) }) {
+                            targetIframe = tr.iframeUrl
+                        } else {
+                            targetIframe = movie.translations.first?.iframeUrl ?? movie.iframeUrl
+                        }
+                    }
+                    if self.availableVoiceovers.isEmpty {
+                        self.availableVoiceovers = availableVoices
+                    }
+                    guard let iframe = targetIframe, !iframe.isEmpty else {
+                        self.error = "Видео не найдено"
+                        self.isLoading = false
+                        return
+                    }
+                    self.currentIframeUrl = iframe
+                    self.startParsing(iframeUrl: iframe, voices: availableVoices, subtitles: subtitles)
+                } catch {
+                    self.error = "Не удалось загрузить видео: \(error.localizedDescription)"
+                    self.isLoading = false
+                }
+            }
         } else {
             error = "Нет URL для воспроизведения"
             isLoading = false

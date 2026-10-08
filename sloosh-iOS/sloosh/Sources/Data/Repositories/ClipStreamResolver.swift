@@ -1,26 +1,37 @@
 import Foundation
 import AVKit
 
+public struct ResolvedClipPlayback: Sendable {
+    public let url: URL
+    public let headers: [String: String]
+
+    public init(url: URL, headers: [String: String]) {
+        self.url = url
+        self.headers = headers
+    }
+}
+
 @MainActor
 public final class ClipStreamResolver {
     public static let shared = ClipStreamResolver()
 
-    private var cache: [String: URL] = [:]
+    private var cache: [String: (playback: ResolvedClipPlayback, expiresAt: Date)] = [:]
     private let cacheTtl: TimeInterval = 600 // 10 minutes TTL
-    private var activeTasks: [String: Task<URL?, Never>] = [:]
+    private var activeTasks: [String: Task<ResolvedClipPlayback?, Never>] = [:]
 
     private init() {}
 
-    /// Resolves fresh authorized playback URL for a MovieClip through local HlsProxyServer
-    public func resolveStreamUrl(for clip: MovieClip) async -> URL? {
+    /// Invalidate cache for a specific clip ID
+    public func invalidate(clipId: String) {
+        cache.removeValue(forKey: clipId)
+    }
+
+    /// Resolves fresh authorized playback stream for a MovieClip without proxy collision
+    public func resolveClip(for clip: MovieClip) async -> ResolvedClipPlayback? {
+        let now = Date()
         // 1. Check in-memory cache
-        if let cached = cache[clip.id] {
-            HlsProxyServer.shared.start(
-                headers: ["Referer": "https://api.alloha.tv/"],
-                mediaId: "clip_\(clip.id)",
-                preferredVoiceName: clip.translationName
-            )
-            return cached
+        if let cached = cache[clip.id], cached.expiresAt > now {
+            return cached.playback
         }
 
         // 2. Inflight task deduplication
@@ -28,121 +39,103 @@ public final class ClipStreamResolver {
             return await existing.value
         }
 
-        let task = Task<URL?, Never> { @MainActor in
+        let task = Task<ResolvedClipPlayback?, Never> { @MainActor in
             defer { activeTasks.removeValue(forKey: clip.id) }
             return await doResolve(clip: clip)
         }
         activeTasks[clip.id] = task
-        return await task.value
+        let result = await task.value
+        if let result {
+            cache[clip.id] = (playback: result, expiresAt: Date().addingTimeInterval(cacheTtl))
+        }
+        return result
     }
 
-    private func doResolve(clip: MovieClip) async -> URL? {
-        // 1. Direct stream URL: instant resolution (< 5ms) via local HLS proxy
-        if let directStr = clip.streamUrl, !directStr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-           let directUrl = URL(string: directStr.trimmingCharacters(in: .whitespacesAndNewlines)) {
-            let realUrl = extractRealUrl(from: directUrl)
-            HlsProxyServer.shared.start(
-                headers: ["Referer": "https://api.alloha.tv/"],
-                mediaId: "clip_\(clip.id)",
-                preferredVoiceName: clip.translationName
-            )
-            let finalUrl = proxiedPlaybackURL(for: realUrl) ?? realUrl
-            cache[clip.id] = finalUrl
-            return finalUrl
-        }
+    /// Resolves direct stream URL (for backward compatibility)
+    public func resolveStreamUrl(for clip: MovieClip) async -> URL? {
+        let resolved = await resolveClip(for: clip)
+        return resolved?.url
+    }
 
-        var targetIframe = clip.iframeUrl
+    private func doResolve(clip: MovieClip) async -> ResolvedClipPlayback? {
+        var targetIframe: String? = nil
 
-        // 2. If iframeUrl is not directly present, query Alloha catalog
-        if targetIframe == nil || targetIframe?.isEmpty == true {
-            if let kpId = clip.kpId, kpId > 0 {
-                if let res = try? await AllohaRepository.shared.fetchByKpId(kpId: kpId, tmdbId: clip.tmdbId, title: clip.title) {
-                    if let season = clip.season, let episode = clip.episode {
-                        if let sObj = res.seasons.first(where: { $0.season == season }),
-                           let epObj = sObj.episodes.first(where: { $0.episode == episode }) {
-                            if let trName = clip.translationName, let tr = epObj.translations.first(where: { allohaTranslationNamesMatch($0.name, trName) }) {
-                                targetIframe = tr.iframeUrl
-                            } else {
-                                targetIframe = epObj.translations.first?.iframeUrl
-                            }
-                        }
-                    } else if let movie = res.movie {
-                        if let trName = clip.translationName, let tr = movie.translations.first(where: { allohaTranslationNamesMatch($0.name, trName) }) {
+        // 1. Query Alloha dynamic catalog using kpId, tmdbId or title
+        let kpId = clip.kpId ?? 0
+        if kpId > 0 || (clip.tmdbId != nil && clip.tmdbId! > 0) || !clip.title.isEmpty {
+            if let res = try? await AllohaRepository.shared.fetchByKpId(kpId: kpId, tmdbId: clip.tmdbId, title: clip.title) {
+                if let season = clip.season, let episode = clip.episode {
+                    if let sObj = res.seasons.first(where: { $0.season == season }),
+                       let epObj = sObj.episodes.first(where: { $0.episode == episode }) {
+                        if let trName = clip.translationName,
+                           let tr = epObj.translations.first(where: { allohaTranslationNamesMatch($0.name, trName, exactOnly: true) })
+                                ?? epObj.translations.first(where: { allohaTranslationNamesMatch($0.name, trName, exactOnly: false) }) {
                             targetIframe = tr.iframeUrl
                         } else {
-                            targetIframe = movie.translations.first?.iframeUrl ?? movie.iframeUrl
+                            targetIframe = epObj.translations.first?.iframeUrl ?? epObj.iframeUrl
                         }
+                    }
+                } else if let movie = res.movie {
+                    if let trName = clip.translationName,
+                       let tr = movie.translations.first(where: { allohaTranslationNamesMatch($0.name, trName, exactOnly: true) })
+                            ?? movie.translations.first(where: { allohaTranslationNamesMatch($0.name, trName, exactOnly: false) }) {
+                        targetIframe = tr.iframeUrl
+                    } else {
+                        targetIframe = movie.translations.first?.iframeUrl ?? movie.iframeUrl
                     }
                 }
             }
         }
 
-        guard let iframe = targetIframe, !iframe.isEmpty else {
-            return nil
+        // 2. Fallback to saved clip.iframeUrl if dynamic query didn't yield an iframe
+        if (targetIframe == nil || targetIframe?.isEmpty == true),
+           let savedIframe = clip.iframeUrl, !savedIframe.isEmpty {
+            targetIframe = savedIframe
         }
 
-        do {
-            let resolver = AllohaRuntimeResolver()
-            let resolved = try await resolver.resolve(iframeUrl: iframe)
+        // 3. Resolve stream via AllohaRuntimeResolver
+        if let iframe = targetIframe, !iframe.isEmpty {
+            do {
+                let resolver = AllohaRuntimeResolver()
+                let resolved = try await resolver.resolve(iframeUrl: iframe)
 
-            var resolvedUrlString = (resolved["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-            let audioVariants = (resolved["audioVariants"] as? [[String: Any]]) ?? []
+                var resolvedUrlString = (resolved["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+                let audioVariants = (resolved["audioVariants"] as? [[String: Any]]) ?? []
 
-            if let targetVoice = clip.translationName, !targetVoice.isEmpty {
-                let matchedVariant = findMatchingAudioVariant(in: audioVariants, for: targetVoice, isDedicatedIframe: true)
-                if let matchedVariant,
-                   let variantUrl = (matchedVariant["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
-                   !variantUrl.isEmpty {
-                    resolvedUrlString = variantUrl
+                if let targetVoice = clip.translationName, !targetVoice.isEmpty {
+                    let matchedVariant = findMatchingAudioVariant(in: audioVariants, for: targetVoice, isDedicatedIframe: true)
+                    if let matchedVariant,
+                       let variantUrl = (matchedVariant["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+                       !variantUrl.isEmpty {
+                        resolvedUrlString = variantUrl
+                    }
                 }
+
+                if let resolvedUrl = URL(string: resolvedUrlString) {
+                    var headers = (resolved["headers"] as? [String: String]) ?? [:]
+                    if headers["Referer"] == nil && headers["referer"] == nil {
+                        headers["Referer"] = "https://api.alloha.tv/"
+                    }
+                    return ResolvedClipPlayback(url: resolvedUrl, headers: headers)
+                }
+            } catch {
+                #if DEBUG
+                print("[ClipStreamResolver] Stream resolution failed for clip \(clip.id): \(error)")
+                #endif
             }
-
-            guard let resolvedUrl = URL(string: resolvedUrlString) else {
-                return nil
-            }
-
-            let headers = (resolved["headers"] as? [String: String]) ?? ["Referer": "https://api.alloha.tv/"]
-
-            HlsProxyServer.shared.start(
-                headers: headers,
-                mediaId: "clip_\(clip.id)",
-                preferredVoiceName: clip.translationName
-            )
-
-            let finalUrl = proxiedPlaybackURL(for: resolvedUrl) ?? resolvedUrl
-            cache[clip.id] = finalUrl
-            return finalUrl
-        } catch {
-            #if DEBUG
-            print("[ClipStreamResolver] Stream resolution failed for clip \(clip.id): \(error)")
-            #endif
-            if let directStr = clip.streamUrl, let directUrl = URL(string: directStr) {
-                let realUrl = extractRealUrl(from: directUrl)
-                HlsProxyServer.shared.start(
-                    headers: ["Referer": "https://api.alloha.tv/"],
-                    mediaId: "clip_\(clip.id)",
-                    preferredVoiceName: clip.translationName
-                )
-                let finalUrl = proxiedPlaybackURL(for: realUrl) ?? realUrl
-                return finalUrl
-            }
-            return nil
         }
-    }
 
-    private func proxiedPlaybackURL(for sourceURL: URL) -> URL? {
-        let absoluteUrlString = sourceURL.absoluteURL.absoluteString
-        guard let encodedData = absoluteUrlString.data(using: .utf8) else { return nil }
-        let encoded = encodedData.base64EncodedString()
-            .replacingOccurrences(of: "+", with: "-")
-            .replacingOccurrences(of: "/", with: "_")
-            .replacingOccurrences(of: "=", with: "")
+        // 4. Last resort fallback: direct streamUrl (if present and not localhost proxy)
+        if let directStr = clip.streamUrl?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !directStr.isEmpty,
+           let directUrl = URL(string: directStr) {
+            let realUrl = extractRealUrl(from: directUrl)
+            if let host = realUrl.host?.lowercased(), host != "127.0.0.1" && host != "localhost" {
+                return ResolvedClipPlayback(url: realUrl, headers: ["Referer": "https://api.alloha.tv/"])
+            }
+        }
 
-        let ext = sourceURL.pathExtension
-        let pathSuffix = ext.isEmpty ? "stream.m3u8" : "stream.\(ext)"
-
-        let baseString = "http://127.0.0.1:\(HlsProxyServer.shared.port.rawValue)/proxy/\(pathSuffix)?url=\(encoded)"
-        return URL(string: baseString)
+        return nil
     }
 
     private func extractRealUrl(from url: URL) -> URL {
