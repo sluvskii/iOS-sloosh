@@ -1159,33 +1159,10 @@ final class AllohaRepository: @unchecked Sendable {
                 }
             }
 
-            // 3. Если для фильма доступен один мастер-iframe со скрытыми bnsi audioVariants
+            // 3. Финальный фолбэк — если ничего не найдено, ставим дефолтную дорожку "Основной"
             var defaultIframe = dataObj["iframe"] as? String ?? parsedTrans.first?.iframeUrl ?? ""
             if defaultIframe.hasPrefix("//") { defaultIframe = "https:" + defaultIframe }
 
-            if parsedTrans.count <= 1 && !defaultIframe.isEmpty {
-                let resolver = await AllohaRuntimeResolver()
-                if let resolved = try? await resolver.resolve(iframeUrl: defaultIframe),
-                   let audioVariants = resolved["audioVariants"] as? [[String: Any]],
-                   audioVariants.count > 1 {
-                    var dynamicTrans: [AllohaTranslation] = []
-                    for (idx, variant) in audioVariants.enumerated() {
-                        let vTitle = (variant["title"] as? String) ?? "Озвучка \(idx + 1)"
-                        let vUrl = (variant["url"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
-                        let cleanTitle = normalizedAllohaTranslationName(vTitle)
-                        let finalTitle = cleanTitle.isEmpty ? vTitle : cleanTitle
-                        let lower = finalTitle.lowercased()
-                        if !lower.contains("субтитр") && !lower.contains("subtitle") {
-                            dynamicTrans.append(AllohaTranslation(id: "\(idx)", name: finalTitle, iframeUrl: defaultIframe, streamUrl: vUrl))
-                        }
-                    }
-                    if !dynamicTrans.isEmpty {
-                        parsedTrans = dynamicTrans
-                    }
-                }
-            }
-
-            // 4. Финальный фолбэк — если ничего не найдено, ставим дефолтную дорожку "Основной"
             if parsedTrans.isEmpty && !defaultIframe.isEmpty {
                 parsedTrans = [
                     AllohaTranslation(id: "default", name: "Основной", iframeUrl: defaultIframe, streamUrl: nil)

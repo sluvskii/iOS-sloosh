@@ -102,7 +102,7 @@ struct HomeDirectPlayWrapper: View {
                 season: season,
                 episode: episode,
                 voiceover: translation.name,
-                streamUrl: (translation.streamUrl?.isEmpty == false) ? translation.streamUrl : nil,
+                streamUrl: (source == .source2 && translation.streamUrl?.isEmpty == false) ? translation.streamUrl : nil,
                 voices: voices,
                 subtitles: subs,
                 quality: quality,

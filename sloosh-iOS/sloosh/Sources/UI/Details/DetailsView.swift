@@ -1099,7 +1099,7 @@ struct DetailsView: View {
                         
                         selectedIframeUrl = translation.iframeUrl.isEmpty ? nil : translation.iframeUrl
                         playerVoiceover = translation.name
-                        playerStreamUrl = (translation.streamUrl?.isEmpty == false) ? translation.streamUrl : nil
+                        playerStreamUrl = (source == .source2 && translation.streamUrl?.isEmpty == false) ? translation.streamUrl : nil
                         
                         pendingPlayerLaunch = true
                         showSourceSheet = false
