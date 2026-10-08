@@ -224,7 +224,8 @@ struct MediaDto: Codable, Identifiable {
         if let y = year?.intValue, y > 1880, y < 2100 {
             return y
         }
-        if let yStr = year?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) {
+        if let yRaw = year?.stringValue {
+            let yStr = yRaw.trimmingCharacters(in: .whitespacesAndNewlines)
             if let y = Int(yStr), y > 1880, y < 2100 {
                 return y
             }
