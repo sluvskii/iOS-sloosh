@@ -1,6 +1,6 @@
 import Foundation
 
-struct AllohaTranslation: Codable, Hashable, Equatable {
+struct AllohaTranslation: Codable, Hashable, Equatable, Sendable {
     let id: String
     let name: String
     let iframeUrl: String
@@ -9,24 +9,24 @@ struct AllohaTranslation: Codable, Hashable, Equatable {
     let streamUrl: String?
 }
 
-struct AllohaEpisode: Codable, Hashable, Equatable {
+struct AllohaEpisode: Codable, Hashable, Equatable, Sendable {
     let season: Int
     let episode: Int
     let translations: [AllohaTranslation]
 }
 
-struct AllohaSeason: Codable, Hashable, Equatable {
+struct AllohaSeason: Codable, Hashable, Equatable, Sendable {
     let season: Int
     let episodes: [AllohaEpisode]
 }
 
-struct AllohaMovie: Codable, Hashable, Equatable {
+struct AllohaMovie: Codable, Hashable, Equatable, Sendable {
     let title: String
     let iframeUrl: String
     let translations: [AllohaTranslation]
 }
 
-struct AllohaApiResult: Codable, Hashable, Equatable {
+struct AllohaApiResult: Codable, Hashable, Equatable, Sendable {
     let title: String
     let isSerial: Bool
     let movie: AllohaMovie?

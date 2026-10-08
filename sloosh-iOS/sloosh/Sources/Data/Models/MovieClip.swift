@@ -2,7 +2,7 @@ import Foundation
 
 // MARK: - Movie Clip Model (Кино-момент)
 
-public struct MovieClip: Identifiable, Codable, Equatable, Hashable {
+public struct MovieClip: Identifiable, Codable, Equatable, Hashable, Sendable {
     public let id: String
     public let mediaId: Int
     public let mediaType: String // "movie" or "tv"
@@ -116,7 +116,7 @@ public struct MovieClip: Identifiable, Codable, Equatable, Hashable {
 
 // MARK: - Clip Comment Model
 
-public struct ClipComment: Identifiable, Codable, Equatable, Hashable {
+public struct ClipComment: Identifiable, Codable, Equatable, Hashable, Sendable {
     public let id: String
     public let clipId: String
     public let authorId: String
