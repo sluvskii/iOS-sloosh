@@ -140,9 +140,9 @@ struct SearchFilterSheet: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 Image(systemName: "play.rectangle.on.rectangle")
-                    .font(.system(size: 14, weight: .semibold))
+                    .font(.system(size: 15, weight: .semibold))
                     .frame(width: 24, height: 24, alignment: .center)
-                    .foregroundColor(.secondary)
+                    .foregroundStyle(Color.slooshAccent)
 
                 Text("Тип контента")
                     .font(.system(size: 13, weight: .semibold))
@@ -188,355 +188,335 @@ struct SearchFilterSheet: View {
         .buttonStyle(.plain)
     }
 
-    // MARK: - Pickers Card (Sort, Genre, Country)
+    // MARK: - Pickers Card (Settings Style: Sort, Genre, Country, Studio)
     private var pickersCard: some View {
         VStack(spacing: 0) {
-            // Sort
-            HStack(spacing: 12) {
-                Image(systemName: "arrow.up.arrow.down")
-                    .font(.system(size: 15, weight: .semibold))
-                    .frame(width: 24, height: 24, alignment: .center)
-                    .foregroundColor(.secondary)
-
-                Text("Сортировка")
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundColor(.primary)
-
-                Spacer()
-
-                Menu {
-                    if context == .search {
-                        Button {
-                            let generator = UIImpactFeedbackGenerator(style: .light)
-                            generator.prepare()
-                            generator.impactOccurred()
-                            filters.order = nil
-                        } label: {
-                            HStack {
-                                Text("Релевантность")
-                                if filters.order == nil { Image(systemName: "checkmark") }
-                            }
-                        }
-                    } else {
-                        Button {
-                            let generator = UIImpactFeedbackGenerator(style: .light)
-                            generator.prepare()
-                            generator.impactOccurred()
-                            filters.order = nil
-                        } label: {
-                            HStack {
-                                Text("Смотрят сейчас")
-                                if filters.order == nil { Image(systemName: "checkmark") }
-                            }
-                        }
-                    }
+            // 1. Sort
+            Menu {
+                if context == .search {
                     Button {
                         let generator = UIImpactFeedbackGenerator(style: .light)
                         generator.prepare()
                         generator.impactOccurred()
-                        filters.order = "NUM_VOTE"
+                        filters.order = nil
                     } label: {
                         HStack {
-                            Text("По популярности")
-                            if filters.order == "NUM_VOTE" { Image(systemName: "checkmark") }
+                            Text("Релевантность")
+                            if filters.order == nil { Image(systemName: "checkmark") }
                         }
                     }
+                } else {
                     Button {
                         let generator = UIImpactFeedbackGenerator(style: .light)
                         generator.prepare()
                         generator.impactOccurred()
-                        filters.order = "RATING"
+                        filters.order = nil
                     } label: {
                         HStack {
-                            Text("По рейтингу")
-                            if filters.order == "RATING" { Image(systemName: "checkmark") }
+                            Text("Смотрят сейчас")
+                            if filters.order == nil { Image(systemName: "checkmark") }
                         }
                     }
-                    Button {
-                        let generator = UIImpactFeedbackGenerator(style: .light)
-                        generator.prepare()
-                        generator.impactOccurred()
-                        filters.order = "YEAR"
-                    } label: {
-                        HStack {
-                            Text("По году выпуска")
-                            if filters.order == "YEAR" { Image(systemName: "checkmark") }
-                        }
-                    }
+                }
+                Button {
+                    let generator = UIImpactFeedbackGenerator(style: .light)
+                    generator.prepare()
+                    generator.impactOccurred()
+                    filters.order = "NUM_VOTE"
                 } label: {
+                    HStack {
+                        Text("По популярности")
+                        if filters.order == "NUM_VOTE" { Image(systemName: "checkmark") }
+                    }
+                }
+                Button {
+                    let generator = UIImpactFeedbackGenerator(style: .light)
+                    generator.prepare()
+                    generator.impactOccurred()
+                    filters.order = "RATING"
+                } label: {
+                    HStack {
+                        Text("По рейтингу")
+                        if filters.order == "RATING" { Image(systemName: "checkmark") }
+                    }
+                }
+                Button {
+                    let generator = UIImpactFeedbackGenerator(style: .light)
+                    generator.prepare()
+                    generator.impactOccurred()
+                    filters.order = "YEAR"
+                } label: {
+                    HStack {
+                        Text("По году выпуска")
+                        if filters.order == "YEAR" { Image(systemName: "checkmark") }
+                    }
+                }
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "arrow.up.arrow.down")
+                        .foregroundStyle(Color.slooshAccent)
+                        .font(.system(size: 17, weight: .semibold))
+                        .frame(width: 24)
+
+                    Text("Сортировка")
+                        .font(.system(size: 16, weight: .regular))
+                        .foregroundColor(.primary)
+
+                    Spacer()
+
                     HStack(spacing: 6) {
                         Text(currentSortTitle)
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.system(size: 16, weight: .regular))
+                            .foregroundStyle(.secondary)
                         Image(systemName: "chevron.up.chevron.down")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundColor(.secondary)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(Color(UIColor.tertiaryLabel))
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 7)
-                    .foregroundColor(.primary)
-                    .background(
-                        Capsule()
-                            .fill(Color(UIColor.secondarySystemFill).opacity(0.6))
-                    )
-                    .glassEffect(.regular.interactive(), in: .capsule)
                 }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .contentShape(Rectangle())
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
+            .buttonStyle(.plain)
 
             Divider()
                 .padding(.leading, 52)
                 .opacity(0.5)
 
-            // Genre
-            HStack(spacing: 12) {
-                Image(systemName: "theatermasks")
-                    .font(.system(size: 15, weight: .semibold))
-                    .frame(width: 24, height: 24, alignment: .center)
-                    .foregroundColor(.secondary)
+            // 2. Genre
+            Menu {
+                Button {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        filters.selectedGenres = []
+                    }
+                } label: {
+                    HStack {
+                        Text("Любой")
+                        if filters.selectedGenres.isEmpty {
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
 
-                Text("Жанр")
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundColor(.primary)
+                Divider()
 
-                Spacer()
-
-                Menu {
+                ForEach(genresList, id: \.self) { genre in
+                    let isSelected = filters.selectedGenres.contains(genre.lowercased())
                     Button {
+                        let generator = UIImpactFeedbackGenerator(style: .light)
+                        generator.prepare()
+                        generator.impactOccurred()
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                            filters.selectedGenres = []
+                            var current = filters.selectedGenres
+                            if isSelected {
+                                current.remove(genre.lowercased())
+                            } else {
+                                current.insert(genre.lowercased())
+                            }
+                            filters.selectedGenres = current
                         }
                     } label: {
                         HStack {
-                            Text("Любой")
-                            if filters.selectedGenres.isEmpty {
+                            Text(genreDisplayName(genre))
+                            if isSelected {
                                 Image(systemName: "checkmark")
                             }
                         }
                     }
+                    .menuActionDismissBehavior(.disabled)
+                }
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "theatermasks")
+                        .foregroundStyle(Color.slooshAccent)
+                        .font(.system(size: 17, weight: .semibold))
+                        .frame(width: 24)
 
-                    Divider()
+                    Text("Жанр")
+                        .font(.system(size: 16, weight: .regular))
+                        .foregroundColor(.primary)
 
-                    ForEach(genresList, id: \.self) { genre in
-                        let isSelected = filters.selectedGenres.contains(genre.lowercased())
-                        Button {
-                            let generator = UIImpactFeedbackGenerator(style: .light)
-                            generator.prepare()
-                            generator.impactOccurred()
-                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                var current = filters.selectedGenres
-                                if isSelected {
-                                    current.remove(genre.lowercased())
-                                } else {
-                                    current.insert(genre.lowercased())
-                                }
-                                filters.selectedGenres = current
-                            }
-                        } label: {
-                            HStack {
-                                Text(genreDisplayName(genre))
-                                if isSelected {
-                                    Image(systemName: "checkmark")
-                                }
-                            }
-                        }
-                        .menuActionDismissBehavior(.disabled)
-                    }
-                } label: {
+                    Spacer()
+
                     HStack(spacing: 6) {
                         Text(currentGenreTitle)
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.system(size: 16, weight: .regular))
                             .lineLimit(1)
+                            .foregroundStyle(.secondary)
                         Image(systemName: "chevron.up.chevron.down")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundColor(.secondary)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(Color(UIColor.tertiaryLabel))
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 7)
-                    .foregroundColor(.primary)
-                    .background(
-                        Capsule()
-                            .fill(Color(UIColor.secondarySystemFill).opacity(0.6))
-                    )
-                    .glassEffect(.regular.interactive(), in: .capsule)
                 }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .contentShape(Rectangle())
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
+            .buttonStyle(.plain)
 
             Divider()
                 .padding(.leading, 52)
                 .opacity(0.5)
 
-            // Country
-            HStack(spacing: 12) {
-                Image(systemName: "globe")
-                    .font(.system(size: 15, weight: .semibold))
-                    .frame(width: 24, height: 24, alignment: .center)
-                    .foregroundColor(.secondary)
+            // 3. Country
+            Menu {
+                Button {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        filters.selectedCountries = []
+                    }
+                } label: {
+                    HStack {
+                        Text("Любая")
+                        if filters.selectedCountries.isEmpty {
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
 
-                Text("Страна")
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundColor(.primary)
+                Divider()
 
-                Spacer()
-
-                Menu {
+                ForEach(countriesList, id: \.self) { country in
+                    let isSelected = filters.selectedCountries.contains(country)
                     Button {
+                        let generator = UIImpactFeedbackGenerator(style: .light)
+                        generator.prepare()
+                        generator.impactOccurred()
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                            filters.selectedCountries = []
+                            var current = filters.selectedCountries
+                            if isSelected {
+                                current.remove(country)
+                            } else {
+                                current.insert(country)
+                            }
+                            filters.selectedCountries = current
                         }
                     } label: {
                         HStack {
-                            Text("Любая")
-                            if filters.selectedCountries.isEmpty {
+                            Text(country)
+                            if isSelected {
                                 Image(systemName: "checkmark")
                             }
                         }
                     }
+                    .menuActionDismissBehavior(.disabled)
+                }
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "globe")
+                        .foregroundStyle(Color.slooshAccent)
+                        .font(.system(size: 17, weight: .semibold))
+                        .frame(width: 24)
 
-                    Divider()
+                    Text("Страна")
+                        .font(.system(size: 16, weight: .regular))
+                        .foregroundColor(.primary)
 
-                    ForEach(countriesList, id: \.self) { country in
-                        let isSelected = filters.selectedCountries.contains(country)
+                    Spacer()
+
+                    HStack(spacing: 6) {
+                        Text(currentCountryTitle)
+                            .font(.system(size: 16, weight: .regular))
+                            .lineLimit(1)
+                            .foregroundStyle(.secondary)
+                        Image(systemName: "chevron.up.chevron.down")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(Color(UIColor.tertiaryLabel))
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            Divider()
+                .padding(.leading, 52)
+                .opacity(0.5)
+
+            // 4. Studio / Streaming
+            Menu {
+                Button {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        filters.studio = nil
+                    }
+                } label: {
+                    HStack {
+                        Text("Любая")
+                        if filters.studio == nil {
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+
+                Section("Студии") {
+                    ForEach(StudioBrand.all.filter { !$0.isNetwork }) { brand in
+                        let isSelected = filters.studio == brand.id
                         Button {
                             let generator = UIImpactFeedbackGenerator(style: .light)
                             generator.prepare()
                             generator.impactOccurred()
                             withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                var current = filters.selectedCountries
-                                if isSelected {
-                                    current.remove(country)
-                                } else {
-                                    current.insert(country)
-                                }
-                                filters.selectedCountries = current
+                                filters.studio = isSelected ? nil : brand.id
                             }
                         } label: {
                             HStack {
-                                Text(country)
+                                Text(brand.name)
                                 if isSelected {
                                     Image(systemName: "checkmark")
                                 }
                             }
                         }
-                        .menuActionDismissBehavior(.disabled)
                     }
-                } label: {
-                    HStack(spacing: 6) {
-                        Text(currentCountryTitle)
-                            .font(.system(size: 13, weight: .semibold))
-                            .lineLimit(1)
-                        Image(systemName: "chevron.up.chevron.down")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundColor(.secondary)
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 7)
-                    .foregroundColor(.primary)
-                    .background(
-                        Capsule()
-                            .fill(Color(UIColor.secondarySystemFill).opacity(0.6))
-                    )
-                    .glassEffect(.regular.interactive(), in: .capsule)
                 }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
 
-            Divider()
-                .padding(.leading, 52)
-                .opacity(0.5)
-
-            // Studio / Streaming
-            HStack(spacing: 12) {
-                Image(systemName: "tv")
-                    .font(.system(size: 15, weight: .semibold))
-                    .frame(width: 24, height: 24, alignment: .center)
-                    .foregroundColor(.secondary)
-
-                Text("Студия")
-                    .font(.system(size: 15, weight: .medium))
-                    .foregroundColor(.primary)
-
-                Spacer()
-
-                Menu {
-                    Button {
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                            filters.studio = nil
-                        }
-                    } label: {
-                        HStack {
-                            Text("Любая")
-                            if filters.studio == nil {
-                                Image(systemName: "checkmark")
+                Section("Стриминги") {
+                    ForEach(StudioBrand.all.filter { $0.isNetwork }) { brand in
+                        let isSelected = filters.studio == brand.id
+                        Button {
+                            let generator = UIImpactFeedbackGenerator(style: .light)
+                            generator.prepare()
+                            generator.impactOccurred()
+                            withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                filters.studio = isSelected ? nil : brand.id
                             }
-                        }
-                    }
-
-                    Section("Студии") {
-                        ForEach(StudioBrand.all.filter { !$0.isNetwork }) { brand in
-                            let isSelected = filters.studio == brand.id
-                            Button {
-                                let generator = UIImpactFeedbackGenerator(style: .light)
-                                generator.prepare()
-                                generator.impactOccurred()
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                    filters.studio = isSelected ? nil : brand.id
-                                }
-                            } label: {
-                                HStack {
-                                    Text(brand.name)
-                                    if isSelected {
-                                        Image(systemName: "checkmark")
-                                    }
+                        } label: {
+                            HStack {
+                                Text(brand.name)
+                                if isSelected {
+                                    Image(systemName: "checkmark")
                                 }
                             }
                         }
                     }
+                }
+            } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: "tv")
+                        .foregroundStyle(Color.slooshAccent)
+                        .font(.system(size: 17, weight: .semibold))
+                        .frame(width: 24)
 
-                    Section("Стриминги") {
-                        ForEach(StudioBrand.all.filter { $0.isNetwork }) { brand in
-                            let isSelected = filters.studio == brand.id
-                            Button {
-                                let generator = UIImpactFeedbackGenerator(style: .light)
-                                generator.prepare()
-                                generator.impactOccurred()
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                    filters.studio = isSelected ? nil : brand.id
-                                }
-                            } label: {
-                                HStack {
-                                    Text(brand.name)
-                                    if isSelected {
-                                        Image(systemName: "checkmark")
-                                    }
-                                }
-                            }
-                        }
-                    }
-                } label: {
+                    Text("Студия")
+                        .font(.system(size: 16, weight: .regular))
+                        .foregroundColor(.primary)
+
+                    Spacer()
+
                     HStack(spacing: 6) {
                         Text(currentStudioTitle)
-                            .font(.system(size: 13, weight: .semibold))
+                            .font(.system(size: 16, weight: .regular))
                             .lineLimit(1)
+                            .foregroundStyle(.secondary)
                         Image(systemName: "chevron.up.chevron.down")
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundColor(.secondary)
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(Color(UIColor.tertiaryLabel))
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 7)
-                    .foregroundColor(.primary)
-                    .background(
-                        Capsule()
-                            .fill(Color(UIColor.secondarySystemFill).opacity(0.6))
-                    )
-                    .glassEffect(.regular.interactive(), in: .capsule)
                 }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 12)
+                .contentShape(Rectangle())
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
+            .buttonStyle(.plain)
         }
         .background(
             RoundedRectangle(cornerRadius: 22, style: .continuous)
@@ -608,7 +588,7 @@ struct SearchFilterSheet: View {
                 HStack(spacing: 6) {
                     Image(systemName: "star.fill")
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(Color.slooshAccent)
                     Text("Рейтинг")
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundColor(.primary)
@@ -622,7 +602,7 @@ struct SearchFilterSheet: View {
                 HStack(spacing: 6) {
                     Image(systemName: "calendar")
                         .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(.secondary)
+                        .foregroundStyle(Color.slooshAccent)
                     Text("Год выпуска")
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundColor(.primary)
