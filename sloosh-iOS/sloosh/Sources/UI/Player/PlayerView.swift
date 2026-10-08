@@ -1908,7 +1908,11 @@ class PlayerViewModel: ObservableObject {
     }
 
     private func resolvedBitrate(for quality: PlaybackQualityOption) -> Double {
-        let height = Int(quality.key.replacingOccurrences(of: "p", with: "")) ?? 0
+        resolvedBitrate(forQualityKey: quality.key, fallbackBandwidth: quality.preferredPeakBitRate)
+    }
+
+    private func resolvedBitrate(forQualityKey key: String, fallbackBandwidth: Double? = nil) -> Double {
+        let height = Int(key.replacingOccurrences(of: "p", with: "")) ?? 0
         switch height {
         case 2160...: return 25_000_000 // 4K UHD
         case 1440..<2160: return 16_000_000 // 2K/1440p
@@ -1918,7 +1922,7 @@ class PlayerViewModel: ObservableObject {
         case 360..<480: return 1_200_000 // 360p
         case 1..<360: return 800_000
         default:
-            if let bw = quality.preferredPeakBitRate, bw > 0 {
+            if let bw = fallbackBandwidth, bw > 0 {
                 return bw * 2.5
             }
             return 0
@@ -1965,32 +1969,6 @@ class PlayerViewModel: ObservableObject {
         )
     }
 
-    private func makeResolvedQualityOption(label: String, url: URL, preferredPeakBitRate: Double?) -> PlaybackQualityOption {
-        let urlLower = url.absoluteString.lowercased()
-        let isMp4 = url.pathExtension.lowercased() == "mp4" || (urlLower.contains(".mp4") && !urlLower.contains(".m3u8"))
-        // Per-quality HLS masters (filename = "master.m3u8") require a full player reload since
-        // each is a separate signed stream — preferredPeakBitRate won't switch between them.
-        // Adaptive variant playlists (e.g. "720p.m3u8", "index.m3u8") do NOT require reload.
-        let isPerQualityMaster = url.lastPathComponent.lowercased() == "master.m3u8"
-        return makeQualityOption(
-            key: label,
-            url: url,
-            preferredPeakBitRate: preferredPeakBitRate,
-            isAuto: false,
-            shouldReloadOnSelect: isMp4 || isPerQualityMaster
-        )
-    }
-
-    private func makeMasterPlaylistQualityOption(label: String, url: URL, preferredPeakBitRate: Double?) -> PlaybackQualityOption {
-        makeQualityOption(
-            key: label,
-            url: url,
-            preferredPeakBitRate: preferredPeakBitRate,
-            isAuto: false,
-            shouldReloadOnSelect: false
-        )
-    }
-
     private func makeResolvedQualityOptions(
         resolvedUrl: URL,
         qualityVariants: [[String: Any]],
@@ -2021,9 +1999,9 @@ class PlayerViewModel: ObservableObject {
         if let selectedAudio = selectedAudioVariant,
            let nestedQualityVariants = selectedAudio["qualityVariants"] as? [[String: Any]],
            !nestedQualityVariants.isEmpty {
-            appendQualityVariants(nestedQualityVariants, to: &qualities, seenKeys: &seenKeys)
+            appendQualityVariants(nestedQualityVariants, masterUrl: activeUrl, to: &qualities, seenKeys: &seenKeys)
         } else {
-            appendQualityVariants(qualityVariants, to: &qualities, seenKeys: &seenKeys)
+            appendQualityVariants(qualityVariants, masterUrl: activeUrl, to: &qualities, seenKeys: &seenKeys)
         }
 
         // Filter out any qualities higher than 1080p (e.g. 1440p, 2160p)
@@ -3304,27 +3282,31 @@ class PlayerViewModel: ObservableObject {
         }
     }
 
-    private func appendQualityVariants(_ variants: [[String: Any]], to qualities: inout [PlaybackQualityOption], seenKeys: inout Set<String>) {
+    private func appendQualityVariants(_ variants: [[String: Any]], masterUrl: URL, to qualities: inout [PlaybackQualityOption], seenKeys: inout Set<String>) {
         for variant in variants {
-            guard let urlString = variant["url"] as? String,
-                  let url = absoluteQualityURL(from: urlString) else {
-                continue
-            }
             let label = normalizedQualityLabel(from: variant["label"] as? String)
             
             // Фильтруем AV1 кодек, так как iOS/AVPlayer его не поддерживает
             let lowerLabel = label.lowercased()
+            let urlString = (variant["url"] as? String) ?? ""
             let lowerUrl = urlString.lowercased()
             if lowerLabel.contains("av1") || lowerLabel.contains("av01") || lowerUrl.contains("av1") || lowerUrl.contains("av01") {
                 continue
             }
             
             guard seenKeys.insert(label).inserted else { continue }
+            
+            let isMp4 = lowerUrl.contains(".mp4") && !lowerUrl.contains(".m3u8")
+            let targetUrl = isMp4 ? (absoluteQualityURL(from: urlString) ?? masterUrl) : masterUrl
+            let bitrate = bitrateValue(from: variant) ?? resolvedBitrate(forQualityKey: label)
+            
             qualities.append(
-                makeResolvedQualityOption(
-                    label: label,
-                    url: url,
-                    preferredPeakBitRate: bitrateValue(from: variant)
+                makeQualityOption(
+                    key: label,
+                    url: targetUrl,
+                    preferredPeakBitRate: bitrate,
+                    isAuto: false,
+                    shouldReloadOnSelect: isMp4
                 )
             )
         }
