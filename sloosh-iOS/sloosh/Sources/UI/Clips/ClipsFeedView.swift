@@ -31,26 +31,22 @@ final class ClipPlaybackCoordinator: ObservableObject {
 
         resolvePlaybackTask = Task { [weak self] in
             guard let self else { return }
-            guard let resolved = await ClipStreamResolver.shared.resolveStream(for: clip) else {
+            guard let playUrl = await ClipStreamResolver.shared.resolveStreamUrl(for: clip) else {
                 self.isResolving = false
                 return
             }
             guard !Task.isCancelled, self.currentClipId == clip.id else { return }
 
-            let options: [String: Any]? = resolved.headers.isEmpty ? nil : ["AVURLAssetHTTPHeaderFieldsKey": resolved.headers]
-            let asset = AVURLAsset(url: resolved.url, options: options)
+            let asset = AVURLAsset(url: playUrl)
             let item = AVPlayerItem(asset: asset)
-            item.preferredForwardBufferDuration = 1.0
+            item.preferredForwardBufferDuration = 5.0
 
             let player = AVPlayer(playerItem: item)
             player.isMuted = self.isMuted
             player.actionAtItemEnd = .none
-            player.automaticallyWaitsToMinimizeStalling = false
+            player.automaticallyWaitsToMinimizeStalling = true
             self.activePlayer = player
             self.isPlaying = true
-
-            // Start player immediately
-            player.play()
 
             // Observe item status for ready to play & initial seek
             self.playerStatusObserver = item.observe(\.status, options: [.new, .initial]) { [weak self, weak player] observedItem, _ in
@@ -64,15 +60,17 @@ final class ClipPlaybackCoordinator: ObservableObject {
                             self.didPerformInitialSeek = true
                             if clip.startTime > 0.5 {
                                 let sTime = CMTime(seconds: clip.startTime, preferredTimescale: 600)
-                                let tol = CMTime(seconds: 0.5, preferredTimescale: 600)
-                                player.seek(to: sTime, toleranceBefore: tol, toleranceAfter: tol) { _ in
+                                player.seek(to: sTime, toleranceBefore: .zero, toleranceAfter: .zero) { _ in
                                     player.play()
                                 }
                             } else {
                                 player.play()
                             }
+                        } else {
+                            player.play()
                         }
                     } else if observedItem.status == .failed {
+                        print("[ClipPlayback] AVPlayerItem failed: \(String(describing: observedItem.error))")
                         self.isResolving = false
                     }
                 }
@@ -103,8 +101,7 @@ final class ClipPlaybackCoordinator: ObservableObject {
                 // Loop back to start ONLY when video reaches or exceeds clip.endTime
                 if currentSec >= clip.endTime {
                     let sTime = CMTime(seconds: clip.startTime, preferredTimescale: 600)
-                    let tol = CMTime(seconds: 0.5, preferredTimescale: 600)
-                    player.seek(to: sTime, toleranceBefore: tol, toleranceAfter: tol) { _ in
+                    player.seek(to: sTime, toleranceBefore: .zero, toleranceAfter: .zero) { _ in
                         player.play()
                     }
                 }
