@@ -57,10 +57,10 @@ struct SearchFilterSheet: View {
                     countryRow
                 }
 
-                // 3. Criteria Card (Рейтинг, Год выпуска)
+                // 3. Dual Wheel Drum Picker (Рейтинг и Год выпуска)
                 Section {
-                    ratingRow
-                    yearRow
+                    ratingAndYearWheelCard
+                        .listRowInsets(EdgeInsets(top: 4, leading: 12, bottom: 4, trailing: 12))
                 }
             }
             .listStyle(.insetGrouped)
@@ -89,7 +89,7 @@ struct SearchFilterSheet: View {
             }
             .background(Color.clear)
         }
-        .presentationDetents(context == .search ? [.height(520)] : [.height(430)])
+        .presentationDetents(context == .search ? [.height(568)] : [.height(484)])
         .presentationBackground { Color.clear.glassEffect(in: .rect) }
         .presentationDragIndicator(.visible)
     }
@@ -142,7 +142,7 @@ struct SearchFilterSheet: View {
         }
     }
 
-    // MARK: - Rows (Native Settings View Style)
+    // MARK: - Content Type Row (Segmented)
 
     private var contentTypeRow: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -168,46 +168,174 @@ struct SearchFilterSheet: View {
         .padding(.vertical, 4)
     }
 
-    private var sortRow: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "arrow.up.arrow.down")
-                .foregroundStyle(Color.slooshAccent)
-                .font(.system(size: 18))
-                .frame(width: 24)
+    // MARK: - Filter Rows (Settings Style with Guaranteed Green Values & Chevrons)
 
-            Picker("Сортировка", selection: $filters.order) {
-                if context == .search {
-                    Text("Релевантность").tag(String?.none)
-                } else {
-                    Text("Смотрят сейчас").tag(String?.none)
+    private var sortRow: some View {
+        Menu {
+            if context == .search {
+                Button {
+                    let generator = UIImpactFeedbackGenerator(style: .light)
+                    generator.prepare()
+                    generator.impactOccurred()
+                    filters.order = nil
+                } label: {
+                    HStack {
+                        Text("Релевантность")
+                        if filters.order == nil { Image(systemName: "checkmark") }
+                    }
                 }
-                Text("По популярности").tag(Optional("NUM_VOTE"))
-                Text("По рейтингу").tag(Optional("RATING"))
-                Text("По году выпуска").tag(Optional("YEAR"))
+            } else {
+                Button {
+                    let generator = UIImpactFeedbackGenerator(style: .light)
+                    generator.prepare()
+                    generator.impactOccurred()
+                    filters.order = nil
+                } label: {
+                    HStack {
+                        Text("Смотрят сейчас")
+                        if filters.order == nil { Image(systemName: "checkmark") }
+                    }
+                }
+            }
+            Button {
+                let generator = UIImpactFeedbackGenerator(style: .light)
+                generator.prepare()
+                generator.impactOccurred()
+                filters.order = "NUM_VOTE"
+            } label: {
+                HStack {
+                    Text("По популярности")
+                    if filters.order == "NUM_VOTE" { Image(systemName: "checkmark") }
+                }
+            }
+            Button {
+                let generator = UIImpactFeedbackGenerator(style: .light)
+                generator.prepare()
+                generator.impactOccurred()
+                filters.order = "RATING"
+            } label: {
+                HStack {
+                    Text("По рейтингу")
+                    if filters.order == "RATING" { Image(systemName: "checkmark") }
+                }
+            }
+            Button {
+                let generator = UIImpactFeedbackGenerator(style: .light)
+                generator.prepare()
+                generator.impactOccurred()
+                filters.order = "YEAR"
+            } label: {
+                HStack {
+                    Text("По году выпуска")
+                    if filters.order == "YEAR" { Image(systemName: "checkmark") }
+                }
+            }
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "arrow.up.arrow.down")
+                    .foregroundStyle(Color.slooshAccent)
+                    .font(.system(size: 18))
+                    .frame(width: 24)
+
+                Text("Сортировка")
+                    .font(.body)
+                    .foregroundStyle(Color.primary)
+
+                Spacer()
+
+                HStack(spacing: 6) {
+                    Text(currentSortTitle)
+                        .font(.body)
+                        .lineLimit(1)
+                        .foregroundStyle(Color.slooshAccent)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Color.slooshAccent)
+                }
             }
         }
     }
 
     private var studioRow: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "tv")
-                .foregroundStyle(Color.slooshAccent)
-                .font(.system(size: 18))
-                .frame(width: 24)
-
-            Picker("Студия", selection: $filters.studio) {
-                Text("Любая").tag(String?.none)
-
-                Section("Студии") {
-                    ForEach(StudioBrand.all.filter { !$0.isNetwork }) { brand in
-                        Text(brand.name).tag(Optional(brand.id))
+        Menu {
+            Button {
+                let generator = UIImpactFeedbackGenerator(style: .light)
+                generator.prepare()
+                generator.impactOccurred()
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                    filters.studio = nil
+                }
+            } label: {
+                HStack {
+                    Text("Любая")
+                    if filters.studio == nil {
+                        Image(systemName: "checkmark")
                     }
                 }
+            }
 
-                Section("Стриминги") {
-                    ForEach(StudioBrand.all.filter { $0.isNetwork }) { brand in
-                        Text(brand.name).tag(Optional(brand.id))
+            Section("Студии") {
+                ForEach(StudioBrand.all.filter { !$0.isNetwork }) { brand in
+                    let isSelected = filters.studio == brand.id
+                    Button {
+                        let generator = UIImpactFeedbackGenerator(style: .light)
+                        generator.prepare()
+                        generator.impactOccurred()
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                            filters.studio = isSelected ? nil : brand.id
+                        }
+                    } label: {
+                        HStack {
+                            Text(brand.name)
+                            if isSelected {
+                                Image(systemName: "checkmark")
+                            }
+                        }
                     }
+                }
+            }
+
+            Section("Стриминги") {
+                ForEach(StudioBrand.all.filter { $0.isNetwork }) { brand in
+                    let isSelected = filters.studio == brand.id
+                    Button {
+                        let generator = UIImpactFeedbackGenerator(style: .light)
+                        generator.prepare()
+                        generator.impactOccurred()
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                            filters.studio = isSelected ? nil : brand.id
+                        }
+                    } label: {
+                        HStack {
+                            Text(brand.name)
+                            if isSelected {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+            }
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "tv")
+                    .foregroundStyle(Color.slooshAccent)
+                    .font(.system(size: 18))
+                    .frame(width: 24)
+
+                Text("Студия")
+                    .font(.body)
+                    .foregroundStyle(Color.primary)
+
+                Spacer()
+
+                HStack(spacing: 6) {
+                    Text(currentStudioTitle)
+                        .font(.body)
+                        .lineLimit(1)
+                        .foregroundStyle(Color.slooshAccent)
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Color.slooshAccent)
                 }
             }
         }
@@ -216,6 +344,9 @@ struct SearchFilterSheet: View {
     private var genreRow: some View {
         Menu {
             Button {
+                let generator = UIImpactFeedbackGenerator(style: .light)
+                generator.prepare()
+                generator.impactOccurred()
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                     filters.selectedGenres = []
                 }
@@ -272,10 +403,10 @@ struct SearchFilterSheet: View {
                     Text(currentGenreTitle)
                         .font(.body)
                         .lineLimit(1)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.slooshAccent)
                     Image(systemName: "chevron.up.chevron.down")
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(Color(UIColor.tertiaryLabel))
+                        .foregroundStyle(Color.slooshAccent)
                 }
             }
         }
@@ -284,6 +415,9 @@ struct SearchFilterSheet: View {
     private var countryRow: some View {
         Menu {
             Button {
+                let generator = UIImpactFeedbackGenerator(style: .light)
+                generator.prepare()
+                generator.impactOccurred()
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                     filters.selectedCountries = []
                 }
@@ -340,44 +474,76 @@ struct SearchFilterSheet: View {
                     Text(currentCountryTitle)
                         .font(.body)
                         .lineLimit(1)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Color.slooshAccent)
                     Image(systemName: "chevron.up.chevron.down")
                         .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(Color(UIColor.tertiaryLabel))
+                        .foregroundStyle(Color.slooshAccent)
                 }
             }
         }
     }
 
-    private var ratingRow: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "star.fill")
-                .foregroundStyle(Color.slooshAccent)
-                .font(.system(size: 18))
-                .frame(width: 24)
+    // MARK: - Dual Wheel Drum Picker (Рейтинг и Год выпуска)
 
-            Picker("Рейтинг", selection: $filters.ratingFrom) {
-                Text("Любой").tag(Double?.none)
-                ForEach(ratingOptions, id: \.self) { val in
-                    Text(String(format: "%.1f+", val)).tag(Optional(val))
+    private var ratingAndYearWheelCard: some View {
+        VStack(spacing: 2) {
+            // Header: Clean column titles above each wheel
+            HStack(spacing: 0) {
+                HStack(spacing: 6) {
+                    Image(systemName: "star.fill")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.slooshAccent)
+                    Text("Рейтинг")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.primary)
                 }
-            }
-        }
-    }
+                .frame(maxWidth: .infinity, alignment: .center)
 
-    private var yearRow: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "calendar")
-                .foregroundStyle(Color.slooshAccent)
-                .font(.system(size: 18))
-                .frame(width: 24)
+                Rectangle()
+                    .fill(Color.clear)
+                    .frame(width: 1)
 
-            Picker("Год выпуска", selection: $filters.yearFrom) {
-                Text("Любой").tag(Int?.none)
-                ForEach(yearOptions, id: \.self) { year in
-                    Text(verbatim: "\(year)").tag(Optional(year))
+                HStack(spacing: 6) {
+                    Image(systemName: "calendar")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Color.slooshAccent)
+                    Text("Год выпуска")
+                        .font(.system(size: 14, weight: .semibold))
+                        .foregroundColor(.primary)
                 }
+                .frame(maxWidth: .infinity, alignment: .center)
             }
+            .padding(.top, 10)
+
+            // Dual Wheel Drum
+            HStack(spacing: 0) {
+                Picker("Рейтинг", selection: $filters.ratingFrom) {
+                    Text("Любой").tag(Double?.none)
+                    ForEach(ratingOptions, id: \.self) { val in
+                        Text(String(format: "%.1f+", val)).tag(Optional(val))
+                    }
+                }
+                .pickerStyle(.wheel)
+                .frame(maxWidth: .infinity)
+                .clipped()
+
+                Rectangle()
+                    .fill(Color(UIColor.separator).opacity(0.3))
+                    .frame(width: 1, height: 72)
+                    .padding(.horizontal, 4)
+
+                Picker("Год", selection: $filters.yearFrom) {
+                    Text("Любой").tag(Int?.none)
+                    ForEach(yearOptions, id: \.self) { year in
+                        Text(verbatim: "\(year)").tag(Optional(year))
+                    }
+                }
+                .pickerStyle(.wheel)
+                .frame(maxWidth: .infinity)
+                .clipped()
+            }
+            .frame(height: 116)
+            .padding(.bottom, 6)
         }
     }
 
@@ -415,6 +581,19 @@ struct SearchFilterSheet: View {
             return sorted.joined(separator: ", ")
         } else {
             return "Выбрано: \(selected.count)"
+        }
+    }
+
+    private var currentSortTitle: String {
+        switch filters.order {
+        case "NUM_VOTE":
+            return "По популярности"
+        case "RATING":
+            return "По рейтингу"
+        case "YEAR":
+            return "По году выпуска"
+        default:
+            return context == .search ? "Релевантность" : "Смотрят сейчас"
         }
     }
 
