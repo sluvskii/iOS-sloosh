@@ -133,8 +133,24 @@ jobs:
               echo '```' >> $GITHUB_STEP_SUMMARY
               grep -E "(error:|fatal error:)" xcodebuild.log >> $GITHUB_STEP_SUMMARY || tail -n 60 xcodebuild.log >> $GITHUB_STEP_SUMMARY
               echo '```' >> $GITHUB_STEP_SUMMARY
+              grep -E "(error:|fatal error:)" xcodebuild.log | head -n 30 | while IFS= read -r line; do
+                echo "::error title=Compiler Error::$line"
+              done
               exit 1
             }
+
+      - name: Report Build Failure Diagnostics
+        if: failure()
+        run: |
+          cd sloosh-iOS
+          if [ -f xcodebuild.log ]; then
+            echo "::group::Xcodebuild Error Log"
+            grep -E "(error:|fatal error:)" xcodebuild.log || tail -n 60 xcodebuild.log
+            echo "::endgroup::"
+            grep -E "(error:|fatal error:)" xcodebuild.log | head -n 30 | while IFS= read -r line; do
+              echo "::error title=Compiler Error::$line"
+            done
+          fi
 
       - name: Package IPA (Unsigned)
         run: |
