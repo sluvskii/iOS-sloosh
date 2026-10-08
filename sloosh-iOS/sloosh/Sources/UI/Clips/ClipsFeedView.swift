@@ -3,22 +3,148 @@ import UIKit
 import AVKit
 import Combine
 
+// MARK: - Dedicated Playback Coordinator for Feed
+
+@MainActor
+final class ClipPlaybackCoordinator: ObservableObject {
+    @Published var activePlayer: AVPlayer?
+    @Published var isVideoReady: Bool = false
+    @Published var isResolving: Bool = false
+    @Published var isPlaying: Bool = true
+    @Published var isMuted: Bool = false
+
+    private var currentClipId: String?
+    private var timeObserver: Any?
+    private var playerStatusObserver: NSKeyValueObservation?
+    private var playerTimeStatusObserver: NSKeyValueObservation?
+    private var resolvePlaybackTask: Task<Void, Never>?
+
+    func setupPlayer(for clip: MovieClip) {
+        cleanup()
+        currentClipId = clip.id
+        isResolving = true
+        isVideoReady = false
+
+        resolvePlaybackTask = Task { [weak self] in
+            guard let self else { return }
+            guard let playUrl = await ClipStreamResolver.shared.resolveStreamUrl(for: clip) else {
+                self.isResolving = false
+                return
+            }
+            guard !Task.isCancelled, self.currentClipId == clip.id else { return }
+
+            let item = AVPlayerItem(url: playUrl)
+            item.preferredForwardBufferDuration = 10.0
+            let player = AVPlayer(playerItem: item)
+            player.isMuted = self.isMuted
+            player.automaticallyWaitsToMinimizeStalling = true
+            self.activePlayer = player
+            self.isPlaying = true
+
+            let startCM = CMTime(seconds: clip.startTime, preferredTimescale: 600)
+            player.seek(to: startCM, toleranceBefore: .zero, toleranceAfter: .zero) { _ in
+                if !Task.isCancelled {
+                    player.play()
+                }
+            }
+
+            self.playerStatusObserver = item.observe(\.status, options: [.new]) { [weak self] observedItem, _ in
+                Task { @MainActor [weak self] in
+                    guard let self, self.currentClipId == clip.id else { return }
+                    if observedItem.status == .readyToPlay {
+                        self.isVideoReady = true
+                        self.isResolving = false
+                    }
+                }
+            }
+
+            self.playerTimeStatusObserver = player.observe(\.timeControlStatus, options: [.new]) { [weak self] observedPlayer, _ in
+                Task { @MainActor [weak self] in
+                    guard let self, self.currentClipId == clip.id else { return }
+                    if observedPlayer.timeControlStatus == .playing {
+                        self.isVideoReady = true
+                        self.isResolving = false
+                    }
+                }
+            }
+
+            let interval = CMTime(seconds: 0.2, preferredTimescale: 600)
+            self.timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self, weak player] time in
+                guard let self, let player else { return }
+                let currentSec = CMTimeGetSeconds(time)
+                if currentSec >= clip.endTime || currentSec < max(0, clip.startTime - 1.0) {
+                    let sTime = CMTime(seconds: clip.startTime, preferredTimescale: 600)
+                    player.seek(to: sTime, toleranceBefore: .zero, toleranceAfter: .zero)
+                }
+            }
+        }
+    }
+
+    func togglePlayPause() {
+        guard let player = activePlayer else { return }
+        if isPlaying {
+            player.pause()
+            isPlaying = false
+        } else {
+            player.play()
+            isPlaying = true
+        }
+    }
+
+    func toggleMute() {
+        isMuted.toggle()
+        activePlayer?.isMuted = isMuted
+    }
+
+    func pause() {
+        activePlayer?.pause()
+        isPlaying = false
+    }
+
+    func resume(for clip: MovieClip?) {
+        guard let clip else { return }
+        if activePlayer == nil || currentClipId != clip.id {
+            setupPlayer(for: clip)
+        } else {
+            activePlayer?.play()
+            isPlaying = true
+        }
+    }
+
+    func cleanup() {
+        resolvePlaybackTask?.cancel()
+        resolvePlaybackTask = nil
+        playerStatusObserver?.invalidate()
+        playerStatusObserver = nil
+        playerTimeStatusObserver?.invalidate()
+        playerTimeStatusObserver = nil
+
+        if let observer = timeObserver, let player = activePlayer {
+            player.removeTimeObserver(observer)
+            timeObserver = nil
+        }
+        activePlayer?.pause()
+        activePlayer = nil
+        isVideoReady = false
+        isResolving = false
+    }
+
+    deinit {
+        resolvePlaybackTask?.cancel()
+        playerStatusObserver?.invalidate()
+        playerTimeStatusObserver?.invalidate()
+    }
+}
+
+// MARK: - Clips Feed View
+
 public struct ClipsFeedView: View {
     @StateObject private var clipsRepo = ClipsRepository.shared
     @StateObject private var authRepo = AuthRepository.shared
+    @StateObject private var playback = ClipPlaybackCoordinator()
 
     @State private var currentClipId: String?
-    @State private var activePlayer: AVPlayer?
     @State private var pipController: AVPictureInPictureController? = nil
-    @State private var timeObserver: Any?
-    @State private var playerStatusObserver: NSKeyValueObservation?
-    @State private var playerTimeStatusObserver: NSKeyValueObservation?
-    @State private var resolvePlaybackTask: Task<Void, Never>?
-
-    @State private var isVideoReady: Bool = false
-    @State private var isResolving: Bool = false
-    @State private var isMuted: Bool = false
-    @State private var isPlaying: Bool = true
     @State private var showCommentsForClip: MovieClip?
     @State private var fullPlayerConfig: PlayerConfig?
     @State private var showBigHeart: Bool = false
@@ -53,7 +179,7 @@ public struct ClipsFeedView: View {
             await clipsRepo.fetchFeed()
             if currentClipId == nil, let first = clipsRepo.clips.first {
                 currentClipId = first.id
-                setupPlayer(for: first)
+                playback.setupPlayer(for: first)
             }
         }
         .sheet(item: $showCommentsForClip) { clip in
@@ -61,17 +187,17 @@ public struct ClipsFeedView: View {
         }
         .fullScreenCover(item: $fullPlayerConfig, onDismiss: {
             fullPlayerConfig = nil
-            resumeActivePlayer()
+            resumeActiveClip()
         }) { config in
             PlayerView(config: config)
                 .preferredColorScheme(.dark)
                 .environment(\.colorScheme, .dark)
         }
         .onDisappear {
-            pauseActivePlayer()
+            playback.pause()
         }
         .onAppear {
-            resumeActivePlayer()
+            resumeActiveClip()
         }
     }
 
@@ -98,7 +224,7 @@ public struct ClipsFeedView: View {
                     await clipsRepo.fetchFeed(forceRefresh: true)
                     if let first = clipsRepo.clips.first {
                         currentClipId = first.id
-                        setupPlayer(for: first)
+                        playback.setupPlayer(for: first)
                     }
                 }
             } label: {
@@ -135,7 +261,7 @@ public struct ClipsFeedView: View {
         .ignoresSafeArea()
         .onChange(of: currentClipId) { _, newId in
             guard let newId = newId, let clip = clipsRepo.clips.first(where: { $0.id == newId }) else { return }
-            setupPlayer(for: clip)
+            playback.setupPlayer(for: clip)
         }
     }
 
@@ -162,15 +288,15 @@ public struct ClipsFeedView: View {
             }
 
             // 2. Hardware Video Player Layer (Fades in smoothly when ready to play)
-            if isCurrent, let player = activePlayer {
+            if isCurrent, let player = playback.activePlayer {
                 VideoLayerView(player: player, pipController: $pipController, videoGravity: .resizeAspectFill)
                     .ignoresSafeArea()
-                    .opacity(isVideoReady ? 1.0 : 0.0)
-                    .animation(.easeInOut(duration: 0.25), value: isVideoReady)
+                    .opacity(playback.isVideoReady ? 1.0 : 0.0)
+                    .animation(.easeInOut(duration: 0.25), value: playback.isVideoReady)
             }
 
             // 3. Loading spinner indicator while resolving or buffering
-            if isCurrent && (isResolving || !isVideoReady) {
+            if isCurrent && (playback.isResolving || !playback.isVideoReady) {
                 ProgressView()
                     .tint(.white)
                     .scaleEffect(1.3)
@@ -206,11 +332,12 @@ public struct ClipsFeedView: View {
                     triggerDoubleTapLike(for: clip, at: location)
                 }
                 .onTapGesture(count: 1) {
-                    togglePlayPause()
+                    playback.togglePlayPause()
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 }
 
             // 6. Play/Pause Indicator
-            if !isPlaying && isCurrent && isVideoReady {
+            if !playback.isPlaying && isCurrent && playback.isVideoReady {
                 Image(systemName: "play.fill")
                     .font(.system(size: 48))
                     .foregroundStyle(.white.opacity(0.85))
@@ -253,11 +380,10 @@ public struct ClipsFeedView: View {
 
                     // Mute Button
                     Button {
-                        isMuted.toggle()
-                        activePlayer?.isMuted = isMuted
+                        playback.toggleMute()
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     } label: {
-                        Image(systemName: isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                        Image(systemName: playback.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(.white)
                             .frame(width: 40, height: 40)
@@ -456,114 +582,12 @@ public struct ClipsFeedView: View {
         }
     }
 
-    // MARK: - Dynamic Playback Logic
+    // MARK: - Helper Actions
 
-    private func setupPlayer(for clip: MovieClip) {
-        cleanupActivePlayer()
-        isResolving = true
-        isVideoReady = false
-
-        resolvePlaybackTask = Task { @MainActor in
-            guard let playUrl = await ClipStreamResolver.shared.resolveStreamUrl(for: clip) else {
-                self.isResolving = false
-                return
-            }
-            guard !Task.isCancelled, currentClipId == clip.id else { return }
-
-            let item = AVPlayerItem(url: playUrl)
-            item.preferredForwardBufferDuration = 10.0
-            let player = AVPlayer(playerItem: item)
-            player.isMuted = isMuted
-            player.automaticallyWaitsToMinimizeStalling = true
-            self.activePlayer = player
-            self.isPlaying = true
-
-            let startCM = CMTime(seconds: clip.startTime, preferredTimescale: 600)
-            player.seek(to: startCM, toleranceBefore: .zero, toleranceAfter: .zero) { _ in
-                if !Task.isCancelled {
-                    player.play()
-                }
-            }
-
-            // Observe item status
-            playerStatusObserver = item.observe(\.status, options: [.new]) { [weak self] observedItem, _ in
-                Task { @MainActor [weak self] in
-                    guard let self, self.currentClipId == clip.id else { return }
-                    if observedItem.status == .readyToPlay {
-                        self.isVideoReady = true
-                        self.isResolving = false
-                    }
-                }
-            }
-
-            // Observe timeControlStatus
-            playerTimeStatusObserver = player.observe(\.timeControlStatus, options: [.new]) { [weak self] observedPlayer, _ in
-                Task { @MainActor [weak self] in
-                    guard let self, self.currentClipId == clip.id else { return }
-                    if observedPlayer.timeControlStatus == .playing {
-                        self.isVideoReady = true
-                        self.isResolving = false
-                    }
-                }
-            }
-
-            // Loop observer strictly within clip range [startTime, endTime]
-            let interval = CMTime(seconds: 0.2, preferredTimescale: 600)
-            timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self, weak player] time in
-                guard let self, let player else { return }
-                let currentSec = CMTimeGetSeconds(time)
-                if currentSec >= clip.endTime || currentSec < max(0, clip.startTime - 1.0) {
-                    let sTime = CMTime(seconds: clip.startTime, preferredTimescale: 600)
-                    player.seek(to: sTime, toleranceBefore: .zero, toleranceAfter: .zero)
-                }
-            }
-        }
-    }
-
-    private func togglePlayPause() {
-        guard let player = activePlayer else { return }
-        if isPlaying {
-            player.pause()
-            isPlaying = false
-        } else {
-            player.play()
-            isPlaying = true
-        }
-        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-    }
-
-    private func pauseActivePlayer() {
-        activePlayer?.pause()
-        isPlaying = false
-    }
-
-    private func resumeActivePlayer() {
+    private func resumeActiveClip() {
         if let clipId = currentClipId, let clip = clipsRepo.clips.first(where: { $0.id == clipId }) {
-            if activePlayer == nil {
-                setupPlayer(for: clip)
-            } else {
-                activePlayer?.play()
-                isPlaying = true
-            }
+            playback.resume(for: clip)
         }
-    }
-
-    private func cleanupActivePlayer() {
-        resolvePlaybackTask?.cancel()
-        resolvePlaybackTask = nil
-        playerStatusObserver?.invalidate()
-        playerStatusObserver = nil
-        playerTimeStatusObserver?.invalidate()
-        playerTimeStatusObserver = nil
-
-        if let observer = timeObserver, let player = activePlayer {
-            player.removeTimeObserver(observer)
-            timeObserver = nil
-        }
-        activePlayer?.pause()
-        activePlayer = nil
-        isVideoReady = false
-        isResolving = false
     }
 
     private func triggerDoubleTapLike(for clip: MovieClip, at location: CGPoint) {
@@ -598,7 +622,7 @@ public struct ClipsFeedView: View {
     // MARK: - Open Full Movie
 
     private func openFullMovie(clip: MovieClip) {
-        pauseActivePlayer()
+        playback.pause()
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
 
         let config = PlayerConfig(
