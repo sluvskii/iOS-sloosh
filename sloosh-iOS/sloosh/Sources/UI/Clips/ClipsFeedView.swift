@@ -187,7 +187,7 @@ public struct ClipsFeedView: View {
                     .font(.system(size: 48))
                     .foregroundStyle(.white.opacity(0.85))
                     .padding(20)
-                    .background(.ultraThinMaterial.opacity(0.5))
+                    .background(Color.black.opacity(0.6))
                     .clipShape(Circle())
                     .transition(.scale.combined(with: .opacity))
                     .allowsHitTesting(false)
@@ -218,7 +218,7 @@ public struct ClipsFeedView: View {
                         .frame(height: 14)
                         .padding(.horizontal, 14)
                         .padding(.vertical, 6)
-                        .background(.ultraThinMaterial.opacity(0.6))
+                        .background(Color.black.opacity(0.5))
                         .clipShape(Capsule())
 
                     Spacer()
@@ -232,10 +232,11 @@ public struct ClipsFeedView: View {
                         Image(systemName: isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(.white)
-                            .padding(10)
-                            .background(.ultraThinMaterial.opacity(0.6))
-                            .clipShape(Circle())
+                            .frame(width: 40, height: 40)
+                            .contentShape(Circle())
                     }
+                    .buttonStyle(.glassPress)
+                    .glassEffect(.regular.interactive(), in: .circle)
                 }
                 .padding(.top, safeArea.top + 8)
                 .padding(.horizontal, 16)
@@ -256,18 +257,18 @@ public struct ClipsFeedView: View {
                             HStack(spacing: 6) {
                                 Text(clip.subtitleInfo)
                                     .font(.system(size: 12, weight: .medium))
-                                    .foregroundStyle(.white.opacity(0.85))
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 3)
-                                    .background(.ultraThinMaterial.opacity(0.7))
+                                    .foregroundStyle(.white.opacity(0.9))
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 4)
+                                    .background(Color.black.opacity(0.5))
                                     .clipShape(Capsule())
 
                                 Text(clip.formattedDuration)
                                     .font(.system(size: 12, weight: .medium, design: .monospaced))
                                     .foregroundStyle(Color.slooshAccent)
-                                    .padding(.horizontal, 8)
-                                    .padding(.vertical, 3)
-                                    .background(.ultraThinMaterial.opacity(0.7))
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 4)
+                                    .background(Color.black.opacity(0.5))
                                     .clipShape(Capsule())
                             }
                         }
@@ -534,19 +535,18 @@ public struct ClipsFeedView: View {
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
 
         let config = PlayerConfig(
-            iframeUrl: clip.iframeUrl ?? "",
-            fallbackTitle: clip.title,
-            initialKpId: clip.kpId,
-            initialTmdbId: clip.tmdbId,
-            initialSeason: clip.season,
-            initialEpisode: clip.episode,
-            initialVoiceover: clip.translationName,
-            initialPlaybackTime: clip.startTime,
-            directStreamUrl: clip.streamUrl,
+            iframeUrl: clip.iframeUrl,
+            title: clip.title,
+            kpId: clip.kpId,
+            season: clip.season,
+            episode: clip.episode,
+            voiceover: clip.translationName,
+            streamUrl: clip.streamUrl,
             voices: clip.translationName != nil ? [clip.translationName!] : [],
             posterUrl: clip.posterPath,
             backdropUrl: clip.backdropPath,
-            logoUrl: clip.logoPath
+            logoUrl: clip.logoPath,
+            initialPlaybackTime: clip.startTime
         )
         self.fullPlayerConfig = config
     }

@@ -339,10 +339,11 @@ public struct ClipTrimmerSheetView: View {
                         Image(systemName: isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
                             .font(.system(size: 14, weight: .semibold))
                             .foregroundStyle(.white)
-                            .padding(8)
-                            .background(.ultraThinMaterial.opacity(0.8))
-                            .clipShape(Circle())
+                            .frame(width: 36, height: 36)
+                            .contentShape(Circle())
                     }
+                    .buttonStyle(.glassPress)
+                    .glassEffect(.regular.interactive(), in: .circle)
                     .padding(10)
                 }
                 Spacer()
