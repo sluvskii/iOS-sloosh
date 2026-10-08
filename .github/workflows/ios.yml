@@ -109,6 +109,7 @@ jobs:
       - name: Build iOS App
         run: |
           cd sloosh-iOS
+          set -o pipefail
           xcodebuild build \
             -project sloosh.xcodeproj \
             -scheme sloosh \
@@ -127,7 +128,11 @@ jobs:
             COMPILER_INDEX_STORE_ENABLE=NO \
             DEBUG_INFORMATION_FORMAT=dwarf \
             SWIFT_COMPILATION_MODE=singlefile \
-            -showBuildTimingSummary
+            -showBuildTimingSummary 2>&1 | tee xcodebuild.log || {
+              echo "::error::Build failed! Printing errors:"
+              grep -E "error:" xcodebuild.log || tail -n 50 xcodebuild.log
+              exit 1
+            }
 
       - name: Package IPA (Unsigned)
         run: |
