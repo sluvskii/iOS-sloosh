@@ -1,31 +1,26 @@
 import Foundation
 import AVKit
 
-public struct ResolvedClipStream {
-    public let url: URL
-    public let headers: [String: String]
-}
-
 @MainActor
 public final class ClipStreamResolver {
     public static let shared = ClipStreamResolver()
 
-    private struct CachedStream {
-        let stream: ResolvedClipStream
-        let expiresAt: Date
-    }
-
-    private var cache: [String: CachedStream] = [:]
+    private var cache: [String: URL] = [:]
     private let cacheTtl: TimeInterval = 600 // 10 minutes TTL
-    private var activeTasks: [String: Task<ResolvedClipStream?, Never>] = [:]
+    private var activeTasks: [String: Task<URL?, Never>] = [:]
 
     private init() {}
 
-    /// Resolves fresh direct playback stream and headers for a MovieClip
-    public func resolveStream(for clip: MovieClip) async -> ResolvedClipStream? {
+    /// Resolves fresh authorized playback URL for a MovieClip through local HlsProxyServer
+    public func resolveStreamUrl(for clip: MovieClip) async -> URL? {
         // 1. Check in-memory cache
-        if let cached = cache[clip.id], cached.expiresAt > Date() {
-            return cached.stream
+        if let cached = cache[clip.id] {
+            HlsProxyServer.shared.start(
+                headers: ["Referer": "https://api.alloha.tv/"],
+                mediaId: "clip_\(clip.id)",
+                preferredVoiceName: clip.translationName
+            )
+            return cached
         }
 
         // 2. Inflight task deduplication
@@ -33,7 +28,7 @@ public final class ClipStreamResolver {
             return await existing.value
         }
 
-        let task = Task<ResolvedClipStream?, Never> { @MainActor in
+        let task = Task<URL?, Never> { @MainActor in
             defer { activeTasks.removeValue(forKey: clip.id) }
             return await doResolve(clip: clip)
         }
@@ -41,17 +36,19 @@ public final class ClipStreamResolver {
         return await task.value
     }
 
-    private func doResolve(clip: MovieClip) async -> ResolvedClipStream? {
-        // 1. Direct stream URL: instant resolution (< 5ms) directly to CDN
+    private func doResolve(clip: MovieClip) async -> URL? {
+        // 1. Direct stream URL: instant resolution (< 5ms) via local HLS proxy
         if let directStr = clip.streamUrl, !directStr.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
            let directUrl = URL(string: directStr.trimmingCharacters(in: .whitespacesAndNewlines)) {
             let realUrl = extractRealUrl(from: directUrl)
-            let res = ResolvedClipStream(url: realUrl, headers: [:])
-            cache[clip.id] = CachedStream(
-                stream: res,
-                expiresAt: Date().addingTimeInterval(cacheTtl)
+            HlsProxyServer.shared.start(
+                headers: ["Referer": "https://api.alloha.tv/"],
+                mediaId: "clip_\(clip.id)",
+                preferredVoiceName: clip.translationName
             )
-            return res
+            let finalUrl = proxiedPlaybackURL(for: realUrl) ?? realUrl
+            cache[clip.id] = finalUrl
+            return finalUrl
         }
 
         var targetIframe = clip.iframeUrl
@@ -104,26 +101,48 @@ public final class ClipStreamResolver {
                 return nil
             }
 
-            let headers = (resolved["headers"] as? [String: String]) ?? [:]
-            let res = ResolvedClipStream(url: resolvedUrl, headers: headers)
+            let headers = (resolved["headers"] as? [String: String]) ?? ["Referer": "https://api.alloha.tv/"]
 
-            // Cache positive result
-            cache[clip.id] = CachedStream(
-                stream: res,
-                expiresAt: Date().addingTimeInterval(cacheTtl)
+            HlsProxyServer.shared.start(
+                headers: headers,
+                mediaId: "clip_\(clip.id)",
+                preferredVoiceName: clip.translationName
             )
 
-            return res
+            let finalUrl = proxiedPlaybackURL(for: resolvedUrl) ?? resolvedUrl
+            cache[clip.id] = finalUrl
+            return finalUrl
         } catch {
             #if DEBUG
             print("[ClipStreamResolver] Stream resolution failed for clip \(clip.id): \(error)")
             #endif
             if let directStr = clip.streamUrl, let directUrl = URL(string: directStr) {
                 let realUrl = extractRealUrl(from: directUrl)
-                return ResolvedClipStream(url: realUrl, headers: [:])
+                HlsProxyServer.shared.start(
+                    headers: ["Referer": "https://api.alloha.tv/"],
+                    mediaId: "clip_\(clip.id)",
+                    preferredVoiceName: clip.translationName
+                )
+                let finalUrl = proxiedPlaybackURL(for: realUrl) ?? realUrl
+                return finalUrl
             }
             return nil
         }
+    }
+
+    private func proxiedPlaybackURL(for sourceURL: URL) -> URL? {
+        let absoluteUrlString = sourceURL.absoluteURL.absoluteString
+        guard let encodedData = absoluteUrlString.data(using: .utf8) else { return nil }
+        let encoded = encodedData.base64EncodedString()
+            .replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_")
+            .replacingOccurrences(of: "=", with: "")
+
+        let ext = sourceURL.pathExtension
+        let pathSuffix = ext.isEmpty ? "stream.m3u8" : "stream.\(ext)"
+
+        let baseString = "http://127.0.0.1:\(HlsProxyServer.shared.port.rawValue)/proxy/\(pathSuffix)?url=\(encoded)"
+        return URL(string: baseString)
     }
 
     private func extractRealUrl(from url: URL) -> URL {
