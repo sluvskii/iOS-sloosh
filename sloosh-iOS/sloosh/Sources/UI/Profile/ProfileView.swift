@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 enum FavoriteCategory: String, CaseIterable {
     case all = "Все"
