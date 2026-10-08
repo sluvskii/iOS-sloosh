@@ -196,7 +196,7 @@ public final class ClipsRepository: ObservableObject {
     public func addComment(clipId: String, text: String) async throws -> ClipComment {
         let user = AuthRepository.shared.currentUser
         let authorId = user?.id ?? "guest_\(UIDevice.current.identifierForVendor?.uuidString ?? "user")"
-        let authorName = user?.displayName.isEmpty == false ? user!.displayName : (user?.email.components(separatedBy: "@").first ?? "Гость")
+        let authorName = (user?.displayName?.isEmpty == false ? user?.displayName : nil) ?? user?.displayTitle ?? "Гость"
         let authorAvatar = user?.photoURL
 
         let comment = ClipComment(

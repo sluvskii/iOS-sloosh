@@ -409,7 +409,7 @@ public struct ClipTrimmerSheetView: View {
 
         let user = authRepo.currentUser
         let authorId = user?.id ?? "guest_\(UIDevice.current.identifierForVendor?.uuidString ?? "user")"
-        let authorName = (user?.displayName.isEmpty == false) ? user!.displayName : (user?.email.components(separatedBy: "@").first ?? "Зритель")
+        let authorName = (user?.displayName?.isEmpty == false ? user?.displayName : nil) ?? user?.displayTitle ?? "Зритель"
         let authorAvatar = user?.photoURL
 
         let clip = MovieClip(
@@ -438,12 +438,12 @@ public struct ClipTrimmerSheetView: View {
             do {
                 try await clipsRepo.publishClip(clip)
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
-                ToastManager.shared.show("Момент успешно опубликован!", type: .success)
+                ToastManager.shared.show(title: "Момент успешно опубликован!", icon: "sparkles.tv.fill", iconColor: Color.slooshAccent)
                 onPublished?()
                 dismiss()
             } catch {
                 UINotificationFeedbackGenerator().notificationOccurred(.error)
-                ToastManager.shared.show("Ошибка публикации момента", type: .error)
+                ToastManager.shared.show(title: "Ошибка публикации момента", icon: "exclamationmark.triangle.fill", iconColor: .red)
                 isPublishing = false
             }
         }

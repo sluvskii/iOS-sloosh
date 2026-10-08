@@ -200,7 +200,7 @@ public struct ClipCommentsSheetView: View {
             } catch {
                 self.isSending = false
                 UINotificationFeedbackGenerator().notificationOccurred(.error)
-                ToastManager.shared.show("Не удалось отправить комментарий", type: .error)
+                ToastManager.shared.show(title: "Не удалось отправить комментарий", icon: "exclamationmark.triangle.fill", iconColor: .red)
             }
         }
     }
