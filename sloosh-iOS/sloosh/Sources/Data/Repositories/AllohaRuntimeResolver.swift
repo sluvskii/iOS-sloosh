@@ -162,12 +162,9 @@ final class AllohaRuntimeResolver: NSObject, WKNavigationDelegate, WKScriptMessa
         for payload in payloads where seen.insert(payload).inserted {
             let parsed = AllohaRuntimeParser.parsePayload(payload, baseURL: baseURL.absoluteString, headers: headers) ?? [:]
             if let variants = parsed["audioVariants"] as? [[String: Any]] {
-                var chosenUrl: String? = nil
-                if let master = bestMasterPayload, !master.isEmpty {
-                    chosenUrl = master
-                } else {
-                    chosenUrl = variants.first(where: { (($0["url"] as? String) ?? "").isEmpty == false })?["url"] as? String
-                }
+                let chosenUrl: String? = (parsed["videoURL"] as? String)
+                    ?? variants.first(where: { (($0["url"] as? String) ?? "").isEmpty == false })?["url"] as? String
+                    ?? bestMasterPayload
                 
                 if let url = chosenUrl {
                     let mappedVariants = variants.compactMap { item -> [String: Any]? in
