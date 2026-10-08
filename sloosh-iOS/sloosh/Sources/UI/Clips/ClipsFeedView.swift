@@ -8,6 +8,7 @@ public struct ClipsFeedView: View {
 
     @State private var currentClipId: String?
     @State private var activePlayer: AVPlayer?
+    @State private var pipController: AVPictureInPictureController? = nil
     @State private var timeObserver: Any?
     @State private var isMuted: Bool = false
     @State private var isPlaying: Bool = true
@@ -132,7 +133,7 @@ public struct ClipsFeedView: View {
         return ZStack {
             // 1. Background Video Player or Poster Backdrop
             if isCurrent, let player = activePlayer {
-                VideoLayerView(player: player, pipController: .constant(nil), videoGravity: .resizeAspectFill)
+                VideoLayerView(player: player, pipController: $pipController, videoGravity: .resizeAspectFill)
                     .ignoresSafeArea()
             } else if let backdrop = clip.backdropPath ?? clip.posterPath, let url = URL(string: backdrop) {
                 AsyncCachedImage(url: url) {
