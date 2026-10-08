@@ -32,6 +32,13 @@ struct SearchFilterSheet: View {
         "Канада", "Индия", "Китай"
     ]
 
+    @State private var scrollOffset: CGFloat = 0
+
+    private var blurOpacity: Double {
+        let progress = max(0, scrollOffset) / 20.0
+        return min(1.0, Double(progress))
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -49,11 +56,16 @@ struct SearchFilterSheet: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 12)
-                .padding(.bottom, 24)
+                .padding(.bottom, 16)
             }
-            .scrollBounceBehavior(.basedOnSize)
+            .scrollBounceBehavior(.always)
             .scrollIndicators(.hidden)
             .scrollContentBackground(.hidden)
+            .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                geometry.contentOffset.y + geometry.contentInsets.top
+            } action: { _, newOffset in
+                scrollOffset = newOffset
+            }
             .toolbar(.hidden, for: .navigationBar)
             .safeAreaInset(edge: .top, spacing: 0) {
                 headerBar
@@ -64,11 +76,13 @@ struct SearchFilterSheet: View {
                         VariableBlurView(tintColor: .clear, tintOpacity: 0.0)
                             .padding(.bottom, -30)
                             .ignoresSafeArea(edges: .top)
+                            .opacity(blurOpacity)
+                            .animation(.easeInOut(duration: 0.2), value: blurOpacity)
                     )
             }
             .background(Color.clear)
         }
-        .presentationDetents(context == .search ? [.fraction(0.66)] : [.fraction(0.56)])
+        .presentationDetents(context == .search ? [.height(520)] : [.height(436)])
         .presentationBackground { Color.clear.glassEffect(in: .rect) }
         .presentationDragIndicator(.visible)
     }
