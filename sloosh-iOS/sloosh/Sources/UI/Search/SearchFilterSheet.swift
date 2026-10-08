@@ -49,36 +49,76 @@ struct SearchFilterSheet: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 12)
-                .padding(.bottom, 16)
+                .padding(.bottom, 24)
             }
             .scrollBounceBehavior(.basedOnSize)
             .scrollIndicators(.hidden)
-            .navigationTitle("Фильтры")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Сбросить") {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
-                            filters = SearchFilters()
-                        }
-                    }
-                    .foregroundColor(filters.isEmpty ? .secondary : .primary)
-                    .disabled(filters.isEmpty)
-                }
-
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Готово") {
-                        dismiss()
-                    }
-                    .bold()
-                    .foregroundColor(.primary)
-                }
+            .scrollContentBackground(.hidden)
+            .toolbar(.hidden, for: .navigationBar)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                headerBar
+                    .padding(.horizontal, 16)
+                    .padding(.top, 14)
+                    .padding(.bottom, 8)
+                    .background(
+                        VariableBlurView(tintColor: .clear, tintOpacity: 0.0)
+                            .padding(.bottom, -30)
+                            .ignoresSafeArea(edges: .top)
+                    )
             }
             .background(Color.clear)
         }
-        .presentationDetents(context == .search ? [.fraction(0.62), .large] : [.fraction(0.52), .large])
+        .presentationDetents(context == .search ? [.fraction(0.66)] : [.fraction(0.56)])
         .presentationBackground { Color.clear.glassEffect(in: .rect) }
         .presentationDragIndicator(.visible)
+    }
+
+    // MARK: - Header Bar (SourceSelectionView Style)
+    private var headerBar: some View {
+        ZStack {
+            Text("Фильтры")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .frame(maxWidth: 200)
+
+            HStack {
+                Button {
+                    let generator = UIImpactFeedbackGenerator(style: .medium)
+                    generator.prepare()
+                    generator.impactOccurred()
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                        filters = SearchFilters()
+                    }
+                } label: {
+                    Image(systemName: "arrow.counterclockwise")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(filters.isEmpty ? Color.secondary.opacity(0.35) : Color.primary)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.glassPress)
+                .glassEffect(.regular.interactive(), in: .circle)
+                .disabled(filters.isEmpty)
+                .accessibilityLabel("Сбросить")
+
+                Spacer()
+
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.glassPress)
+                .glassEffect(.regular.interactive(), in: .circle)
+                .accessibilityLabel("Закрыть")
+            }
+        }
     }
 
     // MARK: - Content Type Section
@@ -126,10 +166,10 @@ struct SearchFilterSheet: View {
                 .padding(.vertical, 8)
                 .background(
                     Capsule()
-                        .fill(isSelected ? Color.white : Color.clear)
+                        .fill(isSelected ? Color.white : Color(UIColor.secondarySystemFill).opacity(0.4))
                 )
-                .foregroundStyle(isSelected ? Color.black : Color.white)
-                .glassEffect(isSelected ? .regular : .regular.interactive(), in: Capsule())
+                .foregroundStyle(isSelected ? Color.black : Color.primary)
+                .glassEffect(isSelected ? .regular : .regular.interactive(), in: .capsule)
         }
         .buttonStyle(.plain)
     }
@@ -212,16 +252,19 @@ struct SearchFilterSheet: View {
                 } label: {
                     HStack(spacing: 6) {
                         Text(currentSortTitle)
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.system(size: 13, weight: .semibold))
                         Image(systemName: "chevron.up.chevron.down")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.system(size: 10, weight: .semibold))
                             .foregroundColor(.secondary)
                     }
                     .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
+                    .padding(.vertical, 7)
                     .foregroundColor(.primary)
-                    .background(Color(UIColor.systemFill))
-                    .clipShape(Capsule())
+                    .background(
+                        Capsule()
+                            .fill(Color(UIColor.secondarySystemFill).opacity(0.6))
+                    )
+                    .glassEffect(.regular.interactive(), in: .capsule)
                 }
             }
             .padding(.horizontal, 16)
@@ -229,6 +272,7 @@ struct SearchFilterSheet: View {
 
             Divider()
                 .padding(.leading, 52)
+                .opacity(0.5)
 
             // Genre
             HStack(spacing: 12) {
@@ -287,17 +331,20 @@ struct SearchFilterSheet: View {
                 } label: {
                     HStack(spacing: 6) {
                         Text(currentGenreTitle)
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.system(size: 13, weight: .semibold))
                             .lineLimit(1)
                         Image(systemName: "chevron.up.chevron.down")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.system(size: 10, weight: .semibold))
                             .foregroundColor(.secondary)
                     }
                     .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
+                    .padding(.vertical, 7)
                     .foregroundColor(.primary)
-                    .background(Color(UIColor.systemFill))
-                    .clipShape(Capsule())
+                    .background(
+                        Capsule()
+                            .fill(Color(UIColor.secondarySystemFill).opacity(0.6))
+                    )
+                    .glassEffect(.regular.interactive(), in: .capsule)
                 }
             }
             .padding(.horizontal, 16)
@@ -305,6 +352,7 @@ struct SearchFilterSheet: View {
 
             Divider()
                 .padding(.leading, 52)
+                .opacity(0.5)
 
             // Country
             HStack(spacing: 12) {
@@ -363,24 +411,30 @@ struct SearchFilterSheet: View {
                 } label: {
                     HStack(spacing: 6) {
                         Text(currentCountryTitle)
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(.system(size: 13, weight: .semibold))
                             .lineLimit(1)
                         Image(systemName: "chevron.up.chevron.down")
-                            .font(.system(size: 11, weight: .semibold))
+                            .font(.system(size: 10, weight: .semibold))
                             .foregroundColor(.secondary)
                     }
                     .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
+                    .padding(.vertical, 7)
                     .foregroundColor(.primary)
-                    .background(Color(UIColor.systemFill))
-                    .clipShape(Capsule())
+                    .background(
+                        Capsule()
+                            .fill(Color(UIColor.secondarySystemFill).opacity(0.6))
+                    )
+                    .glassEffect(.regular.interactive(), in: .capsule)
                 }
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
         }
-        .background(Color(UIColor.secondarySystemGroupedBackground).opacity(0.7))
-        .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .background(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(Color(UIColor.secondarySystemFill).opacity(0.45))
+        )
+        .glassEffect(.regular, in: .rect(cornerRadius: 22))
     }
 
     private var currentGenreTitle: String {
@@ -493,7 +547,10 @@ struct SearchFilterSheet: View {
             .frame(height: 116)
             .padding(.bottom, 6)
         }
-        .background(Color(UIColor.secondarySystemGroupedBackground).opacity(0.7))
-        .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .background(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(Color(UIColor.secondarySystemFill).opacity(0.45))
+        )
+        .glassEffect(.regular, in: .rect(cornerRadius: 22))
     }
 }
