@@ -409,8 +409,9 @@ public struct ClipsFeedView: View {
             Spacer()
                 .frame(height: topSafeArea)
 
-            // 2. Edge-to-Edge Full Width Video Container
+            // 2. Video Container with smooth corner radius
             videoCardContainer(clip, width: size.width, height: availableHeight, isCurrent: isCurrent)
+                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
 
             // 3. Gap between video card and progress bar
             Spacer()
@@ -421,6 +422,8 @@ public struct ClipsFeedView: View {
                 progressBarView(for: clip)
                     .padding(.horizontal, 14)
                     .frame(height: scrubberHeight)
+                    .opacity(showCommentsForClip != nil ? 0.0 : 1.0)
+                    .animation(.spring(response: 0.28, dampingFraction: 0.85), value: showCommentsForClip != nil)
             } else {
                 Color.clear
                     .frame(height: scrubberHeight)
@@ -437,20 +440,15 @@ public struct ClipsFeedView: View {
     // MARK: - Video Card Container
 
     private func videoCardContainer(_ clip: MovieClip, width: CGFloat, height: CGFloat, isCurrent: Bool) -> some View {
-        let isOverlayHidden = isScrubbing || playback.isFastForwarding
         let isCommentsOpen = (showCommentsForClip != nil)
+        let isOverlayHidden = isScrubbing || playback.isFastForwarding || isCommentsOpen
         let effectiveScaleMode: ClipScalingMode = isCommentsOpen ? .fit : currentScaleMode
         let effectiveVideoGravity: AVLayerVideoGravity = effectiveScaleMode == .fit ? .resizeAspect : .resizeAspectFill
         let commentsShift: CGFloat = isCommentsOpen ? -(height * 0.28) : 0.0
 
         return ZStack {
-            // 1. Live Blurred Background Video Layer (when in .fit mode)
-            if isCurrent, effectiveScaleMode == .fit, let player = playback.activePlayer, playback.isVideoReady {
-                AmbientVideoLayerView(player: player)
-                    .frame(width: width, height: height)
-                    .clipped()
-                    .animation(.easeInOut(duration: 0.25), value: playback.isVideoReady)
-            } else if let backdrop = clip.backdropPath ?? clip.posterPath, let url = resolveImageUrl(path: backdrop) {
+            // 1. Initial Poster Placeholder (visible ONLY during initial loading before video is ready)
+            if !playback.isVideoReady, let backdrop = clip.backdropPath ?? clip.posterPath, let url = resolveImageUrl(path: backdrop) {
                 AsyncCachedImage(url: url) {
                     Color.black
                 } content: { img in
@@ -468,11 +466,20 @@ public struct ClipsFeedView: View {
                 }
                 .frame(width: width, height: height)
                 .clipped()
+                .transition(.opacity)
             } else {
                 Color.black
             }
 
-            // 2. Sharp Video Player Layer (Foreground, centered in remaining space when comments open)
+            // 2. Live Blurred Background Video Layer (when in .fit mode and video is ready)
+            if isCurrent, effectiveScaleMode == .fit, let player = playback.activePlayer, playback.isVideoReady {
+                AmbientVideoLayerView(player: player)
+                    .frame(width: width, height: height)
+                    .clipped()
+                    .transition(.opacity)
+            }
+
+            // 3. Sharp Video Player Layer (Foreground, centered in remaining space when comments open)
             if isCurrent, let player = playback.activePlayer {
                 VideoLayerView(
                     player: player,
@@ -487,7 +494,7 @@ public struct ClipsFeedView: View {
                 .animation(.easeInOut(duration: 0.25), value: playback.isVideoReady)
             }
 
-            // 3. Cinematic Gradients for Contrast and Overlay Readability
+            // 4. Cinematic Gradients for Contrast and Overlay Readability (hidden when comments or overlays are hidden)
             VStack(spacing: 0) {
                 LinearGradient(
                     colors: [.black.opacity(0.55), .clear],
@@ -505,9 +512,11 @@ public struct ClipsFeedView: View {
                 )
                 .frame(height: 190)
             }
+            .opacity(isOverlayHidden ? 0.0 : 1.0)
+            .animation(.spring(response: 0.28, dampingFraction: 0.85), value: isOverlayHidden)
             .allowsHitTesting(false)
 
-            // 4. Touch & Gesture Zones: Edge 2x Speed, Center Instant 0ms Play/Pause
+            // 5. Touch & Gesture Zones: Edge 2x Speed, Center Instant 0ms Play/Pause
             HStack(spacing: 0) {
                 // Left Edge 2x Speed Zone (75pt)
                 edgeAccelerationZone(for: clip)
@@ -523,16 +532,15 @@ public struct ClipsFeedView: View {
             }
             .frame(width: width, height: height)
 
-            // 5. Play / Pause Indicator in Center (Liquid Glass with Spring Animation)
+            // 6. Play / Pause Indicator in Center (Liquid Glass with Spring Animation, perfectly centered)
             if !playback.isPlaying && isCurrent && playback.isVideoReady && !isOverlayHidden {
                 Image(systemName: "play.fill")
-                    .font(.system(size: 32, weight: .bold))
+                    .font(.system(size: 30, weight: .bold))
                     .foregroundStyle(.white)
-                    .offset(x: 3)
                     .frame(width: 72, height: 72)
                     .glassEffect(in: .circle)
                     .clipShape(Circle())
-                    .shadow(color: .black.opacity(0.6), radius: 16, y: 4)
+                    .shadow(color: .black.opacity(0.5), radius: 14, y: 3)
                     .transition(
                         .asymmetric(
                             insertion: .scale(scale: 0.5).combined(with: .opacity),
@@ -542,7 +550,7 @@ public struct ClipsFeedView: View {
                     .allowsHitTesting(false)
             }
 
-            // 6. Top 2x Fast-Forward Indicator Badge
+            // 7. Top 2x Fast-Forward Indicator Badge
             VStack {
                 if playback.isFastForwarding {
                     HStack(spacing: 6) {
@@ -565,7 +573,7 @@ public struct ClipsFeedView: View {
             .animation(.spring(response: 0.3, dampingFraction: 0.75), value: playback.isFastForwarding)
             .allowsHitTesting(false)
 
-            // 7. Big Heart Explosion on Double-Tap
+            // 8. Big Heart Explosion on Double-Tap
             if showBigHeart {
                 Image(systemName: "heart.fill")
                     .font(.system(size: 80))
@@ -575,13 +583,6 @@ public struct ClipsFeedView: View {
                     .opacity(showBigHeart ? 1.0 : 0.0)
                     .animation(.spring(response: 0.35, dampingFraction: 0.6), value: showBigHeart)
                     .allowsHitTesting(false)
-            }
-
-            // 8. Loading Spinner Indicator (subtle, centered)
-            if isCurrent && (playback.isResolving || !playback.isVideoReady) && !playback.hasError && !isOverlayHidden {
-                ProgressView()
-                    .tint(.white)
-                    .scaleEffect(1.2)
             }
 
             // 9. Playback Error & Retry Indicator
@@ -630,7 +631,7 @@ public struct ClipsFeedView: View {
             .allowsHitTesting(!isOverlayHidden)
         }
         .frame(width: width, height: height)
-        .clipped()
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 
     // MARK: - Gesture Handling Zones
