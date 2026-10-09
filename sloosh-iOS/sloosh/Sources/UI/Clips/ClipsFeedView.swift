@@ -274,7 +274,7 @@ public struct ClipsFeedView: View {
     @State private var isScrubbing: Bool = false
     @State private var scrubProgress: Double = 0.0
     @State private var lastTapTime: Date = Date.distantPast
-    @State private var scrollBlurProgress: Double = 0.0
+    @State private var isScrolling: Bool = false
 
     public init() {}
 
@@ -394,14 +394,13 @@ public struct ClipsFeedView: View {
         }
         .scrollTargetBehavior(.paging)
         .scrollPosition(id: $currentClipId)
-        .onScrollGeometryChange(for: CGFloat.self) { geometry in
-            let containerH = max(1.0, geometry.containerSize.height)
-            let offset = geometry.contentOffset.y
-            let remainder = abs(offset.truncatingRemainder(dividingBy: containerH))
-            let distanceToSnap = min(remainder, containerH - remainder)
-            return min(1.0, distanceToSnap / 35.0)
-        } action: { _, newProgress in
-            scrollBlurProgress = newProgress
+        .onScrollPhaseChange { oldPhase, newPhase in
+            let moving = (newPhase != .idle)
+            if isScrolling != moving {
+                withAnimation(.easeInOut(duration: 0.25)) {
+                    isScrolling = moving
+                }
+            }
         }
         .ignoresSafeArea()
         .onChange(of: currentClipId) { _, newId in
@@ -438,8 +437,8 @@ public struct ClipsFeedView: View {
             )
             .frame(height: topSafeArea + 54)
             .ignoresSafeArea(edges: .top)
-            .opacity(scrollBlurProgress)
-            .animation(.easeInOut(duration: 0.2), value: scrollBlurProgress)
+            .opacity(isScrolling ? 1.0 : 0.0)
+            .animation(.easeInOut(duration: 0.25), value: isScrolling)
         )
         .opacity(isOverlayHidden ? 0.0 : 1.0)
         .animation(.spring(response: 0.28, dampingFraction: 0.85), value: isOverlayHidden)
@@ -504,8 +503,8 @@ public struct ClipsFeedView: View {
         let commentsShift: CGFloat = isCommentsOpen ? -(height * 0.28) : 0.0
 
         return ZStack {
-            // 1. Initial Poster Placeholder (visible ONLY during initial loading before video is ready)
-            if !playback.isVideoReady, let backdrop = clip.backdropPath ?? clip.posterPath, let url = resolveImageUrl(path: backdrop) {
+            // 1. Cinema Ambient Background Layer
+            if let backdrop = clip.backdropPath ?? clip.posterPath, let url = resolveImageUrl(path: backdrop) {
                 AsyncCachedImage(url: url) {
                     Color.black
                 } content: { img in
@@ -523,20 +522,11 @@ public struct ClipsFeedView: View {
                 }
                 .frame(width: width, height: height)
                 .clipped()
-                .transition(.opacity)
             } else {
                 Color.black
             }
 
-            // 2. Live Blurred Background Video Layer (when in .fit mode and video is ready)
-            if isCurrent, effectiveScaleMode == .fit, let player = playback.activePlayer, playback.isVideoReady {
-                AmbientVideoLayerView(player: player)
-                    .frame(width: width, height: height)
-                    .clipped()
-                    .transition(.opacity)
-            }
-
-            // 3. Sharp Video Player Layer (Foreground, centered in remaining space when comments open)
+            // 2. Sharp Video Player Layer (Foreground, centered in remaining space when comments open)
             if isCurrent, let player = playback.activePlayer {
                 VideoLayerView(
                     player: player,
@@ -546,9 +536,7 @@ public struct ClipsFeedView: View {
                 .frame(width: width, height: height)
                 .offset(y: commentsShift)
                 .clipped()
-                .opacity(playback.isVideoReady ? 1.0 : 0.0)
                 .animation(.spring(response: 0.38, dampingFraction: 0.82), value: isCommentsOpen)
-                .animation(.easeInOut(duration: 0.25), value: playback.isVideoReady)
             }
 
             // 4. Cinematic Gradients for Contrast and Overlay Readability (hidden when comments or overlays are hidden)
