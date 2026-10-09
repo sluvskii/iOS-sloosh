@@ -299,7 +299,7 @@ public struct ClipsFeedView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     feedScrollView(proxy: proxy)
-                        .safeAreaInset(edge: .top, spacing: 0) {
+                        .overlay(alignment: .top) {
                             momentsHeaderView(topSafeArea: topSafeArea)
                         }
                 }
