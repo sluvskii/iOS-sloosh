@@ -448,8 +448,7 @@ public struct ClipsFeedView: View {
     private func clipCard(_ clip: MovieClip, width: CGFloat, height: CGFloat, topSafeArea: CGFloat, bottomSafeArea: CGFloat) -> some View {
         let isCurrent = (currentClipId == clip.id) || (currentClipId == nil && clip.id == clipsRepo.clips.first?.id)
         let navHeaderHeight: CGFloat = 44.0
-        let cardTopSpacing: CGFloat = 20.0
-        let totalTopClearance: CGFloat = topSafeArea + navHeaderHeight + cardTopSpacing
+        let totalTopClearance: CGFloat = topSafeArea + navHeaderHeight
 
         let bottomTabBarHeight: CGFloat = bottomSafeArea + 52.0
         let scrubberHeight: CGFloat = 24.0
