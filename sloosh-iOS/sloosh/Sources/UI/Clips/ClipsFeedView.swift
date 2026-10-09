@@ -49,7 +49,35 @@ final class ClipPlaybackCoordinator: ObservableObject {
             }
             guard !Task.isCancelled, self.currentClipId == clip.id else { return }
 
-            let asset = AVURLAsset(url: playbackInfo.url, options: ["AVURLAssetHTTPHeaderFieldsKey": playbackInfo.headers])
+            let isHls = playbackInfo.url.absoluteString.lowercased().contains(".m3u8")
+            let asset: AVURLAsset
+            if isHls {
+                let absoluteUrlString = playbackInfo.url.absoluteURL.absoluteString
+                if let encodedData = absoluteUrlString.data(using: .utf8) {
+                    let encoded = encodedData.base64EncodedString()
+                        .replacingOccurrences(of: "+", with: "-")
+                        .replacingOccurrences(of: "/", with: "_")
+                        .replacingOccurrences(of: "=", with: "")
+
+                    let proxyUrlString = "http://127.0.0.1:\(HlsProxyServer.shared.port.rawValue)/proxy/stream.m3u8?url=\(encoded)"
+                    if let proxyUrl = URL(string: proxyUrlString) {
+                        HlsProxyServer.shared.start(
+                            headers: playbackInfo.headers,
+                            voices: [],
+                            subtitles: [],
+                            mediaId: "clip_\(clip.id)"
+                        )
+                        asset = AVURLAsset(url: proxyUrl)
+                    } else {
+                        asset = AVURLAsset(url: playbackInfo.url, options: ["AVURLAssetHTTPHeaderFieldsKey": playbackInfo.headers])
+                    }
+                } else {
+                    asset = AVURLAsset(url: playbackInfo.url, options: ["AVURLAssetHTTPHeaderFieldsKey": playbackInfo.headers])
+                }
+            } else {
+                asset = AVURLAsset(url: playbackInfo.url, options: ["AVURLAssetHTTPHeaderFieldsKey": playbackInfo.headers])
+            }
+
             let item = AVPlayerItem(asset: asset)
             item.preferredForwardBufferDuration = 3.0
 
@@ -267,7 +295,7 @@ public struct ClipsFeedView: View {
         ClipScalingMode(rawValue: clipScaleModeRaw) ?? .fit
     }
 
-    @State private var currentClipId: String?
+    @State private var currentClipId: String? = ClipsRepository.shared.clips.first?.id
     @State private var showCommentsForClip: MovieClip?
     @State private var fullPlayerConfig: PlayerConfig?
     @State private var showBigHeart: Bool = false
@@ -328,7 +356,12 @@ public struct ClipsFeedView: View {
             playback.pause()
         }
         .onAppear {
-            resumeActiveClip()
+            if currentClipId == nil, let first = clipsRepo.clips.first {
+                currentClipId = first.id
+                playback.setupPlayer(for: first)
+            } else {
+                resumeActiveClip()
+            }
         }
     }
 
@@ -439,7 +472,7 @@ public struct ClipsFeedView: View {
     // MARK: - Clip Card
 
     private func clipCard(_ clip: MovieClip, size: CGSize, safeArea: EdgeInsets) -> some View {
-        let isCurrent = (currentClipId == clip.id)
+        let isCurrent = (currentClipId == clip.id) || (currentClipId == nil && clip.id == clipsRepo.clips.first?.id)
         let topSafeArea = max(safeArea.top, (UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.windows.first?.safeAreaInsets.top }.first ?? 47.0))
         let bottomSafeArea = max(safeArea.bottom, (UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.windows.first?.safeAreaInsets.bottom }.first ?? 34.0))
 
@@ -560,21 +593,23 @@ public struct ClipsFeedView: View {
             .animation(.spring(response: 0.28, dampingFraction: 0.85), value: isOverlayHidden)
             .allowsHitTesting(false)
 
-            // 5. Touch & Gesture Zones: Edge 2x Speed, Center Instant 0ms Play/Pause
+            // 5. Touch & Gesture Zones: Left Edge 2x Speed, Center Instant 0ms Play/Pause
             HStack(spacing: 0) {
-                // Left Edge 2x Speed Zone (75pt)
+                // Left Edge 2x Speed Zone (80pt)
                 edgeAccelerationZone(for: clip)
-                    .frame(width: 75)
+                    .frame(width: 80)
 
                 // Center Instant Play/Pause & Double-Tap Heart Zone
                 centerTapZone(clip: clip)
                     .frame(maxWidth: .infinity)
 
-                // Right Edge 2x Speed Zone (75pt)
-                edgeAccelerationZone(for: clip)
-                    .frame(width: 75)
+                // Right Margin Spacer (80pt) — touch passthrough to right rail action buttons
+                Color.clear
+                    .frame(width: 80)
+                    .allowsHitTesting(false)
             }
             .frame(width: width, height: height)
+            .zIndex(1)
 
             // 6. Play / Pause Indicator in Center (Liquid Glass with Spring Animation, perfectly centered)
             if !playback.isPlaying && isCurrent && playback.isVideoReady && !isOverlayHidden {
@@ -673,6 +708,7 @@ public struct ClipsFeedView: View {
             .opacity(isOverlayHidden ? 0.0 : 1.0)
             .animation(.spring(response: 0.28, dampingFraction: 0.85), value: isOverlayHidden)
             .allowsHitTesting(!isOverlayHidden)
+            .zIndex(10)
         }
         .frame(width: width, height: height)
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
