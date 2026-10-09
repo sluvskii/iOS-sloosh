@@ -264,10 +264,6 @@ public struct ClipsFeedView: View {
         ClipScalingMode(rawValue: clipScaleModeRaw) ?? .fit
     }
 
-    private var currentVideoGravity: AVLayerVideoGravity {
-        currentScaleMode == .fit ? .resizeAspect : .resizeAspectFill
-    }
-
     @State private var currentClipId: String?
     @State private var pipController: AVPictureInPictureController? = nil
     @State private var showCommentsForClip: MovieClip?
@@ -277,6 +273,7 @@ public struct ClipsFeedView: View {
     @State private var isTextExpanded: Bool = false
     @State private var isScrubbing: Bool = false
     @State private var scrubProgress: Double = 0.0
+    @State private var lastTapTime: Date = Date.distantPast
 
     public init() {}
 
@@ -406,17 +403,14 @@ public struct ClipsFeedView: View {
 
         // Calculate available height strictly between top status bar and bottom scrubber
         let availableHeight = max(200.0, size.height - topSafeArea - bottomTabBarHeight - scrubberHeight - scrubberGap)
-        // 9:16 aspect ratio bounds
-        let cardWidth = min(size.width, availableHeight * (9.0 / 16.0))
-        let cardHeight = cardWidth * (16.0 / 9.0)
 
         return VStack(spacing: 0) {
             // 1. Top status bar clearance
             Spacer()
                 .frame(height: topSafeArea)
 
-            // 2. 9:16 Video Card Container
-            videoCardContainer(clip, width: cardWidth, height: cardHeight, isCurrent: isCurrent)
+            // 2. Edge-to-Edge Full Width Video Container
+            videoCardContainer(clip, width: size.width, height: availableHeight, isCurrent: isCurrent)
 
             // 3. Gap between video card and progress bar
             Spacer()
@@ -425,7 +419,7 @@ public struct ClipsFeedView: View {
             // 4. Progress bar (полоса перемотки)
             if isCurrent {
                 progressBarView(for: clip)
-                    .padding(.horizontal, max(12, (size.width - cardWidth) / 2 + 12))
+                    .padding(.horizontal, 14)
                     .frame(height: scrubberHeight)
             } else {
                 Color.clear
@@ -440,14 +434,23 @@ public struct ClipsFeedView: View {
         .background(Color.black)
     }
 
-    // MARK: - 9:16 Video Card Container
+    // MARK: - Video Card Container
 
     private func videoCardContainer(_ clip: MovieClip, width: CGFloat, height: CGFloat, isCurrent: Bool) -> some View {
         let isOverlayHidden = isScrubbing || playback.isFastForwarding
+        let isCommentsOpen = (showCommentsForClip != nil)
+        let effectiveScaleMode: ClipScalingMode = isCommentsOpen ? .fit : currentScaleMode
+        let effectiveVideoGravity: AVLayerVideoGravity = effectiveScaleMode == .fit ? .resizeAspect : .resizeAspectFill
+        let commentsShift: CGFloat = isCommentsOpen ? -(height * 0.28) : 0.0
 
         return ZStack {
-            // 1. Cinema Ambient Background Layer (Vivid blurred backdrop for .fit mode letterboxing)
-            if let backdrop = clip.backdropPath ?? clip.posterPath, let url = resolveImageUrl(path: backdrop) {
+            // 1. Live Blurred Background Video Layer (when in .fit mode)
+            if isCurrent, effectiveScaleMode == .fit, let player = playback.activePlayer, playback.isVideoReady {
+                AmbientVideoLayerView(player: player)
+                    .frame(width: width, height: height)
+                    .clipped()
+                    .animation(.easeInOut(duration: 0.25), value: playback.isVideoReady)
+            } else if let backdrop = clip.backdropPath ?? clip.posterPath, let url = resolveImageUrl(path: backdrop) {
                 AsyncCachedImage(url: url) {
                     Color.black
                 } content: { img in
@@ -469,16 +472,18 @@ public struct ClipsFeedView: View {
                 Color.black
             }
 
-            // 2. Sharp Video Player Layer (Foreground)
+            // 2. Sharp Video Player Layer (Foreground, centered in remaining space when comments open)
             if isCurrent, let player = playback.activePlayer {
                 VideoLayerView(
                     player: player,
                     pipController: $pipController,
-                    videoGravity: currentVideoGravity
+                    videoGravity: effectiveVideoGravity
                 )
                 .frame(width: width, height: height)
+                .offset(y: commentsShift)
                 .clipped()
                 .opacity(playback.isVideoReady ? 1.0 : 0.0)
+                .animation(.spring(response: 0.38, dampingFraction: 0.82), value: isCommentsOpen)
                 .animation(.easeInOut(duration: 0.25), value: playback.isVideoReady)
             }
 
@@ -502,10 +507,10 @@ public struct ClipsFeedView: View {
             }
             .allowsHitTesting(false)
 
-            // 4. Touch & Gesture Zones: Edge 2x Speed, Center Instant Play/Pause
+            // 4. Touch & Gesture Zones: Edge 2x Speed, Center Instant 0ms Play/Pause
             HStack(spacing: 0) {
                 // Left Edge 2x Speed Zone (75pt)
-                edgeAccelerationZone
+                edgeAccelerationZone(for: clip)
                     .frame(width: 75)
 
                 // Center Instant Play/Pause & Double-Tap Heart Zone
@@ -513,7 +518,7 @@ public struct ClipsFeedView: View {
                     .frame(maxWidth: .infinity)
 
                 // Right Edge 2x Speed Zone (75pt)
-                edgeAccelerationZone
+                edgeAccelerationZone(for: clip)
                     .frame(width: 75)
             }
             .frame(width: width, height: height)
@@ -521,16 +526,17 @@ public struct ClipsFeedView: View {
             // 5. Play / Pause Indicator in Center (Liquid Glass with Spring Animation)
             if !playback.isPlaying && isCurrent && playback.isVideoReady && !isOverlayHidden {
                 Image(systemName: "play.fill")
-                    .font(.system(size: 28, weight: .bold))
+                    .font(.system(size: 32, weight: .bold))
                     .foregroundStyle(.white)
-                    .frame(width: 64, height: 64)
+                    .offset(x: 3)
+                    .frame(width: 72, height: 72)
                     .glassEffect(in: .circle)
                     .clipShape(Circle())
-                    .shadow(color: .black.opacity(0.55), radius: 10, y: 3)
+                    .shadow(color: .black.opacity(0.6), radius: 16, y: 4)
                     .transition(
                         .asymmetric(
-                            insertion: .scale(scale: 0.6).combined(with: .opacity),
-                            removal: .scale(scale: 1.15).combined(with: .opacity)
+                            insertion: .scale(scale: 0.5).combined(with: .opacity),
+                            removal: .scale(scale: 1.25).combined(with: .opacity)
                         )
                     )
                     .allowsHitTesting(false)
@@ -624,13 +630,12 @@ public struct ClipsFeedView: View {
             .allowsHitTesting(!isOverlayHidden)
         }
         .frame(width: width, height: height)
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .shadow(color: .black.opacity(0.6), radius: 16, y: 4)
+        .clipped()
     }
 
     // MARK: - Gesture Handling Zones
 
-    private var edgeAccelerationZone: some View {
+    private func edgeAccelerationZone(for clip: MovieClip) -> some View {
         Color.clear
             .contentShape(Rectangle())
             .gesture(
@@ -655,26 +660,40 @@ public struct ClipsFeedView: View {
                         }
                     }
             )
-            .onTapGesture(count: 1) {
-                withAnimation(.spring(response: 0.28, dampingFraction: 0.72)) {
-                    playback.togglePlayPause()
-                }
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            .onTapGesture {
+                handleCenterTap(at: .zero, for: clip)
             }
     }
 
     private func centerTapZone(clip: MovieClip) -> some View {
-        Color.clear
-            .contentShape(Rectangle())
-            .onTapGesture(count: 2, coordinateSpace: .local) { location in
-                triggerDoubleTapLike(for: clip, at: location)
-            }
-            .onTapGesture(count: 1) {
+        GeometryReader { geo in
+            Color.clear
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    handleCenterTap(at: CGPoint(x: geo.size.width / 2, y: geo.size.height / 2), for: clip)
+                }
+        }
+    }
+
+    private func handleCenterTap(at location: CGPoint, for clip: MovieClip) {
+        let now = Date()
+        if now.timeIntervalSince(lastTapTime) < 0.28 {
+            // Double tap detected: spawn heart like & ensure video plays
+            lastTapTime = .distantPast
+            triggerDoubleTapLike(for: clip, at: location == .zero ? CGPoint(x: 200, y: 350) : location)
+            if !playback.isPlaying {
                 withAnimation(.spring(response: 0.28, dampingFraction: 0.72)) {
                     playback.togglePlayPause()
                 }
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
             }
+        } else {
+            // Instant 0ms Single Tap Play/Pause
+            lastTapTime = now
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.72)) {
+                playback.togglePlayPause()
+            }
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        }
     }
 
     // MARK: - Left Info View
@@ -956,18 +975,47 @@ public struct ClipsFeedView: View {
                     .fill(Color.white.opacity(isScrubbing ? 0.35 : 0.22))
                     .frame(height: barHeight)
 
-                // Active Progress Track
-                Capsule()
-                    .fill(Color.white)
-                    .frame(width: activeWidth, height: barHeight)
+                if playback.isResolving || !playback.isVideoReady {
+                    // Shimmering animated light beam during buffering
+                    TimelineView(.animation) { timeline in
+                        let time = timeline.date.timeIntervalSinceReferenceDate
+                        let phase = CGFloat(time.truncatingRemainder(dividingBy: 1.4) / 1.4)
 
-                // Tactile Scrubber Head (visible while scrubbing)
-                if isScrubbing {
-                    Circle()
+                        GeometryReader { p in
+                            let w = p.size.width
+                            ZStack(alignment: .leading) {
+                                Capsule()
+                                    .fill(
+                                        LinearGradient(
+                                            stops: [
+                                                .init(color: Color.white.opacity(0.0), location: max(0, phase - 0.25)),
+                                                .init(color: Color.white.opacity(0.9), location: phase),
+                                                .init(color: Color.white.opacity(0.0), location: min(1, phase + 0.25))
+                                            ],
+                                            startPoint: .leading,
+                                            endPoint: .trailing
+                                        )
+                                    )
+                                    .frame(width: w)
+                            }
+                        }
+                    }
+                    .frame(height: barHeight)
+                    .clipShape(Capsule())
+                } else {
+                    // Active Progress Track
+                    Capsule()
                         .fill(Color.white)
-                        .frame(width: 14, height: 14)
-                        .position(x: min(totalWidth - 7, max(7, activeWidth)), y: barProxy.size.height / 2)
-                        .transition(.scale.combined(with: .opacity))
+                        .frame(width: activeWidth, height: barHeight)
+
+                    // Tactile Scrubber Head (visible while scrubbing)
+                    if isScrubbing {
+                        Circle()
+                            .fill(Color.white)
+                            .frame(width: 14, height: 14)
+                            .position(x: min(totalWidth - 7, max(7, activeWidth)), y: barProxy.size.height / 2)
+                            .transition(.scale.combined(with: .opacity))
+                    }
                 }
             }
             .frame(maxHeight: .infinity, alignment: .center)
