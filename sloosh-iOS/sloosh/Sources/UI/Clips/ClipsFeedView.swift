@@ -345,10 +345,13 @@ public struct ClipsFeedView: View {
     // MARK: - Top Header View (Matches SettingsView liquid glass style)
 
     private func momentsHeaderView(width: CGFloat, topSafeArea: CGFloat) -> some View {
-        VStack(spacing: 0) {
-            // Status bar clearance (keeps title strictly below Dynamic Island / Notch)
+        let headerTopOffset: CGFloat = 10.0
+        let effectiveTopClearance = topSafeArea + headerTopOffset
+
+        return VStack(spacing: 0) {
+            // Status bar clearance + comfortable breathing room below Dynamic Island / Notch
             Color.clear
-                .frame(height: topSafeArea)
+                .frame(height: effectiveTopClearance)
 
             // Header title bar (matching SettingsView navigation header height)
             ZStack {
@@ -363,13 +366,13 @@ public struct ClipsFeedView: View {
         .frame(width: width)
         .background(
             VariableBlurView(
-                maxBlurRadius: 18,
+                maxBlurRadius: 8,
                 direction: .blurredTopClearBottom,
                 tintColor: .black,
-                tintOpacity: 0.72,
+                tintOpacity: 0.6,
                 style: .dark
             )
-            .padding(.bottom, -30)
+            .padding(.bottom, -12)
             .ignoresSafeArea(edges: .top)
         )
         .allowsHitTesting(false)
@@ -448,7 +451,8 @@ public struct ClipsFeedView: View {
     private func clipCard(_ clip: MovieClip, width: CGFloat, height: CGFloat, topSafeArea: CGFloat, bottomSafeArea: CGFloat) -> some View {
         let isCurrent = (currentClipId == clip.id) || (currentClipId == nil && clip.id == clipsRepo.clips.first?.id)
         let navHeaderHeight: CGFloat = 44.0
-        let totalTopClearance: CGFloat = topSafeArea + navHeaderHeight
+        let headerTopOffset: CGFloat = 10.0
+        let totalTopClearance: CGFloat = topSafeArea + navHeaderHeight + headerTopOffset
 
         let bottomTabBarHeight: CGFloat = bottomSafeArea + 52.0
         let scrubberHeight: CGFloat = 24.0
