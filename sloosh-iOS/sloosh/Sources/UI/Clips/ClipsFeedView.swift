@@ -394,14 +394,23 @@ public struct ClipsFeedView: View {
         }
         .scrollTargetBehavior(.paging)
         .scrollPosition(id: $currentClipId)
-        .onScrollPhaseChange { oldPhase, newPhase in
-            let moving = (newPhase != .idle)
-            if isScrolling != moving {
-                withAnimation(.easeInOut(duration: 0.25)) {
-                    isScrolling = moving
+        .simultaneousGesture(
+            DragGesture(minimumDistance: 4)
+                .onChanged { _ in
+                    if !isScrolling {
+                        withAnimation(.easeInOut(duration: 0.2)) {
+                            isScrolling = true
+                        }
+                    }
                 }
-            }
-        }
+                .onEnded { _ in
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            isScrolling = false
+                        }
+                    }
+                }
+        )
         .ignoresSafeArea()
         .onChange(of: currentClipId) { _, newId in
             guard let newId = newId, let clip = clipsRepo.clips.first(where: { $0.id == newId }) else { return }
@@ -528,9 +537,8 @@ public struct ClipsFeedView: View {
 
             // 2. Sharp Video Player Layer (Foreground, centered in remaining space when comments open)
             if isCurrent, let player = playback.activePlayer {
-                VideoLayerView(
+                CustomVideoLayerView(
                     player: player,
-                    pipController: $pipController,
                     videoGravity: effectiveVideoGravity
                 )
                 .frame(width: width, height: height)
@@ -988,13 +996,12 @@ public struct ClipsFeedView: View {
                 Image(systemName: currentScaleMode == .fit ? "arrow.up.left.and.arrow.down.right" : "arrow.down.right.and.arrow.up.left")
                     .font(.system(size: 22, weight: .semibold))
                     .foregroundStyle(.white)
-                    .contentTransition(.symbolEffect(.replace.downUp.byLayer))
+                    .contentTransition(.symbolEffect(.replace))
                     .shadow(color: .black.opacity(0.7), radius: 6)
 
                 Text(currentScaleMode == .fit ? "9:16" : "В кадре")
                     .font(.system(size: 9.5, weight: .semibold))
                     .foregroundStyle(.white)
-                    .contentTransition(.numericText())
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
                     .shadow(color: .black.opacity(0.8), radius: 3)
@@ -1194,5 +1201,42 @@ public struct ClipsFeedView: View {
             initialPlaybackTime: clip.startTime
         )
         self.fullPlayerConfig = config
+    }
+}
+
+// MARK: - UIKit AVPlayerLayer Host for Fast Feed Rendering
+
+private struct CustomVideoLayerView: UIViewRepresentable {
+    let player: AVPlayer
+    var videoGravity: AVLayerVideoGravity = .resizeAspect
+
+    func makeUIView(context: Context) -> PlayerUIView {
+        let view = PlayerUIView()
+        view.backgroundColor = .clear
+        view.playerLayer.player = player
+        view.playerLayer.videoGravity = videoGravity
+        return view
+    }
+
+    func updateUIView(_ uiView: PlayerUIView, context: Context) {
+        if uiView.playerLayer.player !== player {
+            uiView.playerLayer.player = player
+        }
+        if uiView.playerLayer.videoGravity != videoGravity {
+            CATransaction.begin()
+            CATransaction.setAnimationDuration(0.35)
+            CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .easeInEaseOut))
+            uiView.playerLayer.videoGravity = videoGravity
+            CATransaction.commit()
+        }
+    }
+
+    class PlayerUIView: UIView {
+        override static var layerClass: AnyClass {
+            AVPlayerLayer.self
+        }
+        var playerLayer: AVPlayerLayer {
+            layer as! AVPlayerLayer
+        }
     }
 }
