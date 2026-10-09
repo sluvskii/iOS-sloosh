@@ -248,7 +248,7 @@ final class ClipPlaybackCoordinator: ObservableObject {
 
 public enum ClipScalingMode: String, CaseIterable {
     case fit = "fit"     // "В кадре" - native aspect ratio with cinema ambient glow
-    case fill = "fill"   // "Во весь экран" - 9:16 vertical TikTok style
+    case fill = "fill"   // "9:16" - zoomed to fill vertical viewport
 }
 
 // MARK: - Clips Feed View
@@ -277,11 +277,6 @@ public struct ClipsFeedView: View {
     @State private var isTextExpanded: Bool = false
     @State private var isScrubbing: Bool = false
     @State private var scrubProgress: Double = 0.0
-
-    @State private var touchDownTime: Date? = nil
-    @State private var touchDownLocation: CGPoint = .zero
-    @State private var fastForwardTimer: Task<Void, Never>? = nil
-    @State private var lastTapTime: Date = Date.distantPast
 
     public init() {}
 
@@ -451,8 +446,18 @@ public struct ClipsFeedView: View {
         let isOverlayHidden = isScrubbing || playback.isFastForwarding
 
         return ZStack {
-            // 1. Ambient Background Layer (fills letterbox space for widescreen movies with blurred backdrop)
-            if let backdrop = clip.backdropPath ?? clip.posterPath, let url = URL(string: backdrop) {
+            // 1. Ambient Background Layer (Live blurred video when .fit, or blurred backdrop image fallback)
+            if isCurrent, currentScaleMode == .fit, let player = playback.activePlayer, playback.isVideoReady {
+                VideoLayerView(
+                    player: player,
+                    pipController: .constant(nil),
+                    videoGravity: .resizeAspectFill
+                )
+                .frame(width: width, height: height)
+                .clipped()
+                .blur(radius: 35)
+                .overlay(Color.black.opacity(0.48))
+            } else if let backdrop = clip.backdropPath ?? clip.posterPath, let url = URL(string: backdrop) {
                 AsyncCachedImage(url: url) {
                     Color.black
                 } content: { img in
@@ -461,8 +466,8 @@ public struct ClipsFeedView: View {
                         .aspectRatio(contentMode: .fill)
                         .frame(width: width, height: height)
                         .clipped()
-                        .blur(radius: 30)
-                        .overlay(Color.black.opacity(0.42))
+                        .blur(radius: 35)
+                        .overlay(Color.black.opacity(0.48))
                 } fallback: {
                     Color.black
                 }
@@ -472,7 +477,7 @@ public struct ClipsFeedView: View {
                 Color.black
             }
 
-            // 2. Hardware Video Player Layer with Dynamic Video Gravity (Fit vs 9:16 Fill)
+            // 2. Sharp Video Player Layer (Foreground)
             if isCurrent, let player = playback.activePlayer {
                 VideoLayerView(
                     player: player,
@@ -505,73 +510,35 @@ public struct ClipsFeedView: View {
             }
             .allowsHitTesting(false)
 
-            // 4. Zero-Lag Gesture Engine: Single tap play/pause, Double tap heart, Hold 2x speed
+            // 4. Scroll-Friendly Touch Surface: Tap play/pause, Double-tap heart, Long-press 2x speed
             Color.clear
                 .contentShape(Rectangle())
-                .gesture(
-                    DragGesture(minimumDistance: 0)
-                        .onChanged { value in
-                            if touchDownTime == nil {
-                                touchDownTime = Date()
-                                touchDownLocation = value.location
-                                fastForwardTimer?.cancel()
-                                fastForwardTimer = Task { @MainActor in
-                                    try? await Task.sleep(nanoseconds: 260_000_000)
-                                    guard !Task.isCancelled else { return }
-                                    if !playback.isScrubbing && playback.isPlaying {
-                                        withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
-                                            playback.startFastForward()
-                                        }
-                                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                                    }
-                                }
-                            } else {
-                                let dist = hypot(value.location.x - touchDownLocation.x, value.location.y - touchDownLocation.y)
-                                if dist > 15 && !playback.isFastForwarding {
-                                    fastForwardTimer?.cancel()
-                                    fastForwardTimer = nil
-                                }
+                .onLongPressGesture(minimumDuration: 0.26, maximumDistance: 25, pressing: { isPressing in
+                    if isPressing {
+                        if !playback.isScrubbing && playback.isPlaying {
+                            withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
+                                playback.startFastForward()
                             }
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                         }
-                        .onEnded { value in
-                            fastForwardTimer?.cancel()
-                            fastForwardTimer = nil
-                            let wasFastForwarding = playback.isFastForwarding
-                            let elapsed = Date().timeIntervalSince(touchDownTime ?? Date())
-                            touchDownTime = nil
-
-                            if wasFastForwarding {
-                                withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
-                                    playback.stopFastForward()
-                                }
-                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                return
+                    } else {
+                        if playback.isFastForwarding {
+                            withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
+                                playback.stopFastForward()
                             }
-
-                            let dist = hypot(value.location.x - touchDownLocation.x, value.location.y - touchDownLocation.y)
-                            if elapsed < 0.28 && dist <= 15 {
-                                let now = Date()
-                                let timeSinceLastTap = now.timeIntervalSince(lastTapTime)
-                                if timeSinceLastTap < 0.28 {
-                                    // Double Tap: Like & Ensure playback continues
-                                    lastTapTime = Date.distantPast
-                                    triggerDoubleTapLike(for: clip, at: value.location)
-                                    if !playback.isPlaying {
-                                        withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
-                                            playback.togglePlayPause()
-                                        }
-                                    }
-                                } else {
-                                    // Instant Single Tap Play/Pause
-                                    lastTapTime = now
-                                    withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
-                                        playback.togglePlayPause()
-                                    }
-                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                }
-                            }
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
                         }
-                )
+                    }
+                }, perform: {})
+                .onTapGesture(count: 2, coordinateSpace: .local) { location in
+                    triggerDoubleTapLike(for: clip, at: location)
+                }
+                .onTapGesture(count: 1) {
+                    withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
+                        playback.togglePlayPause()
+                    }
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                }
 
             // 5. Play / Pause Indicator in Center (Animated with Spring)
             if !playback.isPlaying && isCurrent && playback.isVideoReady && !isOverlayHidden {
@@ -653,43 +620,7 @@ public struct ClipsFeedView: View {
                 .buttonStyle(.plain)
             }
 
-            // 10. Center Floating "На весь экран" Capsule Button (TikTok Style)
-            VStack {
-                Spacer()
-
-                Button {
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
-                        if currentScaleMode == .fit {
-                            clipScaleModeRaw = ClipScalingMode.fill.rawValue
-                            ToastManager.shared.show(title: "Режим: Во весь экран", icon: "arrow.up.left.and.arrow.down.right", iconColor: Color.slooshAccent)
-                        } else {
-                            clipScaleModeRaw = ClipScalingMode.fit.rawValue
-                            ToastManager.shared.show(title: "Режим: В кадре", icon: "arrow.down.right.and.arrow.up.left", iconColor: Color.slooshAccent)
-                        }
-                    }
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: currentScaleMode == .fit ? "rectangle.landscape.rotate" : "arrow.down.right.and.arrow.up.left")
-                            .font(.system(size: 13, weight: .bold))
-
-                        Text(currentScaleMode == .fit ? "На весь экран" : "В кадре")
-                            .font(.system(size: 13, weight: .semibold))
-                    }
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 8)
-                    .glassEffect(in: .capsule)
-                }
-                .buttonStyle(.glassPress)
-                .padding(.bottom, 136)
-            }
-            .frame(maxWidth: .infinity)
-            .opacity(isOverlayHidden ? 0.0 : 1.0)
-            .animation(.spring(response: 0.28, dampingFraction: 0.85), value: isOverlayHidden)
-            .allowsHitTesting(!isOverlayHidden)
-
-            // 11. Bottom Overlays (Left Info & Symmetrical Right Action Rail)
+            // 10. Bottom Overlays (Left Info & Symmetrical Right Action Rail)
             VStack(spacing: 0) {
                 Spacer()
 
@@ -827,7 +758,7 @@ public struct ClipsFeedView: View {
     // MARK: - Right Rail View
 
     private func rightRailView(clip: MovieClip) -> some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 14) {
             // Author Avatar (Liquid Glass Button)
             authorAvatarView(clip)
 
@@ -839,6 +770,9 @@ public struct ClipsFeedView: View {
 
             // Share Button
             shareButtonView(clip)
+
+            // Scale Mode Toggle ("9:16" vs "В кадре")
+            scaleModeButtonView
         }
         .frame(width: 56)
     }
@@ -928,6 +862,39 @@ public struct ClipsFeedView: View {
                     .shadow(color: .black.opacity(0.7), radius: 6)
 
                 Text("Поделиться")
+                    .font(.system(size: 9.5, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .shadow(color: .black.opacity(0.8), radius: 3)
+            }
+            .frame(width: 56, height: 50)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private var scaleModeButtonView: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
+                if currentScaleMode == .fit {
+                    clipScaleModeRaw = ClipScalingMode.fill.rawValue
+                    ToastManager.shared.show(title: "Режим: Во весь экран (9:16)", icon: "arrow.up.left.and.arrow.down.right", iconColor: Color.slooshAccent)
+                } else {
+                    clipScaleModeRaw = ClipScalingMode.fit.rawValue
+                    ToastManager.shared.show(title: "Режим: В кадре", icon: "arrow.down.right.and.arrow.up.left", iconColor: Color.slooshAccent)
+                }
+            }
+        } label: {
+            VStack(spacing: 4) {
+                Image(systemName: currentScaleMode == .fit ? "arrow.up.left.and.arrow.down.right" : "arrow.down.right.and.arrow.up.left")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .contentTransition(.symbolEffect(.replace))
+                    .shadow(color: .black.opacity(0.7), radius: 6)
+
+                Text(currentScaleMode == .fit ? "9:16" : "В кадре")
                     .font(.system(size: 9.5, weight: .semibold))
                     .foregroundStyle(.white)
                     .lineLimit(1)
