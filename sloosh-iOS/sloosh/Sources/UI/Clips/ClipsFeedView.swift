@@ -81,6 +81,9 @@ final class ClipPlaybackCoordinator: ObservableObject {
             let item = AVPlayerItem(asset: asset)
             item.preferredForwardBufferDuration = 3.0
 
+            // Ensure audio session is active for immediate clear audio
+            try? AVAudioSession.sharedInstance().setActive(true)
+
             let player = AVPlayer(playerItem: item)
             player.actionAtItemEnd = .none
             player.automaticallyWaitsToMinimizeStalling = true
