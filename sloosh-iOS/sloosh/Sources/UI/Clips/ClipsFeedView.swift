@@ -361,10 +361,14 @@ public struct ClipsFeedView: View {
         }
         .frame(maxWidth: .infinity)
         .background(
-            VariableBlurView(tintColor: .black, tintOpacity: 0.6)
-                .ignoresSafeArea(edges: .top)
-                .opacity(headerBlurOpacity)
-                .animation(.easeInOut(duration: 0.22), value: headerBlurOpacity)
+            LinearGradient(
+                colors: [.black.opacity(0.72), .black.opacity(0.38), .clear],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .ignoresSafeArea(edges: .top)
+            .opacity(headerBlurOpacity)
+            .animation(.easeInOut(duration: 0.25), value: headerBlurOpacity)
         )
         .opacity(showCommentsForClip != nil ? 0.0 : 1.0)
         .animation(.spring(response: 0.28, dampingFraction: 0.85), value: showCommentsForClip != nil)
