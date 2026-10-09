@@ -13,6 +13,7 @@ final class ClipPlaybackCoordinator: ObservableObject {
     @Published var isPlaying: Bool = true
     @Published var isMuted: Bool = false
     @Published var clipProgress: Double = 0.0
+    @Published var isScrubbing: Bool = false
     @Published var hasError: Bool = false
 
     private var currentClipId: String?
@@ -30,6 +31,7 @@ final class ClipPlaybackCoordinator: ObservableObject {
         isVideoReady = false
         hasError = false
         clipProgress = 0.0
+        isScrubbing = false
         didPerformInitialSeek = false
         if !isRetry {
             retryCount = 0
@@ -106,7 +108,7 @@ final class ClipPlaybackCoordinator: ObservableObject {
             // Periodic time observer for progress and looping
             let interval = CMTime(seconds: 0.1, preferredTimescale: 600)
             self.timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self, weak player] time in
-                guard let self, let player else { return }
+                guard let self, let player, !self.isScrubbing else { return }
                 let currentSec = CMTimeGetSeconds(time)
                 guard currentSec.isFinite else { return }
 
@@ -125,13 +127,41 @@ final class ClipPlaybackCoordinator: ObservableObject {
         }
     }
 
-    func seekToProgress(_ progress: Double, for clip: MovieClip) {
+    func beginScrubbing() {
+        isScrubbing = true
+        activePlayer?.pause()
+    }
+
+    func scrubToProgress(_ progress: Double, for clip: MovieClip) {
         guard let player = activePlayer else { return }
         let clipDur = max(1.0, clip.endTime - clip.startTime)
         let targetSec = clip.startTime + (clipDur * max(0.0, min(1.0, progress)))
         let time = CMTime(seconds: targetSec, preferredTimescale: 600)
         clipProgress = progress
-        player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
+        // Fast seek during drag for silky smooth preview without freezing
+        player.seek(to: time, toleranceBefore: CMTime(seconds: 0.15, preferredTimescale: 600), toleranceAfter: CMTime(seconds: 0.15, preferredTimescale: 600))
+    }
+
+    func endScrubbing(at progress: Double, for clip: MovieClip) {
+        guard let player = activePlayer else {
+            isScrubbing = false
+            return
+        }
+        let clipDur = max(1.0, clip.endTime - clip.startTime)
+        let targetSec = clip.startTime + (clipDur * max(0.0, min(1.0, progress)))
+        let time = CMTime(seconds: targetSec, preferredTimescale: 600)
+        clipProgress = progress
+        player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self, weak player] _ in
+            guard let self, let player else { return }
+            self.isScrubbing = false
+            if self.isPlaying {
+                player.play()
+            }
+        }
+    }
+
+    func seekToProgress(_ progress: Double, for clip: MovieClip) {
+        endScrubbing(at: progress, for: clip)
     }
 
     func togglePlayPause() {
@@ -350,8 +380,8 @@ public struct ClipsFeedView: View {
         let bottomSafeArea = max(safeArea.bottom, (UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.windows.first?.safeAreaInsets.bottom }.first ?? 34.0))
 
         let bottomTabBarHeight: CGFloat = bottomSafeArea + 52.0
-        let scrubberHeight: CGFloat = 12.0
-        let scrubberGap: CGFloat = 6.0
+        let scrubberHeight: CGFloat = 24.0
+        let scrubberGap: CGFloat = 2.0
 
         // Calculate available height strictly between top status bar and bottom scrubber
         let availableHeight = max(200.0, size.height - topSafeArea - bottomTabBarHeight - scrubberHeight - scrubberGap)
@@ -461,7 +491,7 @@ public struct ClipsFeedView: View {
                 }
 
             // 5. Play / Pause Indicator in Center
-            if !playback.isPlaying && isCurrent && playback.isVideoReady {
+            if !playback.isPlaying && isCurrent && playback.isVideoReady && !isScrubbing {
                 Image(systemName: "play.fill")
                     .font(.system(size: 28, weight: .bold))
                     .foregroundStyle(.white)
@@ -487,7 +517,7 @@ public struct ClipsFeedView: View {
             }
 
             // 7. Loading Spinner Indicator (subtle, centered)
-            if isCurrent && (playback.isResolving || !playback.isVideoReady) && !playback.hasError {
+            if isCurrent && (playback.isResolving || !playback.isVideoReady) && !playback.hasError && !isScrubbing {
                 ProgressView()
                     .tint(.white)
                     .scaleEffect(1.2)
@@ -495,7 +525,7 @@ public struct ClipsFeedView: View {
             }
 
             // 8. Playback Error & Retry Indicator
-            if isCurrent && playback.hasError {
+            if isCurrent && playback.hasError && !isScrubbing {
                 Button {
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     playback.setupPlayer(for: clip, isRetry: false)
@@ -546,6 +576,9 @@ public struct ClipsFeedView: View {
 
                 Spacer()
             }
+            .opacity(isScrubbing ? 0.0 : 1.0)
+            .animation(.spring(response: 0.28, dampingFraction: 0.85), value: isScrubbing)
+            .allowsHitTesting(!isScrubbing)
 
             // 10. Bottom Overlays (Info, Right Rail)
             VStack(spacing: 0) {
@@ -561,6 +594,9 @@ public struct ClipsFeedView: View {
                 .padding(.horizontal, 12)
                 .padding(.bottom, 12)
             }
+            .opacity(isScrubbing ? 0.0 : 1.0)
+            .animation(.spring(response: 0.28, dampingFraction: 0.85), value: isScrubbing)
+            .allowsHitTesting(!isScrubbing)
         }
         .frame(width: width, height: height)
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
@@ -741,60 +777,90 @@ public struct ClipsFeedView: View {
 
     private func progressBarView(for clip: MovieClip) -> some View {
         GeometryReader { barProxy in
+            let totalWidth = barProxy.size.width
             let displayProgress = isScrubbing ? scrubProgress : playback.clipProgress
-            let barHeight: CGFloat = isScrubbing ? 4.5 : 2.5
+            let activeWidth = max(0, min(totalWidth, totalWidth * displayProgress))
+            let barHeight: CGFloat = isScrubbing ? 7.0 : 3.0
 
             ZStack(alignment: .leading) {
+                // Background Track
                 Capsule()
-                    .fill(Color.white.opacity(0.25))
+                    .fill(Color.white.opacity(isScrubbing ? 0.35 : 0.22))
                     .frame(height: barHeight)
 
+                // Active Progress Track
                 Capsule()
                     .fill(Color.white)
-                    .frame(width: max(0, min(barProxy.size.width, barProxy.size.width * displayProgress)), height: barHeight)
+                    .frame(width: activeWidth, height: barHeight)
+                    .shadow(color: isScrubbing ? Color.white.opacity(0.5) : Color.clear, radius: 4)
+
+                // Tactile Scrubber Head (visible while scrubbing)
+                if isScrubbing {
+                    Circle()
+                        .fill(Color.white)
+                        .frame(width: 14, height: 14)
+                        .shadow(color: Color.black.opacity(0.55), radius: 4, y: 1)
+                        .position(x: min(totalWidth - 7, max(7, activeWidth)), y: barProxy.size.height / 2)
+                        .transition(.scale.combined(with: .opacity))
+                }
             }
             .frame(maxHeight: .infinity, alignment: .center)
             .contentShape(Rectangle())
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { value in
+                        let rawPct = value.location.x / totalWidth
+                        let pct = max(0.0, min(1.0, rawPct))
                         if !isScrubbing {
-                            isScrubbing = true
-                            UISelectionFeedbackGenerator().selectionChanged()
+                            withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
+                                isScrubbing = true
+                            }
+                            playback.beginScrubbing()
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                         }
-                        let pct = max(0.0, min(1.0, value.location.x / barProxy.size.width))
                         scrubProgress = pct
+                        playback.scrubToProgress(pct, for: clip)
                     }
                     .onEnded { value in
-                        let pct = max(0.0, min(1.0, value.location.x / barProxy.size.width))
-                        playback.seekToProgress(pct, for: clip)
-                        withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                        let rawPct = value.location.x / totalWidth
+                        let pct = max(0.0, min(1.0, rawPct))
+                        scrubProgress = pct
+                        playback.endScrubbing(at: pct, for: clip)
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.82)) {
                             isScrubbing = false
                         }
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     }
             )
-            .animation(.spring(response: 0.25, dampingFraction: 0.8), value: isScrubbing)
+            .animation(.spring(response: 0.25, dampingFraction: 0.8), value: barHeight)
         }
-        .frame(height: 12)
+        .frame(height: 36)
         .overlay(alignment: .top) {
             if isScrubbing {
                 let currentSec = clip.startTime + (clip.duration * scrubProgress)
                 let elapsedSec = max(0, currentSec - clip.startTime)
-                HStack(spacing: 4) {
+                HStack(spacing: 6) {
                     Text(formatClipTime(elapsedSec))
-                        .fontWeight(.bold)
+                        .font(.system(size: 19, weight: .bold, design: .rounded).monospacedDigit())
+                        .foregroundStyle(.white)
+
                     Text("/")
-                        .foregroundStyle(.white.opacity(0.6))
+                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        .foregroundStyle(.white.opacity(0.45))
+
                     Text(formatClipTime(clip.duration))
+                        .font(.system(size: 14, weight: .semibold, design: .rounded).monospacedDigit())
                         .foregroundStyle(.white.opacity(0.85))
                 }
-                .font(.system(size: 11, weight: .semibold, design: .rounded).monospacedDigit())
-                .foregroundStyle(.white)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .glassEffect(.regular, in: .capsule)
-                .offset(y: -28)
+                .padding(.horizontal, 18)
+                .padding(.vertical, 8)
+                .background(Color.black.opacity(0.68))
+                .glassEffect(.regular.interactive(), in: .capsule)
+                .overlay(
+                    Capsule().stroke(Color.white.opacity(0.18), lineWidth: 0.8)
+                )
+                .shadow(color: .black.opacity(0.6), radius: 16, y: 3)
+                .offset(y: -46)
                 .transition(.scale(scale: 0.85).combined(with: .opacity))
                 .animation(.spring(response: 0.25, dampingFraction: 0.8), value: isScrubbing)
             }
