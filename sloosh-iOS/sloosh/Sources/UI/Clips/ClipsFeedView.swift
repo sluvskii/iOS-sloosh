@@ -280,6 +280,8 @@ public struct ClipsFeedView: View {
 
     public var body: some View {
         GeometryReader { proxy in
+            let topSafeArea = max(proxy.safeAreaInsets.top, (UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.windows.first?.safeAreaInsets.top }.first ?? 47.0))
+
             ZStack {
                 Color.black.ignoresSafeArea()
 
@@ -298,7 +300,7 @@ public struct ClipsFeedView: View {
                 } else {
                     feedScrollView(proxy: proxy)
                         .safeAreaInset(edge: .top, spacing: 0) {
-                            momentsHeaderView
+                            momentsHeaderView(topSafeArea: topSafeArea)
                         }
                 }
             }
@@ -339,15 +341,23 @@ public struct ClipsFeedView: View {
 
     // MARK: - Top Header View (Matches SettingsView liquid glass style)
 
-    private var momentsHeaderView: some View {
-        ZStack {
-            Text("Моменты")
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(.white)
-                .shadow(color: .black.opacity(0.8), radius: 6, x: 0, y: 1)
+    private func momentsHeaderView(topSafeArea: CGFloat) -> some View {
+        VStack(spacing: 0) {
+            // Status bar clearance (keeps title below Dynamic Island / Notch)
+            Color.clear
+                .frame(height: topSafeArea)
+
+            // Header title bar
+            ZStack {
+                Text("Моменты")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .shadow(color: .black.opacity(0.8), radius: 6, x: 0, y: 1)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 44)
         }
         .frame(maxWidth: .infinity)
-        .frame(height: 44)
         .background(
             VariableBlurView(
                 maxBlurRadius: 16,
