@@ -125,6 +125,15 @@ final class ClipPlaybackCoordinator: ObservableObject {
         }
     }
 
+    func seekToProgress(_ progress: Double, for clip: MovieClip) {
+        guard let player = activePlayer else { return }
+        let clipDur = max(1.0, clip.endTime - clip.startTime)
+        let targetSec = clip.startTime + (clipDur * max(0.0, min(1.0, progress)))
+        let time = CMTime(seconds: targetSec, preferredTimescale: 600)
+        clipProgress = progress
+        player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero)
+    }
+
     func togglePlayPause() {
         guard let player = activePlayer else { return }
         if isPlaying {
@@ -184,12 +193,29 @@ final class ClipPlaybackCoordinator: ObservableObject {
     }
 }
 
+// MARK: - Video Scale Mode for Clips
+
+public enum ClipScalingMode: String, CaseIterable {
+    case fit = "fit"     // "В кадре" - native aspect ratio with cinema ambient glow
+    case fill = "fill"   // "9:16" - zoomed and cropped to 9:16 vertical TikTok style
+}
+
 // MARK: - Clips Feed View
 
 public struct ClipsFeedView: View {
     @StateObject private var clipsRepo = ClipsRepository.shared
     @StateObject private var authRepo = AuthRepository.shared
     @StateObject private var playback = ClipPlaybackCoordinator()
+
+    @AppStorage("clipsVideoScaleMode") private var clipScaleModeRaw: String = ClipScalingMode.fit.rawValue
+
+    private var currentScaleMode: ClipScalingMode {
+        ClipScalingMode(rawValue: clipScaleModeRaw) ?? .fit
+    }
+
+    private var currentVideoGravity: AVLayerVideoGravity {
+        currentScaleMode == .fit ? .resizeAspect : .resizeAspectFill
+    }
 
     @State private var currentClipId: String?
     @State private var pipController: AVPictureInPictureController? = nil
@@ -321,8 +347,51 @@ public struct ClipsFeedView: View {
         let topSafeArea = max(safeArea.top, (UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.windows.first?.safeAreaInsets.top }.first ?? 47.0))
         let bottomSafeArea = max(safeArea.bottom, (UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.windows.first?.safeAreaInsets.bottom }.first ?? 34.0))
 
-        return ZStack {
-            // 1. Base Layer: High-Res Backdrop/Poster
+        let bottomTabBarHeight: CGFloat = bottomSafeArea + 52.0
+        let scrubberHeight: CGFloat = 12.0
+        let scrubberGap: CGFloat = 6.0
+
+        // Calculate available height strictly between top status bar and bottom scrubber
+        let availableHeight = max(200.0, size.height - topSafeArea - bottomTabBarHeight - scrubberHeight - scrubberGap)
+        // 9:16 aspect ratio bounds
+        let cardWidth = min(size.width, availableHeight * (9.0 / 16.0))
+        let cardHeight = cardWidth * (16.0 / 9.0)
+
+        return VStack(spacing: 0) {
+            // 1. Top status bar clearance
+            Spacer()
+                .frame(height: topSafeArea)
+
+            // 2. 9:16 Video Card Container
+            videoCardContainer(clip, width: cardWidth, height: cardHeight, isCurrent: isCurrent)
+
+            // 3. Gap between video card and progress bar
+            Spacer()
+                .frame(height: scrubberGap)
+
+            // 4. Progress bar (полоса перемотки)
+            if isCurrent {
+                progressBarView(for: clip)
+                    .padding(.horizontal, max(12, (size.width - cardWidth) / 2 + 12))
+                    .frame(height: scrubberHeight)
+            } else {
+                Color.clear
+                    .frame(height: scrubberHeight)
+            }
+
+            // 5. Bottom Tab Bar clearance
+            Spacer()
+                .frame(height: bottomTabBarHeight)
+        }
+        .frame(width: size.width, height: size.height)
+        .background(Color.black)
+    }
+
+    // MARK: - 9:16 Video Card Container
+
+    private func videoCardContainer(_ clip: MovieClip, width: CGFloat, height: CGFloat, isCurrent: Bool) -> some View {
+        ZStack {
+            // 1. Ambient Background Layer (fills letterbox space for widescreen movies with blurred backdrop)
             if let backdrop = clip.backdropPath ?? clip.posterPath, let url = URL(string: backdrop) {
                 AsyncCachedImage(url: url) {
                     Color.black
@@ -330,27 +399,90 @@ public struct ClipsFeedView: View {
                     Image(uiImage: img)
                         .resizable()
                         .aspectRatio(contentMode: .fill)
+                        .frame(width: width, height: height)
+                        .clipped()
+                        .blur(radius: 30)
+                        .overlay(Color.black.opacity(0.42))
                 } fallback: {
                     Color.black
                 }
-                .frame(width: size.width, height: size.height)
+                .frame(width: width, height: height)
                 .clipped()
-                .ignoresSafeArea()
             } else {
-                Color.black.ignoresSafeArea()
+                Color.black
             }
 
-            // 2. Hardware Video Player Layer
+            // 2. Hardware Video Player Layer with Dynamic Video Gravity (Fit vs 9:16 Fill)
             if isCurrent, let player = playback.activePlayer {
-                VideoLayerView(player: player, pipController: $pipController, videoGravity: .resizeAspectFill)
-                    .frame(width: size.width, height: size.height)
-                    .clipped()
-                    .ignoresSafeArea()
-                    .opacity(playback.isVideoReady ? 1.0 : 0.0)
-                    .animation(.easeInOut(duration: 0.2), value: playback.isVideoReady)
+                VideoLayerView(
+                    player: player,
+                    pipController: $pipController,
+                    videoGravity: currentVideoGravity
+                )
+                .frame(width: width, height: height)
+                .clipped()
+                .opacity(playback.isVideoReady ? 1.0 : 0.0)
+                .animation(.easeInOut(duration: 0.25), value: playback.isVideoReady)
             }
 
-            // 3. Loading Spinner Indicator (subtle, centered)
+            // 3. Cinematic Gradients for Contrast and Overlay Readability
+            VStack(spacing: 0) {
+                LinearGradient(
+                    colors: [.black.opacity(0.55), .clear],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(height: 70)
+
+                Spacer()
+
+                LinearGradient(
+                    colors: [.clear, .black.opacity(0.45), .black.opacity(0.88)],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(height: 190)
+            }
+            .allowsHitTesting(false)
+
+            // 4. Tap handling: Single tap play/pause, Double tap heart
+            Color.clear
+                .contentShape(Rectangle())
+                .onTapGesture(count: 2, coordinateSpace: .local) { location in
+                    triggerDoubleTapLike(for: clip, at: location)
+                }
+                .onTapGesture(count: 1) {
+                    playback.togglePlayPause()
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                }
+
+            // 5. Play / Pause Indicator in Center
+            if !playback.isPlaying && isCurrent && playback.isVideoReady {
+                Image(systemName: "play.fill")
+                    .font(.system(size: 28, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(width: 58, height: 58)
+                    .background(Color.black.opacity(0.45))
+                    .glassEffect(.regular.interactive(), in: .circle)
+                    .clipShape(Circle())
+                    .transition(.scale.combined(with: .opacity))
+                    .allowsHitTesting(false)
+            }
+
+            // 6. Big Heart Explosion on Double-Tap
+            if showBigHeart {
+                Image(systemName: "heart.fill")
+                    .font(.system(size: 80))
+                    .foregroundStyle(.red)
+                    .shadow(color: .red.opacity(0.6), radius: 24)
+                    .position(bigHeartPosition)
+                    .scaleEffect(showBigHeart ? 1.25 : 0.4)
+                    .opacity(showBigHeart ? 1.0 : 0.0)
+                    .animation(.spring(response: 0.35, dampingFraction: 0.6), value: showBigHeart)
+                    .allowsHitTesting(false)
+            }
+
+            // 7. Loading Spinner Indicator (subtle, centered)
             if isCurrent && (playback.isResolving || !playback.isVideoReady) && !playback.hasError {
                 ProgressView()
                     .tint(.white)
@@ -358,7 +490,7 @@ public struct ClipsFeedView: View {
                     .shadow(color: .black.opacity(0.8), radius: 6)
             }
 
-            // 3b. Playback Error & Retry Indicator
+            // 8. Playback Error & Retry Indicator
             if isCurrent && playback.hasError {
                 Button {
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
@@ -385,66 +517,7 @@ public struct ClipsFeedView: View {
                 .buttonStyle(.plain)
             }
 
-            // 4. Cinematic Dark Gradients for Readability
-            VStack(spacing: 0) {
-                LinearGradient(
-                    colors: [.black.opacity(0.55), .clear],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .frame(height: topSafeArea + 50)
-                .ignoresSafeArea(edges: .top)
-
-                Spacer()
-
-                LinearGradient(
-                    colors: [.clear, .black.opacity(0.4), .black.opacity(0.9)],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .frame(height: bottomSafeArea + 240)
-                .ignoresSafeArea(edges: .bottom)
-            }
-            .allowsHitTesting(false)
-
-            // 5. Full Screen Tap Area (Single tap: play/pause, Double tap: like)
-            Color.clear
-                .contentShape(Rectangle())
-                .onTapGesture(count: 2, coordinateSpace: .local) { location in
-                    triggerDoubleTapLike(for: clip, at: location)
-                }
-                .onTapGesture(count: 1) {
-                    playback.togglePlayPause()
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                }
-
-            // 6. Play / Pause Centered Indicator
-            if !playback.isPlaying && isCurrent && playback.isVideoReady {
-                Image(systemName: "play.fill")
-                    .font(.system(size: 30, weight: .bold))
-                    .foregroundStyle(.white)
-                    .frame(width: 60, height: 60)
-                    .background(Color.black.opacity(0.45))
-                    .glassEffect(.regular.interactive(), in: .circle)
-                    .clipShape(Circle())
-                    .transition(.scale.combined(with: .opacity))
-                    .allowsHitTesting(false)
-            }
-
-            // 7. Big Heart Explosion on Double-Tap
-            if showBigHeart {
-                Image(systemName: "heart.fill")
-                    .font(.system(size: 80))
-                    .foregroundStyle(.red)
-                    .shadow(color: .red.opacity(0.6), radius: 24)
-                    .position(bigHeartPosition)
-                    .scaleEffect(showBigHeart ? 1.25 : 0.4)
-                    .opacity(showBigHeart ? 1.0 : 0.0)
-                    .animation(.spring(response: 0.35, dampingFraction: 0.6), value: showBigHeart)
-                    .allowsHitTesting(false)
-            }
-
-            // 8. Top Bar: Discreet Glass Mute Button
+            // 9. Top-Right Discreet Glass Mute Button
             VStack {
                 HStack {
                     Spacer()
@@ -463,37 +536,34 @@ public struct ClipsFeedView: View {
                     .buttonStyle(.glassPress)
                     .glassEffect(.regular.interactive(), in: .circle)
                 }
-                .padding(.top, topSafeArea + 8)
-                .padding(.trailing, 16)
+                .padding(.top, 12)
+                .padding(.trailing, 12)
 
                 Spacer()
             }
 
-            // 9. Bottom Overlays (Info, Right Rail, Scrubber)
+            // 10. Bottom Overlays (Info, Right Rail)
             VStack(spacing: 0) {
                 Spacer()
 
-                // Content Row: Info on left, Actions on right
-                HStack(alignment: .bottom, spacing: 12) {
+                HStack(alignment: .bottom, spacing: 10) {
                     leftInfoView(clip: clip)
 
                     Spacer(minLength: 4)
 
                     rightRailView(clip: clip)
                 }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 8)
-
-                // Real-Time Scrubber Progress Bar
-                if isCurrent {
-                    progressBarView
-                        .padding(.horizontal, 16)
-                        .padding(.bottom, bottomSafeArea + 58)
-                } else {
-                    Spacer().frame(height: bottomSafeArea + 58)
-                }
+                .padding(.horizontal, 12)
+                .padding(.bottom, 12)
             }
         }
+        .frame(width: width, height: height)
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 18, style: .continuous)
+                .stroke(Color.white.opacity(0.12), lineWidth: 0.8)
+        )
+        .shadow(color: .black.opacity(0.6), radius: 16, y: 4)
     }
 
     // MARK: - Left Info View
@@ -565,7 +635,7 @@ public struct ClipsFeedView: View {
     // MARK: - Right Rail View
 
     private func rightRailView(clip: MovieClip) -> some View {
-        VStack(spacing: 16) {
+        VStack(spacing: 14) {
             // Author Avatar
             authorAvatarView(clip)
 
@@ -577,25 +647,65 @@ public struct ClipsFeedView: View {
 
             // Share Button
             shareButtonView(clip)
+
+            // Scale Mode Toggle (В кадре vs 9:16)
+            scaleModeButtonView
         }
         .frame(width: 50)
     }
 
+    private var scaleModeButtonView: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                if currentScaleMode == .fit {
+                    clipScaleModeRaw = ClipScalingMode.fill.rawValue
+                    ToastManager.shared.show(title: "Режим: Заполнить 9:16", icon: "arrow.up.left.and.arrow.down.right", iconColor: Color.slooshAccent)
+                } else {
+                    clipScaleModeRaw = ClipScalingMode.fit.rawValue
+                    ToastManager.shared.show(title: "Режим: В кадре (без обрезки)", icon: "arrow.down.right.and.arrow.up.left", iconColor: Color.slooshAccent)
+                }
+            }
+        } label: {
+            VStack(spacing: 3) {
+                Image(systemName: currentScaleMode == .fit ? "arrow.up.left.and.arrow.down.right" : "arrow.down.right.and.arrow.up.left")
+                    .font(.system(size: 20))
+                    .foregroundStyle(.white)
+                    .shadow(color: .black.opacity(0.7), radius: 6)
+
+                Text(currentScaleMode == .fit ? "9:16" : "В кадре")
+                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.9))
+                    .shadow(color: .black.opacity(0.8), radius: 3)
+            }
+        }
+        .buttonStyle(.glassPress)
+    }
+
     // MARK: - Scrubber Progress Bar
 
-    private var progressBarView: some View {
+    private func progressBarView(for clip: MovieClip) -> some View {
         GeometryReader { barProxy in
             ZStack(alignment: .leading) {
                 Capsule()
-                    .fill(Color.white.opacity(0.25))
-                    .frame(height: 2.5)
+                    .fill(Color.white.opacity(0.2))
+                    .frame(height: 3)
 
                 Capsule()
-                    .fill(Color.white)
-                    .frame(width: max(0, barProxy.size.width * playback.clipProgress), height: 2.5)
+                    .fill(Color.slooshAccent)
+                    .frame(width: max(0, min(barProxy.size.width, barProxy.size.width * playback.clipProgress)), height: 3)
             }
+            .frame(maxHeight: .infinity, alignment: .center)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { value in
+                        let pct = max(0.0, min(1.0, value.location.x / barProxy.size.width))
+                        playback.seekToProgress(pct, for: clip)
+                    }
+            )
         }
-        .frame(height: 2.5)
+        .frame(height: 12)
     }
 
     // MARK: - Author Avatar
