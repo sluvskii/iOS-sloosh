@@ -274,24 +274,13 @@ public struct ClipsFeedView: View {
     @State private var isScrubbing: Bool = false
     @State private var scrubProgress: Double = 0.0
     @State private var lastTapTime: Date = Date.distantPast
-    @State private var scrollDisplacementFraction: CGFloat = 0.0
-    @State private var isScrollInteracting: Bool = false
-
-    private var headerBlurOpacity: Double {
-        if showCommentsForClip != nil { return 0.0 }
-        if isScrollInteracting {
-            return max(Double(scrollDisplacementFraction), 0.85)
-        }
-        return Double(scrollDisplacementFraction)
-    }
+    @State private var headerScrollFraction: CGFloat = 0.0
 
     public init() {}
 
     public var body: some View {
         GeometryReader { proxy in
-            let topSafeArea = max(proxy.safeAreaInsets.top, (UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.windows.first?.safeAreaInsets.top }.first ?? 47.0))
-
-            ZStack(alignment: .top) {
+            ZStack {
                 Color.black.ignoresSafeArea()
 
                 if clipsRepo.isLoading && clipsRepo.clips.isEmpty {
@@ -306,9 +295,6 @@ public struct ClipsFeedView: View {
                     emptyStateView
                 } else {
                     feedScrollView(proxy: proxy)
-
-                    // Top Header: "Моменты" with dynamic Variable Blur on scroll
-                    topHeaderView(topSafeArea: topSafeArea)
                 }
             }
         }
@@ -339,40 +325,6 @@ public struct ClipsFeedView: View {
         .onAppear {
             resumeActiveClip()
         }
-    }
-
-    // MARK: - Top Header View
-
-    private func topHeaderView(topSafeArea: CGFloat) -> some View {
-        VStack(spacing: 0) {
-            Color.clear
-                .frame(height: max(0, topSafeArea - 36))
-
-            HStack {
-                Spacer()
-                Text("Моменты")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .shadow(color: .black.opacity(0.7), radius: 6, x: 0, y: 2)
-                Spacer()
-            }
-            .frame(height: 36)
-            .padding(.bottom, 6)
-        }
-        .frame(maxWidth: .infinity)
-        .background(
-            LinearGradient(
-                colors: [.black.opacity(0.72), .black.opacity(0.38), .clear],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .ignoresSafeArea(edges: .top)
-            .opacity(headerBlurOpacity)
-            .animation(.easeInOut(duration: 0.25), value: headerBlurOpacity)
-        )
-        .opacity(showCommentsForClip != nil ? 0.0 : 1.0)
-        .animation(.spring(response: 0.28, dampingFraction: 0.85), value: showCommentsForClip != nil)
-        .allowsHitTesting(false)
     }
 
     // MARK: - Empty State
@@ -420,7 +372,9 @@ public struct ClipsFeedView: View {
     // MARK: - Feed Scroll View
 
     private func feedScrollView(proxy: GeometryProxy) -> some View {
-        ScrollView(.vertical, showsIndicators: false) {
+        let topSafeArea = max(proxy.safeAreaInsets.top, (UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.windows.first?.safeAreaInsets.top }.first ?? 47.0))
+
+        return ScrollView(.vertical, showsIndicators: false) {
             LazyVStack(spacing: 0) {
                 ForEach(clipsRepo.clips) { clip in
                     clipCard(clip, size: proxy.size, safeArea: proxy.safeAreaInsets)
@@ -434,24 +388,54 @@ public struct ClipsFeedView: View {
         .scrollPosition(id: $currentClipId)
         .ignoresSafeArea()
         .onScrollGeometryChange(for: CGFloat.self) { geometry in
-            let pageHeight = max(1.0, geometry.containerSize.height)
-            let offsetY = geometry.contentOffset.y
-            let nearestPageOffset = round(offsetY / pageHeight) * pageHeight
-            let distance = abs(offsetY - nearestPageOffset)
-            return min(1.0, distance / 35.0)
-        } action: { _, newFraction in
-            scrollDisplacementFraction = newFraction
-        }
-        .onScrollPhaseChange { _, newPhase in
-            withAnimation(.easeInOut(duration: 0.22)) {
-                isScrollInteracting = newPhase.isScrolling
-            }
+            let pageH = max(1.0, geometry.containerSize.height)
+            let dist = abs(geometry.contentOffset.y - round(geometry.contentOffset.y / pageH) * pageH)
+            return min(1.0, dist / 40.0)
+        } action: { _, newVal in
+            headerScrollFraction = newVal
         }
         .onChange(of: currentClipId) { _, newId in
             guard let newId = newId, let clip = clipsRepo.clips.first(where: { $0.id == newId }) else { return }
             playback.setupPlayer(for: clip)
         }
+        .overlay(alignment: .top) {
+            if showCommentsForClip == nil {
+                momentsHeaderView(topSafeArea: topSafeArea)
+            }
+        }
     }
+
+    // MARK: - Моменты Header Overlay (safe: pure SwiftUI gradient, no UIKit effects)
+
+    private func momentsHeaderView(topSafeArea: CGFloat) -> some View {
+        VStack(spacing: 0) {
+            Color.clear.frame(height: max(0, topSafeArea - 36))
+
+            HStack {
+                Spacer()
+                Text("Моменты")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .shadow(color: .black.opacity(0.65), radius: 5, x: 0, y: 1)
+                Spacer()
+            }
+            .frame(height: 36)
+            .padding(.bottom, 6)
+        }
+        .frame(maxWidth: .infinity)
+        .background(
+            LinearGradient(
+                colors: [.black.opacity(0.72), .black.opacity(0.4), .clear],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .ignoresSafeArea(edges: .top)
+            .opacity(Double(headerScrollFraction))
+            .animation(.easeOut(duration: 0.2), value: headerScrollFraction)
+        )
+        .allowsHitTesting(false)
+    }
+
 
     // MARK: - Clip Card
 
@@ -510,35 +494,39 @@ public struct ClipsFeedView: View {
         let commentsShift: CGFloat = isCommentsOpen ? -(height * 0.28) : 0.0
 
         return ZStack {
-            // 1. Ambient Background (Backdrop with cinematic blur in .fit mode or during initial loading)
-            if effectiveScaleMode == .fit || !playback.isVideoReady {
-                if let backdrop = clip.backdropPath ?? clip.posterPath, let url = resolveImageUrl(path: backdrop) {
-                    AsyncCachedImage(url: url) {
-                        Color.black
-                    } content: { img in
-                        Image(uiImage: img)
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(width: width, height: height)
-                            .clipped()
-                            .scaleEffect(1.25)
-                            .saturation(1.4)
-                            .blur(radius: 28)
-                            .overlay(Color.black.opacity(0.42))
-                    } fallback: {
-                        Color.black
-                    }
-                    .frame(width: width, height: height)
-                    .clipped()
-                    .transition(.opacity)
-                } else {
+            // 1. Initial Poster Placeholder (visible ONLY during initial loading before video is ready)
+            if !playback.isVideoReady, let backdrop = clip.backdropPath ?? clip.posterPath, let url = resolveImageUrl(path: backdrop) {
+                AsyncCachedImage(url: url) {
+                    Color.black
+                } content: { img in
+                    Image(uiImage: img)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: width, height: height)
+                        .clipped()
+                        .scaleEffect(1.25)
+                        .saturation(1.4)
+                        .blur(radius: 28)
+                        .overlay(Color.black.opacity(0.42))
+                } fallback: {
                     Color.black
                 }
+                .frame(width: width, height: height)
+                .clipped()
+                .transition(.opacity)
             } else {
                 Color.black
             }
 
-            // 2. Sharp Video Player Layer (Foreground, centered in remaining space when comments open)
+            // 2. Live Blurred Background Video Layer (when in .fit mode and video is ready)
+            if isCurrent, effectiveScaleMode == .fit, let player = playback.activePlayer, playback.isVideoReady {
+                AmbientVideoLayerView(player: player)
+                    .frame(width: width, height: height)
+                    .clipped()
+                    .transition(.opacity)
+            }
+
+            // 3. Sharp Video Player Layer (Foreground, centered in remaining space when comments open)
             if isCurrent, let player = playback.activePlayer {
                 VideoLayerView(
                     player: player,
