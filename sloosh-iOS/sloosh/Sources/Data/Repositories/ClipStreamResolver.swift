@@ -59,6 +59,7 @@ public final class ClipStreamResolver {
 
     private func doResolve(clip: MovieClip) async -> ResolvedClipPlayback? {
         AppDiagnostics.shared.log("[ClipStreamResolver] Resolving clip=\(clip.id) kpId=\(clip.kpId ?? 0) tmdbId=\(clip.tmdbId ?? 0) title=\(clip.title)")
+        _ = await AllohaRepository.shared.ensureTokensLoaded()
         var targetIframe: String? = nil
 
         // 1. Query Alloha dynamic catalog using kpId, tmdbId or title
