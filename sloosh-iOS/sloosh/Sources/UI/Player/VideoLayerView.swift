@@ -19,6 +19,11 @@ final class PlayerLayerView: UIView {
         set { playerLayer.player = newValue }
     }
 
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        playerLayer.frame = bounds
+    }
+
     private var stashedPlayer: AVPlayer?
     var pipController: AVPictureInPictureController?
 

@@ -7,13 +7,7 @@ import Combine
 
 @MainActor
 final class ClipPlaybackCoordinator: ObservableObject {
-    let player: AVPlayer = {
-        let p = AVPlayer()
-        p.actionAtItemEnd = .none
-        p.automaticallyWaitsToMinimizeStalling = true
-        return p
-    }()
-
+    @Published var activePlayer: AVPlayer?
     @Published var isVideoReady: Bool = false
     @Published var isResolving: Bool = false
     @Published var isPlaying: Bool = true
@@ -66,13 +60,16 @@ final class ClipPlaybackCoordinator: ObservableObject {
 
             try? AVAudioSession.sharedInstance().setActive(true)
 
-            self.player.replaceCurrentItem(with: item)
+            let player = AVPlayer(playerItem: item)
+            player.actionAtItemEnd = .none
+            player.automaticallyWaitsToMinimizeStalling = true
+            self.activePlayer = player
             self.isPlaying = true
 
             // Observe item status for ready to play & initial seek
-            self.playerStatusObserver = item.observe(\.status, options: [.new, .initial]) { [weak self] observedItem, _ in
+            self.playerStatusObserver = item.observe(\.status, options: [.new, .initial]) { [weak self, weak player] observedItem, _ in
                 Task { @MainActor [weak self] in
-                    guard let self, self.currentClipId == clip.id else { return }
+                    guard let self, self.currentClipId == clip.id, let player else { return }
                     if observedItem.status == .readyToPlay {
                         self.isResolving = false
                         self.isVideoReady = true
@@ -83,14 +80,14 @@ final class ClipPlaybackCoordinator: ObservableObject {
                             self.didPerformInitialSeek = true
                             if clip.startTime > 0.5 {
                                 let sTime = CMTime(seconds: clip.startTime, preferredTimescale: 600)
-                                self.player.seek(to: sTime, toleranceBefore: .zero, toleranceAfter: .zero) { _ in
-                                    self.player.play()
+                                player.seek(to: sTime, toleranceBefore: .zero, toleranceAfter: .zero) { _ in
+                                    player.play()
                                 }
                             } else {
-                                self.player.play()
+                                player.play()
                             }
                         } else {
-                            self.player.play()
+                            player.play()
                         }
                     } else if observedItem.status == .failed {
                         AppDiagnostics.shared.log("[ClipPlayback] AVPlayerItem failed for clip=\(clip.id): \(String(describing: observedItem.error))")
@@ -107,7 +104,7 @@ final class ClipPlaybackCoordinator: ObservableObject {
             }
 
             // Observe time control status
-            self.playerTimeStatusObserver = self.player.observe(\.timeControlStatus, options: [.new]) { [weak self] observedPlayer, _ in
+            self.playerTimeStatusObserver = player.observe(\.timeControlStatus, options: [.new]) { [weak self] observedPlayer, _ in
                 Task { @MainActor [weak self] in
                     guard let self, self.currentClipId == clip.id else { return }
                     if observedPlayer.timeControlStatus == .playing {
@@ -120,8 +117,8 @@ final class ClipPlaybackCoordinator: ObservableObject {
 
             // Periodic time observer for progress and looping
             let interval = CMTime(seconds: 0.1, preferredTimescale: 600)
-            self.timeObserver = self.player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] time in
-                guard let self, !self.isScrubbing else { return }
+            self.timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self, weak player] time in
+                guard let self, let player, !self.isScrubbing else { return }
                 let currentSec = CMTimeGetSeconds(time)
                 guard currentSec.isFinite else { return }
 
@@ -132,12 +129,12 @@ final class ClipPlaybackCoordinator: ObservableObject {
                 // Loop back to start ONLY when video reaches or exceeds clip.endTime
                 if currentSec >= clip.endTime {
                     let sTime = CMTime(seconds: clip.startTime, preferredTimescale: 600)
-                    self.player.seek(to: sTime, toleranceBefore: .zero, toleranceAfter: .zero) { _ in
+                    player.seek(to: sTime, toleranceBefore: .zero, toleranceAfter: .zero) { _ in
                         if self.isPlaying {
                             if self.isFastForwarding {
-                                self.player.rate = 2.0
+                                player.rate = 2.0
                             } else {
-                                self.player.play()
+                                player.play()
                             }
                         }
                     }
@@ -148,10 +145,11 @@ final class ClipPlaybackCoordinator: ObservableObject {
 
     func beginScrubbing() {
         isScrubbing = true
-        player.pause()
+        activePlayer?.pause()
     }
 
     func scrubToProgress(_ progress: Double, for clip: MovieClip) {
+        guard let player = activePlayer else { return }
         let clipDur = max(1.0, clip.endTime - clip.startTime)
         let targetSec = clip.startTime + (clipDur * max(0.0, min(1.0, progress)))
         let time = CMTime(seconds: targetSec, preferredTimescale: 600)
@@ -160,15 +158,19 @@ final class ClipPlaybackCoordinator: ObservableObject {
     }
 
     func endScrubbing(at progress: Double, for clip: MovieClip) {
+        guard let player = activePlayer else {
+            isScrubbing = false
+            return
+        }
         let clipDur = max(1.0, clip.endTime - clip.startTime)
         let targetSec = clip.startTime + (clipDur * max(0.0, min(1.0, progress)))
         let time = CMTime(seconds: targetSec, preferredTimescale: 600)
         clipProgress = progress
-        player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
-            guard let self else { return }
+        player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self, weak player] _ in
+            guard let self, let player else { return }
             self.isScrubbing = false
             if self.isPlaying {
-                self.player.play()
+                player.play()
             }
         }
     }
@@ -178,6 +180,7 @@ final class ClipPlaybackCoordinator: ObservableObject {
     }
 
     func togglePlayPause() {
+        guard let player = activePlayer else { return }
         if isPlaying {
             player.pause()
             isPlaying = false
@@ -188,12 +191,16 @@ final class ClipPlaybackCoordinator: ObservableObject {
     }
 
     func startFastForward() {
-        guard isPlaying else { return }
+        guard let player = activePlayer, isPlaying else { return }
         isFastForwarding = true
         player.rate = 2.0
     }
 
     func stopFastForward() {
+        guard let player = activePlayer else {
+            isFastForwarding = false
+            return
+        }
         isFastForwarding = false
         if isPlaying {
             player.rate = 1.0
@@ -203,16 +210,16 @@ final class ClipPlaybackCoordinator: ObservableObject {
     }
 
     func pause() {
-        player.pause()
+        activePlayer?.pause()
         isPlaying = false
     }
 
     func resume(for clip: MovieClip?) {
         guard let clip else { return }
-        if currentClipId != clip.id {
+        if activePlayer == nil || currentClipId != clip.id {
             setupPlayer(for: clip)
         } else {
-            player.play()
+            activePlayer?.play()
             isPlaying = true
         }
     }
@@ -225,12 +232,12 @@ final class ClipPlaybackCoordinator: ObservableObject {
         playerTimeStatusObserver?.invalidate()
         playerTimeStatusObserver = nil
 
-        if let observer = timeObserver {
+        if let observer = timeObserver, let player = activePlayer {
             player.removeTimeObserver(observer)
             timeObserver = nil
         }
-        player.pause()
-        player.replaceCurrentItem(with: nil)
+        activePlayer?.pause()
+        activePlayer = nil
         isVideoReady = false
         isResolving = false
         hasError = false
@@ -536,9 +543,9 @@ public struct ClipsFeedView: View {
             }
 
             // 2. Sharp Video Player Layer (Single Dedicated AVPlayerLayer)
-            if isCurrent {
+            if isCurrent, let player = playback.activePlayer {
                 VideoLayerView(
-                    player: playback.player,
+                    player: player,
                     videoGravity: effectiveVideoGravity
                 )
                 .frame(width: width, height: height)
