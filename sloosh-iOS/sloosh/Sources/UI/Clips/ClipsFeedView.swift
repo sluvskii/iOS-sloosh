@@ -274,7 +274,7 @@ public struct ClipsFeedView: View {
     @State private var isScrubbing: Bool = false
     @State private var scrubProgress: Double = 0.0
     @State private var lastTapTime: Date = Date.distantPast
-    @State private var isScrolling: Bool = false
+    @State private var scrollBlurProgress: Double = 0.0
 
     public init() {}
 
@@ -394,23 +394,17 @@ public struct ClipsFeedView: View {
         }
         .scrollTargetBehavior(.paging)
         .scrollPosition(id: $currentClipId)
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 4)
-                .onChanged { _ in
-                    if !isScrolling {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            isScrolling = true
-                        }
-                    }
-                }
-                .onEnded { _ in
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) {
-                        withAnimation(.easeInOut(duration: 0.3)) {
-                            isScrolling = false
-                        }
-                    }
-                }
-        )
+        .onScrollGeometryChange(for: CGFloat.self) { geometry in
+            let containerH = max(1.0, geometry.containerSize.height)
+            let offset = abs(geometry.contentOffset.y)
+            let remainder = offset.truncatingRemainder(dividingBy: containerH)
+            let distanceToSnap = min(remainder, containerH - remainder)
+            return min(1.0, max(0.0, distanceToSnap / 30.0))
+        } action: { _, newProgress in
+            if abs(scrollBlurProgress - newProgress) > 0.01 || newProgress == 0 || newProgress == 1.0 {
+                scrollBlurProgress = newProgress
+            }
+        }
         .ignoresSafeArea()
         .onChange(of: currentClipId) { _, newId in
             guard let newId = newId, let clip = clipsRepo.clips.first(where: { $0.id == newId }) else { return }
@@ -428,7 +422,7 @@ public struct ClipsFeedView: View {
                 Text("Моменты")
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(.white)
-                    .shadow(color: .black.opacity(0.8), radius: 6, x: 0, y: 2)
+                    .shadow(color: .black.opacity(0.85), radius: 6, x: 0, y: 2)
             }
             .frame(maxWidth: .infinity)
             .frame(height: 44)
@@ -438,7 +432,7 @@ public struct ClipsFeedView: View {
         }
         .background(
             VariableBlurView(
-                maxBlurRadius: 18,
+                maxBlurRadius: 20,
                 direction: .blurredTopClearBottom,
                 tintColor: .black,
                 tintOpacity: 0.65,
@@ -446,8 +440,8 @@ public struct ClipsFeedView: View {
             )
             .frame(height: topSafeArea + 54)
             .ignoresSafeArea(edges: .top)
-            .opacity(isScrolling ? 1.0 : 0.0)
-            .animation(.easeInOut(duration: 0.25), value: isScrolling)
+            .opacity(scrollBlurProgress)
+            .animation(.easeInOut(duration: 0.2), value: scrollBlurProgress)
         )
         .opacity(isOverlayHidden ? 0.0 : 1.0)
         .animation(.spring(response: 0.28, dampingFraction: 0.85), value: isOverlayHidden)
@@ -537,8 +531,9 @@ public struct ClipsFeedView: View {
 
             // 2. Sharp Video Player Layer (Foreground, centered in remaining space when comments open)
             if isCurrent, let player = playback.activePlayer {
-                CustomVideoLayerView(
+                VideoLayerView(
                     player: player,
+                    pipController: $pipController,
                     videoGravity: effectiveVideoGravity
                 )
                 .frame(width: width, height: height)
@@ -996,8 +991,9 @@ public struct ClipsFeedView: View {
                 Image(systemName: currentScaleMode == .fit ? "arrow.up.left.and.arrow.down.right" : "arrow.down.right.and.arrow.up.left")
                     .font(.system(size: 22, weight: .semibold))
                     .foregroundStyle(.white)
-                    .contentTransition(.symbolEffect(.replace))
+                    .contentTransition(.symbolEffect(.replace.downUp.byLayer))
                     .shadow(color: .black.opacity(0.7), radius: 6)
+                    .id(currentScaleMode.rawValue + "_icon")
 
                 Text(currentScaleMode == .fit ? "9:16" : "В кадре")
                     .font(.system(size: 9.5, weight: .semibold))
@@ -1005,6 +1001,8 @@ public struct ClipsFeedView: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
                     .shadow(color: .black.opacity(0.8), radius: 3)
+                    .id(currentScaleMode.rawValue + "_text")
+                    .transition(.opacity)
             }
             .animation(.spring(response: 0.35, dampingFraction: 0.75), value: currentScaleMode)
             .frame(width: 56, height: 50)
@@ -1201,42 +1199,5 @@ public struct ClipsFeedView: View {
             initialPlaybackTime: clip.startTime
         )
         self.fullPlayerConfig = config
-    }
-}
-
-// MARK: - UIKit AVPlayerLayer Host for Fast Feed Rendering
-
-private struct CustomVideoLayerView: UIViewRepresentable {
-    let player: AVPlayer
-    var videoGravity: AVLayerVideoGravity = .resizeAspect
-
-    func makeUIView(context: Context) -> PlayerUIView {
-        let view = PlayerUIView()
-        view.backgroundColor = .clear
-        view.playerLayer.player = player
-        view.playerLayer.videoGravity = videoGravity
-        return view
-    }
-
-    func updateUIView(_ uiView: PlayerUIView, context: Context) {
-        if uiView.playerLayer.player !== player {
-            uiView.playerLayer.player = player
-        }
-        if uiView.playerLayer.videoGravity != videoGravity {
-            CATransaction.begin()
-            CATransaction.setAnimationDuration(0.35)
-            CATransaction.setAnimationTimingFunction(CAMediaTimingFunction(name: .easeInEaseOut))
-            uiView.playerLayer.videoGravity = videoGravity
-            CATransaction.commit()
-        }
-    }
-
-    class PlayerUIView: UIView {
-        override static var layerClass: AnyClass {
-            AVPlayerLayer.self
-        }
-        var playerLayer: AVPlayerLayer {
-            layer as! AVPlayerLayer
-        }
     }
 }
