@@ -287,9 +287,12 @@ public struct ClipsFeedView: View {
 
     public var body: some View {
         GeometryReader { proxy in
-            let topSafeArea = max(proxy.safeAreaInsets.top, (UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.windows.first?.safeAreaInsets.top }.first ?? 47.0))
+            let topSafeArea = proxy.safeAreaInsets.top
+            let bottomSafeArea = proxy.safeAreaInsets.bottom
+            let fullWidth = proxy.size.width
+            let fullHeight = proxy.size.height + topSafeArea + bottomSafeArea
 
-            ZStack {
+            ZStack(alignment: .top) {
                 Color.black.ignoresSafeArea()
 
                 if clipsRepo.isLoading && clipsRepo.clips.isEmpty {
@@ -305,29 +308,27 @@ public struct ClipsFeedView: View {
                     emptyStateView
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
-                    feedScrollView(proxy: proxy)
-                        .overlay(alignment: .top) {
-                            momentsHeaderView(topSafeArea: topSafeArea)
-                        }
+                    feedScrollView(width: fullWidth, height: fullHeight, topSafeArea: topSafeArea, bottomSafeArea: bottomSafeArea)
+
+                    momentsHeaderView(width: fullWidth, topSafeArea: topSafeArea)
                 }
             }
+            .ignoresSafeArea()
         }
-        .ignoresSafeArea()
         .preferredColorScheme(.dark)
         .environment(\.colorScheme, .dark)
         .task {
-            await clipsRepo.fetchFeed()
-            if currentClipId == nil, let first = clipsRepo.clips.first {
-                currentClipId = first.id
-                playback.setupPlayer(for: first)
+            if clipsRepo.clips.isEmpty {
+                await clipsRepo.fetchFeed()
             }
+            ensurePlaybackStarted()
         }
         .sheet(item: $showCommentsForClip) { clip in
             ClipCommentsSheetView(clip: clip)
         }
         .fullScreenCover(item: $fullPlayerConfig, onDismiss: {
             fullPlayerConfig = nil
-            resumeActiveClip()
+            ensurePlaybackStarted()
         }) { config in
             PlayerView(config: config)
                 .preferredColorScheme(.dark)
@@ -337,24 +338,19 @@ public struct ClipsFeedView: View {
             playback.pause()
         }
         .onAppear {
-            if currentClipId == nil, let first = clipsRepo.clips.first {
-                currentClipId = first.id
-                playback.setupPlayer(for: first)
-            } else {
-                resumeActiveClip()
-            }
+            ensurePlaybackStarted()
         }
     }
 
     // MARK: - Top Header View (Matches SettingsView liquid glass style)
 
-    private func momentsHeaderView(topSafeArea: CGFloat) -> some View {
+    private func momentsHeaderView(width: CGFloat, topSafeArea: CGFloat) -> some View {
         VStack(spacing: 0) {
-            // Status bar clearance (keeps title below Dynamic Island / Notch)
+            // Status bar clearance (keeps title strictly below Dynamic Island / Notch)
             Color.clear
                 .frame(height: topSafeArea)
 
-            // Header title bar
+            // Header title bar (matching SettingsView navigation header height)
             ZStack {
                 Text("Моменты")
                     .font(.system(size: 18, weight: .semibold))
@@ -364,20 +360,20 @@ public struct ClipsFeedView: View {
             .frame(maxWidth: .infinity)
             .frame(height: 44)
         }
-        .frame(maxWidth: .infinity)
+        .frame(width: width)
         .background(
-            LinearGradient(
-                stops: [
-                    .init(color: Color.black.opacity(0.82), location: 0.0),
-                    .init(color: Color.black.opacity(0.48), location: 0.7),
-                    .init(color: Color.clear, location: 1.0)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
+            VariableBlurView(
+                maxBlurRadius: 18,
+                direction: .blurredTopClearBottom,
+                tintColor: .black,
+                tintOpacity: 0.72,
+                style: .dark
             )
+            .padding(.bottom, -30)
             .ignoresSafeArea(edges: .top)
         )
         .allowsHitTesting(false)
+        .ignoresSafeArea(edges: .top)
         .opacity(showCommentsForClip != nil ? 0.0 : 1.0)
         .animation(.spring(response: 0.28, dampingFraction: 0.85), value: showCommentsForClip != nil)
     }
@@ -426,41 +422,31 @@ public struct ClipsFeedView: View {
 
     // MARK: - Feed Scroll View
 
-    private func feedScrollView(proxy: GeometryProxy) -> some View {
+    private func feedScrollView(width: CGFloat, height: CGFloat, topSafeArea: CGFloat, bottomSafeArea: CGFloat) -> some View {
         ScrollView(.vertical, showsIndicators: false) {
             LazyVStack(spacing: 0) {
                 ForEach(clipsRepo.clips) { clip in
-                    clipCard(clip, size: proxy.size, safeArea: proxy.safeAreaInsets)
-                        .frame(width: proxy.size.width, height: proxy.size.height)
+                    clipCard(clip, width: width, height: height, topSafeArea: topSafeArea, bottomSafeArea: bottomSafeArea)
+                        .frame(width: width, height: height)
                         .id(clip.id)
                 }
             }
             .scrollTargetLayout()
         }
         .scrollTargetBehavior(.paging)
-        .scrollPosition(id: Binding(
-            get: { currentClipId },
-            set: { newId in
-                if let newId, newId != currentClipId {
-                    currentClipId = newId
-                }
-            }
-        ))
+        .scrollPosition(id: $currentClipId)
         .ignoresSafeArea()
         .onChange(of: currentClipId) { oldId, newId in
             AppDiagnostics.shared.log("[ClipsFeedView] currentClipId changed from \(String(describing: oldId)) to \(String(describing: newId))")
-            guard let newId = newId, let clip = clipsRepo.clips.first(where: { $0.id == newId }) else { return }
+            guard let newId = newId, newId != oldId, let clip = clipsRepo.clips.first(where: { $0.id == newId }) else { return }
             playback.setupPlayer(for: clip)
         }
     }
 
     // MARK: - Clip Card
 
-    private func clipCard(_ clip: MovieClip, size: CGSize, safeArea: EdgeInsets) -> some View {
+    private func clipCard(_ clip: MovieClip, width: CGFloat, height: CGFloat, topSafeArea: CGFloat, bottomSafeArea: CGFloat) -> some View {
         let isCurrent = (currentClipId == clip.id) || (currentClipId == nil && clip.id == clipsRepo.clips.first?.id)
-        let topSafeArea = max(safeArea.top, (UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.windows.first?.safeAreaInsets.top }.first ?? 47.0))
-        let bottomSafeArea = max(safeArea.bottom, (UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.windows.first?.safeAreaInsets.bottom }.first ?? 34.0))
-
         let navHeaderHeight: CGFloat = 44.0
         let totalTopClearance: CGFloat = topSafeArea + navHeaderHeight
 
@@ -469,20 +455,20 @@ public struct ClipsFeedView: View {
         let scrubberGap: CGFloat = 2.0
 
         // Calculate available height strictly between top navbar header and bottom scrubber
-        let availableHeight = max(200.0, size.height - totalTopClearance - bottomTabBarHeight - scrubberHeight - scrubberGap)
+        let availableHeight = max(200.0, height - totalTopClearance - bottomTabBarHeight - scrubberHeight - scrubberGap)
 
         return VStack(spacing: 0) {
             // 1. Top clearance under stationary pinned "Моменты" Header
             Color.clear
-                .frame(width: size.width, height: totalTopClearance)
+                .frame(width: width, height: totalTopClearance)
 
             // 2. Video Container with smooth corner radius
-            videoCardContainer(clip, width: size.width, height: availableHeight, isCurrent: isCurrent)
+            videoCardContainer(clip, width: width, height: availableHeight, isCurrent: isCurrent)
                 .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
 
             // 3. Gap between video card and progress bar
-            Spacer()
-                .frame(height: scrubberGap)
+            Color.clear
+                .frame(width: width, height: scrubberGap)
 
             // 4. Progress bar (полоса перемотки)
             if isCurrent {
@@ -497,10 +483,10 @@ public struct ClipsFeedView: View {
             }
 
             // 5. Bottom Tab Bar clearance
-            Spacer()
-                .frame(height: bottomTabBarHeight)
+            Color.clear
+                .frame(width: width, height: bottomTabBarHeight)
         }
-        .frame(width: size.width, height: size.height)
+        .frame(width: width, height: height)
         .background(Color.black)
     }
 
@@ -514,7 +500,19 @@ public struct ClipsFeedView: View {
         let commentsShift: CGFloat = isCommentsOpen ? -(height * 0.28) : 0.0
 
         return ZStack {
-            // 1. Initial Poster Placeholder (visible ONLY during initial loading before video is ready)
+            // 1. Sharp Video Player Layer (Single Dedicated AVPlayerLayer, always attached to hardware compositor)
+            if isCurrent, let player = playback.activePlayer {
+                VideoLayerView(
+                    player: player,
+                    videoGravity: effectiveVideoGravity
+                )
+                .frame(width: width, height: height)
+                .offset(y: commentsShift)
+                .clipped()
+                .animation(.spring(response: 0.38, dampingFraction: 0.82), value: isCommentsOpen)
+            }
+
+            // 2. Initial Poster Placeholder (fades out smoothly when video is ready to play)
             if !playback.isVideoReady {
                 if let backdrop = clip.backdropPath ?? clip.posterPath, let url = resolveImageUrl(path: backdrop) {
                     AsyncCachedImage(url: url) {
@@ -534,26 +532,11 @@ public struct ClipsFeedView: View {
                     }
                     .frame(width: width, height: height)
                     .clipped()
+                    .allowsHitTesting(false)
                     .transition(.opacity)
                 } else {
                     Color.black
                 }
-            } else {
-                Color.black
-            }
-
-            // 2. Sharp Video Player Layer (Single Dedicated AVPlayerLayer)
-            if isCurrent, let player = playback.activePlayer {
-                VideoLayerView(
-                    player: player,
-                    videoGravity: effectiveVideoGravity
-                )
-                .frame(width: width, height: height)
-                .offset(y: commentsShift)
-                .clipped()
-                .opacity(playback.isVideoReady ? 1.0 : 0.0)
-                .animation(.spring(response: 0.38, dampingFraction: 0.82), value: isCommentsOpen)
-                .animation(.easeInOut(duration: 0.25), value: playback.isVideoReady)
             }
 
             // 4. Cinematic Gradients for Contrast and Overlay Readability (hidden when comments or overlays are hidden)
@@ -1152,12 +1135,17 @@ public struct ClipsFeedView: View {
         return String(format: "%d:%02d", m, s)
     }
 
-    // MARK: - Helper Actions
-
-    private func resumeActiveClip() {
+    private func ensurePlaybackStarted() {
         if let clipId = currentClipId, let clip = clipsRepo.clips.first(where: { $0.id == clipId }) {
             playback.resume(for: clip)
+        } else if let first = clipsRepo.clips.first {
+            currentClipId = first.id
+            playback.setupPlayer(for: first)
         }
+    }
+
+    private func resumeActiveClip() {
+        ensurePlaybackStarted()
     }
 
     private func triggerDoubleTapLike(for clip: MovieClip, at location: CGPoint) {
