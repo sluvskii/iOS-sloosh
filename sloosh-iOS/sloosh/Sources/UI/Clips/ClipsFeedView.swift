@@ -345,15 +345,12 @@ public struct ClipsFeedView: View {
     // MARK: - Top Header View (Matches SettingsView liquid glass style)
 
     private func momentsHeaderView(width: CGFloat, topSafeArea: CGFloat) -> some View {
-        let headerTopOffset: CGFloat = 10.0
-        let effectiveTopClearance = topSafeArea + headerTopOffset
-
-        return VStack(spacing: 0) {
-            // Status bar clearance + comfortable breathing room below Dynamic Island / Notch
+        VStack(spacing: 0) {
+            // Status bar clearance (keeps title at the exact same height as other screens)
             Color.clear
-                .frame(height: effectiveTopClearance)
+                .frame(height: topSafeArea)
 
-            // Header title bar (matching SettingsView navigation header height)
+            // Header title bar (matching SettingsView and native navigation header height)
             ZStack {
                 Text("Моменты")
                     .font(.system(size: 18, weight: .semibold))
@@ -366,13 +363,13 @@ public struct ClipsFeedView: View {
         .frame(width: width)
         .background(
             VariableBlurView(
-                maxBlurRadius: 8,
+                maxBlurRadius: 5,
                 direction: .blurredTopClearBottom,
                 tintColor: .black,
-                tintOpacity: 0.6,
+                tintOpacity: 0.8,
                 style: .dark
             )
-            .padding(.bottom, -12)
+            .padding(.bottom, -8)
             .ignoresSafeArea(edges: .top)
         )
         .allowsHitTesting(false)
@@ -451,8 +448,8 @@ public struct ClipsFeedView: View {
     private func clipCard(_ clip: MovieClip, width: CGFloat, height: CGFloat, topSafeArea: CGFloat, bottomSafeArea: CGFloat) -> some View {
         let isCurrent = (currentClipId == clip.id) || (currentClipId == nil && clip.id == clipsRepo.clips.first?.id)
         let navHeaderHeight: CGFloat = 44.0
-        let headerTopOffset: CGFloat = 10.0
-        let totalTopClearance: CGFloat = topSafeArea + navHeaderHeight + headerTopOffset
+        let cardTopSpacing: CGFloat = 20.0
+        let totalTopClearance: CGFloat = topSafeArea + navHeaderHeight + cardTopSpacing
 
         let bottomTabBarHeight: CGFloat = bottomSafeArea + 52.0
         let scrubberHeight: CGFloat = 24.0
