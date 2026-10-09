@@ -274,13 +274,15 @@ public struct ClipsFeedView: View {
     @State private var isScrubbing: Bool = false
     @State private var scrubProgress: Double = 0.0
     @State private var lastTapTime: Date = Date.distantPast
-    @State private var headerScrollFraction: CGFloat = 0.0
 
     public init() {}
 
     public var body: some View {
         GeometryReader { proxy in
-            ZStack {
+            let safeArea = proxy.safeAreaInsets
+            let topSafeArea = max(safeArea.top, (UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.windows.first?.safeAreaInsets.top }.first ?? 47.0))
+
+            ZStack(alignment: .top) {
                 Color.black.ignoresSafeArea()
 
                 if clipsRepo.isLoading && clipsRepo.clips.isEmpty {
@@ -291,10 +293,17 @@ public struct ClipsFeedView: View {
                             .font(.system(size: 14, weight: .medium))
                             .foregroundStyle(.white.opacity(0.6))
                     }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if clipsRepo.clips.isEmpty {
                     emptyStateView
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     feedScrollView(proxy: proxy)
+                }
+
+                // Top Header Bar: "Моменты" with progressive Variable Blur
+                if !clipsRepo.clips.isEmpty {
+                    topHeaderBar(topSafeArea: topSafeArea)
                 }
             }
         }
@@ -372,9 +381,7 @@ public struct ClipsFeedView: View {
     // MARK: - Feed Scroll View
 
     private func feedScrollView(proxy: GeometryProxy) -> some View {
-        let topSafeArea = max(proxy.safeAreaInsets.top, (UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.windows.first?.safeAreaInsets.top }.first ?? 47.0))
-
-        return ScrollView(.vertical, showsIndicators: false) {
+        ScrollView(.vertical, showsIndicators: false) {
             LazyVStack(spacing: 0) {
                 ForEach(clipsRepo.clips) { clip in
                     clipCard(clip, size: proxy.size, safeArea: proxy.safeAreaInsets)
@@ -387,55 +394,46 @@ public struct ClipsFeedView: View {
         .scrollTargetBehavior(.paging)
         .scrollPosition(id: $currentClipId)
         .ignoresSafeArea()
-        .onScrollGeometryChange(for: CGFloat.self) { geometry in
-            let pageH = max(1.0, geometry.containerSize.height)
-            let dist = abs(geometry.contentOffset.y - round(geometry.contentOffset.y / pageH) * pageH)
-            return min(1.0, dist / 40.0)
-        } action: { _, newVal in
-            headerScrollFraction = newVal
-        }
         .onChange(of: currentClipId) { _, newId in
             guard let newId = newId, let clip = clipsRepo.clips.first(where: { $0.id == newId }) else { return }
             playback.setupPlayer(for: clip)
         }
-        .overlay(alignment: .top) {
-            if showCommentsForClip == nil {
-                momentsHeaderView(topSafeArea: topSafeArea)
-            }
-        }
     }
 
-    // MARK: - Моменты Header Overlay (safe: pure SwiftUI gradient, no UIKit effects)
+    // MARK: - Top Header Bar
 
-    private func momentsHeaderView(topSafeArea: CGFloat) -> some View {
-        VStack(spacing: 0) {
-            Color.clear.frame(height: max(0, topSafeArea - 36))
+    private func topHeaderBar(topSafeArea: CGFloat) -> some View {
+        let isCommentsOpen = (showCommentsForClip != nil)
+        let isOverlayHidden = isScrubbing || playback.isFastForwarding || isCommentsOpen
 
-            HStack {
-                Spacer()
+        return VStack(spacing: 0) {
+            ZStack {
                 Text("Моменты")
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(.white)
-                    .shadow(color: .black.opacity(0.65), radius: 5, x: 0, y: 1)
-                Spacer()
+                    .shadow(color: .black.opacity(0.7), radius: 6, x: 0, y: 1)
             }
-            .frame(height: 36)
-            .padding(.bottom, 6)
+            .frame(maxWidth: .infinity)
+            .frame(height: 44)
+            .padding(.top, max(0, topSafeArea - 8))
         }
         .frame(maxWidth: .infinity)
         .background(
-            LinearGradient(
-                colors: [.black.opacity(0.72), .black.opacity(0.4), .clear],
-                startPoint: .top,
-                endPoint: .bottom
+            VariableBlurView(
+                maxBlurRadius: 2,
+                direction: .blurredTopClearBottom,
+                tintColor: .black,
+                tintOpacity: 0.72,
+                style: .dark
             )
+            .padding(.bottom, -20)
             .ignoresSafeArea(edges: .top)
-            .opacity(Double(headerScrollFraction))
-            .animation(.easeOut(duration: 0.2), value: headerScrollFraction)
         )
+        .opacity(isOverlayHidden ? 0.0 : 1.0)
+        .animation(.spring(response: 0.28, dampingFraction: 0.85), value: isOverlayHidden)
         .allowsHitTesting(false)
+        .ignoresSafeArea(edges: .top)
     }
-
 
     // MARK: - Clip Card
 
