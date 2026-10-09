@@ -77,7 +77,7 @@ struct VideoLayerView: UIViewRepresentable {
 
     func makeUIView(context: Context) -> PlayerLayerView {
         let view = PlayerLayerView()
-        view.backgroundColor = .black
+        view.backgroundColor = .clear
         view.playerLayer.videoGravity = videoGravity
         view.playerLayer.player = player
 

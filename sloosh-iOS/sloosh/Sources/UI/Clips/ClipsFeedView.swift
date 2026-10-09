@@ -446,18 +446,8 @@ public struct ClipsFeedView: View {
         let isOverlayHidden = isScrubbing || playback.isFastForwarding
 
         return ZStack {
-            // 1. Ambient Background Layer (Live blurred video when .fit, or blurred backdrop image fallback)
-            if isCurrent, currentScaleMode == .fit, let player = playback.activePlayer, playback.isVideoReady {
-                VideoLayerView(
-                    player: player,
-                    pipController: .constant(nil),
-                    videoGravity: .resizeAspectFill
-                )
-                .frame(width: width, height: height)
-                .clipped()
-                .blur(radius: 35)
-                .overlay(Color.black.opacity(0.48))
-            } else if let backdrop = clip.backdropPath ?? clip.posterPath, let url = URL(string: backdrop) {
+            // 1. Cinema Ambient Background Layer (Vivid blurred backdrop for .fit mode letterboxing)
+            if let backdrop = clip.backdropPath ?? clip.posterPath, let url = resolveImageUrl(path: backdrop) {
                 AsyncCachedImage(url: url) {
                     Color.black
                 } content: { img in
@@ -466,8 +456,10 @@ public struct ClipsFeedView: View {
                         .aspectRatio(contentMode: .fill)
                         .frame(width: width, height: height)
                         .clipped()
-                        .blur(radius: 35)
-                        .overlay(Color.black.opacity(0.48))
+                        .scaleEffect(1.25)
+                        .saturation(1.4)
+                        .blur(radius: 28)
+                        .overlay(Color.black.opacity(0.42))
                 } fallback: {
                     Color.black
                 }
@@ -510,45 +502,37 @@ public struct ClipsFeedView: View {
             }
             .allowsHitTesting(false)
 
-            // 4. Scroll-Friendly Touch Surface: Tap play/pause, Double-tap heart, Long-press 2x speed
-            Color.clear
-                .contentShape(Rectangle())
-                .onLongPressGesture(minimumDuration: 0.26, maximumDistance: 25, pressing: { isPressing in
-                    if isPressing {
-                        if !playback.isScrubbing && playback.isPlaying {
-                            withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
-                                playback.startFastForward()
-                            }
-                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                        }
-                    } else {
-                        if playback.isFastForwarding {
-                            withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
-                                playback.stopFastForward()
-                            }
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        }
-                    }
-                }, perform: {})
-                .onTapGesture(count: 2, coordinateSpace: .local) { location in
-                    triggerDoubleTapLike(for: clip, at: location)
-                }
-                .onTapGesture(count: 1) {
-                    withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
-                        playback.togglePlayPause()
-                    }
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                }
+            // 4. Touch & Gesture Zones: Edge 2x Speed, Center Instant Play/Pause
+            HStack(spacing: 0) {
+                // Left Edge 2x Speed Zone (75pt)
+                edgeAccelerationZone
+                    .frame(width: 75)
 
-            // 5. Play / Pause Indicator in Center (Animated with Spring)
+                // Center Instant Play/Pause & Double-Tap Heart Zone
+                centerTapZone(clip: clip)
+                    .frame(maxWidth: .infinity)
+
+                // Right Edge 2x Speed Zone (75pt)
+                edgeAccelerationZone
+                    .frame(width: 75)
+            }
+            .frame(width: width, height: height)
+
+            // 5. Play / Pause Indicator in Center (Liquid Glass with Spring Animation)
             if !playback.isPlaying && isCurrent && playback.isVideoReady && !isOverlayHidden {
                 Image(systemName: "play.fill")
-                    .font(.system(size: 26, weight: .bold))
+                    .font(.system(size: 28, weight: .bold))
                     .foregroundStyle(.white)
-                    .frame(width: 58, height: 58)
+                    .frame(width: 64, height: 64)
                     .glassEffect(in: .circle)
                     .clipShape(Circle())
-                    .transition(.scale(scale: 0.75).combined(with: .opacity))
+                    .shadow(color: .black.opacity(0.55), radius: 10, y: 3)
+                    .transition(
+                        .asymmetric(
+                            insertion: .scale(scale: 0.6).combined(with: .opacity),
+                            removal: .scale(scale: 1.15).combined(with: .opacity)
+                        )
+                    )
                     .allowsHitTesting(false)
             }
 
@@ -644,6 +628,55 @@ public struct ClipsFeedView: View {
         .shadow(color: .black.opacity(0.6), radius: 16, y: 4)
     }
 
+    // MARK: - Gesture Handling Zones
+
+    private var edgeAccelerationZone: some View {
+        Color.clear
+            .contentShape(Rectangle())
+            .gesture(
+                LongPressGesture(minimumDuration: 0.28, maximumDistance: 30)
+                    .onEnded { _ in
+                        if !playback.isScrubbing && playback.isPlaying {
+                            withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
+                                playback.startFastForward()
+                            }
+                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                        }
+                    }
+            )
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 0)
+                    .onEnded { _ in
+                        if playback.isFastForwarding {
+                            withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
+                                playback.stopFastForward()
+                            }
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        }
+                    }
+            )
+            .onTapGesture(count: 1) {
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.72)) {
+                    playback.togglePlayPause()
+                }
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            }
+    }
+
+    private func centerTapZone(clip: MovieClip) -> some View {
+        Color.clear
+            .contentShape(Rectangle())
+            .onTapGesture(count: 2, coordinateSpace: .local) { location in
+                triggerDoubleTapLike(for: clip, at: location)
+            }
+            .onTapGesture(count: 1) {
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.72)) {
+                    playback.togglePlayPause()
+                }
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            }
+    }
+
     // MARK: - Left Info View
 
     private func leftInfoView(clip: MovieClip) -> some View {
@@ -691,21 +724,20 @@ public struct ClipsFeedView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    private func resolveImageUrl(path: String?) -> URL? {
+        guard let path, !path.isEmpty else { return nil }
+        if path.hasPrefix("http://") || path.hasPrefix("https://") {
+            return URL(string: path)
+        }
+        if let normalized = normalizeImageUrl(path: path) {
+            return URL(string: normalized)
+        }
+        return nil
+    }
+
     @ViewBuilder
     private func logoOrTitleView(clip: MovieClip) -> some View {
-        let rawLogo = clip.logoPath
-        let resolvedLogoUrl: URL? = {
-            guard let rawLogo, !rawLogo.isEmpty else { return nil }
-            if rawLogo.hasPrefix("http") {
-                return URL(string: rawLogo)
-            }
-            if let normalized = normalizeImageUrl(path: rawLogo) {
-                return URL(string: normalized)
-            }
-            return nil
-        }()
-
-        if let url = resolvedLogoUrl {
+        if let url = resolveImageUrl(path: clip.logoPath) {
             AsyncCachedImage(url: url) {
                 fallbackTitleText(clip: clip)
             } content: { image in
@@ -877,7 +909,7 @@ public struct ClipsFeedView: View {
     private var scaleModeButtonView: some View {
         Button {
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
                 if currentScaleMode == .fit {
                     clipScaleModeRaw = ClipScalingMode.fill.rawValue
                     ToastManager.shared.show(title: "Режим: Во весь экран (9:16)", icon: "arrow.up.left.and.arrow.down.right", iconColor: Color.slooshAccent)
@@ -891,16 +923,18 @@ public struct ClipsFeedView: View {
                 Image(systemName: currentScaleMode == .fit ? "arrow.up.left.and.arrow.down.right" : "arrow.down.right.and.arrow.up.left")
                     .font(.system(size: 22, weight: .semibold))
                     .foregroundStyle(.white)
-                    .contentTransition(.symbolEffect(.replace))
+                    .contentTransition(.symbolEffect(.replace.downUp.byLayer))
                     .shadow(color: .black.opacity(0.7), radius: 6)
 
                 Text(currentScaleMode == .fit ? "9:16" : "В кадре")
                     .font(.system(size: 9.5, weight: .semibold))
                     .foregroundStyle(.white)
+                    .contentTransition(.numericText())
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
                     .shadow(color: .black.opacity(0.8), radius: 3)
             }
+            .animation(.spring(response: 0.35, dampingFraction: 0.75), value: currentScaleMode)
             .frame(width: 56, height: 50)
             .contentShape(Rectangle())
         }
