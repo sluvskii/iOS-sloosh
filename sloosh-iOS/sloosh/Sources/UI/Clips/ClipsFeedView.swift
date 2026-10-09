@@ -268,7 +268,6 @@ public struct ClipsFeedView: View {
     }
 
     @State private var currentClipId: String?
-    @State private var pipController: AVPictureInPictureController? = nil
     @State private var showCommentsForClip: MovieClip?
     @State private var fullPlayerConfig: PlayerConfig?
     @State private var showBigHeart: Bool = false
@@ -397,7 +396,8 @@ public struct ClipsFeedView: View {
         .scrollTargetBehavior(.paging)
         .scrollPosition(id: $currentClipId)
         .ignoresSafeArea()
-        .onChange(of: currentClipId) { _, newId in
+        .onChange(of: currentClipId) { oldId, newId in
+            AppDiagnostics.shared.log("[ClipsFeedView] currentClipId changed from \(String(describing: oldId)) to \(String(describing: newId))")
             guard let newId = newId, let clip = clipsRepo.clips.first(where: { $0.id == newId }) else { return }
             playback.setupPlayer(for: clip)
         }
@@ -422,12 +422,14 @@ public struct ClipsFeedView: View {
         }
         .frame(maxWidth: .infinity)
         .background(
-            VariableBlurView(
-                maxBlurRadius: 16,
-                direction: .blurredTopClearBottom,
-                tintColor: .black,
-                tintOpacity: 0.65,
-                style: .dark
+            LinearGradient(
+                stops: [
+                    .init(color: Color.black.opacity(0.85), location: 0.0),
+                    .init(color: Color.black.opacity(0.48), location: 0.55),
+                    .init(color: Color.black.opacity(0.0), location: 1.0)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
             )
             .padding(.bottom, -24)
             .ignoresSafeArea(edges: .top)
@@ -495,43 +497,38 @@ public struct ClipsFeedView: View {
         let commentsShift: CGFloat = isCommentsOpen ? -(height * 0.28) : 0.0
 
         return ZStack {
-            // 1. Initial Poster Placeholder (visible ONLY during initial loading before video is ready)
-            if !playback.isVideoReady, let backdrop = clip.backdropPath ?? clip.posterPath, let url = resolveImageUrl(path: backdrop) {
-                AsyncCachedImage(url: url) {
-                    Color.black
-                } content: { img in
-                    Image(uiImage: img)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(width: width, height: height)
-                        .clipped()
-                        .scaleEffect(1.25)
-                        .saturation(1.4)
-                        .blur(radius: 28)
-                        .overlay(Color.black.opacity(0.42))
-                } fallback: {
+            // 1. Ambient Background (Backdrop with cinematic blur in .fit mode or during initial loading)
+            if effectiveScaleMode == .fit || !playback.isVideoReady {
+                if let backdrop = clip.backdropPath ?? clip.posterPath, let url = resolveImageUrl(path: backdrop) {
+                    AsyncCachedImage(url: url) {
+                        Color.black
+                    } content: { img in
+                        Image(uiImage: img)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: width, height: height)
+                            .clipped()
+                            .scaleEffect(1.25)
+                            .saturation(1.4)
+                            .blur(radius: 28)
+                            .overlay(Color.black.opacity(0.42))
+                    } fallback: {
+                        Color.black
+                    }
+                    .frame(width: width, height: height)
+                    .clipped()
+                    .transition(.opacity)
+                } else {
                     Color.black
                 }
-                .frame(width: width, height: height)
-                .clipped()
-                .transition(.opacity)
             } else {
                 Color.black
             }
 
-            // 2. Live Blurred Background Video Layer (when in .fit mode and video is ready)
-            if isCurrent, effectiveScaleMode == .fit, let player = playback.activePlayer, playback.isVideoReady {
-                AmbientVideoLayerView(player: player)
-                    .frame(width: width, height: height)
-                    .clipped()
-                    .transition(.opacity)
-            }
-
-            // 3. Sharp Video Player Layer (Foreground, centered in remaining space when comments open)
+            // 2. Sharp Video Player Layer (Single Dedicated AVPlayerLayer)
             if isCurrent, let player = playback.activePlayer {
                 VideoLayerView(
                     player: player,
-                    pipController: $pipController,
                     videoGravity: effectiveVideoGravity
                 )
                 .frame(width: width, height: height)
@@ -687,28 +684,25 @@ public struct ClipsFeedView: View {
     private func edgeAccelerationZone(for clip: MovieClip) -> some View {
         Color.clear
             .contentShape(Rectangle())
-            .gesture(
-                LongPressGesture(minimumDuration: 0.28, maximumDistance: 30)
-                    .onEnded { _ in
-                        if !playback.isScrubbing && playback.isPlaying {
-                            withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
-                                playback.startFastForward()
-                            }
-                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            .onLongPressGesture(minimumDuration: 0.28, maximumDistance: 40) {
+                // Long press completed
+            } onPressingChanged: { isPressing in
+                if isPressing {
+                    if !playback.isScrubbing && playback.isPlaying {
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
+                            playback.startFastForward()
                         }
+                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     }
-            )
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 0)
-                    .onEnded { _ in
-                        if playback.isFastForwarding {
-                            withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
-                                playback.stopFastForward()
-                            }
-                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                } else {
+                    if playback.isFastForwarding {
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
+                            playback.stopFastForward()
                         }
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     }
-            )
+                }
+            }
             .onTapGesture {
                 handleCenterTap(at: .zero, for: clip)
             }

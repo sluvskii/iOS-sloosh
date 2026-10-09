@@ -72,8 +72,14 @@ extension PlayerLayerView: AVPictureInPictureControllerDelegate {
 
 struct VideoLayerView: UIViewRepresentable {
     let player: AVPlayer?
-    @Binding var pipController: AVPictureInPictureController?
+    var pipController: Binding<AVPictureInPictureController?>? = nil
     var videoGravity: AVLayerVideoGravity = .resizeAspect
+
+    init(player: AVPlayer?, pipController: Binding<AVPictureInPictureController?>? = nil, videoGravity: AVLayerVideoGravity = .resizeAspect) {
+        self.player = player
+        self.pipController = pipController
+        self.videoGravity = videoGravity
+    }
 
     func makeUIView(context: Context) -> PlayerLayerView {
         let view = PlayerLayerView()
@@ -82,13 +88,13 @@ struct VideoLayerView: UIViewRepresentable {
         view.playerLayer.player = player
 
         // PiP
-        if AVPictureInPictureController.isPictureInPictureSupported() {
+        if let pipBinding = pipController, AVPictureInPictureController.isPictureInPictureSupported() {
             let pip = AVPictureInPictureController(playerLayer: view.playerLayer)
             pip?.canStartPictureInPictureAutomaticallyFromInline = true
             pip?.delegate = view
             view.pipController = pip
             DispatchQueue.main.async {
-                pipController = pip
+                pipBinding.wrappedValue = pip
             }
         }
 
@@ -109,74 +115,4 @@ struct VideoLayerView: UIViewRepresentable {
     }
 }
 
-// MARK: - Ambient Live Blurred Video Layer
-
-final class AmbientPlayerLayerView: UIView {
-    override static var layerClass: AnyClass { AVPlayerLayer.self }
-
-    var playerLayer: AVPlayerLayer {
-        guard let layer = layer as? AVPlayerLayer else {
-            fatalError("AmbientPlayerLayerView: expected AVPlayerLayer")
-        }
-        return layer
-    }
-
-    var player: AVPlayer? {
-        get { playerLayer.player }
-        set { playerLayer.player = newValue }
-    }
-
-    private let blurView: UIVisualEffectView = {
-        let blur = UIBlurEffect(style: .dark)
-        let v = UIVisualEffectView(effect: blur)
-        v.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        return v
-    }()
-
-    private let dimOverlay: UIView = {
-        let v = UIView()
-        v.backgroundColor = UIColor.black.withAlphaComponent(0.35)
-        v.autoresizingMask = [.flexibleWidth, .flexibleHeight]
-        return v
-    }()
-
-    override init(frame: CGRect) {
-        super.init(frame: frame)
-        backgroundColor = .clear
-        playerLayer.videoGravity = .resizeAspectFill
-        addSubview(blurView)
-        addSubview(dimOverlay)
-    }
-
-    required init?(coder: NSCoder) {
-        super.init(coder: coder)
-        backgroundColor = .clear
-        playerLayer.videoGravity = .resizeAspectFill
-        addSubview(blurView)
-        addSubview(dimOverlay)
-    }
-
-    override func layoutSubviews() {
-        super.layoutSubviews()
-        playerLayer.frame = bounds
-        blurView.frame = bounds
-        dimOverlay.frame = bounds
-    }
-}
-
-struct AmbientVideoLayerView: UIViewRepresentable {
-    let player: AVPlayer?
-
-    func makeUIView(context: Context) -> AmbientPlayerLayerView {
-        let view = AmbientPlayerLayerView()
-        view.player = player
-        return view
-    }
-
-    func updateUIView(_ uiView: AmbientPlayerLayerView, context: Context) {
-        if uiView.player !== player {
-            uiView.player = player
-        }
-    }
-}
 
