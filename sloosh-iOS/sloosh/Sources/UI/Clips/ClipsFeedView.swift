@@ -224,6 +224,8 @@ public struct ClipsFeedView: View {
     @State private var showBigHeart: Bool = false
     @State private var bigHeartPosition: CGPoint = .zero
     @State private var isTextExpanded: Bool = false
+    @State private var isScrubbing: Bool = false
+    @State private var scrubProgress: Double = 0.0
 
     public init() {}
 
@@ -452,7 +454,9 @@ public struct ClipsFeedView: View {
                     triggerDoubleTapLike(for: clip, at: location)
                 }
                 .onTapGesture(count: 1) {
-                    playback.togglePlayPause()
+                    withAnimation(.spring(response: 0.28, dampingFraction: 0.75)) {
+                        playback.togglePlayPause()
+                    }
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 }
 
@@ -473,8 +477,8 @@ public struct ClipsFeedView: View {
             if showBigHeart {
                 Image(systemName: "heart.fill")
                     .font(.system(size: 80))
-                    .foregroundStyle(.red)
-                    .shadow(color: .red.opacity(0.6), radius: 24)
+                    .foregroundStyle(Color.slooshAccent)
+                    .shadow(color: Color.slooshAccent.opacity(0.65), radius: 24)
                     .position(bigHeartPosition)
                     .scaleEffect(showBigHeart ? 1.25 : 0.4)
                     .opacity(showBigHeart ? 1.0 : 0.0)
@@ -529,6 +533,7 @@ public struct ClipsFeedView: View {
                         Image(systemName: playback.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
                             .font(.system(size: 13, weight: .semibold))
                             .foregroundStyle(.white)
+                            .contentTransition(.symbolEffect(.replace))
                             .frame(width: 36, height: 36)
                             .background(Color.black.opacity(0.4))
                             .clipShape(Circle())
@@ -570,30 +575,11 @@ public struct ClipsFeedView: View {
 
     private func leftInfoView(clip: MovieClip) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            // Author Username
-            Text("@\(clip.authorName)")
-                .font(.system(size: 15, weight: .bold))
-                .foregroundStyle(.white)
-                .shadow(color: .black.opacity(0.8), radius: 4)
+            // Movie / Series Logo (with text fallback)
+            logoOrTitleView(clip: clip)
 
-            // Film / Series Title & Info
-            HStack(spacing: 6) {
-                Image(systemName: "film")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.7))
-
-                Text(clip.title)
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.9))
-                    .lineLimit(1)
-
-                if let s = clip.season, let e = clip.episode {
-                    Text("• \(s) сезон, \(e) серия")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.65))
-                }
-            }
-            .shadow(color: .black.opacity(0.8), radius: 4)
+            // Season, Episode & Voiceover Info
+            subtitleInfoView(clip: clip)
 
             // Caption Text (Expandable on tap)
             if !clip.caption.isEmpty {
@@ -632,6 +618,70 @@ public struct ClipsFeedView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
+    @ViewBuilder
+    private func logoOrTitleView(clip: MovieClip) -> some View {
+        let rawLogo = clip.logoPath
+        let resolvedLogoUrl: URL? = {
+            guard let rawLogo, !rawLogo.isEmpty else { return nil }
+            if rawLogo.hasPrefix("http") {
+                return URL(string: rawLogo)
+            }
+            if let normalized = normalizeImageUrl(path: rawLogo) {
+                return URL(string: normalized)
+            }
+            return nil
+        }()
+
+        if let url = resolvedLogoUrl {
+            AsyncCachedImage(url: url) {
+                fallbackTitleText(clip: clip)
+            } content: { image in
+                Image(uiImage: image)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(maxHeight: 36, alignment: .leading)
+                    .shadow(color: .black.opacity(0.85), radius: 6, x: 0, y: 2)
+            } fallback: {
+                fallbackTitleText(clip: clip)
+            }
+        } else {
+            fallbackTitleText(clip: clip)
+        }
+    }
+
+    private func fallbackTitleText(clip: MovieClip) -> some View {
+        Text(clip.title)
+            .font(.system(size: 16, weight: .bold))
+            .foregroundStyle(.white)
+            .shadow(color: .black.opacity(0.8), radius: 4)
+            .lineLimit(1)
+    }
+
+    @ViewBuilder
+    private func subtitleInfoView(clip: MovieClip) -> some View {
+        if let s = clip.season, let e = clip.episode {
+            HStack(spacing: 4) {
+                Text("\(s) сезон, \(e) серия")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(.white.opacity(0.85))
+
+                if let tr = clip.translationName, !tr.isEmpty {
+                    Text("• \(tr)")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.65))
+                        .lineLimit(1)
+                }
+            }
+            .shadow(color: .black.opacity(0.8), radius: 3)
+        } else if let tr = clip.translationName, !tr.isEmpty {
+            Text(tr)
+                .font(.system(size: 12, weight: .medium))
+                .foregroundStyle(.white.opacity(0.75))
+                .lineLimit(1)
+                .shadow(color: .black.opacity(0.8), radius: 3)
+        }
+    }
+
     // MARK: - Right Rail View
 
     private func rightRailView(clip: MovieClip) -> some View {
@@ -651,13 +701,13 @@ public struct ClipsFeedView: View {
             // Scale Mode Toggle (В кадре vs 9:16)
             scaleModeButtonView
         }
-        .frame(width: 50)
+        .frame(width: 58)
     }
 
     private var scaleModeButtonView: some View {
         Button {
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+            withAnimation(.spring(response: 0.38, dampingFraction: 0.78)) {
                 if currentScaleMode == .fit {
                     clipScaleModeRaw = ClipScalingMode.fill.rawValue
                     ToastManager.shared.show(title: "Режим: Заполнить 9:16", icon: "arrow.up.left.and.arrow.down.right", iconColor: Color.slooshAccent)
@@ -669,15 +719,20 @@ public struct ClipsFeedView: View {
         } label: {
             VStack(spacing: 3) {
                 Image(systemName: currentScaleMode == .fit ? "arrow.up.left.and.arrow.down.right" : "arrow.down.right.and.arrow.up.left")
-                    .font(.system(size: 20))
+                    .font(.system(size: 20, weight: .semibold))
                     .foregroundStyle(.white)
+                    .contentTransition(.symbolEffect(.replace.downUp.byLayer))
                     .shadow(color: .black.opacity(0.7), radius: 6)
 
                 Text(currentScaleMode == .fit ? "9:16" : "В кадре")
-                    .font(.system(size: 10, weight: .semibold, design: .rounded))
+                    .font(.system(size: 9.5, weight: .semibold, design: .rounded))
                     .foregroundStyle(.white.opacity(0.9))
+                    .contentTransition(.numericText())
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.85)
                     .shadow(color: .black.opacity(0.8), radius: 3)
             }
+            .animation(.spring(response: 0.35, dampingFraction: 0.75), value: currentScaleMode)
         }
         .buttonStyle(.glassPress)
     }
@@ -686,26 +741,72 @@ public struct ClipsFeedView: View {
 
     private func progressBarView(for clip: MovieClip) -> some View {
         GeometryReader { barProxy in
+            let displayProgress = isScrubbing ? scrubProgress : playback.clipProgress
+            let barHeight: CGFloat = isScrubbing ? 4.5 : 2.5
+
             ZStack(alignment: .leading) {
                 Capsule()
-                    .fill(Color.white.opacity(0.2))
-                    .frame(height: 3)
+                    .fill(Color.white.opacity(0.25))
+                    .frame(height: barHeight)
 
                 Capsule()
-                    .fill(Color.slooshAccent)
-                    .frame(width: max(0, min(barProxy.size.width, barProxy.size.width * playback.clipProgress)), height: 3)
+                    .fill(Color.white)
+                    .frame(width: max(0, min(barProxy.size.width, barProxy.size.width * displayProgress)), height: barHeight)
             }
             .frame(maxHeight: .infinity, alignment: .center)
             .contentShape(Rectangle())
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { value in
+                        if !isScrubbing {
+                            isScrubbing = true
+                            UISelectionFeedbackGenerator().selectionChanged()
+                        }
+                        let pct = max(0.0, min(1.0, value.location.x / barProxy.size.width))
+                        scrubProgress = pct
+                    }
+                    .onEnded { value in
                         let pct = max(0.0, min(1.0, value.location.x / barProxy.size.width))
                         playback.seekToProgress(pct, for: clip)
+                        withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
+                            isScrubbing = false
+                        }
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     }
             )
+            .animation(.spring(response: 0.25, dampingFraction: 0.8), value: isScrubbing)
         }
         .frame(height: 12)
+        .overlay(alignment: .top) {
+            if isScrubbing {
+                let currentSec = clip.startTime + (clip.duration * scrubProgress)
+                let elapsedSec = max(0, currentSec - clip.startTime)
+                HStack(spacing: 4) {
+                    Text(formatClipTime(elapsedSec))
+                        .fontWeight(.bold)
+                    Text("/")
+                        .foregroundStyle(.white.opacity(0.6))
+                    Text(formatClipTime(clip.duration))
+                        .foregroundStyle(.white.opacity(0.85))
+                }
+                .font(.system(size: 11, weight: .semibold, design: .rounded).monospacedDigit())
+                .foregroundStyle(.white)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .glassEffect(.regular, in: .capsule)
+                .offset(y: -28)
+                .transition(.scale(scale: 0.85).combined(with: .opacity))
+                .animation(.spring(response: 0.25, dampingFraction: 0.8), value: isScrubbing)
+            }
+        }
+    }
+
+    private func formatClipTime(_ seconds: Double) -> String {
+        guard !seconds.isNaN && !seconds.isInfinite else { return "0:00" }
+        let total = Int(max(0, seconds))
+        let m = total / 60
+        let s = total % 60
+        return String(format: "%d:%02d", m, s)
     }
 
     // MARK: - Author Avatar
@@ -752,15 +853,16 @@ public struct ClipsFeedView: View {
             }
         } label: {
             VStack(spacing: 3) {
-                Image(systemName: isLiked ? "heart.fill" : "heart")
+                Image(systemName: "heart.fill")
                     .font(.system(size: 26))
-                    .foregroundStyle(isLiked ? .red : .white)
+                    .foregroundStyle(isLiked ? Color.slooshAccent : .white)
                     .scaleEffect(isLiked ? 1.15 : 1.0)
+                    .contentTransition(.symbolEffect(.replace))
                     .animation(.spring(response: 0.25, dampingFraction: 0.6), value: isLiked)
-                    .shadow(color: isLiked ? .red.opacity(0.6) : .black.opacity(0.7), radius: 6)
+                    .shadow(color: isLiked ? Color.slooshAccent.opacity(0.65) : .black.opacity(0.7), radius: 6)
 
                 Text("\(clip.likesCount)")
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
                     .foregroundStyle(.white)
                     .shadow(color: .black.opacity(0.8), radius: 3)
             }
@@ -780,7 +882,7 @@ public struct ClipsFeedView: View {
                     .shadow(color: .black.opacity(0.7), radius: 6)
 
                 Text("\(clip.commentsCount)")
-                    .font(.system(size: 12, weight: .semibold, design: .rounded))
+                    .font(.system(size: 11, weight: .semibold, design: .rounded))
                     .foregroundStyle(.white)
                     .shadow(color: .black.opacity(0.8), radius: 3)
             }
@@ -793,10 +895,19 @@ public struct ClipsFeedView: View {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
             shareClip(clip)
         } label: {
-            Image(systemName: "arrowshape.turn.up.right.fill")
-                .font(.system(size: 24))
-                .foregroundStyle(.white)
-                .shadow(color: .black.opacity(0.7), radius: 6)
+            VStack(spacing: 3) {
+                Image(systemName: "arrowshape.turn.up.right.fill")
+                    .font(.system(size: 24))
+                    .foregroundStyle(.white)
+                    .shadow(color: .black.opacity(0.7), radius: 6)
+
+                Text("Поделиться")
+                    .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .shadow(color: .black.opacity(0.8), radius: 3)
+            }
         }
         .buttonStyle(.glassPress)
     }
