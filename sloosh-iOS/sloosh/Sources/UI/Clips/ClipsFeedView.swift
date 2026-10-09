@@ -419,14 +419,16 @@ public struct ClipsFeedView: View {
         }
         .frame(maxWidth: .infinity)
         .background(
-            VariableBlurView(
-                maxBlurRadius: 2,
-                direction: .blurredTopClearBottom,
-                tintColor: .black,
-                tintOpacity: 0.72,
-                style: .dark
+            LinearGradient(
+                stops: [
+                    .init(color: Color.black.opacity(0.85), location: 0.0),
+                    .init(color: Color.black.opacity(0.48), location: 0.55),
+                    .init(color: Color.black.opacity(0.0), location: 1.0)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
             )
-            .padding(.bottom, -20)
+            .padding(.bottom, -24)
             .ignoresSafeArea(edges: .top)
         )
         .opacity(isOverlayHidden ? 0.0 : 1.0)
