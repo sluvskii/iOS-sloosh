@@ -11,9 +11,9 @@ final class ClipPlaybackCoordinator: ObservableObject {
     @Published var isVideoReady: Bool = false
     @Published var isResolving: Bool = false
     @Published var isPlaying: Bool = true
-    @Published var isMuted: Bool = false
     @Published var clipProgress: Double = 0.0
     @Published var isScrubbing: Bool = false
+    @Published var isFastForwarding: Bool = false
     @Published var hasError: Bool = false
 
     private var currentClipId: String?
@@ -32,6 +32,7 @@ final class ClipPlaybackCoordinator: ObservableObject {
         hasError = false
         clipProgress = 0.0
         isScrubbing = false
+        isFastForwarding = false
         didPerformInitialSeek = false
         if !isRetry {
             retryCount = 0
@@ -51,7 +52,6 @@ final class ClipPlaybackCoordinator: ObservableObject {
             item.preferredForwardBufferDuration = 3.0
 
             let player = AVPlayer(playerItem: item)
-            player.isMuted = self.isMuted
             player.actionAtItemEnd = .none
             player.automaticallyWaitsToMinimizeStalling = true
             self.activePlayer = player
@@ -120,7 +120,13 @@ final class ClipPlaybackCoordinator: ObservableObject {
                 if currentSec >= clip.endTime {
                     let sTime = CMTime(seconds: clip.startTime, preferredTimescale: 600)
                     player.seek(to: sTime, toleranceBefore: .zero, toleranceAfter: .zero) { _ in
-                        player.play()
+                        if self.isPlaying {
+                            if self.isFastForwarding {
+                                player.rate = 2.0
+                            } else {
+                                player.play()
+                            }
+                        }
                     }
                 }
             }
@@ -175,9 +181,23 @@ final class ClipPlaybackCoordinator: ObservableObject {
         }
     }
 
-    func toggleMute() {
-        isMuted.toggle()
-        activePlayer?.isMuted = isMuted
+    func startFastForward() {
+        guard let player = activePlayer, isPlaying else { return }
+        isFastForwarding = true
+        player.rate = 2.0
+    }
+
+    func stopFastForward() {
+        guard let player = activePlayer else {
+            isFastForwarding = false
+            return
+        }
+        isFastForwarding = false
+        if isPlaying {
+            player.rate = 1.0
+        } else {
+            player.pause()
+        }
     }
 
     func pause() {
@@ -213,6 +233,7 @@ final class ClipPlaybackCoordinator: ObservableObject {
         isResolving = false
         hasError = false
         clipProgress = 0.0
+        isFastForwarding = false
         didPerformInitialSeek = false
     }
 
@@ -227,7 +248,7 @@ final class ClipPlaybackCoordinator: ObservableObject {
 
 public enum ClipScalingMode: String, CaseIterable {
     case fit = "fit"     // "В кадре" - native aspect ratio with cinema ambient glow
-    case fill = "fill"   // "9:16" - zoomed and cropped to 9:16 vertical TikTok style
+    case fill = "fill"   // "Во весь экран" - 9:16 vertical TikTok style
 }
 
 // MARK: - Clips Feed View
@@ -256,6 +277,11 @@ public struct ClipsFeedView: View {
     @State private var isTextExpanded: Bool = false
     @State private var isScrubbing: Bool = false
     @State private var scrubProgress: Double = 0.0
+
+    @State private var touchDownTime: Date? = nil
+    @State private var touchDownLocation: CGPoint = .zero
+    @State private var fastForwardTimer: Task<Void, Never>? = nil
+    @State private var lastTapTime: Date = Date.distantPast
 
     public init() {}
 
@@ -422,7 +448,9 @@ public struct ClipsFeedView: View {
     // MARK: - 9:16 Video Card Container
 
     private func videoCardContainer(_ clip: MovieClip, width: CGFloat, height: CGFloat, isCurrent: Bool) -> some View {
-        ZStack {
+        let isOverlayHidden = isScrubbing || playback.isFastForwarding
+
+        return ZStack {
             // 1. Ambient Background Layer (fills letterbox space for widescreen movies with blurred backdrop)
             if let backdrop = clip.backdropPath ?? clip.posterPath, let url = URL(string: backdrop) {
                 AsyncCachedImage(url: url) {
@@ -477,32 +505,110 @@ public struct ClipsFeedView: View {
             }
             .allowsHitTesting(false)
 
-            // 4. Tap handling: Single tap play/pause, Double tap heart
+            // 4. Zero-Lag Gesture Engine: Single tap play/pause, Double tap heart, Hold 2x speed
             Color.clear
                 .contentShape(Rectangle())
-                .onTapGesture(count: 2, coordinateSpace: .local) { location in
-                    triggerDoubleTapLike(for: clip, at: location)
-                }
-                .onTapGesture(count: 1) {
-                    withAnimation(.spring(response: 0.28, dampingFraction: 0.75)) {
-                        playback.togglePlayPause()
-                    }
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                }
+                .gesture(
+                    DragGesture(minimumDistance: 0)
+                        .onChanged { value in
+                            if touchDownTime == nil {
+                                touchDownTime = Date()
+                                touchDownLocation = value.location
+                                fastForwardTimer?.cancel()
+                                fastForwardTimer = Task { @MainActor in
+                                    try? await Task.sleep(nanoseconds: 260_000_000)
+                                    guard !Task.isCancelled else { return }
+                                    if !playback.isScrubbing && playback.isPlaying {
+                                        withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
+                                            playback.startFastForward()
+                                        }
+                                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                                    }
+                                }
+                            } else {
+                                let dist = hypot(value.location.x - touchDownLocation.x, value.location.y - touchDownLocation.y)
+                                if dist > 15 && !playback.isFastForwarding {
+                                    fastForwardTimer?.cancel()
+                                    fastForwardTimer = nil
+                                }
+                            }
+                        }
+                        .onEnded { value in
+                            fastForwardTimer?.cancel()
+                            fastForwardTimer = nil
+                            let wasFastForwarding = playback.isFastForwarding
+                            let elapsed = Date().timeIntervalSince(touchDownTime ?? Date())
+                            touchDownTime = nil
 
-            // 5. Play / Pause Indicator in Center
-            if !playback.isPlaying && isCurrent && playback.isVideoReady && !isScrubbing {
+                            if wasFastForwarding {
+                                withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
+                                    playback.stopFastForward()
+                                }
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                return
+                            }
+
+                            let dist = hypot(value.location.x - touchDownLocation.x, value.location.y - touchDownLocation.y)
+                            if elapsed < 0.28 && dist <= 15 {
+                                let now = Date()
+                                let timeSinceLastTap = now.timeIntervalSince(lastTapTime)
+                                if timeSinceLastTap < 0.28 {
+                                    // Double Tap: Like & Ensure playback continues
+                                    lastTapTime = Date.distantPast
+                                    triggerDoubleTapLike(for: clip, at: value.location)
+                                    if !playback.isPlaying {
+                                        withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
+                                            playback.togglePlayPause()
+                                        }
+                                    }
+                                } else {
+                                    // Instant Single Tap Play/Pause
+                                    lastTapTime = now
+                                    withAnimation(.spring(response: 0.25, dampingFraction: 0.75)) {
+                                        playback.togglePlayPause()
+                                    }
+                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                }
+                            }
+                        }
+                )
+
+            // 5. Play / Pause Indicator in Center (Animated with Spring)
+            if !playback.isPlaying && isCurrent && playback.isVideoReady && !isOverlayHidden {
                 Image(systemName: "play.fill")
                     .font(.system(size: 26, weight: .bold))
                     .foregroundStyle(.white)
-                    .frame(width: 56, height: 56)
+                    .frame(width: 58, height: 58)
                     .glassEffect(in: .circle)
                     .clipShape(Circle())
-                    .transition(.scale.combined(with: .opacity))
+                    .transition(.scale(scale: 0.75).combined(with: .opacity))
                     .allowsHitTesting(false)
             }
 
-            // 6. Big Heart Explosion on Double-Tap
+            // 6. Top 2x Fast-Forward Indicator Badge
+            VStack {
+                if playback.isFastForwarding {
+                    HStack(spacing: 6) {
+                        Image(systemName: "forward.fill")
+                            .font(.system(size: 13, weight: .bold))
+
+                        Text("2x Ускорение")
+                            .font(.system(size: 13, weight: .bold))
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .glassEffect(in: .capsule)
+                    .padding(.top, 14)
+                    .transition(.move(edge: .top).combined(with: .opacity).combined(with: .scale(scale: 0.9)))
+                }
+
+                Spacer()
+            }
+            .animation(.spring(response: 0.3, dampingFraction: 0.75), value: playback.isFastForwarding)
+            .allowsHitTesting(false)
+
+            // 7. Big Heart Explosion on Double-Tap
             if showBigHeart {
                 Image(systemName: "heart.fill")
                     .font(.system(size: 80))
@@ -514,15 +620,15 @@ public struct ClipsFeedView: View {
                     .allowsHitTesting(false)
             }
 
-            // 7. Loading Spinner Indicator (subtle, centered)
-            if isCurrent && (playback.isResolving || !playback.isVideoReady) && !playback.hasError && !isScrubbing {
+            // 8. Loading Spinner Indicator (subtle, centered)
+            if isCurrent && (playback.isResolving || !playback.isVideoReady) && !playback.hasError && !isOverlayHidden {
                 ProgressView()
                     .tint(.white)
                     .scaleEffect(1.2)
             }
 
-            // 8. Playback Error & Retry Indicator
-            if isCurrent && playback.hasError && !isScrubbing {
+            // 9. Playback Error & Retry Indicator
+            if isCurrent && playback.hasError && !isOverlayHidden {
                 Button {
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     playback.setupPlayer(for: clip, isRetry: false)
@@ -547,58 +653,27 @@ public struct ClipsFeedView: View {
                 .buttonStyle(.plain)
             }
 
-            // 9. Top-Right Discreet Glass Mute Button
-            VStack {
-                HStack {
-                    Spacer()
-
-                    Button {
-                        playback.toggleMute()
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    } label: {
-                        Image(systemName: playback.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
-                            .font(.system(size: 13, weight: .semibold))
-                            .foregroundStyle(.white)
-                            .contentTransition(.symbolEffect(.replace))
-                            .frame(width: 36, height: 36)
-                            .glassEffect(in: .circle)
-                            .clipShape(Circle())
-                    }
-                    .buttonStyle(.glassPress)
-                }
-                .padding(.top, 12)
-                .padding(.trailing, 12)
-
-                Spacer()
-            }
-            .opacity(isScrubbing ? 0.0 : 1.0)
-            .animation(.spring(response: 0.28, dampingFraction: 0.85), value: isScrubbing)
-            .allowsHitTesting(!isScrubbing)
-
-            // 10. Bottom Overlays (Info, Right Rail)
+            // 10. Bottom Overlays (Left Info & Symmetrical Right Action Rail)
             VStack(spacing: 0) {
                 Spacer()
 
-                HStack(alignment: .bottom, spacing: 10) {
+                HStack(alignment: .bottom, spacing: 8) {
                     leftInfoView(clip: clip)
 
                     Spacer(minLength: 4)
 
                     rightRailView(clip: clip)
                 }
-                .padding(.horizontal, 12)
-                .padding(.bottom, 12)
+                .padding(.leading, 14)
+                .padding(.trailing, 14)
+                .padding(.bottom, 14)
             }
-            .opacity(isScrubbing ? 0.0 : 1.0)
-            .animation(.spring(response: 0.28, dampingFraction: 0.85), value: isScrubbing)
-            .allowsHitTesting(!isScrubbing)
+            .opacity(isOverlayHidden ? 0.0 : 1.0)
+            .animation(.spring(response: 0.28, dampingFraction: 0.85), value: isOverlayHidden)
+            .allowsHitTesting(!isOverlayHidden)
         }
         .frame(width: width, height: height)
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .stroke(Color.white.opacity(0.12), lineWidth: 0.8)
-        )
         .shadow(color: .black.opacity(0.6), radius: 16, y: 4)
     }
 
@@ -627,23 +702,53 @@ public struct ClipsFeedView: View {
                     .padding(.vertical, 1)
             }
 
-            // Pure Liquid Glass Watch Full Movie Button
-            Button {
-                openFullMovie(clip: clip)
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "play.fill")
-                        .font(.system(size: 11, weight: .bold))
+            // Action Pills Row: Watch Full Movie + Scale Mode (TikTok Style)
+            HStack(spacing: 8) {
+                // Watch Full Movie
+                Button {
+                    openFullMovie(clip: clip)
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "play.fill")
+                            .font(.system(size: 11, weight: .bold))
 
-                    Text("Смотреть с этого момента")
-                        .font(.system(size: 13, weight: .semibold))
+                        Text("Смотреть фильм")
+                            .font(.system(size: 13, weight: .semibold))
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 8)
+                    .glassEffect(in: .capsule)
                 }
-                .foregroundStyle(.white)
-                .padding(.horizontal, 16)
-                .padding(.vertical, 9)
-                .glassEffect(in: .capsule)
+                .buttonStyle(.glassPress)
+
+                // Scale Mode Toggle ("Во весь экран" / "В кадре")
+                Button {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
+                        if currentScaleMode == .fit {
+                            clipScaleModeRaw = ClipScalingMode.fill.rawValue
+                            ToastManager.shared.show(title: "Режим: Во весь экран", icon: "arrow.up.left.and.arrow.down.right", iconColor: Color.slooshAccent)
+                        } else {
+                            clipScaleModeRaw = ClipScalingMode.fit.rawValue
+                            ToastManager.shared.show(title: "Режим: В кадре", icon: "arrow.down.right.and.arrow.up.left", iconColor: Color.slooshAccent)
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 5) {
+                        Image(systemName: currentScaleMode == .fit ? "arrow.up.left.and.arrow.down.right" : "arrow.down.right.and.arrow.up.left")
+                            .font(.system(size: 11, weight: .bold))
+
+                        Text(currentScaleMode == .fit ? "Во весь экран" : "В кадре")
+                            .font(.system(size: 12, weight: .semibold))
+                    }
+                    .foregroundStyle(.white.opacity(0.92))
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .glassEffect(in: .capsule)
+                }
+                .buttonStyle(.glassPress)
             }
-            .buttonStyle(.glassPress)
             .padding(.top, 4)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -716,8 +821,8 @@ public struct ClipsFeedView: View {
     // MARK: - Right Rail View
 
     private func rightRailView(clip: MovieClip) -> some View {
-        VStack(spacing: 14) {
-            // Author Avatar
+        VStack(spacing: 16) {
+            // Author Avatar (Liquid Glass Button)
             authorAvatarView(clip)
 
             // Like Button
@@ -728,44 +833,105 @@ public struct ClipsFeedView: View {
 
             // Share Button
             shareButtonView(clip)
-
-            // Scale Mode Toggle (В кадре vs 9:16)
-            scaleModeButtonView
         }
-        .frame(width: 58)
+        .frame(width: 56)
     }
 
-    private var scaleModeButtonView: some View {
+    // MARK: - Author Avatar
+
+    private func authorAvatarView(_ clip: MovieClip) -> some View {
         Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        } label: {
+            SlooshAvatarView(
+                avatarSource: clip.authorAvatar,
+                fallbackText: clip.authorName,
+                size: 38
+            )
+            .glassEffect(in: .circle)
+            .clipShape(Circle())
+            .shadow(color: .black.opacity(0.6), radius: 4)
+            .frame(width: 52, height: 46)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - Action Buttons
+
+    private func likeButtonView(_ clip: MovieClip) -> some View {
+        let isLiked = clipsRepo.isLiked(clipId: clip.id)
+
+        return Button {
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-            withAnimation(.spring(response: 0.38, dampingFraction: 0.78)) {
-                if currentScaleMode == .fit {
-                    clipScaleModeRaw = ClipScalingMode.fill.rawValue
-                    ToastManager.shared.show(title: "Режим: Заполнить 9:16", icon: "arrow.up.left.and.arrow.down.right", iconColor: Color.slooshAccent)
-                } else {
-                    clipScaleModeRaw = ClipScalingMode.fit.rawValue
-                    ToastManager.shared.show(title: "Режим: В кадре (без обрезки)", icon: "arrow.down.right.and.arrow.up.left", iconColor: Color.slooshAccent)
-                }
+            Task {
+                _ = await clipsRepo.toggleLike(for: clip.id)
             }
         } label: {
-            VStack(spacing: 3) {
-                Image(systemName: currentScaleMode == .fit ? "arrow.up.left.and.arrow.down.right" : "arrow.down.right.and.arrow.up.left")
-                    .font(.system(size: 20, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .contentTransition(.symbolEffect(.replace.downUp.byLayer))
+            VStack(spacing: 4) {
+                Image(systemName: "heart.fill")
+                    .font(.system(size: 26))
+                    .foregroundStyle(isLiked ? Color.slooshAccent : .white)
+                    .scaleEffect(isLiked ? 1.15 : 1.0)
+                    .contentTransition(.symbolEffect(.replace))
+                    .animation(.spring(response: 0.25, dampingFraction: 0.6), value: isLiked)
                     .shadow(color: .black.opacity(0.7), radius: 6)
 
-                Text(currentScaleMode == .fit ? "9:16" : "В кадре")
-                    .font(.system(size: 9.5, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.9))
-                    .contentTransition(.numericText())
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.85)
+                Text("\(clip.likesCount)")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.white)
                     .shadow(color: .black.opacity(0.8), radius: 3)
             }
-            .animation(.spring(response: 0.35, dampingFraction: 0.75), value: currentScaleMode)
+            .frame(width: 52, height: 50)
+            .contentShape(Rectangle())
         }
-        .buttonStyle(.glassPress)
+        .buttonStyle(.plain)
+    }
+
+    private func commentButtonView(_ clip: MovieClip) -> some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            showCommentsForClip = clip
+        } label: {
+            VStack(spacing: 4) {
+                Image(systemName: "bubble.right.fill")
+                    .font(.system(size: 24))
+                    .foregroundStyle(.white)
+                    .shadow(color: .black.opacity(0.7), radius: 6)
+
+                Text("\(clip.commentsCount)")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .shadow(color: .black.opacity(0.8), radius: 3)
+            }
+            .frame(width: 52, height: 50)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func shareButtonView(_ clip: MovieClip) -> some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            shareClip(clip)
+        } label: {
+            VStack(spacing: 4) {
+                Image(systemName: "arrowshape.turn.up.right.fill")
+                    .font(.system(size: 24))
+                    .foregroundStyle(.white)
+                    .shadow(color: .black.opacity(0.7), radius: 6)
+
+                Text("Поделиться")
+                    .font(.system(size: 9.5, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.8)
+                    .shadow(color: .black.opacity(0.8), radius: 3)
+            }
+            .frame(width: 56, height: 50)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Scrubber Progress Bar
@@ -834,23 +1000,28 @@ public struct ClipsFeedView: View {
                 let elapsedSec = max(0, currentSec - clip.startTime)
                 HStack(spacing: 6) {
                     Text(formatClipTime(elapsedSec))
-                        .font(.system(size: 17, weight: .bold, design: .rounded).monospacedDigit())
+                        .font(.system(size: 17, weight: .bold).monospacedDigit())
                         .foregroundStyle(.white)
 
                     Text("/")
-                        .font(.system(size: 13, weight: .medium, design: .rounded))
+                        .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(.white.opacity(0.45))
 
                     Text(formatClipTime(clip.duration))
-                        .font(.system(size: 13, weight: .semibold, design: .rounded).monospacedDigit())
+                        .font(.system(size: 13, weight: .semibold).monospacedDigit())
                         .foregroundStyle(.white.opacity(0.8))
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
                 .glassEffect(in: .capsule)
-                .offset(y: -44)
-                .transition(.scale(scale: 0.85).combined(with: .opacity))
-                .animation(.spring(response: 0.25, dampingFraction: 0.8), value: isScrubbing)
+                .offset(y: -46)
+                .transition(
+                    .asymmetric(
+                        insertion: .scale(scale: 0.75).combined(with: .opacity).combined(with: .offset(y: 12)),
+                        removal: .scale(scale: 0.85).combined(with: .opacity).combined(with: .offset(y: -8))
+                    )
+                )
+                .animation(.spring(response: 0.32, dampingFraction: 0.72), value: isScrubbing)
             }
         }
     }
@@ -861,109 +1032,6 @@ public struct ClipsFeedView: View {
         let m = total / 60
         let s = total % 60
         return String(format: "%d:%02d", m, s)
-    }
-
-    // MARK: - Author Avatar
-
-    private func authorAvatarView(_ clip: MovieClip) -> some View {
-        Group {
-            if let avatar = clip.authorAvatar, let url = URL(string: avatar) {
-                AsyncCachedImage(url: url) {
-                    Circle().fill(Color.white.opacity(0.2))
-                } content: { img in
-                    Image(uiImage: img)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                } fallback: {
-                    Circle().fill(Color.white.opacity(0.2))
-                }
-                .frame(width: 38, height: 38)
-                .clipShape(Circle())
-                .overlay(Circle().stroke(Color.white.opacity(0.25), lineWidth: 1.5))
-            } else {
-                Circle()
-                    .fill(Color.white.opacity(0.15))
-                    .frame(width: 38, height: 38)
-                    .overlay(
-                        Text(String(clip.authorName.prefix(1)).uppercased())
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundStyle(.white)
-                    )
-                    .overlay(Circle().stroke(Color.white.opacity(0.25), lineWidth: 1.5))
-            }
-        }
-        .shadow(color: .black.opacity(0.5), radius: 4)
-    }
-
-    // MARK: - Action Buttons
-
-    private func likeButtonView(_ clip: MovieClip) -> some View {
-        let isLiked = clipsRepo.isLiked(clipId: clip.id)
-
-        return Button {
-            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-            Task {
-                _ = await clipsRepo.toggleLike(for: clip.id)
-            }
-        } label: {
-            VStack(spacing: 3) {
-                Image(systemName: "heart.fill")
-                    .font(.system(size: 26))
-                    .foregroundStyle(isLiked ? Color.slooshAccent : .white)
-                    .scaleEffect(isLiked ? 1.15 : 1.0)
-                    .contentTransition(.symbolEffect(.replace))
-                    .animation(.spring(response: 0.25, dampingFraction: 0.6), value: isLiked)
-                    .shadow(color: .black.opacity(0.7), radius: 6)
-
-                Text("\(clip.likesCount)")
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.white)
-                    .shadow(color: .black.opacity(0.8), radius: 3)
-            }
-        }
-        .buttonStyle(.glassPress)
-    }
-
-    private func commentButtonView(_ clip: MovieClip) -> some View {
-        Button {
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            showCommentsForClip = clip
-        } label: {
-            VStack(spacing: 3) {
-                Image(systemName: "bubble.right.fill")
-                    .font(.system(size: 24))
-                    .foregroundStyle(.white)
-                    .shadow(color: .black.opacity(0.7), radius: 6)
-
-                Text("\(clip.commentsCount)")
-                    .font(.system(size: 11, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.white)
-                    .shadow(color: .black.opacity(0.8), radius: 3)
-            }
-        }
-        .buttonStyle(.glassPress)
-    }
-
-    private func shareButtonView(_ clip: MovieClip) -> some View {
-        Button {
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            shareClip(clip)
-        } label: {
-            VStack(spacing: 3) {
-                Image(systemName: "arrowshape.turn.up.right.fill")
-                    .font(.system(size: 24))
-                    .foregroundStyle(.white)
-                    .shadow(color: .black.opacity(0.7), radius: 6)
-
-                Text("Поделиться")
-                    .font(.system(size: 9.5, weight: .semibold, design: .rounded))
-                    .foregroundStyle(.white)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-                    .shadow(color: .black.opacity(0.8), radius: 3)
-            }
-        }
-        .buttonStyle(.glassPress)
     }
 
     // MARK: - Helper Actions

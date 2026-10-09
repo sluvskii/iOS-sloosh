@@ -118,7 +118,7 @@ public struct ClipTrimmerSheetView: View {
                                     .foregroundStyle(.white)
                                 Spacer()
                                 Text("\(formattedRange) (\(Int(clipDuration)) сек)")
-                                    .font(.system(size: 13, weight: .medium, design: .monospaced))
+                                    .font(.system(size: 13, weight: .medium).monospacedDigit())
                                     .foregroundStyle(Color.slooshAccent)
                             }
 
@@ -145,7 +145,7 @@ public struct ClipTrimmerSheetView: View {
                                     }
 
                                     Text(formatSeconds(startTime))
-                                        .font(.system(size: 13, weight: .medium, design: .monospaced))
+                                        .font(.system(size: 13, weight: .medium).monospacedDigit())
                                         .foregroundStyle(.white)
                                         .frame(width: 48, alignment: .trailing)
                                 }
@@ -171,7 +171,7 @@ public struct ClipTrimmerSheetView: View {
                                     }
 
                                     Text(formatSeconds(endTime))
-                                        .font(.system(size: 13, weight: .medium, design: .monospaced))
+                                        .font(.system(size: 13, weight: .medium).monospacedDigit())
                                         .foregroundStyle(.white)
                                         .frame(width: 48, alignment: .trailing)
                                 }
@@ -384,7 +384,7 @@ public struct ClipTrimmerSheetView: View {
                     Image(systemName: "scissors")
                         .font(.system(size: 12, weight: .semibold))
                     Text(formattedRange)
-                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
+                        .font(.system(size: 13, weight: .semibold).monospacedDigit())
                     Text("• \(Int(clipDuration)) сек")
                         .font(.system(size: 13, weight: .medium))
                 }
