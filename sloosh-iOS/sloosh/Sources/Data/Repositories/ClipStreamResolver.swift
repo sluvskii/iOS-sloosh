@@ -58,6 +58,7 @@ public final class ClipStreamResolver {
     }
 
     private func doResolve(clip: MovieClip) async -> ResolvedClipPlayback? {
+        AppDiagnostics.shared.log("[ClipStreamResolver] Resolving clip=\(clip.id) kpId=\(clip.kpId ?? 0) tmdbId=\(clip.tmdbId ?? 0) title=\(clip.title)")
         var targetIframe: String? = nil
 
         // 1. Query Alloha dynamic catalog using kpId, tmdbId or title
@@ -116,12 +117,11 @@ public final class ClipStreamResolver {
                     if headers["Referer"] == nil && headers["referer"] == nil {
                         headers["Referer"] = "https://api.alloha.tv/"
                     }
+                    AppDiagnostics.shared.log("[ClipStreamResolver] Successfully resolved clip=\(clip.id) host=\(resolvedUrl.host ?? "")")
                     return ResolvedClipPlayback(url: resolvedUrl, headers: headers)
                 }
             } catch {
-                #if DEBUG
-                print("[ClipStreamResolver] Stream resolution failed for clip \(clip.id): \(error)")
-                #endif
+                AppDiagnostics.shared.log("[ClipStreamResolver] Stream resolution failed for clip \(clip.id): \(error)")
             }
         }
 
@@ -131,10 +131,12 @@ public final class ClipStreamResolver {
            let directUrl = URL(string: directStr) {
             let realUrl = extractRealUrl(from: directUrl)
             if let host = realUrl.host?.lowercased(), host != "127.0.0.1" && host != "localhost" {
+                AppDiagnostics.shared.log("[ClipStreamResolver] Using direct streamUrl for clip=\(clip.id)")
                 return ResolvedClipPlayback(url: realUrl, headers: ["Referer": "https://api.alloha.tv/"])
             }
         }
 
+        AppDiagnostics.shared.log("[ClipStreamResolver] Failed to resolve stream for clip=\(clip.id)")
         return nil
     }
 

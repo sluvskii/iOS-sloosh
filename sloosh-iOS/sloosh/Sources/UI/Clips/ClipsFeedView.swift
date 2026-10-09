@@ -37,12 +37,14 @@ final class ClipPlaybackCoordinator: ObservableObject {
         if !isRetry {
             retryCount = 0
         }
+        AppDiagnostics.shared.log("[ClipPlayback] setupPlayer clip=\(clip.id) title=\(clip.title) startTime=\(clip.startTime)")
 
         resolvePlaybackTask = Task { [weak self] in
             guard let self else { return }
             guard let playbackInfo = await ClipStreamResolver.shared.resolveClip(for: clip) else {
                 self.isResolving = false
                 self.hasError = true
+                AppDiagnostics.shared.log("[ClipPlayback] Failed to resolve clip=\(clip.id)")
                 return
             }
             guard !Task.isCancelled, self.currentClipId == clip.id else { return }
@@ -65,6 +67,7 @@ final class ClipPlaybackCoordinator: ObservableObject {
                         self.isResolving = false
                         self.isVideoReady = true
                         self.hasError = false
+                        AppDiagnostics.shared.log("[ClipPlayback] readyToPlay clip=\(clip.id)")
 
                         if !self.didPerformInitialSeek {
                             self.didPerformInitialSeek = true
@@ -80,7 +83,7 @@ final class ClipPlaybackCoordinator: ObservableObject {
                             player.play()
                         }
                     } else if observedItem.status == .failed {
-                        print("[ClipPlayback] AVPlayerItem failed: \(String(describing: observedItem.error))")
+                        AppDiagnostics.shared.log("[ClipPlayback] AVPlayerItem failed for clip=\(clip.id): \(String(describing: observedItem.error))")
                         if self.retryCount < 1 {
                             self.retryCount += 1
                             ClipStreamResolver.shared.invalidate(clipId: clip.id)
@@ -494,39 +497,35 @@ public struct ClipsFeedView: View {
         let commentsShift: CGFloat = isCommentsOpen ? -(height * 0.28) : 0.0
 
         return ZStack {
-            // 1. Initial Poster Placeholder (visible ONLY during initial loading before video is ready)
-            if !playback.isVideoReady, let backdrop = clip.backdropPath ?? clip.posterPath, let url = resolveImageUrl(path: backdrop) {
-                AsyncCachedImage(url: url) {
-                    Color.black
-                } content: { img in
-                    Image(uiImage: img)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                        .frame(width: width, height: height)
-                        .clipped()
-                        .scaleEffect(1.25)
-                        .saturation(1.4)
-                        .blur(radius: 28)
-                        .overlay(Color.black.opacity(0.42))
-                } fallback: {
+            // 1. Ambient Background (Backdrop with cinematic blur in .fit mode or during initial loading)
+            if effectiveScaleMode == .fit || !playback.isVideoReady {
+                if let backdrop = clip.backdropPath ?? clip.posterPath, let url = resolveImageUrl(path: backdrop) {
+                    AsyncCachedImage(url: url) {
+                        Color.black
+                    } content: { img in
+                        Image(uiImage: img)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: width, height: height)
+                            .clipped()
+                            .scaleEffect(1.25)
+                            .saturation(1.4)
+                            .blur(radius: 28)
+                            .overlay(Color.black.opacity(0.42))
+                    } fallback: {
+                        Color.black
+                    }
+                    .frame(width: width, height: height)
+                    .clipped()
+                    .transition(.opacity)
+                } else {
                     Color.black
                 }
-                .frame(width: width, height: height)
-                .clipped()
-                .transition(.opacity)
             } else {
                 Color.black
             }
 
-            // 2. Live Blurred Background Video Layer (when in .fit mode and video is ready)
-            if isCurrent, effectiveScaleMode == .fit, let player = playback.activePlayer, playback.isVideoReady {
-                AmbientVideoLayerView(player: player)
-                    .frame(width: width, height: height)
-                    .clipped()
-                    .transition(.opacity)
-            }
-
-            // 3. Sharp Video Player Layer (Foreground, centered in remaining space when comments open)
+            // 2. Sharp Video Player Layer (Single Dedicated AVPlayerLayer)
             if isCurrent, let player = playback.activePlayer {
                 VideoLayerView(
                     player: player,
