@@ -493,11 +493,10 @@ public struct ClipsFeedView: View {
             // 5. Play / Pause Indicator in Center
             if !playback.isPlaying && isCurrent && playback.isVideoReady && !isScrubbing {
                 Image(systemName: "play.fill")
-                    .font(.system(size: 28, weight: .bold))
+                    .font(.system(size: 26, weight: .bold))
                     .foregroundStyle(.white)
-                    .frame(width: 58, height: 58)
-                    .background(Color.black.opacity(0.45))
-                    .glassEffect(.regular.interactive(), in: .circle)
+                    .frame(width: 56, height: 56)
+                    .glassEffect(in: .circle)
                     .clipShape(Circle())
                     .transition(.scale.combined(with: .opacity))
                     .allowsHitTesting(false)
@@ -508,7 +507,6 @@ public struct ClipsFeedView: View {
                 Image(systemName: "heart.fill")
                     .font(.system(size: 80))
                     .foregroundStyle(Color.slooshAccent)
-                    .shadow(color: Color.slooshAccent.opacity(0.65), radius: 24)
                     .position(bigHeartPosition)
                     .scaleEffect(showBigHeart ? 1.25 : 0.4)
                     .opacity(showBigHeart ? 1.0 : 0.0)
@@ -521,7 +519,6 @@ public struct ClipsFeedView: View {
                 ProgressView()
                     .tint(.white)
                     .scaleEffect(1.2)
-                    .shadow(color: .black.opacity(0.8), radius: 6)
             }
 
             // 8. Playback Error & Retry Indicator
@@ -545,8 +542,7 @@ public struct ClipsFeedView: View {
                     }
                     .padding(.horizontal, 20)
                     .padding(.vertical, 14)
-                    .background(Color.black.opacity(0.65))
-                    .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 16))
+                    .glassEffect(in: .rect(cornerRadius: 16))
                 }
                 .buttonStyle(.plain)
             }
@@ -565,11 +561,10 @@ public struct ClipsFeedView: View {
                             .foregroundStyle(.white)
                             .contentTransition(.symbolEffect(.replace))
                             .frame(width: 36, height: 36)
-                            .background(Color.black.opacity(0.4))
+                            .glassEffect(in: .circle)
                             .clipShape(Circle())
                     }
                     .buttonStyle(.glassPress)
-                    .glassEffect(.regular.interactive(), in: .circle)
                 }
                 .padding(.top, 12)
                 .padding(.trailing, 12)
@@ -646,8 +641,8 @@ public struct ClipsFeedView: View {
                 .foregroundStyle(.white)
                 .padding(.horizontal, 16)
                 .padding(.vertical, 9)
+                .glassEffect(in: .capsule)
             }
-            .glassEffect(.regular.interactive(), in: .capsule)
             .buttonStyle(.glassPress)
             .padding(.top, 4)
         }
@@ -792,14 +787,12 @@ public struct ClipsFeedView: View {
                 Capsule()
                     .fill(Color.white)
                     .frame(width: activeWidth, height: barHeight)
-                    .shadow(color: isScrubbing ? Color.white.opacity(0.5) : Color.clear, radius: 4)
 
                 // Tactile Scrubber Head (visible while scrubbing)
                 if isScrubbing {
                     Circle()
                         .fill(Color.white)
                         .frame(width: 14, height: 14)
-                        .shadow(color: Color.black.opacity(0.55), radius: 4, y: 1)
                         .position(x: min(totalWidth - 7, max(7, activeWidth)), y: barProxy.size.height / 2)
                         .transition(.scale.combined(with: .opacity))
                 }
@@ -841,26 +834,21 @@ public struct ClipsFeedView: View {
                 let elapsedSec = max(0, currentSec - clip.startTime)
                 HStack(spacing: 6) {
                     Text(formatClipTime(elapsedSec))
-                        .font(.system(size: 19, weight: .bold, design: .rounded).monospacedDigit())
+                        .font(.system(size: 17, weight: .bold, design: .rounded).monospacedDigit())
                         .foregroundStyle(.white)
 
                     Text("/")
-                        .font(.system(size: 14, weight: .semibold, design: .rounded))
+                        .font(.system(size: 13, weight: .medium, design: .rounded))
                         .foregroundStyle(.white.opacity(0.45))
 
                     Text(formatClipTime(clip.duration))
-                        .font(.system(size: 14, weight: .semibold, design: .rounded).monospacedDigit())
-                        .foregroundStyle(.white.opacity(0.85))
+                        .font(.system(size: 13, weight: .semibold, design: .rounded).monospacedDigit())
+                        .foregroundStyle(.white.opacity(0.8))
                 }
-                .padding(.horizontal, 18)
+                .padding(.horizontal, 16)
                 .padding(.vertical, 8)
-                .background(Color.black.opacity(0.68))
-                .glassEffect(.regular.interactive(), in: .capsule)
-                .overlay(
-                    Capsule().stroke(Color.white.opacity(0.18), lineWidth: 0.8)
-                )
-                .shadow(color: .black.opacity(0.6), radius: 16, y: 3)
-                .offset(y: -46)
+                .glassEffect(in: .capsule)
+                .offset(y: -44)
                 .transition(.scale(scale: 0.85).combined(with: .opacity))
                 .animation(.spring(response: 0.25, dampingFraction: 0.8), value: isScrubbing)
             }
