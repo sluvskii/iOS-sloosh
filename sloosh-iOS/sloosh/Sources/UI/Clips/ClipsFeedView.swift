@@ -281,7 +281,7 @@ public struct ClipsFeedView: View {
 
     public var body: some View {
         GeometryReader { proxy in
-            ZStack {
+            ZStack(alignment: .top) {
                 Color.black.ignoresSafeArea()
 
                 if clipsRepo.isLoading && clipsRepo.clips.isEmpty {
@@ -292,10 +292,14 @@ public struct ClipsFeedView: View {
                             .font(.system(size: 14, weight: .medium))
                             .foregroundStyle(.white.opacity(0.6))
                     }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if clipsRepo.clips.isEmpty {
                     emptyStateView
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else {
                     feedScrollView(proxy: proxy)
+
+                    pinnedHeaderView(proxy: proxy)
                 }
             }
         }
@@ -326,6 +330,37 @@ public struct ClipsFeedView: View {
         .onAppear {
             resumeActiveClip()
         }
+    }
+
+    // MARK: - Pinned Header View
+
+    private func pinnedHeaderView(proxy: GeometryProxy) -> some View {
+        let topSafeArea = max(proxy.safeAreaInsets.top, (UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.windows.first?.safeAreaInsets.top }.first ?? 47.0))
+
+        return ZStack(alignment: .center) {
+            Text("Моменты")
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(.white)
+                .shadow(color: .black.opacity(0.7), radius: 6, x: 0, y: 1)
+        }
+        .frame(width: proxy.size.width, height: topSafeArea)
+        .background(
+            LinearGradient(
+                stops: [
+                    .init(color: Color.black.opacity(0.75), location: 0.0),
+                    .init(color: Color.black.opacity(0.35), location: 0.6),
+                    .init(color: Color.clear, location: 1.0)
+                ],
+                startPoint: .top,
+                endPoint: .bottom
+            )
+            .padding(.bottom, -16)
+            .ignoresSafeArea(edges: .top)
+        )
+        .allowsHitTesting(false)
+        .ignoresSafeArea(edges: .top)
+        .opacity(showCommentsForClip != nil ? 0.0 : 1.0)
+        .animation(.spring(response: 0.28, dampingFraction: 0.85), value: showCommentsForClip != nil)
     }
 
     // MARK: - Empty State
@@ -408,15 +443,9 @@ public struct ClipsFeedView: View {
         let availableHeight = max(200.0, size.height - topSafeArea - bottomTabBarHeight - scrubberHeight - scrubberGap)
 
         return VStack(spacing: 0) {
-            // 1. Top status bar clearance with "Моменты" Header
-            ZStack {
-                Text("Моменты")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .shadow(color: .black.opacity(0.7), radius: 6, x: 0, y: 1)
-            }
-            .frame(width: size.width, height: topSafeArea)
-            .opacity(showCommentsForClip != nil ? 0.0 : 1.0)
+            // 1. Top status bar clearance for stationary pinned "Моменты" Header
+            Color.clear
+                .frame(width: size.width, height: topSafeArea)
 
             // 2. Video Container with smooth corner radius
             videoCardContainer(clip, width: size.width, height: availableHeight, isCurrent: isCurrent)
