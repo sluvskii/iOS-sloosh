@@ -49,39 +49,12 @@ final class ClipPlaybackCoordinator: ObservableObject {
             }
             guard !Task.isCancelled, self.currentClipId == clip.id else { return }
 
-            let isHls = playbackInfo.url.absoluteString.lowercased().contains(".m3u8")
-            let asset: AVURLAsset
-            if isHls {
-                let absoluteUrlString = playbackInfo.url.absoluteURL.absoluteString
-                if let encodedData = absoluteUrlString.data(using: .utf8) {
-                    let encoded = encodedData.base64EncodedString()
-                        .replacingOccurrences(of: "+", with: "-")
-                        .replacingOccurrences(of: "/", with: "_")
-                        .replacingOccurrences(of: "=", with: "")
-
-                    let proxyUrlString = "http://127.0.0.1:\(HlsProxyServer.shared.port.rawValue)/proxy/stream.m3u8?url=\(encoded)"
-                    if let proxyUrl = URL(string: proxyUrlString) {
-                        HlsProxyServer.shared.start(
-                            headers: playbackInfo.headers,
-                            voices: [],
-                            subtitles: [],
-                            mediaId: "clip_\(clip.id)"
-                        )
-                        asset = AVURLAsset(url: proxyUrl)
-                    } else {
-                        asset = AVURLAsset(url: playbackInfo.url, options: ["AVURLAssetHTTPHeaderFieldsKey": playbackInfo.headers])
-                    }
-                } else {
-                    asset = AVURLAsset(url: playbackInfo.url, options: ["AVURLAssetHTTPHeaderFieldsKey": playbackInfo.headers])
-                }
-            } else {
-                asset = AVURLAsset(url: playbackInfo.url, options: ["AVURLAssetHTTPHeaderFieldsKey": playbackInfo.headers])
-            }
-
+            let asset = AVURLAsset(url: playbackInfo.url, options: ["AVURLAssetHTTPHeaderFieldsKey": playbackInfo.headers])
             let item = AVPlayerItem(asset: asset)
             item.preferredForwardBufferDuration = 3.0
 
-            // Ensure audio session is active for immediate clear audio
+            // Ensure audio session is active for playback
+            try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
             try? AVAudioSession.sharedInstance().setActive(true)
 
             let player = AVPlayer(playerItem: item)
@@ -532,8 +505,8 @@ public struct ClipsFeedView: View {
         let commentsShift: CGFloat = isCommentsOpen ? -(height * 0.28) : 0.0
 
         return ZStack {
-            // 1. Ambient Background (Backdrop with cinematic blur in .fit mode or during initial loading)
-            if effectiveScaleMode == .fit || !playback.isVideoReady {
+            // 1. Initial Poster Placeholder (visible ONLY during initial loading before video is ready)
+            if !playback.isVideoReady {
                 if let backdrop = clip.backdropPath ?? clip.posterPath, let url = resolveImageUrl(path: backdrop) {
                     AsyncCachedImage(url: url) {
                         Color.black
