@@ -913,7 +913,7 @@ public struct ClipsFeedView: View {
                     .scaleEffect(isLiked ? 1.15 : 1.0)
                     .contentTransition(.symbolEffect(.replace))
                     .animation(.spring(response: 0.25, dampingFraction: 0.6), value: isLiked)
-                    .shadow(color: isLiked ? Color.slooshAccent.opacity(0.65) : .black.opacity(0.7), radius: 6)
+                    .shadow(color: .black.opacity(0.7), radius: 6)
 
                 Text("\(clip.likesCount)")
                     .font(.system(size: 11, weight: .semibold, design: .rounded))

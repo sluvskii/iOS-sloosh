@@ -391,9 +391,7 @@ public struct ClipTrimmerSheetView: View {
                 .foregroundStyle(Color.slooshAccent)
                 .padding(.horizontal, 14)
                 .padding(.vertical, 6)
-                .background(Color.black.opacity(0.65))
-                .clipShape(Capsule())
-                .overlay(Capsule().stroke(Color.white.opacity(0.15), lineWidth: 1))
+                .glassEffect(in: .capsule)
                 .padding(.bottom, 14)
             }
             .padding(.horizontal, 16)
