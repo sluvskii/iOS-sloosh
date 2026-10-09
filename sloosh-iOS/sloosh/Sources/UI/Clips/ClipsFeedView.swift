@@ -653,7 +653,43 @@ public struct ClipsFeedView: View {
                 .buttonStyle(.plain)
             }
 
-            // 10. Bottom Overlays (Left Info & Symmetrical Right Action Rail)
+            // 10. Center Floating "На весь экран" Capsule Button (TikTok Style)
+            VStack {
+                Spacer()
+
+                Button {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
+                        if currentScaleMode == .fit {
+                            clipScaleModeRaw = ClipScalingMode.fill.rawValue
+                            ToastManager.shared.show(title: "Режим: Во весь экран", icon: "arrow.up.left.and.arrow.down.right", iconColor: Color.slooshAccent)
+                        } else {
+                            clipScaleModeRaw = ClipScalingMode.fit.rawValue
+                            ToastManager.shared.show(title: "Режим: В кадре", icon: "arrow.down.right.and.arrow.up.left", iconColor: Color.slooshAccent)
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: currentScaleMode == .fit ? "rectangle.landscape.rotate" : "arrow.down.right.and.arrow.up.left")
+                            .font(.system(size: 13, weight: .bold))
+
+                        Text(currentScaleMode == .fit ? "На весь экран" : "В кадре")
+                            .font(.system(size: 13, weight: .semibold))
+                    }
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .glassEffect(in: .capsule)
+                }
+                .buttonStyle(.glassPress)
+                .padding(.bottom, 136)
+            }
+            .frame(maxWidth: .infinity)
+            .opacity(isOverlayHidden ? 0.0 : 1.0)
+            .animation(.spring(response: 0.28, dampingFraction: 0.85), value: isOverlayHidden)
+            .allowsHitTesting(!isOverlayHidden)
+
+            // 11. Bottom Overlays (Left Info & Symmetrical Right Action Rail)
             VStack(spacing: 0) {
                 Spacer()
 
@@ -702,53 +738,23 @@ public struct ClipsFeedView: View {
                     .padding(.vertical, 1)
             }
 
-            // Action Pills Row: Watch Full Movie + Scale Mode (TikTok Style)
-            HStack(spacing: 8) {
-                // Watch Full Movie
-                Button {
-                    openFullMovie(clip: clip)
-                } label: {
-                    HStack(spacing: 6) {
-                        Image(systemName: "play.fill")
-                            .font(.system(size: 11, weight: .bold))
+            // Pure Liquid Glass Watch Full Movie Button
+            Button {
+                openFullMovie(clip: clip)
+            } label: {
+                HStack(spacing: 6) {
+                    Image(systemName: "play.fill")
+                        .font(.system(size: 11, weight: .bold))
 
-                        Text("Смотреть фильм")
-                            .font(.system(size: 13, weight: .semibold))
-                    }
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
-                    .glassEffect(in: .capsule)
+                    Text("Смотреть с этого момента")
+                        .font(.system(size: 13, weight: .semibold))
                 }
-                .buttonStyle(.glassPress)
-
-                // Scale Mode Toggle ("Во весь экран" / "В кадре")
-                Button {
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) {
-                        if currentScaleMode == .fit {
-                            clipScaleModeRaw = ClipScalingMode.fill.rawValue
-                            ToastManager.shared.show(title: "Режим: Во весь экран", icon: "arrow.up.left.and.arrow.down.right", iconColor: Color.slooshAccent)
-                        } else {
-                            clipScaleModeRaw = ClipScalingMode.fit.rawValue
-                            ToastManager.shared.show(title: "Режим: В кадре", icon: "arrow.down.right.and.arrow.up.left", iconColor: Color.slooshAccent)
-                        }
-                    }
-                } label: {
-                    HStack(spacing: 5) {
-                        Image(systemName: currentScaleMode == .fit ? "arrow.up.left.and.arrow.down.right" : "arrow.down.right.and.arrow.up.left")
-                            .font(.system(size: 11, weight: .bold))
-
-                        Text(currentScaleMode == .fit ? "Во весь экран" : "В кадре")
-                            .font(.system(size: 12, weight: .semibold))
-                    }
-                    .foregroundStyle(.white.opacity(0.92))
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 8)
-                    .glassEffect(in: .capsule)
-                }
-                .buttonStyle(.glassPress)
+                .foregroundStyle(.white)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 8)
+                .glassEffect(in: .capsule)
             }
+            .buttonStyle(.glassPress)
             .padding(.top, 4)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
