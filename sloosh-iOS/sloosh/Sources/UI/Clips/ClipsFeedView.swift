@@ -336,25 +336,33 @@ public struct ClipsFeedView: View {
 
     private func pinnedHeaderView(proxy: GeometryProxy) -> some View {
         let topSafeArea = max(proxy.safeAreaInsets.top, (UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.windows.first?.safeAreaInsets.top }.first ?? 47.0))
+        let headerTitleHeight: CGFloat = 44.0
 
-        return ZStack(alignment: .center) {
-            Text("Моменты")
-                .font(.system(size: 18, weight: .semibold))
-                .foregroundStyle(.white)
-                .shadow(color: .black.opacity(0.7), radius: 6, x: 0, y: 1)
+        return VStack(spacing: 0) {
+            // Status bar clearance
+            Color.clear
+                .frame(height: topSafeArea)
+
+            // Header title bar (matching SettingsView navigation header height)
+            ZStack {
+                Text("Моменты")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .shadow(color: .black.opacity(0.8), radius: 8, x: 0, y: 1)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: headerTitleHeight)
         }
-        .frame(width: proxy.size.width, height: topSafeArea)
+        .frame(width: proxy.size.width)
         .background(
-            LinearGradient(
-                stops: [
-                    .init(color: Color.black.opacity(0.75), location: 0.0),
-                    .init(color: Color.black.opacity(0.35), location: 0.6),
-                    .init(color: Color.clear, location: 1.0)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
+            VariableBlurView(
+                maxBlurRadius: 16,
+                direction: .blurredTopClearBottom,
+                tintColor: .black,
+                tintOpacity: 0.65,
+                style: .dark
             )
-            .padding(.bottom, -16)
+            .padding(.bottom, -30)
             .ignoresSafeArea(edges: .top)
         )
         .allowsHitTesting(false)
@@ -435,17 +443,20 @@ public struct ClipsFeedView: View {
         let topSafeArea = max(safeArea.top, (UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.windows.first?.safeAreaInsets.top }.first ?? 47.0))
         let bottomSafeArea = max(safeArea.bottom, (UIApplication.shared.connectedScenes.compactMap { ($0 as? UIWindowScene)?.windows.first?.safeAreaInsets.bottom }.first ?? 34.0))
 
+        let navHeaderHeight: CGFloat = 44.0
+        let totalTopClearance: CGFloat = topSafeArea + navHeaderHeight
+
         let bottomTabBarHeight: CGFloat = bottomSafeArea + 52.0
         let scrubberHeight: CGFloat = 24.0
         let scrubberGap: CGFloat = 2.0
 
-        // Calculate available height strictly between top status bar and bottom scrubber
-        let availableHeight = max(200.0, size.height - topSafeArea - bottomTabBarHeight - scrubberHeight - scrubberGap)
+        // Calculate available height strictly between top navbar header and bottom scrubber
+        let availableHeight = max(200.0, size.height - totalTopClearance - bottomTabBarHeight - scrubberHeight - scrubberGap)
 
         return VStack(spacing: 0) {
-            // 1. Top status bar clearance for stationary pinned "Моменты" Header
+            // 1. Top clearance under stationary pinned "Моменты" Header
             Color.clear
-                .frame(width: size.width, height: topSafeArea)
+                .frame(width: size.width, height: totalTopClearance)
 
             // 2. Video Container with smooth corner radius
             videoCardContainer(clip, width: size.width, height: availableHeight, isCurrent: isCurrent)
