@@ -422,14 +422,12 @@ public struct ClipsFeedView: View {
         }
         .frame(maxWidth: .infinity)
         .background(
-            LinearGradient(
-                stops: [
-                    .init(color: Color.black.opacity(0.85), location: 0.0),
-                    .init(color: Color.black.opacity(0.48), location: 0.55),
-                    .init(color: Color.black.opacity(0.0), location: 1.0)
-                ],
-                startPoint: .top,
-                endPoint: .bottom
+            VariableBlurView(
+                maxBlurRadius: 16,
+                direction: .blurredTopClearBottom,
+                tintColor: .black,
+                tintOpacity: 0.65,
+                style: .dark
             )
             .padding(.bottom, -24)
             .ignoresSafeArea(edges: .top)
@@ -497,35 +495,39 @@ public struct ClipsFeedView: View {
         let commentsShift: CGFloat = isCommentsOpen ? -(height * 0.28) : 0.0
 
         return ZStack {
-            // 1. Ambient Background (Backdrop with cinematic blur in .fit mode or during initial loading)
-            if effectiveScaleMode == .fit || !playback.isVideoReady {
-                if let backdrop = clip.backdropPath ?? clip.posterPath, let url = resolveImageUrl(path: backdrop) {
-                    AsyncCachedImage(url: url) {
-                        Color.black
-                    } content: { img in
-                        Image(uiImage: img)
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(width: width, height: height)
-                            .clipped()
-                            .scaleEffect(1.25)
-                            .saturation(1.4)
-                            .blur(radius: 28)
-                            .overlay(Color.black.opacity(0.42))
-                    } fallback: {
-                        Color.black
-                    }
-                    .frame(width: width, height: height)
-                    .clipped()
-                    .transition(.opacity)
-                } else {
+            // 1. Initial Poster Placeholder (visible ONLY during initial loading before video is ready)
+            if !playback.isVideoReady, let backdrop = clip.backdropPath ?? clip.posterPath, let url = resolveImageUrl(path: backdrop) {
+                AsyncCachedImage(url: url) {
+                    Color.black
+                } content: { img in
+                    Image(uiImage: img)
+                        .resizable()
+                        .aspectRatio(contentMode: .fill)
+                        .frame(width: width, height: height)
+                        .clipped()
+                        .scaleEffect(1.25)
+                        .saturation(1.4)
+                        .blur(radius: 28)
+                        .overlay(Color.black.opacity(0.42))
+                } fallback: {
                     Color.black
                 }
+                .frame(width: width, height: height)
+                .clipped()
+                .transition(.opacity)
             } else {
                 Color.black
             }
 
-            // 2. Sharp Video Player Layer (Single Dedicated AVPlayerLayer)
+            // 2. Live Blurred Background Video Layer (when in .fit mode and video is ready)
+            if isCurrent, effectiveScaleMode == .fit, let player = playback.activePlayer, playback.isVideoReady {
+                AmbientVideoLayerView(player: player)
+                    .frame(width: width, height: height)
+                    .clipped()
+                    .transition(.opacity)
+            }
+
+            // 3. Sharp Video Player Layer (Foreground, centered in remaining space when comments open)
             if isCurrent, let player = playback.activePlayer {
                 VideoLayerView(
                     player: player,
