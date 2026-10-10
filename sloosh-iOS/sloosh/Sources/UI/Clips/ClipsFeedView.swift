@@ -450,7 +450,8 @@ public struct ClipsFeedView: View {
         let navHeaderHeight: CGFloat = 44.0
         let totalTopClearance: CGFloat = topSafeArea + navHeaderHeight
 
-        let bottomTabBarHeight: CGFloat = bottomSafeArea + 52.0
+        // Tight bottom clearance placing progress bar right above the floating Liquid Glass tab bar capsule
+        let bottomTabBarHeight: CGFloat = (bottomSafeArea > 50) ? (bottomSafeArea - 6.0) : (bottomSafeArea + 44.0)
         let scrubberHeight: CGFloat = 24.0
         let scrubberGap: CGFloat = 2.0
 
@@ -1094,7 +1095,7 @@ public struct ClipsFeedView: View {
             )
             .animation(.spring(response: 0.25, dampingFraction: 0.8), value: barHeight)
         }
-        .frame(height: 36)
+        .frame(height: 24)
         .overlay(alignment: .top) {
             if isScrubbing {
                 let currentSec = clip.startTime + (clip.duration * scrubProgress)
