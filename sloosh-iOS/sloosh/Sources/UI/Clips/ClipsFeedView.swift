@@ -572,7 +572,7 @@ public struct ClipsFeedView: View {
     }
 
     private func momentsHeaderView(width: CGFloat, topSafeArea: CGFloat, fullHeight: CGFloat) -> some View {
-        let statusBarClearance = max(topSafeArea, 47.0) + 8.0
+        let statusBarClearance = max(topSafeArea, 47.0) + 16.0
         let blurOpacity = headerBlurOpacity(height: fullHeight)
 
         return VStack(spacing: 0) {
