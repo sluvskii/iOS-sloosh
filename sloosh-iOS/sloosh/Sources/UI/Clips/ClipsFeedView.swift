@@ -1651,7 +1651,7 @@ public struct HeartShape: Shape {
     }
 }
 
-/// Нативный органичный диалоговый бабл с мягким изогнутым хвостиком для Liquid Glass (.glassEffect)
+/// Нативный органичный круглый бабл с изящным завитком (комментарии) для Liquid Glass (.glassEffect)
 public struct SpeechBubbleShape: Shape {
     public init() {}
 
@@ -1663,75 +1663,34 @@ public struct SpeechBubbleShape: Shape {
         let w = side
         let h = side
 
-        let bubbleTop = y + h * 0.06
-        let bubbleBottom = y + h * 0.76
-        let bubbleLeft = x + w * 0.05
-        let bubbleRight = x + w * 0.95
-        let r = max(1, (bubbleBottom - bubbleTop) * 0.42)
+        let cx = x + w * 0.48
+        let cy = y + h * 0.44
+        let r = w * 0.36
 
-        // 1. Старт в верхней левой точке после скругления
-        path.move(to: CGPoint(x: bubbleLeft + r, y: bubbleTop))
-
-        // 2. Верхний горизонтальный край
-        path.addLine(to: CGPoint(x: bubbleRight - r, y: bubbleTop))
-
-        // 3. Правый верхний угол
+        // 1. Основное круглое тело: дуга от 65° до 15° по часовой стрелке (sweep 310°)
         path.addArc(
-            center: CGPoint(x: bubbleRight - r, y: bubbleTop + r),
+            center: CGPoint(x: cx, y: cy),
             radius: r,
-            startAngle: Angle(degrees: -90),
-            endAngle: Angle(degrees: 0),
+            startAngle: Angle(degrees: 65),
+            endAngle: Angle(degrees: 15),
             clockwise: false
         )
 
-        // 4. Правый вертикальный край
-        path.addLine(to: CGPoint(x: bubbleRight, y: bubbleBottom - r))
-
-        // 5. Правый нижний угол (дуга до 60 градусов, переходящая в хвостик)
-        path.addArc(
-            center: CGPoint(x: bubbleRight - r, y: bubbleBottom - r),
-            radius: r,
-            startAngle: Angle(degrees: 0),
-            endAngle: Angle(degrees: 60),
-            clockwise: false
-        )
-
-        // 6. Хвостик: плавная кубическая кривая Безье вниз-вправо к кончику
+        // 2. Изящный завиток: наружная плавная дуга от круга к кончику завитка
+        let tip = CGPoint(x: x + w * 0.88, y: y + h * 0.88)
         path.addCurve(
-            to: CGPoint(x: x + w * 0.88, y: y + h * 0.96),
-            control1: CGPoint(x: x + w * 0.94, y: bubbleBottom + (y + h - bubbleBottom) * 0.32),
-            control2: CGPoint(x: x + w * 0.92, y: bubbleBottom + (y + h - bubbleBottom) * 0.80)
+            to: tip,
+            control1: CGPoint(x: x + w * 0.84, y: y + h * 0.62),
+            control2: CGPoint(x: x + w * 0.92, y: y + h * 0.76)
         )
 
-        // 7. Возврат хвостика: плавная дуга обратно к нижнему краю бабла
+        // 3. Возврат завитка: мягкая вогнутая дуга обратно в нижний край круга (к 65°)
+        let rad65 = 65.0 * Double.pi / 180.0
+        let pEnd = CGPoint(x: cx + r * CGFloat(cos(rad65)), y: cy + r * CGFloat(sin(rad65)))
         path.addCurve(
-            to: CGPoint(x: x + w * 0.52, y: bubbleBottom),
-            control1: CGPoint(x: x + w * 0.76, y: y + h * 0.94),
-            control2: CGPoint(x: x + w * 0.62, y: bubbleBottom + (y + h - bubbleBottom) * 0.25)
-        )
-
-        // 8. Нижний край бабла до левого нижнего угла
-        path.addLine(to: CGPoint(x: bubbleLeft + r, y: bubbleBottom))
-
-        // 9. Левый нижний угол
-        path.addArc(
-            center: CGPoint(x: bubbleLeft + r, y: bubbleBottom - r),
-            radius: r,
-            startAngle: Angle(degrees: 90),
-            endAngle: Angle(degrees: 180),
-            clockwise: false
-        )
-
-        // 10. Левый вертикальный край
-        path.addLine(to: CGPoint(x: bubbleLeft, y: bubbleTop + r))
-
-        // 11. Левый верхний угол
-        path.addArc(
-            center: CGPoint(x: bubbleLeft + r, y: bubbleTop + r),
-            radius: r,
-            startAngle: Angle(degrees: 180),
-            endAngle: Angle(degrees: 270),
-            clockwise: false
+            to: pEnd,
+            control1: CGPoint(x: x + w * 0.80, y: y + h * 0.88),
+            control2: CGPoint(x: x + w * 0.66, y: y + h * 0.82)
         )
 
         path.closeSubpath()
