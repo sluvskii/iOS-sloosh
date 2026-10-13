@@ -3,6 +3,13 @@ import UIKit
 import AVKit
 import Combine
 
+// MARK: - Isolated Clip Progress Observer (Prevents full-feed re-renders during playback)
+
+@MainActor
+final class ClipProgressObserver: ObservableObject {
+    @Published var progress: Double = 0.0
+}
+
 // MARK: - Dedicated Playback Coordinator for Feed
 
 @MainActor
@@ -11,7 +18,11 @@ final class ClipPlaybackCoordinator: ObservableObject {
     @Published var isVideoReady: Bool = false
     @Published var isResolving: Bool = false
     @Published var isPlaying: Bool = true
-    @Published var clipProgress: Double = 0.0
+    let progressObserver = ClipProgressObserver()
+    var clipProgress: Double {
+        get { progressObserver.progress }
+        set { progressObserver.progress = newValue }
+    }
     @Published var isScrubbing: Bool = false
     @Published var isFastForwarding: Bool = false
     @Published var hasError: Bool = false
@@ -205,7 +216,7 @@ final class ClipPlaybackCoordinator: ObservableObject {
     func setQuality(_ quality: String) {
         currentQuality = quality
         UserDefaults.standard.set(quality, forKey: "sloosh_moments_quality")
-        ToastManager.shared.show(title: "Качество: \(quality)", icon: "gearshape.fill", iconColor: Color.slooshAccent)
+        ToastManager.shared.show(title: "Качество: \(quality)", icon: "gearshape.fill", iconColor: .white)
 
         // Если для выбранного качества есть отдельный URL (например, 1080p или 720p), переключаем поток с сохранением таймкода
         if let targetUrl = currentQualityUrls[quality], targetUrl != currentPlayingUrl {
@@ -286,7 +297,7 @@ final class ClipPlaybackCoordinator: ObservableObject {
             activePlayer?.rate = speed
         }
         let label = speed == 1.0 ? "1.0x (Обычная)" : (speed == Float(Int(speed)) ? "\(Int(speed)).0x" : String(format: "%.2gx", speed))
-        ToastManager.shared.show(title: "Скорость: \(label)", icon: "gauge.with.needle.fill", iconColor: Color.slooshAccent)
+        ToastManager.shared.show(title: "Скорость: \(label)", icon: "gauge.with.needle.fill", iconColor: .white)
     }
 
     func fetchMasterPlaylistQualities(url: URL, headers: [String: String]) async {
@@ -463,7 +474,6 @@ public struct ClipsFeedView: View {
     @State private var bigHeartPosition: CGPoint = .zero
     @State private var isTextExpanded: Bool = false
     @State private var isScrubbing: Bool = false
-    @State private var scrubProgress: Double = 0.0
     @State private var lastTapTime: Date = Date.distantPast
 
     private var currentVisibleClip: MovieClip? {
@@ -545,27 +555,38 @@ public struct ClipsFeedView: View {
     // MARK: - Top Header View (Matches SettingsView liquid glass style)
 
     private func momentsHeaderView(width: CGFloat, topSafeArea: CGFloat) -> some View {
-        VStack(spacing: 0) {
-            // Status bar clearance (keeps title at the exact same height as other screens)
+        let statusBarClearance = max(topSafeArea, 47.0) + 8.0
+
+        return VStack(spacing: 0) {
+            // Status bar clearance (keeps title comfortable below Dynamic Island / notch)
             Color.clear
-                .frame(height: topSafeArea)
+                .frame(height: statusBarClearance)
                 .allowsHitTesting(false)
 
-            // Header title bar (matching SettingsView and native navigation header height)
-            ZStack {
-                Text("Моменты")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .shadow(color: .black.opacity(0.8), radius: 6, x: 0, y: 1)
+            // Header title bar (perfectly symmetrical with matching 36x36 balances on left and right)
+            HStack(spacing: 0) {
+                Color.clear
+                    .frame(width: 36, height: 36)
+                    .padding(.leading, 16)
                     .allowsHitTesting(false)
 
-                HStack {
-                    Spacer()
+                Spacer(minLength: 0)
 
-                    if let clip = currentVisibleClip {
-                        actionsMenuView(for: clip)
-                            .padding(.trailing, 16)
-                    }
+                Text("Моменты")
+                    .font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .allowsHitTesting(false)
+
+                Spacer(minLength: 0)
+
+                if let clip = currentVisibleClip {
+                    actionsMenuView(for: clip)
+                        .padding(.trailing, 16)
+                } else {
+                    Color.clear
+                        .frame(width: 36, height: 36)
+                        .padding(.trailing, 16)
+                        .allowsHitTesting(false)
                 }
             }
             .frame(maxWidth: .infinity)
@@ -573,15 +594,14 @@ public struct ClipsFeedView: View {
         }
         .frame(width: width)
         .background(
-            LinearGradient(
-                colors: [
-                    Color.black.opacity(0.65),
-                    Color.black.opacity(0.3),
-                    Color.clear
-                ],
-                startPoint: .top,
-                endPoint: .bottom
+            VariableBlurView(
+                maxBlurRadius: 18,
+                direction: .blurredTopClearBottom,
+                tintColor: .black,
+                tintOpacity: 0.72,
+                style: .dark
             )
+            .padding(.bottom, -32)
             .ignoresSafeArea(edges: .top)
             .allowsHitTesting(false)
         )
@@ -683,10 +703,11 @@ public struct ClipsFeedView: View {
             Image(systemName: "ellipsis")
                 .font(.system(size: 15, weight: .semibold))
                 .foregroundStyle(.white)
+                .offset(y: -1)
                 .frame(width: 36, height: 36)
                 .glassEffect(.regular.interactive(), in: .circle)
-                .shadow(color: .black.opacity(0.4), radius: 4)
         }
+        .tint(.white)
         .buttonStyle(.plain)
     }
 
@@ -841,11 +862,18 @@ public struct ClipsFeedView: View {
 
             // 4. Progress bar (полоса перемотки)
             if isCurrent {
-                progressBarView(for: clip)
-                    .padding(.horizontal, 16)
-                    .frame(height: scrubberHeight)
-                    .opacity(showCommentsForClip != nil ? 0.0 : 1.0)
-                    .animation(.spring(response: 0.28, dampingFraction: 0.85), value: showCommentsForClip != nil)
+                ClipProgressBarView(
+                    progressObserver: playback.progressObserver,
+                    clip: clip,
+                    playback: playback,
+                    isResolving: playback.isResolving,
+                    isVideoReady: playback.isVideoReady,
+                    isScrubbing: $isScrubbing
+                )
+                .padding(.horizontal, 16)
+                .frame(height: scrubberHeight)
+                .opacity(showCommentsForClip != nil ? 0.0 : 1.0)
+                .animation(.spring(response: 0.28, dampingFraction: 0.85), value: showCommentsForClip != nil)
             } else {
                 Color.clear
                     .frame(height: scrubberHeight)
@@ -934,7 +962,7 @@ public struct ClipsFeedView: View {
             .animation(.spring(response: 0.28, dampingFraction: 0.85), value: isOverlayHidden)
             .allowsHitTesting(false)
 
-            // 5. Touch & Gesture Zones: Left Edge 2x Speed, Center Instant 0ms Play/Pause
+            // 5. Touch & Gesture Zones: Left and Right Edge 2x Speed, Center Instant 0ms Play/Pause
             HStack(spacing: 0) {
                 // Left Edge 2x Speed Zone (80pt)
                 edgeAccelerationZone(for: clip)
@@ -944,10 +972,9 @@ public struct ClipsFeedView: View {
                 centerTapZone(clip: clip)
                     .frame(maxWidth: .infinity)
 
-                // Right Margin Spacer (80pt) — touch passthrough to right rail action buttons
-                Color.clear
+                // Right Edge 2x Speed Zone (80pt) — symmetrically accelerates, right rail buttons sit above in zIndex(10)
+                edgeAccelerationZone(for: clip)
                     .frame(width: 80)
-                    .allowsHitTesting(false)
             }
             .frame(width: width, height: height)
             .zIndex(1)
@@ -960,7 +987,6 @@ public struct ClipsFeedView: View {
                     .frame(width: 72, height: 72)
                     .glassEffect(in: .circle)
                     .clipShape(Circle())
-                    .shadow(color: .black.opacity(0.5), radius: 14, y: 3)
                     .transition(
                         .asymmetric(
                             insertion: .scale(scale: 0.5).combined(with: .opacity),
@@ -1022,7 +1048,7 @@ public struct ClipsFeedView: View {
 
                         Text("Нажмите, чтобы повторить")
                             .font(.system(size: 12, weight: .medium))
-                            .foregroundStyle(Color.slooshAccent)
+                            .foregroundStyle(.white.opacity(0.8))
                     }
                     .padding(.horizontal, 20)
                     .padding(.vertical, 14)
@@ -1131,7 +1157,6 @@ public struct ClipsFeedView: View {
                     .font(.system(size: 13, weight: .regular))
                     .foregroundStyle(.white.opacity(0.95))
                     .lineLimit(isTextExpanded ? 6 : 2)
-                    .shadow(color: .black.opacity(0.8), radius: 4)
                     .onTapGesture {
                         withAnimation(.easeInOut(duration: 0.2)) {
                             isTextExpanded.toggle()
@@ -1183,7 +1208,6 @@ public struct ClipsFeedView: View {
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     .frame(maxHeight: 36, alignment: .leading)
-                    .shadow(color: .black.opacity(0.85), radius: 6, x: 0, y: 2)
             } fallback: {
                 fallbackTitleText(clip: clip)
             }
@@ -1196,7 +1220,6 @@ public struct ClipsFeedView: View {
         Text(clip.title)
             .font(.system(size: 16, weight: .bold))
             .foregroundStyle(.white)
-            .shadow(color: .black.opacity(0.8), radius: 4)
             .lineLimit(1)
     }
 
@@ -1215,13 +1238,11 @@ public struct ClipsFeedView: View {
                         .lineLimit(1)
                 }
             }
-            .shadow(color: .black.opacity(0.8), radius: 3)
         } else if let tr = clip.translationName, !tr.isEmpty {
             Text(tr)
                 .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(.white.opacity(0.75))
                 .lineLimit(1)
-                .shadow(color: .black.opacity(0.8), radius: 3)
         }
     }
 
@@ -1260,7 +1281,6 @@ public struct ClipsFeedView: View {
             )
             .glassEffect(in: .circle)
             .clipShape(Circle())
-            .shadow(color: .black.opacity(0.6), radius: 4)
             .frame(width: 52, height: 46)
             .contentShape(Rectangle())
         }
@@ -1285,12 +1305,10 @@ public struct ClipsFeedView: View {
                     .scaleEffect(isLiked ? 1.15 : 1.0)
                     .contentTransition(.symbolEffect(.replace))
                     .animation(.spring(response: 0.25, dampingFraction: 0.6), value: isLiked)
-                    .shadow(color: .black.opacity(0.7), radius: 6)
 
                 Text("\(clip.likesCount)")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.white)
-                    .shadow(color: .black.opacity(0.8), radius: 3)
             }
             .frame(width: 52, height: 50)
             .contentShape(Rectangle())
@@ -1307,12 +1325,10 @@ public struct ClipsFeedView: View {
                 Image(systemName: "bubble.right.fill")
                     .font(.system(size: 24))
                     .foregroundStyle(.white)
-                    .shadow(color: .black.opacity(0.7), radius: 6)
 
                 Text("\(clip.commentsCount)")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.white)
-                    .shadow(color: .black.opacity(0.8), radius: 3)
             }
             .frame(width: 52, height: 50)
             .contentShape(Rectangle())
@@ -1329,14 +1345,12 @@ public struct ClipsFeedView: View {
                 Image(systemName: "arrowshape.turn.up.right.fill")
                     .font(.system(size: 24))
                     .foregroundStyle(.white)
-                    .shadow(color: .black.opacity(0.7), radius: 6)
 
                 Text("Поделиться")
                     .font(.system(size: 9.5, weight: .semibold))
                     .foregroundStyle(.white)
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
-                    .shadow(color: .black.opacity(0.8), radius: 3)
             }
             .frame(width: 56, height: 50)
             .contentShape(Rectangle())
@@ -1350,10 +1364,10 @@ public struct ClipsFeedView: View {
             withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
                 if currentScaleMode == .fit {
                     clipScaleModeRaw = ClipScalingMode.fill.rawValue
-                    ToastManager.shared.show(title: "Режим: Во весь экран (9:16)", icon: "arrow.up.left.and.arrow.down.right", iconColor: Color.slooshAccent)
+                    ToastManager.shared.show(title: "Режим: Во весь экран (9:16)", icon: "arrow.up.left.and.arrow.down.right", iconColor: .white)
                 } else {
                     clipScaleModeRaw = ClipScalingMode.fit.rawValue
-                    ToastManager.shared.show(title: "Режим: В кадре", icon: "arrow.down.right.and.arrow.up.left", iconColor: Color.slooshAccent)
+                    ToastManager.shared.show(title: "Режим: В кадре", icon: "arrow.down.right.and.arrow.up.left", iconColor: .white)
                 }
             }
         } label: {
@@ -1362,7 +1376,6 @@ public struct ClipsFeedView: View {
                     .font(.system(size: 22, weight: .semibold))
                     .foregroundStyle(.white)
                     .contentTransition(.symbolEffect(.replace.downUp.byLayer))
-                    .shadow(color: .black.opacity(0.7), radius: 6)
 
                 Text(currentScaleMode == .fit ? "9:16" : "В кадре")
                     .font(.system(size: 9.5, weight: .semibold))
@@ -1370,7 +1383,6 @@ public struct ClipsFeedView: View {
                     .contentTransition(.numericText())
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
-                    .shadow(color: .black.opacity(0.8), radius: 3)
             }
             .animation(.spring(response: 0.35, dampingFraction: 0.75), value: currentScaleMode)
             .frame(width: 56, height: 50)
@@ -1379,12 +1391,25 @@ public struct ClipsFeedView: View {
         .buttonStyle(.plain)
     }
 
-    // MARK: - Scrubber Progress Bar
+    // MARK: - Scrubber Progress Bar Component (Isolated observation)
+}
 
-    private func progressBarView(for clip: MovieClip) -> some View {
+// MARK: - Isolated Clip Progress Bar View (Only redrawn when progress ticks)
+
+private struct ClipProgressBarView: View {
+    @ObservedObject var progressObserver: ClipProgressObserver
+    let clip: MovieClip
+    let playback: ClipPlaybackCoordinator
+    let isResolving: Bool
+    let isVideoReady: Bool
+    @Binding var isScrubbing: Bool
+
+    @State private var scrubProgress: Double = 0.0
+
+    var body: some View {
         GeometryReader { barProxy in
             let totalWidth = barProxy.size.width
-            let displayProgress = isScrubbing ? scrubProgress : playback.clipProgress
+            let displayProgress = isScrubbing ? scrubProgress : progressObserver.progress
             let activeWidth = max(0, min(totalWidth, totalWidth * displayProgress))
             let barHeight: CGFloat = isScrubbing ? 6.0 : 3.0
 
@@ -1394,7 +1419,7 @@ public struct ClipsFeedView: View {
                     .fill(Color.white.opacity(isScrubbing ? 0.35 : 0.22))
                     .frame(height: barHeight)
 
-                if playback.isResolving || !playback.isVideoReady {
+                if isResolving || !isVideoReady {
                     // Shimmering animated light beam during buffering
                     TimelineView(.animation) { timeline in
                         let time = timeline.date.timeIntervalSinceReferenceDate
@@ -1488,7 +1513,7 @@ public struct ClipsFeedView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
                 .glassEffect(in: .capsule)
-                .offset(y: -42)
+                .offset(y: -64)
                 .transition(
                     .asymmetric(
                         insertion: .scale(scale: 0.75).combined(with: .opacity).combined(with: .offset(y: 12)),
@@ -1507,6 +1532,9 @@ public struct ClipsFeedView: View {
         let s = total % 60
         return String(format: "%d:%02d", m, s)
     }
+}
+
+extension ClipsFeedView {
 
     private func ensurePlaybackStarted() {
         if let clipId = currentClipId, let clip = clipsRepo.clips.first(where: { $0.id == clipId }) {
