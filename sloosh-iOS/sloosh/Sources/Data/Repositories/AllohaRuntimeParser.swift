@@ -81,9 +81,27 @@ enum AllohaRuntimeParser {
                 var itemMasterURL: URL?
                 var itemAdaptiveURL: URL?
 
-                for (label, rawValue) in quality {
+                // Сортируем качества по убыванию: 1080 -> 720 -> 480 -> 360
+                let sortedLabels = quality.keys.sorted { qualityHeight($0) > qualityHeight($1) }
+
+                for label in sortedLabels {
+                    let lowerLabel = label.lowercased()
+                    // Строго отфильтровываем AV1 кодек (av1/av01), так как AVPlayer на iOS не поддерживает его (код ошибки -11848 / -15517)
+                    if lowerLabel.contains("av1") || lowerLabel.contains("av01") {
+                        continue
+                    }
+                    guard let rawValue = quality[label] else { continue }
+
                     for rawURL in qualityURLStrings(from: rawValue) {
-                        let urls = allohaURLs(from: rawURL, baseURL: baseURL)
+                        let lowerRaw = rawURL.lowercased()
+                        if lowerRaw.contains("av1") || lowerRaw.contains("av01") {
+                            continue
+                        }
+
+                        let urls = allohaURLs(from: rawURL, baseURL: baseURL).filter { url in
+                            let lower = url.absoluteString.lowercased()
+                            return !lower.contains("av1") && !lower.contains("av01")
+                        }
                         if masterURL == nil {
                             masterURL = urls.first(where: { $0.lastPathComponent.lowercased().contains("master.m3u8") })
                         }
@@ -101,9 +119,6 @@ enum AllohaRuntimeParser {
                         }
                         
                         let normLabel = normalizedQualityLabel(label)
-                        // Note: AV1 filtering is done in PlayerView.appendQualityVariants via label/URL check.
-                        // We intentionally do NOT filter by resolution here (2160p, 1440p, 4K etc.)
-                        // so that HEVC high-res quality options remain available for devices that support them.
 
                         let variant: [String: Any] = [
                             "label": normLabel,
@@ -117,11 +132,13 @@ enum AllohaRuntimeParser {
                 }
 
                 let sortedItemVariants = itemVariants.sorted {
-                    qualityHeight(($0["label"] as? String) ?? "") < qualityHeight(($1["label"] as? String) ?? "")
+                    qualityHeight(($0["label"] as? String) ?? "") > qualityHeight(($1["label"] as? String) ?? "")
                 }
-                let chosenAudioURL = itemMasterURL
+                // Для выбранного аудио предпочитаем реальный поток высокого качества (1080p),
+                // а затем master.m3u8 / adaptiveURL как резервные
+                let chosenAudioURL = sortedItemVariants.first.flatMap { URL(string: ($0["url"] as? String) ?? "") }
+                    ?? itemMasterURL
                     ?? itemAdaptiveURL
-                    ?? sortedItemVariants.last.flatMap { URL(string: ($0["url"] as? String) ?? "") }
                 if let chosenAudioURL {
                     audioVariants.append([
                         "id": "\(index)-\(chosenAudioURL.absoluteString)",
@@ -132,13 +149,15 @@ enum AllohaRuntimeParser {
                 }
             }
 
-            qualityVariants.sort { qualityHeight(($0["label"] as? String) ?? "") < qualityHeight(($1["label"] as? String) ?? "") }
+            qualityVariants.sort { qualityHeight(($0["label"] as? String) ?? "") > qualityHeight(($1["label"] as? String) ?? "") }
             let deduplicatedAudioVariants = deduplicatedAudioVariants(audioVariants)
             let firstURL = deduplicatedAudioVariants.first?["url"] as? String
-            let pickedURL = masterURL?.absoluteString
+            // Предпочитаем поток максимального разрешения (1080p) перед master.m3u8,
+            // так как у vkvideo master.m3u8 зафиксирован на 480p (854x358)
+            let pickedURL = (qualityVariants.first?["url"] as? String)
+                ?? masterURL?.absoluteString
                 ?? adaptiveURL?.absoluteString
                 ?? firstURL
-                ?? (qualityVariants.last?["url"] as? String)
             guard let pickedURL else { continue }
 
             let skips = extractSkips(from: object)
@@ -261,7 +280,10 @@ enum AllohaRuntimeParser {
     }
 
     private static func qualityHeight(_ label: String) -> Int {
-        Int(label.lowercased().replacingOccurrences(of: "p", with: "")) ?? 0
+        let clean = label.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        if clean == "4k" || clean == "2160p" || clean == "2160" { return 2160 }
+        if clean == "2k" || clean == "1440p" || clean == "1440" { return 1440 }
+        return Int(clean.replacingOccurrences(of: "p", with: "")) ?? 0
     }
 
     private static func preferredAdaptiveURL(in urls: [URL]) -> URL? {

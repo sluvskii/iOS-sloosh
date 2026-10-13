@@ -30,6 +30,10 @@ final class ClipPlaybackCoordinator: ObservableObject {
     }
 
     private var currentClipId: String?
+    private var currentClip: MovieClip?
+    private var currentQualityUrls: [String: URL] = [:]
+    private var currentHeaders: [String: String] = [:]
+    private var currentPlayingUrl: URL?
     private var timeObserver: Any?
     private var playerStatusObserver: NSKeyValueObservation?
     private var playerTimeStatusObserver: NSKeyValueObservation?
@@ -46,6 +50,7 @@ final class ClipPlaybackCoordinator: ObservableObject {
 
     func setupPlayer(for clip: MovieClip, isRetry: Bool = false) {
         cleanup()
+        currentClip = clip
         currentClipId = clip.id
         isResolving = true
         isVideoReady = false
@@ -69,13 +74,29 @@ final class ClipPlaybackCoordinator: ObservableObject {
             }
             guard !Task.isCancelled, self.currentClipId == clip.id else { return }
 
+            self.currentQualityUrls = playbackInfo.qualityUrls
+            self.currentHeaders = playbackInfo.headers
+            self.currentPlayingUrl = playbackInfo.url
+
+            // Обновляем доступные качества из полученных потоков
+            if !playbackInfo.qualityUrls.isEmpty {
+                let sortedKeys = playbackInfo.qualityUrls.keys.sorted {
+                    let h1 = Int($0.replacingOccurrences(of: "p", with: "")) ?? 0
+                    let h2 = Int($1.replacingOccurrences(of: "p", with: "")) ?? 0
+                    return h1 > h2
+                }
+                self.availableQualities = ["Авто"] + sortedKeys
+            }
+
             let asset = AVURLAsset(url: playbackInfo.url, options: ["AVURLAssetHTTPHeaderFieldsKey": playbackInfo.headers])
             let item = AVPlayerItem(asset: asset)
             item.preferredForwardBufferDuration = 10.0
             self.applyQuality(self.currentQuality, to: item)
 
-            Task { [weak self] in
-                await self?.fetchMasterPlaylistQualities(url: playbackInfo.url, headers: playbackInfo.headers)
+            if playbackInfo.qualityUrls.isEmpty {
+                Task { [weak self] in
+                    await self?.fetchMasterPlaylistQualities(url: playbackInfo.url, headers: playbackInfo.headers)
+                }
             }
 
             try? AVAudioSession.sharedInstance().setActive(true)
@@ -110,8 +131,19 @@ final class ClipPlaybackCoordinator: ObservableObject {
                             self.playWithCurrentSpeed()
                         }
                     } else if observedItem.status == .failed {
-                        AppDiagnostics.shared.log("[ClipPlayback] AVPlayerItem failed for clip=\(clip.id): \(String(describing: observedItem.error))")
-                        if self.retryCount < 1 {
+                        let errorDesc = String(describing: observedItem.error)
+                        AppDiagnostics.shared.log("[ClipPlayback] AVPlayerItem failed for clip=\(clip.id): \(errorDesc)")
+                        
+                        let isUnsupportedFormat = errorDesc.contains("-11848") || errorDesc.contains("-15517")
+                        if isUnsupportedFormat && !self.currentQualityUrls.isEmpty {
+                            if let fallback = self.currentQualityUrls.first(where: { $0.value != self.currentPlayingUrl }) {
+                                AppDiagnostics.shared.log("[ClipPlayback] Unsupported format detected, falling back to quality=\(fallback.key)")
+                                self.switchStream(to: fallback.value, qualityKey: fallback.key)
+                                return
+                            }
+                        }
+
+                        if self.retryCount < 2 {
                             self.retryCount += 1
                             ClipStreamResolver.shared.invalidate(clipId: clip.id)
                             self.setupPlayer(for: clip, isRetry: true)
@@ -173,8 +205,46 @@ final class ClipPlaybackCoordinator: ObservableObject {
     func setQuality(_ quality: String) {
         currentQuality = quality
         UserDefaults.standard.set(quality, forKey: "sloosh_moments_quality")
-        applyQuality(quality, to: activePlayer?.currentItem)
         ToastManager.shared.show(title: "Качество: \(quality)", icon: "gearshape.fill", iconColor: Color.slooshAccent)
+
+        // Если для выбранного качества есть отдельный URL (например, 1080p или 720p), переключаем поток с сохранением таймкода
+        if let targetUrl = currentQualityUrls[quality], targetUrl != currentPlayingUrl {
+            switchStream(to: targetUrl, qualityKey: quality)
+            return
+        }
+
+        applyQuality(quality, to: activePlayer?.currentItem)
+    }
+
+    private func switchStream(to newUrl: URL, qualityKey: String) {
+        guard let player = activePlayer, let clip = currentClip else { return }
+        let currentTime = player.currentTime()
+        let isCurrentlyPlaying = isPlaying
+
+        currentPlayingUrl = newUrl
+        let asset = AVURLAsset(url: newUrl, options: ["AVURLAssetHTTPHeaderFieldsKey": currentHeaders])
+        let item = AVPlayerItem(asset: asset)
+        item.preferredForwardBufferDuration = 10.0
+        applyQuality(qualityKey, to: item)
+
+        playerStatusObserver?.invalidate()
+        playerStatusObserver = item.observe(\.status, options: [.new]) { [weak self, weak player] observedItem, _ in
+            Task { @MainActor [weak self] in
+                guard let self, let player, self.currentClipId == clip.id else { return }
+                if observedItem.status == .readyToPlay {
+                    self.isVideoReady = true
+                    player.seek(to: currentTime, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
+                        if isCurrentlyPlaying {
+                            self?.playWithCurrentSpeed()
+                        }
+                    }
+                } else if observedItem.status == .failed {
+                    AppDiagnostics.shared.log("[ClipPlayback] Quality switch failed for quality=\(qualityKey): \(String(describing: observedItem.error))")
+                }
+            }
+        }
+
+        player.replaceCurrentItem(with: item)
     }
 
     func applyQuality(_ quality: String, to item: AVPlayerItem?) {
@@ -351,6 +421,9 @@ final class ClipPlaybackCoordinator: ObservableObject {
         clipProgress = 0.0
         isFastForwarding = false
         didPerformInitialSeek = false
+        currentQualityUrls = [:]
+        currentHeaders = [:]
+        currentPlayingUrl = nil
     }
 
     deinit {
