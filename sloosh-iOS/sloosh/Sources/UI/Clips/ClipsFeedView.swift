@@ -817,14 +817,13 @@ public struct ClipsFeedView: View {
         // The vertical player area extends precisely to the phone's status bar
         let topClearance: CGFloat = topSafeArea
 
-        // Tight bottom clearance placing progress bar right above the floating Liquid Glass tab bar capsule
-        let bottomNavClearance: CGFloat = (bottomSafeArea > 50) ? (bottomSafeArea - 12.0) : (bottomSafeArea + 4.0)
-        let bottomGap: CGFloat = 4.0
+        // Floating Liquid Glass tab bar clearance ensuring progress bar never touches or overlaps navbar
+        let tabBarClearance: CGFloat = (bottomSafeArea > 20) ? 84.0 : 52.0
         let scrubberHeight: CGFloat = 16.0
-        let scrubberGap: CGFloat = 4.0
+        let symmetricalGap: CGFloat = 12.0
 
-        // Calculate available height strictly between status bar and bottom scrubber
-        let totalBottomClearance = bottomNavClearance + bottomGap + scrubberHeight + scrubberGap
+        // Strictly symmetrical gaps: symmetricalGap between player and scrubber, and symmetricalGap between scrubber and navbar
+        let totalBottomClearance = tabBarClearance + (symmetricalGap * 2) + scrubberHeight
         let availableHeight = max(200.0, height - topClearance - totalBottomClearance)
 
         return VStack(spacing: 0) {
@@ -836,9 +835,9 @@ public struct ClipsFeedView: View {
             videoCardContainer(clip, width: width, height: availableHeight, isCurrent: isCurrent)
                 .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
 
-            // 3. Gap between video card and progress bar
+            // 3. Symmetrical gap between video card and progress bar
             Color.clear
-                .frame(width: width, height: scrubberGap)
+                .frame(width: width, height: symmetricalGap)
 
             // 4. Progress bar (полоса перемотки)
             if isCurrent {
@@ -852,13 +851,13 @@ public struct ClipsFeedView: View {
                     .frame(height: scrubberHeight)
             }
 
-            // 5. Gap between progress bar and floating tab bar
+            // 5. Symmetrical gap between progress bar and floating tab bar
             Color.clear
-                .frame(width: width, height: bottomGap)
+                .frame(width: width, height: symmetricalGap)
 
-            // 6. Bottom Tab Bar clearance (aligns right above the floating Liquid Glass tab bar)
+            // 6. Bottom Tab Bar clearance (safely above the floating Liquid Glass tab bar)
             Color.clear
-                .frame(width: width, height: bottomNavClearance)
+                .frame(width: width, height: tabBarClearance)
         }
         .frame(width: width, height: height)
         .background(Color.black)
