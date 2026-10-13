@@ -15,6 +15,19 @@ final class ClipPlaybackCoordinator: ObservableObject {
     @Published var isScrubbing: Bool = false
     @Published var isFastForwarding: Bool = false
     @Published var hasError: Bool = false
+    @Published var availableQualities: [String] = ["Авто", "1080p", "720p", "480p", "360p"]
+    @Published var currentQuality: String = UserDefaults.standard.string(forKey: "sloosh_moments_quality") ?? "Авто"
+    @Published var playbackSpeed: Float = 1.0
+
+    var speedLabel: String {
+        if playbackSpeed == 1.0 {
+            return "1.0x"
+        } else if playbackSpeed == Float(Int(playbackSpeed)) {
+            return "\(Int(playbackSpeed)).0x"
+        } else {
+            return String(format: "%.2gx", playbackSpeed)
+        }
+    }
 
     private var currentClipId: String?
     private var timeObserver: Any?
@@ -27,6 +40,8 @@ final class ClipPlaybackCoordinator: ObservableObject {
     init() {
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
         try? AVAudioSession.sharedInstance().setActive(true)
+        let savedQuality = UserDefaults.standard.string(forKey: "sloosh_moments_quality") ?? "Авто"
+        self.currentQuality = savedQuality
     }
 
     func setupPlayer(for clip: MovieClip, isRetry: Bool = false) {
@@ -56,7 +71,12 @@ final class ClipPlaybackCoordinator: ObservableObject {
 
             let asset = AVURLAsset(url: playbackInfo.url, options: ["AVURLAssetHTTPHeaderFieldsKey": playbackInfo.headers])
             let item = AVPlayerItem(asset: asset)
-            item.preferredForwardBufferDuration = 3.0
+            item.preferredForwardBufferDuration = 10.0
+            self.applyQuality(self.currentQuality, to: item)
+
+            Task { [weak self] in
+                await self?.fetchMasterPlaylistQualities(url: playbackInfo.url, headers: playbackInfo.headers)
+            }
 
             try? AVAudioSession.sharedInstance().setActive(true)
 
@@ -80,14 +100,14 @@ final class ClipPlaybackCoordinator: ObservableObject {
                             self.didPerformInitialSeek = true
                             if clip.startTime > 0.5 {
                                 let sTime = CMTime(seconds: clip.startTime, preferredTimescale: 600)
-                                player.seek(to: sTime, toleranceBefore: .zero, toleranceAfter: .zero) { _ in
-                                    player.play()
+                                player.seek(to: sTime, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
+                                    self?.playWithCurrentSpeed()
                                 }
                             } else {
-                                player.play()
+                                self.playWithCurrentSpeed()
                             }
                         } else {
-                            player.play()
+                            self.playWithCurrentSpeed()
                         }
                     } else if observedItem.status == .failed {
                         AppDiagnostics.shared.log("[ClipPlayback] AVPlayerItem failed for clip=\(clip.id): \(String(describing: observedItem.error))")
@@ -129,16 +149,105 @@ final class ClipPlaybackCoordinator: ObservableObject {
                 // Loop back to start ONLY when video reaches or exceeds clip.endTime
                 if currentSec >= clip.endTime {
                     let sTime = CMTime(seconds: clip.startTime, preferredTimescale: 600)
-                    player.seek(to: sTime, toleranceBefore: .zero, toleranceAfter: .zero) { _ in
+                    player.seek(to: sTime, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
+                        guard let self else { return }
                         if self.isPlaying {
-                            if self.isFastForwarding {
-                                player.rate = 2.0
-                            } else {
-                                player.play()
-                            }
+                            self.playWithCurrentSpeed()
                         }
                     }
                 }
+            }
+        }
+    }
+
+    func playWithCurrentSpeed() {
+        guard let player = activePlayer else { return }
+        if isFastForwarding {
+            player.rate = 2.0
+        } else {
+            player.rate = playbackSpeed
+        }
+        isPlaying = true
+    }
+
+    func setQuality(_ quality: String) {
+        currentQuality = quality
+        UserDefaults.standard.set(quality, forKey: "sloosh_moments_quality")
+        applyQuality(quality, to: activePlayer?.currentItem)
+        ToastManager.shared.show(title: "Качество: \(quality)", icon: "gearshape.fill", iconColor: Color.slooshAccent)
+    }
+
+    func applyQuality(_ quality: String, to item: AVPlayerItem?) {
+        guard let item else { return }
+        switch quality {
+        case "2160p", "4K":
+            item.preferredMaximumResolution = CGSize(width: 3840, height: 2160)
+            item.preferredPeakBitRate = 0
+        case "1440p":
+            item.preferredMaximumResolution = CGSize(width: 2560, height: 1440)
+            item.preferredPeakBitRate = 0
+        case "1080p":
+            item.preferredMaximumResolution = CGSize(width: 1920, height: 1080)
+            item.preferredPeakBitRate = 0
+        case "720p":
+            item.preferredMaximumResolution = CGSize(width: 1280, height: 720)
+            item.preferredPeakBitRate = 4_500_000
+        case "480p":
+            item.preferredMaximumResolution = CGSize(width: 854, height: 480)
+            item.preferredPeakBitRate = 2_000_000
+        case "360p":
+            item.preferredMaximumResolution = CGSize(width: 640, height: 360)
+            item.preferredPeakBitRate = 1_000_000
+        default: // "Авто" or unparsed
+            if quality.hasSuffix("p"), let h = Int(quality.replacingOccurrences(of: "p", with: "")) {
+                let w = Int(Double(h) * (16.0 / 9.0))
+                item.preferredMaximumResolution = CGSize(width: w, height: h)
+                item.preferredPeakBitRate = 0
+            } else {
+                item.preferredMaximumResolution = .zero
+                item.preferredPeakBitRate = 0
+            }
+        }
+    }
+
+    func setSpeed(_ speed: Float) {
+        playbackSpeed = speed
+        if isPlaying && !isFastForwarding {
+            activePlayer?.rate = speed
+        }
+        let label = speed == 1.0 ? "1.0x (Обычная)" : (speed == Float(Int(speed)) ? "\(Int(speed)).0x" : String(format: "%.2gx", speed))
+        ToastManager.shared.show(title: "Скорость: \(label)", icon: "gauge.with.needle.fill", iconColor: Color.slooshAccent)
+    }
+
+    func fetchMasterPlaylistQualities(url: URL, headers: [String: String]) async {
+        guard url.path.hasSuffix(".m3u8") || url.absoluteString.contains(".m3u8") else { return }
+        var request = URLRequest(url: url)
+        for (k, v) in headers {
+            request.setValue(v, forHTTPHeaderField: k)
+        }
+        request.timeoutInterval = 4.0
+        guard let (data, _) = try? await URLSession.shared.data(for: request),
+              let text = String(data: data, encoding: .utf8) else {
+            return
+        }
+        let regex = try? NSRegularExpression(pattern: "RESOLUTION=\\d+x(\\d+)", options: [])
+        let matches = regex?.matches(in: text, range: NSRange(text.startIndex..., in: text)) ?? []
+        var heights: Set<Int> = []
+        for match in matches {
+            if match.numberOfRanges > 1,
+               let range = Range(match.range(at: 1), in: text),
+               let h = Int(text[range]) {
+                heights.insert(h)
+            }
+        }
+        if !heights.isEmpty {
+            let sortedHeights = heights.sorted(by: >)
+            var list = ["Авто"]
+            for h in sortedHeights {
+                list.append("\(h)p")
+            }
+            await MainActor.run {
+                self.availableQualities = list
             }
         }
     }
@@ -170,7 +279,7 @@ final class ClipPlaybackCoordinator: ObservableObject {
             guard let self, let player else { return }
             self.isScrubbing = false
             if self.isPlaying {
-                player.play()
+                self.playWithCurrentSpeed()
             }
         }
     }
@@ -185,8 +294,7 @@ final class ClipPlaybackCoordinator: ObservableObject {
             player.pause()
             isPlaying = false
         } else {
-            player.play()
-            isPlaying = true
+            playWithCurrentSpeed()
         }
     }
 
@@ -203,7 +311,7 @@ final class ClipPlaybackCoordinator: ObservableObject {
         }
         isFastForwarding = false
         if isPlaying {
-            player.rate = 1.0
+            player.rate = playbackSpeed
         } else {
             player.pause()
         }
@@ -219,8 +327,7 @@ final class ClipPlaybackCoordinator: ObservableObject {
         if activePlayer == nil || currentClipId != clip.id {
             setupPlayer(for: clip)
         } else {
-            activePlayer?.play()
-            isPlaying = true
+            playWithCurrentSpeed()
         }
     }
 
@@ -274,6 +381,9 @@ public struct ClipsFeedView: View {
     }
 
     @State private var currentClipId: String? = ClipsRepository.shared.clips.first?.id
+    @State private var clipToDelete: MovieClip?
+    @State private var showDeleteConfirmation: Bool = false
+    @State private var isDeletingClip: Bool = false
     @State private var showCommentsForClip: MovieClip?
     @State private var fullPlayerConfig: PlayerConfig?
     @State private var showBigHeart: Bool = false
@@ -282,6 +392,13 @@ public struct ClipsFeedView: View {
     @State private var isScrubbing: Bool = false
     @State private var scrubProgress: Double = 0.0
     @State private var lastTapTime: Date = Date.distantPast
+
+    private var currentVisibleClip: MovieClip? {
+        if let currentClipId {
+            return clipsRepo.clips.first(where: { $0.id == currentClipId })
+        }
+        return clipsRepo.clips.first
+    }
 
     public init() {}
 
@@ -334,6 +451,16 @@ public struct ClipsFeedView: View {
                 .preferredColorScheme(.dark)
                 .environment(\.colorScheme, .dark)
         }
+        .alert("Удалить момент?", isPresented: $showDeleteConfirmation, presenting: clipToDelete) { clip in
+            Button("Отмена", role: .cancel) {
+                clipToDelete = nil
+            }
+            Button("Удалить", role: .destructive) {
+                executeDeleteClip(clip)
+            }
+        } message: { _ in
+            Text("Вы уверены, что хотите удалить этот момент? Это действие нельзя отменить.")
+        }
         .onDisappear {
             playback.pause()
         }
@@ -349,6 +476,7 @@ public struct ClipsFeedView: View {
             // Status bar clearance (keeps title at the exact same height as other screens)
             Color.clear
                 .frame(height: topSafeArea)
+                .allowsHitTesting(false)
 
             // Header title bar (matching SettingsView and native navigation header height)
             ZStack {
@@ -356,6 +484,16 @@ public struct ClipsFeedView: View {
                     .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(.white)
                     .shadow(color: .black.opacity(0.8), radius: 6, x: 0, y: 1)
+                    .allowsHitTesting(false)
+
+                HStack {
+                    Spacer()
+
+                    if let clip = currentVisibleClip {
+                        actionsMenuView(for: clip)
+                            .padding(.trailing, 16)
+                    }
+                }
             }
             .frame(maxWidth: .infinity)
             .frame(height: 44)
@@ -371,11 +509,165 @@ public struct ClipsFeedView: View {
             )
             .padding(.bottom, -8)
             .ignoresSafeArea(edges: .top)
+            .allowsHitTesting(false)
         )
-        .allowsHitTesting(false)
         .ignoresSafeArea(edges: .top)
         .opacity(showCommentsForClip != nil ? 0.0 : 1.0)
         .animation(.spring(response: 0.28, dampingFraction: 0.85), value: showCommentsForClip != nil)
+    }
+
+    // MARK: - Actions Menu (Quality, Speed, Scale, Share, Delete for author)
+
+    private func actionsMenuView(for clip: MovieClip) -> some View {
+        Menu {
+            // 1. Качество
+            Menu {
+                ForEach(playback.availableQualities, id: \.self) { quality in
+                    Button {
+                        playback.setQuality(quality)
+                    } label: {
+                        HStack {
+                            Text(quality)
+                            if playback.currentQuality == quality {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+            } label: {
+                Label("Качество (\(playback.currentQuality))", systemImage: "gearshape")
+            }
+
+            // 2. Скорость
+            Menu {
+                ForEach([0.5, 0.75, 1.0, 1.25, 1.5, 2.0], id: \.self) { (speed: Double) in
+                    let s = Float(speed)
+                    Button {
+                        playback.setSpeed(s)
+                    } label: {
+                        HStack {
+                            Text(speedLabel(for: s))
+                            if abs(playback.playbackSpeed - s) < 0.01 {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+            } label: {
+                Label("Скорость (\(playback.speedLabel))", systemImage: "gauge.with.needle")
+            }
+
+            // 3. Масштаб видео
+            Menu {
+                Button {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                        clipScaleModeRaw = ClipScalingMode.fit.rawValue
+                    }
+                } label: {
+                    HStack {
+                        Text("В кадре (16:9)")
+                        if currentScaleMode == .fit {
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+
+                Button {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                        clipScaleModeRaw = ClipScalingMode.fill.rawValue
+                    }
+                } label: {
+                    HStack {
+                        Text("Во весь экран (9:16)")
+                        if currentScaleMode == .fill {
+                            Image(systemName: "checkmark")
+                        }
+                    }
+                }
+            } label: {
+                Label("Масштаб", systemImage: "aspectratio")
+            }
+
+            // 4. Поделиться
+            Button {
+                shareClip(clip)
+            } label: {
+                Label("Поделиться", systemImage: "arrowshape.turn.up.right")
+            }
+
+            // 5. Удалить момент (только для автора)
+            if isAuthor(of: clip) {
+                Divider()
+
+                Button(role: .destructive) {
+                    confirmDelete(clip: clip)
+                } label: {
+                    Label("Удалить момент", systemImage: "trash")
+                }
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.system(size: 15, weight: .semibold))
+                .foregroundStyle(.white)
+                .frame(width: 36, height: 36)
+                .glassEffect(.regular.interactive(), in: .circle)
+                .shadow(color: .black.opacity(0.4), radius: 4)
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func speedLabel(for speed: Float) -> String {
+        if speed == 1.0 {
+            return "1.0x (Обычная)"
+        } else if speed == Float(Int(speed)) {
+            return "\(Int(speed)).0x"
+        } else {
+            return String(format: "%.2gx", speed)
+        }
+    }
+
+    private func isAuthor(of clip: MovieClip) -> Bool {
+        let currentUserId = authRepo.currentUser?.id
+        let guestId = "guest_\(UIDevice.current.identifierForVendor?.uuidString ?? "user")"
+        if let currentUserId, !currentUserId.isEmpty, clip.authorId == currentUserId {
+            return true
+        }
+        if clip.authorId == guestId {
+            return true
+        }
+        if authRepo.currentUser?.isAdmin == true {
+            return true
+        }
+        return false
+    }
+
+    private func confirmDelete(clip: MovieClip) {
+        clipToDelete = clip
+        showDeleteConfirmation = true
+    }
+
+    private func executeDeleteClip(_ clip: MovieClip) {
+        isDeletingClip = true
+        Task {
+            do {
+                let nextClip = clipsRepo.clips.first(where: { $0.id != clip.id })
+                try await clipsRepo.deleteClip(clipId: clip.id)
+                ToastManager.shared.show(title: "Момент удалён", icon: "trash.fill", iconColor: .red)
+                if currentClipId == clip.id {
+                    if let nextClip {
+                        currentClipId = nextClip.id
+                        playback.setupPlayer(for: nextClip)
+                    } else {
+                        currentClipId = nil
+                        playback.cleanup()
+                    }
+                }
+            } catch {
+                ToastManager.shared.show(title: "Не удалось удалить", icon: "exclamationmark.triangle.fill", iconColor: .orange)
+            }
+            isDeletingClip = false
+            clipToDelete = nil
+        }
     }
 
     // MARK: - Empty State
