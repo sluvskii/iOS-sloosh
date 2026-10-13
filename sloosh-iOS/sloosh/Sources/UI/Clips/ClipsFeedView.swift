@@ -1391,6 +1391,7 @@ public struct ClipsFeedView: View {
         }
         .frame(width: 54)
     }
+}
 
 // MARK: - Isolated Clip Progress Bar View (Only redrawn when progress ticks)
 
