@@ -1298,18 +1298,27 @@ public struct ClipsFeedView: View {
             }
         } label: {
             VStack(spacing: 4) {
-                Image(systemName: "heart.fill")
-                    .font(.system(size: 26))
-                    .foregroundStyle(isLiked ? Color.red : .white)
-                    .scaleEffect(isLiked ? 1.15 : 1.0)
-                    .contentTransition(.symbolEffect(.replace))
-                    .animation(.spring(response: 0.25, dampingFraction: 0.6), value: isLiked)
+                ZStack {
+                    if isLiked {
+                        HeartShape()
+                            .fill(Color.red.opacity(0.35))
+                    }
+
+                    Image(systemName: "heart.fill")
+                        .font(.system(size: 20, weight: isLiked ? .bold : .semibold))
+                        .foregroundStyle(isLiked ? Color.red : .white)
+                        .scaleEffect(isLiked ? 1.15 : 1.0)
+                        .contentTransition(.symbolEffect(.replace))
+                        .animation(.spring(response: 0.25, dampingFraction: 0.6), value: isLiked)
+                }
+                .frame(width: 44, height: 40)
+                .glassEffect(.regular.interactive(), in: HeartShape())
 
                 Text("\(clip.likesCount)")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.white)
             }
-            .frame(width: 52, height: 50)
+            .frame(width: 52, height: 58)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -1322,14 +1331,16 @@ public struct ClipsFeedView: View {
         } label: {
             VStack(spacing: 4) {
                 Image(systemName: "bubble.right.fill")
-                    .font(.system(size: 24))
+                    .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(.white)
+                    .frame(width: 44, height: 40)
+                    .glassEffect(.regular.interactive(), in: SpeechBubbleShape())
 
                 Text("\(clip.commentsCount)")
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(.white)
             }
-            .frame(width: 52, height: 50)
+            .frame(width: 52, height: 58)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -1342,8 +1353,10 @@ public struct ClipsFeedView: View {
         } label: {
             VStack(spacing: 4) {
                 Image(systemName: "arrowshape.turn.up.right.fill")
-                    .font(.system(size: 24))
+                    .font(.system(size: 18, weight: .semibold))
                     .foregroundStyle(.white)
+                    .frame(width: 44, height: 40)
+                    .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
 
                 Text("Поделиться")
                     .font(.system(size: 9.5, weight: .semibold))
@@ -1351,7 +1364,7 @@ public struct ClipsFeedView: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.8)
             }
-            .frame(width: 56, height: 50)
+            .frame(width: 56, height: 58)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -1372,9 +1385,11 @@ public struct ClipsFeedView: View {
         } label: {
             VStack(spacing: 4) {
                 Image(systemName: currentScaleMode == .fit ? "arrow.up.left.and.arrow.down.right" : "arrow.down.right.and.arrow.up.left")
-                    .font(.system(size: 22, weight: .semibold))
+                    .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(.white)
                     .contentTransition(.symbolEffect(.replace.downUp.byLayer))
+                    .frame(width: 44, height: 40)
+                    .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
 
                 Text(currentScaleMode == .fit ? "9:16" : "В кадре")
                     .font(.system(size: 9.5, weight: .semibold))
@@ -1384,7 +1399,7 @@ public struct ClipsFeedView: View {
                     .minimumScaleFactor(0.8)
             }
             .animation(.spring(response: 0.35, dampingFraction: 0.75), value: currentScaleMode)
-            .frame(width: 56, height: 50)
+            .frame(width: 56, height: 58)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -1601,3 +1616,133 @@ extension ClipsFeedView {
         self.fullPlayerConfig = config
     }
 }
+
+// MARK: - Native Liquid Glass Shapes for Action Rail
+
+/// Векторное скругленное сердце Безье для нативного Apple Liquid Glass (.glassEffect)
+public struct HeartShape: Shape {
+    public init() {}
+
+    public func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let side = min(rect.width, rect.height)
+        let x = rect.midX - side / 2
+        let y = rect.midY - side / 2
+        let w = side
+        let h = side
+
+        // Верхняя центральная выемка сердца
+        let topNotch = CGPoint(x: x + w * 0.5, y: y + h * 0.28)
+        path.move(to: topNotch)
+
+        // Правая верхняя дуга
+        path.addCurve(
+            to: CGPoint(x: x + w * 0.96, y: y + h * 0.40),
+            control1: CGPoint(x: x + w * 0.72, y: y + h * 0.00),
+            control2: CGPoint(x: x + w * 1.00, y: y + h * 0.16)
+        )
+
+        // Правая сторона вниз к нижнему кончику
+        path.addCurve(
+            to: CGPoint(x: x + w * 0.5, y: y + h * 0.94),
+            control1: CGPoint(x: x + w * 0.92, y: y + h * 0.64),
+            control2: CGPoint(x: x + w * 0.68, y: y + h * 0.82)
+        )
+
+        // Левая сторона вверх от кончика к левой дуге
+        path.addCurve(
+            to: CGPoint(x: x + w * 0.04, y: y + h * 0.40),
+            control1: CGPoint(x: x + w * 0.32, y: y + h * 0.82),
+            control2: CGPoint(x: x + w * 0.08, y: y + h * 0.64)
+        )
+
+        // Левая верхняя дуга обратно к выемке
+        path.addCurve(
+            to: topNotch,
+            control1: CGPoint(x: x + w * 0.00, y: y + h * 0.16),
+            control2: CGPoint(x: x + w * 0.28, y: y + h * 0.00)
+        )
+
+        path.closeSubpath()
+        return path
+    }
+}
+
+/// Нативный диалоговый бабл с хвостиком для Liquid Glass (.glassEffect)
+public struct SpeechBubbleShape: Shape {
+    public init() {}
+
+    public func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let w = rect.width
+        let h = rect.height
+
+        let tailHeight: CGFloat = 5.0
+        let bubbleHeight = h - tailHeight
+        let r: CGFloat = 11.0
+
+        // Начинаем сверху слева после скругления
+        path.move(to: CGPoint(x: r, y: 0))
+
+        // Верхний край
+        path.addLine(to: CGPoint(x: w - r, y: 0))
+
+        // Правый верхний угол
+        path.addArc(
+            center: CGPoint(x: w - r, y: r),
+            radius: r,
+            startAngle: Angle(degrees: -90),
+            endAngle: Angle(degrees: 0),
+            clockwise: false
+        )
+
+        // Правый край
+        path.addLine(to: CGPoint(x: w, y: bubbleHeight - r))
+
+        // Правый нижний угол
+        path.addArc(
+            center: CGPoint(x: w - r, y: bubbleHeight - r),
+            radius: r,
+            startAngle: Angle(degrees: 0),
+            endAngle: Angle(degrees: 90),
+            clockwise: false
+        )
+
+        // Нижний край до начала хвостика
+        path.addLine(to: CGPoint(x: w - 12, y: bubbleHeight))
+
+        // Хвостик: кончик
+        path.addLine(to: CGPoint(x: w - 6, y: h))
+
+        // Возврат хвостика к нижнему краю
+        path.addLine(to: CGPoint(x: w - 20, y: bubbleHeight))
+
+        // Нижний край до левого нижнего угла
+        path.addLine(to: CGPoint(x: r, y: bubbleHeight))
+
+        // Левый нижний угол
+        path.addArc(
+            center: CGPoint(x: r, y: bubbleHeight - r),
+            radius: r,
+            startAngle: Angle(degrees: 90),
+            endAngle: Angle(degrees: 180),
+            clockwise: false
+        )
+
+        // Левый край
+        path.addLine(to: CGPoint(x: 0, y: r))
+
+        // Левый верхний угол
+        path.addArc(
+            center: CGPoint(x: r, y: r),
+            radius: r,
+            startAngle: Angle(degrees: 180),
+            endAngle: Angle(degrees: 270),
+            clockwise: false
+        )
+
+        path.closeSubpath()
+        return path
+    }
+}
+
