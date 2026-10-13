@@ -581,10 +581,10 @@ public struct ClipsFeedView: View {
                 .frame(height: statusBarClearance)
                 .allowsHitTesting(false)
 
-            // Header title bar (perfectly symmetrical with matching 36x36 balances on left and right)
+            // Header title bar (perfectly symmetrical with matching 44x44 balances on left and right)
             HStack(spacing: 0) {
                 Color.clear
-                    .frame(width: 36, height: 36)
+                    .frame(width: 44, height: 44)
                     .padding(.leading, 16)
                     .allowsHitTesting(false)
 
@@ -602,7 +602,7 @@ public struct ClipsFeedView: View {
                         .padding(.trailing, 16)
                 } else {
                     Color.clear
-                        .frame(width: 36, height: 36)
+                        .frame(width: 44, height: 44)
                         .padding(.trailing, 16)
                         .allowsHitTesting(false)
                 }
@@ -715,11 +715,11 @@ public struct ClipsFeedView: View {
             }
         } label: {
             Image(systemName: "ellipsis")
-                .font(.system(size: 15, weight: .semibold))
+                .font(.system(size: 20, weight: .semibold))
                 .foregroundStyle(.white)
-                .offset(y: -1)
-                .frame(width: 36, height: 36)
+                .frame(width: 44, height: 44)
                 .glassEffect(.regular.interactive(), in: .circle)
+                .contentShape(Circle())
         }
         .tint(.white)
         .buttonStyle(.plain)
