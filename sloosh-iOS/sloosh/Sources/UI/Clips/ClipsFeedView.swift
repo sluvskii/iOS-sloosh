@@ -1270,170 +1270,8 @@ public struct ClipsFeedView: View {
     // MARK: - Author Avatar
 
     private func authorAvatarView(_ clip: MovieClip) -> some View {
-        LiquidGlassAvatarButton(clip: clip) {
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        }
-    }
-
-    // MARK: - Action Buttons
-
-    private func likeButtonView(_ clip: MovieClip) -> some View {
-        let isLiked = clipsRepo.isLiked(clipId: clip.id)
-
-        return LiquidGlassRailButton(
-            shape: HeartShape(),
-            tint: isLiked ? Color.red.opacity(0.88) : nil,
-            isHighlighted: isLiked,
-            text: "\(clip.likesCount)",
-            textColor: isLiked ? Color.red : .white
-        ) {
-            Task {
-                _ = await clipsRepo.toggleLike(for: clip.id)
-            }
-        }
-    }
-
-    private func commentButtonView(_ clip: MovieClip) -> some View {
-        LiquidGlassRailButton(
-            shape: SpeechBubbleShape(),
-            text: "\(clip.commentsCount)"
-        ) {
-            showCommentsForClip = clip
-        }
-    }
-
-    private func shareButtonView(_ clip: MovieClip) -> some View {
-        LiquidGlassRailButton(
-            shape: ShareArrowShape(),
-            text: "Поделиться"
-        ) {
-            shareClip(clip)
-        }
-    }
-
-    private var scaleModeButtonView: some View {
-        LiquidGlassRailButton(
-            shape: AspectExpandShape(),
-            text: currentScaleMode == .fit ? "9:16" : "В кадре"
-        ) {
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
-                if currentScaleMode == .fit {
-                    clipScaleModeRaw = ClipScalingMode.fill.rawValue
-                    ToastManager.shared.show(title: "Режим: Во весь экран (9:16)", icon: "arrow.up.left.and.arrow.down.right", iconColor: .white)
-                } else {
-                    clipScaleModeRaw = ClipScalingMode.fit.rawValue
-                    ToastManager.shared.show(title: "Режим: В кадре", icon: "arrow.down.right.and.arrow.up.left", iconColor: .white)
-                }
-            }
-        }
-    }
-
-    // MARK: - Scrubber Progress Bar Component (Isolated observation)
-}
-
-// MARK: - Interactive Liquid Glass Action Rail Button (100% Reliable Hit-Testing + Elastic Finger Stretch)
-
-private struct LiquidGlassRailButton<S: Shape>: View {
-    let shape: S
-    let tint: Color?
-    let isHighlighted: Bool
-    let text: String
-    let textColor: Color
-    let action: () -> Void
-
-    @State private var dragOffset: CGSize = .zero
-    @State private var isDragging: Bool = false
-
-    init(
-        shape: S,
-        tint: Color? = nil,
-        isHighlighted: Bool = false,
-        text: String,
-        textColor: Color = .white,
-        action: @escaping () -> Void
-    ) {
-        self.shape = shape
-        self.tint = tint
-        self.isHighlighted = isHighlighted
-        self.text = text
-        self.textColor = textColor
-        self.action = action
-    }
-
-    var body: some View {
-        Button {
-            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-            action()
-        } label: {
-            VStack(spacing: 4) {
-                ZStack {
-                    // 1. Solid hit-test geometry ensuring 100% reliable tap reception
-                    shape
-                        .fill(Color.white.opacity(0.001))
-
-                    // 2. Active tint fill (e.g. vibrant red heart when liked)
-                    if let tint {
-                        shape
-                            .fill(tint)
-                    }
-
-                    // 3. True Apple Liquid Glass surface refraction & specular edge
-                    shape
-                        .fill(Color.clear)
-                        .glassEffect(.regular.interactive(), in: shape)
-                }
-                .frame(width: 36, height: 36)
-                .offset(dragOffset)
-                .scaleEffect(isDragging ? 0.88 : (isHighlighted ? 1.12 : 1.0))
-                .animation(.spring(response: 0.25, dampingFraction: 0.6), value: isDragging)
-                .animation(.spring(response: 0.25, dampingFraction: 0.6), value: isHighlighted)
-
-                Text(text)
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(textColor)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.8)
-            }
-            .frame(width: 54, height: 52)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 0)
-                .onChanged { value in
-                    isDragging = true
-                    let maxDist: CGFloat = 12.0
-                    let dx = value.translation.width
-                    let dy = value.translation.height
-                    let dist = sqrt(dx * dx + dy * dy)
-                    if dist > 0 {
-                        let clamped = min(dist * 0.45, maxDist)
-                        dragOffset = CGSize(width: (dx / dist) * clamped, height: (dy / dist) * clamped)
-                    }
-                }
-                .onEnded { _ in
-                    withAnimation(.spring(response: 0.32, dampingFraction: 0.62)) {
-                        dragOffset = .zero
-                        isDragging = false
-                    }
-                }
-        )
-    }
-}
-
-// MARK: - Interactive Liquid Glass Avatar Button
-
-private struct LiquidGlassAvatarButton: View {
-    let clip: MovieClip
-    let action: () -> Void
-
-    @State private var dragOffset: CGSize = .zero
-    @State private var isDragging: Bool = false
-
-    var body: some View {
         Button {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            action()
         } label: {
             SlooshAvatarView(
                 avatarSource: clip.authorAvatar,
@@ -1441,36 +1279,118 @@ private struct LiquidGlassAvatarButton: View {
                 size: 36
             )
             .frame(width: 36, height: 36)
-            .glassEffect(.regular.interactive(), in: .circle)
-            .offset(dragOffset)
-            .scaleEffect(isDragging ? 0.88 : 1.0)
-            .animation(.spring(response: 0.25, dampingFraction: 0.6), value: isDragging)
-            .frame(width: 54, height: 44)
-            .contentShape(Rectangle())
+            .contentShape(Circle())
         }
-        .buttonStyle(.plain)
-        .simultaneousGesture(
-            DragGesture(minimumDistance: 0)
-                .onChanged { value in
-                    isDragging = true
-                    let maxDist: CGFloat = 12.0
-                    let dx = value.translation.width
-                    let dy = value.translation.height
-                    let dist = sqrt(dx * dx + dy * dy)
-                    if dist > 0 {
-                        let clamped = min(dist * 0.45, maxDist)
-                        dragOffset = CGSize(width: (dx / dist) * clamped, height: (dy / dist) * clamped)
-                    }
-                }
-                .onEnded { _ in
-                    withAnimation(.spring(response: 0.32, dampingFraction: 0.62)) {
-                        dragOffset = .zero
-                        isDragging = false
-                    }
-                }
-        )
+        .buttonStyle(.glassPress)
+        .glassEffect(.regular.interactive(), in: .circle)
+        .frame(width: 54)
     }
-}
+
+    // MARK: - Action Buttons
+
+    private func likeButtonView(_ clip: MovieClip) -> some View {
+        let isLiked = clipsRepo.isLiked(clipId: clip.id)
+
+        return VStack(spacing: 4) {
+            Button {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                Task {
+                    _ = await clipsRepo.toggleLike(for: clip.id)
+                }
+            } label: {
+                HeartShape()
+                    .fill(isLiked ? Color.red.opacity(0.88) : Color.white.opacity(0.001))
+                    .frame(width: 36, height: 36)
+                    .contentShape(HeartShape())
+                    .scaleEffect(isLiked ? 1.15 : 1.0)
+                    .animation(.spring(response: 0.25, dampingFraction: 0.6), value: isLiked)
+            }
+            .buttonStyle(.glassPress)
+            .glassEffect(.regular.interactive(), in: HeartShape())
+
+            Text("\(clip.likesCount)")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(isLiked ? Color.red : .white)
+        }
+        .frame(width: 54)
+    }
+
+    private func commentButtonView(_ clip: MovieClip) -> some View {
+        VStack(spacing: 4) {
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                showCommentsForClip = clip
+            } label: {
+                SpeechBubbleShape()
+                    .fill(Color.white.opacity(0.001))
+                    .frame(width: 36, height: 36)
+                    .contentShape(SpeechBubbleShape())
+            }
+            .buttonStyle(.glassPress)
+            .glassEffect(.regular.interactive(), in: SpeechBubbleShape())
+
+            Text("\(clip.commentsCount)")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.white)
+        }
+        .frame(width: 54)
+    }
+
+    private func shareButtonView(_ clip: MovieClip) -> some View {
+        VStack(spacing: 4) {
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                shareClip(clip)
+            } label: {
+                ShareArrowShape()
+                    .fill(Color.white.opacity(0.001))
+                    .frame(width: 36, height: 36)
+                    .contentShape(ShareArrowShape())
+            }
+            .buttonStyle(.glassPress)
+            .glassEffect(.regular.interactive(), in: ShareArrowShape())
+
+            Text("Поделиться")
+                .font(.system(size: 9.0, weight: .semibold))
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+        }
+        .frame(width: 54)
+    }
+
+    private var scaleModeButtonView: some View {
+        VStack(spacing: 4) {
+            Button {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+                    if currentScaleMode == .fit {
+                        clipScaleModeRaw = ClipScalingMode.fill.rawValue
+                        ToastManager.shared.show(title: "Режим: Во весь экран (9:16)", icon: "arrow.up.left.and.arrow.down.right", iconColor: .white)
+                    } else {
+                        clipScaleModeRaw = ClipScalingMode.fit.rawValue
+                        ToastManager.shared.show(title: "Режим: В кадре", icon: "arrow.down.right.and.arrow.up.left", iconColor: .white)
+                    }
+                }
+            } label: {
+                AspectExpandShape()
+                    .fill(Color.white.opacity(0.001))
+                    .frame(width: 36, height: 36)
+                    .contentShape(AspectExpandShape())
+            }
+            .buttonStyle(.glassPress)
+            .glassEffect(.regular.interactive(), in: AspectExpandShape())
+
+            Text(currentScaleMode == .fit ? "9:16" : "В кадре")
+                .font(.system(size: 9.0, weight: .semibold))
+                .foregroundStyle(.white)
+                .contentTransition(.numericText())
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .animation(.spring(response: 0.35, dampingFraction: 0.75), value: currentScaleMode)
+        }
+        .frame(width: 54)
+    }
 
 // MARK: - Isolated Clip Progress Bar View (Only redrawn when progress ticks)
 
@@ -1684,31 +1604,42 @@ extension ClipsFeedView {
 // MARK: - Native Liquid Glass Shapes for Action Rail
 
 /// Векторное скругленное сердце Безье для нативного Apple Liquid Glass (.glassEffect)
-public struct HeartShape: Shape {
-    public init() {}
+public struct HeartShape: InsettableShape {
+    var insetAmount: CGFloat = 0
+
+    public init(insetAmount: CGFloat = 0) {
+        self.insetAmount = insetAmount
+    }
+
+    public func inset(by amount: CGFloat) -> HeartShape {
+        var copy = self
+        copy.insetAmount += amount
+        return copy
+    }
 
     public func path(in rect: CGRect) -> Path {
+        let insetRect = rect.insetBy(dx: insetAmount, dy: insetAmount)
         var path = Path()
-        let side = min(rect.width, rect.height)
-        let x = rect.midX - side / 2
-        let y = rect.midY - side / 2
+        let side = max(0, min(insetRect.width, insetRect.height))
+        let x = insetRect.midX - side / 2
+        let y = insetRect.midY - side / 2
         let w = side
         let h = side
 
         // Верхняя центральная выемка сердца
-        let topNotch = CGPoint(x: x + w * 0.5, y: y + h * 0.28)
+        let topNotch = CGPoint(x: x + w * 0.50, y: y + h * 0.26)
         path.move(to: topNotch)
 
         // Правая верхняя дуга
         path.addCurve(
             to: CGPoint(x: x + w * 0.96, y: y + h * 0.40),
-            control1: CGPoint(x: x + w * 0.72, y: y + h * 0.00),
-            control2: CGPoint(x: x + w * 1.00, y: y + h * 0.16)
+            control1: CGPoint(x: x + w * 0.72, y: y + h * 0.04),
+            control2: CGPoint(x: x + w * 1.00, y: y + h * 0.18)
         )
 
         // Правая сторона вниз к нижнему кончику
         path.addCurve(
-            to: CGPoint(x: x + w * 0.5, y: y + h * 0.94),
+            to: CGPoint(x: x + w * 0.50, y: y + h * 0.94),
             control1: CGPoint(x: x + w * 0.92, y: y + h * 0.64),
             control2: CGPoint(x: x + w * 0.68, y: y + h * 0.82)
         )
@@ -1723,8 +1654,8 @@ public struct HeartShape: Shape {
         // Левая верхняя дуга обратно к выемке
         path.addCurve(
             to: topNotch,
-            control1: CGPoint(x: x + w * 0.00, y: y + h * 0.16),
-            control2: CGPoint(x: x + w * 0.28, y: y + h * 0.00)
+            control1: CGPoint(x: x + w * 0.00, y: y + h * 0.18),
+            control2: CGPoint(x: x + w * 0.28, y: y + h * 0.04)
         )
 
         path.closeSubpath()
@@ -1733,14 +1664,25 @@ public struct HeartShape: Shape {
 }
 
 /// Нативный органичный диалоговый бабл с мягким изогнутым хвостиком для Liquid Glass (.glassEffect)
-public struct SpeechBubbleShape: Shape {
-    public init() {}
+public struct SpeechBubbleShape: InsettableShape {
+    var insetAmount: CGFloat = 0
+
+    public init(insetAmount: CGFloat = 0) {
+        self.insetAmount = insetAmount
+    }
+
+    public func inset(by amount: CGFloat) -> SpeechBubbleShape {
+        var copy = self
+        copy.insetAmount += amount
+        return copy
+    }
 
     public func path(in rect: CGRect) -> Path {
+        let insetRect = rect.insetBy(dx: insetAmount, dy: insetAmount)
         var path = Path()
-        let side = min(rect.width, rect.height)
-        let x = rect.midX - side / 2
-        let y = rect.midY - side / 2
+        let side = max(0, min(insetRect.width, insetRect.height))
+        let x = insetRect.midX - side / 2
+        let y = insetRect.midY - side / 2
         let w = side
         let h = side
 
@@ -1748,7 +1690,7 @@ public struct SpeechBubbleShape: Shape {
         let bubbleBottom = y + h * 0.76
         let bubbleLeft = x + w * 0.05
         let bubbleRight = x + w * 0.95
-        let r = (bubbleBottom - bubbleTop) * 0.42
+        let r = max(1, (bubbleBottom - bubbleTop) * 0.42)
 
         // 1. Старт в верхней левой точке после скругления
         path.move(to: CGPoint(x: bubbleLeft + r, y: bubbleTop))
@@ -1821,14 +1763,25 @@ public struct SpeechBubbleShape: Shape {
 }
 
 /// Нативная изогнутая стрелка «Поделиться» для Liquid Glass (.glassEffect)
-public struct ShareArrowShape: Shape {
-    public init() {}
+public struct ShareArrowShape: InsettableShape {
+    var insetAmount: CGFloat = 0
+
+    public init(insetAmount: CGFloat = 0) {
+        self.insetAmount = insetAmount
+    }
+
+    public func inset(by amount: CGFloat) -> ShareArrowShape {
+        var copy = self
+        copy.insetAmount += amount
+        return copy
+    }
 
     public func path(in rect: CGRect) -> Path {
+        let insetRect = rect.insetBy(dx: insetAmount, dy: insetAmount)
         var path = Path()
-        let side = min(rect.width, rect.height)
-        let x = rect.midX - side / 2
-        let y = rect.midY - side / 2
+        let side = max(0, min(insetRect.width, insetRect.height))
+        let x = insetRect.midX - side / 2
+        let y = insetRect.midY - side / 2
         let w = side
         let h = side
 
@@ -1871,14 +1824,25 @@ public struct ShareArrowShape: Shape {
 }
 
 /// Нативная диагональная двойная стрелка масштабирования для Liquid Glass (.glassEffect)
-public struct AspectExpandShape: Shape {
-    public init() {}
+public struct AspectExpandShape: InsettableShape {
+    var insetAmount: CGFloat = 0
+
+    public init(insetAmount: CGFloat = 0) {
+        self.insetAmount = insetAmount
+    }
+
+    public func inset(by amount: CGFloat) -> AspectExpandShape {
+        var copy = self
+        copy.insetAmount += amount
+        return copy
+    }
 
     public func path(in rect: CGRect) -> Path {
+        let insetRect = rect.insetBy(dx: insetAmount, dy: insetAmount)
         var path = Path()
-        let side = min(rect.width, rect.height)
-        let x = rect.midX - side / 2
-        let y = rect.midY - side / 2
+        let side = max(0, min(insetRect.width, insetRect.height))
+        let x = insetRect.midX - side / 2
+        let y = insetRect.midY - side / 2
         let w = side
         let h = side
 
