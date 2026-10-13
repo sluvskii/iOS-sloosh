@@ -32,7 +32,7 @@ class HlsProxyServer {
         config.httpMaximumConnectionsPerHost = 20
         config.timeoutIntervalForRequest = 30  // Увеличен с 15 до 30 с
         config.timeoutIntervalForResource = 90 // Общий таймаут ресурса 90 с
-        let delegate = TrustAllSessionDelegate()
+        let delegate = ProxyTrustAllSessionDelegate()
         return URLSession(configuration: config, delegate: delegate, delegateQueue: nil)
     }()
 
@@ -703,5 +703,40 @@ class HlsProxyServer {
             }
             return "video/mp4"
         }
+    }
+}
+
+final class ProxyTrustAllSessionDelegate: NSObject, @preconcurrency URLSessionDelegate, URLSessionTaskDelegate, @unchecked Sendable {
+    nonisolated func urlSession(
+        _ session: URLSession,
+        didReceive challenge: URLAuthenticationChallenge,
+        completionHandler: @escaping @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void
+    ) {
+        guard challenge.protectionSpace.authenticationMethod == NSURLAuthenticationMethodServerTrust,
+              let serverTrust = challenge.protectionSpace.serverTrust else {
+            completionHandler(.performDefaultHandling, nil)
+            return
+        }
+        // Accept server trust for media proxying (handles Russian CA and dynamic CDN intermediates)
+        completionHandler(.useCredential, URLCredential(trust: serverTrust))
+    }
+
+    func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        willPerformHTTPRedirection response: HTTPURLResponse,
+        newRequest request: URLRequest,
+        completionHandler: @escaping @Sendable (URLRequest?) -> Void
+    ) {
+        var redirectedRequest = request
+        if let originalRequest = task.originalRequest {
+            let headersToPreserve = ["Range", "Referer", "Origin", "Accept", "User-Agent", "Accepts-Controls", "Authorizations", "Authorization"]
+            for header in headersToPreserve {
+                if let value = originalRequest.value(forHTTPHeaderField: header) {
+                    redirectedRequest.setValue(value, forHTTPHeaderField: header)
+                }
+            }
+        }
+        completionHandler(redirectedRequest)
     }
 }

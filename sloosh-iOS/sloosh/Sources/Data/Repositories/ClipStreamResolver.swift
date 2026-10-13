@@ -120,9 +120,38 @@ public final class ClipStreamResolver {
                     }
                     AppDiagnostics.shared.log("[ClipStreamResolver] Successfully resolved clip=\(clip.id) host=\(resolvedUrl.host ?? "")")
                     return ResolvedClipPlayback(url: resolvedUrl, headers: headers)
-                }
             } catch {
                 AppDiagnostics.shared.log("[ClipStreamResolver] Stream resolution failed for clip \(clip.id): \(error)")
+            }
+        }
+
+        // 3.5. Fallback to Collaps (Source 2) if Alloha did not yield a stream
+        let collapsKpId = (clip.kpId ?? 0) > 0 ? clip.kpId : nil
+        if collapsKpId != nil || !clip.title.isEmpty {
+            AppDiagnostics.shared.log("[ClipStreamResolver] Attempting Collaps fallback for clip=\(clip.id)")
+            if let collaps = try? await CollapsRepository.shared.fetchMedia(
+                kpId: collapsKpId,
+                imdbId: nil,
+                title: clip.title
+            ) {
+                var collapsStreamUrl: String? = nil
+                switch collaps.catalog {
+                case .series(_, let seasons):
+                    let sNum = clip.season ?? 1
+                    let epNum = clip.episode ?? 1
+                    if let sMatch = seasons.first(where: { $0.season == sNum }),
+                       let epMatch = sMatch.episodes.first(where: { $0.episode == epNum }) {
+                        collapsStreamUrl = epMatch.playlist.primaryUrl
+                    }
+                case .movie(_, let playlist):
+                    collapsStreamUrl = playlist.primaryUrl
+                }
+
+                if let collapsStreamUrl,
+                   let streamUrl = URL(string: collapsStreamUrl.trimmingCharacters(in: .whitespacesAndNewlines)) {
+                    AppDiagnostics.shared.log("[ClipStreamResolver] Successfully resolved clip=\(clip.id) via Collaps fallback")
+                    return ResolvedClipPlayback(url: streamUrl, headers: CollapsRepository.streamHeaders)
+                }
             }
         }
 

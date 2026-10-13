@@ -574,7 +574,9 @@ class AllohaTrustedSessionDelegate: NSObject, @preconcurrency URLSessionDelegate
         "feeds.alloha.tv", "static.alloha.tv",
         "cdn.alloha.tv",
         "vgif.ru", "allohalive.ru",
-        "videocdn.tv", "dhklxm.ru", "cdnhl.ru"
+        "videocdn.tv", "dhklxm.ru", "cdnhl.ru",
+        "vkvideo.cloud", "stravers.live",
+        "interkh.com", "luxembd.ws", "kinokrad.my"
     ]
     
     nonisolated func urlSession(_ session: URLSession, didReceive challenge: URLAuthenticationChallenge, completionHandler: @escaping @Sendable (URLSession.AuthChallengeDisposition, URLCredential?) -> Void) {
