@@ -595,13 +595,13 @@ public struct ClipsFeedView: View {
         .frame(width: width)
         .background(
             VariableBlurView(
-                maxBlurRadius: 18,
+                maxBlurRadius: 10,
                 direction: .blurredTopClearBottom,
                 tintColor: .black,
                 tintOpacity: 0.72,
                 style: .dark
             )
-            .padding(.bottom, -32)
+            .padding(.bottom, -24)
             .ignoresSafeArea(edges: .top)
             .allowsHitTesting(false)
         )
