@@ -70,13 +70,17 @@ final class AllohaRuntimeResolver: NSObject, WKNavigationDelegate, WKScriptMessa
     @MainActor
     private func start(with url: URL) {
         let provider = SharedWebViewProvider.shared
-        provider.prepare(for: self)
-        
-        self.webView = provider.webView
-        self.webView?.customUserAgent = Self.nextUserAgent()
+        let webView = provider.createIsolatedWebView(for: self, delegate: self)
+        self.webView = webView
+        webView.customUserAgent = Self.nextUserAgent()
 
         startTimeout()
-        self.webView?.loadHTMLString(Self.wrapperHTML(for: url), baseURL: url.deletingLastPathComponent())
+
+        var baseComponents = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        baseComponents?.query = nil
+        let baseOriginUrl = baseComponents?.url ?? url.deletingLastPathComponent()
+
+        webView.loadHTMLString(Self.wrapperHTML(for: url), baseURL: baseOriginUrl)
     }
 
     private func startTimeout() {
@@ -91,7 +95,7 @@ final class AllohaRuntimeResolver: NSObject, WKNavigationDelegate, WKScriptMessa
             )
         }
         timeoutTask = task
-        DispatchQueue.main.asyncAfter(deadline: .now() + 20, execute: task)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 10, execute: task)
     }
 
     func userContentController(_ userContentController: WKUserContentController, didReceive message: WKScriptMessage) {
@@ -297,8 +301,9 @@ final class AllohaRuntimeResolver: NSObject, WKNavigationDelegate, WKScriptMessa
         timeoutTask = nil
         fallbackTask = nil
         Task { @MainActor in
-            SharedWebViewProvider.shared.reset()
+            let wv = self.webView
             self.webView = nil
+            SharedWebViewProvider.shared.recycle(wv)
         }
     }
 
@@ -317,10 +322,11 @@ final class AllohaRuntimeResolver: NSObject, WKNavigationDelegate, WKScriptMessa
         <html>
         <head>
             <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+            <meta name="referrer" content="unsafe-url">
             <style>html, body, iframe { margin:0; width:100%; height:100%; background:#000; overflow:hidden; }</style>
         </head>
         <body>
-            <iframe id="alloha_iframe" src="\(url.absoluteString)" allow="autoplay; fullscreen; encrypted-media; picture-in-picture" allowfullscreen frameborder="0"></iframe>
+            <iframe id="alloha_iframe" src="\(url.absoluteString)" referrerpolicy="unsafe-url" allow="autoplay; fullscreen; encrypted-media; picture-in-picture" allowfullscreen frameborder="0"></iframe>
         </body>
         </html>
         """
@@ -398,6 +404,41 @@ final class AllohaRuntimeResolver: NSObject, WKNavigationDelegate, WKScriptMessa
           if (!win || win.__neoAllohaHooksInstalled) return;
           win.__neoAllohaHooksInstalled = true;
           defaultHeaders(win);
+
+          var OriginalWS = win.WebSocket;
+          if (OriginalWS && !win.__neoAllohaWsCtorHooked) {
+            win.__neoAllohaWsCtorHooked = true;
+            var PatchedWS = function(url, protocols) {
+              var ws = protocols !== undefined ? new OriginalWS(url, protocols) : new OriginalWS(url);
+              try {
+                ws.addEventListener('message', function(event) {
+                  try {
+                    var msg = typeof event.data === 'string' ? JSON.parse(event.data) : null;
+                    if (msg && msg.type === 'config_update' && msg.edge_hash) {
+                      putHeader('accepts-controls', msg.edge_hash);
+                      if (msg.ttl) putHeader('x-neo-config-ttl', String(msg.ttl));
+                      post('headers', '');
+                    }
+                    if (typeof event.data === 'string' && looksPlayable(event.data)) {
+                      report(event.data);
+                    }
+                  } catch(e) {
+                    if (typeof event.data === 'string' && looksPlayable(event.data)) {
+                      report(event.data);
+                    }
+                  }
+                });
+              } catch(e) {}
+              return ws;
+            };
+            PatchedWS.prototype = OriginalWS.prototype;
+            for (var prop in OriginalWS) {
+              if (OriginalWS.hasOwnProperty(prop)) {
+                try { PatchedWS[prop] = OriginalWS[prop]; } catch(e) {}
+              }
+            }
+            win.WebSocket = PatchedWS;
+          }
 
           var originalOpen = win.XMLHttpRequest && win.XMLHttpRequest.prototype.open;
           var originalSetHeader = win.XMLHttpRequest && win.XMLHttpRequest.prototype.setRequestHeader;
@@ -481,14 +522,19 @@ final class AllohaRuntimeResolver: NSObject, WKNavigationDelegate, WKScriptMessa
         scan(window);
         try {
           var frames = document.querySelectorAll('iframe');
-          for (var i = 0; i < frames.length; i++) { install(frames[i].contentWindow); scan(frames[i].contentWindow); }
+          for (var i = 0; i < frames.length; i++) {
+            try {
+              install(frames[i].contentWindow);
+              scan(frames[i].contentWindow);
+            } catch(e) {}
+          }
         } catch(e) {}
       }
 
       install(window);
       scan(window);
       tick();
-      setInterval(tick, 500);
+      setInterval(tick, 300);
       window.addEventListener('load', tick);
     })();
     """
@@ -497,91 +543,87 @@ final class AllohaRuntimeResolver: NSObject, WKNavigationDelegate, WKScriptMessa
 @MainActor
 final class SharedWebViewProvider {
     static let shared = SharedWebViewProvider()
-    var webView: WKWebView?
     private var hostView: UIView?
-    
-    private init() {
-        // No background killing; keep webview alive so background playback and proxy work
+    private var activeWebViews = NSHashTable<WKWebView>.weakObjects()
+
+    var webView: WKWebView? {
+        return activeWebViews.allObjects.first
     }
-    
+
+    private init() {}
+
+    private func ensureHostView() -> UIView? {
+        if let host = hostView, host.window != nil || host.superview != nil {
+            return host
+        }
+        if let windowScene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene })
+            .first(where: { $0.activationState == .foregroundActive || $0.activationState == .foregroundInactive }),
+           let keyWindow = windowScene.windows.first(where: \.isKeyWindow) ?? windowScene.windows.first,
+           let rootView = keyWindow.rootViewController?.view {
+            let host = UIView(frame: .init(x: -2000, y: -2000, width: 2, height: 2))
+            host.isHidden = true
+            host.isUserInteractionEnabled = false
+            rootView.addSubview(host)
+            self.hostView = host
+            return host
+        }
+        return nil
+    }
+
     func prewarm() {
-        if webView == nil {
-            let config = WKWebViewConfiguration()
-            config.allowsInlineMediaPlayback = true
-            let newWebView = WKWebView(frame: .init(x: -1000, y: -1000, width: 1, height: 1), configuration: config)
-            newWebView.isHidden = true
-            newWebView.isOpaque = false
-            newWebView.backgroundColor = .clear
-            self.webView = newWebView
-            
-            if let rootView = UIApplication.shared.connectedScenes
-                .compactMap({ ($0 as? UIWindowScene)?.windows.first(where: \.isKeyWindow) })
-                .first?
-                .rootViewController?
-                .view {
-                let host = UIView(frame: .zero)
-                host.isHidden = true
-                host.addSubview(newWebView)
-                rootView.addSubview(host)
-                self.hostView = host
-            }
-        }
+        _ = ensureHostView()
     }
-    
-    func prepare(for delegate: WKNavigationDelegate & WKScriptMessageHandler) {
-        if webView == nil {
-            let config = WKWebViewConfiguration()
-            let uc = WKUserContentController()
-            config.userContentController = uc
-            
-            config.allowsInlineMediaPlayback = true
-            config.mediaTypesRequiringUserActionForPlayback = []
-            
-            let prefs = WKWebpagePreferences()
-            prefs.allowsContentJavaScript = true
-            config.defaultWebpagePreferences = prefs
-            
-            let newWebView = WKWebView(frame: .init(x: -1000, y: -1000, width: 1, height: 1), configuration: config)
-            newWebView.isHidden = true
-            newWebView.isOpaque = false
-            newWebView.backgroundColor = .clear
-            self.webView = newWebView
-            
-            if let rootView = UIApplication.shared.connectedScenes
-                .compactMap({ ($0 as? UIWindowScene)?.windows.first(where: \.isKeyWindow) })
-                .first?
-                .rootViewController?
-                .view {
-                let host = UIView(frame: .zero)
-                host.isHidden = true
-                host.addSubview(newWebView)
-                rootView.addSubview(host)
-                self.hostView = host
-            }
-        }
-        
-        if let uc = webView?.configuration.userContentController {
-            uc.removeAllUserScripts()
-            uc.removeScriptMessageHandler(forName: "allohaResolver")
-            
-            uc.addUserScript(
-                WKUserScript(
-                    source: AllohaRuntimeResolver.bootstrapScript,
-                    injectionTime: .atDocumentStart,
-                    forMainFrameOnly: false
-                )
+
+    /// Creates an isolated, dedicated WKWebView with its own WKUserContentController and scripts.
+    func createIsolatedWebView(for handler: WKScriptMessageHandler, delegate: WKNavigationDelegate) -> WKWebView {
+        let config = WKWebViewConfiguration()
+        let uc = WKUserContentController()
+        config.userContentController = uc
+        config.allowsInlineMediaPlayback = true
+        config.mediaTypesRequiringUserActionForPlayback = []
+
+        let prefs = WKWebpagePreferences()
+        prefs.allowsContentJavaScript = true
+        config.defaultWebpagePreferences = prefs
+
+        uc.addUserScript(
+            WKUserScript(
+                source: AllohaRuntimeResolver.bootstrapScript,
+                injectionTime: .atDocumentStart,
+                forMainFrameOnly: false
             )
-            uc.add(WeakScriptMessageHandler(delegate: delegate), name: "allohaResolver")
+        )
+        uc.add(WeakScriptMessageHandler(delegate: handler), name: "allohaResolver")
+
+        let newWebView = WKWebView(frame: .init(x: -2000, y: -2000, width: 2, height: 2), configuration: config)
+        newWebView.isHidden = true
+        newWebView.isOpaque = false
+        newWebView.backgroundColor = .clear
+        newWebView.navigationDelegate = delegate
+
+        if let host = ensureHostView() {
+            host.addSubview(newWebView)
         }
-        webView?.navigationDelegate = delegate
+        activeWebViews.add(newWebView)
+        return newWebView
     }
-    
+
+    func recycle(_ webView: WKWebView?) {
+        guard let webView else { return }
+        webView.stopLoading()
+        webView.navigationDelegate = nil
+        webView.configuration.userContentController.removeScriptMessageHandler(forName: "allohaResolver")
+        webView.configuration.userContentController.removeAllUserScripts()
+        webView.removeFromSuperview()
+        webView.loadHTMLString("", baseURL: nil)
+        activeWebViews.remove(webView)
+    }
+
     func reset() {
-        if let uc = webView?.configuration.userContentController {
-            uc.removeScriptMessageHandler(forName: "allohaResolver")
+        for wv in activeWebViews.allObjects {
+            recycle(wv)
         }
-        webView?.navigationDelegate = nil
-        webView?.loadHTMLString("", baseURL: nil)
     }
 }
 
