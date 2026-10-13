@@ -120,6 +120,7 @@ public final class ClipStreamResolver {
                     }
                     AppDiagnostics.shared.log("[ClipStreamResolver] Successfully resolved clip=\(clip.id) host=\(resolvedUrl.host ?? "")")
                     return ResolvedClipPlayback(url: resolvedUrl, headers: headers)
+                }
             } catch {
                 AppDiagnostics.shared.log("[ClipStreamResolver] Stream resolution failed for clip \(clip.id): \(error)")
             }
