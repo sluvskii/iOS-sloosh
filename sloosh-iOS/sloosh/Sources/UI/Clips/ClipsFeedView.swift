@@ -1298,25 +1298,20 @@ public struct ClipsFeedView: View {
                     _ = await clipsRepo.toggleLike(for: clip.id)
                 }
             } label: {
-                Group {
-                    if isLiked {
-                        HeartShape()
-                            .fill(Color.red.opacity(0.88))
-                    } else {
-                        Color.clear
-                    }
-                }
-                .frame(width: 36, height: 36)
-                .contentShape(HeartShape())
-                .scaleEffect(isLiked ? 1.15 : 1.0)
-                .animation(.spring(response: 0.25, dampingFraction: 0.6), value: isLiked)
+                HeartShape()
+                    .fill(isLiked ? Color.red.opacity(0.92) : Color.white.opacity(0.001))
+                    .frame(width: 36, height: 36)
             }
             .buttonStyle(.glassPress)
             .glassEffect(.regular.interactive(), in: HeartShape())
+            .scaleEffect(isLiked ? 1.08 : 1.0)
+            .animation(.spring(response: 0.28, dampingFraction: 0.55), value: isLiked)
 
             Text("\(clip.likesCount)")
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(isLiked ? Color.red : .white)
+                .contentTransition(.numericText())
+                .animation(.spring(response: 0.28, dampingFraction: 0.7), value: clip.likesCount)
         }
         .frame(width: 54)
     }
@@ -1327,9 +1322,9 @@ public struct ClipsFeedView: View {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 showCommentsForClip = clip
             } label: {
-                Color.clear
+                SpeechBubbleShape()
+                    .fill(Color.white.opacity(0.001))
                     .frame(width: 36, height: 36)
-                    .contentShape(SpeechBubbleShape())
             }
             .buttonStyle(.glassPress)
             .glassEffect(.regular.interactive(), in: SpeechBubbleShape())
@@ -1347,9 +1342,9 @@ public struct ClipsFeedView: View {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 shareClip(clip)
             } label: {
-                Color.clear
+                ShareArrowShape()
+                    .fill(Color.white.opacity(0.001))
                     .frame(width: 36, height: 36)
-                    .contentShape(ShareArrowShape())
             }
             .buttonStyle(.glassPress)
             .glassEffect(.regular.interactive(), in: ShareArrowShape())
@@ -1377,9 +1372,9 @@ public struct ClipsFeedView: View {
                     }
                 }
             } label: {
-                Color.clear
+                AspectExpandShape()
+                    .fill(Color.white.opacity(0.001))
                     .frame(width: 36, height: 36)
-                    .contentShape(AspectExpandShape())
             }
             .buttonStyle(.glassPress)
             .glassEffect(.regular.interactive(), in: AspectExpandShape())
