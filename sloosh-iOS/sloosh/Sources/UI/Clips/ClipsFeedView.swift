@@ -635,7 +635,7 @@ public struct ClipsFeedView: View {
         if clip.authorId == guestId {
             return true
         }
-        if authRepo.currentUser?.isAdmin == true {
+        if authRepo.isAdmin {
             return true
         }
         return false
