@@ -1298,12 +1298,18 @@ public struct ClipsFeedView: View {
                     _ = await clipsRepo.toggleLike(for: clip.id)
                 }
             } label: {
-                HeartShape()
-                    .fill(isLiked ? Color.red.opacity(0.88) : Color.white.opacity(0.001))
-                    .frame(width: 36, height: 36)
-                    .contentShape(HeartShape())
-                    .scaleEffect(isLiked ? 1.15 : 1.0)
-                    .animation(.spring(response: 0.25, dampingFraction: 0.6), value: isLiked)
+                Group {
+                    if isLiked {
+                        HeartShape()
+                            .fill(Color.red.opacity(0.88))
+                    } else {
+                        Color.clear
+                    }
+                }
+                .frame(width: 36, height: 36)
+                .contentShape(HeartShape())
+                .scaleEffect(isLiked ? 1.15 : 1.0)
+                .animation(.spring(response: 0.25, dampingFraction: 0.6), value: isLiked)
             }
             .buttonStyle(.glassPress)
             .glassEffect(.regular.interactive(), in: HeartShape())
@@ -1321,8 +1327,7 @@ public struct ClipsFeedView: View {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 showCommentsForClip = clip
             } label: {
-                SpeechBubbleShape()
-                    .fill(Color.white.opacity(0.001))
+                Color.clear
                     .frame(width: 36, height: 36)
                     .contentShape(SpeechBubbleShape())
             }
@@ -1342,8 +1347,7 @@ public struct ClipsFeedView: View {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 shareClip(clip)
             } label: {
-                ShareArrowShape()
-                    .fill(Color.white.opacity(0.001))
+                Color.clear
                     .frame(width: 36, height: 36)
                     .contentShape(ShareArrowShape())
             }
@@ -1373,8 +1377,7 @@ public struct ClipsFeedView: View {
                     }
                 }
             } label: {
-                AspectExpandShape()
-                    .fill(Color.white.opacity(0.001))
+                Color.clear
                     .frame(width: 36, height: 36)
                     .contentShape(AspectExpandShape())
             }
@@ -1605,25 +1608,14 @@ extension ClipsFeedView {
 // MARK: - Native Liquid Glass Shapes for Action Rail
 
 /// Векторное скругленное сердце Безье для нативного Apple Liquid Glass (.glassEffect)
-public struct HeartShape: InsettableShape {
-    var insetAmount: CGFloat = 0
-
-    public init(insetAmount: CGFloat = 0) {
-        self.insetAmount = insetAmount
-    }
-
-    public func inset(by amount: CGFloat) -> HeartShape {
-        var copy = self
-        copy.insetAmount += amount
-        return copy
-    }
+public struct HeartShape: Shape {
+    public init() {}
 
     public func path(in rect: CGRect) -> Path {
-        let insetRect = rect.insetBy(dx: insetAmount, dy: insetAmount)
         var path = Path()
-        let side = max(0, min(insetRect.width, insetRect.height))
-        let x = insetRect.midX - side / 2
-        let y = insetRect.midY - side / 2
+        let side = min(rect.width, rect.height)
+        let x = rect.midX - side / 2
+        let y = rect.midY - side / 2
         let w = side
         let h = side
 
@@ -1665,25 +1657,14 @@ public struct HeartShape: InsettableShape {
 }
 
 /// Нативный органичный диалоговый бабл с мягким изогнутым хвостиком для Liquid Glass (.glassEffect)
-public struct SpeechBubbleShape: InsettableShape {
-    var insetAmount: CGFloat = 0
-
-    public init(insetAmount: CGFloat = 0) {
-        self.insetAmount = insetAmount
-    }
-
-    public func inset(by amount: CGFloat) -> SpeechBubbleShape {
-        var copy = self
-        copy.insetAmount += amount
-        return copy
-    }
+public struct SpeechBubbleShape: Shape {
+    public init() {}
 
     public func path(in rect: CGRect) -> Path {
-        let insetRect = rect.insetBy(dx: insetAmount, dy: insetAmount)
         var path = Path()
-        let side = max(0, min(insetRect.width, insetRect.height))
-        let x = insetRect.midX - side / 2
-        let y = insetRect.midY - side / 2
+        let side = min(rect.width, rect.height)
+        let x = rect.midX - side / 2
+        let y = rect.midY - side / 2
         let w = side
         let h = side
 
@@ -1764,25 +1745,14 @@ public struct SpeechBubbleShape: InsettableShape {
 }
 
 /// Нативная изогнутая стрелка «Поделиться» для Liquid Glass (.glassEffect)
-public struct ShareArrowShape: InsettableShape {
-    var insetAmount: CGFloat = 0
-
-    public init(insetAmount: CGFloat = 0) {
-        self.insetAmount = insetAmount
-    }
-
-    public func inset(by amount: CGFloat) -> ShareArrowShape {
-        var copy = self
-        copy.insetAmount += amount
-        return copy
-    }
+public struct ShareArrowShape: Shape {
+    public init() {}
 
     public func path(in rect: CGRect) -> Path {
-        let insetRect = rect.insetBy(dx: insetAmount, dy: insetAmount)
         var path = Path()
-        let side = max(0, min(insetRect.width, insetRect.height))
-        let x = insetRect.midX - side / 2
-        let y = insetRect.midY - side / 2
+        let side = min(rect.width, rect.height)
+        let x = rect.midX - side / 2
+        let y = rect.midY - side / 2
         let w = side
         let h = side
 
@@ -1825,25 +1795,14 @@ public struct ShareArrowShape: InsettableShape {
 }
 
 /// Нативная диагональная двойная стрелка масштабирования для Liquid Glass (.glassEffect)
-public struct AspectExpandShape: InsettableShape {
-    var insetAmount: CGFloat = 0
-
-    public init(insetAmount: CGFloat = 0) {
-        self.insetAmount = insetAmount
-    }
-
-    public func inset(by amount: CGFloat) -> AspectExpandShape {
-        var copy = self
-        copy.insetAmount += amount
-        return copy
-    }
+public struct AspectExpandShape: Shape {
+    public init() {}
 
     public func path(in rect: CGRect) -> Path {
-        let insetRect = rect.insetBy(dx: insetAmount, dy: insetAmount)
         var path = Path()
-        let side = max(0, min(insetRect.width, insetRect.height))
-        let x = insetRect.midX - side / 2
-        let y = insetRect.midY - side / 2
+        let side = min(rect.width, rect.height)
+        let x = rect.midX - side / 2
+        let y = rect.midY - side / 2
         let w = side
         let h = side
 
