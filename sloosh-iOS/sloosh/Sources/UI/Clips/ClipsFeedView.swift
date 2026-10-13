@@ -1301,22 +1301,19 @@ public struct ClipsFeedView: View {
                 ZStack {
                     if isLiked {
                         HeartShape()
-                            .fill(Color.red.opacity(0.35))
+                            .fill(Color.red.opacity(0.85))
+                    } else {
+                        Color.white.opacity(0.04)
                     }
-
-                    Image(systemName: "heart.fill")
-                        .font(.system(size: 20, weight: isLiked ? .bold : .semibold))
-                        .foregroundStyle(isLiked ? Color.red : .white)
-                        .scaleEffect(isLiked ? 1.15 : 1.0)
-                        .contentTransition(.symbolEffect(.replace))
-                        .animation(.spring(response: 0.25, dampingFraction: 0.6), value: isLiked)
                 }
                 .frame(width: 44, height: 40)
                 .glassEffect(.regular.interactive(), in: HeartShape())
+                .scaleEffect(isLiked ? 1.15 : 1.0)
+                .animation(.spring(response: 0.25, dampingFraction: 0.6), value: isLiked)
 
                 Text("\(clip.likesCount)")
                     .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(.white)
+                    .foregroundStyle(isLiked ? Color.red : .white)
             }
             .frame(width: 52, height: 58)
             .contentShape(Rectangle())
@@ -1330,9 +1327,7 @@ public struct ClipsFeedView: View {
             showCommentsForClip = clip
         } label: {
             VStack(spacing: 4) {
-                Image(systemName: "bubble.right.fill")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(.white)
+                Color.white.opacity(0.04)
                     .frame(width: 44, height: 40)
                     .glassEffect(.regular.interactive(), in: SpeechBubbleShape())
 
@@ -1352,11 +1347,9 @@ public struct ClipsFeedView: View {
             shareClip(clip)
         } label: {
             VStack(spacing: 4) {
-                Image(systemName: "arrowshape.turn.up.right.fill")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundStyle(.white)
+                Color.white.opacity(0.04)
                     .frame(width: 44, height: 40)
-                    .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                    .glassEffect(.regular.interactive(), in: ShareArrowShape())
 
                 Text("Поделиться")
                     .font(.system(size: 9.5, weight: .semibold))
@@ -1384,12 +1377,9 @@ public struct ClipsFeedView: View {
             }
         } label: {
             VStack(spacing: 4) {
-                Image(systemName: currentScaleMode == .fit ? "arrow.up.left.and.arrow.down.right" : "arrow.down.right.and.arrow.up.left")
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .contentTransition(.symbolEffect(.replace.downUp.byLayer))
+                Color.white.opacity(0.04)
                     .frame(width: 44, height: 40)
-                    .glassEffect(.regular.interactive(), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
+                    .glassEffect(.regular.interactive(), in: AspectExpandShape())
 
                 Text(currentScaleMode == .fit ? "9:16" : "В кадре")
                     .font(.system(size: 9.5, weight: .semibold))
@@ -1745,4 +1735,107 @@ public struct SpeechBubbleShape: Shape {
         return path
     }
 }
+
+/// Нативная изогнутая стрелка «Поделиться» для Liquid Glass (.glassEffect)
+public struct ShareArrowShape: Shape {
+    public init() {}
+
+    public func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let side = min(rect.width, rect.height)
+        let x = rect.midX - side / 2
+        let y = rect.midY - side / 2
+        let w = side
+        let h = side
+
+        // Наконечник стрелки сверху справа (вершина)
+        let apex = CGPoint(x: x + w * 0.94, y: y + h * 0.28)
+        path.move(to: apex)
+
+        // Верхнее крыло наконечника
+        path.addLine(to: CGPoint(x: x + w * 0.58, y: y + h * 0.06))
+
+        // Верхняя внутренняя выемка наконечника
+        path.addLine(to: CGPoint(x: x + w * 0.62, y: y + h * 0.22))
+
+        // Верхний дугообразный край изогнутого тела стрелки
+        path.addCurve(
+            to: CGPoint(x: x + w * 0.08, y: y + h * 0.74),
+            control1: CGPoint(x: x + w * 0.36, y: y + h * 0.24),
+            control2: CGPoint(x: x + w * 0.14, y: y + h * 0.42)
+        )
+
+        // Нижнее основание тела стрелки
+        path.addLine(to: CGPoint(x: x + w * 0.16, y: y + h * 0.92))
+
+        // Нижний дугообразный край тела стрелки
+        path.addCurve(
+            to: CGPoint(x: x + w * 0.62, y: y + h * 0.52),
+            control1: CGPoint(x: x + w * 0.22, y: y + h * 0.66),
+            control2: CGPoint(x: x + w * 0.40, y: y + h * 0.52)
+        )
+
+        // Нижнее крыло наконечника
+        path.addLine(to: CGPoint(x: x + w * 0.58, y: y + h * 0.70))
+
+        // Возврат к вершине наконечника
+        path.addLine(to: apex)
+
+        path.closeSubpath()
+        return path
+    }
+}
+
+/// Нативная диагональная двойная стрелка масштабирования для Liquid Glass (.glassEffect)
+public struct AspectExpandShape: Shape {
+    public init() {}
+
+    public func path(in rect: CGRect) -> Path {
+        var path = Path()
+        let side = min(rect.width, rect.height)
+        let x = rect.midX - side / 2
+        let y = rect.midY - side / 2
+        let w = side
+        let h = side
+
+        // 1. Верхний правый наконечник
+        let topApex = CGPoint(x: x + w * 0.90, y: y + h * 0.10)
+        path.move(to: topApex)
+
+        // Левое крыло верхнего наконечника
+        path.addLine(to: CGPoint(x: x + w * 0.54, y: y + h * 0.12))
+
+        // Внутренняя выемка верхнего наконечника
+        path.addLine(to: CGPoint(x: x + w * 0.64, y: y + h * 0.22))
+
+        // Верхний диагональный край соединительного моста
+        path.addLine(to: CGPoint(x: x + w * 0.22, y: y + h * 0.64))
+
+        // Верхнее крыло нижнего левого наконечника
+        path.addLine(to: CGPoint(x: x + w * 0.12, y: y + h * 0.54))
+
+        // 2. Нижний левый наконечник (вершина)
+        let bottomApex = CGPoint(x: x + w * 0.10, y: y + h * 0.90)
+        path.addLine(to: bottomApex)
+
+        // Правое крыло нижнего наконечника
+        path.addLine(to: CGPoint(x: x + w * 0.46, y: y + h * 0.88))
+
+        // Внутренняя выемка нижнего наконечника
+        path.addLine(to: CGPoint(x: x + w * 0.36, y: y + h * 0.78))
+
+        // Нижний диагональный край соединительного моста
+        path.addLine(to: CGPoint(x: x + w * 0.78, y: y + h * 0.36))
+
+        // Нижнее крыло верхнего правого наконечника
+        path.addLine(to: CGPoint(x: x + w * 0.88, y: y + h * 0.46))
+
+        // Возврат к вершине верхнего наконечника
+        path.addLine(to: topApex)
+
+        path.closeSubpath()
+        return path
+    }
+}
+
 
