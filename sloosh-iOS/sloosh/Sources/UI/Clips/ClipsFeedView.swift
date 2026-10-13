@@ -474,6 +474,7 @@ public struct ClipsFeedView: View {
     @State private var bigHeartPosition: CGPoint = .zero
     @State private var isTextExpanded: Bool = false
     @State private var isScrubbing: Bool = false
+    @State private var scrollOffsetY: CGFloat = 0.0
     @State private var lastTapTime: Date = Date.distantPast
 
     private var currentVisibleClip: MovieClip? {
@@ -510,7 +511,7 @@ public struct ClipsFeedView: View {
                 } else {
                     feedScrollView(width: fullWidth, height: fullHeight, topSafeArea: topSafeArea, bottomSafeArea: bottomSafeArea)
 
-                    momentsHeaderView(width: fullWidth, topSafeArea: topSafeArea)
+                    momentsHeaderView(width: fullWidth, topSafeArea: topSafeArea, fullHeight: fullHeight)
                 }
             }
             .ignoresSafeArea()
@@ -552,10 +553,27 @@ public struct ClipsFeedView: View {
         }
     }
 
-    // MARK: - Top Header View (Matches SettingsView liquid glass style)
+    // MARK: - Dynamic Header Scroll Blur (Matches HomeView liquid glass style)
 
-    private func momentsHeaderView(width: CGFloat, topSafeArea: CGFloat) -> some View {
+    private func headerBlurOpacity(height: CGFloat) -> Double {
+        guard height > 0 else { return 0.0 }
+        let offset = scrollOffsetY
+        let distFromPage: CGFloat
+        if offset < 0 {
+            distFromPage = abs(offset)
+        } else {
+            let remainder = offset.truncatingRemainder(dividingBy: height)
+            distFromPage = min(remainder, height - remainder)
+        }
+        // At rest, distance is 0 (< 1.5pt threshold). No blur when player is idle.
+        guard distFromPage > 1.5 else { return 0.0 }
+        let progress = min(1.0, Double((distFromPage - 1.5) / 32.0))
+        return progress
+    }
+
+    private func momentsHeaderView(width: CGFloat, topSafeArea: CGFloat, fullHeight: CGFloat) -> some View {
         let statusBarClearance = max(topSafeArea, 47.0) + 8.0
+        let blurOpacity = headerBlurOpacity(height: fullHeight)
 
         return VStack(spacing: 0) {
             // Status bar clearance (keeps title comfortable below Dynamic Island / notch)
@@ -594,16 +612,12 @@ public struct ClipsFeedView: View {
         }
         .frame(width: width)
         .background(
-            VariableBlurView(
-                maxBlurRadius: 10,
-                direction: .blurredTopClearBottom,
-                tintColor: .black,
-                tintOpacity: 0.72,
-                style: .dark
-            )
-            .padding(.bottom, -24)
-            .ignoresSafeArea(edges: .top)
-            .allowsHitTesting(false)
+            VariableBlurView(tintOpacity: 1.0)
+                .padding(.bottom, -30)
+                .ignoresSafeArea(edges: .top)
+                .opacity(blurOpacity)
+                .animation(.easeInOut(duration: 0.2), value: blurOpacity)
+                .allowsHitTesting(false)
         )
         .ignoresSafeArea(edges: .top)
         .opacity(showCommentsForClip != nil ? 0.0 : 1.0)
@@ -822,6 +836,13 @@ public struct ClipsFeedView: View {
         }
         .scrollTargetBehavior(.paging)
         .scrollPosition(id: $currentClipId)
+        .onScrollGeometryChange(for: CGFloat.self) { geometry in
+            geometry.contentOffset.y
+        } action: { oldOffset, newOffset in
+            if abs(newOffset - scrollOffsetY) > 0.1 {
+                scrollOffsetY = newOffset
+            }
+        }
         .ignoresSafeArea()
         .onChange(of: currentClipId) { oldId, newId in
             AppDiagnostics.shared.log("[ClipsFeedView] currentClipId changed from \(String(describing: oldId)) to \(String(describing: newId))")
