@@ -873,9 +873,9 @@ public struct ClipsFeedView: View {
             Color.clear
                 .frame(width: width, height: topClearance)
 
-            // 2. Video Container with smooth corner radius
+            // 2. Video Container with smooth concentric corner radius (38pt = 22pt button radius + 16pt margin)
             videoCardContainer(clip, width: width, height: availableHeight, isCurrent: isCurrent)
-                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: 38, style: .continuous))
 
             // 3. Symmetrical gap between video card and progress bar
             Color.clear
@@ -1099,7 +1099,7 @@ public struct ClipsFeedView: View {
             .zIndex(10)
         }
         .frame(width: width, height: height)
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 38, style: .continuous))
     }
 
     // MARK: - Gesture Handling Zones
