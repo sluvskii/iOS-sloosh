@@ -961,29 +961,7 @@ public struct ClipsFeedView: View {
                 }
             }
 
-            // 4. Cinematic Gradients for Contrast and Overlay Readability (hidden when comments or overlays are hidden)
-            VStack(spacing: 0) {
-                LinearGradient(
-                    colors: [.black.opacity(0.55), .clear],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .frame(height: 70)
-
-                Spacer()
-
-                LinearGradient(
-                    colors: [.clear, .black.opacity(0.45), .black.opacity(0.88)],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-                .frame(height: 190)
-            }
-            .opacity(isOverlayHidden ? 0.0 : 1.0)
-            .animation(.spring(response: 0.28, dampingFraction: 0.85), value: isOverlayHidden)
-            .allowsHitTesting(false)
-
-            // 5. Touch & Gesture Zones: Left and Right Edge 2x Speed, Center Instant 0ms Play/Pause
+            // 3. Touch & Gesture Zones: Left and Right Edge 2x Speed, Center Instant 0ms Play/Pause
             HStack(spacing: 0) {
                 // Left Edge 2x Speed Zone (80pt)
                 edgeAccelerationZone(for: clip)
@@ -1040,11 +1018,11 @@ public struct ClipsFeedView: View {
             .animation(.spring(response: 0.3, dampingFraction: 0.75), value: playback.isFastForwarding)
             .allowsHitTesting(false)
 
-            // 8. Big Heart Explosion on Double-Tap
+            // 6. Big Heart Explosion on Double-Tap
             if showBigHeart {
                 Image(systemName: "heart.fill")
                     .font(.system(size: 80))
-                    .foregroundStyle(Color.slooshAccent)
+                    .foregroundStyle(Color.red)
                     .position(bigHeartPosition)
                     .scaleEffect(showBigHeart ? 1.25 : 0.4)
                     .opacity(showBigHeart ? 1.0 : 0.0)
@@ -1322,7 +1300,7 @@ public struct ClipsFeedView: View {
             VStack(spacing: 4) {
                 Image(systemName: "heart.fill")
                     .font(.system(size: 26))
-                    .foregroundStyle(isLiked ? Color.slooshAccent : .white)
+                    .foregroundStyle(isLiked ? Color.red : .white)
                     .scaleEffect(isLiked ? 1.15 : 1.0)
                     .contentTransition(.symbolEffect(.replace))
                     .animation(.spring(response: 0.25, dampingFraction: 0.6), value: isLiked)
