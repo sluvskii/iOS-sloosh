@@ -1054,12 +1054,12 @@ class PlayerViewModel: ObservableObject {
             }
 
             // 3. Closest resolution match
-            let prefVal = Int(desired.replacingOccurrences(of: "p", with: "")) ?? 0
+            let prefVal = normalizedQualityHeight(desired)
             if prefVal > 0 {
                 var closest: PlaybackQualityOption?
                 var minDiff = Int.max
                 for q in self.availableQualities where !q.isAuto {
-                    let val = Int(q.key.replacingOccurrences(of: "p", with: "")) ?? 0
+                    let val = normalizedQualityHeight(q.key)
                     if val > 0 {
                         let diff = abs(val - prefVal)
                         if diff < minDiff {
@@ -1122,13 +1122,13 @@ class PlayerViewModel: ObservableObject {
         }
         
         // Find closest resolution
-        let prefVal = Int(targetKey.replacingOccurrences(of: "p", with: "")) ?? 0
+        let prefVal = normalizedQualityHeight(targetKey)
         guard prefVal > 0 else { return }
         
         var closest: String?
         var minDiff = Int.max
         for q in availableQualities {
-            let val = Int(q.key.replacingOccurrences(of: "p", with: "")) ?? 0
+            let val = normalizedQualityHeight(q.key)
             if val > 0 {
                 let diff = abs(val - prefVal)
                 if diff < minDiff {
@@ -1913,8 +1913,15 @@ class PlayerViewModel: ObservableObject {
         return true
     }
 
+    private func normalizedQualityHeight(_ key: String) -> Int {
+        let clean = key.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
+        if clean == "4k" || clean == "2160p" || clean == "2160" { return 2160 }
+        if clean == "2k" || clean == "1440p" || clean == "1440" { return 1440 }
+        return Int(clean.replacingOccurrences(of: "p", with: "")) ?? 0
+    }
+
     private func targetResolution(for qualityKey: String) -> CGSize {
-        let height = Int(qualityKey.replacingOccurrences(of: "p", with: "")) ?? 0
+        let height = normalizedQualityHeight(qualityKey)
         switch height {
         case 2160...: return CGSize(width: 3840, height: 2160)
         case 1440..<2160: return CGSize(width: 2560, height: 1440)
@@ -1932,7 +1939,7 @@ class PlayerViewModel: ObservableObject {
     }
 
     private func resolvedBitrate(forQualityKey key: String, fallbackBandwidth: Double? = nil) -> Double {
-        let height = Int(key.replacingOccurrences(of: "p", with: "")) ?? 0
+        let height = normalizedQualityHeight(key)
         switch height {
         case 2160...: return 25_000_000 // 4K UHD
         case 1440..<2160: return 16_000_000 // 2K/1440p
@@ -2027,16 +2034,14 @@ class PlayerViewModel: ObservableObject {
         // Filter out any qualities higher than 1080p (e.g. 1440p, 2160p)
         qualities = qualities.filter { q in
             if q.isAuto { return true }
-            let h = Int(q.key.replacingOccurrences(of: "p", with: "")) ?? 0
+            let h = normalizedQualityHeight(q.key)
             return h <= 1080
         }
 
         if qualities.count > 1 {
             let autoQuality = qualities.removeFirst()
             qualities.sort { lhs, rhs in
-                let valA = Int(lhs.key.replacingOccurrences(of: "p", with: "")) ?? 0
-                let valB = Int(rhs.key.replacingOccurrences(of: "p", with: "")) ?? 0
-                return valA > valB
+                normalizedQualityHeight(lhs.key) > normalizedQualityHeight(rhs.key)
             }
             qualities.insert(autoQuality, at: 0)
         }
@@ -3317,7 +3322,9 @@ class PlayerViewModel: ObservableObject {
             guard seenKeys.insert(label).inserted else { continue }
             
             let isMp4 = lowerUrl.contains(".mp4") && !lowerUrl.contains(".m3u8")
-            let targetUrl = isMp4 ? (absoluteQualityURL(from: urlString) ?? masterUrl) : masterUrl
+            let qualityUrl = absoluteQualityURL(from: urlString)
+            let hasDistinctQualityUrl = qualityUrl != nil && qualityUrl?.absoluteString != masterUrl.absoluteString
+            let targetUrl = qualityUrl ?? masterUrl
             let bitrate = bitrateValue(from: variant) ?? resolvedBitrate(forQualityKey: label)
             
             qualities.append(
@@ -3326,7 +3333,7 @@ class PlayerViewModel: ObservableObject {
                     url: targetUrl,
                     preferredPeakBitRate: bitrate,
                     isAuto: false,
-                    shouldReloadOnSelect: isMp4
+                    shouldReloadOnSelect: isMp4 || hasDistinctQualityUrl
                 )
             )
         }
