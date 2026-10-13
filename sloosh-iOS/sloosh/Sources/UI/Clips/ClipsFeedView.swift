@@ -573,14 +573,15 @@ public struct ClipsFeedView: View {
         }
         .frame(width: width)
         .background(
-            VariableBlurView(
-                maxBlurRadius: 5,
-                direction: .blurredTopClearBottom,
-                tintColor: .black,
-                tintOpacity: 0.8,
-                style: .dark
+            LinearGradient(
+                colors: [
+                    Color.black.opacity(0.65),
+                    Color.black.opacity(0.3),
+                    Color.clear
+                ],
+                startPoint: .top,
+                endPoint: .bottom
             )
-            .padding(.bottom, -8)
             .ignoresSafeArea(edges: .top)
             .allowsHitTesting(false)
         )
@@ -812,25 +813,28 @@ public struct ClipsFeedView: View {
 
     private func clipCard(_ clip: MovieClip, width: CGFloat, height: CGFloat, topSafeArea: CGFloat, bottomSafeArea: CGFloat) -> some View {
         let isCurrent = (currentClipId == clip.id) || (currentClipId == nil && clip.id == clipsRepo.clips.first?.id)
-        let navHeaderHeight: CGFloat = 44.0
-        let totalTopClearance: CGFloat = topSafeArea + navHeaderHeight
+
+        // The vertical player area extends precisely to the phone's status bar
+        let topClearance: CGFloat = topSafeArea
 
         // Tight bottom clearance placing progress bar right above the floating Liquid Glass tab bar capsule
-        let bottomTabBarHeight: CGFloat = (bottomSafeArea > 50) ? (bottomSafeArea - 6.0) : (bottomSafeArea + 44.0)
-        let scrubberHeight: CGFloat = 24.0
-        let scrubberGap: CGFloat = 2.0
+        let bottomNavClearance: CGFloat = (bottomSafeArea > 50) ? (bottomSafeArea - 12.0) : (bottomSafeArea + 4.0)
+        let bottomGap: CGFloat = 4.0
+        let scrubberHeight: CGFloat = 16.0
+        let scrubberGap: CGFloat = 4.0
 
-        // Calculate available height strictly between top navbar header and bottom scrubber
-        let availableHeight = max(200.0, height - totalTopClearance - bottomTabBarHeight - scrubberHeight - scrubberGap)
+        // Calculate available height strictly between status bar and bottom scrubber
+        let totalBottomClearance = bottomNavClearance + bottomGap + scrubberHeight + scrubberGap
+        let availableHeight = max(200.0, height - topClearance - totalBottomClearance)
 
         return VStack(spacing: 0) {
-            // 1. Top clearance under stationary pinned "Моменты" Header
+            // 1. Top clearance under status bar
             Color.clear
-                .frame(width: width, height: totalTopClearance)
+                .frame(width: width, height: topClearance)
 
             // 2. Video Container with smooth corner radius
             videoCardContainer(clip, width: width, height: availableHeight, isCurrent: isCurrent)
-                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
 
             // 3. Gap between video card and progress bar
             Color.clear
@@ -839,7 +843,7 @@ public struct ClipsFeedView: View {
             // 4. Progress bar (полоса перемотки)
             if isCurrent {
                 progressBarView(for: clip)
-                    .padding(.horizontal, 14)
+                    .padding(.horizontal, 16)
                     .frame(height: scrubberHeight)
                     .opacity(showCommentsForClip != nil ? 0.0 : 1.0)
                     .animation(.spring(response: 0.28, dampingFraction: 0.85), value: showCommentsForClip != nil)
@@ -848,9 +852,13 @@ public struct ClipsFeedView: View {
                     .frame(height: scrubberHeight)
             }
 
-            // 5. Bottom Tab Bar clearance
+            // 5. Gap between progress bar and floating tab bar
             Color.clear
-                .frame(width: width, height: bottomTabBarHeight)
+                .frame(width: width, height: bottomGap)
+
+            // 6. Bottom Tab Bar clearance (aligns right above the floating Liquid Glass tab bar)
+            Color.clear
+                .frame(width: width, height: bottomNavClearance)
         }
         .frame(width: width, height: height)
         .background(Color.black)
@@ -1045,7 +1053,7 @@ public struct ClipsFeedView: View {
             .zIndex(10)
         }
         .frame(width: width, height: height)
-        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     // MARK: - Gesture Handling Zones
@@ -1379,7 +1387,7 @@ public struct ClipsFeedView: View {
             let totalWidth = barProxy.size.width
             let displayProgress = isScrubbing ? scrubProgress : playback.clipProgress
             let activeWidth = max(0, min(totalWidth, totalWidth * displayProgress))
-            let barHeight: CGFloat = isScrubbing ? 7.0 : 3.0
+            let barHeight: CGFloat = isScrubbing ? 6.0 : 3.0
 
             ZStack(alignment: .leading) {
                 // Background Track
@@ -1424,8 +1432,8 @@ public struct ClipsFeedView: View {
                     if isScrubbing {
                         Circle()
                             .fill(Color.white)
-                            .frame(width: 14, height: 14)
-                            .position(x: min(totalWidth - 7, max(7, activeWidth)), y: barProxy.size.height / 2)
+                            .frame(width: 12, height: 12)
+                            .position(x: min(totalWidth - 6, max(6, activeWidth)), y: barProxy.size.height / 2)
                             .transition(.scale.combined(with: .opacity))
                     }
                 }
@@ -1460,7 +1468,7 @@ public struct ClipsFeedView: View {
             )
             .animation(.spring(response: 0.25, dampingFraction: 0.8), value: barHeight)
         }
-        .frame(height: 24)
+        .frame(height: 16)
         .overlay(alignment: .top) {
             if isScrubbing {
                 let currentSec = clip.startTime + (clip.duration * scrubProgress)
@@ -1481,7 +1489,7 @@ public struct ClipsFeedView: View {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 8)
                 .glassEffect(in: .capsule)
-                .offset(y: -46)
+                .offset(y: -42)
                 .transition(
                     .asymmetric(
                         insertion: .scale(scale: 0.75).combined(with: .opacity).combined(with: .offset(y: 12)),
