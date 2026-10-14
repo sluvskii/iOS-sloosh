@@ -369,6 +369,9 @@ struct SettingsView: View {
         .onDisappear {
             applyTabBarLabelsTask?.cancel()
         }
+        .onChange(of: preferredSource) { _, _ in
+            ClipStreamResolver.shared.clearCache()
+        }
         .fullWidthSwipeBack()
         .confirmationDialog(
             "Очистить кэш?",

@@ -25,30 +25,41 @@ public final class ClipStreamResolver {
 
     /// Invalidate cache for a specific clip ID
     public func invalidate(clipId: String) {
-        cache.removeValue(forKey: clipId)
+        cache = cache.filter { !$0.key.hasPrefix(clipId) }
+        activeTasks = activeTasks.filter { !$0.key.hasPrefix(clipId) }
+    }
+
+    /// Clear all cached streams and ongoing resolution tasks
+    public func clearCache() {
+        cache.removeAll()
+        activeTasks.removeAll()
     }
 
     /// Resolves fresh authorized playback stream for a MovieClip without proxy collision
     public func resolveClip(for clip: MovieClip) async -> ResolvedClipPlayback? {
         let now = Date()
+        let sourceRaw = UserDefaults.standard.string(forKey: "preferredStreamSource") ?? MediaStreamSource.source1.rawValue
+        let source = MediaStreamSource(rawValue: sourceRaw) ?? .source1
+        let cacheKey = "\(clip.id)_\(source.rawValue)"
+
         // 1. Check in-memory cache
-        if let cached = cache[clip.id], cached.expiresAt > now {
+        if let cached = cache[cacheKey], cached.expiresAt > now {
             return cached.playback
         }
 
         // 2. Inflight task deduplication
-        if let existing = activeTasks[clip.id] {
+        if let existing = activeTasks[cacheKey] {
             return await existing.value
         }
 
         let task = Task<ResolvedClipPlayback?, Never> { @MainActor in
-            defer { activeTasks.removeValue(forKey: clip.id) }
-            return await doResolve(clip: clip)
+            defer { activeTasks.removeValue(forKey: cacheKey) }
+            return await doResolve(clip: clip, source: source)
         }
-        activeTasks[clip.id] = task
+        activeTasks[cacheKey] = task
         let result = await task.value
         if let result {
-            cache[clip.id] = (playback: result, expiresAt: Date().addingTimeInterval(cacheTtl))
+            cache[cacheKey] = (playback: result, expiresAt: Date().addingTimeInterval(cacheTtl))
         }
         return result
     }
@@ -59,8 +70,50 @@ public final class ClipStreamResolver {
         return resolved?.url
     }
 
-    private func doResolve(clip: MovieClip) async -> ResolvedClipPlayback? {
-        AppDiagnostics.shared.log("[ClipStreamResolver] Resolving clip=\(clip.id) kpId=\(clip.kpId ?? 0) tmdbId=\(clip.tmdbId ?? 0) title=\(clip.title)")
+    private func doResolve(clip: MovieClip, source: MediaStreamSource) async -> ResolvedClipPlayback? {
+        AppDiagnostics.shared.log("[ClipStreamResolver] Resolving clip=\(clip.id) source=\(source.rawValue) kpId=\(clip.kpId ?? 0) tmdbId=\(clip.tmdbId ?? 0) title=\(clip.title)")
+
+        // Branch 1: Source 2 (Collaps) when user manually selects Source 2
+        if source == .source2 {
+            let kpId = clip.kpId ?? 0
+            if kpId > 0 || !clip.title.isEmpty {
+                if let collaps = try? await CollapsRepository.shared.fetchMedia(kpId: kpId > 0 ? kpId : nil, title: clip.title) {
+                    let res = collaps.apiResult
+                    var streamUrlString: String? = nil
+                    var matchedVoice: String? = nil
+
+                    if let season = clip.season, let episode = clip.episode {
+                        if let sObj = res.seasons.first(where: { $0.season == season }),
+                           let epObj = sObj.episodes.first(where: { $0.episode == episode }) {
+                            if let trName = clip.translationName,
+                               let tr = epObj.translations.first(where: { allohaTranslationNamesMatch($0.name, trName, exactOnly: false) }) {
+                                streamUrlString = tr.streamUrl
+                                matchedVoice = tr.name
+                            } else {
+                                streamUrlString = epObj.translations.first?.streamUrl
+                                matchedVoice = epObj.translations.first?.name
+                            }
+                        }
+                    } else if let movie = res.movie {
+                        if let trName = clip.translationName,
+                           let tr = movie.translations.first(where: { allohaTranslationNamesMatch($0.name, trName, exactOnly: false) }) {
+                            streamUrlString = tr.streamUrl
+                            matchedVoice = tr.name
+                        } else {
+                            streamUrlString = movie.translations.first?.streamUrl
+                            matchedVoice = movie.translations.first?.name
+                        }
+                    }
+
+                    if let streamUrlString, let url = URL(string: streamUrlString) {
+                        AppDiagnostics.shared.log("[ClipStreamResolver] Resolved via Source 2 (Collaps) clip=\(clip.id) voice=\(matchedVoice ?? "default")")
+                        return ResolvedClipPlayback(url: url, headers: CollapsRepository.streamHeaders)
+                    }
+                }
+            }
+        }
+
+        // Branch 2: Source 1 (Alloha)
         _ = await AllohaRepository.shared.ensureTokensLoaded()
         var targetIframe: String? = nil
 

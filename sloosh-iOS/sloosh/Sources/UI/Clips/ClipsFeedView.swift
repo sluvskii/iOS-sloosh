@@ -54,6 +54,12 @@ final class ClipPlaybackCoordinator: ObservableObject {
     private var retryCount: Int = 0
     private(set) var wasUserPaused: Bool = false
 
+    // Prewarming & Preloading Engine for Instant Playback
+    private var prewarmedClipId: String?
+    private var prewarmedPlayer: AVPlayer?
+    private var prewarmedPlaybackInfo: ResolvedClipPlayback?
+    private var prewarmTask: Task<Void, Never>?
+
     init() {
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
         try? AVAudioSession.sharedInstance().setActive(true)
@@ -61,7 +67,55 @@ final class ClipPlaybackCoordinator: ObservableObject {
         self.currentQuality = savedQuality
     }
 
-    func setupPlayer(for clip: MovieClip, isRetry: Bool = false) {
+    func setupPlayer(for clip: MovieClip, allClips: [MovieClip] = [], isRetry: Bool = false) {
+        // Fast-path: Instant adoption of prewarmed player
+        if !isRetry,
+           prewarmedClipId == clip.id,
+           let prePlayer = prewarmedPlayer,
+           let playbackInfo = prewarmedPlaybackInfo {
+            AppDiagnostics.shared.log("[ClipPlayback] ⚡️ INSTANT PLAY: Reusing prewarmed player for clip=\(clip.id) title=\(clip.title)")
+            cleanupActivePlayerOnly()
+
+            currentClip = clip
+            currentClipId = clip.id
+            isResolving = false
+            isVideoReady = true
+            hasError = false
+            clipProgress = 0.0
+            isScrubbing = false
+            isFastForwarding = false
+            didPerformInitialSeek = true
+            retryCount = 0
+            wasUserPaused = false
+            isPlaying = true
+
+            currentQualityUrls = playbackInfo.qualityUrls
+            currentHeaders = playbackInfo.headers
+            currentPlayingUrl = playbackInfo.url
+
+            if !playbackInfo.qualityUrls.isEmpty {
+                let sortedKeys = playbackInfo.qualityUrls.keys.sorted {
+                    let h1 = Int($0.replacingOccurrences(of: "p", with: "")) ?? 0
+                    let h2 = Int($1.replacingOccurrences(of: "p", with: "")) ?? 0
+                    return h1 > h2
+                }
+                self.availableQualities = ["Авто"] + sortedKeys
+            }
+
+            self.activePlayer = prePlayer
+            attachPlayerObservers(player: prePlayer, item: prePlayer.currentItem, clip: clip)
+
+            prewarmedClipId = nil
+            prewarmedPlayer = nil
+            prewarmedPlaybackInfo = nil
+
+            try? AVAudioSession.sharedInstance().setActive(true)
+            playWithCurrentSpeed()
+
+            prewarmNext(after: clip, in: allClips)
+            return
+        }
+
         cleanup()
         currentClip = clip
         currentClipId = clip.id
@@ -128,88 +182,151 @@ final class ClipPlaybackCoordinator: ObservableObject {
                 player.pause()
             }
 
-            // Observe item status for ready to play & initial seek
-            self.playerStatusObserver = item.observe(\.status, options: [.new, .initial]) { [weak self, weak player] observedItem, _ in
-                Task { @MainActor [weak self] in
-                    guard let self, self.currentClipId == clip.id, let player else { return }
-                    if observedItem.status == .readyToPlay {
-                        self.isResolving = false
-                        self.isVideoReady = true
-                        self.hasError = false
-                        AppDiagnostics.shared.log("[ClipPlayback] readyToPlay clip=\(clip.id)")
+            self.attachPlayerObservers(player: player, item: item, clip: clip)
+            self.prewarmNext(after: clip, in: allClips)
+        }
+    }
 
-                        if !self.didPerformInitialSeek {
-                            self.didPerformInitialSeek = true
-                            if clip.startTime > 0.5 {
-                                let sTime = CMTime(seconds: clip.startTime, preferredTimescale: 600)
-                                player.seek(to: sTime, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
-                                    guard let self, self.isPlaying, !self.wasUserPaused else { return }
-                                    self.playWithCurrentSpeed()
-                                }
-                            } else {
-                                guard self.isPlaying, !self.wasUserPaused else { return }
+    private func attachPlayerObservers(player: AVPlayer, item: AVPlayerItem?, clip: MovieClip) {
+        guard let item else { return }
+        playerStatusObserver?.invalidate()
+        playerStatusObserver = item.observe(\.status, options: [.new, .initial]) { [weak self, weak player] observedItem, _ in
+            Task { @MainActor [weak self] in
+                guard let self, self.currentClipId == clip.id, let player else { return }
+                if observedItem.status == .readyToPlay {
+                    self.isResolving = false
+                    self.isVideoReady = true
+                    self.hasError = false
+                    AppDiagnostics.shared.log("[ClipPlayback] readyToPlay clip=\(clip.id)")
+
+                    if !self.didPerformInitialSeek {
+                        self.didPerformInitialSeek = true
+                        if clip.startTime > 0.5 {
+                            let sTime = CMTime(seconds: clip.startTime, preferredTimescale: 600)
+                            player.seek(to: sTime, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
+                                guard let self, self.isPlaying, !self.wasUserPaused else { return }
                                 self.playWithCurrentSpeed()
                             }
                         } else {
                             guard self.isPlaying, !self.wasUserPaused else { return }
                             self.playWithCurrentSpeed()
                         }
-                    } else if observedItem.status == .failed {
-                        let errorDesc = String(describing: observedItem.error)
-                        AppDiagnostics.shared.log("[ClipPlayback] AVPlayerItem failed for clip=\(clip.id): \(errorDesc)")
-                        
-                        let isUnsupportedFormat = errorDesc.contains("-11848") || errorDesc.contains("-15517")
-                        if isUnsupportedFormat && !self.currentQualityUrls.isEmpty {
-                            if let fallback = self.currentQualityUrls.first(where: { $0.value != self.currentPlayingUrl }) {
-                                AppDiagnostics.shared.log("[ClipPlayback] Unsupported format detected, falling back to quality=\(fallback.key)")
-                                self.switchStream(to: fallback.value, qualityKey: fallback.key)
-                                return
-                            }
-                        }
-
-                        if self.retryCount < 2 {
-                            self.retryCount += 1
-                            ClipStreamResolver.shared.invalidate(clipId: clip.id)
-                            self.setupPlayer(for: clip, isRetry: true)
-                        } else {
-                            self.isResolving = false
-                            self.hasError = true
-                        }
-                    }
-                }
-            }
-
-            // Observe time control status
-            self.playerTimeStatusObserver = player.observe(\.timeControlStatus, options: [.new]) { [weak self] observedPlayer, _ in
-                Task { @MainActor [weak self] in
-                    guard let self, self.currentClipId == clip.id else { return }
-                    if observedPlayer.timeControlStatus == .playing {
-                        self.isVideoReady = true
-                        self.isResolving = false
-                        self.hasError = false
-                    }
-                }
-            }
-
-            // Periodic time observer for progress and looping
-            let interval = CMTime(seconds: 0.1, preferredTimescale: 600)
-            self.timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self, weak player] time in
-                guard let self, let player, !self.isScrubbing else { return }
-                let currentSec = CMTimeGetSeconds(time)
-                guard currentSec.isFinite else { return }
-
-                let clipDur = max(1.0, clip.endTime - clip.startTime)
-                let elapsed = max(0.0, currentSec - clip.startTime)
-                self.clipProgress = min(1.0, max(0.0, elapsed / clipDur))
-
-                // Loop back to start or auto-advance when video reaches or exceeds clip.endTime
-                if currentSec >= clip.endTime {
-                    if let onClipEnded = self.onClipEnded {
-                        onClipEnded()
                     } else {
-                        self.seekToStart(for: clip)
+                        guard self.isPlaying, !self.wasUserPaused else { return }
+                        self.playWithCurrentSpeed()
+                    }
+                } else if observedItem.status == .failed {
+                    let errorDesc = String(describing: observedItem.error)
+                    AppDiagnostics.shared.log("[ClipPlayback] AVPlayerItem failed for clip=\(clip.id): \(errorDesc)")
+
+                    let isUnsupportedFormat = errorDesc.contains("-11848") || errorDesc.contains("-15517")
+                    if isUnsupportedFormat && !self.currentQualityUrls.isEmpty {
+                        if let fallback = self.currentQualityUrls.first(where: { $0.value != self.currentPlayingUrl }) {
+                            AppDiagnostics.shared.log("[ClipPlayback] Unsupported format detected, falling back to quality=\(fallback.key)")
+                            self.switchStream(to: fallback.value, qualityKey: fallback.key)
+                            return
+                        }
+                    }
+
+                    if self.retryCount < 2 {
+                        self.retryCount += 1
+                        ClipStreamResolver.shared.invalidate(clipId: clip.id)
+                        self.setupPlayer(for: clip, isRetry: true)
+                    } else {
+                        self.isResolving = false
+                        self.hasError = true
                     }
                 }
+            }
+        }
+
+        playerTimeStatusObserver?.invalidate()
+        playerTimeStatusObserver = player.observe(\.timeControlStatus, options: [.new]) { [weak self] observedPlayer, _ in
+            Task { @MainActor [weak self] in
+                guard let self, self.currentClipId == clip.id else { return }
+                if observedPlayer.timeControlStatus == .playing {
+                    self.isVideoReady = true
+                    self.isResolving = false
+                    self.hasError = false
+                }
+            }
+        }
+
+        if let oldObserver = timeObserver {
+            player.removeTimeObserver(oldObserver)
+            timeObserver = nil
+        }
+        let interval = CMTime(seconds: 0.1, preferredTimescale: 600)
+        self.timeObserver = player.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self, weak player] time in
+            guard let self, let player, !self.isScrubbing else { return }
+            let currentSec = CMTimeGetSeconds(time)
+            guard currentSec.isFinite else { return }
+
+            let clipDur = max(1.0, clip.endTime - clip.startTime)
+            let elapsed = max(0.0, currentSec - clip.startTime)
+            self.clipProgress = min(1.0, max(0.0, elapsed / clipDur))
+
+            // Loop back to start or auto-advance when video reaches or exceeds clip.endTime
+            if currentSec >= clip.endTime {
+                if let onClipEnded = self.onClipEnded {
+                    onClipEnded()
+                } else {
+                    self.seekToStart(for: clip)
+                }
+            }
+        }
+    }
+
+    private func prewarmNext(after currentClip: MovieClip, in allClips: [MovieClip]) {
+        guard !allClips.isEmpty, let currentIndex = allClips.firstIndex(where: { $0.id == currentClip.id }) else { return }
+        let nextIndex = currentIndex + 1
+        let nextNextIndex = currentIndex + 2
+        let prevIndex = currentIndex - 1
+
+        let nextClip = (nextIndex < allClips.count) ? allClips[nextIndex] : nil
+        let nextNextClip = (nextNextIndex < allClips.count) ? allClips[nextNextIndex] : nil
+        let prevClip = (prevIndex >= 0) ? allClips[prevIndex] : nil
+
+        prewarmTask?.cancel()
+        prewarmTask = Task { [weak self] in
+            guard let self else { return }
+
+            // 1. Fully prewarm next clip player (buffers 10s and seeks to startTime while paused in background)
+            if let nextClip {
+                if let playbackInfo = await ClipStreamResolver.shared.resolveClip(for: nextClip) {
+                    guard !Task.isCancelled else { return }
+                    let asset = AVURLAsset(url: playbackInfo.url, options: ["AVURLAssetHTTPHeaderFieldsKey": playbackInfo.headers])
+                    let item = AVPlayerItem(asset: asset)
+                    item.preferredForwardBufferDuration = 10.0
+                    self.applyQuality(self.currentQuality, to: item)
+
+                    let player = AVPlayer(playerItem: item)
+                    player.actionAtItemEnd = .none
+                    player.automaticallyWaitsToMinimizeStalling = true
+                    player.pause()
+
+                    if nextClip.startTime > 0.5 {
+                        let sTime = CMTime(seconds: nextClip.startTime, preferredTimescale: 600)
+                        await player.seek(to: sTime, toleranceBefore: .zero, toleranceAfter: .zero)
+                    }
+
+                    guard !Task.isCancelled else { return }
+                    await MainActor.run {
+                        self.prewarmedPlayer?.pause()
+                        self.prewarmedPlayer = player
+                        self.prewarmedClipId = nextClip.id
+                        self.prewarmedPlaybackInfo = playbackInfo
+                        AppDiagnostics.shared.log("[ClipPlayback] ⚡️ Prewarmed AVPlayer ready for next clip=\(nextClip.id) title=\(nextClip.title)")
+                    }
+                }
+            }
+
+            // 2. Pre-resolve stream URLs for nextNextClip and prevClip into memory cache
+            if let nextNextClip, !Task.isCancelled {
+                _ = await ClipStreamResolver.shared.resolveClip(for: nextNextClip)
+            }
+            if let prevClip, !Task.isCancelled {
+                _ = await ClipStreamResolver.shared.resolveClip(for: prevClip)
             }
         }
     }
@@ -431,22 +548,22 @@ final class ClipPlaybackCoordinator: ObservableObject {
         }
     }
 
-    func resume(for clip: MovieClip?) {
+    func resume(for clip: MovieClip?, allClips: [MovieClip] = []) {
         guard let clip else { return }
         wasUserPaused = false
         if activePlayer == nil || currentClipId != clip.id {
-            setupPlayer(for: clip)
+            setupPlayer(for: clip, allClips: allClips)
         } else {
             playWithCurrentSpeed()
         }
     }
 
-    func resumeIfAppropriate(for clip: MovieClip?) {
+    func resumeIfAppropriate(for clip: MovieClip?, allClips: [MovieClip] = []) {
         guard !wasUserPaused else { return }
-        resume(for: clip)
+        resume(for: clip, allClips: allClips)
     }
 
-    func cleanup() {
+    func cleanupActivePlayerOnly() {
         resolvePlaybackTask?.cancel()
         resolvePlaybackTask = nil
         playerStatusObserver?.invalidate()
@@ -460,6 +577,18 @@ final class ClipPlaybackCoordinator: ObservableObject {
         }
         activePlayer?.pause()
         activePlayer = nil
+    }
+
+    func cleanup() {
+        cleanupActivePlayerOnly()
+
+        prewarmTask?.cancel()
+        prewarmTask = nil
+        prewarmedPlayer?.pause()
+        prewarmedPlayer = nil
+        prewarmedClipId = nil
+        prewarmedPlaybackInfo = nil
+
         isVideoReady = false
         isResolving = false
         hasError = false
@@ -473,8 +602,11 @@ final class ClipPlaybackCoordinator: ObservableObject {
 
     deinit {
         resolvePlaybackTask?.cancel()
+        prewarmTask?.cancel()
         playerStatusObserver?.invalidate()
         playerTimeStatusObserver?.invalidate()
+        prewarmedPlayer?.pause()
+        activePlayer?.pause()
     }
 }
 
@@ -500,6 +632,7 @@ public struct ClipsFeedView: View {
 
     @AppStorage("clipsVideoScaleMode") private var clipScaleModeRaw: String = ClipScalingMode.fit.rawValue
     @AppStorage("sloosh_clips_autoscroll") private var autoScrollNext: Bool = false
+    @AppStorage("preferredStreamSource") private var preferredSource: MediaStreamSource = .source1
 
     private var currentScaleMode: ClipScalingMode {
         ClipScalingMode(rawValue: clipScaleModeRaw) ?? .fit
@@ -516,7 +649,6 @@ public struct ClipsFeedView: View {
     @State private var bigHeartPosition: CGPoint = .zero
     @State private var isTextExpanded: Bool = false
     @State private var isScrubbing: Bool = false
-    @State private var scrollOffsetY: CGFloat = 0.0
     @State private var lastTapTime: Date = Date.distantPast
 
     private var currentVisibleClip: MovieClip? {
@@ -554,7 +686,7 @@ public struct ClipsFeedView: View {
                     } else {
                         feedScrollView(width: fullWidth, height: fullHeight, topSafeArea: topSafeArea, bottomSafeArea: bottomSafeArea)
 
-                        momentsHeaderView(width: fullWidth, topSafeArea: topSafeArea, fullHeight: fullHeight)
+                        momentsHeaderView(width: fullWidth, topSafeArea: topSafeArea)
                             .opacity(isInterfaceHidden ? 0.0 : 1.0)
                             .animation(.spring(response: 0.35, dampingFraction: 0.8), value: isInterfaceHidden)
                     }
@@ -632,13 +764,17 @@ public struct ClipsFeedView: View {
             playback.pause(userInitiated: false)
         }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("SlooshPauseClipsPlayback"))) { _ in
-            playback.pause(userInitiated: true)
+            playback.pause(userInitiated: false)
         }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("SlooshMainPlayerWillStart"))) { _ in
-            playback.pause(userInitiated: true)
+            playback.pause(userInitiated: false)
         }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("SlooshResumeClipsPlayback"))) { _ in
-            ensurePlaybackStarted()
+            if let clipId = currentClipId, let clip = clipsRepo.clips.first(where: { $0.id == clipId }) {
+                playback.resumeIfAppropriate(for: clip, allClips: clipsRepo.clips)
+            } else {
+                ensurePlaybackStarted()
+            }
         }
         .alert("Удалить момент?", isPresented: $showDeleteConfirmation, presenting: clipToDelete) { clip in
             Button("Отмена", role: .cancel) {
@@ -651,7 +787,7 @@ public struct ClipsFeedView: View {
             Text("Вы уверены, что хотите удалить этот момент? Это действие нельзя отменить.")
         }
         .onDisappear {
-            playback.pause(userInitiated: true)
+            playback.pause(userInitiated: false)
         }
         .onAppear {
             setupPlaybackCallbacks()
@@ -662,27 +798,10 @@ public struct ClipsFeedView: View {
         }
     }
 
-    // MARK: - Dynamic Header Scroll Blur (Matches HomeView liquid glass style)
+    // MARK: - Floating Liquid Glass Header
 
-    private func headerBlurOpacity(height: CGFloat) -> Double {
-        guard height > 0 else { return 0.0 }
-        let offset = scrollOffsetY
-        let distFromPage: CGFloat
-        if offset < 0 {
-            distFromPage = abs(offset)
-        } else {
-            let remainder = offset.truncatingRemainder(dividingBy: height)
-            distFromPage = min(remainder, height - remainder)
-        }
-        // At rest, distance is 0 (< 1.5pt threshold). No blur when player is idle.
-        guard distFromPage > 1.5 else { return 0.0 }
-        let progress = min(1.0, Double((distFromPage - 1.5) / 32.0))
-        return progress
-    }
-
-    private func momentsHeaderView(width: CGFloat, topSafeArea: CGFloat, fullHeight: CGFloat) -> some View {
+    private func momentsHeaderView(width: CGFloat, topSafeArea: CGFloat) -> some View {
         let statusBarClearance = max(topSafeArea, 47.0) + 16.0
-        let blurOpacity = headerBlurOpacity(height: fullHeight)
 
         return VStack(spacing: 0) {
             // Status bar clearance (keeps title comfortable below Dynamic Island / notch)
@@ -727,6 +846,7 @@ public struct ClipsFeedView: View {
                 Text("Моменты")
                     .font(.system(size: 17, weight: .semibold))
                     .foregroundStyle(.white)
+                    .shadow(color: Color.black.opacity(0.4), radius: 6, x: 0, y: 2)
                     .allowsHitTesting(false)
 
                 Spacer(minLength: 0)
@@ -745,14 +865,6 @@ public struct ClipsFeedView: View {
             .frame(height: 44)
         }
         .frame(width: width)
-        .background(
-            VariableBlurView(tintOpacity: 1.0)
-                .padding(.bottom, -30)
-                .ignoresSafeArea(edges: .top)
-                .opacity(blurOpacity)
-                .animation(.easeInOut(duration: 0.2), value: blurOpacity)
-                .allowsHitTesting(false)
-        )
         .ignoresSafeArea(edges: .top)
         .opacity(showCommentsForClip != nil ? 0.0 : 1.0)
         .animation(.spring(response: 0.28, dampingFraction: 0.85), value: showCommentsForClip != nil)
@@ -799,7 +911,30 @@ public struct ClipsFeedView: View {
                 Label("Скорость (\(playback.speedLabel))", systemImage: "gauge.with.needle")
             }
 
-            // 3. Масштаб видео
+            // 3. Источник видео
+            Menu {
+                ForEach(MediaStreamSource.allCases) { source in
+                    Button {
+                        if preferredSource != source {
+                            preferredSource = source
+                            ToastManager.shared.show(title: "Источник: \(source.settingsTitle)", icon: "server.rack", iconColor: .white)
+                            ClipStreamResolver.shared.clearCache()
+                            playback.setupPlayer(for: clip, allClips: clipsRepo.clips, isRetry: true)
+                        }
+                    } label: {
+                        HStack {
+                            Text(source.settingsTitle)
+                            if preferredSource == source {
+                                Image(systemName: "checkmark")
+                            }
+                        }
+                    }
+                }
+            } label: {
+                Label("Источник (\(preferredSource.settingsTitle))", systemImage: "server.rack")
+            }
+
+            // 4. Масштаб видео
             Menu {
                 Button {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
@@ -940,7 +1075,7 @@ public struct ClipsFeedView: View {
                 if currentClipId == clip.id {
                     if let nextClip {
                         currentClipId = nextClip.id
-                        playback.setupPlayer(for: nextClip)
+                        playback.setupPlayer(for: nextClip, allClips: clipsRepo.clips)
                     } else {
                         currentClipId = nil
                         playback.cleanup()
@@ -977,7 +1112,7 @@ public struct ClipsFeedView: View {
                     await clipsRepo.fetchFeed(forceRefresh: true)
                     if let first = clipsRepo.clips.first {
                         currentClipId = first.id
-                        playback.setupPlayer(for: first)
+                        playback.setupPlayer(for: first, allClips: clipsRepo.clips)
                     }
                 }
             } label: {
@@ -1011,13 +1146,6 @@ public struct ClipsFeedView: View {
         }
         .scrollTargetBehavior(.paging)
         .scrollPosition(id: $currentClipId)
-        .onScrollGeometryChange(for: CGFloat.self) { geometry in
-            geometry.contentOffset.y
-        } action: { oldOffset, newOffset in
-            if abs(newOffset - scrollOffsetY) > 0.1 {
-                scrollOffsetY = newOffset
-            }
-        }
         .ignoresSafeArea()
         .refreshable {
             await clipsRepo.fetchFeed(forceRefresh: true)
@@ -1026,17 +1154,7 @@ public struct ClipsFeedView: View {
             AppDiagnostics.shared.log("[ClipsFeedView] currentClipId changed from \(String(describing: oldId)) to \(String(describing: newId))")
             isTextExpanded = false
             guard let newId = newId, newId != oldId, let clip = clipsRepo.clips.first(where: { $0.id == newId }) else { return }
-            playback.setupPlayer(for: clip)
-            prewarmNextClip(after: clip)
-        }
-    }
-
-    private func prewarmNextClip(after currentClip: MovieClip) {
-        guard let currentIndex = clipsRepo.clips.firstIndex(where: { $0.id == currentClip.id }),
-              currentIndex + 1 < clipsRepo.clips.count else { return }
-        let nextClip = clipsRepo.clips[currentIndex + 1]
-        Task {
-            _ = await ClipStreamResolver.shared.resolveClip(for: nextClip)
+            playback.setupPlayer(for: clip, allClips: clipsRepo.clips)
         }
     }
 
@@ -1242,7 +1360,7 @@ public struct ClipsFeedView: View {
             if isCurrent && playback.hasError && !isOverlayHidden {
                 Button {
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    playback.setupPlayer(for: clip, isRetry: false)
+                    playback.setupPlayer(for: clip, allClips: clipsRepo.clips, isRetry: false)
                 } label: {
                     VStack(spacing: 8) {
                         Image(systemName: "arrow.clockwise.circle.fill")
@@ -1997,10 +2115,10 @@ extension ClipsFeedView {
 
     private func ensurePlaybackStarted() {
         if let clipId = currentClipId, let clip = clipsRepo.clips.first(where: { $0.id == clipId }) {
-            playback.resume(for: clip)
+            playback.resume(for: clip, allClips: clipsRepo.clips)
         } else if let first = clipsRepo.clips.first {
             currentClipId = first.id
-            playback.setupPlayer(for: first)
+            playback.setupPlayer(for: first, allClips: clipsRepo.clips)
         }
     }
 
