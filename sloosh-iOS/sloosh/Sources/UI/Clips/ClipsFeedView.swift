@@ -457,6 +457,10 @@ public struct ClipsFeedView: View {
     @StateObject private var clipsRepo = ClipsRepository.shared
     @StateObject private var authRepo = AuthRepository.shared
     @StateObject private var playback = ClipPlaybackCoordinator()
+    @ObservedObject private var messengerRepo = MessengerRepository.shared
+
+    @State private var showsMessenger: Bool = false
+    @State private var commentsSheetDetent: PresentationDetent = .fraction(0.65)
 
     @AppStorage("clipsVideoScaleMode") private var clipScaleModeRaw: String = ClipScalingMode.fit.rawValue
 
@@ -487,34 +491,40 @@ public struct ClipsFeedView: View {
     public init() {}
 
     public var body: some View {
-        GeometryReader { proxy in
-            let topSafeArea = proxy.safeAreaInsets.top
-            let bottomSafeArea = proxy.safeAreaInsets.bottom
-            let fullWidth = proxy.size.width
-            let fullHeight = proxy.size.height + topSafeArea + bottomSafeArea
+        NavigationStack {
+            GeometryReader { proxy in
+                let topSafeArea = proxy.safeAreaInsets.top
+                let bottomSafeArea = proxy.safeAreaInsets.bottom
+                let fullWidth = proxy.size.width
+                let fullHeight = proxy.size.height + topSafeArea + bottomSafeArea
 
-            ZStack(alignment: .top) {
-                Color.black.ignoresSafeArea()
+                ZStack(alignment: .top) {
+                    Color.black.ignoresSafeArea()
 
-                if clipsRepo.isLoading && clipsRepo.clips.isEmpty {
-                    VStack(spacing: 16) {
-                        ProgressView()
-                            .tint(.white)
-                        Text("Загрузка моментов...")
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundStyle(.white.opacity(0.6))
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if clipsRepo.clips.isEmpty {
-                    emptyStateView
+                    if clipsRepo.isLoading && clipsRepo.clips.isEmpty {
+                        VStack(spacing: 16) {
+                            ProgressView()
+                                .tint(.white)
+                            Text("Загрузка моментов...")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundStyle(.white.opacity(0.6))
+                        }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    feedScrollView(width: fullWidth, height: fullHeight, topSafeArea: topSafeArea, bottomSafeArea: bottomSafeArea)
+                    } else if clipsRepo.clips.isEmpty {
+                        emptyStateView
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else {
+                        feedScrollView(width: fullWidth, height: fullHeight, topSafeArea: topSafeArea, bottomSafeArea: bottomSafeArea)
 
-                    momentsHeaderView(width: fullWidth, topSafeArea: topSafeArea, fullHeight: fullHeight)
+                        momentsHeaderView(width: fullWidth, topSafeArea: topSafeArea, fullHeight: fullHeight)
+                    }
                 }
+                .ignoresSafeArea()
             }
-            .ignoresSafeArea()
+            .toolbarVisibility(.hidden, for: .navigationBar)
+            .navigationDestination(isPresented: $showsMessenger) {
+                MessengerView()
+            }
         }
         .preferredColorScheme(.dark)
         .environment(\.colorScheme, .dark)
@@ -526,7 +536,7 @@ public struct ClipsFeedView: View {
         }
         .sheet(item: $showCommentsForClip) { clip in
             ClipCommentsSheetView(clip: clip)
-                .presentationDetents([.fraction(0.65)])
+                .presentationDetents([.fraction(0.65)], selection: $commentsSheetDetent)
                 .presentationBackgroundInteraction(.enabled(upThrough: .fraction(0.65)))
         }
         .fullScreenCover(item: $fullPlayerConfig, onDismiss: {
@@ -536,6 +546,13 @@ public struct ClipsFeedView: View {
             PlayerView(config: config)
                 .preferredColorScheme(.dark)
                 .environment(\.colorScheme, .dark)
+        }
+        .onChange(of: showsMessenger) { _, isPresented in
+            if isPresented {
+                playback.pause()
+            } else {
+                ensurePlaybackStarted()
+            }
         }
         .alert("Удалить момент?", isPresented: $showDeleteConfirmation, presenting: clipToDelete) { clip in
             Button("Отмена", role: .cancel) {
@@ -585,10 +602,35 @@ public struct ClipsFeedView: View {
 
             // Header title bar (perfectly symmetrical with matching 44x44 balances on left and right)
             HStack(spacing: 0) {
-                Color.clear
-                    .frame(width: 44, height: 44)
-                    .padding(.leading, 16)
-                    .allowsHitTesting(false)
+                Button {
+                    let generator = UIImpactFeedbackGenerator(style: .medium)
+                    generator.prepare()
+                    generator.impactOccurred()
+                    showsMessenger = true
+                } label: {
+                    ZStack(alignment: .topTrailing) {
+                        Image(systemName: "bubble.left.and.bubble.right.fill")
+                            .font(.system(size: 19, weight: .medium))
+                            .foregroundStyle(.white)
+                            .frame(width: 44, height: 44)
+                            .contentShape(Circle())
+
+                        if messengerRepo.totalUnreadCount > 0 {
+                            Text("\(messengerRepo.totalUnreadCount)")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 4)
+                                .padding(.vertical, 1)
+                                .background(Color.red)
+                                .clipShape(Capsule())
+                                .offset(x: -2, y: 4)
+                        }
+                    }
+                }
+                .buttonStyle(.glassPress)
+                .glassEffect(.regular.interactive(), in: .circle)
+                .accessibilityLabel("Чаты")
+                .padding(.leading, 16)
 
                 Spacer(minLength: 0)
 

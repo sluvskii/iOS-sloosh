@@ -15,6 +15,8 @@ public struct ClipCommentsSheetView: View {
     @State private var scrollOffset: CGFloat = 0
     @FocusState private var isInputFocused: Bool
 
+    @State private var sheetDetent: PresentationDetent = .fraction(0.65)
+
     public init(clip: MovieClip) {
         self.clip = clip
     }
@@ -40,27 +42,8 @@ public struct ClipCommentsSheetView: View {
         return min(1.0, Double(progress))
     }
 
-    private var deviceBottomSafeArea: CGFloat {
-        let scenes = UIApplication.shared.connectedScenes
-        let windowScene = scenes.compactMap { $0 as? UIWindowScene }.first(where: { $0.activationState == .foregroundActive })
-            ?? scenes.compactMap { $0 as? UIWindowScene }.first
-        let keyWindow = windowScene?.windows.first(where: { $0.isKeyWindow })
-            ?? windowScene?.windows.first
-        let bottom = keyWindow?.safeAreaInsets.bottom ?? 34
-        return bottom > 0 ? bottom : 34
-    }
-
-    private var collapsedHorizontalPadding: CGFloat {
-        deviceBottomSafeArea + 2
-    }
-
-    private var inputBarHorizontalPadding: CGFloat {
-        isInputFocused ? 6 : collapsedHorizontalPadding
-    }
-
-    private var inputBarVerticalPadding: CGFloat {
-        isInputFocused ? 8 : 2
-    }
+    private let inputBarHorizontalPadding: CGFloat = 16
+    private let inputBarVerticalPadding: CGFloat = 8
 
     public var body: some View {
         ZStack {
@@ -108,7 +91,7 @@ public struct ClipCommentsSheetView: View {
         }
         .scrollContentBackground(.hidden)
         .background(Color.clear)
-        .presentationDetents([.fraction(0.65)])
+        .presentationDetents([.fraction(0.65)], selection: $sheetDetent)
         .presentationBackground { Color.clear.glassEffect(in: .rect) }
         .presentationBackgroundInteraction(.enabled(upThrough: .fraction(0.65)))
         .presentationDragIndicator(.visible)
