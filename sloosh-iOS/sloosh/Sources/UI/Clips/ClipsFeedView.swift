@@ -1182,16 +1182,6 @@ public struct ClipsFeedView: View {
             if abs(newOffset - scrollOffsetY) > 0.5 {
                 scrollOffsetY = newOffset
             }
-            // If user is actively dragging away from the current page (> 60pt), pause playback of the current clip
-            if scrollPhase.isScrolling && height > 0 {
-                let remainder = newOffset.truncatingRemainder(dividingBy: height)
-                let distFromPage = min(remainder, height - remainder)
-                if distFromPage > 60.0 {
-                    if playback.isPlaying && !playback.wasUserPaused {
-                        playback.pause(userInitiated: false)
-                    }
-                }
-            }
             // If scroll offset landed exactly on a page boundary while idle
             if !scrollPhase.isScrolling && isOffsetAtRest(newOffset, height: height) {
                 handleClipSettled()
@@ -1217,10 +1207,6 @@ public struct ClipsFeedView: View {
               let clip = clipsRepo.clips.first(where: { $0.id == targetId }) else { return }
 
         if targetId == settledClipId {
-            // User scrolled slightly and snapped back to same clip: unpause if was paused during drag
-            if !playback.isPlaying && !playback.wasUserPaused {
-                playback.playWithCurrentSpeed()
-            }
             return
         }
 
