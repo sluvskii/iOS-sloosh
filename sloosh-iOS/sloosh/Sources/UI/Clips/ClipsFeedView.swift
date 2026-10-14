@@ -1175,22 +1175,10 @@ public struct ClipsFeedView: View {
                 }
             }
 
-            // 3. Touch & Gesture Zones: Both Edges 2x Speed, Center Instant 0ms Play/Pause
-            HStack(spacing: 0) {
-                // Left Edge 2x Speed Zone (88pt)
-                edgeAccelerationZone(for: clip)
-                    .frame(width: 88)
-
-                // Center Instant Play/Pause & Double-Tap Heart Zone
-                centerTapZone(clip: clip)
-                    .frame(maxWidth: .infinity)
-
-                // Right Edge 2x Speed Zone (88pt)
-                edgeAccelerationZone(for: clip)
-                    .frame(width: 88)
-            }
-            .frame(width: width, height: height)
-            .zIndex(1)
+            // 3. Unified Touch & Gesture Interaction Surface: Tap for Play/Pause, Vertical Drag for Scrolling, Hold for 2x Acceleration
+            unifiedGestureZone(for: clip)
+                .frame(width: width, height: height)
+                .zIndex(1)
 
             // 6. Play / Pause Indicator in Center (Liquid Glass with Spring Animation, perfectly centered)
             if !playback.isPlaying && isCurrent && playback.isVideoReady && !isOverlayHidden {
@@ -1300,12 +1288,15 @@ public struct ClipsFeedView: View {
         .clipShape(RoundedRectangle(cornerRadius: 38, style: .continuous))
     }
 
-    // MARK: - Gesture Handling Zones
+    // MARK: - Unified Gesture Handling Zone
 
-    private func edgeAccelerationZone(for clip: MovieClip) -> some View {
-        EdgeHoldAccelerationView(
+    private func unifiedGestureZone(for clip: MovieClip) -> some View {
+        ClipInteractiveGestureView(
             isScrubbing: isScrubbing,
             isPlaying: playback.isPlaying,
+            onTap: { location in
+                handleCenterTap(at: location, for: clip)
+            },
             onStartFastForward: {
                 withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
                     playback.startFastForward()
@@ -1319,16 +1310,6 @@ public struct ClipsFeedView: View {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
             }
         )
-    }
-
-    private func centerTapZone(clip: MovieClip) -> some View {
-        GeometryReader { geo in
-            Color.clear
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    handleCenterTap(at: CGPoint(x: geo.size.width / 2, y: geo.size.height / 2), for: clip)
-                }
-        }
     }
 
     private func handleCenterTap(at location: CGPoint, for clip: MovieClip) {
@@ -1903,46 +1884,64 @@ private struct ClipProgressBarView: View {
     }
 }
 
-// MARK: - Edge Hold-to-Accelerate View (Only activates after 0.28s hold, quick taps never trigger 2x)
+// MARK: - Unified Clip Interactive Gesture View (Tap to pause/play, drag to scroll, hold for 2x)
 
-private struct EdgeHoldAccelerationView: View {
+private struct ClipInteractiveGestureView: View {
     let isScrubbing: Bool
     let isPlaying: Bool
+    let onTap: (CGPoint) -> Void
     let onStartFastForward: () -> Void
     let onStopFastForward: () -> Void
 
     @State private var isHoldingActive: Bool = false
+    @State private var didFastForwardThisTouch: Bool = false
+    @State private var lastFastForwardEndTime: Date = .distantPast
 
     var body: some View {
-        Color.clear
-            .contentShape(Rectangle())
-            .gesture(
-                LongPressGesture(minimumDuration: 0.28, maximumDistance: 30)
-                    .sequenced(before: DragGesture(minimumDistance: 0))
-                    .onChanged { value in
-                        switch value {
-                        case .second(true, _):
-                            if !isHoldingActive && !isScrubbing && isPlaying {
-                                isHoldingActive = true
-                                onStartFastForward()
-                            }
-                        default:
-                            break
-                        }
+        GeometryReader { _ in
+            Color.clear
+                .contentShape(Rectangle())
+                .onTapGesture(coordinateSpace: .local) { location in
+                    guard !didFastForwardThisTouch else {
+                        didFastForwardThisTouch = false
+                        return
                     }
-                    .onEnded { _ in
-                        if isHoldingActive {
-                            isHoldingActive = false
-                            onStopFastForward()
-                        }
+                    guard Date().timeIntervalSince(lastFastForwardEndTime) > 0.3 else {
+                        return
                     }
-            )
-            .onDisappear {
-                if isHoldingActive {
-                    isHoldingActive = false
-                    onStopFastForward()
+                    onTap(location)
                 }
-            }
+                .simultaneousGesture(
+                    LongPressGesture(minimumDuration: 0.28, maximumDistance: 30)
+                        .sequenced(before: DragGesture(minimumDistance: 0))
+                        .onChanged { value in
+                            switch value {
+                            case .second(true, _):
+                                if !isHoldingActive && !isScrubbing && isPlaying {
+                                    isHoldingActive = true
+                                    didFastForwardThisTouch = true
+                                    onStartFastForward()
+                                }
+                            default:
+                                break
+                            }
+                        }
+                        .onEnded { _ in
+                            if isHoldingActive {
+                                isHoldingActive = false
+                                lastFastForwardEndTime = Date()
+                                onStopFastForward()
+                            }
+                        }
+                )
+                .onDisappear {
+                    if isHoldingActive {
+                        isHoldingActive = false
+                        lastFastForwardEndTime = Date()
+                        onStopFastForward()
+                    }
+                }
+        }
     }
 }
 
