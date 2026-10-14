@@ -878,12 +878,6 @@ class PlayerViewModel: ObservableObject {
                         self.availableVoiceovers = availableVoices
                     }
                     guard let iframe = targetIframe, !iframe.isEmpty else {
-                        if self.streamSource == .source1 && ((kpId != nil && kpId! > 0) || !self.fallbackTitle.isEmpty) {
-                            AppDiagnostics.shared.log("beginLoad: No Alloha iframe found, attempting automatic failover to Source 2 (Collaps)")
-                            self.streamSource = .source2
-                            await self.executeCollapsRetry()
-                            return
-                        }
                         self.error = "Видео не найдено"
                         self.isLoading = false
                         return
@@ -891,12 +885,6 @@ class PlayerViewModel: ObservableObject {
                     self.currentIframeUrl = iframe
                     self.startParsing(iframeUrl: iframe, voices: availableVoices, subtitles: subtitles)
                 } catch {
-                    if self.streamSource == .source1 && ((kpId != nil && kpId! > 0) || !self.fallbackTitle.isEmpty) {
-                        AppDiagnostics.shared.log("beginLoad: Alloha catalog fetch failed (\(error.localizedDescription)), attempting automatic failover to Source 2 (Collaps)")
-                        self.streamSource = .source2
-                        await self.executeCollapsRetry()
-                        return
-                    }
                     self.error = "Не удалось загрузить видео: \(error.localizedDescription)"
                     self.isLoading = false
                 }
@@ -1161,13 +1149,6 @@ class PlayerViewModel: ObservableObject {
                 return
             } catch {
                 guard let self, !Task.isCancelled else { return }
-                // Fallback to Collaps (Source 2) if primary source (Alloha) fails or times out
-                if self.streamSource == .source1 && ((self.currentKpId != nil && self.currentKpId! > 0) || !self.fallbackTitle.isEmpty) {
-                    AppDiagnostics.shared.log("startParsing: primary source failed (\(error.localizedDescription)), triggering automatic failover to Source 2 (Collaps)")
-                    self.streamSource = .source2
-                    await self.executeCollapsRetry()
-                    return
-                }
 
                 if let localized = error as? LocalizedError, let desc = localized.errorDescription {
                     self.error = desc

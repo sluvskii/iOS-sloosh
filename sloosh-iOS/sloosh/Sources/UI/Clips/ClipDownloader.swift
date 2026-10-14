@@ -401,6 +401,21 @@ public final class ClipDownloader: ObservableObject {
         let fm = FileManager.default
         let asset = AVURLAsset(url: inputUrl)
 
+        // Load duration safely
+        let assetDuration = (try? await asset.load(.duration)) ?? .zero
+        var exportRange = timeRange
+        if assetDuration.isValid && assetDuration.isNumeric && assetDuration.seconds > 0 {
+            let totalSec = assetDuration.seconds
+            let startSec = min(max(0.0, timeRange.start.seconds), max(0.0, totalSec - 0.2))
+            let maxAvailable = max(0.5, totalSec - startSec)
+            let durSec = min(timeRange.duration.seconds, maxAvailable)
+            exportRange = CMTimeRange(
+                start: CMTime(seconds: startSec, preferredTimescale: 600),
+                duration: CMTime(seconds: durSec, preferredTimescale: 600)
+            )
+            AppDiagnostics.shared.log("[ClipDownloader] Clamped export range: start=\(startSec), dur=\(durSec), totalAsset=\(totalSec)")
+        }
+
         let presets = [
             AVAssetExportPresetHighestQuality,
             AVAssetExportPreset1920x1080,
@@ -408,20 +423,55 @@ public final class ClipDownloader: ObservableObject {
             AVAssetExportPresetPassthrough
         ]
 
+        // Pass 1: Direct asset export with clamped timeRange
         for preset in presets {
             try? fm.removeItem(at: outputUrl)
             if let session = AVAssetExportSession(asset: asset, presetName: preset) {
                 session.outputURL = outputUrl
                 session.outputFileType = .mp4
                 session.shouldOptimizeForNetworkUse = true
-                if timeRange.duration.isNumeric && timeRange.duration.seconds > 0 {
-                    session.timeRange = timeRange
+                if exportRange.duration.isNumeric && exportRange.duration.seconds > 0 {
+                    session.timeRange = exportRange
                 }
                 await session.export()
 
                 let size = ((try? fm.attributesOfItem(atPath: outputUrl.path))?[.size] as? Int64) ?? 0
-                if session.status == .completed && fm.fileExists(atPath: outputUrl.path) && size > 5000 {
+                if session.status == .completed && fm.fileExists(atPath: outputUrl.path) && size > 2000 {
+                    AppDiagnostics.shared.log("[ClipDownloader] Successfully exported using preset=\(preset), size=\(size)")
                     return
+                } else if let error = session.error {
+                    AppDiagnostics.shared.log("[ClipDownloader] Preset \(preset) failed with error: \(error.localizedDescription)")
+                }
+            }
+        }
+
+        // Pass 2: Fallback via AVMutableComposition for stubborn .ts tracks
+        if let videoTrack = try? await asset.loadTracks(withMediaType: .video).first {
+            let composition = AVMutableComposition()
+            let compDuration = exportRange.duration.isNumeric && exportRange.duration.seconds > 0 ? exportRange.duration : assetDuration
+            let insertRange = exportRange.duration.isNumeric && exportRange.duration.seconds > 0 ? exportRange : CMTimeRange(start: .zero, duration: compDuration)
+
+            if let compVideoTrack = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid) {
+                try? compVideoTrack.insertTimeRange(insertRange, of: videoTrack, at: .zero)
+            }
+            if let audioTrack = try? await asset.loadTracks(withMediaType: .audio).first,
+               let compAudioTrack = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) {
+                try? compAudioTrack.insertTimeRange(insertRange, of: audioTrack, at: .zero)
+            }
+
+            for preset in [AVAssetExportPresetHighestQuality, AVAssetExportPreset1280x720] {
+                try? fm.removeItem(at: outputUrl)
+                if let session = AVAssetExportSession(asset: composition, presetName: preset) {
+                    session.outputURL = outputUrl
+                    session.outputFileType = .mp4
+                    session.shouldOptimizeForNetworkUse = true
+                    await session.export()
+
+                    let size = ((try? fm.attributesOfItem(atPath: outputUrl.path))?[.size] as? Int64) ?? 0
+                    if session.status == .completed && fm.fileExists(atPath: outputUrl.path) && size > 2000 {
+                        AppDiagnostics.shared.log("[ClipDownloader] Composition export succeeded with preset=\(preset), size=\(size)")
+                        return
+                    }
                 }
             }
         }
