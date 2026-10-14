@@ -15,9 +15,8 @@ public struct UserProfileDetailView: View {
     @State private var pollTask: Task<Void, Never>? = nil
     @State private var showDeleteConfirm: Bool = false
     @State private var tagCopiedToast: Bool = false
-    @State private var fullPlayerConfig: PlayerConfig? = nil
+    @State private var activeMomentClip: MovieClip? = nil
     @State private var showDirectChat: Bool = false
-    @State private var isTitleVisible: Bool = false
 
     @Environment(\.dismiss) private var dismiss
     @StateObject private var repo = MessengerRepository.shared
@@ -25,6 +24,7 @@ public struct UserProfileDetailView: View {
     @StateObject private var clipsRepo = ClipsRepository.shared
 
     private let gridColumns = [
+        GridItem(.flexible(), spacing: 12),
         GridItem(.flexible(), spacing: 12),
         GridItem(.flexible(), spacing: 12)
     ]
@@ -46,14 +46,6 @@ public struct UserProfileDetailView: View {
         return currentId == user.id
     }
 
-    private var totalLikes: Int {
-        authorClips.reduce(0) { $0 + $1.likesCount }
-    }
-
-    private var totalViews: Int {
-        authorClips.reduce(0) { $0 + $1.viewsCount }
-    }
-
     public var body: some View {
         ZStack(alignment: .top) {
             // Dark Cinema Background
@@ -61,24 +53,21 @@ public struct UserProfileDetailView: View {
 
             // Main Scrollable Content
             ScrollView(.vertical, showsIndicators: false) {
-                VStack(spacing: 22) {
+                VStack(spacing: 20) {
                     // Spacer for top safe area bar
                     Color.clear.frame(height: 52)
 
-                    // 1. Hero Profile Card
+                    // 1. Clean Hero Header (Direct on background, no artificial glass podlozhka, no glows)
                     heroHeaderView
 
-                    // 2. Stats Bar
-                    statsBarView
-
-                    // 3. Action Bar (Primary action: Написать, or Delete Chat)
+                    // 2. Action Button (Primary: "Написать", or Delete Chat)
                     actionsBarView
 
-                    // 4. Published Clips Grid
+                    // 3. Published Moments Grid (Standard 3-column poster grid matching app design)
                     publishedClipsSection
                 }
                 .padding(.horizontal, 16)
-                .padding(.bottom, 48)
+                .padding(.bottom, 100)
             }
             .scrollDismissesKeyboard(.interactively)
         }
@@ -128,8 +117,8 @@ public struct UserProfileDetailView: View {
         .navigationDestination(isPresented: $showDirectChat) {
             ChatDetailView(peerUser: user)
         }
-        .fullScreenCover(item: $fullPlayerConfig) { config in
-            PlayerView(config: config)
+        .fullScreenCover(item: $activeMomentClip) { clip in
+            ClipsFeedView(customClips: authorClips, initialClipId: clip.id, isModal: true)
                 .preferredColorScheme(.dark)
                 .environment(\.colorScheme, .dark)
         }
@@ -153,21 +142,15 @@ public struct UserProfileDetailView: View {
         .environment(\.colorScheme, .dark)
     }
 
-    // MARK: - Top Navigation Bar (Liquid Glass with Back & Single Share)
+    // MARK: - Top Navigation Bar (Clean Back Button Only, No Share)
 
     private var topNavBarView: some View {
         HStack {
-            // Back Button
             TelegramGlassIconButton(systemName: "chevron.left") {
                 dismiss()
             }
 
             Spacer()
-
-            // Single Share Button in Top Bar (No duplicate on the screen)
-            TelegramGlassIconButton(systemName: "square.and.arrow.up") {
-                shareUserProfile()
-            }
         }
         .padding(.horizontal, 16)
         .padding(.bottom, 8)
@@ -178,24 +161,23 @@ public struct UserProfileDetailView: View {
         )
     }
 
-    // MARK: - Hero Header View
+    // MARK: - Hero Header View (Clean, Direct on Dark Background)
 
     private var heroHeaderView: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 12) {
             // Large Avatar with presence badge
             SlooshAvatarView(
                 avatarSource: user.avatarUrl,
                 fallbackText: user.displayTitle,
-                size: 104,
+                size: 96,
                 showOnline: true,
                 isOnline: livePresence.isOnline
             )
-            .shadow(color: Color.slooshAccent.opacity(0.18), radius: 16, y: 6)
 
-            VStack(spacing: 6) {
+            VStack(spacing: 5) {
                 // Name
                 Text(user.displayTitle)
-                    .font(.system(size: 26, weight: .bold))
+                    .font(.system(size: 22, weight: .bold))
                     .foregroundStyle(.white)
                     .multilineTextAlignment(.center)
 
@@ -213,107 +195,49 @@ public struct UserProfileDetailView: View {
                             }
                         }
                     } label: {
-                        HStack(spacing: 5) {
+                        HStack(spacing: 4) {
                             Text(user.displayTag)
-                                .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(.white.opacity(0.85))
+                                .font(.system(size: 13, weight: .medium))
+                                .foregroundStyle(.white.opacity(0.6))
 
                             Image(systemName: tagCopiedToast ? "checkmark" : "doc.on.doc")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundStyle(tagCopiedToast ? Color.green : Color.white.opacity(0.5))
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(tagCopiedToast ? Color.green : Color.white.opacity(0.4))
                         }
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 5)
-                        .glassEffect(.regular.interactive(), in: .capsule)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 4)
+                        .glassEffect(.regular.interactive(), in: Capsule())
                     }
                     .buttonStyle(.plain)
+                    .padding(.top, 1)
                 }
 
                 // Live Presence Status
-                HStack(spacing: 6) {
+                HStack(spacing: 5) {
                     if livePresence.isOnline {
                         Circle()
                             .fill(Color.green)
-                            .frame(width: 8, height: 8)
-                            .shadow(color: Color.green.opacity(0.8), radius: 4)
+                            .frame(width: 7, height: 7)
                     }
 
                     let statusText = PresenceFormatter.formatLastSeen(isOnlineFlag: livePresence.isOnline, lastSeenMs: livePresence.lastSeenMs)
                     Text(statusText)
-                        .font(.system(size: 14, weight: livePresence.isOnline ? .medium : .regular))
-                        .foregroundStyle(livePresence.isOnline ? Color.green : Color.white.opacity(0.6))
+                        .font(.system(size: 13, weight: livePresence.isOnline ? .medium : .regular))
+                        .foregroundStyle(livePresence.isOnline ? Color.green : Color.white.opacity(0.5))
                 }
                 .padding(.top, 2)
             }
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 18)
-        .glassEffect(.regular, in: .rect(cornerRadius: 24))
+        .padding(.top, 8)
     }
 
-    // MARK: - Stats Bar View
-
-    private var statsBarView: some View {
-        HStack(spacing: 0) {
-            statItem(
-                title: "Моментов",
-                value: "\(authorClips.count)",
-                icon: "sparkles.tv.fill",
-                iconColor: Color.slooshAccent
-            )
-
-            Divider()
-                .frame(height: 32)
-                .opacity(0.2)
-
-            statItem(
-                title: "Лайков",
-                value: formatCount(totalLikes),
-                icon: "heart.fill",
-                iconColor: .red
-            )
-
-            Divider()
-                .frame(height: 32)
-                .opacity(0.2)
-
-            statItem(
-                title: "Просмотров",
-                value: formatCount(totalViews),
-                icon: "eye.fill",
-                iconColor: .blue
-            )
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 14)
-        .glassEffect(.regular, in: .rect(cornerRadius: 18))
-    }
-
-    private func statItem(title: String, value: String, icon: String, iconColor: Color) -> some View {
-        VStack(spacing: 4) {
-            HStack(spacing: 4) {
-                Image(systemName: icon)
-                    .font(.system(size: 11, weight: .bold))
-                    .foregroundStyle(iconColor)
-
-                Text(value)
-                    .font(.system(size: 18, weight: .bold))
-                    .foregroundStyle(.white)
-            }
-
-            Text(title)
-                .font(.system(size: 11.5, weight: .medium))
-                .foregroundStyle(.white.opacity(0.55))
-        }
-        .frame(maxWidth: .infinity)
-    }
-
-    // MARK: - Actions Bar View (No duplicates: single primary action)
+    // MARK: - Actions Bar View
 
     @ViewBuilder
     private var actionsBarView: some View {
         if !isCurrentSessionUser {
-            VStack(spacing: 10) {
+            HStack(spacing: 12) {
                 // Primary Action Button: "Написать"
                 Button {
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
@@ -325,17 +249,17 @@ public struct UserProfileDetailView: View {
                 } label: {
                     HStack(spacing: 8) {
                         Image(systemName: "bubble.left.and.bubble.right.fill")
-                            .font(.system(size: 15, weight: .bold))
+                            .font(.system(size: 14, weight: .bold))
 
                         Text("Написать")
-                            .font(.system(size: 15, weight: .bold))
+                            .font(.system(size: 14, weight: .bold))
                     }
                     .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity)
-                    .frame(height: 48)
+                    .padding(.horizontal, 28)
+                    .frame(height: 42)
                     .background(Color.slooshAccent)
                     .clipShape(Capsule())
-                    .glassEffect(.regular.interactive(), in: .capsule)
+                    .glassEffect(.regular.interactive(), in: Capsule())
                 }
                 .buttonStyle(.plain)
 
@@ -344,24 +268,17 @@ public struct UserProfileDetailView: View {
                     Button(role: .destructive) {
                         showDeleteConfirm = true
                     } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: "trash.fill")
-                                .font(.system(size: 14))
-
-                            Text("Удалить чат")
-                                .font(.system(size: 14, weight: .medium))
-                        }
-                        .foregroundStyle(Color.red)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 40)
-                        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 12))
+                        Image(systemName: "trash.fill")
+                            .font(.system(size: 14))
+                            .foregroundStyle(Color.red)
+                            .frame(width: 42, height: 42)
+                            .glassEffect(.regular.interactive(), in: Circle())
                     }
                     .buttonStyle(.plain)
-                    .padding(.top, 2)
                 }
             }
+            .padding(.top, 2)
         } else if chatContext {
-            // Current user in chat context
             Button(role: .destructive) {
                 showDeleteConfirm = true
             } label: {
@@ -373,54 +290,67 @@ public struct UserProfileDetailView: View {
                         .font(.system(size: 14, weight: .medium))
                 }
                 .foregroundStyle(Color.red)
-                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 20)
                 .frame(height: 40)
-                .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 12))
+                .glassEffect(.regular.interactive(), in: Capsule())
             }
             .buttonStyle(.plain)
+            .padding(.top, 2)
         }
     }
 
-    // MARK: - Published Clips Shelf
+    // MARK: - Published Clips Shelf (3-Column Poster Grid)
 
     private var publishedClipsSection: some View {
         VStack(alignment: .leading, spacing: 14) {
             // Header
             HStack(spacing: 8) {
-                Text("Опубликованные моменты")
-                    .font(.system(size: 19, weight: .bold))
+                Text("Моменты")
+                    .font(.system(size: 18, weight: .bold))
                     .foregroundStyle(.white)
 
                 if !isLoadingClips {
                     Text("\(authorClips.count)")
-                        .font(.system(size: 12, weight: .bold))
+                        .font(.system(size: 11, weight: .bold))
                         .foregroundStyle(.white.opacity(0.6))
                         .padding(.horizontal, 8)
                         .padding(.vertical, 3)
-                        .glassEffect(.regular, in: .capsule)
+                        .glassEffect(.regular, in: Capsule())
                 }
 
                 Spacer()
             }
-            .padding(.top, 4)
+            .padding(.top, 6)
 
             // Content
             if isLoadingClips {
                 // Skeleton loading state
-                LazyVGrid(columns: gridColumns, spacing: 12) {
-                    ForEach(0..<4, id: \.self) { _ in
-                        RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .fill(Color.white.opacity(0.06))
-                            .aspectRatio(9/16, contentMode: .fit)
-                            .shimmer()
+                LazyVGrid(columns: gridColumns, spacing: 14) {
+                    ForEach(0..<6, id: \.self) { _ in
+                        VStack(alignment: .leading, spacing: 6) {
+                            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                                .fill(Color.white.opacity(0.06))
+                                .aspectRatio(2/3, contentMode: .fit)
+                                .shimmer()
+
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                .fill(Color.white.opacity(0.06))
+                                .frame(height: 12)
+                                .shimmer()
+
+                            RoundedRectangle(cornerRadius: 4, style: .continuous)
+                                .fill(Color.white.opacity(0.04))
+                                .frame(width: 60, height: 10)
+                                .shimmer()
+                        }
                     }
                 }
             } else if authorClips.isEmpty {
                 // Empty state
                 VStack(spacing: 12) {
                     Image(systemName: "sparkles.tv")
-                        .font(.system(size: 38))
-                        .foregroundStyle(.white.opacity(0.35))
+                        .font(.system(size: 36))
+                        .foregroundStyle(.white.opacity(0.3))
 
                     Text("Нет опубликованных моментов")
                         .font(.system(size: 15, weight: .semibold))
@@ -434,63 +364,24 @@ public struct UserProfileDetailView: View {
                 }
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 40)
-                .glassEffect(.regular, in: .rect(cornerRadius: 20))
             } else {
-                // Vertical 9:16 grid of clips
-                LazyVGrid(columns: gridColumns, spacing: 12) {
+                // Standard 3-column poster grid matching app design
+                LazyVGrid(columns: gridColumns, spacing: 14) {
                     ForEach(authorClips) { clip in
-                        AuthorClipCardView(clip: clip) {
-                            // Directly launch existing flagship PlayerView starting from the moment's timecode!
+                        AuthorMomentPosterCard(clip: clip) {
                             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                            let config = PlayerConfig(
-                                iframeUrl: nil,
-                                title: clip.title,
-                                kpId: clip.kpId,
-                                season: clip.season,
-                                episode: clip.episode,
-                                voiceover: clip.translationName,
-                                streamUrl: nil,
-                                voices: clip.translationName != nil ? [clip.translationName!] : [],
-                                tmdbId: clip.tmdbId,
-                                posterUrl: clip.posterPath,
-                                backdropUrl: clip.backdropPath,
-                                logoUrl: clip.logoPath,
-                                initialPlaybackTime: clip.startTime
-                            )
-                            self.fullPlayerConfig = config
+                            self.activeMomentClip = clip
                         }
                     }
                 }
             }
         }
     }
-
-    // MARK: - Helpers
-
-    private func shareUserProfile() {
-        let title = user.displayTitle
-        let tag = user.displayTag
-        let shareText = !tag.isEmpty ? "Профиль \(title) (\(tag)) в sloosh! 🎬" : "Профиль \(title) в sloosh! 🎬"
-        let av = UIActivityViewController(activityItems: [shareText], applicationActivities: nil)
-        if let windowScene = UIApplication.shared.connectedScenes.first as? UIWindowScene,
-           let rootVC = windowScene.windows.first?.rootViewController {
-            rootVC.present(av, animated: true)
-        }
-    }
-
-    private func formatCount(_ count: Int) -> String {
-        if count >= 1_000_000 {
-            return String(format: "%.1fM", Double(count) / 1_000_000.0)
-        } else if count >= 1_000 {
-            return String(format: "%.1fK", Double(count) / 1_000.0)
-        }
-        return "\(count)"
-    }
 }
 
-// MARK: - Author Clip Card View (9:16 Aspect Ratio)
+// MARK: - Author Moment Poster Card (Standard 2:3 Movie Poster Design)
 
-private struct AuthorClipCardView: View {
+private struct AuthorMomentPosterCard: View {
     let clip: MovieClip
     let onTap: () -> Void
 
@@ -510,120 +401,110 @@ private struct AuthorClipCardView: View {
         Button {
             onTap()
         } label: {
-            ZStack(alignment: .bottomLeading) {
-                // 1. Poster Image
-                if let url = thumbnailURL {
-                    AsyncCachedImage(url: url) {
+            VStack(alignment: .leading, spacing: 6) {
+                // 1. Poster Container (2:3 Aspect Ratio)
+                ZStack(alignment: .topTrailing) {
+                    // Image
+                    if let url = thumbnailURL {
+                        AsyncCachedImage(url: url) {
+                            Color.white.opacity(0.06)
+                                .aspectRatio(2/3, contentMode: .fit)
+                                .shimmer()
+                        } content: { img in
+                            Image(uiImage: img)
+                                .resizable()
+                                .aspectRatio(2/3, contentMode: .fill)
+                        } fallback: {
+                            Color.white.opacity(0.06)
+                                .aspectRatio(2/3, contentMode: .fit)
+                                .overlay(
+                                    Image(systemName: "film")
+                                        .font(.system(size: 22))
+                                        .foregroundStyle(.white.opacity(0.3))
+                                )
+                        }
+                    } else {
                         Color.white.opacity(0.06)
-                    } content: { img in
-                        Image(uiImage: img)
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                    } fallback: {
-                        Color.white.opacity(0.06)
+                            .aspectRatio(2/3, contentMode: .fit)
                             .overlay(
                                 Image(systemName: "film")
-                                    .font(.system(size: 24))
-                                    .foregroundStyle(.white.opacity(0.35))
+                                    .font(.system(size: 22))
+                                    .foregroundStyle(.white.opacity(0.3))
                             )
                     }
-                } else {
-                    Color.white.opacity(0.06)
-                        .overlay(
-                            Image(systemName: "film")
-                                .font(.system(size: 24))
-                                .foregroundStyle(.white.opacity(0.35))
-                        )
-                }
 
-                // 2. Dark Scrim Gradient for text contrast
-                LinearGradient(
-                    stops: [
-                        .init(color: .clear, location: 0.35),
-                        .init(color: Color.black.opacity(0.55), location: 0.7),
-                        .init(color: Color.black.opacity(0.92), location: 1.0)
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
+                    // Scrim gradient for contrast
+                    LinearGradient(
+                        stops: [
+                            .init(color: .black.opacity(0.4), location: 0.0),
+                            .init(color: .clear, location: 0.35),
+                            .init(color: .clear, location: 0.65),
+                            .init(color: .black.opacity(0.6), location: 1.0)
+                        ],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
 
-                // 3. Top-Right Duration Pill
-                VStack {
-                    HStack {
+                    // Top-Right Duration Pill
+                    Text(clip.formattedDuration)
+                        .font(.system(size: 9.5, weight: .bold))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 5)
+                        .padding(.vertical, 2.5)
+                        .glassEffect(.regular, in: Capsule())
+                        .padding(5)
+
+                    // Bottom Row: Center Play & Bottom-Left Likes
+                    VStack {
                         Spacer()
-
-                        Text(clip.formattedDuration)
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundStyle(Color.white)
-                            .padding(.horizontal, 7)
-                            .padding(.vertical, 3.5)
-                            .glassEffect(.regular, in: .capsule)
-                            .padding(8)
-                    }
-                    Spacer()
-                }
-
-                // 4. Center Play Pill Indicator
-                VStack {
-                    Spacer()
-                    HStack {
-                        Spacer()
-                        Image(systemName: "play.fill")
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundStyle(Color.white.opacity(0.85))
-                            .frame(width: 32, height: 32)
-                            .glassEffect(.regular, in: .circle)
-                        Spacer()
-                    }
-                    Spacer()
-                }
-
-                // 5. Bottom Info: Title, Caption, Stats
-                VStack(alignment: .leading, spacing: 4) {
-                    Text(clip.title)
-                        .font(.system(size: 12.5, weight: .bold))
-                        .foregroundStyle(Color.white)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.leading)
-
-                    if !clip.caption.isEmpty {
-                        Text(clip.caption)
-                            .font(.system(size: 11, weight: .regular))
-                            .foregroundStyle(Color.white.opacity(0.8))
-                            .lineLimit(1)
-                    }
-
-                    HStack(spacing: 10) {
-                        HStack(spacing: 3) {
-                            Image(systemName: "heart.fill")
-                                .font(.system(size: 10))
-                                .foregroundStyle(Color.red)
-                            Text("\(clip.likesCount)")
-                                .font(.system(size: 10, weight: .semibold))
-                                .foregroundStyle(Color.white.opacity(0.9))
-                        }
-
-                        if clip.viewsCount > 0 {
-                            HStack(spacing: 3) {
-                                Image(systemName: "eye.fill")
-                                    .font(.system(size: 10))
-                                    .foregroundStyle(Color.white.opacity(0.7))
-                                Text("\(clip.viewsCount)")
-                                    .font(.system(size: 10, weight: .semibold))
-                                    .foregroundStyle(Color.white.opacity(0.9))
+                        HStack {
+                            if clip.likesCount > 0 {
+                                HStack(spacing: 2.5) {
+                                    Image(systemName: "heart.fill")
+                                        .font(.system(size: 8))
+                                        .foregroundStyle(.red)
+                                    Text("\(clip.likesCount)")
+                                        .font(.system(size: 9.5, weight: .bold))
+                                        .foregroundStyle(.white)
+                                }
+                                .padding(.horizontal, 5)
+                                .padding(.vertical, 2)
+                                .glassEffect(.regular, in: Capsule())
+                                .padding(5)
                             }
-                        }
 
-                        Spacer()
+                            Spacer()
+
+                            Image(systemName: "play.fill")
+                                .font(.system(size: 8, weight: .bold))
+                                .foregroundStyle(.white)
+                                .frame(width: 20, height: 20)
+                                .glassEffect(.regular, in: Circle())
+                                .padding(5)
+                        }
                     }
-                    .padding(.top, 2)
                 }
-                .padding(10)
+                .aspectRatio(2/3, contentMode: .fit)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+                // 2. Metadata Below Poster (Standard sloosh typography)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(clip.title)
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(.white)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+
+                    Text(clip.subtitleInfo)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.white.opacity(0.55))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+                .padding(.horizontal, 2)
             }
-            .aspectRatio(9/16, contentMode: .fit)
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
-        .buttonStyle(CardPressButtonStyle())
+        .buttonStyle(.cardPress)
     }
 }

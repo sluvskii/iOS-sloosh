@@ -609,11 +609,16 @@ public enum ClipScalingMode: String, CaseIterable {
 // MARK: - Clips Feed View
 
 public struct ClipsFeedView: View {
+    public let customClips: [MovieClip]?
+    public let initialClipId: String?
+    public let isModal: Bool
+
     @StateObject private var clipsRepo = ClipsRepository.shared
     @StateObject private var authRepo = AuthRepository.shared
     @StateObject private var playback = ClipPlaybackCoordinator()
     @ObservedObject private var messengerRepo = MessengerRepository.shared
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.dismiss) private var dismiss
 
     @State private var showsMessenger: Bool = false
     @State private var commentsSheetDetent: PresentationDetent = .fraction(0.65)
@@ -628,9 +633,16 @@ public struct ClipsFeedView: View {
         ClipScalingMode(rawValue: clipScaleModeRaw) ?? .fit
     }
 
+    private var activeClips: [MovieClip] {
+        if let customClips, !customClips.isEmpty {
+            return customClips
+        }
+        return clipsRepo.clips
+    }
+
     @State private var isInterfaceHidden: Bool = false
-    @State private var currentClipId: String? = ClipsRepository.shared.clips.first?.id
-    @State private var settledClipId: String? = ClipsRepository.shared.clips.first?.id
+    @State private var currentClipId: String?
+    @State private var settledClipId: String?
     @State private var scrollPhase: ScrollPhase = .idle
     @State private var clipToDelete: MovieClip?
     @State private var showDeleteConfirmation: Bool = false
@@ -647,12 +659,19 @@ public struct ClipsFeedView: View {
     private var currentVisibleClip: MovieClip? {
         let targetId = settledClipId ?? currentClipId
         if let targetId {
-            return clipsRepo.clips.first(where: { $0.id == targetId })
+            return activeClips.first(where: { $0.id == targetId })
         }
-        return clipsRepo.clips.first
+        return activeClips.first
     }
 
-    public init() {}
+    public init(customClips: [MovieClip]? = nil, initialClipId: String? = nil, isModal: Bool = false) {
+        self.customClips = customClips
+        self.initialClipId = initialClipId
+        self.isModal = isModal
+        let startingId = initialClipId ?? customClips?.first?.id ?? ClipsRepository.shared.clips.first?.id
+        _currentClipId = State(initialValue: startingId)
+        _settledClipId = State(initialValue: startingId)
+    }
 
     public var body: some View {
         NavigationStack {
@@ -665,7 +684,7 @@ public struct ClipsFeedView: View {
                 ZStack(alignment: .top) {
                     Color.black.ignoresSafeArea()
 
-                    if clipsRepo.isLoading && clipsRepo.clips.isEmpty {
+                    if (customClips == nil && clipsRepo.isLoading && activeClips.isEmpty) {
                         VStack(spacing: 16) {
                             ProgressView()
                                 .tint(.white)
@@ -674,7 +693,7 @@ public struct ClipsFeedView: View {
                                 .foregroundStyle(.white.opacity(0.6))
                         }
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    } else if clipsRepo.clips.isEmpty {
+                    } else if activeClips.isEmpty {
                         emptyStateView
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
                     } else {
@@ -711,7 +730,7 @@ public struct ClipsFeedView: View {
         .preferredColorScheme(.dark)
         .environment(\.colorScheme, .dark)
         .task {
-            if clipsRepo.clips.isEmpty {
+            if customClips == nil && clipsRepo.clips.isEmpty {
                 await clipsRepo.fetchFeed()
             }
             ensurePlaybackStarted()
@@ -766,7 +785,7 @@ public struct ClipsFeedView: View {
             } else {
                 if !showsMessenger && selectedDetailsMedia == nil && selectedAuthorUser == nil && fullPlayerConfig == nil && showCommentsForClip == nil {
                     let targetId = settledClipId ?? currentClipId
-                    if let clipId = targetId, let clip = clipsRepo.clips.first(where: { $0.id == clipId }) {
+                    if let clipId = targetId, let clip = activeClips.first(where: { $0.id == clipId }) {
                         playback.resumeIfAppropriate(for: clip)
                     }
                 }
@@ -786,8 +805,8 @@ public struct ClipsFeedView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("SlooshResumeClipsPlayback"))) { _ in
             let targetId = settledClipId ?? currentClipId
-            if let clipId = targetId, let clip = clipsRepo.clips.first(where: { $0.id == clipId }) {
-                playback.resumeIfAppropriate(for: clip, allClips: clipsRepo.clips)
+            if let clipId = targetId, let clip = activeClips.first(where: { $0.id == clipId }) {
+                playback.resumeIfAppropriate(for: clip, allClips: activeClips)
             } else {
                 ensurePlaybackStarted()
             }
@@ -844,35 +863,54 @@ public struct ClipsFeedView: View {
 
             // Header title bar (perfectly symmetrical with matching 44x44 balances on left and right)
             HStack(spacing: 0) {
-                Button {
-                    let generator = UIImpactFeedbackGenerator(style: .medium)
-                    generator.prepare()
-                    generator.impactOccurred()
-                    showsMessenger = true
-                } label: {
-                    ZStack(alignment: .topTrailing) {
-                        Image(systemName: "bubble.left.and.bubble.right.fill")
-                            .font(.system(size: 19, weight: .medium))
+                if isModal {
+                    Button {
+                        let generator = UIImpactFeedbackGenerator(style: .medium)
+                        generator.prepare()
+                        generator.impactOccurred()
+                        dismiss()
+                    } label: {
+                        Image(systemName: "chevron.left")
+                            .font(.system(size: 19, weight: .semibold))
                             .foregroundStyle(.white)
                             .frame(width: 44, height: 44)
                             .contentShape(Circle())
-
-                        if messengerRepo.totalUnreadCount > 0 {
-                            Text("\(messengerRepo.totalUnreadCount)")
-                                .font(.system(size: 10, weight: .bold))
+                    }
+                    .buttonStyle(.glassPress)
+                    .glassEffect(.regular.interactive(), in: .circle)
+                    .accessibilityLabel("Назад")
+                    .padding(.leading, 16)
+                } else {
+                    Button {
+                        let generator = UIImpactFeedbackGenerator(style: .medium)
+                        generator.prepare()
+                        generator.impactOccurred()
+                        showsMessenger = true
+                    } label: {
+                        ZStack(alignment: .topTrailing) {
+                            Image(systemName: "bubble.left.and.bubble.right.fill")
+                                .font(.system(size: 19, weight: .medium))
                                 .foregroundStyle(.white)
-                                .padding(.horizontal, 4)
-                                .padding(.vertical, 1)
-                                .background(Color.red)
-                                .clipShape(Capsule())
-                                .offset(x: -2, y: 4)
+                                .frame(width: 44, height: 44)
+                                .contentShape(Circle())
+
+                            if messengerRepo.totalUnreadCount > 0 {
+                                Text("\(messengerRepo.totalUnreadCount)")
+                                    .font(.system(size: 10, weight: .bold))
+                                    .foregroundStyle(.white)
+                                    .padding(.horizontal, 4)
+                                    .padding(.vertical, 1)
+                                    .background(Color.red)
+                                    .clipShape(Capsule())
+                                    .offset(x: -2, y: 4)
+                            }
                         }
                     }
+                    .buttonStyle(.glassPress)
+                    .glassEffect(.regular.interactive(), in: .circle)
+                    .accessibilityLabel("Чаты")
+                    .padding(.leading, 16)
                 }
-                .buttonStyle(.glassPress)
-                .glassEffect(.regular.interactive(), in: .circle)
-                .accessibilityLabel("Чаты")
-                .padding(.leading, 16)
 
                 Spacer(minLength: 0)
 
@@ -960,7 +998,7 @@ public struct ClipsFeedView: View {
                             preferredSource = source
                             ToastManager.shared.show(title: "Источник: \(source.settingsTitle)", icon: "server.rack", iconColor: .white)
                             ClipStreamResolver.shared.clearCache()
-                            playback.setupPlayer(for: clip, allClips: clipsRepo.clips, isRetry: true)
+                            playback.setupPlayer(for: clip, allClips: activeClips, isRetry: true)
                         }
                     } label: {
                         HStack {
@@ -1110,14 +1148,14 @@ public struct ClipsFeedView: View {
         isDeletingClip = true
         Task {
             do {
-                let nextClip = clipsRepo.clips.first(where: { $0.id != clip.id })
+                let nextClip = activeClips.first(where: { $0.id != clip.id })
                 try await clipsRepo.deleteClip(clipId: clip.id)
                 ToastManager.shared.show(title: "Момент удалён", icon: "trash.fill", iconColor: .red)
                 if (settledClipId == clip.id) || (currentClipId == clip.id) {
                     if let nextClip {
                         currentClipId = nextClip.id
                         settledClipId = nextClip.id
-                        playback.setupPlayer(for: nextClip, allClips: clipsRepo.clips)
+                        playback.setupPlayer(for: nextClip, allClips: activeClips)
                     } else {
                         currentClipId = nil
                         settledClipId = nil
@@ -1153,10 +1191,10 @@ public struct ClipsFeedView: View {
             Button {
                 Task {
                     await clipsRepo.fetchFeed(forceRefresh: true)
-                    if let first = clipsRepo.clips.first {
+                    if let first = activeClips.first {
                         currentClipId = first.id
                         settledClipId = first.id
-                        playback.setupPlayer(for: first, allClips: clipsRepo.clips)
+                        playback.setupPlayer(for: first, allClips: activeClips)
                     }
                 }
             } label: {
@@ -1180,7 +1218,7 @@ public struct ClipsFeedView: View {
     private func feedScrollView(width: CGFloat, height: CGFloat, topSafeArea: CGFloat, bottomSafeArea: CGFloat) -> some View {
         ScrollView(.vertical, showsIndicators: false) {
             LazyVStack(spacing: 0) {
-                ForEach(clipsRepo.clips) { clip in
+                ForEach(activeClips) { clip in
                     clipCard(clip, width: width, height: height, topSafeArea: topSafeArea, bottomSafeArea: bottomSafeArea)
                         .frame(width: width, height: height)
                         .id(clip.id)
@@ -1225,7 +1263,7 @@ public struct ClipsFeedView: View {
 
     private func handleClipSettled() {
         guard let targetId = currentClipId,
-              let clip = clipsRepo.clips.first(where: { $0.id == targetId }) else { return }
+              let clip = activeClips.first(where: { $0.id == targetId }) else { return }
 
         if targetId == settledClipId {
             return
@@ -1233,7 +1271,7 @@ public struct ClipsFeedView: View {
 
         AppDiagnostics.shared.log("[ClipsFeedView] Settled on new clip=\(clip.id) title=\(clip.title)")
         settledClipId = targetId
-        playback.setupPlayer(for: clip, allClips: clipsRepo.clips)
+        playback.setupPlayer(for: clip, allClips: activeClips)
     }
 
     private func isOffsetAtRest(_ offset: CGFloat, height: CGFloat) -> Bool {
@@ -1255,11 +1293,11 @@ public struct ClipsFeedView: View {
 
     private func advanceToNextClip() {
         guard let activeId = settledClipId ?? currentClipId,
-              let currentIndex = clipsRepo.clips.firstIndex(where: { $0.id == activeId }) else { return }
+              let currentIndex = activeClips.firstIndex(where: { $0.id == activeId }) else { return }
         let nextClip: MovieClip
-        if currentIndex + 1 < clipsRepo.clips.count {
-            nextClip = clipsRepo.clips[currentIndex + 1]
-        } else if let first = clipsRepo.clips.first {
+        if currentIndex + 1 < activeClips.count {
+            nextClip = activeClips[currentIndex + 1]
+        } else if let first = activeClips.first {
             nextClip = first
         } else {
             return
@@ -1277,7 +1315,7 @@ public struct ClipsFeedView: View {
     // MARK: - Clip Card
 
     private func clipCard(_ clip: MovieClip, width: CGFloat, height: CGFloat, topSafeArea: CGFloat, bottomSafeArea: CGFloat) -> some View {
-        let isCurrent = (settledClipId == clip.id) || (settledClipId == nil && (currentClipId == clip.id || clip.id == clipsRepo.clips.first?.id))
+        let isCurrent = (settledClipId == clip.id) || (settledClipId == nil && (currentClipId == clip.id || clip.id == activeClips.first?.id))
 
         // The vertical player area extends precisely to the phone's status bar
         let topClearance: CGFloat = topSafeArea
@@ -1451,7 +1489,7 @@ public struct ClipsFeedView: View {
             if isCurrent && playback.hasError && !isOverlayHidden {
                 Button {
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    playback.setupPlayer(for: clip, allClips: clipsRepo.clips, isRetry: false)
+                    playback.setupPlayer(for: clip, allClips: activeClips, isRetry: false)
                 } label: {
                     VStack(spacing: 8) {
                         Image(systemName: "arrow.clockwise.circle.fill")
@@ -2212,14 +2250,14 @@ extension ClipsFeedView {
 
     private func ensurePlaybackStarted() {
         let targetId = settledClipId ?? currentClipId
-        if let clipId = targetId, let clip = clipsRepo.clips.first(where: { $0.id == clipId }) {
+        if let clipId = targetId, let clip = activeClips.first(where: { $0.id == clipId }) {
             settledClipId = clip.id
             currentClipId = clip.id
-            playback.resume(for: clip, allClips: clipsRepo.clips)
-        } else if let first = clipsRepo.clips.first {
+            playback.resume(for: clip, allClips: activeClips)
+        } else if let first = activeClips.first {
             currentClipId = first.id
             settledClipId = first.id
-            playback.setupPlayer(for: first, allClips: clipsRepo.clips)
+            playback.setupPlayer(for: first, allClips: activeClips)
         }
     }
 
