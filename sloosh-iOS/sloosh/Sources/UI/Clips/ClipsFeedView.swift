@@ -1650,6 +1650,133 @@ public struct ClipsFeedView: View {
     }
 }
 
+// MARK: - Native UIKit Scrubber for Movie Clips
+
+final class ClipCustomSlider: UISlider {
+    var isInteracting: Bool = false {
+        didSet {
+            setNeedsLayout()
+            layoutIfNeeded()
+        }
+    }
+
+    override func trackRect(forBounds bounds: CGRect) -> CGRect {
+        var rect = super.trackRect(forBounds: bounds)
+        let h: CGFloat = isInteracting ? 7.0 : 4.0
+        rect.size.height = h
+        rect.origin.y = bounds.midY - (h / 2.0)
+        return rect
+    }
+
+    override func point(inside point: CGPoint, with event: UIEvent?) -> Bool {
+        let touchArea = bounds.insetBy(dx: 0, dy: -16)
+        return touchArea.contains(point)
+    }
+
+    override func beginTracking(_ touch: UITouch, with event: UIEvent?) -> Bool {
+        let width = bounds.width
+        if width > 0 {
+            let loc = touch.location(in: self)
+            let pct = Float(max(0.0, min(1.0, loc.x / width)))
+            setValue(pct, animated: false)
+            sendActions(for: .valueChanged)
+        }
+        return true
+    }
+
+    override func continueTracking(_ touch: UITouch, with event: UIEvent?) -> Bool {
+        let width = bounds.width
+        if width > 0 {
+            let loc = touch.location(in: self)
+            let pct = Float(max(0.0, min(1.0, loc.x / width)))
+            setValue(pct, animated: false)
+            sendActions(for: .valueChanged)
+        }
+        return true
+    }
+}
+
+struct ClipNativeSliderView: UIViewRepresentable {
+    @ObservedObject var progressObserver: ClipProgressObserver
+    let clip: MovieClip
+    let playback: ClipPlaybackCoordinator
+    @Binding var isScrubbing: Bool
+    @Binding var scrubProgress: Double
+
+    func makeUIView(context: Context) -> ClipCustomSlider {
+        let slider = ClipCustomSlider()
+        slider.minimumValue = 0
+        slider.maximumValue = 1
+        slider.setThumbImage(UIImage(), for: .normal)
+        slider.setThumbImage(UIImage(), for: .highlighted)
+        slider.tintColor = .white
+        slider.minimumTrackTintColor = .white
+        slider.maximumTrackTintColor = UIColor.white.withAlphaComponent(0.25)
+
+        slider.addTarget(context.coordinator, action: #selector(Coordinator.valueChanged(_:)), for: .valueChanged)
+        slider.addTarget(context.coordinator, action: #selector(Coordinator.editingDidBegin(_:)), for: .touchDown)
+        slider.addTarget(context.coordinator, action: #selector(Coordinator.editingDidEnd(_:)), for: [.touchUpInside, .touchUpOutside, .touchCancel])
+
+        return slider
+    }
+
+    func updateUIView(_ uiView: ClipCustomSlider, context: Context) {
+        if !context.coordinator.isEditing {
+            uiView.value = Float(progressObserver.progress)
+        }
+        if uiView.isInteracting != isScrubbing {
+            UIView.animate(withDuration: 0.2, delay: 0, options: [.curveEaseOut]) {
+                uiView.isInteracting = self.isScrubbing
+            }
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(parent: self)
+    }
+
+    class Coordinator: NSObject {
+        let parent: ClipNativeSliderView
+        var isEditing = false
+
+        init(parent: ClipNativeSliderView) {
+            self.parent = parent
+        }
+
+        @objc func valueChanged(_ sender: UISlider) {
+            let pct = max(0.0, min(1.0, Double(sender.value)))
+            parent.scrubProgress = pct
+            parent.playback.scrubToProgress(pct, for: parent.clip)
+        }
+
+        @objc func editingDidBegin(_ sender: UISlider) {
+            isEditing = true
+            parent.isScrubbing = true
+            if let custom = sender as? ClipCustomSlider {
+                UIView.animate(withDuration: 0.2, delay: 0, options: [.curveEaseOut]) {
+                    custom.isInteracting = true
+                }
+            }
+            parent.playback.beginScrubbing()
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        }
+
+        @objc func editingDidEnd(_ sender: UISlider) {
+            isEditing = false
+            let pct = max(0.0, min(1.0, Double(sender.value)))
+            parent.scrubProgress = pct
+            parent.playback.endScrubbing(at: pct, for: parent.clip)
+            parent.isScrubbing = false
+            if let custom = sender as? ClipCustomSlider {
+                UIView.animate(withDuration: 0.2, delay: 0, options: [.curveEaseOut]) {
+                    custom.isInteracting = false
+                }
+            }
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        }
+    }
+}
+
 // MARK: - Isolated Clip Progress Bar View (Only redrawn when progress ticks)
 
 private struct ClipProgressBarView: View {
@@ -1663,86 +1790,48 @@ private struct ClipProgressBarView: View {
     @State private var scrubProgress: Double = 0.0
 
     var body: some View {
-        GeometryReader { barProxy in
-            let totalWidth = barProxy.size.width
-            let displayProgress = isScrubbing ? scrubProgress : progressObserver.progress
-            let activeWidth = max(0, min(totalWidth, totalWidth * displayProgress))
-            let barHeight: CGFloat = isScrubbing ? 8.0 : 4.5
+        ZStack {
+            if isResolving || !isVideoReady {
+                // Shimmering animated light beam during buffering
+                TimelineView(.animation) { timeline in
+                    let time = timeline.date.timeIntervalSinceReferenceDate
+                    let phase = CGFloat(time.truncatingRemainder(dividingBy: 1.4) / 1.4)
 
-            ZStack(alignment: .leading) {
-                // Background Track
-                Capsule()
-                    .fill(Color.white.opacity(isScrubbing ? 0.35 : 0.22))
-                    .frame(height: barHeight)
-
-                if isResolving || !isVideoReady {
-                    // Shimmering animated light beam during buffering
-                    TimelineView(.animation) { timeline in
-                        let time = timeline.date.timeIntervalSinceReferenceDate
-                        let phase = CGFloat(time.truncatingRemainder(dividingBy: 1.4) / 1.4)
-
-                        GeometryReader { p in
-                            let w = p.size.width
-                            ZStack(alignment: .leading) {
-                                Capsule()
-                                    .fill(
-                                        LinearGradient(
-                                            stops: [
-                                                .init(color: Color.white.opacity(0.0), location: max(0, phase - 0.25)),
-                                                .init(color: Color.white.opacity(0.9), location: phase),
-                                                .init(color: Color.white.opacity(0.0), location: min(1, phase + 0.25))
-                                            ],
-                                            startPoint: .leading,
-                                            endPoint: .trailing
-                                        )
-                                    )
-                                    .frame(width: w)
-                            }
-                        }
+                    GeometryReader { p in
+                        let w = p.size.width
+                        Capsule()
+                            .fill(
+                                LinearGradient(
+                                    stops: [
+                                        .init(color: Color.white.opacity(0.0), location: max(0, phase - 0.25)),
+                                        .init(color: Color.white.opacity(0.9), location: phase),
+                                        .init(color: Color.white.opacity(0.0), location: min(1, phase + 0.25))
+                                    ],
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .frame(width: w, height: 4.0)
                     }
-                    .frame(height: barHeight)
-                    .clipShape(Capsule())
-                } else {
-                    // Active Progress Track
-                    Capsule()
-                        .fill(Color.white)
-                        .frame(width: activeWidth, height: barHeight)
                 }
+                .frame(height: 16)
+                .clipShape(Capsule())
+            } else {
+                ClipNativeSliderView(
+                    progressObserver: progressObserver,
+                    clip: clip,
+                    playback: playback,
+                    isScrubbing: $isScrubbing,
+                    scrubProgress: $scrubProgress
+                )
+                .frame(height: 16)
             }
-            .frame(maxHeight: .infinity, alignment: .center)
-            .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { value in
-                        let rawPct = value.location.x / totalWidth
-                        let pct = max(0.0, min(1.0, rawPct))
-                        if !isScrubbing {
-                            withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
-                                isScrubbing = true
-                            }
-                            playback.beginScrubbing()
-                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                        }
-                        scrubProgress = pct
-                        playback.scrubToProgress(pct, for: clip)
-                    }
-                    .onEnded { value in
-                        let rawPct = value.location.x / totalWidth
-                        let pct = max(0.0, min(1.0, rawPct))
-                        scrubProgress = pct
-                        playback.endScrubbing(at: pct, for: clip)
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.82)) {
-                            isScrubbing = false
-                        }
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    }
-            )
-            .animation(.spring(response: 0.25, dampingFraction: 0.8), value: barHeight)
         }
         .frame(height: 16)
         .overlay(alignment: .top) {
             if isScrubbing {
-                let currentSec = clip.startTime + (clip.duration * scrubProgress)
+                let clipDur = clip.duration
+                let currentSec = clip.startTime + (clipDur * scrubProgress)
                 let elapsedSec = max(0, currentSec - clip.startTime)
                 HStack(spacing: 6) {
                     Text(formatClipTime(elapsedSec))
@@ -1753,7 +1842,7 @@ private struct ClipProgressBarView: View {
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(.white.opacity(0.45))
 
-                    Text(formatClipTime(clip.duration))
+                    Text(formatClipTime(clipDur))
                         .font(.system(size: 13, weight: .semibold).monospacedDigit())
                         .foregroundStyle(.white.opacity(0.8))
                 }
