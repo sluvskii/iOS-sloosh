@@ -12,49 +12,61 @@ public struct ClipCommentsSheetView: View {
     @State private var isLoading: Bool = true
     @State private var commentText: String = ""
     @State private var isSending: Bool = false
-    @FocusState private var isFocused: Bool
+    @FocusState private var isInputFocused: Bool
 
     public init(clip: MovieClip) {
         self.clip = clip
     }
 
+    private var hasTextToSending: Bool {
+        !commentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     public var body: some View {
-        VStack(spacing: 0) {
-            headerBar
-
-            Rectangle()
-                .fill(Color.white.opacity(0.08))
-                .frame(height: 0.5)
-
-            if isLoading {
-                Spacer()
-                ProgressView()
-                    .tint(.white)
-                Spacer()
-            } else if comments.isEmpty {
-                Spacer()
-                emptyStateView
-                Spacer()
-            } else {
-                ScrollView {
-                    LazyVStack(spacing: 16) {
-                        ForEach(comments) { comment in
-                            commentRow(comment)
+        NavigationStack {
+            ZStack {
+                if isLoading {
+                    ProgressView()
+                        .tint(.white)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if comments.isEmpty {
+                    emptyStateView
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    ScrollView {
+                        LazyVStack(spacing: 16) {
+                            ForEach(comments) { comment in
+                                commentRow(comment)
+                            }
                         }
+                        .padding(.horizontal, 16)
+                        .padding(.top, 12)
+                        .padding(.bottom, 16)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 14)
+                    .scrollDismissesKeyboard(.interactively)
                 }
-                .scrollDismissesKeyboard(.interactively)
             }
-
-            commentInputBar
+            .toolbar(.hidden, for: .navigationBar)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                headerBar
+                    .padding(.horizontal, 16)
+                    .padding(.top, 16)
+                    .padding(.bottom, 8)
+                    .background(
+                        VariableBlurView(tintColor: .clear, tintOpacity: 0.0)
+                            .padding(.bottom, -30)
+                            .ignoresSafeArea(edges: .top)
+                    )
+            }
+            .safeAreaInset(edge: .bottom) {
+                inputBar
+            }
+            .scrollContentBackground(.hidden)
+            .background(Color.clear)
         }
         .presentationDetents([.fraction(0.65), .large])
+        .presentationBackground { Color.clear.glassEffect(in: .rect) }
         .presentationDragIndicator(.visible)
-        .presentationBackground {
-            Color.clear.glassEffect(in: .rect)
-        }
         .preferredColorScheme(.dark)
         .environment(\.colorScheme, .dark)
         .task {
@@ -62,40 +74,90 @@ public struct ClipCommentsSheetView: View {
         }
     }
 
-    // MARK: - Header Bar
+    // MARK: - Header Bar (Styled like SourceSelectionView)
 
     private var headerBar: some View {
-        HStack {
-            // Invisible balance spacer so title is centered
-            Color.clear
-                .frame(width: 32, height: 32)
-
-            Spacer()
-
+        ZStack {
             Text(comments.isEmpty ? "Комментарии" : "Комментарии (\(comments.count))")
-                .font(.system(size: 16, weight: .semibold))
-                .foregroundStyle(.white)
+                .font(.system(size: 18, weight: .semibold))
+                .foregroundStyle(.primary)
+                .lineLimit(1)
+                .frame(maxWidth: 240)
                 .contentTransition(.numericText())
 
-            Spacer()
+            HStack {
+                Button {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 20, weight: .semibold))
+                        .foregroundStyle(.primary)
+                        .frame(width: 44, height: 44)
+                        .contentShape(Circle())
+                }
+                .buttonStyle(.glassPress)
+                .glassEffect(.regular.interactive(), in: .circle)
+                .accessibilityLabel("Закрыть")
 
-            Button {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                dismiss()
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundStyle(.white.opacity(0.85))
-                    .frame(width: 32, height: 32)
-                    .contentShape(Circle())
+                Spacer()
             }
-            .buttonStyle(.glassPress)
-            .glassEffect(.regular.interactive(), in: .circle)
-            .accessibilityLabel("Закрыть")
         }
-        .padding(.horizontal, 16)
-        .padding(.top, 14)
-        .padding(.bottom, 10)
+    }
+
+    // MARK: - Input Bar (Directly from ChatDetailView messenger)
+
+    private var inputBar: some View {
+        HStack(alignment: .bottom, spacing: 8) {
+            // Floating Glass Text Field Capsule (Telegram-style from ChatDetailView)
+            TextField("Комментарий...", text: $commentText, axis: .vertical)
+                .font(.system(size: 16))
+                .foregroundColor(.primary)
+                .tint(Color.white)
+                .lineLimit(1...5)
+                .focused($isInputFocused)
+                .frame(minHeight: 38)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 4)
+                .glassEffect(
+                    .regular.interactive(),
+                    in: RoundedRectangle(cornerRadius: 22, style: .continuous)
+                )
+
+            // Telegram-style Animated Sliding/Popping Send Button (from ChatDetailView)
+            if hasTextToSending {
+                Button {
+                    sendComment()
+                } label: {
+                    Image(systemName: "arrow.up")
+                        .font(.system(size: 17, weight: .bold))
+                        .foregroundColor(.black)
+                        .frame(width: 40, height: 40)
+                        .background(
+                            Circle()
+                                .fill(Color.white)
+                        )
+                        .glassEffect(.regular.interactive(), in: .circle)
+                }
+                .buttonStyle(.glassPress)
+                .transition(
+                    .asymmetric(
+                        insertion: .scale(scale: 0.3).combined(with: .opacity).combined(with: .move(edge: .trailing)),
+                        removal: .scale(scale: 0.3).combined(with: .opacity).combined(with: .move(edge: .trailing))
+                    )
+                )
+                .disabled(isSending)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 8)
+        .background(
+            VariableBlurView(tintColor: .clear, tintOpacity: 0.0, direction: .blurredBottomClearTop)
+                .padding(.top, -16)
+                .ignoresSafeArea(edges: .bottom)
+        )
+        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: isInputFocused)
+        .animation(.spring(response: 0.32, dampingFraction: 0.78), value: hasTextToSending)
     }
 
     // MARK: - Empty State View
@@ -116,58 +178,6 @@ public struct ClipCommentsSheetView: View {
                 .multilineTextAlignment(.center)
                 .padding(.horizontal, 36)
         }
-    }
-
-    // MARK: - Comment Input Bar
-
-    private var commentInputBar: some View {
-        VStack(spacing: 0) {
-            Rectangle()
-                .fill(Color.white.opacity(0.08))
-                .frame(height: 0.5)
-
-            HStack(spacing: 10) {
-                TextField("Оставить комментарий...", text: $commentText)
-                    .font(.system(size: 14))
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 10)
-                    .background(Color.white.opacity(0.08))
-                    .clipShape(Capsule())
-                    .focused($isFocused)
-                    .submitLabel(.send)
-                    .onSubmit {
-                        sendComment()
-                    }
-
-                Button {
-                    sendComment()
-                } label: {
-                    if isSending {
-                        ProgressView()
-                            .tint(.white)
-                            .frame(width: 36, height: 36)
-                    } else {
-                        let hasText = !commentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-                        Image(systemName: "arrow.up")
-                            .font(.system(size: 14, weight: .bold))
-                            .foregroundStyle(hasText ? Color.black : Color.white.opacity(0.35))
-                            .frame(width: 36, height: 36)
-                            .background(
-                                hasText
-                                    ? Color.white
-                                    : Color.white.opacity(0.12)
-                            )
-                            .clipShape(Circle())
-                    }
-                }
-                .buttonStyle(.glassPress)
-                .disabled(commentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isSending)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-        }
-        .background(Color.black.opacity(0.35))
     }
 
     // MARK: - Comment Row
@@ -242,7 +252,9 @@ public struct ClipCommentsSheetView: View {
         Task {
             do {
                 let newComment = try await clipsRepo.addComment(clipId: clip.id, text: cleanText)
-                self.comments.append(newComment)
+                withAnimation(.spring(response: 0.32, dampingFraction: 0.8)) {
+                    self.comments.append(newComment)
+                }
                 self.commentText = ""
                 self.isSending = false
                 UINotificationFeedbackGenerator().notificationOccurred(.success)
