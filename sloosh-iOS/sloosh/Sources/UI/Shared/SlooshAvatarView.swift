@@ -110,7 +110,7 @@ public struct SlooshAvatarView: View {
                 .foregroundColor(accentColor ?? Color.primary)
         }
         .frame(width: size, height: size)
-        .glassEffect(.regular.interactive(), in: Circle())
+        .glassEffect(.regular, in: Circle())
     }
 
     private var initialLetter: String {
