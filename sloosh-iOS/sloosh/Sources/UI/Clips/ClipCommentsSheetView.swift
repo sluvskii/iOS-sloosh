@@ -43,11 +43,11 @@ public struct ClipCommentsSheetView: View {
     }
 
     private var inputBarHorizontalPadding: CGFloat {
-        isInputFocused ? 16 : 24
+        16
     }
 
     private var inputBarBottomPadding: CGFloat {
-        isInputFocused ? 6 : 2
+        isInputFocused ? 8 : 4
     }
 
     public var body: some View {
@@ -141,7 +141,7 @@ public struct ClipCommentsSheetView: View {
     // MARK: - Input Bar (Directly from ChatDetailView messenger)
 
     private var inputBar: some View {
-        HStack(alignment: .bottom, spacing: 8) {
+        HStack(alignment: isExpandedInput ? .bottom : .center, spacing: 10) {
             // User Avatar Indicator Button (Shows which account is commenting)
             userAvatarButton
 
@@ -180,6 +180,7 @@ public struct ClipCommentsSheetView: View {
                         .glassEffect(.regular.interactive(), in: .circle)
                 }
                 .buttonStyle(.glassPress)
+                .frame(width: 40, height: isExpandedInput ? 40 : 42, alignment: .center)
                 .transition(
                     .asymmetric(
                         insertion: .scale(scale: 0.3).combined(with: .opacity).combined(with: .move(edge: .trailing)),
@@ -207,14 +208,14 @@ public struct ClipCommentsSheetView: View {
                 )
             } else {
                 Image(systemName: "person.crop.circle.fill")
-                    .font(.system(size: 32))
+                    .font(.system(size: 38))
                     .foregroundStyle(.white.opacity(0.6))
                     .frame(width: 38, height: 38)
             }
         }
-        .buttonStyle(.glassPress)
-        .glassEffect(.regular.interactive(), in: .circle)
-        .frame(width: 38, height: 38)
+        .buttonStyle(.plain)
+        .contentShape(Circle())
+        .frame(width: 38, height: isExpandedInput ? 38 : 42, alignment: .center)
     }
 
     // MARK: - Empty State View

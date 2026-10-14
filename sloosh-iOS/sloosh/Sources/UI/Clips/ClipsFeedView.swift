@@ -819,8 +819,17 @@ public struct ClipsFeedView: View {
                 Button(role: .destructive) {
                     confirmDelete(clip: clip)
                 } label: {
-                    Label("Удалить момент", systemImage: "trash")
+                    Label {
+                        Text("Удалить момент")
+                    } icon: {
+                        if let img = UIImage(systemName: "trash")?.withTintColor(.systemRed, renderingMode: .alwaysOriginal) {
+                            Image(uiImage: img)
+                        } else {
+                            Image(systemName: "trash")
+                        }
+                    }
                 }
+                .tint(.red)
             }
         } label: {
             Image(systemName: "ellipsis")
@@ -830,6 +839,7 @@ public struct ClipsFeedView: View {
                 .glassEffect(.regular.interactive(), in: .circle)
                 .contentShape(Circle())
         }
+        .tint(.white)
         .buttonStyle(.plain)
     }
 
