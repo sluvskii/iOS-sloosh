@@ -909,6 +909,7 @@ public struct ClipsFeedView: View {
         }
         .onChange(of: currentClipId) { oldId, newId in
             AppDiagnostics.shared.log("[ClipsFeedView] currentClipId changed from \(String(describing: oldId)) to \(String(describing: newId))")
+            isTextExpanded = false
             guard let newId = newId, newId != oldId, let clip = clipsRepo.clips.first(where: { $0.id == newId }) else { return }
             playback.setupPlayer(for: clip)
             prewarmNextClip(after: clip)
@@ -1218,7 +1219,7 @@ public struct ClipsFeedView: View {
     // MARK: - Left Info View
 
     private func leftInfoView(clip: MovieClip) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 7) {
             // Movie / Series Logo (with text fallback) - Tapping opens Movie Details
             logoOrTitleView(clip: clip)
                 .contentShape(Rectangle())
@@ -1227,22 +1228,11 @@ public struct ClipsFeedView: View {
                     selectedDetailsMedia = (movieId: String(clip.mediaId), mediaType: clip.mediaType)
                 }
 
-            // Season, Episode & Voiceover Info
+            // Season, Episode & Voiceover Capsule
             subtitleInfoView(clip: clip)
 
-            // Caption Text (Expandable on tap)
-            if !clip.caption.isEmpty {
-                Text(clip.caption)
-                    .font(.system(size: 13, weight: .regular))
-                    .foregroundStyle(.white.opacity(0.95))
-                    .lineLimit(isTextExpanded ? 6 : 2)
-                    .onTapGesture {
-                        withAnimation(.easeInOut(duration: 0.2)) {
-                            isTextExpanded.toggle()
-                        }
-                    }
-                    .padding(.vertical, 1)
-            }
+            // Author Caption / Description Capsule (Expandable on tap)
+            authorCaptionView(clip: clip)
 
             // Pure Liquid Glass "Смотреть" Button (Bold, styled like Main Screen, pure Liquid Glass)
             Button {
@@ -1262,7 +1252,7 @@ public struct ClipsFeedView: View {
                 .glassEffect(.regular.interactive(), in: .capsule)
             }
             .buttonStyle(.glassPress)
-            .padding(.top, 4)
+            .padding(.top, 2)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -1305,24 +1295,78 @@ public struct ClipsFeedView: View {
 
     @ViewBuilder
     private func subtitleInfoView(clip: MovieClip) -> some View {
-        if let s = clip.season, let e = clip.episode {
-            HStack(spacing: 4) {
-                Text("\(s) сезон, \(e) серия")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(.white.opacity(0.85))
+        let hasSeries = clip.season != nil && clip.episode != nil
+        let hasTranslation = clip.translationName != nil && !(clip.translationName?.isEmpty ?? true)
 
-                if let tr = clip.translationName, !tr.isEmpty {
-                    Text("• \(tr)")
-                        .font(.system(size: 12, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.65))
-                        .lineLimit(1)
+        if hasSeries || hasTranslation {
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                selectedDetailsMedia = (movieId: String(clip.mediaId), mediaType: clip.mediaType)
+            } label: {
+                HStack(spacing: 5) {
+                    Image(systemName: hasSeries ? "tv" : "waveform")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.85))
+
+                    if let s = clip.season, let e = clip.episode {
+                        Text("\(s) сезон, \(e) серия")
+                            .font(.system(size: 11.5, weight: .semibold))
+                            .foregroundStyle(.white)
+
+                        if let tr = clip.translationName, !tr.isEmpty {
+                            Text("•")
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.45))
+
+                            Text(tr)
+                                .font(.system(size: 11.5, weight: .medium))
+                                .foregroundStyle(.white.opacity(0.92))
+                                .lineLimit(1)
+                        }
+                    } else if let tr = clip.translationName, !tr.isEmpty {
+                        Text(tr)
+                            .font(.system(size: 11.5, weight: .medium))
+                            .foregroundStyle(.white.opacity(0.95))
+                            .lineLimit(1)
+                    }
                 }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .glassEffect(.regular.interactive(), in: .capsule)
             }
-        } else if let tr = clip.translationName, !tr.isEmpty {
-            Text(tr)
-                .font(.system(size: 12, weight: .medium))
-                .foregroundStyle(.white.opacity(0.75))
-                .lineLimit(1)
+            .buttonStyle(.glassPress)
+        }
+    }
+
+    @ViewBuilder
+    private func authorCaptionView(clip: MovieClip) -> some View {
+        let caption = clip.caption.trimmingCharacters(in: .whitespacesAndNewlines)
+        if !caption.isEmpty {
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
+                    isTextExpanded.toggle()
+                }
+            } label: {
+                HStack(alignment: .bottom, spacing: 6) {
+                    Text(caption)
+                        .font(.system(size: 12.5, weight: .medium))
+                        .foregroundStyle(.white.opacity(0.95))
+                        .lineLimit(isTextExpanded ? 6 : 2)
+                        .multilineTextAlignment(.leading)
+
+                    if caption.count > 55 {
+                        Text(isTextExpanded ? "скрыть" : "ещё")
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.55))
+                            .padding(.bottom, 1)
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 7)
+                .glassEffect(.regular.interactive(), in: .rect(cornerRadius: isTextExpanded ? 16 : 18))
+            }
+            .buttonStyle(.glassPress)
         }
     }
 
@@ -1355,52 +1399,38 @@ public struct ClipsFeedView: View {
     // MARK: - Movie Poster Circular Button (Opens DetailsView)
 
     private func moviePosterButtonView(clip: MovieClip) -> some View {
-        VStack(spacing: 4) {
-            Button {
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                selectedDetailsMedia = (movieId: String(clip.mediaId), mediaType: clip.mediaType)
-            } label: {
-                Group {
-                    if let path = clip.posterPath, let url = resolveImageUrl(path: path) {
-                        AsyncCachedImage(url: url) {
-                            Circle().fill(Color.white.opacity(0.12))
-                        } content: { img in
-                            Image(uiImage: img)
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                                .frame(width: 36, height: 36)
-                                .clipShape(Circle())
-                        } fallback: {
-                            Image(systemName: "film")
-                                .font(.system(size: 15, weight: .semibold))
-                                .foregroundStyle(.white.opacity(0.85))
-                                .frame(width: 36, height: 36)
-                        }
-                    } else {
+        Button {
+            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            selectedDetailsMedia = (movieId: String(clip.mediaId), mediaType: clip.mediaType)
+        } label: {
+            Group {
+                if let path = clip.posterPath, let url = resolveImageUrl(path: path) {
+                    AsyncCachedImage(url: url) {
+                        Circle().fill(Color.white.opacity(0.12))
+                    } content: { img in
+                        Image(uiImage: img)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                            .frame(width: 36, height: 36)
+                            .clipShape(Circle())
+                    } fallback: {
                         Image(systemName: "film")
                             .font(.system(size: 15, weight: .semibold))
                             .foregroundStyle(.white.opacity(0.85))
                             .frame(width: 36, height: 36)
                     }
+                } else {
+                    Image(systemName: "film")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(.white.opacity(0.85))
+                        .frame(width: 36, height: 36)
                 }
-                .frame(width: 36, height: 36)
-                .contentShape(Circle())
             }
-            .buttonStyle(.glassPress)
-            .glassEffect(.regular.interactive(), in: .circle)
-
-            Text(clip.mediaType == "tv" ? "Сериал" : "Фильм")
-                .font(.system(size: 9.5, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.92))
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    selectedDetailsMedia = (movieId: String(clip.mediaId), mediaType: clip.mediaType)
-                }
+            .frame(width: 36, height: 36)
+            .contentShape(Circle())
         }
-        .frame(width: 54)
+        .buttonStyle(.glassPress)
+        .glassEffect(.regular.interactive(), in: .circle)
     }
 
     // MARK: - Author Avatar
