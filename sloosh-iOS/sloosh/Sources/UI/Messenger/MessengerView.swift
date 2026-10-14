@@ -167,8 +167,7 @@ public struct MessengerView: View {
                     // _ = await repo.fetchPublicChannels()
                 }
             }
-        }
-        .tint(Color.primary)
+            .tint(Color.primary)
     }
 
     private var channelActionTitle: String {
