@@ -1747,34 +1747,37 @@ private struct ClipBufferingWaveView: View {
     }
 
     private func waveContent(time: Double) -> some View {
-        let pulse: Double = (sin(time * 2.6) + 1.0) / 2.0
-        let wave: CGFloat = CGFloat((sin(time * 1.8) + 1.0) / 2.0)
-        let stretch: CGFloat = CGFloat(1.0 + 0.12 * sin(time * 3.6))
-        let beamAlpha: Double = 0.45 * (0.85 + 0.15 * pulse)
+        let pulse: Double = (sin(time * 2.4) + 1.0) / 2.0
+        let wave: CGFloat = CGFloat((sin(time * 1.6) + 1.0) / 2.0)
+        let stretch: CGFloat = CGFloat(1.0 + 0.10 * sin(time * 3.2))
 
         return GeometryReader { p in
             let trackWidth: CGFloat = p.size.width
-            let baseBeamWidth: CGFloat = max(44.0, trackWidth * 0.30)
-            let dynamicBeamWidth: CGFloat = min(trackWidth * 0.6, baseBeamWidth * stretch)
+            let baseBeamWidth: CGFloat = max(56.0, trackWidth * 0.35)
+            let dynamicBeamWidth: CGFloat = min(trackWidth * 0.65, baseBeamWidth * stretch)
             let travelDistance: CGFloat = max(0, trackWidth - dynamicBeamWidth)
             let xOffset: CGFloat = travelDistance * wave
-            let coreDotWidth: CGFloat = max(16.0, dynamicBeamWidth * 0.4)
-            let coreOffset: CGFloat = xOffset + (dynamicBeamWidth - coreDotWidth) / 2.0
 
             ZStack(alignment: .leading) {
+                // 1. Ambient pulsing background track
                 Capsule()
-                    .fill(Color.white.opacity(0.16 + 0.10 * pulse))
+                    .fill(Color.white.opacity(0.18 + 0.06 * pulse))
                     .frame(width: trackWidth, height: barHeight)
 
+                // 2. Liquid photon light beam (ultra-smooth sinusoidal Gaussian falloff, zero steps)
                 Capsule()
                     .fill(
                         LinearGradient(
-                            colors: [
-                                Color.white.opacity(0.0),
-                                Color.white.opacity(beamAlpha),
-                                Color.white.opacity(0.95),
-                                Color.white.opacity(beamAlpha),
-                                Color.white.opacity(0.0)
+                            stops: [
+                                .init(color: Color.white.opacity(0.0), location: 0.0),
+                                .init(color: Color.white.opacity(0.06), location: 0.12),
+                                .init(color: Color.white.opacity(0.25), location: 0.28),
+                                .init(color: Color.white.opacity(0.65), location: 0.42),
+                                .init(color: Color.white.opacity(1.0), location: 0.50),
+                                .init(color: Color.white.opacity(0.65), location: 0.58),
+                                .init(color: Color.white.opacity(0.25), location: 0.72),
+                                .init(color: Color.white.opacity(0.06), location: 0.88),
+                                .init(color: Color.white.opacity(0.0), location: 1.0)
                             ],
                             startPoint: .leading,
                             endPoint: .trailing
@@ -1782,12 +1785,6 @@ private struct ClipBufferingWaveView: View {
                     )
                     .frame(width: dynamicBeamWidth, height: barHeight)
                     .offset(x: xOffset)
-
-                Capsule()
-                    .fill(Color.white)
-                    .frame(width: coreDotWidth, height: barHeight)
-                    .offset(x: coreOffset)
-                    .shadow(color: Color.white.opacity(0.7), radius: 3)
             }
             .frame(width: trackWidth, height: barHeight)
         }
