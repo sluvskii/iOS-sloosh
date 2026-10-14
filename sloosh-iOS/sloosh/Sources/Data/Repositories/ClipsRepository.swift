@@ -84,8 +84,8 @@ public final class ClipsRepository: ObservableObject {
     // MARK: - Smart Recommendations Algorithm (TikTok/Reels-style Cinema Discovery)
 
     public func rankClips(_ list: [MovieClip]) -> [MovieClip] {
-        let favoriteIds = Set(FavoritesRepository.shared.favorites.map { $0.id })
-        let progressIds = Set(PlaybackProgressStore.shared.allItems().map { $0.id })
+        let favoriteIds = Set(FavoritesRepository.shared.favorites.compactMap { $0.mediaId ?? $0.id })
+        let progressIds = Set(PlaybackProgressStore.shared.listAllMetadata().map { String($0.kpId) })
         let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
 
         return list.sorted { c1, c2 in
@@ -102,10 +102,12 @@ public final class ClipsRepository: ObservableObject {
         // 2. Personal affinity boosts
         var affinityBoost: Double = 0.0
         let mediaIdStr = String(clip.mediaId)
-        if favoriteIds.contains(mediaIdStr) {
+        let kpIdStr = clip.kpId != nil ? String(clip.kpId!) : nil
+
+        if favoriteIds.contains(mediaIdStr) || (kpIdStr != nil && favoriteIds.contains(kpIdStr!)) {
             affinityBoost += 80.0 // User bookmarked this movie
         }
-        if progressIds.contains(mediaIdStr) {
+        if progressIds.contains(mediaIdStr) || (kpIdStr != nil && progressIds.contains(kpIdStr!)) {
             affinityBoost += 50.0 // User is actively watching this movie
         }
         if likedClipIds.contains(clip.id) {
