@@ -526,6 +526,8 @@ public struct ClipsFeedView: View {
         }
         .sheet(item: $showCommentsForClip) { clip in
             ClipCommentsSheetView(clip: clip)
+                .presentationDetents([.fraction(0.65)])
+                .presentationBackgroundInteraction(.enabled(upThrough: .fraction(0.65)))
         }
         .fullScreenCover(item: $fullPlayerConfig, onDismiss: {
             fullPlayerConfig = nil
@@ -1118,6 +1120,10 @@ public struct ClipsFeedView: View {
     }
 
     private func handleCenterTap(at location: CGPoint, for clip: MovieClip) {
+        if showCommentsForClip != nil {
+            showCommentsForClip = nil
+            return
+        }
         let now = Date()
         if now.timeIntervalSince(lastTapTime) < 0.28 {
             // Double tap detected: spawn heart like & ensure video plays
