@@ -23,6 +23,11 @@ final class PlayerLayerView: UIView {
     private var stashedPlayer: AVPlayer?
     var pipController: AVPictureInPictureController?
 
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        playerLayer.frame = bounds
+    }
+
     override init(frame: CGRect) {
         super.init(frame: frame)
         setupObservers()

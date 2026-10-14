@@ -54,10 +54,7 @@ final class ClipPlaybackCoordinator: ObservableObject {
     private var retryCount: Int = 0
     private(set) var wasUserPaused: Bool = false
 
-    // Prewarming & Preloading Engine for Instant Playback
-    private var prewarmedClipId: String?
-    private var prewarmedPlayer: AVPlayer?
-    private var prewarmedPlaybackInfo: ResolvedClipPlayback?
+    // Background Prewarming Task for Next Clips Stream Resolution
     private var prewarmTask: Task<Void, Never>?
 
     init() {
@@ -68,53 +65,6 @@ final class ClipPlaybackCoordinator: ObservableObject {
     }
 
     func setupPlayer(for clip: MovieClip, allClips: [MovieClip] = [], isRetry: Bool = false) {
-        // Fast-path: Instant adoption of prewarmed player
-        if !isRetry,
-           prewarmedClipId == clip.id,
-           let prePlayer = prewarmedPlayer,
-           let playbackInfo = prewarmedPlaybackInfo {
-            AppDiagnostics.shared.log("[ClipPlayback] ⚡️ INSTANT PLAY: Reusing prewarmed player for clip=\(clip.id) title=\(clip.title)")
-            cleanupActivePlayerOnly()
-
-            currentClip = clip
-            currentClipId = clip.id
-            isResolving = false
-            isVideoReady = true
-            hasError = false
-            clipProgress = 0.0
-            isScrubbing = false
-            isFastForwarding = false
-            didPerformInitialSeek = true
-            retryCount = 0
-            wasUserPaused = false
-            isPlaying = true
-
-            currentQualityUrls = playbackInfo.qualityUrls
-            currentHeaders = playbackInfo.headers
-            currentPlayingUrl = playbackInfo.url
-
-            if !playbackInfo.qualityUrls.isEmpty {
-                let sortedKeys = playbackInfo.qualityUrls.keys.sorted {
-                    let h1 = Int($0.replacingOccurrences(of: "p", with: "")) ?? 0
-                    let h2 = Int($1.replacingOccurrences(of: "p", with: "")) ?? 0
-                    return h1 > h2
-                }
-                self.availableQualities = ["Авто"] + sortedKeys
-            }
-
-            self.activePlayer = prePlayer
-            attachPlayerObservers(player: prePlayer, item: prePlayer.currentItem, clip: clip)
-
-            prewarmedClipId = nil
-            prewarmedPlayer = nil
-            prewarmedPlaybackInfo = nil
-
-            try? AVAudioSession.sharedInstance().setActive(true)
-            playWithCurrentSpeed()
-
-            prewarmNext(after: clip, in: allClips)
-            return
-        }
 
         cleanup()
         currentClip = clip
@@ -195,7 +145,6 @@ final class ClipPlaybackCoordinator: ObservableObject {
                 guard let self, self.currentClipId == clip.id, let player else { return }
                 if observedItem.status == .readyToPlay {
                     self.isResolving = false
-                    self.isVideoReady = true
                     self.hasError = false
                     AppDiagnostics.shared.log("[ClipPlayback] readyToPlay clip=\(clip.id)")
 
@@ -204,14 +153,18 @@ final class ClipPlaybackCoordinator: ObservableObject {
                         if clip.startTime > 0.5 {
                             let sTime = CMTime(seconds: clip.startTime, preferredTimescale: 600)
                             player.seek(to: sTime, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
-                                guard let self, self.isPlaying, !self.wasUserPaused else { return }
+                                guard let self else { return }
+                                self.isVideoReady = true
+                                guard self.isPlaying, !self.wasUserPaused else { return }
                                 self.playWithCurrentSpeed()
                             }
                         } else {
+                            self.isVideoReady = true
                             guard self.isPlaying, !self.wasUserPaused else { return }
                             self.playWithCurrentSpeed()
                         }
                     } else {
+                        self.isVideoReady = true
                         guard self.isPlaying, !self.wasUserPaused else { return }
                         self.playWithCurrentSpeed()
                     }
@@ -291,33 +244,14 @@ final class ClipPlaybackCoordinator: ObservableObject {
         prewarmTask = Task { [weak self] in
             guard let self else { return }
 
-            // 1. Fully prewarm next clip player (buffers 10s and seeks to startTime while paused in background)
+            // 1. Pre-resolve stream for next clip into RAM cache and warm up network
             if let nextClip {
                 if let playbackInfo = await ClipStreamResolver.shared.resolveClip(for: nextClip) {
                     guard !Task.isCancelled else { return }
-                    let asset = AVURLAsset(url: playbackInfo.url, options: ["AVURLAssetHTTPHeaderFieldsKey": playbackInfo.headers])
-                    let item = AVPlayerItem(asset: asset)
-                    item.preferredForwardBufferDuration = 10.0
-                    self.applyQuality(self.currentQuality, to: item)
-
-                    let player = AVPlayer(playerItem: item)
-                    player.actionAtItemEnd = .none
-                    player.automaticallyWaitsToMinimizeStalling = true
-                    player.pause()
-
-                    if nextClip.startTime > 0.5 {
-                        let sTime = CMTime(seconds: nextClip.startTime, preferredTimescale: 600)
-                        await player.seek(to: sTime, toleranceBefore: .zero, toleranceAfter: .zero)
-                    }
-
-                    guard !Task.isCancelled else { return }
-                    await MainActor.run {
-                        self.prewarmedPlayer?.pause()
-                        self.prewarmedPlayer = player
-                        self.prewarmedClipId = nextClip.id
-                        self.prewarmedPlaybackInfo = playbackInfo
-                        AppDiagnostics.shared.log("[ClipPlayback] ⚡️ Prewarmed AVPlayer ready for next clip=\(nextClip.id) title=\(nextClip.title)")
-                    }
+                    var req = URLRequest(url: playbackInfo.url)
+                    for (k, v) in playbackInfo.headers { req.setValue(v, forHTTPHeaderField: k) }
+                    _ = try? await URLSession.shared.data(for: req)
+                    AppDiagnostics.shared.log("[ClipPlayback] ⚡️ Stream pre-warmed for next clip=\(nextClip.id) title=\(nextClip.title)")
                 }
             }
 
@@ -584,10 +518,6 @@ final class ClipPlaybackCoordinator: ObservableObject {
 
         prewarmTask?.cancel()
         prewarmTask = nil
-        prewarmedPlayer?.pause()
-        prewarmedPlayer = nil
-        prewarmedClipId = nil
-        prewarmedPlaybackInfo = nil
 
         isVideoReady = false
         isResolving = false
@@ -856,6 +786,12 @@ public struct ClipsFeedView: View {
             .frame(height: 44)
         }
         .frame(width: width)
+        .background(
+            VariableBlurView(tintOpacity: 1.0)
+                .padding(.bottom, -30)
+                .ignoresSafeArea(edges: .top)
+                .allowsHitTesting(false)
+        )
         .ignoresSafeArea(edges: .top)
         .opacity(showCommentsForClip != nil ? 0.0 : 1.0)
         .animation(.spring(response: 0.28, dampingFraction: 0.85), value: showCommentsForClip != nil)
