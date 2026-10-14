@@ -16,6 +16,9 @@ public struct ClipCommentsSheetView: View {
     @FocusState private var isInputFocused: Bool
 
     @State private var sheetDetent: PresentationDetent = .fraction(0.65)
+    @State private var showEditProfileSheet: Bool = false
+    @State private var showAuthSheet: Bool = false
+    @State private var showSignOutAlert: Bool = false
 
     public init(clip: MovieClip) {
         self.clip = clip
@@ -43,7 +46,7 @@ public struct ClipCommentsSheetView: View {
     }
 
     private var inputBarHorizontalPadding: CGFloat {
-        16
+        isInputFocused ? 16 : 36
     }
 
     private var inputBarBottomPadding: CGFloat {
@@ -104,6 +107,18 @@ public struct ClipCommentsSheetView: View {
         .environment(\.colorScheme, .dark)
         .task {
             await loadComments()
+        }
+        .sheet(isPresented: $showEditProfileSheet) {
+            EditProfileSheet()
+        }
+        .fullScreenCover(isPresented: $showAuthSheet) {
+            AuthView()
+        }
+        .alert("Выйти из аккаунта?", isPresented: $showSignOutAlert) {
+            Button("Выйти", role: .destructive) {
+                authRepo.signOut()
+            }
+            Button("Отмена", role: .cancel) {}
         }
     }
 
@@ -197,25 +212,66 @@ public struct ClipCommentsSheetView: View {
         .animation(.spring(response: 0.32, dampingFraction: 0.78), value: hasTextToSending)
     }
 
+    @ViewBuilder
     private var userAvatarButton: some View {
-        Button {
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-        } label: {
-            if let user = authRepo.currentUser {
-                SlooshAvatarView(
-                    userProfile: user,
-                    size: 38
-                )
-            } else {
+        if authRepo.isAuthenticated, let user = authRepo.currentUser {
+            Menu {
+                Section {
+                    Text(user.displayName.isEmpty ? (user.tag ?? "Пользователь") : user.displayName)
+                    if let tag = user.tag, !tag.isEmpty {
+                        Text("@\(tag)")
+                    }
+                }
+
+                Button {
+                    showEditProfileSheet = true
+                } label: {
+                    Label("Редактировать профиль", systemImage: "pencil")
+                }
+
+                Divider()
+
+                Button(role: .destructive) {
+                    showSignOutAlert = true
+                } label: {
+                    Label {
+                        Text("Выйти из аккаунта")
+                    } icon: {
+                        if let img = UIImage(systemName: "rectangle.portrait.and.arrow.right")?.withTintColor(.systemRed, renderingMode: .alwaysOriginal) {
+                            Image(uiImage: img)
+                        } else {
+                            Image(systemName: "rectangle.portrait.and.arrow.right")
+                        }
+                    }
+                }
+                .tint(.red)
+            } label: {
+                SlooshAvatarView(userProfile: user, size: 38)
+                    .frame(width: 38, height: 38)
+                    .glassEffect(.regular.interactive(), in: Circle())
+                    .clipShape(Circle())
+                    .contentShape(Circle())
+                    .contentShape(.contextMenuPreview, Circle())
+            }
+            .menuOrder(.priority)
+            .tint(.white)
+            .buttonStyle(.plain)
+            .frame(width: 38, height: isExpandedInput ? 38 : 42, alignment: .center)
+        } else {
+            Button {
+                showAuthSheet = true
+            } label: {
                 Image(systemName: "person.crop.circle.fill")
                     .font(.system(size: 38))
                     .foregroundStyle(.white.opacity(0.6))
                     .frame(width: 38, height: 38)
+                    .glassEffect(.regular.interactive(), in: Circle())
+                    .clipShape(Circle())
+                    .contentShape(Circle())
             }
+            .buttonStyle(.plain)
+            .frame(width: 38, height: isExpandedInput ? 38 : 42, alignment: .center)
         }
-        .buttonStyle(.plain)
-        .contentShape(Circle())
-        .frame(width: 38, height: isExpandedInput ? 38 : 42, alignment: .center)
     }
 
     // MARK: - Empty State View
