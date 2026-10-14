@@ -1301,11 +1301,9 @@ public struct ClipsFeedView: View {
                     .fill(isLiked ? Color.red.opacity(0.92) : Color.white.opacity(0.001))
                     .frame(width: 36, height: 36)
                     .contentShape(HeartShape())
+                    .glassEffect(.regular.interactive(), in: HeartShape())
             }
-            .buttonStyle(.glassPress)
-            .contentShape(HeartShape())
-            .glassEffect(.regular.interactive(), in: HeartShape())
-            .clipShape(HeartShape())
+            .buttonStyle(.plain)
             .scaleEffect(isLiked ? 1.08 : 1.0)
             .animation(.spring(response: 0.28, dampingFraction: 0.55), value: isLiked)
 
@@ -1335,11 +1333,9 @@ public struct ClipsFeedView: View {
                     .fill(Color.white.opacity(0.001))
                     .frame(width: 36, height: 36)
                     .contentShape(SpeechBubbleShape())
+                    .glassEffect(.regular.interactive(), in: SpeechBubbleShape())
             }
-            .buttonStyle(.glassPress)
-            .contentShape(SpeechBubbleShape())
-            .glassEffect(.regular.interactive(), in: SpeechBubbleShape())
-            .clipShape(SpeechBubbleShape())
+            .buttonStyle(.plain)
 
             Text("\(clip.commentsCount)")
                 .font(.system(size: 11, weight: .semibold))
@@ -1363,11 +1359,9 @@ public struct ClipsFeedView: View {
                     .fill(Color.white.opacity(0.001))
                     .frame(width: 36, height: 36)
                     .contentShape(ShareArrowShape())
+                    .glassEffect(.regular.interactive(), in: ShareArrowShape())
             }
-            .buttonStyle(.glassPress)
-            .contentShape(ShareArrowShape())
-            .glassEffect(.regular.interactive(), in: ShareArrowShape())
-            .clipShape(ShareArrowShape())
+            .buttonStyle(.plain)
 
             Text("Поделиться")
                 .font(.system(size: 9.0, weight: .semibold))
@@ -1392,11 +1386,9 @@ public struct ClipsFeedView: View {
                     .fill(Color.white.opacity(0.001))
                     .frame(width: 36, height: 36)
                     .contentShape(AspectExpandShape())
+                    .glassEffect(.regular.interactive(), in: AspectExpandShape())
             }
-            .buttonStyle(.glassPress)
-            .contentShape(AspectExpandShape())
-            .glassEffect(.regular.interactive(), in: AspectExpandShape())
-            .clipShape(AspectExpandShape())
+            .buttonStyle(.plain)
 
             Text(currentScaleMode == .fit ? "9:16" : "В кадре")
                 .font(.system(size: 9.0, weight: .semibold))
