@@ -11,6 +11,7 @@ struct PlayerPresenter: UIViewControllerRepresentable {
     var onDismiss: () -> Void
 
     func makeUIViewController(context: Context) -> PlayerHostingController<PlayerContainerView> {
+        NotificationCenter.default.post(name: NSNotification.Name("SlooshMainPlayerWillStart"), object: nil)
         let container = PlayerContainerView(vm: vm, onDismiss: {
             context.coordinator.dismissPlayer()
         })
@@ -2055,6 +2056,7 @@ class PlayerViewModel: ObservableObject {
     
     
     private func playVideo(url: URL, headers: [String: String], voices: [String] = [], subtitles: [PlaybackSubtitle] = []) {
+        NotificationCenter.default.post(name: NSNotification.Name("SlooshMainPlayerWillStart"), object: nil)
         logDebug("playVideo: starting playback, url=\(url.absoluteString)")
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
         try? AVAudioSession.sharedInstance().setActive(true)

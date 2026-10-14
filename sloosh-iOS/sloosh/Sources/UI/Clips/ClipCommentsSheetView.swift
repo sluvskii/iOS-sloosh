@@ -142,6 +142,9 @@ public struct ClipCommentsSheetView: View {
 
     private var inputBar: some View {
         HStack(alignment: .bottom, spacing: 8) {
+            // User Avatar Indicator Button (Shows which account is commenting)
+            userAvatarButton
+
             // Floating Glass Text Field Capsule / Morphing Box (Telegram-style inline reply/edit)
             VStack(alignment: .leading, spacing: isExpandedInput ? 8 : 4) {
                 TextField("Сообщение", text: $commentText, axis: .vertical)
@@ -191,6 +194,27 @@ public struct ClipCommentsSheetView: View {
         .padding(.bottom, inputBarBottomPadding)
         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: isInputFocused)
         .animation(.spring(response: 0.32, dampingFraction: 0.78), value: hasTextToSending)
+    }
+
+    private var userAvatarButton: some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        } label: {
+            if let user = authRepo.currentUser {
+                SlooshAvatarView(
+                    user: user,
+                    size: 38
+                )
+            } else {
+                Image(systemName: "person.crop.circle.fill")
+                    .font(.system(size: 32))
+                    .foregroundStyle(.white.opacity(0.6))
+                    .frame(width: 38, height: 38)
+            }
+        }
+        .buttonStyle(.glassPress)
+        .glassEffect(.regular.interactive(), in: .circle)
+        .frame(width: 38, height: 38)
     }
 
     // MARK: - Empty State View

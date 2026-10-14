@@ -54,8 +54,7 @@ public struct MessengerView: View {
     }
 
     public var body: some View {
-        NavigationStack {
-            ZStack {
+        ZStack {
                 Color(UIColor.systemBackground).ignoresSafeArea()
 
                 if !authRepo.isAuthenticated {
@@ -435,16 +434,6 @@ public struct MessengerView: View {
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
-        ToolbarItem(placement: .navigationBarLeading) {
-            Button {
-                dismiss()
-            } label: {
-                Image(systemName: "chevron.left")
-                    .font(.system(size: 18, weight: .semibold))
-                    .foregroundColor(.primary)
-            }
-        }
-
         if authRepo.isAuthenticated {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button {

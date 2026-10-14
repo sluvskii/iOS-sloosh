@@ -51,6 +51,7 @@ final class ClipPlaybackCoordinator: ObservableObject {
     private var resolvePlaybackTask: Task<Void, Never>?
     private var didPerformInitialSeek: Bool = false
     private var retryCount: Int = 0
+    private(set) var wasUserPaused: Bool = false
 
     init() {
         try? AVAudioSession.sharedInstance().setCategory(.playback, mode: .moviePlayback)
@@ -72,7 +73,9 @@ final class ClipPlaybackCoordinator: ObservableObject {
         didPerformInitialSeek = false
         if !isRetry {
             retryCount = 0
+            wasUserPaused = false
         }
+        isPlaying = true
         AppDiagnostics.shared.log("[ClipPlayback] setupPlayer clip=\(clip.id) title=\(clip.title) startTime=\(clip.startTime)")
 
         resolvePlaybackTask = Task { [weak self] in
@@ -84,6 +87,10 @@ final class ClipPlaybackCoordinator: ObservableObject {
                 return
             }
             guard !Task.isCancelled, self.currentClipId == clip.id else { return }
+            guard self.isPlaying else {
+                self.isResolving = false
+                return
+            }
 
             self.currentQualityUrls = playbackInfo.qualityUrls
             self.currentHeaders = playbackInfo.headers
@@ -116,7 +123,9 @@ final class ClipPlaybackCoordinator: ObservableObject {
             player.actionAtItemEnd = .none
             player.automaticallyWaitsToMinimizeStalling = true
             self.activePlayer = player
-            self.isPlaying = true
+            if !self.isPlaying {
+                player.pause()
+            }
 
             // Observe item status for ready to play & initial seek
             self.playerStatusObserver = item.observe(\.status, options: [.new, .initial]) { [weak self, weak player] observedItem, _ in
@@ -133,12 +142,15 @@ final class ClipPlaybackCoordinator: ObservableObject {
                             if clip.startTime > 0.5 {
                                 let sTime = CMTime(seconds: clip.startTime, preferredTimescale: 600)
                                 player.seek(to: sTime, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
-                                    self?.playWithCurrentSpeed()
+                                    guard let self, self.isPlaying, !self.wasUserPaused else { return }
+                                    self.playWithCurrentSpeed()
                                 }
                             } else {
+                                guard self.isPlaying, !self.wasUserPaused else { return }
                                 self.playWithCurrentSpeed()
                             }
                         } else {
+                            guard self.isPlaying, !self.wasUserPaused else { return }
                             self.playWithCurrentSpeed()
                         }
                     } else if observedItem.status == .failed {
@@ -374,7 +386,9 @@ final class ClipPlaybackCoordinator: ObservableObject {
         if isPlaying {
             player.pause()
             isPlaying = false
+            wasUserPaused = true
         } else {
+            wasUserPaused = false
             playWithCurrentSpeed()
         }
     }
@@ -398,18 +412,28 @@ final class ClipPlaybackCoordinator: ObservableObject {
         }
     }
 
-    func pause() {
+    func pause(userInitiated: Bool = false) {
         activePlayer?.pause()
         isPlaying = false
+        isFastForwarding = false
+        if userInitiated {
+            wasUserPaused = true
+        }
     }
 
     func resume(for clip: MovieClip?) {
         guard let clip else { return }
+        wasUserPaused = false
         if activePlayer == nil || currentClipId != clip.id {
             setupPlayer(for: clip)
         } else {
             playWithCurrentSpeed()
         }
+    }
+
+    func resumeIfAppropriate(for clip: MovieClip?) {
+        guard !wasUserPaused else { return }
+        resume(for: clip)
     }
 
     func cleanup() {
@@ -458,6 +482,7 @@ public struct ClipsFeedView: View {
     @StateObject private var authRepo = AuthRepository.shared
     @StateObject private var playback = ClipPlaybackCoordinator()
     @ObservedObject private var messengerRepo = MessengerRepository.shared
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var showsMessenger: Bool = false
     @State private var commentsSheetDetent: PresentationDetent = .fraction(0.65)
@@ -556,19 +581,50 @@ public struct ClipsFeedView: View {
                 .preferredColorScheme(.dark)
                 .environment(\.colorScheme, .dark)
         }
+        .onChange(of: fullPlayerConfig != nil) { _, isOpened in
+            if isOpened {
+                playback.pause(userInitiated: true)
+            }
+        }
         .onChange(of: showsMessenger) { _, isPresented in
             if isPresented {
-                playback.pause()
+                playback.pause(userInitiated: true)
             } else {
                 ensurePlaybackStarted()
             }
         }
         .onChange(of: selectedDetailsMedia != nil) { _, isOpened in
             if isOpened {
-                playback.pause()
+                playback.pause(userInitiated: true)
             } else {
                 ensurePlaybackStarted()
             }
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            if newPhase != .active {
+                playback.pause(userInitiated: false)
+            } else {
+                if !showsMessenger && selectedDetailsMedia == nil && fullPlayerConfig == nil && showCommentsForClip == nil {
+                    if let clipId = currentClipId, let clip = clipsRepo.clips.first(where: { $0.id == clipId }) {
+                        playback.resumeIfAppropriate(for: clip)
+                    }
+                }
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.didEnterBackgroundNotification)) { _ in
+            playback.pause(userInitiated: false)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIApplication.willResignActiveNotification)) { _ in
+            playback.pause(userInitiated: false)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("SlooshPauseClipsPlayback"))) { _ in
+            playback.pause(userInitiated: true)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("SlooshMainPlayerWillStart"))) { _ in
+            playback.pause(userInitiated: true)
+        }
+        .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("SlooshResumeClipsPlayback"))) { _ in
+            ensurePlaybackStarted()
         }
         .alert("Удалить момент?", isPresented: $showDeleteConfirmation, presenting: clipToDelete) { clip in
             Button("Отмена", role: .cancel) {
@@ -581,7 +637,7 @@ public struct ClipsFeedView: View {
             Text("Вы уверены, что хотите удалить этот момент? Это действие нельзя отменить.")
         }
         .onDisappear {
-            playback.pause()
+            playback.pause(userInitiated: true)
         }
         .onAppear {
             ensurePlaybackStarted()
@@ -756,14 +812,7 @@ public struct ClipsFeedView: View {
                 Label("Масштаб", systemImage: "aspectratio")
             }
 
-            // 4. Поделиться
-            Button {
-                shareClip(clip)
-            } label: {
-                Label("Поделиться", systemImage: "arrowshape.turn.up.right")
-            }
-
-            // 5. Удалить момент (только для автора)
+            // 4. Удалить момент (только для автора)
             if isAuthor(of: clip) {
                 Divider()
 
@@ -781,7 +830,6 @@ public struct ClipsFeedView: View {
                 .glassEffect(.regular.interactive(), in: .circle)
                 .contentShape(Circle())
         }
-        .tint(.white)
         .buttonStyle(.plain)
     }
 
@@ -1035,20 +1083,19 @@ public struct ClipsFeedView: View {
                 }
             }
 
-            // 3. Touch & Gesture Zones: Left Edge 2x Speed, Center Instant 0ms Play/Pause
+            // 3. Touch & Gesture Zones: Both Edges 2x Speed, Center Instant 0ms Play/Pause
             HStack(spacing: 0) {
-                // Left Edge 2x Speed Zone (80pt)
+                // Left Edge 2x Speed Zone (88pt)
                 edgeAccelerationZone(for: clip)
-                    .frame(width: 80)
+                    .frame(width: 88)
 
                 // Center Instant Play/Pause & Double-Tap Heart Zone
                 centerTapZone(clip: clip)
                     .frame(maxWidth: .infinity)
 
-                // Right Margin Spacer (80pt) — touch passthrough to right rail action buttons
-                Color.clear
-                    .frame(width: 80)
-                    .allowsHitTesting(false)
+                // Right Edge 2x Speed Zone (88pt)
+                edgeAccelerationZone(for: clip)
+                    .frame(width: 88)
             }
             .frame(width: width, height: height)
             .zIndex(1)
@@ -1070,28 +1117,34 @@ public struct ClipsFeedView: View {
                     .allowsHitTesting(false)
             }
 
-            // 7. Top 2x Fast-Forward Indicator Badge
+            // 7. 2x Fast-Forward Indicator Badge (Matches scrubbing time capsule style and animation)
             VStack {
-                if playback.isFastForwarding {
-                    HStack(spacing: 6) {
-                        Image(systemName: "forward.fill")
-                            .font(.system(size: 13, weight: .bold))
+                Spacer()
 
-                        Text("2x Ускорение")
-                            .font(.system(size: 13, weight: .bold))
+                if playback.isFastForwarding {
+                    HStack(spacing: 7) {
+                        Image(systemName: "forward.fill")
+                            .font(.system(size: 14, weight: .bold))
+
+                        Text("2X")
+                            .font(.system(size: 17, weight: .bold).monospacedDigit())
                     }
                     .foregroundStyle(.white)
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, 18)
                     .padding(.vertical, 8)
                     .glassEffect(in: .capsule)
-                    .padding(.top, 14)
-                    .transition(.move(edge: .top).combined(with: .opacity).combined(with: .scale(scale: 0.9)))
+                    .padding(.bottom, 24)
+                    .transition(
+                        .asymmetric(
+                            insertion: .scale(scale: 0.75).combined(with: .opacity).combined(with: .offset(y: 12)),
+                            removal: .scale(scale: 0.85).combined(with: .opacity).combined(with: .offset(y: -8))
+                        )
+                    )
                 }
-
-                Spacer()
             }
-            .animation(.spring(response: 0.3, dampingFraction: 0.75), value: playback.isFastForwarding)
+            .animation(.spring(response: 0.32, dampingFraction: 0.72), value: playback.isFastForwarding)
             .allowsHitTesting(false)
+            .zIndex(5)
 
             // 6. Big Heart Explosion on Double-Tap
             if showBigHeart {
@@ -1304,10 +1357,6 @@ public struct ClipsFeedView: View {
                 selectedDetailsMedia = (movieId: String(clip.mediaId), mediaType: clip.mediaType)
             } label: {
                 HStack(spacing: 5) {
-                    Image(systemName: hasSeries ? "tv" : "waveform")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.85))
-
                     if let s = clip.season, let e = clip.episode {
                         Text("\(s) сезон, \(e) серия")
                             .font(.system(size: 11.5, weight: .semibold))
@@ -1318,13 +1367,13 @@ public struct ClipsFeedView: View {
                                 .font(.system(size: 10, weight: .semibold))
                                 .foregroundStyle(.white.opacity(0.45))
 
-                            Text(tr)
+                            Text(cleanTranslationName(tr))
                                 .font(.system(size: 11.5, weight: .medium))
                                 .foregroundStyle(.white.opacity(0.92))
                                 .lineLimit(1)
                         }
                     } else if let tr = clip.translationName, !tr.isEmpty {
-                        Text(tr)
+                        Text(cleanTranslationName(tr))
                             .font(.system(size: 11.5, weight: .medium))
                             .foregroundStyle(.white.opacity(0.95))
                             .lineLimit(1)
@@ -1473,12 +1522,10 @@ public struct ClipsFeedView: View {
             .buttonStyle(.glassPress)
             .contentShape(HeartShape())
             .glassEffect(.regular.interactive(), in: HeartShape())
-            .scaleEffect(isLiked ? 1.08 : 1.0)
-            .animation(.spring(response: 0.28, dampingFraction: 0.55), value: isLiked)
 
             Text("\(clip.likesCount)")
                 .font(.system(size: 11, weight: .semibold))
-                .foregroundStyle(isLiked ? Color.red : .white)
+                .foregroundStyle(.white)
                 .contentTransition(.numericText())
                 .animation(.spring(response: 0.28, dampingFraction: 0.7), value: clip.likesCount)
                 .contentShape(Rectangle())
@@ -1610,7 +1657,7 @@ private struct ClipProgressBarView: View {
             let totalWidth = barProxy.size.width
             let displayProgress = isScrubbing ? scrubProgress : progressObserver.progress
             let activeWidth = max(0, min(totalWidth, totalWidth * displayProgress))
-            let barHeight: CGFloat = isScrubbing ? 6.0 : 3.0
+            let barHeight: CGFloat = isScrubbing ? 8.0 : 4.5
 
             ZStack(alignment: .leading) {
                 // Background Track
@@ -1650,15 +1697,6 @@ private struct ClipProgressBarView: View {
                     Capsule()
                         .fill(Color.white)
                         .frame(width: activeWidth, height: barHeight)
-
-                    // Tactile Scrubber Head (visible while scrubbing)
-                    if isScrubbing {
-                        Circle()
-                            .fill(Color.white)
-                            .frame(width: 12, height: 12)
-                            .position(x: min(totalWidth - 6, max(6, activeWidth)), y: barProxy.size.height / 2)
-                            .transition(.scale.combined(with: .opacity))
-                    }
                 }
             }
             .frame(maxHeight: .infinity, alignment: .center)
