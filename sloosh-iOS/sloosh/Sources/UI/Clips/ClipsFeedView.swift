@@ -1945,14 +1945,14 @@ public struct AspectExpandShape: Shape {
 
 // MARK: - TikTok-Style Spinning Cinema Disc (Circular Movie Poster)
 
-public struct SpinningVinylDiscView: View {
+struct SpinningVinylDiscView: View {
     let posterPath: String?
     let isPlaying: Bool
     let onTap: () -> Void
 
     @State private var rotationAngle: Double = 0.0
 
-    public init(posterPath: String?, isPlaying: Bool, onTap: @escaping () -> Void) {
+    init(posterPath: String?, isPlaying: Bool, onTap: @escaping () -> Void) {
         self.posterPath = posterPath
         self.isPlaying = isPlaying
         self.onTap = onTap
