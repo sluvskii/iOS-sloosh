@@ -217,7 +217,9 @@ public struct ClipCommentsSheetView: View {
         if authRepo.isAuthenticated, let user = authRepo.currentUser {
             Menu {
                 Section {
-                    Text(user.displayName.isEmpty ? (user.tag ?? "Пользователь") : user.displayName)
+                    let displayName = user.displayName?.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let effectiveName = (displayName?.isEmpty == false) ? displayName! : (user.tag ?? "Пользователь")
+                    Text(effectiveName)
                     if let tag = user.tag, !tag.isEmpty {
                         Text("@\(tag)")
                     }

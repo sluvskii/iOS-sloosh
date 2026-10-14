@@ -1697,11 +1697,10 @@ final class ClipCustomSlider: UISlider {
 }
 
 struct ClipNativeSliderView: UIViewRepresentable {
-    @ObservedObject var progressObserver: ClipProgressObserver
-    let clip: MovieClip
-    let playback: ClipPlaybackCoordinator
+    @Binding var value: Double
     @Binding var isScrubbing: Bool
-    @Binding var scrubProgress: Double
+    let onScrubChange: (Double) -> Void
+    let onScrubEnd: (Double) -> Void
 
     func makeUIView(context: Context) -> ClipCustomSlider {
         let slider = ClipCustomSlider()
@@ -1722,7 +1721,7 @@ struct ClipNativeSliderView: UIViewRepresentable {
 
     func updateUIView(_ uiView: ClipCustomSlider, context: Context) {
         if !context.coordinator.isEditing {
-            uiView.value = Float(progressObserver.progress)
+            uiView.value = Float(value)
         }
         if uiView.isInteracting != isScrubbing {
             UIView.animate(withDuration: 0.2, delay: 0, options: [.curveEaseOut]) {
@@ -1732,47 +1731,61 @@ struct ClipNativeSliderView: UIViewRepresentable {
     }
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(parent: self)
+        Coordinator(value: $value, isScrubbing: $isScrubbing, onScrubChange: onScrubChange, onScrubEnd: onScrubEnd)
     }
 
     class Coordinator: NSObject {
-        let parent: ClipNativeSliderView
+        var value: Binding<Double>
+        var isScrubbing: Binding<Bool>
+        let onScrubChange: (Double) -> Void
+        let onScrubEnd: (Double) -> Void
         var isEditing = false
 
-        init(parent: ClipNativeSliderView) {
-            self.parent = parent
+        init(
+            value: Binding<Double>,
+            isScrubbing: Binding<Bool>,
+            onScrubChange: @escaping (Double) -> Void,
+            onScrubEnd: @escaping (Double) -> Void
+        ) {
+            self.value = value
+            self.isScrubbing = isScrubbing
+            self.onScrubChange = onScrubChange
+            self.onScrubEnd = onScrubEnd
         }
 
         @objc func valueChanged(_ sender: UISlider) {
             let pct = max(0.0, min(1.0, Double(sender.value)))
-            parent.scrubProgress = pct
-            parent.playback.scrubToProgress(pct, for: parent.clip)
+            value.wrappedValue = pct
+            Task { @MainActor in
+                self.onScrubChange(pct)
+            }
         }
 
         @objc func editingDidBegin(_ sender: UISlider) {
             isEditing = true
-            parent.isScrubbing = true
+            isScrubbing.wrappedValue = true
             if let custom = sender as? ClipCustomSlider {
                 UIView.animate(withDuration: 0.2, delay: 0, options: [.curveEaseOut]) {
                     custom.isInteracting = true
                 }
             }
-            parent.playback.beginScrubbing()
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
         }
 
         @objc func editingDidEnd(_ sender: UISlider) {
             isEditing = false
             let pct = max(0.0, min(1.0, Double(sender.value)))
-            parent.scrubProgress = pct
-            parent.playback.endScrubbing(at: pct, for: parent.clip)
-            parent.isScrubbing = false
+            value.wrappedValue = pct
+            isScrubbing.wrappedValue = false
             if let custom = sender as? ClipCustomSlider {
                 UIView.animate(withDuration: 0.2, delay: 0, options: [.curveEaseOut]) {
                     custom.isInteracting = false
                 }
             }
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            Task { @MainActor in
+                self.onScrubEnd(pct)
+            }
         }
     }
 }
@@ -1818,13 +1831,24 @@ private struct ClipProgressBarView: View {
                 .clipShape(Capsule())
             } else {
                 ClipNativeSliderView(
-                    progressObserver: progressObserver,
-                    clip: clip,
-                    playback: playback,
+                    value: Binding(
+                        get: { isScrubbing ? scrubProgress : progressObserver.progress },
+                        set: { scrubProgress = $0 }
+                    ),
                     isScrubbing: $isScrubbing,
-                    scrubProgress: $scrubProgress
+                    onScrubChange: { pct in
+                        playback.scrubToProgress(pct, for: clip)
+                    },
+                    onScrubEnd: { pct in
+                        playback.endScrubbing(at: pct, for: clip)
+                    }
                 )
                 .frame(height: 16)
+                .onChange(of: isScrubbing) { _, scrubbing in
+                    if scrubbing {
+                        playback.beginScrubbing()
+                    }
+                }
             }
         }
         .frame(height: 16)
