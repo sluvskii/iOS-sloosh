@@ -1,9 +1,8 @@
 import SwiftUI
 import UIKit
-import AVKit
 import Combine
 
-// MARK: - User Profile Detail View (Flagship Liquid Glass Style)
+// MARK: - User Profile Detail Screen (Flagship Full-Screen Liquid Glass)
 
 public struct UserProfileDetailView: View {
     public let initialUser: SlooshUser
@@ -16,9 +15,9 @@ public struct UserProfileDetailView: View {
     @State private var pollTask: Task<Void, Never>? = nil
     @State private var showDeleteConfirm: Bool = false
     @State private var tagCopiedToast: Bool = false
-    @State private var selectedClipForPlayback: MovieClip? = nil
     @State private var fullPlayerConfig: PlayerConfig? = nil
     @State private var showDirectChat: Bool = false
+    @State private var isTitleVisible: Bool = false
 
     @Environment(\.dismiss) private var dismiss
     @StateObject private var repo = MessengerRepository.shared
@@ -56,71 +55,59 @@ public struct UserProfileDetailView: View {
     }
 
     public var body: some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            VStack(spacing: 20) {
-                // MARK: 1. Hero Profile Card
-                heroHeaderView
+        ZStack(alignment: .top) {
+            // Dark Cinema Background
+            Color.black.ignoresSafeArea()
 
-                // MARK: 2. Stats Bar
-                statsBarView
+            // Main Scrollable Content
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(spacing: 22) {
+                    // Spacer for top safe area bar
+                    Color.clear.frame(height: 52)
 
-                // MARK: 3. Action Buttons
-                actionsBarView
+                    // 1. Hero Profile Card
+                    heroHeaderView
 
-                // MARK: 4. Published Clips Shelf
-                publishedClipsSection
+                    // 2. Stats Bar
+                    statsBarView
+
+                    // 3. Action Bar (Primary action: Написать, or Delete Chat)
+                    actionsBarView
+
+                    // 4. Published Clips Grid
+                    publishedClipsSection
+                }
+                .padding(.horizontal, 16)
+                .padding(.bottom, 48)
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 12)
-            .padding(.bottom, 40)
+            .scrollDismissesKeyboard(.interactively)
         }
-        .background(
-            Color(UIColor.systemGroupedBackground)
-                .ignoresSafeArea()
-        )
-        .navigationTitle(user.displayTitle)
-        .navigationBarTitleDisplayMode(.inline)
-        .toolbar {
-            if !chatContext {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(Color.primary)
-                    }
-                }
-            }
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    shareUserProfile()
-                } label: {
-                    Image(systemName: "square.and.arrow.up")
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(Color.primary)
-                }
-            }
+        .ignoresSafeArea(edges: .top)
+        .hideNavigationBarWithRestore()
+        .fullWidthSwipeBack()
+        .safeAreaInset(edge: .top, spacing: 0) {
+            topNavBarView
         }
         .task {
-            // 1. Fetch live user details & presence
+            // 1. Fetch fresh user profile
             if let fresh = await repo.fetchUser(userId: user.id) {
                 await MainActor.run {
                     self.user = fresh
                 }
             }
 
+            // 2. Fetch live presence
             let presence = await UserPresenceService.shared.fetchUserPresence(userId: user.id)
             self.livePresence = presence
 
-            // 2. Fetch author's published clips
+            // 3. Fetch author's published clips
             let clips = await clipsRepo.fetchClips(forAuthorId: user.id)
             await MainActor.run {
                 self.authorClips = clips
                 self.isLoadingClips = false
             }
 
-            // 3. Real-time presence polling
+            // 4. Real-time presence polling (every 2.5s)
             pollTask?.cancel()
             pollTask = Task {
                 while !Task.isCancelled {
@@ -140,14 +127,6 @@ public struct UserProfileDetailView: View {
         }
         .navigationDestination(isPresented: $showDirectChat) {
             ChatDetailView(peerUser: user)
-        }
-        .sheet(item: $selectedClipForPlayback) { clip in
-            AuthorClipDetailSheet(
-                clip: clip,
-                onWatchFullMovie: { config in
-                    self.fullPlayerConfig = config
-                }
-            )
         }
         .fullScreenCover(item: $fullPlayerConfig) { config in
             PlayerView(config: config)
@@ -170,35 +149,62 @@ public struct UserProfileDetailView: View {
         } message: {
             Text("История сообщений и диалог будут удалены.")
         }
+        .preferredColorScheme(.dark)
+        .environment(\.colorScheme, .dark)
+    }
+
+    // MARK: - Top Navigation Bar (Liquid Glass with Back & Single Share)
+
+    private var topNavBarView: some View {
+        HStack {
+            // Back Button
+            TelegramGlassIconButton(systemName: "chevron.left") {
+                dismiss()
+            }
+
+            Spacer()
+
+            // Single Share Button in Top Bar (No duplicate on the screen)
+            TelegramGlassIconButton(systemName: "square.and.arrow.up") {
+                shareUserProfile()
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 8)
+        .background(
+            VariableBlurView(tintColor: .black, tintOpacity: 0.88)
+                .padding(.bottom, -30)
+                .ignoresSafeArea(edges: .top)
+        )
     }
 
     // MARK: - Hero Header View
 
     private var heroHeaderView: some View {
         VStack(spacing: 14) {
-            // Avatar with live online badge
+            // Large Avatar with presence badge
             SlooshAvatarView(
                 avatarSource: user.avatarUrl,
                 fallbackText: user.displayTitle,
-                size: 96,
+                size: 104,
                 showOnline: true,
                 isOnline: livePresence.isOnline
             )
-            .shadow(color: Color.black.opacity(0.12), radius: 10, y: 4)
+            .shadow(color: Color.slooshAccent.opacity(0.18), radius: 16, y: 6)
 
-            // Name & Tag & Presence Info
             VStack(spacing: 6) {
+                // Name
                 Text(user.displayTitle)
-                    .font(.system(size: 24, weight: .bold))
-                    .foregroundStyle(Color.primary)
+                    .font(.system(size: 26, weight: .bold))
+                    .foregroundStyle(.white)
                     .multilineTextAlignment(.center)
 
-                // User @tag capsule with tap-to-copy
+                // @tag capsule with tap-to-copy
                 if !user.displayTag.isEmpty {
                     Button {
                         UIPasteboard.general.string = user.displayTag
                         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                        withAnimation(.spring(response: 0.28, dampingFraction: 0.72)) {
                             tagCopiedToast = true
                         }
                         DispatchQueue.main.asyncAfter(deadline: .now() + 1.8) {
@@ -210,11 +216,11 @@ public struct UserProfileDetailView: View {
                         HStack(spacing: 5) {
                             Text(user.displayTag)
                                 .font(.system(size: 13, weight: .semibold))
-                                .foregroundStyle(Color.primary.opacity(0.85))
+                                .foregroundStyle(.white.opacity(0.85))
 
                             Image(systemName: tagCopiedToast ? "checkmark" : "doc.on.doc")
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundStyle(tagCopiedToast ? Color.green : Color.secondary)
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(tagCopiedToast ? Color.green : Color.white.opacity(0.5))
                         }
                         .padding(.horizontal, 12)
                         .padding(.vertical, 5)
@@ -223,25 +229,25 @@ public struct UserProfileDetailView: View {
                     .buttonStyle(.plain)
                 }
 
-                // Presence Status Indicator
+                // Live Presence Status
                 HStack(spacing: 6) {
                     if livePresence.isOnline {
                         Circle()
                             .fill(Color.green)
                             .frame(width: 8, height: 8)
-                            .shadow(color: Color.green.opacity(0.6), radius: 3)
+                            .shadow(color: Color.green.opacity(0.8), radius: 4)
                     }
 
                     let statusText = PresenceFormatter.formatLastSeen(isOnlineFlag: livePresence.isOnline, lastSeenMs: livePresence.lastSeenMs)
                     Text(statusText)
                         .font(.system(size: 14, weight: livePresence.isOnline ? .medium : .regular))
-                        .foregroundStyle(livePresence.isOnline ? Color.green : Color.secondary)
+                        .foregroundStyle(livePresence.isOnline ? Color.green : Color.white.opacity(0.6))
                 }
                 .padding(.top, 2)
             }
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 16)
+        .padding(.vertical, 18)
         .glassEffect(.regular, in: .rect(cornerRadius: 24))
     }
 
@@ -252,12 +258,13 @@ public struct UserProfileDetailView: View {
             statItem(
                 title: "Моментов",
                 value: "\(authorClips.count)",
-                icon: "sparkles.tv.fill"
+                icon: "sparkles.tv.fill",
+                iconColor: Color.slooshAccent
             )
 
             Divider()
                 .frame(height: 32)
-                .opacity(0.3)
+                .opacity(0.2)
 
             statItem(
                 title: "Лайков",
@@ -268,7 +275,7 @@ public struct UserProfileDetailView: View {
 
             Divider()
                 .frame(height: 32)
-                .opacity(0.3)
+                .opacity(0.2)
 
             statItem(
                 title: "Просмотров",
@@ -282,7 +289,7 @@ public struct UserProfileDetailView: View {
         .glassEffect(.regular, in: .rect(cornerRadius: 18))
     }
 
-    private func statItem(title: String, value: String, icon: String, iconColor: Color = .primary) -> some View {
+    private func statItem(title: String, value: String, icon: String, iconColor: Color) -> some View {
         VStack(spacing: 4) {
             HStack(spacing: 4) {
                 Image(systemName: icon)
@@ -291,103 +298,86 @@ public struct UserProfileDetailView: View {
 
                 Text(value)
                     .font(.system(size: 18, weight: .bold))
-                    .foregroundStyle(Color.primary)
+                    .foregroundStyle(.white)
             }
 
             Text(title)
                 .font(.system(size: 11.5, weight: .medium))
-                .foregroundStyle(Color.secondary)
+                .foregroundStyle(.white.opacity(0.55))
         }
         .frame(maxWidth: .infinity)
     }
 
-    // MARK: - Actions Bar View
+    // MARK: - Actions Bar View (No duplicates: single primary action)
 
+    @ViewBuilder
     private var actionsBarView: some View {
-        VStack(spacing: 10) {
-            HStack(spacing: 12) {
-                if !isCurrentSessionUser {
-                    // "Написать" Button
-                    Button {
-                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                        if chatContext {
-                            // If opened from inside ChatDetailView, return to conversation
-                            dismiss()
-                        } else {
-                            showDirectChat = true
-                        }
-                    } label: {
-                        HStack(spacing: 8) {
-                            Image(systemName: "bubble.left.and.bubble.right.fill")
-                                .font(.system(size: 15, weight: .bold))
-
-                            Text("Написать")
-                                .font(.system(size: 15, weight: .bold))
-                        }
-                        .foregroundStyle(Color.white)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 44)
-                        .background(Color.slooshAccent)
-                        .clipShape(Capsule())
-                        .glassEffect(.regular.interactive(), in: .capsule)
+        if !isCurrentSessionUser {
+            VStack(spacing: 10) {
+                // Primary Action Button: "Написать"
+                Button {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    if chatContext {
+                        dismiss()
+                    } else {
+                        showDirectChat = true
                     }
-                    .buttonStyle(.plain)
-                }
-
-                // "Поделиться" Button
-                if isCurrentSessionUser {
-                    Button {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        shareUserProfile()
-                    } label: {
-                        HStack(spacing: 6) {
-                            Image(systemName: "square.and.arrow.up")
-                                .font(.system(size: 15, weight: .semibold))
-
-                            Text("Поделиться профилем")
-                                .font(.system(size: 15, weight: .semibold))
-                        }
-                        .foregroundStyle(Color.primary)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 44)
-                        .glassEffect(.regular.interactive(), in: .capsule)
-                    }
-                    .buttonStyle(.plain)
-                } else {
-                    Button {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        shareUserProfile()
-                    } label: {
-                        Image(systemName: "square.and.arrow.up")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundStyle(Color.primary)
-                            .frame(width: 44, height: 44)
-                            .glassEffect(.regular.interactive(), in: .circle)
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-
-            // "Удалить чат" (if opened from chat context or chat exists)
-            if chatContext {
-                Button(role: .destructive) {
-                    showDeleteConfirm = true
                 } label: {
                     HStack(spacing: 8) {
-                        Image(systemName: "trash.fill")
-                            .font(.system(size: 14))
+                        Image(systemName: "bubble.left.and.bubble.right.fill")
+                            .font(.system(size: 15, weight: .bold))
 
-                        Text("Удалить чат")
-                            .font(.system(size: 14, weight: .medium))
+                        Text("Написать")
+                            .font(.system(size: 15, weight: .bold))
                     }
-                    .foregroundStyle(Color.red)
+                    .foregroundStyle(.white)
                     .frame(maxWidth: .infinity)
-                    .frame(height: 40)
-                    .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 12))
+                    .frame(height: 48)
+                    .background(Color.slooshAccent)
+                    .clipShape(Capsule())
+                    .glassEffect(.regular.interactive(), in: .capsule)
                 }
                 .buttonStyle(.plain)
-                .padding(.top, 2)
+
+                // Delete Chat (if opened from chat context)
+                if chatContext {
+                    Button(role: .destructive) {
+                        showDeleteConfirm = true
+                    } label: {
+                        HStack(spacing: 8) {
+                            Image(systemName: "trash.fill")
+                                .font(.system(size: 14))
+
+                            Text("Удалить чат")
+                                .font(.system(size: 14, weight: .medium))
+                        }
+                        .foregroundStyle(Color.red)
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 40)
+                        .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 12))
+                    }
+                    .buttonStyle(.plain)
+                    .padding(.top, 2)
+                }
             }
+        } else if chatContext {
+            // Current user in chat context
+            Button(role: .destructive) {
+                showDeleteConfirm = true
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "trash.fill")
+                        .font(.system(size: 14))
+
+                    Text("Удалить чат")
+                        .font(.system(size: 14, weight: .medium))
+                }
+                .foregroundStyle(Color.red)
+                .frame(maxWidth: .infinity)
+                .frame(height: 40)
+                .glassEffect(.regular.interactive(), in: .rect(cornerRadius: 12))
+            }
+            .buttonStyle(.plain)
         }
     }
 
@@ -398,13 +388,13 @@ public struct UserProfileDetailView: View {
             // Header
             HStack(spacing: 8) {
                 Text("Опубликованные моменты")
-                    .font(.system(size: 18, weight: .bold))
-                    .foregroundStyle(Color.primary)
+                    .font(.system(size: 19, weight: .bold))
+                    .foregroundStyle(.white)
 
                 if !isLoadingClips {
                     Text("\(authorClips.count)")
                         .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(Color.secondary)
+                        .foregroundStyle(.white.opacity(0.6))
                         .padding(.horizontal, 8)
                         .padding(.vertical, 3)
                         .glassEffect(.regular, in: .capsule)
@@ -412,7 +402,7 @@ public struct UserProfileDetailView: View {
 
                 Spacer()
             }
-            .padding(.top, 6)
+            .padding(.top, 4)
 
             // Content
             if isLoadingClips {
@@ -420,7 +410,7 @@ public struct UserProfileDetailView: View {
                 LazyVGrid(columns: gridColumns, spacing: 12) {
                     ForEach(0..<4, id: \.self) { _ in
                         RoundedRectangle(cornerRadius: 16, style: .continuous)
-                            .fill(Color(UIColor.secondarySystemFill))
+                            .fill(Color.white.opacity(0.06))
                             .aspectRatio(9/16, contentMode: .fit)
                             .shimmer()
                     }
@@ -430,28 +420,44 @@ public struct UserProfileDetailView: View {
                 VStack(spacing: 12) {
                     Image(systemName: "sparkles.tv")
                         .font(.system(size: 38))
-                        .foregroundStyle(Color.secondary.opacity(0.5))
+                        .foregroundStyle(.white.opacity(0.35))
 
                     Text("Нет опубликованных моментов")
                         .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(Color.primary)
+                        .foregroundStyle(.white)
 
                     Text("Пользователь пока не публиковал моменты из фильмов и сериалов")
                         .font(.system(size: 13))
-                        .foregroundStyle(Color.secondary)
+                        .foregroundStyle(.white.opacity(0.5))
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 24)
                 }
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, 36)
+                .padding(.vertical, 40)
                 .glassEffect(.regular, in: .rect(cornerRadius: 20))
             } else {
                 // Vertical 9:16 grid of clips
                 LazyVGrid(columns: gridColumns, spacing: 12) {
                     ForEach(authorClips) { clip in
                         AuthorClipCardView(clip: clip) {
+                            // Directly launch existing flagship PlayerView starting from the moment's timecode!
                             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                            selectedClipForPlayback = clip
+                            let config = PlayerConfig(
+                                iframeUrl: nil,
+                                title: clip.title,
+                                kpId: clip.kpId,
+                                season: clip.season,
+                                episode: clip.episode,
+                                voiceover: clip.translationName,
+                                streamUrl: nil,
+                                voices: clip.translationName != nil ? [clip.translationName!] : [],
+                                tmdbId: clip.tmdbId,
+                                posterUrl: clip.posterPath,
+                                backdropUrl: clip.backdropPath,
+                                logoUrl: clip.logoPath,
+                                initialPlaybackTime: clip.startTime
+                            )
+                            self.fullPlayerConfig = config
                         }
                     }
                 }
@@ -508,25 +514,25 @@ private struct AuthorClipCardView: View {
                 // 1. Poster Image
                 if let url = thumbnailURL {
                     AsyncCachedImage(url: url) {
-                        Color(UIColor.secondarySystemFill)
+                        Color.white.opacity(0.06)
                     } content: { img in
                         Image(uiImage: img)
                             .resizable()
                             .aspectRatio(contentMode: .fill)
                     } fallback: {
-                        Color(UIColor.secondarySystemFill)
+                        Color.white.opacity(0.06)
                             .overlay(
                                 Image(systemName: "film")
                                     .font(.system(size: 24))
-                                    .foregroundStyle(Color.secondary)
+                                    .foregroundStyle(.white.opacity(0.35))
                             )
                     }
                 } else {
-                    Color(UIColor.secondarySystemFill)
+                    Color.white.opacity(0.06)
                         .overlay(
                             Image(systemName: "film")
                                 .font(.system(size: 24))
-                                .foregroundStyle(Color.secondary)
+                                .foregroundStyle(.white.opacity(0.35))
                         )
                 }
 
@@ -557,7 +563,22 @@ private struct AuthorClipCardView: View {
                     Spacer()
                 }
 
-                // 4. Bottom Info: Title, Caption, Stats
+                // 4. Center Play Pill Indicator
+                VStack {
+                    Spacer()
+                    HStack {
+                        Spacer()
+                        Image(systemName: "play.fill")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(Color.white.opacity(0.85))
+                            .frame(width: 32, height: 32)
+                            .glassEffect(.regular, in: .circle)
+                        Spacer()
+                    }
+                    Spacer()
+                }
+
+                // 5. Bottom Info: Title, Caption, Stats
                 VStack(alignment: .leading, spacing: 4) {
                     Text(clip.title)
                         .font(.system(size: 12.5, weight: .bold))
@@ -604,203 +625,5 @@ private struct AuthorClipCardView: View {
             .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
         .buttonStyle(CardPressButtonStyle())
-    }
-}
-
-// MARK: - Author Clip Detail Sheet (Seamless Moment Playback)
-
-struct AuthorClipDetailSheet: View {
-    let clip: MovieClip
-    let onWatchFullMovie: (PlayerConfig) -> Void
-
-    @StateObject private var playback = ClipPlaybackCoordinator()
-    @StateObject private var clipsRepo = ClipsRepository.shared
-    @Environment(\.dismiss) private var dismiss
-    @State private var showHeartAnimation: Bool = false
-    @State private var heartPosition: CGPoint = .zero
-
-    init(clip: MovieClip, onWatchFullMovie: @escaping (PlayerConfig) -> Void) {
-        self.clip = clip
-        self.onWatchFullMovie = onWatchFullMovie
-    }
-
-    var body: some View {
-        ZStack {
-            // Dark Background
-            Color.black.ignoresSafeArea()
-
-            // 1. Video Layer
-            if let player = playback.activePlayer {
-                VideoLayerView(player: player)
-                    .ignoresSafeArea()
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        playback.togglePlayPause()
-                    }
-            } else if playback.isResolving {
-                ProgressView()
-                    .tint(.white)
-                    .scaleEffect(1.3)
-            }
-
-            // 2. Play/Pause Overlay indicator when paused
-            if !playback.isPlaying && !playback.isResolving {
-                Image(systemName: "play.fill")
-                    .font(.system(size: 48, weight: .bold))
-                    .foregroundStyle(Color.white.opacity(0.85))
-                    .frame(width: 80, height: 80)
-                    .glassEffect(.regular, in: .circle)
-                    .allowsHitTesting(false)
-            }
-
-            // 3. Floating Double-Tap Heart
-            if showHeartAnimation {
-                Image(systemName: "heart.fill")
-                    .font(.system(size: 72))
-                    .foregroundStyle(Color.red)
-                    .shadow(color: Color.red.opacity(0.6), radius: 12)
-                    .scaleEffect(showHeartAnimation ? 1.0 : 0.4)
-                    .opacity(showHeartAnimation ? 1.0 : 0.0)
-                    .animation(.spring(response: 0.28, dampingFraction: 0.6), value: showHeartAnimation)
-            }
-
-            // 4. Overlays: Top Close Button & Bottom Controls
-            VStack {
-                // Top Bar
-                HStack {
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 30))
-                            .foregroundStyle(Color.white.opacity(0.85))
-                            .glassEffect(.regular.interactive(), in: .circle)
-                    }
-                    .buttonStyle(.plain)
-
-                    Spacer()
-
-                    // Timecode range pill
-                    Text(clip.timecodeRangeFormatted)
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(Color.white)
-                        .padding(.horizontal, 10)
-                        .padding(.vertical, 5)
-                        .glassEffect(.regular, in: .capsule)
-                }
-                .padding(.horizontal, 16)
-                .padding(.top, 16)
-
-                Spacer()
-
-                // Bottom Content
-                VStack(alignment: .leading, spacing: 12) {
-                    // Movie Title & Subtitle
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(clip.title)
-                            .font(.system(size: 18, weight: .bold))
-                            .foregroundStyle(Color.white)
-
-                        Text(clip.subtitleInfo)
-                            .font(.system(size: 13, weight: .medium))
-                            .foregroundStyle(Color.white.opacity(0.75))
-
-                        if !clip.caption.isEmpty {
-                            Text(clip.caption)
-                                .font(.system(size: 13))
-                                .foregroundStyle(Color.white.opacity(0.95))
-                                .padding(.top, 2)
-                        }
-                    }
-
-                    // Progress Bar
-                    GeometryReader { geo in
-                        ZStack(alignment: .leading) {
-                            Capsule()
-                                .fill(Color.white.opacity(0.2))
-                                .frame(height: 4)
-
-                            Capsule()
-                                .fill(Color.white)
-                                .frame(width: max(0, min(geo.size.width, geo.size.width * CGFloat(playback.clipProgress))), height: 4)
-                        }
-                    }
-                    .frame(height: 4)
-                    .padding(.vertical, 4)
-
-                    // Actions Row: Like + "Смотреть фильм"
-                    HStack(spacing: 12) {
-                        // Like Button
-                        let isLiked = clipsRepo.isLiked(clipId: clip.id)
-                        Button {
-                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                            Task {
-                                _ = await clipsRepo.toggleLike(for: clip.id)
-                            }
-                        } label: {
-                            HStack(spacing: 6) {
-                                Image(systemName: isLiked ? "heart.fill" : "heart")
-                                    .font(.system(size: 16, weight: .bold))
-                                    .foregroundStyle(isLiked ? Color.red : Color.white)
-
-                                Text("\(clip.likesCount)")
-                                    .font(.system(size: 13, weight: .bold))
-                                    .foregroundStyle(Color.white)
-                            }
-                            .padding(.horizontal, 16)
-                            .frame(height: 44)
-                            .glassEffect(.regular.interactive(), in: .capsule)
-                        }
-                        .buttonStyle(.plain)
-
-                        // "Смотреть фильм" Button
-                        Button {
-                            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                            playback.pause()
-                            let config = PlayerConfig(
-                                iframeUrl: nil,
-                                title: clip.title,
-                                kpId: clip.kpId,
-                                season: clip.season,
-                                episode: clip.episode,
-                                voiceover: clip.translationName,
-                                streamUrl: nil,
-                                voices: clip.translationName != nil ? [clip.translationName!] : [],
-                                tmdbId: clip.tmdbId,
-                                posterUrl: clip.posterPath,
-                                backdropUrl: clip.backdropPath,
-                                logoUrl: clip.logoPath,
-                                initialPlaybackTime: clip.startTime
-                            )
-                            dismiss()
-                            onWatchFullMovie(config)
-                        } label: {
-                            HStack(spacing: 8) {
-                                Image(systemName: "play.fill")
-                                    .font(.system(size: 14, weight: .bold))
-
-                                Text("Смотреть фильм")
-                                    .font(.system(size: 15, weight: .bold))
-                            }
-                            .foregroundStyle(Color.white)
-                            .frame(maxWidth: .infinity)
-                            .frame(height: 44)
-                            .glassEffect(.regular.interactive(), in: .capsule)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 24)
-            }
-        }
-        .task {
-            playback.setupPlayer(for: clip)
-        }
-        .onDisappear {
-            playback.cleanup()
-        }
-        .preferredColorScheme(.dark)
-        .environment(\.colorScheme, .dark)
     }
 }

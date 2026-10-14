@@ -699,6 +699,14 @@ public struct ClipsFeedView: View {
                     DetailsView(movieId: media.movieId, mediaType: media.mediaType)
                 }
             }
+            .navigationDestination(isPresented: Binding(
+                get: { selectedAuthorUser != nil },
+                set: { if !$0 { selectedAuthorUser = nil } }
+            )) {
+                if let user = selectedAuthorUser {
+                    UserProfileDetailView(user: user, chatContext: false)
+                }
+            }
         }
         .preferredColorScheme(.dark)
         .environment(\.colorScheme, .dark)
@@ -709,9 +717,14 @@ public struct ClipsFeedView: View {
             ensurePlaybackStarted()
         }
         .sheet(item: $showCommentsForClip) { clip in
-            ClipCommentsSheetView(clip: clip)
-                .presentationDetents([.fraction(0.65)], selection: $commentsSheetDetent)
-                .presentationBackgroundInteraction(.enabled(upThrough: .fraction(0.65)))
+            ClipCommentsSheetView(clip: clip) { user in
+                showCommentsForClip = nil
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
+                    selectedAuthorUser = user
+                }
+            }
+            .presentationDetents([.fraction(0.65)], selection: $commentsSheetDetent)
+            .presentationBackgroundInteraction(.enabled(upThrough: .fraction(0.65)))
         }
         .fullScreenCover(item: $fullPlayerConfig, onDismiss: {
             fullPlayerConfig = nil
@@ -740,11 +753,6 @@ public struct ClipsFeedView: View {
                 ensurePlaybackStarted()
             }
         }
-        .sheet(item: $selectedAuthorUser) { user in
-            NavigationStack {
-                UserProfileDetailView(user: user, chatContext: false)
-            }
-        }
         .onChange(of: selectedAuthorUser != nil) { _, isOpened in
             if isOpened {
                 playback.pause(userInitiated: true)
@@ -752,12 +760,11 @@ public struct ClipsFeedView: View {
                 ensurePlaybackStarted()
             }
         }
-
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase != .active {
                 playback.pause(userInitiated: false)
             } else {
-                if !showsMessenger && selectedDetailsMedia == nil && fullPlayerConfig == nil && showCommentsForClip == nil {
+                if !showsMessenger && selectedDetailsMedia == nil && selectedAuthorUser == nil && fullPlayerConfig == nil && showCommentsForClip == nil {
                     let targetId = settledClipId ?? currentClipId
                     if let clipId = targetId, let clip = clipsRepo.clips.first(where: { $0.id == clipId }) {
                         playback.resumeIfAppropriate(for: clip)
@@ -1557,9 +1564,6 @@ public struct ClipsFeedView: View {
                     selectedDetailsMedia = (movieId: String(clip.mediaId), mediaType: clip.mediaType)
                 }
 
-            // Author Pill Capsule - Tapping opens Author Profile
-            authorPillView(clip: clip)
-
             // Season, Episode & Voiceover Capsule
             subtitleInfoView(clip: clip)
 
@@ -1664,39 +1668,6 @@ public struct ClipsFeedView: View {
             }
             .buttonStyle(.glassPress)
         }
-    }
-
-    @ViewBuilder
-    private func authorPillView(clip: MovieClip) -> some View {
-        Button {
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            selectedAuthorUser = SlooshUser(
-                id: clip.authorId,
-                displayName: clip.authorName,
-                tag: nil,
-                avatarUrl: clip.authorAvatar
-            )
-        } label: {
-            HStack(spacing: 6) {
-                SlooshAvatarView(
-                    avatarSource: clip.authorAvatar,
-                    fallbackText: clip.authorName,
-                    size: 18
-                )
-
-                Text(clip.authorName)
-                    .font(.system(size: 12.5, weight: .semibold))
-                    .foregroundStyle(.white)
-
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 8.5, weight: .bold))
-                    .foregroundStyle(.white.opacity(0.55))
-            }
-            .padding(.horizontal, 9)
-            .padding(.vertical, 4.5)
-            .glassEffect(.regular.interactive(), in: .capsule)
-        }
-        .buttonStyle(.glassPress)
     }
 
     @ViewBuilder

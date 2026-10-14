@@ -19,10 +19,12 @@ public struct ClipCommentsSheetView: View {
     @State private var showEditProfileSheet: Bool = false
     @State private var showAuthSheet: Bool = false
     @State private var showSignOutAlert: Bool = false
-    @State private var selectedAuthorUser: SlooshUser? = nil
 
-    public init(clip: MovieClip) {
+    private let onSelectAuthor: ((SlooshUser) -> Void)?
+
+    public init(clip: MovieClip, onSelectAuthor: ((SlooshUser) -> Void)? = nil) {
         self.clip = clip
+        self.onSelectAuthor = onSelectAuthor
     }
 
     private var hasTextToSending: Bool {
@@ -111,11 +113,6 @@ public struct ClipCommentsSheetView: View {
         }
         .sheet(isPresented: $showEditProfileSheet) {
             EditProfileSheet()
-        }
-        .sheet(item: $selectedAuthorUser) { user in
-            NavigationStack {
-                UserProfileDetailView(user: user, chatContext: false)
-            }
         }
         .fullScreenCover(isPresented: $showAuthSheet) {
             AuthView()
@@ -304,17 +301,22 @@ public struct ClipCommentsSheetView: View {
 
     // MARK: - Comment Row
 
+    private func openAuthorProfile(for comment: ClipComment) {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        let user = SlooshUser(
+            id: comment.authorId,
+            displayName: comment.authorName,
+            tag: nil,
+            avatarUrl: comment.authorAvatar
+        )
+        onSelectAuthor?(user)
+    }
+
     private func commentRow(_ comment: ClipComment) -> some View {
         HStack(alignment: .top, spacing: 12) {
             // Avatar (tappable to view author profile)
             Button {
-                UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                selectedAuthorUser = SlooshUser(
-                    id: comment.authorId,
-                    displayName: comment.authorName,
-                    tag: nil,
-                    avatarUrl: comment.authorAvatar
-                )
+                openAuthorProfile(for: comment)
             } label: {
                 if let avatarUrl = comment.authorAvatar, let url = URL(string: avatarUrl) {
                     AsyncCachedImage(url: url) {
@@ -337,13 +339,7 @@ public struct ClipCommentsSheetView: View {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
                     Button {
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                        selectedAuthorUser = SlooshUser(
-                            id: comment.authorId,
-                            displayName: comment.authorName,
-                            tag: nil,
-                            avatarUrl: comment.authorAvatar
-                        )
+                        openAuthorProfile(for: comment)
                     } label: {
                         Text(comment.authorName)
                             .font(.system(size: 13, weight: .semibold))
