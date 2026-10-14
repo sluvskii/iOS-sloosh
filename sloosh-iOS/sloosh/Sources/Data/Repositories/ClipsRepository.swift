@@ -297,4 +297,14 @@ public final class ClipsRepository: ObservableObject {
         clips.removeAll { $0.id == clipId }
         saveFeedToDisk(clips)
     }
+
+    // MARK: - Author Clips
+
+    public func fetchClips(forAuthorId authorId: String) async -> [MovieClip] {
+        if clips.isEmpty {
+            await fetchFeed()
+        }
+        return clips.filter { $0.authorId == authorId }.sorted { $0.createdAtMs > $1.createdAtMs }
+    }
 }
+
