@@ -12,6 +12,7 @@ public struct ClipCommentsSheetView: View {
     @State private var isLoading: Bool = true
     @State private var commentText: String = ""
     @State private var isSending: Bool = false
+    @State private var scrollOffset: CGFloat = 0
     @FocusState private var isInputFocused: Bool
 
     public init(clip: MovieClip) {
@@ -20,6 +21,33 @@ public struct ClipCommentsSheetView: View {
 
     private var hasTextToSending: Bool {
         !commentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var blurOpacity: Double {
+        let progress = max(0, scrollOffset) / 20.0
+        return min(1.0, Double(progress))
+    }
+
+    private var deviceBottomSafeArea: CGFloat {
+        let scenes = UIApplication.shared.connectedScenes
+        let windowScene = scenes.compactMap { $0 as? UIWindowScene }.first(where: { $0.activationState == .foregroundActive })
+            ?? scenes.compactMap { $0 as? UIWindowScene }.first
+        let keyWindow = windowScene?.windows.first(where: { $0.isKeyWindow })
+            ?? windowScene?.windows.first
+        let bottom = keyWindow?.safeAreaInsets.bottom ?? 34
+        return bottom > 0 ? bottom : 34
+    }
+
+    private var collapsedHorizontalPadding: CGFloat {
+        deviceBottomSafeArea + 2
+    }
+
+    private var inputBarHorizontalPadding: CGFloat {
+        isInputFocused ? 6 : collapsedHorizontalPadding
+    }
+
+    private var inputBarVerticalPadding: CGFloat {
+        isInputFocused ? 8 : 2
     }
 
     public var body: some View {
@@ -44,6 +72,11 @@ public struct ClipCommentsSheetView: View {
                         .padding(.bottom, 16)
                     }
                     .scrollDismissesKeyboard(.interactively)
+                    .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                        geometry.contentOffset.y + geometry.contentInsets.top
+                    } action: { _, newOffset in
+                        scrollOffset = newOffset
+                    }
                 }
             }
             .toolbar(.hidden, for: .navigationBar)
@@ -56,6 +89,8 @@ public struct ClipCommentsSheetView: View {
                         VariableBlurView(tintColor: .clear, tintOpacity: 0.0)
                             .padding(.bottom, -30)
                             .ignoresSafeArea(edges: .top)
+                            .opacity(blurOpacity)
+                            .animation(.easeInOut(duration: 0.2), value: blurOpacity)
                     )
             }
             .safeAreaInset(edge: .bottom) {
@@ -64,7 +99,7 @@ public struct ClipCommentsSheetView: View {
             .scrollContentBackground(.hidden)
             .background(Color.clear)
         }
-        .presentationDetents([.fraction(0.65), .large])
+        .presentationDetents([.fraction(0.65)])
         .presentationBackground { Color.clear.glassEffect(in: .rect) }
         .presentationDragIndicator(.visible)
         .preferredColorScheme(.dark)
@@ -149,13 +184,8 @@ public struct ClipCommentsSheetView: View {
                 .disabled(isSending)
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .background(
-            VariableBlurView(direction: .blurredBottomClearTop, tintColor: .clear, tintOpacity: 0.0)
-                .padding(.top, -16)
-                .ignoresSafeArea(edges: .bottom)
-        )
+        .padding(.horizontal, inputBarHorizontalPadding)
+        .padding(.vertical, inputBarVerticalPadding)
         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: isInputFocused)
         .animation(.spring(response: 0.32, dampingFraction: 0.78), value: hasTextToSending)
     }
