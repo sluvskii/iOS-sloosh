@@ -538,7 +538,22 @@ public final class MessengerRepository: ObservableObject {
         return nil
     }
 
+    public func fetchUser(userId: String) async -> SlooshUser? {
+        if let user = getLocalKnownUsers()[userId] {
+            return user
+        }
+        guard let pUrl = await makeURL(path: "user_profiles/\(userId)") else { return nil }
+        guard let (pData, pResp) = try? await URLSession.shared.data(from: pUrl),
+              let httpPResp = pResp as? HTTPURLResponse, (200...299).contains(httpPResp.statusCode),
+              let user = try? JSONDecoder().decode(SlooshUser.self, from: pData) else {
+            return nil
+        }
+        saveLocalKnownUser(user)
+        return user
+    }
+
     // MARK: - User Registration, Sanitized Sync & Channel Propagation
+
 
     public func syncCurrentUserProfile() async {
         guard let user = AuthRepository.shared.currentUser, !user.isAnonymous else { return }

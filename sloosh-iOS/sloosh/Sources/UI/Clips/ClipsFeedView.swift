@@ -618,6 +618,7 @@ public struct ClipsFeedView: View {
     @State private var showsMessenger: Bool = false
     @State private var commentsSheetDetent: PresentationDetent = .fraction(0.65)
     @State private var selectedDetailsMedia: (movieId: String, mediaType: String)? = nil
+    @State private var selectedAuthorUser: SlooshUser? = nil
 
     @AppStorage("clipsVideoScaleMode") private var clipScaleModeRaw: String = ClipScalingMode.fit.rawValue
     @AppStorage("sloosh_clips_autoscroll") private var autoScrollNext: Bool = false
@@ -739,6 +740,19 @@ public struct ClipsFeedView: View {
                 ensurePlaybackStarted()
             }
         }
+        .sheet(item: $selectedAuthorUser) { user in
+            NavigationStack {
+                UserProfileDetailView(user: user, chatContext: false)
+            }
+        }
+        .onChange(of: selectedAuthorUser != nil) { _, isOpened in
+            if isOpened {
+                playback.pause(userInitiated: true)
+            } else {
+                ensurePlaybackStarted()
+            }
+        }
+
         .onChange(of: scenePhase) { _, newPhase in
             if newPhase != .active {
                 playback.pause(userInitiated: false)
@@ -1543,6 +1557,9 @@ public struct ClipsFeedView: View {
                     selectedDetailsMedia = (movieId: String(clip.mediaId), mediaType: clip.mediaType)
                 }
 
+            // Author Pill Capsule - Tapping opens Author Profile
+            authorPillView(clip: clip)
+
             // Season, Episode & Voiceover Capsule
             subtitleInfoView(clip: clip)
 
@@ -1650,6 +1667,39 @@ public struct ClipsFeedView: View {
     }
 
     @ViewBuilder
+    private func authorPillView(clip: MovieClip) -> some View {
+        Button {
+            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            selectedAuthorUser = SlooshUser(
+                id: clip.authorId,
+                displayName: clip.authorName,
+                tag: nil,
+                avatarUrl: clip.authorAvatar
+            )
+        } label: {
+            HStack(spacing: 6) {
+                SlooshAvatarView(
+                    avatarSource: clip.authorAvatar,
+                    fallbackText: clip.authorName,
+                    size: 18
+                )
+
+                Text(clip.authorName)
+                    .font(.system(size: 12.5, weight: .semibold))
+                    .foregroundStyle(.white)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 8.5, weight: .bold))
+                    .foregroundStyle(.white.opacity(0.55))
+            }
+            .padding(.horizontal, 9)
+            .padding(.vertical, 4.5)
+            .glassEffect(.regular.interactive(), in: .capsule)
+        }
+        .buttonStyle(.glassPress)
+    }
+
+    @ViewBuilder
     private func authorCaptionView(clip: MovieClip) -> some View {
         let caption = clip.caption.trimmingCharacters(in: .whitespacesAndNewlines)
         if !caption.isEmpty {
@@ -1750,6 +1800,12 @@ public struct ClipsFeedView: View {
     private func authorAvatarView(_ clip: MovieClip) -> some View {
         Button {
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
+            selectedAuthorUser = SlooshUser(
+                id: clip.authorId,
+                displayName: clip.authorName,
+                tag: nil,
+                avatarUrl: clip.authorAvatar
+            )
         } label: {
             SlooshAvatarView(
                 avatarSource: clip.authorAvatar,

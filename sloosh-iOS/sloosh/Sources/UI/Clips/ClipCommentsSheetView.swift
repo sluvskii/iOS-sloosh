@@ -19,6 +19,7 @@ public struct ClipCommentsSheetView: View {
     @State private var showEditProfileSheet: Bool = false
     @State private var showAuthSheet: Bool = false
     @State private var showSignOutAlert: Bool = false
+    @State private var selectedAuthorUser: SlooshUser? = nil
 
     public init(clip: MovieClip) {
         self.clip = clip
@@ -110,6 +111,11 @@ public struct ClipCommentsSheetView: View {
         }
         .sheet(isPresented: $showEditProfileSheet) {
             EditProfileSheet()
+        }
+        .sheet(item: $selectedAuthorUser) { user in
+            NavigationStack {
+                UserProfileDetailView(user: user, chatContext: false)
+            }
         }
         .fullScreenCover(isPresented: $showAuthSheet) {
             AuthView()
@@ -300,28 +306,50 @@ public struct ClipCommentsSheetView: View {
 
     private func commentRow(_ comment: ClipComment) -> some View {
         HStack(alignment: .top, spacing: 12) {
-            // Avatar
-            if let avatarUrl = comment.authorAvatar, let url = URL(string: avatarUrl) {
-                AsyncCachedImage(url: url) {
-                    avatarFallback(comment.authorInitials)
-                } content: { img in
-                    Image(uiImage: img)
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                } fallback: {
+            // Avatar (tappable to view author profile)
+            Button {
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                selectedAuthorUser = SlooshUser(
+                    id: comment.authorId,
+                    displayName: comment.authorName,
+                    tag: nil,
+                    avatarUrl: comment.authorAvatar
+                )
+            } label: {
+                if let avatarUrl = comment.authorAvatar, let url = URL(string: avatarUrl) {
+                    AsyncCachedImage(url: url) {
+                        avatarFallback(comment.authorInitials)
+                    } content: { img in
+                        Image(uiImage: img)
+                            .resizable()
+                            .aspectRatio(contentMode: .fill)
+                    } fallback: {
+                        avatarFallback(comment.authorInitials)
+                    }
+                    .frame(width: 34, height: 34)
+                    .clipShape(Circle())
+                } else {
                     avatarFallback(comment.authorInitials)
                 }
-                .frame(width: 34, height: 34)
-                .clipShape(Circle())
-            } else {
-                avatarFallback(comment.authorInitials)
             }
+            .buttonStyle(.plain)
 
             VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
-                    Text(comment.authorName)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.white.opacity(0.9))
+                    Button {
+                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                        selectedAuthorUser = SlooshUser(
+                            id: comment.authorId,
+                            displayName: comment.authorName,
+                            tag: nil,
+                            avatarUrl: comment.authorAvatar
+                        )
+                    } label: {
+                        Text(comment.authorName)
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.9))
+                    }
+                    .buttonStyle(.plain)
 
                     Text("• \(comment.timeAgoFormatted)")
                         .font(.system(size: 11))
