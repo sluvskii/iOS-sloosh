@@ -1740,54 +1740,57 @@ private struct ClipBufferingWaveView: View {
 
     var body: some View {
         TimelineView(.animation) { timeline in
-            let time = timeline.date.timeIntervalSinceReferenceDate
-            let pulse = (sin(time * 2.6) + 1.0) / 2.0 // 0...1 breathing
-            let wave = (sin(time * 1.8) + 1.0) / 2.0 // 0...1 smooth traveling
-
-            GeometryReader { p in
-                let trackWidth = p.size.width
-                let baseBeamWidth = max(44.0, trackWidth * 0.30)
-                let dynamicBeamWidth = min(trackWidth * 0.6, baseBeamWidth * (1.0 + 0.12 * sin(time * 3.6)))
-                let travelDistance = max(0, trackWidth - dynamicBeamWidth)
-                let xOffset = travelDistance * wave
-                let coreDotWidth = max(16.0, dynamicBeamWidth * 0.4)
-
-                ZStack(alignment: .leading) {
-                    // 1. Ambient pulsing background track
-                    Capsule()
-                        .fill(Color.white.opacity(0.16 + 0.10 * pulse))
-                        .frame(width: trackWidth, height: barHeight)
-
-                    // 2. Outer fluid glow beam
-                    Capsule()
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    Color.white.opacity(0.0),
-                                    Color.white.opacity(0.45 * (0.85 + 0.15 * pulse)),
-                                    Color.white.opacity(0.95),
-                                    Color.white.opacity(0.45 * (0.85 + 0.15 * pulse)),
-                                    Color.white.opacity(0.0)
-                                ],
-                                startPoint: .leading,
-                                endPoint: .trailing
-                            )
-                        )
-                        .frame(width: dynamicBeamWidth, height: barHeight)
-                        .offset(x: xOffset)
-
-                    // 3. Core condensed photon dot
-                    Capsule()
-                        .fill(Color.white)
-                        .frame(width: coreDotWidth, height: barHeight)
-                        .offset(x: xOffset + (dynamicBeamWidth - coreDotWidth) / 2)
-                        .shadow(color: Color.white.opacity(0.7), radius: 3)
-                }
-                .frame(width: trackWidth, height: barHeight)
-            }
+            waveContent(time: timeline.date.timeIntervalSinceReferenceDate)
         }
         .frame(height: barHeight)
         .clipShape(Capsule())
+    }
+
+    private func waveContent(time: Double) -> some View {
+        let pulse: Double = (sin(time * 2.6) + 1.0) / 2.0
+        let wave: CGFloat = CGFloat((sin(time * 1.8) + 1.0) / 2.0)
+        let stretch: CGFloat = CGFloat(1.0 + 0.12 * sin(time * 3.6))
+        let beamAlpha: Double = 0.45 * (0.85 + 0.15 * pulse)
+
+        return GeometryReader { p in
+            let trackWidth: CGFloat = p.size.width
+            let baseBeamWidth: CGFloat = max(44.0, trackWidth * 0.30)
+            let dynamicBeamWidth: CGFloat = min(trackWidth * 0.6, baseBeamWidth * stretch)
+            let travelDistance: CGFloat = max(0, trackWidth - dynamicBeamWidth)
+            let xOffset: CGFloat = travelDistance * wave
+            let coreDotWidth: CGFloat = max(16.0, dynamicBeamWidth * 0.4)
+            let coreOffset: CGFloat = xOffset + (dynamicBeamWidth - coreDotWidth) / 2.0
+
+            ZStack(alignment: .leading) {
+                Capsule()
+                    .fill(Color.white.opacity(0.16 + 0.10 * pulse))
+                    .frame(width: trackWidth, height: barHeight)
+
+                Capsule()
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                Color.white.opacity(0.0),
+                                Color.white.opacity(beamAlpha),
+                                Color.white.opacity(0.95),
+                                Color.white.opacity(beamAlpha),
+                                Color.white.opacity(0.0)
+                            ],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .frame(width: dynamicBeamWidth, height: barHeight)
+                    .offset(x: xOffset)
+
+                Capsule()
+                    .fill(Color.white)
+                    .frame(width: coreDotWidth, height: barHeight)
+                    .offset(x: coreOffset)
+                    .shadow(color: Color.white.opacity(0.7), radius: 3)
+            }
+            .frame(width: trackWidth, height: barHeight)
+        }
     }
 }
 
