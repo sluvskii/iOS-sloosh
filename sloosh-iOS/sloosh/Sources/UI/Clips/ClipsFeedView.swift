@@ -1733,6 +1733,64 @@ public struct ClipsFeedView: View {
     }
 }
 
+// MARK: - Isolated Clip Buffering Wave View (Infinite fluid breathing light beam)
+
+private struct ClipBufferingWaveView: View {
+    let barHeight: CGFloat
+
+    var body: some View {
+        TimelineView(.animation) { timeline in
+            let time = timeline.date.timeIntervalSinceReferenceDate
+            let pulse = (sin(time * 2.6) + 1.0) / 2.0 // 0...1 breathing
+            let wave = (sin(time * 1.8) + 1.0) / 2.0 // 0...1 smooth traveling
+
+            GeometryReader { p in
+                let trackWidth = p.size.width
+                let baseBeamWidth = max(44.0, trackWidth * 0.30)
+                let dynamicBeamWidth = min(trackWidth * 0.6, baseBeamWidth * (1.0 + 0.12 * sin(time * 3.6)))
+                let travelDistance = max(0, trackWidth - dynamicBeamWidth)
+                let xOffset = travelDistance * wave
+                let coreDotWidth = max(16.0, dynamicBeamWidth * 0.4)
+
+                ZStack(alignment: .leading) {
+                    // 1. Ambient pulsing background track
+                    Capsule()
+                        .fill(Color.white.opacity(0.16 + 0.10 * pulse))
+                        .frame(width: trackWidth, height: barHeight)
+
+                    // 2. Outer fluid glow beam
+                    Capsule()
+                        .fill(
+                            LinearGradient(
+                                colors: [
+                                    Color.white.opacity(0.0),
+                                    Color.white.opacity(0.45 * (0.85 + 0.15 * pulse)),
+                                    Color.white.opacity(0.95),
+                                    Color.white.opacity(0.45 * (0.85 + 0.15 * pulse)),
+                                    Color.white.opacity(0.0)
+                                ],
+                                startPoint: .leading,
+                                endPoint: .trailing
+                            )
+                        )
+                        .frame(width: dynamicBeamWidth, height: barHeight)
+                        .offset(x: xOffset)
+
+                    // 3. Core condensed photon dot
+                    Capsule()
+                        .fill(Color.white)
+                        .frame(width: coreDotWidth, height: barHeight)
+                        .offset(x: xOffset + (dynamicBeamWidth - coreDotWidth) / 2)
+                        .shadow(color: Color.white.opacity(0.7), radius: 3)
+                }
+                .frame(width: trackWidth, height: barHeight)
+            }
+        }
+        .frame(height: barHeight)
+        .clipShape(Capsule())
+    }
+}
+
 // MARK: - Isolated Clip Progress Bar View (Only redrawn when progress ticks)
 
 private struct ClipProgressBarView: View {
@@ -1759,55 +1817,7 @@ private struct ClipProgressBarView: View {
                     .frame(height: barHeight)
 
                 if isResolving || !isVideoReady {
-                    // Infinite fluid breathing light beam (strictly inside the track)
-                    TimelineView(.animation) { timeline in
-                        let time = timeline.date.timeIntervalSinceReferenceDate
-                        let pulse = (sin(time * 2.6) + 1.0) / 2.0 // 0...1 breathing
-                        let wave = (sin(time * 1.8) + 1.0) / 2.0 // 0...1 smooth traveling
-
-                        GeometryReader { p in
-                            let trackWidth = p.size.width
-                            let baseBeamWidth = max(44.0, trackWidth * 0.30)
-                            let dynamicBeamWidth = min(trackWidth * 0.6, baseBeamWidth * (1.0 + 0.12 * sin(time * 3.6)))
-                            let travelDistance = max(0, trackWidth - dynamicBeamWidth)
-                            let xOffset = travelDistance * wave
-
-                            ZStack(alignment: .leading) {
-                                // 1. Ambient pulsing background track
-                                Capsule()
-                                    .fill(Color.white.opacity(0.16 + 0.10 * pulse))
-                                    .frame(width: trackWidth, height: barHeight)
-
-                                // 2. Outer fluid glow beam
-                                Capsule()
-                                    .fill(
-                                        LinearGradient(
-                                            colors: [
-                                                Color.white.opacity(0.0),
-                                                Color.white.opacity(0.45 * (0.85 + 0.15 * pulse)),
-                                                Color.white.opacity(0.95),
-                                                Color.white.opacity(0.45 * (0.85 + 0.15 * pulse)),
-                                                Color.white.opacity(0.0)
-                                            ],
-                                            startPoint: .leading,
-                                            endPoint: .trailing
-                                        )
-                                    )
-                                    .frame(width: dynamicBeamWidth, height: barHeight)
-                                    .offset(x: xOffset)
-
-                                // 3. Core condensed photon dot in the center of the beam
-                                Capsule()
-                                    .fill(Color.white)
-                                    .frame(width: max(16.0, dynamicBeamWidth * 0.4), height: barHeight)
-                                    .offset(x: xOffset + (dynamicBeamWidth - max(16.0, dynamicBeamWidth * 0.4)) / 2)
-                                    .shadow(color: Color.white.opacity(0.7), radius: 3)
-                            }
-                            .frame(width: trackWidth, height: barHeight)
-                        }
-                    }
-                    .frame(height: barHeight)
-                    .clipShape(Capsule())
+                    ClipBufferingWaveView(barHeight: barHeight)
                 } else {
                     // Active Progress Track
                     Capsule()
@@ -1847,35 +1857,40 @@ private struct ClipProgressBarView: View {
         }
         .frame(height: 16)
         .overlay(alignment: .top) {
-            if isScrubbing {
-                let clipDur = clip.duration
-                let currentSec = clip.startTime + (clipDur * scrubProgress)
-                let elapsedSec = max(0, currentSec - clip.startTime)
-                HStack(spacing: 6) {
-                    Text(formatClipTime(elapsedSec))
-                        .font(.system(size: 17, weight: .bold).monospacedDigit())
-                        .foregroundStyle(.white)
+            timeBubbleOverlay
+        }
+    }
 
-                    Text("/")
-                        .font(.system(size: 13, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.45))
+    @ViewBuilder
+    private var timeBubbleOverlay: some View {
+        if isScrubbing {
+            let clipDur = clip.duration
+            let currentSec = clip.startTime + (clipDur * scrubProgress)
+            let elapsedSec = max(0, currentSec - clip.startTime)
+            HStack(spacing: 6) {
+                Text(formatClipTime(elapsedSec))
+                    .font(.system(size: 17, weight: .bold).monospacedDigit())
+                    .foregroundStyle(.white)
 
-                    Text(formatClipTime(clipDur))
-                        .font(.system(size: 13, weight: .semibold).monospacedDigit())
-                        .foregroundStyle(.white.opacity(0.8))
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                .glassEffect(in: .capsule)
-                .offset(y: -64)
-                .transition(
-                    .asymmetric(
-                        insertion: .scale(scale: 0.75).combined(with: .opacity).combined(with: .offset(y: 12)),
-                        removal: .scale(scale: 0.85).combined(with: .opacity).combined(with: .offset(y: -8))
-                    )
-                )
-                .animation(.spring(response: 0.32, dampingFraction: 0.72), value: isScrubbing)
+                Text("/")
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.45))
+
+                Text(formatClipTime(clipDur))
+                    .font(.system(size: 13, weight: .semibold).monospacedDigit())
+                    .foregroundStyle(.white.opacity(0.8))
             }
+            .padding(.horizontal, 16)
+            .padding(.vertical, 8)
+            .glassEffect(in: .capsule)
+            .offset(y: -64)
+            .transition(
+                .asymmetric(
+                    insertion: .scale(scale: 0.75).combined(with: .opacity).combined(with: .offset(y: 12)),
+                    removal: .scale(scale: 0.85).combined(with: .opacity).combined(with: .offset(y: -8))
+                )
+            )
+            .animation(.spring(response: 0.32, dampingFraction: 0.72), value: isScrubbing)
         }
     }
 
