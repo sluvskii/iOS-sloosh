@@ -1139,7 +1139,7 @@ public struct ClipsFeedView: View {
 
                     Spacer(minLength: 4)
 
-                    rightRailView(clip: clip, isCurrent: isCurrent)
+                    rightRailView(clip: clip)
                 }
                 .padding(.leading, 16)
                 .padding(.trailing, 16)
@@ -1328,7 +1328,7 @@ public struct ClipsFeedView: View {
 
     // MARK: - Right Rail View
 
-    private func rightRailView(clip: MovieClip, isCurrent: Bool) -> some View {
+    private func rightRailView(clip: MovieClip) -> some View {
         VStack(spacing: 12) {
             // Author Avatar (Liquid Glass Button)
             authorAvatarView(clip)
@@ -1345,23 +1345,62 @@ public struct ClipsFeedView: View {
             // Scale Mode Toggle ("9:16" vs "В кадре")
             scaleModeButtonView
 
-            // TikTok-Style Rotating Movie Poster Disc (Opens DetailsView)
-            moviePosterDiscView(clip: clip, isCurrent: isCurrent)
+            // Circular Movie Poster Button (Opens DetailsView)
+            moviePosterButtonView(clip: clip)
         }
         .frame(width: 54)
         .contentShape(Rectangle())
     }
 
-    // MARK: - TikTok-Style Cinema Disc (Circular Movie Poster)
+    // MARK: - Movie Poster Circular Button (Opens DetailsView)
 
-    private func moviePosterDiscView(clip: MovieClip, isCurrent: Bool) -> some View {
-        SpinningVinylDiscView(
-            posterPath: clip.posterPath,
-            isPlaying: isCurrent && playback.isPlaying && !playback.isScrubbing,
-            onTap: {
+    private func moviePosterButtonView(clip: MovieClip) -> some View {
+        VStack(spacing: 4) {
+            Button {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                 selectedDetailsMedia = (movieId: String(clip.mediaId), mediaType: clip.mediaType)
+            } label: {
+                Group {
+                    if let path = clip.posterPath, let url = resolveImageUrl(path: path) {
+                        AsyncCachedImage(url: url) {
+                            Circle().fill(Color.white.opacity(0.12))
+                        } content: { img in
+                            Image(uiImage: img)
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: 36, height: 36)
+                                .clipShape(Circle())
+                        } fallback: {
+                            Image(systemName: "film")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.85))
+                                .frame(width: 36, height: 36)
+                        }
+                    } else {
+                        Image(systemName: "film")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.85))
+                            .frame(width: 36, height: 36)
+                    }
+                }
+                .frame(width: 36, height: 36)
+                .contentShape(Circle())
             }
-        )
+            .buttonStyle(.glassPress)
+            .glassEffect(.regular.interactive(), in: .circle)
+
+            Text(clip.mediaType == "tv" ? "Сериал" : "Фильм")
+                .font(.system(size: 9.5, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.92))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    selectedDetailsMedia = (movieId: String(clip.mediaId), mediaType: clip.mediaType)
+                }
+        }
+        .frame(width: 54)
     }
 
     // MARK: - Author Avatar
@@ -1943,119 +1982,6 @@ public struct AspectExpandShape: Shape {
     }
 }
 
-// MARK: - TikTok-Style Spinning Cinema Disc (Circular Movie Poster)
 
-struct SpinningVinylDiscView: View {
-    let posterPath: String?
-    let isPlaying: Bool
-    let onTap: () -> Void
-
-    @State private var rotationAngle: Double = 0.0
-
-    init(posterPath: String?, isPlaying: Bool, onTap: @escaping () -> Void) {
-        self.posterPath = posterPath
-        self.isPlaying = isPlaying
-        self.onTap = onTap
-    }
-
-    public var body: some View {
-        VStack(spacing: 4) {
-            Button {
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                onTap()
-            } label: {
-                ZStack {
-                    // Outer vinyl record disc with subtle concentric grooves
-                    Circle()
-                        .fill(Color(white: 0.10).opacity(0.92))
-                        .frame(width: 38, height: 38)
-                        .overlay(
-                            Circle()
-                                .stroke(Color.white.opacity(0.20), lineWidth: 1.0)
-                        )
-                        .overlay(
-                            Circle()
-                                .stroke(Color.white.opacity(0.08), lineWidth: 0.6)
-                                .padding(3)
-                        )
-
-                    // Movie poster circular thumbnail
-                    if let path = posterPath, let url = resolvePosterUrl(path: path) {
-                        AsyncCachedImage(url: url) {
-                            Circle().fill(Color.white.opacity(0.12))
-                        } content: { img in
-                            Image(uiImage: img)
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                                .frame(width: 26, height: 26)
-                                .clipShape(Circle())
-                        } fallback: {
-                            Image(systemName: "film")
-                                .font(.system(size: 12, weight: .semibold))
-                                .foregroundStyle(.white.opacity(0.6))
-                        }
-                    } else {
-                        Image(systemName: "film")
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(.white.opacity(0.6))
-                    }
-
-                    // Center spindle hole
-                    Circle()
-                        .fill(Color.black)
-                        .frame(width: 5, height: 5)
-                        .overlay(
-                            Circle()
-                                .stroke(Color.white.opacity(0.45), lineWidth: 0.6)
-                        )
-                }
-                .glassEffect(.regular.interactive(), in: .circle)
-                .rotationEffect(.degrees(rotationAngle))
-            }
-            .buttonStyle(.glassPress)
-            .contentShape(Circle())
-
-            Text("Фильм")
-                .font(.system(size: 9.5, weight: .semibold))
-                .foregroundStyle(.white.opacity(0.92))
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-                .contentShape(Rectangle())
-                .onTapGesture {
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    onTap()
-                }
-        }
-        .frame(width: 54)
-        .onAppear {
-            if isPlaying {
-                withAnimation(.linear(duration: 8.0).repeatForever(autoreverses: false)) {
-                    rotationAngle = 360.0
-                }
-            }
-        }
-        .onChange(of: isPlaying) { _, playing in
-            if playing {
-                withAnimation(.linear(duration: 8.0).repeatForever(autoreverses: false)) {
-                    rotationAngle += 360.0
-                }
-            } else {
-                withAnimation(.easeOut(duration: 0.35)) {
-                    // Halts smoothly
-                }
-            }
-        }
-    }
-
-    private func resolvePosterUrl(path: String) -> URL? {
-        if path.hasPrefix("http://") || path.hasPrefix("https://") {
-            return URL(string: path)
-        }
-        if let normalized = normalizeImageUrl(path: path) {
-            return URL(string: normalized)
-        }
-        return nil
-    }
-}
 
 
