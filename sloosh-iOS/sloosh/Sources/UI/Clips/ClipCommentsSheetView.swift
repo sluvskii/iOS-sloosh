@@ -202,7 +202,7 @@ public struct ClipCommentsSheetView: View {
         } label: {
             if let user = authRepo.currentUser {
                 SlooshAvatarView(
-                    user: user,
+                    userProfile: user,
                     size: 38
                 )
             } else {
