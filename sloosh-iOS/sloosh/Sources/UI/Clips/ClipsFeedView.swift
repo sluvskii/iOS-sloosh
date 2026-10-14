@@ -1392,7 +1392,7 @@ public struct ClipsFeedView: View {
             // Circular Movie Poster Button (Opens DetailsView)
             moviePosterButtonView(clip: clip)
         }
-        .frame(width: 54)
+        .frame(width: 36)
         .contentShape(Rectangle())
     }
 
@@ -1431,6 +1431,7 @@ public struct ClipsFeedView: View {
         }
         .buttonStyle(.glassPress)
         .glassEffect(.regular.interactive(), in: .circle)
+        .frame(width: 36, height: 36)
     }
 
     // MARK: - Author Avatar
@@ -1449,7 +1450,7 @@ public struct ClipsFeedView: View {
         }
         .buttonStyle(.glassPress)
         .glassEffect(.regular.interactive(), in: .circle)
-        .frame(width: 54)
+        .frame(width: 36, height: 36)
     }
 
     // MARK: - Action Buttons
@@ -1488,7 +1489,7 @@ public struct ClipsFeedView: View {
                     }
                 }
         }
-        .frame(width: 54)
+        .frame(width: 36)
     }
 
     private func commentButtonView(_ clip: MovieClip) -> some View {
@@ -1515,7 +1516,7 @@ public struct ClipsFeedView: View {
                     showCommentsForClip = clip
                 }
         }
-        .frame(width: 54)
+        .frame(width: 36)
     }
 
     private func shareButtonView(_ clip: MovieClip) -> some View {
@@ -1538,13 +1539,14 @@ public struct ClipsFeedView: View {
                 .foregroundStyle(.white)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
+                .fixedSize(horizontal: true, vertical: false)
                 .contentShape(Rectangle())
                 .onTapGesture {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     shareClip(clip)
                 }
         }
-        .frame(width: 54)
+        .frame(width: 36)
     }
 
     private var scaleModeButtonView: some View {
@@ -1567,13 +1569,14 @@ public struct ClipsFeedView: View {
                 .contentTransition(.numericText())
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
+                .fixedSize(horizontal: true, vertical: false)
                 .animation(.spring(response: 0.35, dampingFraction: 0.75), value: currentScaleMode)
                 .contentShape(Rectangle())
                 .onTapGesture {
                     toggleScaleMode()
                 }
         }
-        .frame(width: 54)
+        .frame(width: 36)
     }
 
     private func toggleScaleMode() {
