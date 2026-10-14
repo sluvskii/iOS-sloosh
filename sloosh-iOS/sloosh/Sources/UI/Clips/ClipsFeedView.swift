@@ -1885,6 +1885,7 @@ private struct ClipProgressBarView: View {
 }
 
 // MARK: - Unified Clip Interactive Gesture View (Tap to pause/play, drag to scroll, hold for 2x)
+// Built with UIKit UIGestureRecognizer so vertical dragging NEVER blocks parent UIScrollView paging.
 
 private struct ClipInteractiveGestureView: View {
     let isScrubbing: Bool
@@ -1893,54 +1894,101 @@ private struct ClipInteractiveGestureView: View {
     let onStartFastForward: () -> Void
     let onStopFastForward: () -> Void
 
-    @State private var isHoldingActive: Bool = false
-    @State private var didFastForwardThisTouch: Bool = false
-    @State private var lastFastForwardEndTime: Date = .distantPast
-
     var body: some View {
-        GeometryReader { _ in
-            Color.clear
-                .contentShape(Rectangle())
-                .onTapGesture(coordinateSpace: .local) { location in
-                    guard !didFastForwardThisTouch else {
-                        didFastForwardThisTouch = false
-                        return
-                    }
-                    guard Date().timeIntervalSince(lastFastForwardEndTime) > 0.3 else {
-                        return
-                    }
-                    onTap(location)
+        ClipGestureSurfaceRepresentable(
+            isScrubbing: isScrubbing,
+            isPlaying: isPlaying,
+            onTap: onTap,
+            onStartFastForward: onStartFastForward,
+            onStopFastForward: onStopFastForward
+        )
+    }
+}
+
+private struct ClipGestureSurfaceRepresentable: UIViewRepresentable {
+    let isScrubbing: Bool
+    let isPlaying: Bool
+    let onTap: (CGPoint) -> Void
+    let onStartFastForward: () -> Void
+    let onStopFastForward: () -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+
+    func makeUIView(context: Context) -> UIView {
+        let view = UIView()
+        view.backgroundColor = .clear
+
+        let tapGesture = UITapGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleTap(_:)))
+        tapGesture.cancelsTouchesInView = false
+        tapGesture.delegate = context.coordinator
+        view.addGestureRecognizer(tapGesture)
+
+        let longPressGesture = UILongPressGestureRecognizer(target: context.coordinator, action: #selector(Coordinator.handleLongPress(_:)))
+        longPressGesture.minimumPressDuration = 0.28
+        longPressGesture.allowableMovement = 18
+        longPressGesture.cancelsTouchesInView = true
+        longPressGesture.delegate = context.coordinator
+        view.addGestureRecognizer(longPressGesture)
+
+        return view
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {
+        context.coordinator.parent = self
+    }
+
+    static func dismantleUIView(_ uiView: UIView, coordinator: Coordinator) {
+        if coordinator.isAccelerating {
+            coordinator.isAccelerating = false
+            coordinator.parent.onStopFastForward()
+        }
+    }
+
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        var parent: ClipGestureSurfaceRepresentable
+        var isAccelerating: Bool = false
+        private var lastAccelerationEndTime: Date = .distantPast
+
+        init(_ parent: ClipGestureSurfaceRepresentable) {
+            self.parent = parent
+        }
+
+        @objc func handleTap(_ recognizer: UITapGestureRecognizer) {
+            guard recognizer.state == .ended else { return }
+            guard !isAccelerating else { return }
+            guard Date().timeIntervalSince(lastAccelerationEndTime) > 0.35 else { return }
+            let location = recognizer.location(in: recognizer.view)
+            parent.onTap(location)
+        }
+
+        @objc func handleLongPress(_ recognizer: UILongPressGestureRecognizer) {
+            switch recognizer.state {
+            case .began:
+                if !parent.isScrubbing && parent.isPlaying {
+                    isAccelerating = true
+                    parent.onStartFastForward()
                 }
-                .simultaneousGesture(
-                    LongPressGesture(minimumDuration: 0.28, maximumDistance: 30)
-                        .sequenced(before: DragGesture(minimumDistance: 0))
-                        .onChanged { value in
-                            switch value {
-                            case .second(true, _):
-                                if !isHoldingActive && !isScrubbing && isPlaying {
-                                    isHoldingActive = true
-                                    didFastForwardThisTouch = true
-                                    onStartFastForward()
-                                }
-                            default:
-                                break
-                            }
-                        }
-                        .onEnded { _ in
-                            if isHoldingActive {
-                                isHoldingActive = false
-                                lastFastForwardEndTime = Date()
-                                onStopFastForward()
-                            }
-                        }
-                )
-                .onDisappear {
-                    if isHoldingActive {
-                        isHoldingActive = false
-                        lastFastForwardEndTime = Date()
-                        onStopFastForward()
-                    }
+            case .ended, .cancelled, .failed:
+                if isAccelerating {
+                    isAccelerating = false
+                    lastAccelerationEndTime = Date()
+                    parent.onStopFastForward()
                 }
+            default:
+                break
+            }
+        }
+
+        func gestureRecognizer(
+            _ gestureRecognizer: UIGestureRecognizer,
+            shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+        ) -> Bool {
+            if isAccelerating {
+                return false
+            }
+            return true
         }
     }
 }
