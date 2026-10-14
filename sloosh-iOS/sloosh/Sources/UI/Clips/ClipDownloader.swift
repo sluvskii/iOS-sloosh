@@ -139,7 +139,7 @@ public final class ClipDownloader: ObservableObject {
 
         if playlistText.contains("#EXT-X-STREAM-INF") {
             // Master playlist: find highest bandwidth variant
-            guard let variantUrl = parseBestVariantUrl(from: playlistText, baseUrl: targetUrl) else {
+            guard let variantUrl = Self.parseBestVariantUrl(from: playlistText, baseUrl: targetUrl) else {
                 throw NSError(domain: "sloosh.clip", code: -5, userInfo: [NSLocalizedDescriptionKey: "Не удалось выбрать дорожку качества"])
             }
             var variantReq = URLRequest(url: variantUrl)
@@ -375,7 +375,7 @@ public final class ClipDownloader: ObservableObject {
         try await Self.remuxOrExport(inputUrl: tempUrl, outputUrl: outputUrl, timeRange: trimRange)
     }
 
-    private func parseBestVariantUrl(from masterText: String, baseUrl: URL) -> URL? {
+    nonisolated private static func parseBestVariantUrl(from masterText: String, baseUrl: URL) -> URL? {
         var variants: [(bandwidth: Int, url: URL)] = []
         var currentBandwidth = 0
         let lines = masterText.components(separatedBy: .newlines)
@@ -397,7 +397,7 @@ public final class ClipDownloader: ObservableObject {
         return variants.sorted(by: { $0.bandwidth > $1.bandwidth }).first?.url
     }
 
-    private static func remuxOrExport(inputUrl: URL, outputUrl: URL, timeRange: CMTimeRange) async throws {
+    nonisolated private static func remuxOrExport(inputUrl: URL, outputUrl: URL, timeRange: CMTimeRange) async throws {
         let fm = FileManager.default
         let asset = AVURLAsset(url: inputUrl)
 
@@ -429,7 +429,7 @@ public final class ClipDownloader: ObservableObject {
         throw NSError(domain: "sloosh.clip", code: -11, userInfo: [NSLocalizedDescriptionKey: "Не удалось перекодировать фрагмент видео"])
     }
 
-    private static func hexToData(_ hex: String) -> Data? {
+    nonisolated private static func hexToData(_ hex: String) -> Data? {
         var cleanHex = hex.trimmingCharacters(in: .whitespacesAndNewlines)
         if cleanHex.hasPrefix("0x") || cleanHex.hasPrefix("0X") {
             cleanHex = String(cleanHex.dropFirst(2))
@@ -449,7 +449,7 @@ public final class ClipDownloader: ObservableObject {
         return data
     }
 
-    private static func decryptHlsSegment(data: Data, key: Data, sequence: Int, customIv: Data? = nil) -> Data? {
+    nonisolated private static func decryptHlsSegment(data: Data, key: Data, sequence: Int, customIv: Data? = nil) -> Data? {
         guard key.count == 16 else { return nil }
 
         var iv = [UInt8](repeating: 0, count: 16)
