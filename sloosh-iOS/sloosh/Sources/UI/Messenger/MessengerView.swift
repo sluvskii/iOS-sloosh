@@ -3,6 +3,7 @@ import SwiftUI
 public struct MessengerView: View {
     @StateObject private var repo = MessengerRepository.shared
     @ObservedObject private var authRepo = AuthRepository.shared
+    @Environment(\.dismiss) private var dismiss
 
     @State private var searchQuery: String = ""
     @State private var selectedPeerUser: SlooshUser? = nil
@@ -434,6 +435,16 @@ public struct MessengerView: View {
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .navigationBarLeading) {
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 18, weight: .semibold))
+                    .foregroundColor(.primary)
+            }
+        }
+
         if authRepo.isAuthenticated {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button {
