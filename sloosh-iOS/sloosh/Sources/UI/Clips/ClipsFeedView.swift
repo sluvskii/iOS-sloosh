@@ -1278,10 +1278,14 @@ public struct ClipsFeedView: View {
                 size: 36
             )
             .frame(width: 36, height: 36)
+            .clipShape(Circle())
+            .overlay(
+                Circle()
+                    .stroke(Color.white.opacity(0.18), lineWidth: 1)
+            )
             .contentShape(Circle())
         }
-        .buttonStyle(.glassPress)
-        .glassEffect(.regular.interactive(), in: .circle)
+        .buttonStyle(.plain)
         .frame(width: 54)
     }
 
@@ -1300,8 +1304,10 @@ public struct ClipsFeedView: View {
                 HeartShape()
                     .fill(isLiked ? Color.red.opacity(0.92) : Color.white.opacity(0.001))
                     .frame(width: 36, height: 36)
+                    .contentShape(HeartShape())
             }
             .buttonStyle(.glassPress)
+            .contentShape(HeartShape())
             .glassEffect(.regular.interactive(), in: HeartShape())
             .scaleEffect(isLiked ? 1.08 : 1.0)
             .animation(.spring(response: 0.28, dampingFraction: 0.55), value: isLiked)
@@ -1331,8 +1337,10 @@ public struct ClipsFeedView: View {
                 SpeechBubbleShape()
                     .fill(Color.white.opacity(0.001))
                     .frame(width: 36, height: 36)
+                    .contentShape(SpeechBubbleShape())
             }
             .buttonStyle(.glassPress)
+            .contentShape(SpeechBubbleShape())
             .glassEffect(.regular.interactive(), in: SpeechBubbleShape())
 
             Text("\(clip.commentsCount)")
@@ -1356,8 +1364,10 @@ public struct ClipsFeedView: View {
                 ShareArrowShape()
                     .fill(Color.white.opacity(0.001))
                     .frame(width: 36, height: 36)
+                    .contentShape(ShareArrowShape())
             }
             .buttonStyle(.glassPress)
+            .contentShape(ShareArrowShape())
             .glassEffect(.regular.interactive(), in: ShareArrowShape())
 
             Text("Поделиться")
@@ -1382,8 +1392,10 @@ public struct ClipsFeedView: View {
                 AspectExpandShape()
                     .fill(Color.white.opacity(0.001))
                     .frame(width: 36, height: 36)
+                    .contentShape(AspectExpandShape())
             }
             .buttonStyle(.glassPress)
+            .contentShape(AspectExpandShape())
             .glassEffect(.regular.interactive(), in: AspectExpandShape())
 
             Text(currentScaleMode == .fit ? "9:16" : "В кадре")
