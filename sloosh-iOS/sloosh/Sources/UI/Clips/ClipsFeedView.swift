@@ -961,7 +961,7 @@ public struct ClipsFeedView: View {
                 }
             }
 
-            // 3. Touch & Gesture Zones: Left and Right Edge 2x Speed, Center Instant 0ms Play/Pause
+            // 3. Touch & Gesture Zones: Left Edge 2x Speed, Center Instant 0ms Play/Pause
             HStack(spacing: 0) {
                 // Left Edge 2x Speed Zone (80pt)
                 edgeAccelerationZone(for: clip)
@@ -971,9 +971,10 @@ public struct ClipsFeedView: View {
                 centerTapZone(clip: clip)
                     .frame(maxWidth: .infinity)
 
-                // Right Edge 2x Speed Zone (80pt) — symmetrically accelerates, right rail buttons sit above in zIndex(10)
-                edgeAccelerationZone(for: clip)
+                // Right Margin Spacer (80pt) — touch passthrough to right rail action buttons
+                Color.clear
                     .frame(width: 80)
+                    .allowsHitTesting(false)
             }
             .frame(width: width, height: height)
             .zIndex(1)
@@ -1103,9 +1104,6 @@ public struct ClipsFeedView: View {
                         UIImpactFeedbackGenerator(style: .light).impactOccurred()
                     }
                 }
-            }
-            .onTapGesture {
-                handleCenterTap(at: .zero, for: clip)
             }
     }
 
@@ -1265,6 +1263,7 @@ public struct ClipsFeedView: View {
             scaleModeButtonView
         }
         .frame(width: 54)
+        .contentShape(Rectangle())
     }
 
     // MARK: - Author Avatar
@@ -1312,6 +1311,13 @@ public struct ClipsFeedView: View {
                 .foregroundStyle(isLiked ? Color.red : .white)
                 .contentTransition(.numericText())
                 .animation(.spring(response: 0.28, dampingFraction: 0.7), value: clip.likesCount)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    Task {
+                        _ = await clipsRepo.toggleLike(for: clip.id)
+                    }
+                }
         }
         .frame(width: 54)
     }
@@ -1332,6 +1338,11 @@ public struct ClipsFeedView: View {
             Text("\(clip.commentsCount)")
                 .font(.system(size: 11, weight: .semibold))
                 .foregroundStyle(.white)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    showCommentsForClip = clip
+                }
         }
         .frame(width: 54)
     }
@@ -1354,6 +1365,11 @@ public struct ClipsFeedView: View {
                 .foregroundStyle(.white)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    shareClip(clip)
+                }
         }
         .frame(width: 54)
     }
@@ -1361,16 +1377,7 @@ public struct ClipsFeedView: View {
     private var scaleModeButtonView: some View {
         VStack(spacing: 4) {
             Button {
-                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
-                    if currentScaleMode == .fit {
-                        clipScaleModeRaw = ClipScalingMode.fill.rawValue
-                        ToastManager.shared.show(title: "Режим: Во весь экран (9:16)", icon: "arrow.up.left.and.arrow.down.right", iconColor: .white)
-                    } else {
-                        clipScaleModeRaw = ClipScalingMode.fit.rawValue
-                        ToastManager.shared.show(title: "Режим: В кадре", icon: "arrow.down.right.and.arrow.up.left", iconColor: .white)
-                    }
-                }
+                toggleScaleMode()
             } label: {
                 AspectExpandShape()
                     .fill(Color.white.opacity(0.001))
@@ -1386,8 +1393,25 @@ public struct ClipsFeedView: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
                 .animation(.spring(response: 0.35, dampingFraction: 0.75), value: currentScaleMode)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    toggleScaleMode()
+                }
         }
         .frame(width: 54)
+    }
+
+    private func toggleScaleMode() {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.75)) {
+            if currentScaleMode == .fit {
+                clipScaleModeRaw = ClipScalingMode.fill.rawValue
+                ToastManager.shared.show(title: "Режим: Во весь экран (9:16)", icon: "arrow.up.left.and.arrow.down.right", iconColor: .white)
+            } else {
+                clipScaleModeRaw = ClipScalingMode.fit.rawValue
+                ToastManager.shared.show(title: "Режим: В кадре", icon: "arrow.down.right.and.arrow.up.left", iconColor: .white)
+            }
+        }
     }
 }
 
