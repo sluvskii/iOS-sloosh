@@ -152,7 +152,7 @@ public struct ClipCommentsSheetView: View {
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
         .background(
-            VariableBlurView(tintColor: .clear, tintOpacity: 0.0, direction: .blurredBottomClearTop)
+            VariableBlurView(direction: .blurredBottomClearTop, tintColor: .clear, tintOpacity: 0.0)
                 .padding(.top, -16)
                 .ignoresSafeArea(edges: .bottom)
         )
