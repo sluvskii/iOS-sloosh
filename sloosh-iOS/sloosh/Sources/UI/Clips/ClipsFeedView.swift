@@ -1291,21 +1291,17 @@ public struct ClipsFeedView: View {
         let isLiked = clipsRepo.isLiked(clipId: clip.id)
 
         return VStack(spacing: 4) {
-            Button {
+            ElasticGlassActionButton(
+                shape: HeartShape(),
+                fill: isLiked ? Color.red.opacity(0.92) : Color.white.opacity(0.001),
+                size: 36,
+                isLiked: isLiked
+            ) {
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                 Task {
                     _ = await clipsRepo.toggleLike(for: clip.id)
                 }
-            } label: {
-                HeartShape()
-                    .fill(isLiked ? Color.red.opacity(0.92) : Color.white.opacity(0.001))
-                    .frame(width: 36, height: 36)
-                    .contentShape(HeartShape())
-                    .glassEffect(.regular.interactive(), in: HeartShape())
             }
-            .buttonStyle(.plain)
-            .scaleEffect(isLiked ? 1.08 : 1.0)
-            .animation(.spring(response: 0.28, dampingFraction: 0.55), value: isLiked)
 
             Text("\(clip.likesCount)")
                 .font(.system(size: 11, weight: .semibold))
@@ -1325,17 +1321,15 @@ public struct ClipsFeedView: View {
 
     private func commentButtonView(_ clip: MovieClip) -> some View {
         VStack(spacing: 4) {
-            Button {
+            ElasticGlassActionButton(
+                shape: SpeechBubbleShape(),
+                fill: Color.white.opacity(0.001),
+                size: 36,
+                isLiked: false
+            ) {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 showCommentsForClip = clip
-            } label: {
-                SpeechBubbleShape()
-                    .fill(Color.white.opacity(0.001))
-                    .frame(width: 36, height: 36)
-                    .contentShape(SpeechBubbleShape())
-                    .glassEffect(.regular.interactive(), in: SpeechBubbleShape())
             }
-            .buttonStyle(.plain)
 
             Text("\(clip.commentsCount)")
                 .font(.system(size: 11, weight: .semibold))
@@ -1351,17 +1345,15 @@ public struct ClipsFeedView: View {
 
     private func shareButtonView(_ clip: MovieClip) -> some View {
         VStack(spacing: 4) {
-            Button {
+            ElasticGlassActionButton(
+                shape: ShareArrowShape(),
+                fill: Color.white.opacity(0.001),
+                size: 36,
+                isLiked: false
+            ) {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                 shareClip(clip)
-            } label: {
-                ShareArrowShape()
-                    .fill(Color.white.opacity(0.001))
-                    .frame(width: 36, height: 36)
-                    .contentShape(ShareArrowShape())
-                    .glassEffect(.regular.interactive(), in: ShareArrowShape())
             }
-            .buttonStyle(.plain)
 
             Text("Поделиться")
                 .font(.system(size: 9.0, weight: .semibold))
@@ -1379,16 +1371,14 @@ public struct ClipsFeedView: View {
 
     private var scaleModeButtonView: some View {
         VStack(spacing: 4) {
-            Button {
+            ElasticGlassActionButton(
+                shape: AspectExpandShape(),
+                fill: Color.white.opacity(0.001),
+                size: 36,
+                isLiked: false
+            ) {
                 toggleScaleMode()
-            } label: {
-                AspectExpandShape()
-                    .fill(Color.white.opacity(0.001))
-                    .frame(width: 36, height: 36)
-                    .contentShape(AspectExpandShape())
-                    .glassEffect(.regular.interactive(), in: AspectExpandShape())
             }
-            .buttonStyle(.plain)
 
             Text(currentScaleMode == .fit ? "9:16" : "В кадре")
                 .font(.system(size: 9.0, weight: .semibold))
@@ -1416,6 +1406,144 @@ public struct ClipsFeedView: View {
                 ToastManager.shared.show(title: "Режим: В кадре", icon: "arrow.down.right.and.arrow.up.left", iconColor: .white)
             }
         }
+    }
+}
+
+// MARK: - Elastic Liquid Glass Shape Action Button (Zero Circle Platter + Pure Elastic Finger Stretch)
+
+private struct ElasticGlassActionButton<S: Shape>: View {
+    let shape: S
+    let fill: Color
+    let size: CGFloat
+    let isLiked: Bool
+    let action: () -> Void
+
+    @State private var dragOffset: CGSize = .zero
+    @State private var isTouching: Bool = false
+
+    var body: some View {
+        let dist = sqrt(dragOffset.width * dragOffset.width + dragOffset.height * dragOffset.height)
+        let angle = dist > 0 ? atan2(dragOffset.height, dragOffset.width) : 0
+        let stretchRatio = min(0.30, dist / 45.0)
+        let squashRatio = min(0.12, dist / 80.0)
+
+        ZStack {
+            // Чистый Apple Liquid Glass без системных круглых плашек (.interactive())
+            shape
+                .fill(fill)
+                .frame(width: size, height: size)
+                .glassEffect(.regular, in: shape)
+                .rotationEffect(Angle(radians: Double(angle)))
+                .scaleEffect(
+                    x: isTouching ? (1.0 + stretchRatio) : 1.0,
+                    y: isTouching ? (1.0 - squashRatio) : 1.0
+                )
+                .rotationEffect(Angle(radians: -Double(angle)))
+                .offset(dragOffset)
+                .scaleEffect(isTouching ? 0.94 : (isLiked ? 1.08 : 1.0))
+                .animation(.spring(response: 0.32, dampingFraction: 0.58), value: dragOffset)
+                .animation(.spring(response: 0.25, dampingFraction: 0.65), value: isTouching)
+                .animation(.spring(response: 0.28, dampingFraction: 0.55), value: isLiked)
+
+            // Прозрачный UIKit touch tracker (100% надежные тапы, не блокирует скролл ленты)
+            ElasticTouchTracker(
+                onChanged: { translation in
+                    isTouching = true
+                    let maxPull: CGFloat = 16.0
+                    let rawDist = sqrt(translation.width * translation.width + translation.height * translation.height)
+                    if rawDist > 0 {
+                        let pull = min(rawDist * 0.42, maxPull)
+                        dragOffset = CGSize(
+                            width: (translation.width / rawDist) * pull,
+                            height: (translation.height / rawDist) * pull
+                        )
+                    } else {
+                        dragOffset = .zero
+                    }
+                },
+                onEnded: { didTap in
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.58)) {
+                        dragOffset = .zero
+                        isTouching = false
+                    }
+                    if didTap {
+                        action()
+                    }
+                }
+            )
+            .frame(width: 54, height: 44)
+        }
+        .frame(width: 54, height: 44)
+    }
+}
+
+private struct ElasticTouchTracker: UIViewRepresentable {
+    let onChanged: (CGSize) -> Void
+    let onEnded: (_ didTap: Bool) -> Void
+
+    func makeUIView(context: Context) -> ElasticTouchTrackingView {
+        let view = ElasticTouchTrackingView()
+        view.backgroundColor = .clear
+        view.onChanged = onChanged
+        view.onEnded = onEnded
+        return view
+    }
+
+    func updateUIView(_ uiView: ElasticTouchTrackingView, context: Context) {
+        uiView.onChanged = onChanged
+        uiView.onEnded = onEnded
+    }
+}
+
+private final class ElasticTouchTrackingView: UIView {
+    var onChanged: ((CGSize) -> Void)?
+    var onEnded: ((_ didTap: Bool) -> Void)?
+
+    private var initialTouchPoint: CGPoint = .zero
+    private var isTracking: Bool = false
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        isMultipleTouchEnabled = false
+        isUserInteractionEnabled = true
+        backgroundColor = .clear
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    override func touchesBegan(_ touches: Set<UITouch>, with event: UIEvent?) {
+        guard let touch = touches.first else { return }
+        initialTouchPoint = touch.location(in: self)
+        isTracking = true
+        onChanged?(.zero)
+    }
+
+    override func touchesMoved(_ touches: Set<UITouch>, with event: UIEvent?) {
+        guard isTracking, let touch = touches.first else { return }
+        let current = touch.location(in: self)
+        let dx = current.x - initialTouchPoint.x
+        let dy = current.y - initialTouchPoint.y
+        onChanged?(CGSize(width: dx, height: dy))
+    }
+
+    override func touchesEnded(_ touches: Set<UITouch>, with event: UIEvent?) {
+        guard isTracking, let touch = touches.first else { return }
+        isTracking = false
+        let current = touch.location(in: self)
+        let dx = current.x - initialTouchPoint.x
+        let dy = current.y - initialTouchPoint.y
+        let dist = sqrt(dx * dx + dy * dy)
+        let isInside = bounds.insetBy(dx: -16, dy: -16).contains(current)
+        let isTap = isInside && dist < 24.0
+        onEnded?(isTap)
+    }
+
+    override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
+        guard isTracking else { return }
+        isTracking = false
+        onEnded?(false)
     }
 }
 
