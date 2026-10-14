@@ -1031,6 +1031,7 @@ struct DetailsView: View {
                 }
             }
             .onAppear {
+                NotificationCenter.default.post(name: NSNotification.Name("SlooshMainPlayerWillStart"), object: nil)
                 CloudSyncService.shared.syncAllData()
                 if !hasSeenSourceSelectionTooltip {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
