@@ -609,9 +609,9 @@ private struct AuthorClipCardView: View {
 
 // MARK: - Author Clip Detail Sheet (Seamless Moment Playback)
 
-public struct AuthorClipDetailSheet: View {
-    public let clip: MovieClip
-    public let onWatchFullMovie: (PlayerConfig) -> Void
+struct AuthorClipDetailSheet: View {
+    let clip: MovieClip
+    let onWatchFullMovie: (PlayerConfig) -> Void
 
     @StateObject private var playback = ClipPlaybackCoordinator()
     @StateObject private var clipsRepo = ClipsRepository.shared
@@ -619,12 +619,12 @@ public struct AuthorClipDetailSheet: View {
     @State private var showHeartAnimation: Bool = false
     @State private var heartPosition: CGPoint = .zero
 
-    public init(clip: MovieClip, onWatchFullMovie: @escaping (PlayerConfig) -> Void) {
+    init(clip: MovieClip, onWatchFullMovie: @escaping (PlayerConfig) -> Void) {
         self.clip = clip
         self.onWatchFullMovie = onWatchFullMovie
     }
 
-    public var body: some View {
+    var body: some View {
         ZStack {
             // Dark Background
             Color.black.ignoresSafeArea()
