@@ -460,6 +460,8 @@ public struct ClipsFeedView: View {
     @ObservedObject private var messengerRepo = MessengerRepository.shared
 
     @State private var showsMessenger: Bool = false
+    @State private var commentsSheetDetent: PresentationDetent = .fraction(0.65)
+    @State private var selectedDetailsMedia: (movieId: String, mediaType: String)? = nil
 
     @AppStorage("clipsVideoScaleMode") private var clipScaleModeRaw: String = ClipScalingMode.fit.rawValue
 
@@ -497,53 +499,25 @@ public struct ClipsFeedView: View {
                 let fullWidth = proxy.size.width
                 let fullHeight = proxy.size.height + topSafeArea + bottomSafeArea
 
-                ZStack(alignment: .bottom) {
-                    ZStack(alignment: .top) {
-                        Color.black.ignoresSafeArea()
+                ZStack(alignment: .top) {
+                    Color.black.ignoresSafeArea()
 
-                        if clipsRepo.isLoading && clipsRepo.clips.isEmpty {
-                            VStack(spacing: 16) {
-                                ProgressView()
-                                    .tint(.white)
-                                Text("Загрузка моментов...")
-                                    .font(.system(size: 14, weight: .medium))
-                                    .foregroundStyle(.white.opacity(0.6))
-                            }
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        } else if clipsRepo.clips.isEmpty {
-                            emptyStateView
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        } else {
-                            feedScrollView(width: fullWidth, height: fullHeight, topSafeArea: topSafeArea, bottomSafeArea: bottomSafeArea)
-
-                            momentsHeaderView(width: fullWidth, topSafeArea: topSafeArea, fullHeight: fullHeight)
+                    if clipsRepo.isLoading && clipsRepo.clips.isEmpty {
+                        VStack(spacing: 16) {
+                            ProgressView()
+                                .tint(.white)
+                            Text("Загрузка моментов...")
+                                .font(.system(size: 14, weight: .medium))
+                                .foregroundStyle(.white.opacity(0.6))
                         }
-                    }
-                    .ignoresSafeArea()
-
-                    if let clip = showCommentsForClip {
-                        Color.black.opacity(0.001)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else if clipsRepo.clips.isEmpty {
+                        emptyStateView
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
-                                    showCommentsForClip = nil
-                                }
-                            }
-                            .ignoresSafeArea()
+                    } else {
+                        feedScrollView(width: fullWidth, height: fullHeight, topSafeArea: topSafeArea, bottomSafeArea: bottomSafeArea)
 
-                        ClipCommentsSheetView(
-                            clip: clip,
-                            sheetHeight: fullHeight * 0.65,
-                            onDismiss: {
-                                withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
-                                    showCommentsForClip = nil
-                                }
-                            }
-                        )
-                        .frame(width: fullWidth)
-                        .transition(.move(edge: .bottom))
-                        .zIndex(100)
+                        momentsHeaderView(width: fullWidth, topSafeArea: topSafeArea, fullHeight: fullHeight)
                     }
                 }
                 .ignoresSafeArea()
@@ -551,6 +525,14 @@ public struct ClipsFeedView: View {
             .toolbarVisibility(.hidden, for: .navigationBar)
             .navigationDestination(isPresented: $showsMessenger) {
                 MessengerView()
+            }
+            .navigationDestination(isPresented: Binding(
+                get: { selectedDetailsMedia != nil },
+                set: { if !$0 { selectedDetailsMedia = nil } }
+            )) {
+                if let media = selectedDetailsMedia {
+                    DetailsView(movieId: media.movieId, mediaType: media.mediaType)
+                }
             }
         }
         .preferredColorScheme(.dark)
@@ -560,6 +542,11 @@ public struct ClipsFeedView: View {
                 await clipsRepo.fetchFeed()
             }
             ensurePlaybackStarted()
+        }
+        .sheet(item: $showCommentsForClip) { clip in
+            ClipCommentsSheetView(clip: clip)
+                .presentationDetents([.fraction(0.65)], selection: $commentsSheetDetent)
+                .presentationBackgroundInteraction(.enabled(upThrough: .fraction(0.65)))
         }
         .fullScreenCover(item: $fullPlayerConfig, onDismiss: {
             fullPlayerConfig = nil
@@ -571,6 +558,13 @@ public struct ClipsFeedView: View {
         }
         .onChange(of: showsMessenger) { _, isPresented in
             if isPresented {
+                playback.pause()
+            } else {
+                ensurePlaybackStarted()
+            }
+        }
+        .onChange(of: selectedDetailsMedia != nil) { _, isOpened in
+            if isOpened {
                 playback.pause()
             } else {
                 ensurePlaybackStarted()
@@ -910,10 +904,23 @@ public struct ClipsFeedView: View {
             }
         }
         .ignoresSafeArea()
+        .refreshable {
+            await clipsRepo.fetchFeed(forceRefresh: true)
+        }
         .onChange(of: currentClipId) { oldId, newId in
             AppDiagnostics.shared.log("[ClipsFeedView] currentClipId changed from \(String(describing: oldId)) to \(String(describing: newId))")
             guard let newId = newId, newId != oldId, let clip = clipsRepo.clips.first(where: { $0.id == newId }) else { return }
             playback.setupPlayer(for: clip)
+            prewarmNextClip(after: clip)
+        }
+    }
+
+    private func prewarmNextClip(after currentClip: MovieClip) {
+        guard let currentIndex = clipsRepo.clips.firstIndex(where: { $0.id == currentClip.id }),
+              currentIndex + 1 < clipsRepo.clips.count else { return }
+        let nextClip = clipsRepo.clips[currentIndex + 1]
+        Task {
+            _ = await ClipStreamResolver.shared.resolveClip(for: nextClip)
         }
     }
 
@@ -1132,11 +1139,11 @@ public struct ClipsFeedView: View {
 
                     Spacer(minLength: 4)
 
-                    rightRailView(clip: clip)
+                    rightRailView(clip: clip, isCurrent: isCurrent)
                 }
-                .padding(.leading, 14)
-                .padding(.trailing, 14)
-                .padding(.bottom, 14)
+                .padding(.leading, 16)
+                .padding(.trailing, 16)
+                .padding(.bottom, 16)
             }
             .opacity(isOverlayHidden ? 0.0 : 1.0)
             .animation(.spring(response: 0.28, dampingFraction: 0.85), value: isOverlayHidden)
@@ -1212,8 +1219,13 @@ public struct ClipsFeedView: View {
 
     private func leftInfoView(clip: MovieClip) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            // Movie / Series Logo (with text fallback)
+            // Movie / Series Logo (with text fallback) - Tapping opens Movie Details
             logoOrTitleView(clip: clip)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                    selectedDetailsMedia = (movieId: String(clip.mediaId), mediaType: clip.mediaType)
+                }
 
             // Season, Episode & Voiceover Info
             subtitleInfoView(clip: clip)
@@ -1232,21 +1244,22 @@ public struct ClipsFeedView: View {
                     .padding(.vertical, 1)
             }
 
-            // Pure Liquid Glass Watch Full Movie Button
+            // Pure Liquid Glass "Смотреть" Button (Bold, styled like Main Screen, pure Liquid Glass)
             Button {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                 openFullMovie(clip: clip)
             } label: {
-                HStack(spacing: 6) {
+                HStack(spacing: 7) {
                     Image(systemName: "play.fill")
-                        .font(.system(size: 11, weight: .bold))
+                        .font(.system(size: 13, weight: .bold))
 
-                    Text("Смотреть с этого момента")
-                        .font(.system(size: 13, weight: .semibold))
+                    Text("Смотреть")
+                        .font(.system(size: 14, weight: .bold))
                 }
                 .foregroundStyle(.white)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 8)
-                .glassEffect(in: .capsule)
+                .padding(.horizontal, 16)
+                .frame(height: 38)
+                .glassEffect(.regular.interactive(), in: .capsule)
             }
             .buttonStyle(.glassPress)
             .padding(.top, 4)
@@ -1315,8 +1328,8 @@ public struct ClipsFeedView: View {
 
     // MARK: - Right Rail View
 
-    private func rightRailView(clip: MovieClip) -> some View {
-        VStack(spacing: 14) {
+    private func rightRailView(clip: MovieClip, isCurrent: Bool) -> some View {
+        VStack(spacing: 12) {
             // Author Avatar (Liquid Glass Button)
             authorAvatarView(clip)
 
@@ -1331,9 +1344,24 @@ public struct ClipsFeedView: View {
 
             // Scale Mode Toggle ("9:16" vs "В кадре")
             scaleModeButtonView
+
+            // TikTok-Style Rotating Movie Poster Disc (Opens DetailsView)
+            moviePosterDiscView(clip: clip, isCurrent: isCurrent)
         }
         .frame(width: 54)
         .contentShape(Rectangle())
+    }
+
+    // MARK: - TikTok-Style Cinema Disc (Circular Movie Poster)
+
+    private func moviePosterDiscView(clip: MovieClip, isCurrent: Bool) -> some View {
+        SpinningVinylDiscView(
+            posterPath: clip.posterPath,
+            isPlaying: isCurrent && playback.isPlaying && !playback.isScrubbing,
+            onTap: {
+                selectedDetailsMedia = (movieId: String(clip.mediaId), mediaType: clip.mediaType)
+            }
+        )
     }
 
     // MARK: - Author Avatar
@@ -1398,9 +1426,7 @@ public struct ClipsFeedView: View {
         VStack(spacing: 4) {
             Button {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                    showCommentsForClip = clip
-                }
+                showCommentsForClip = clip
             } label: {
                 SpeechBubbleShape()
                     .fill(Color.white.opacity(0.001), style: FillStyle(eoFill: true))
@@ -1417,9 +1443,7 @@ public struct ClipsFeedView: View {
                 .contentShape(Rectangle())
                 .onTapGesture {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                        showCommentsForClip = clip
-                    }
+                    showCommentsForClip = clip
                 }
         }
         .frame(width: 54)
@@ -1441,7 +1465,7 @@ public struct ClipsFeedView: View {
             .glassEffect(.regular.interactive(), in: ShareArrowShape())
 
             Text("Поделиться")
-                .font(.system(size: 9.0, weight: .semibold))
+                .font(.system(size: 9.5, weight: .semibold))
                 .foregroundStyle(.white)
                 .lineLimit(1)
                 .minimumScaleFactor(0.8)
@@ -1469,7 +1493,7 @@ public struct ClipsFeedView: View {
             .glassEffect(.regular.interactive(), in: AspectExpandShape())
 
             Text(currentScaleMode == .fit ? "9:16" : "В кадре")
-                .font(.system(size: 9.0, weight: .semibold))
+                .font(.system(size: 9.5, weight: .semibold))
                 .foregroundStyle(.white)
                 .contentTransition(.numericText())
                 .lineLimit(1)
@@ -1916,6 +1940,121 @@ public struct AspectExpandShape: Shape {
 
         path.closeSubpath()
         return path
+    }
+}
+
+// MARK: - TikTok-Style Spinning Cinema Disc (Circular Movie Poster)
+
+public struct SpinningVinylDiscView: View {
+    let posterPath: String?
+    let isPlaying: Bool
+    let onTap: () -> Void
+
+    @State private var rotationAngle: Double = 0.0
+
+    public init(posterPath: String?, isPlaying: Bool, onTap: @escaping () -> Void) {
+        self.posterPath = posterPath
+        self.isPlaying = isPlaying
+        self.onTap = onTap
+    }
+
+    public var body: some View {
+        VStack(spacing: 4) {
+            Button {
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                onTap()
+            } label: {
+                ZStack {
+                    // Outer vinyl record disc with subtle concentric grooves
+                    Circle()
+                        .fill(Color(white: 0.10).opacity(0.92))
+                        .frame(width: 38, height: 38)
+                        .overlay(
+                            Circle()
+                                .stroke(Color.white.opacity(0.20), lineWidth: 1.0)
+                        )
+                        .overlay(
+                            Circle()
+                                .stroke(Color.white.opacity(0.08), lineWidth: 0.6)
+                                .padding(3)
+                        )
+
+                    // Movie poster circular thumbnail
+                    if let path = posterPath, let url = resolvePosterUrl(path: path) {
+                        AsyncCachedImage(url: url) {
+                            Circle().fill(Color.white.opacity(0.12))
+                        } content: { img in
+                            Image(uiImage: img)
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: 26, height: 26)
+                                .clipShape(Circle())
+                        } fallback: {
+                            Image(systemName: "film")
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(.white.opacity(0.6))
+                        }
+                    } else {
+                        Image(systemName: "film")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(.white.opacity(0.6))
+                    }
+
+                    // Center spindle hole
+                    Circle()
+                        .fill(Color.black)
+                        .frame(width: 5, height: 5)
+                        .overlay(
+                            Circle()
+                                .stroke(Color.white.opacity(0.45), lineWidth: 0.6)
+                        )
+                }
+                .glassEffect(.regular.interactive(), in: .circle)
+                .rotationEffect(.degrees(rotationAngle))
+            }
+            .buttonStyle(.glassPress)
+            .contentShape(Circle())
+
+            Text("Фильм")
+                .font(.system(size: 9.5, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.92))
+                .lineLimit(1)
+                .minimumScaleFactor(0.8)
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+                    onTap()
+                }
+        }
+        .frame(width: 54)
+        .onAppear {
+            if isPlaying {
+                withAnimation(.linear(duration: 8.0).repeatForever(autoreverses: false)) {
+                    rotationAngle = 360.0
+                }
+            }
+        }
+        .onChange(of: isPlaying) { _, playing in
+            if playing {
+                withAnimation(.linear(duration: 8.0).repeatForever(autoreverses: false)) {
+                    rotationAngle += 360.0
+                }
+            } else {
+                withAnimation(.easeOut(duration: 0.35)) {
+                    // Halts smoothly
+                }
+            }
+        }
+    }
+
+    private func resolvePosterUrl(path: String) -> URL? {
+        if path.hasPrefix("http://") || path.hasPrefix("https://") {
+            return URL(string: path)
+        }
+        if let normalized = normalizeImageUrl(path: path) {
+            return URL(string: normalized)
+        }
+        return nil
     }
 }
 

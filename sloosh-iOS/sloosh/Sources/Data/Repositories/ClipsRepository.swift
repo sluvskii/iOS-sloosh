@@ -39,7 +39,7 @@ public final class ClipsRepository: ObservableObject {
               let list = try? JSONDecoder().decode([MovieClip].self, from: data), !list.isEmpty else {
             return
         }
-        self.clips = list
+        self.clips = rankClips(list)
     }
 
     public func saveFeedToDisk(_ list: [MovieClip]) {
@@ -68,17 +68,55 @@ public final class ClipsRepository: ObservableObject {
 
             // RTDB returns either a dictionary [String: MovieClip] or null
             if let dict = try? JSONDecoder().decode([String: MovieClip].self, from: data) {
-                let fetched = Array(dict.values).sorted { $0.createdAtMs > $1.createdAtMs }
+                let fetched = rankClips(Array(dict.values))
                 self.clips = fetched
                 saveFeedToDisk(fetched)
             } else if let array = try? JSONDecoder().decode([MovieClip].self, from: data) {
-                let valid = array.sorted { $0.createdAtMs > $1.createdAtMs }
+                let valid = rankClips(array)
                 self.clips = valid
                 saveFeedToDisk(valid)
             }
         } catch {
             print("[ClipsRepository] fetchFeed error: \(error.localizedDescription)")
         }
+    }
+
+    // MARK: - Smart Recommendations Algorithm (TikTok/Reels-style Cinema Discovery)
+
+    public func rankClips(_ list: [MovieClip]) -> [MovieClip] {
+        let favoriteIds = Set(FavoritesRepository.shared.favorites.map { $0.id })
+        let progressIds = Set(PlaybackProgressStore.shared.allItems().map { $0.id })
+        let nowMs = Int64(Date().timeIntervalSince1970 * 1000)
+
+        return list.sorted { c1, c2 in
+            let score1 = recommendationScore(for: c1, favoriteIds: favoriteIds, progressIds: progressIds, nowMs: nowMs)
+            let score2 = recommendationScore(for: c2, favoriteIds: favoriteIds, progressIds: progressIds, nowMs: nowMs)
+            return score1 > score2
+        }
+    }
+
+    private func recommendationScore(for clip: MovieClip, favoriteIds: Set<String>, progressIds: Set<String>, nowMs: Int64) -> Double {
+        // 1. Social engagement score (likes, comments, views)
+        let engagementScore = Double(clip.likesCount * 2) + Double(clip.commentsCount * 3) + Double(clip.viewsCount) * 0.2
+
+        // 2. Personal affinity boosts
+        var affinityBoost: Double = 0.0
+        let mediaIdStr = String(clip.mediaId)
+        if favoriteIds.contains(mediaIdStr) {
+            affinityBoost += 80.0 // User bookmarked this movie
+        }
+        if progressIds.contains(mediaIdStr) {
+            affinityBoost += 50.0 // User is actively watching this movie
+        }
+        if likedClipIds.contains(clip.id) {
+            affinityBoost += 25.0 // User previously liked this clip
+        }
+
+        // 3. Recency decay (fresh clips get boost to discover new moments)
+        let ageHours = max(0.5, Double(nowMs - clip.createdAtMs) / (1000.0 * 3600.0))
+        let freshnessBoost = max(0.0, 100.0 - (ageHours * 1.2))
+
+        return engagementScore + affinityBoost + freshnessBoost
     }
 
     // MARK: - Publish Clip
