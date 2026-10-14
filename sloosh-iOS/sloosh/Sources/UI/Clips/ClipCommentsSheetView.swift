@@ -23,6 +23,18 @@ public struct ClipCommentsSheetView: View {
         !commentText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
+    private var isMultilineInput: Bool {
+        commentText.contains("\n") || commentText.count > 32
+    }
+
+    private var isExpandedInput: Bool {
+        isMultilineInput
+    }
+
+    private var inputBarCornerRadius: CGFloat {
+        isExpandedInput ? 20 : 22
+    }
+
     private var blurOpacity: Double {
         let progress = max(0, scrollOffset) / 20.0
         return min(1.0, Double(progress))
@@ -51,56 +63,54 @@ public struct ClipCommentsSheetView: View {
     }
 
     public var body: some View {
-        NavigationStack {
-            ZStack {
-                if isLoading {
-                    ProgressView()
-                        .tint(.white)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if comments.isEmpty {
-                    emptyStateView
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else {
-                    ScrollView {
-                        LazyVStack(spacing: 16) {
-                            ForEach(comments) { comment in
-                                commentRow(comment)
-                            }
+        ZStack {
+            if isLoading {
+                ProgressView()
+                    .tint(.white)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if comments.isEmpty {
+                emptyStateView
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 16) {
+                        ForEach(comments) { comment in
+                            commentRow(comment)
                         }
-                        .padding(.horizontal, 16)
-                        .padding(.top, 12)
-                        .padding(.bottom, 16)
                     }
-                    .scrollDismissesKeyboard(.interactively)
-                    .onScrollGeometryChange(for: CGFloat.self) { geometry in
-                        geometry.contentOffset.y + geometry.contentInsets.top
-                    } action: { _, newOffset in
-                        scrollOffset = newOffset
-                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 12)
+                    .padding(.bottom, 16)
+                }
+                .scrollDismissesKeyboard(.interactively)
+                .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                    geometry.contentOffset.y + geometry.contentInsets.top
+                } action: { _, newOffset in
+                    scrollOffset = newOffset
                 }
             }
-            .toolbar(.hidden, for: .navigationBar)
-            .safeAreaInset(edge: .top, spacing: 0) {
-                headerBar
-                    .padding(.horizontal, 16)
-                    .padding(.top, 16)
-                    .padding(.bottom, 8)
-                    .background(
-                        VariableBlurView(tintColor: .clear, tintOpacity: 0.0)
-                            .padding(.bottom, -30)
-                            .ignoresSafeArea(edges: .top)
-                            .opacity(blurOpacity)
-                            .animation(.easeInOut(duration: 0.2), value: blurOpacity)
-                    )
-            }
-            .safeAreaInset(edge: .bottom) {
-                inputBar
-            }
-            .scrollContentBackground(.hidden)
-            .background(Color.clear)
         }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            headerBar
+                .padding(.horizontal, 16)
+                .padding(.top, 16)
+                .padding(.bottom, 8)
+                .background(
+                    VariableBlurView(tintColor: .clear, tintOpacity: 0.0)
+                        .padding(.bottom, -30)
+                        .ignoresSafeArea(edges: .top)
+                        .opacity(blurOpacity)
+                        .animation(.easeInOut(duration: 0.2), value: blurOpacity)
+                )
+        }
+        .safeAreaInset(edge: .bottom) {
+            inputBar
+        }
+        .scrollContentBackground(.hidden)
+        .background(Color.clear)
         .presentationDetents([.fraction(0.65)])
         .presentationBackground { Color.clear.glassEffect(in: .rect) }
+        .presentationBackgroundInteraction(.enabled(upThrough: .fraction(0.65)))
         .presentationDragIndicator(.visible)
         .preferredColorScheme(.dark)
         .environment(\.colorScheme, .dark)
@@ -144,20 +154,24 @@ public struct ClipCommentsSheetView: View {
 
     private var inputBar: some View {
         HStack(alignment: .bottom, spacing: 8) {
-            // Floating Glass Text Field Capsule (Telegram-style from ChatDetailView)
-            TextField("Комментарий...", text: $commentText, axis: .vertical)
-                .font(.system(size: 16))
-                .foregroundColor(.primary)
-                .tint(Color.white)
-                .lineLimit(1...5)
-                .focused($isInputFocused)
-                .frame(minHeight: 38)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 4)
-                .glassEffect(
-                    .regular.interactive(),
-                    in: RoundedRectangle(cornerRadius: 22, style: .continuous)
-                )
+            // Floating Glass Text Field Capsule / Morphing Box (Telegram-style inline reply/edit)
+            VStack(alignment: .leading, spacing: isExpandedInput ? 8 : 4) {
+                TextField("Сообщение", text: $commentText, axis: .vertical)
+                    .font(.system(size: 16))
+                    .foregroundColor(.primary)
+                    .tint(Color.white)
+                    .lineLimit(1...6)
+                    .focused($isInputFocused)
+                    .frame(minHeight: isExpandedInput ? 24 : 38)
+            }
+            .padding(.top, isExpandedInput ? 6 : 2)
+            .padding(.bottom, isExpandedInput ? 8 : 2)
+            .padding(.horizontal, 14)
+            .glassEffect(
+                .regular.interactive(),
+                in: RoundedRectangle(cornerRadius: inputBarCornerRadius, style: .continuous)
+            )
+            .animation(.easeInOut(duration: 0.2), value: isMultilineInput)
 
             // Telegram-style Animated Sliding/Popping Send Button (from ChatDetailView)
             if hasTextToSending {
