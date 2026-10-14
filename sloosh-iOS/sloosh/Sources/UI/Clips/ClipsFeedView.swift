@@ -460,7 +460,6 @@ public struct ClipsFeedView: View {
     @ObservedObject private var messengerRepo = MessengerRepository.shared
 
     @State private var showsMessenger: Bool = false
-    @State private var commentsSheetDetent: PresentationDetent = .fraction(0.65)
 
     @AppStorage("clipsVideoScaleMode") private var clipScaleModeRaw: String = ClipScalingMode.fit.rawValue
 
@@ -498,25 +497,53 @@ public struct ClipsFeedView: View {
                 let fullWidth = proxy.size.width
                 let fullHeight = proxy.size.height + topSafeArea + bottomSafeArea
 
-                ZStack(alignment: .top) {
-                    Color.black.ignoresSafeArea()
+                ZStack(alignment: .bottom) {
+                    ZStack(alignment: .top) {
+                        Color.black.ignoresSafeArea()
 
-                    if clipsRepo.isLoading && clipsRepo.clips.isEmpty {
-                        VStack(spacing: 16) {
-                            ProgressView()
-                                .tint(.white)
-                            Text("Загрузка моментов...")
-                                .font(.system(size: 14, weight: .medium))
-                                .foregroundStyle(.white.opacity(0.6))
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    } else if clipsRepo.clips.isEmpty {
-                        emptyStateView
+                        if clipsRepo.isLoading && clipsRepo.clips.isEmpty {
+                            VStack(spacing: 16) {
+                                ProgressView()
+                                    .tint(.white)
+                                Text("Загрузка моментов...")
+                                    .font(.system(size: 14, weight: .medium))
+                                    .foregroundStyle(.white.opacity(0.6))
+                            }
                             .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    } else {
-                        feedScrollView(width: fullWidth, height: fullHeight, topSafeArea: topSafeArea, bottomSafeArea: bottomSafeArea)
+                        } else if clipsRepo.clips.isEmpty {
+                            emptyStateView
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        } else {
+                            feedScrollView(width: fullWidth, height: fullHeight, topSafeArea: topSafeArea, bottomSafeArea: bottomSafeArea)
 
-                        momentsHeaderView(width: fullWidth, topSafeArea: topSafeArea, fullHeight: fullHeight)
+                            momentsHeaderView(width: fullWidth, topSafeArea: topSafeArea, fullHeight: fullHeight)
+                        }
+                    }
+                    .ignoresSafeArea()
+
+                    if let clip = showCommentsForClip {
+                        Color.black.opacity(0.001)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
+                                    showCommentsForClip = nil
+                                }
+                            }
+                            .ignoresSafeArea()
+
+                        ClipCommentsSheetView(
+                            clip: clip,
+                            sheetHeight: fullHeight * 0.65,
+                            onDismiss: {
+                                withAnimation(.spring(response: 0.32, dampingFraction: 0.85)) {
+                                    showCommentsForClip = nil
+                                }
+                            }
+                        )
+                        .frame(width: fullWidth)
+                        .transition(.move(edge: .bottom))
+                        .zIndex(100)
                     }
                 }
                 .ignoresSafeArea()
@@ -533,11 +560,6 @@ public struct ClipsFeedView: View {
                 await clipsRepo.fetchFeed()
             }
             ensurePlaybackStarted()
-        }
-        .sheet(item: $showCommentsForClip) { clip in
-            ClipCommentsSheetView(clip: clip)
-                .presentationDetents([.fraction(0.65)], selection: $commentsSheetDetent)
-                .presentationBackgroundInteraction(.enabled(upThrough: .fraction(0.65)))
         }
         .fullScreenCover(item: $fullPlayerConfig, onDismiss: {
             fullPlayerConfig = nil
@@ -1376,7 +1398,9 @@ public struct ClipsFeedView: View {
         VStack(spacing: 4) {
             Button {
                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                showCommentsForClip = clip
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                    showCommentsForClip = clip
+                }
             } label: {
                 SpeechBubbleShape()
                     .fill(Color.white.opacity(0.001), style: FillStyle(eoFill: true))
@@ -1393,7 +1417,9 @@ public struct ClipsFeedView: View {
                 .contentShape(Rectangle())
                 .onTapGesture {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    showCommentsForClip = clip
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                        showCommentsForClip = clip
+                    }
                 }
         }
         .frame(width: 54)

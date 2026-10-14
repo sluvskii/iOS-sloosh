@@ -1,24 +1,65 @@
 import SwiftUI
 import UIKit
+import Combine
+
+// MARK: - Keyboard Observer for Locked Sheet Height
+
+@MainActor
+final class CommentsKeyboardObserver: ObservableObject {
+    @Published var keyboardHeight: CGFloat = 0
+
+    private var cancellables = Set<AnyCancellable>()
+
+    init() {
+        NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)
+            .compactMap { notification -> CGFloat? in
+                guard let frame = notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey] as? CGRect else {
+                    return nil
+                }
+                return frame.height
+            }
+            .receive(on: RunLoop.main)
+            .sink { [weak self] height in
+                withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                    self?.keyboardHeight = height
+                }
+            }
+            .store(in: &cancellables)
+
+        NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                withAnimation(.spring(response: 0.32, dampingFraction: 0.82)) {
+                    self?.keyboardHeight = 0
+                }
+            }
+            .store(in: &cancellables)
+    }
+}
+
+// MARK: - Custom Bottom Sheet View for Comments
 
 public struct ClipCommentsSheetView: View {
     let clip: MovieClip
+    let sheetHeight: CGFloat
+    let onDismiss: () -> Void
 
-    @Environment(\.dismiss) private var dismiss
     @StateObject private var clipsRepo = ClipsRepository.shared
     @StateObject private var authRepo = AuthRepository.shared
+    @StateObject private var keyboard = CommentsKeyboardObserver()
 
     @State private var comments: [ClipComment] = []
     @State private var isLoading: Bool = true
     @State private var commentText: String = ""
     @State private var isSending: Bool = false
     @State private var scrollOffset: CGFloat = 0
+    @State private var dragOffset: CGFloat = 0
     @FocusState private var isInputFocused: Bool
 
-    @State private var sheetDetent: PresentationDetent = .fraction(0.65)
-
-    public init(clip: MovieClip) {
+    public init(clip: MovieClip, sheetHeight: CGFloat, onDismiss: @escaping () -> Void) {
         self.clip = clip
+        self.sheetHeight = sheetHeight
+        self.onDismiss = onDismiss
     }
 
     private var hasTextToSending: Bool {
@@ -42,41 +83,20 @@ public struct ClipCommentsSheetView: View {
         return min(1.0, Double(progress))
     }
 
-    private let inputBarHorizontalPadding: CGFloat = 16
-    private let inputBarVerticalPadding: CGFloat = 8
-
     public var body: some View {
-        ZStack {
-            if isLoading {
-                ProgressView()
-                    .tint(.white)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if comments.isEmpty {
-                emptyStateView
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                ScrollView {
-                    LazyVStack(spacing: 16) {
-                        ForEach(comments) { comment in
-                            commentRow(comment)
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 12)
-                    .padding(.bottom, 16)
-                }
-                .scrollDismissesKeyboard(.interactively)
-                .onScrollGeometryChange(for: CGFloat.self) { geometry in
-                    geometry.contentOffset.y + geometry.contentInsets.top
-                } action: { _, newOffset in
-                    scrollOffset = newOffset
-                }
-            }
-        }
-        .safeAreaInset(edge: .top, spacing: 0) {
+        VStack(spacing: 0) {
+            // Top Drag Handle (Native-feel pill indicator)
+            Capsule()
+                .fill(Color.white.opacity(0.35))
+                .frame(width: 36, height: 5)
+                .padding(.top, 10)
+                .padding(.bottom, 2)
+                .contentShape(Rectangle())
+
+            // Header Bar
             headerBar
                 .padding(.horizontal, 16)
-                .padding(.top, 16)
+                .padding(.top, 4)
                 .padding(.bottom, 8)
                 .background(
                     VariableBlurView(tintColor: .clear, tintOpacity: 0.0)
@@ -85,16 +105,66 @@ public struct ClipCommentsSheetView: View {
                         .opacity(blurOpacity)
                         .animation(.easeInOut(duration: 0.2), value: blurOpacity)
                 )
-        }
-        .safeAreaInset(edge: .bottom) {
+
+            // Scrollable Content
+            ZStack {
+                if isLoading {
+                    ProgressView()
+                        .tint(.white)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if comments.isEmpty {
+                    emptyStateView
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    ScrollView {
+                        LazyVStack(spacing: 16) {
+                            ForEach(comments) { comment in
+                                commentRow(comment)
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.top, 8)
+                        .padding(.bottom, 12)
+                    }
+                    .scrollDismissesKeyboard(.interactively)
+                    .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                        geometry.contentOffset.y + geometry.contentInsets.top
+                    } action: { _, newOffset in
+                        scrollOffset = newOffset
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            // Bottom Input Bar
             inputBar
         }
-        .scrollContentBackground(.hidden)
-        .background(Color.clear)
-        .presentationDetents([.fraction(0.65)], selection: $sheetDetent)
-        .presentationBackground { Color.clear.glassEffect(in: .rect) }
-        .presentationBackgroundInteraction(.enabled(upThrough: .fraction(0.65)))
-        .presentationDragIndicator(.visible)
+        .padding(.bottom, keyboard.keyboardHeight)
+        .frame(height: sheetHeight)
+        .background(
+            UnevenRoundedRectangle(topLeadingRadius: 28, bottomLeadingRadius: 0, bottomTrailingRadius: 0, topTrailingRadius: 28, style: .continuous)
+                .fill(Color.clear)
+                .glassEffect(.regular, in: UnevenRoundedRectangle(topLeadingRadius: 28, bottomLeadingRadius: 0, bottomTrailingRadius: 0, topTrailingRadius: 28, style: .continuous))
+        )
+        .offset(y: max(0, dragOffset))
+        .gesture(
+            DragGesture()
+                .onChanged { value in
+                    if value.translation.height > 0 {
+                        dragOffset = value.translation.height
+                    }
+                }
+                .onEnded { value in
+                    if value.translation.height > 90 || value.predictedEndTranslation.height > 180 {
+                        onDismiss()
+                    } else {
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                            dragOffset = 0
+                        }
+                    }
+                }
+        )
+        .ignoresSafeArea(.keyboard, edges: .bottom)
         .preferredColorScheme(.dark)
         .environment(\.colorScheme, .dark)
         .task {
@@ -116,7 +186,7 @@ public struct ClipCommentsSheetView: View {
             HStack {
                 Button {
                     UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    dismiss()
+                    onDismiss()
                 } label: {
                     Image(systemName: "xmark")
                         .font(.system(size: 20, weight: .semibold))
@@ -133,7 +203,7 @@ public struct ClipCommentsSheetView: View {
         }
     }
 
-    // MARK: - Input Bar (Directly from ChatDetailView messenger)
+    // MARK: - Input Bar (Symmetrical compact margins)
 
     private var inputBar: some View {
         HStack(alignment: .bottom, spacing: 8) {
@@ -181,8 +251,9 @@ public struct ClipCommentsSheetView: View {
                 .disabled(isSending)
             }
         }
-        .padding(.horizontal, inputBarHorizontalPadding)
-        .padding(.vertical, inputBarVerticalPadding)
+        .padding(.horizontal, 20)
+        .padding(.top, 6)
+        .padding(.bottom, keyboard.keyboardHeight > 0 ? 6 : 14)
         .animation(.spring(response: 0.35, dampingFraction: 0.8), value: isInputFocused)
         .animation(.spring(response: 0.32, dampingFraction: 0.78), value: hasTextToSending)
     }
