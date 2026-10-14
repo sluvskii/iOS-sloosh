@@ -599,15 +599,6 @@ final class ClipPlaybackCoordinator: ObservableObject {
         currentHeaders = [:]
         currentPlayingUrl = nil
     }
-
-    deinit {
-        resolvePlaybackTask?.cancel()
-        prewarmTask?.cancel()
-        playerStatusObserver?.invalidate()
-        playerTimeStatusObserver?.invalidate()
-        prewarmedPlayer?.pause()
-        activePlayer?.pause()
-    }
 }
 
 // MARK: - Video Scale Mode for Clips
