@@ -29,6 +29,7 @@ final class ClipPlaybackCoordinator: ObservableObject {
     @Published var availableQualities: [String] = ["Авто", "1080p", "720p", "480p", "360p"]
     @Published var currentQuality: String = UserDefaults.standard.string(forKey: "sloosh_moments_quality") ?? "Авто"
     @Published var playbackSpeed: Float = 1.0
+    var onClipEnded: (() -> Void)?
 
     var speedLabel: String {
         if playbackSpeed == 1.0 {
@@ -201,16 +202,25 @@ final class ClipPlaybackCoordinator: ObservableObject {
                 let elapsed = max(0.0, currentSec - clip.startTime)
                 self.clipProgress = min(1.0, max(0.0, elapsed / clipDur))
 
-                // Loop back to start ONLY when video reaches or exceeds clip.endTime
+                // Loop back to start or auto-advance when video reaches or exceeds clip.endTime
                 if currentSec >= clip.endTime {
-                    let sTime = CMTime(seconds: clip.startTime, preferredTimescale: 600)
-                    player.seek(to: sTime, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
-                        guard let self else { return }
-                        if self.isPlaying {
-                            self.playWithCurrentSpeed()
-                        }
+                    if let onClipEnded = self.onClipEnded {
+                        onClipEnded()
+                    } else {
+                        self.seekToStart(for: clip)
                     }
                 }
+            }
+        }
+    }
+
+    func seekToStart(for clip: MovieClip) {
+        guard let player = activePlayer else { return }
+        let sTime = CMTime(seconds: clip.startTime, preferredTimescale: 600)
+        player.seek(to: sTime, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
+            guard let self else { return }
+            if self.isPlaying {
+                self.playWithCurrentSpeed()
             }
         }
     }
@@ -489,11 +499,13 @@ public struct ClipsFeedView: View {
     @State private var selectedDetailsMedia: (movieId: String, mediaType: String)? = nil
 
     @AppStorage("clipsVideoScaleMode") private var clipScaleModeRaw: String = ClipScalingMode.fit.rawValue
+    @AppStorage("sloosh_clips_autoscroll") private var autoScrollNext: Bool = false
 
     private var currentScaleMode: ClipScalingMode {
         ClipScalingMode(rawValue: clipScaleModeRaw) ?? .fit
     }
 
+    @State private var isInterfaceHidden: Bool = false
     @State private var currentClipId: String? = ClipsRepository.shared.clips.first?.id
     @State private var clipToDelete: MovieClip?
     @State private var showDeleteConfirmation: Bool = false
@@ -543,6 +555,8 @@ public struct ClipsFeedView: View {
                         feedScrollView(width: fullWidth, height: fullHeight, topSafeArea: topSafeArea, bottomSafeArea: bottomSafeArea)
 
                         momentsHeaderView(width: fullWidth, topSafeArea: topSafeArea, fullHeight: fullHeight)
+                            .opacity(isInterfaceHidden ? 0.0 : 1.0)
+                            .animation(.spring(response: 0.35, dampingFraction: 0.8), value: isInterfaceHidden)
                     }
                 }
                 .ignoresSafeArea()
@@ -640,7 +654,11 @@ public struct ClipsFeedView: View {
             playback.pause(userInitiated: true)
         }
         .onAppear {
+            setupPlaybackCallbacks()
             ensurePlaybackStarted()
+        }
+        .onChange(of: autoScrollNext) { _, _ in
+            setupPlaybackCallbacks()
         }
     }
 
@@ -812,7 +830,46 @@ public struct ClipsFeedView: View {
                 Label("Масштаб", systemImage: "aspectratio")
             }
 
-            // 4. Удалить момент (только для автора)
+            Divider()
+
+            // 4. Скачать фрагмент момента
+            Button {
+                ClipDownloader.shared.download(clip: clip)
+            } label: {
+                Label("Скачать момент", systemImage: "arrow.down.circle")
+            }
+
+            // 5. Автоперелистывание
+            Button {
+                autoScrollNext.toggle()
+                let title = autoScrollNext ? "Автоперелистывание включено" : "Автоперелистывание выключено"
+                let icon = autoScrollNext ? "play.square.stack.fill" : "play.square.stack"
+                ToastManager.shared.show(title: title, icon: icon, iconColor: .white)
+            } label: {
+                Label {
+                    Text("Автоперелистывание")
+                } icon: {
+                    Image(systemName: autoScrollNext ? "checkmark.circle.fill" : "play.square.stack")
+                }
+            }
+
+            // 6. Скрыть интерфейс
+            Button {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                    isInterfaceHidden = true
+                }
+                ToastManager.shared.show(
+                    title: "Интерфейс скрыт",
+                    subtitle: "Нажмите на экран, чтобы вернуть",
+                    icon: "eye.slash.fill",
+                    iconColor: .white,
+                    duration: 2.5
+                )
+            } label: {
+                Label("Скрыть интерфейс", systemImage: "eye.slash")
+            }
+
+            // 7. Удалить момент (только для автора)
             if isAuthor(of: clip) {
                 Divider()
 
@@ -983,6 +1040,31 @@ public struct ClipsFeedView: View {
         }
     }
 
+    private func setupPlaybackCallbacks() {
+        playback.onClipEnded = {
+            if autoScrollNext {
+                advanceToNextClip()
+            } else if let clip = currentVisibleClip {
+                playback.seekToStart(for: clip)
+            }
+        }
+    }
+
+    private func advanceToNextClip() {
+        guard let currentClipId,
+              let currentIndex = clipsRepo.clips.firstIndex(where: { $0.id == currentClipId }) else { return }
+        if currentIndex + 1 < clipsRepo.clips.count {
+            let nextClip = clipsRepo.clips[currentIndex + 1]
+            withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) {
+                self.currentClipId = nextClip.id
+            }
+        } else if let first = clipsRepo.clips.first {
+            withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) {
+                self.currentClipId = first.id
+            }
+        }
+    }
+
     // MARK: - Clip Card
 
     private func clipCard(_ clip: MovieClip, width: CGFloat, height: CGFloat, topSafeArea: CGFloat, bottomSafeArea: CGFloat) -> some View {
@@ -1025,8 +1107,8 @@ public struct ClipsFeedView: View {
                 )
                 .padding(.horizontal, 16)
                 .frame(height: scrubberHeight)
-                .opacity(showCommentsForClip != nil ? 0.0 : 1.0)
-                .animation(.spring(response: 0.28, dampingFraction: 0.85), value: showCommentsForClip != nil)
+                .opacity((showCommentsForClip != nil || isInterfaceHidden) ? 0.0 : 1.0)
+                .animation(.spring(response: 0.28, dampingFraction: 0.85), value: showCommentsForClip != nil || isInterfaceHidden)
             } else {
                 Color.clear
                     .frame(height: scrubberHeight)
@@ -1048,7 +1130,7 @@ public struct ClipsFeedView: View {
 
     private func videoCardContainer(_ clip: MovieClip, width: CGFloat, height: CGFloat, isCurrent: Bool) -> some View {
         let isCommentsOpen = (showCommentsForClip != nil)
-        let isOverlayHidden = isScrubbing || playback.isFastForwarding || isCommentsOpen
+        let isOverlayHidden = isScrubbing || playback.isFastForwarding || isCommentsOpen || isInterfaceHidden
         let effectiveScaleMode: ClipScalingMode = isCommentsOpen ? .fit : currentScaleMode
         let effectiveVideoGravity: AVLayerVideoGravity = effectiveScaleMode == .fit ? .resizeAspect : .resizeAspectFill
         let commentsShift: CGFloat = isCommentsOpen ? -(height * 0.28) : 0.0
@@ -1221,27 +1303,22 @@ public struct ClipsFeedView: View {
     // MARK: - Gesture Handling Zones
 
     private func edgeAccelerationZone(for clip: MovieClip) -> some View {
-        Color.clear
-            .contentShape(Rectangle())
-            .onLongPressGesture(minimumDuration: 0.28, maximumDistance: 40) {
-                // Long press completed
-            } onPressingChanged: { isPressing in
-                if isPressing {
-                    if !playback.isScrubbing && playback.isPlaying {
-                        withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
-                            playback.startFastForward()
-                        }
-                        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    }
-                } else {
-                    if playback.isFastForwarding {
-                        withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
-                            playback.stopFastForward()
-                        }
-                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    }
+        EdgeHoldAccelerationView(
+            isScrubbing: isScrubbing,
+            isPlaying: playback.isPlaying,
+            onStartFastForward: {
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
+                    playback.startFastForward()
                 }
+                UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+            },
+            onStopFastForward: {
+                withAnimation(.spring(response: 0.28, dampingFraction: 0.8)) {
+                    playback.stopFastForward()
+                }
+                UIImpactFeedbackGenerator(style: .light).impactOccurred()
             }
+        )
     }
 
     private func centerTapZone(clip: MovieClip) -> some View {
@@ -1255,6 +1332,12 @@ public struct ClipsFeedView: View {
     }
 
     private func handleCenterTap(at location: CGPoint, for clip: MovieClip) {
+        if isInterfaceHidden {
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                isInterfaceHidden = false
+            }
+            return
+        }
         if showCommentsForClip != nil {
             showCommentsForClip = nil
             return
@@ -1676,28 +1759,51 @@ private struct ClipProgressBarView: View {
                     .frame(height: barHeight)
 
                 if isResolving || !isVideoReady {
-                    // Shimmering animated light beam during buffering (strictly inside the track)
+                    // Infinite fluid breathing light beam (strictly inside the track)
                     TimelineView(.animation) { timeline in
                         let time = timeline.date.timeIntervalSinceReferenceDate
-                        let phase = CGFloat(time.truncatingRemainder(dividingBy: 1.4) / 1.4)
+                        let pulse = (sin(time * 2.6) + 1.0) / 2.0 // 0...1 breathing
+                        let wave = (sin(time * 1.8) + 1.0) / 2.0 // 0...1 smooth traveling
 
                         GeometryReader { p in
-                            let w = p.size.width
+                            let trackWidth = p.size.width
+                            let baseBeamWidth = max(44.0, trackWidth * 0.30)
+                            let dynamicBeamWidth = min(trackWidth * 0.6, baseBeamWidth * (1.0 + 0.12 * sin(time * 3.6)))
+                            let travelDistance = max(0, trackWidth - dynamicBeamWidth)
+                            let xOffset = travelDistance * wave
+
                             ZStack(alignment: .leading) {
+                                // 1. Ambient pulsing background track
+                                Capsule()
+                                    .fill(Color.white.opacity(0.16 + 0.10 * pulse))
+                                    .frame(width: trackWidth, height: barHeight)
+
+                                // 2. Outer fluid glow beam
                                 Capsule()
                                     .fill(
                                         LinearGradient(
-                                            stops: [
-                                                .init(color: Color.white.opacity(0.0), location: max(0, phase - 0.25)),
-                                                .init(color: Color.white.opacity(0.9), location: phase),
-                                                .init(color: Color.white.opacity(0.0), location: min(1, phase + 0.25))
+                                            colors: [
+                                                Color.white.opacity(0.0),
+                                                Color.white.opacity(0.45 * (0.85 + 0.15 * pulse)),
+                                                Color.white.opacity(0.95),
+                                                Color.white.opacity(0.45 * (0.85 + 0.15 * pulse)),
+                                                Color.white.opacity(0.0)
                                             ],
                                             startPoint: .leading,
                                             endPoint: .trailing
                                         )
                                     )
-                                    .frame(width: w)
+                                    .frame(width: dynamicBeamWidth, height: barHeight)
+                                    .offset(x: xOffset)
+
+                                // 3. Core condensed photon dot in the center of the beam
+                                Capsule()
+                                    .fill(Color.white)
+                                    .frame(width: max(16.0, dynamicBeamWidth * 0.4), height: barHeight)
+                                    .offset(x: xOffset + (dynamicBeamWidth - max(16.0, dynamicBeamWidth * 0.4)) / 2)
+                                    .shadow(color: Color.white.opacity(0.7), radius: 3)
                             }
+                            .frame(width: trackWidth, height: barHeight)
                         }
                     }
                     .frame(height: barHeight)
@@ -1779,6 +1885,49 @@ private struct ClipProgressBarView: View {
         let m = total / 60
         let s = total % 60
         return String(format: "%d:%02d", m, s)
+    }
+}
+
+// MARK: - Edge Hold-to-Accelerate View (Only activates after 0.28s hold, quick taps never trigger 2x)
+
+private struct EdgeHoldAccelerationView: View {
+    let isScrubbing: Bool
+    let isPlaying: Bool
+    let onStartFastForward: () -> Void
+    let onStopFastForward: () -> Void
+
+    @State private var isHoldingActive: Bool = false
+
+    var body: some View {
+        Color.clear
+            .contentShape(Rectangle())
+            .gesture(
+                LongPressGesture(minimumDuration: 0.28, maximumDistance: 30)
+                    .sequenced(before: DragGesture(minimumDistance: 0))
+                    .onChanged { value in
+                        switch value {
+                        case .second(true, _):
+                            if !isHoldingActive && !isScrubbing && isPlaying {
+                                isHoldingActive = true
+                                onStartFastForward()
+                            }
+                        default:
+                            break
+                        }
+                    }
+                    .onEnded { _ in
+                        if isHoldingActive {
+                            isHoldingActive = false
+                            onStopFastForward()
+                        }
+                    }
+            )
+            .onDisappear {
+                if isHoldingActive {
+                    isHoldingActive = false
+                    onStopFastForward()
+                }
+            }
     }
 }
 

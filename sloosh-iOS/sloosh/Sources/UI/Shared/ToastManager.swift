@@ -62,7 +62,7 @@ struct ToastModifier: ViewModifier {
             if let toast = manager.currentToast {
                 ToastView(toast: toast)
                     .transition(.move(edge: .top).combined(with: .opacity).combined(with: .scale(scale: 0.9)))
-                    .padding(.top, 60) // Below dynamic island
+                    .padding(.top, 92) // Safely below dynamic island, status bar, and top header capsules
                     .zIndex(999)
             }
         }
