@@ -3,6 +3,32 @@ import UIKit
 import AVKit
 import Combine
 
+// MARK: - In-Memory Session Progress Store for Clips (Current session only)
+
+@MainActor
+final class ClipSessionProgressStore {
+    static let shared = ClipSessionProgressStore()
+    private var positions: [String: Double] = [:]
+
+    private init() {}
+
+    func savePosition(_ seconds: Double, for clipId: String) {
+        positions[clipId] = seconds
+    }
+
+    func getPosition(for clipId: String) -> Double? {
+        return positions[clipId]
+    }
+
+    func clearPosition(for clipId: String) {
+        positions.removeValue(forKey: clipId)
+    }
+
+    func clearAll() {
+        positions.removeAll()
+    }
+}
+
 // MARK: - Isolated Clip Progress Observer (Prevents full-feed re-renders during playback)
 
 @MainActor
@@ -51,6 +77,7 @@ final class ClipPlaybackCoordinator: ObservableObject {
     private var playerTimeStatusObserver: NSKeyValueObservation?
     private var resolvePlaybackTask: Task<Void, Never>?
     private var didPerformInitialSeek: Bool = false
+    private var targetStartSec: Double = 0.0
     private var retryCount: Int = 0
     private(set) var wasUserPaused: Bool = false
 
@@ -72,7 +99,6 @@ final class ClipPlaybackCoordinator: ObservableObject {
         isResolving = true
         isVideoReady = false
         hasError = false
-        clipProgress = 0.0
         isScrubbing = false
         isFastForwarding = false
         didPerformInitialSeek = false
@@ -81,7 +107,22 @@ final class ClipPlaybackCoordinator: ObservableObject {
             wasUserPaused = false
         }
         isPlaying = true
-        AppDiagnostics.shared.log("[ClipPlayback] setupPlayer clip=\(clip.id) title=\(clip.title) startTime=\(clip.startTime)")
+
+        // Restore in-session playback position if user returned to this clip
+        let savedSec = ClipSessionProgressStore.shared.getPosition(for: clip.id)
+        if let savedSec, savedSec > (clip.startTime + 0.5), savedSec < (clip.endTime - 0.75) {
+            targetStartSec = savedSec
+            AppDiagnostics.shared.log("[ClipPlayback] Resuming clip=\(clip.id) from saved session time=\(savedSec)s (startTime was \(clip.startTime)s)")
+        } else {
+            targetStartSec = clip.startTime
+        }
+
+        // Initialize progressObserver immediately so the scrubber bar matches restored progress
+        let clipDur = max(1.0, clip.endTime - clip.startTime)
+        let elapsed = max(0.0, targetStartSec - clip.startTime)
+        clipProgress = min(1.0, max(0.0, elapsed / clipDur))
+
+        AppDiagnostics.shared.log("[ClipPlayback] setupPlayer clip=\(clip.id) title=\(clip.title) targetStartSec=\(targetStartSec)")
 
         resolvePlaybackTask = Task { [weak self] in
             guard let self else { return }
@@ -150,8 +191,9 @@ final class ClipPlaybackCoordinator: ObservableObject {
 
                     if !self.didPerformInitialSeek {
                         self.didPerformInitialSeek = true
-                        if clip.startTime > 0.5 {
-                            let sTime = CMTime(seconds: clip.startTime, preferredTimescale: 600)
+                        let seekSec = self.targetStartSec
+                        if seekSec > 0.5 {
+                            let sTime = CMTime(seconds: seekSec, preferredTimescale: 600)
                             player.seek(to: sTime, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
                                 guard let self else { return }
                                 self.isVideoReady = true
@@ -219,8 +261,14 @@ final class ClipPlaybackCoordinator: ObservableObject {
             let elapsed = max(0.0, currentSec - clip.startTime)
             self.clipProgress = min(1.0, max(0.0, elapsed / clipDur))
 
+            // Keep session position fresh in memory
+            if currentSec > (clip.startTime + 0.5) && currentSec < (clip.endTime - 0.75) {
+                ClipSessionProgressStore.shared.savePosition(currentSec, for: clip.id)
+            }
+
             // Loop back to start or auto-advance when video reaches or exceeds clip.endTime
             if currentSec >= clip.endTime {
+                ClipSessionProgressStore.shared.clearPosition(for: clip.id)
                 if let onClipEnded = self.onClipEnded {
                     onClipEnded()
                 } else {
@@ -266,6 +314,8 @@ final class ClipPlaybackCoordinator: ObservableObject {
     }
 
     func seekToStart(for clip: MovieClip) {
+        ClipSessionProgressStore.shared.clearPosition(for: clip.id)
+        targetStartSec = clip.startTime
         guard let player = activePlayer else { return }
         let sTime = CMTime(seconds: clip.startTime, preferredTimescale: 600)
         player.seek(to: sTime, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
@@ -429,6 +479,9 @@ final class ClipPlaybackCoordinator: ObservableObject {
         let targetSec = clip.startTime + (clipDur * max(0.0, min(1.0, progress)))
         let time = CMTime(seconds: targetSec, preferredTimescale: 600)
         clipProgress = progress
+        if targetSec > (clip.startTime + 0.5) && targetSec < (clip.endTime - 0.75) {
+            ClipSessionProgressStore.shared.savePosition(targetSec, for: clip.id)
+        }
         player.seek(to: time, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self, weak player] _ in
             guard let self, let player else { return }
             self.isScrubbing = false
@@ -473,7 +526,21 @@ final class ClipPlaybackCoordinator: ObservableObject {
         }
     }
 
+    func saveCurrentSessionPosition() {
+        guard let clip = currentClip,
+              let player = activePlayer else { return }
+        let currentSec = CMTimeGetSeconds(player.currentTime())
+        guard currentSec.isFinite else { return }
+        if currentSec > (clip.startTime + 0.5) && currentSec < (clip.endTime - 0.75) {
+            ClipSessionProgressStore.shared.savePosition(currentSec, for: clip.id)
+            AppDiagnostics.shared.log("[ClipSessionProgress] Saved session progress for clip=\(clip.id): \(currentSec)s")
+        } else if currentSec >= (clip.endTime - 0.75) {
+            ClipSessionProgressStore.shared.clearPosition(for: clip.id)
+        }
+    }
+
     func pause(userInitiated: Bool = false) {
+        saveCurrentSessionPosition()
         activePlayer?.pause()
         isPlaying = false
         isFastForwarding = false
@@ -498,6 +565,7 @@ final class ClipPlaybackCoordinator: ObservableObject {
     }
 
     func cleanupActivePlayerOnly() {
+        saveCurrentSessionPosition()
         resolvePlaybackTask?.cancel()
         resolvePlaybackTask = nil
         playerStatusObserver?.invalidate()
@@ -561,6 +629,8 @@ public struct ClipsFeedView: View {
 
     @State private var isInterfaceHidden: Bool = false
     @State private var currentClipId: String? = ClipsRepository.shared.clips.first?.id
+    @State private var settledClipId: String? = ClipsRepository.shared.clips.first?.id
+    @State private var scrollPhase: ScrollPhase = .idle
     @State private var clipToDelete: MovieClip?
     @State private var showDeleteConfirmation: Bool = false
     @State private var isDeletingClip: Bool = false
@@ -574,8 +644,9 @@ public struct ClipsFeedView: View {
     @State private var scrollOffsetY: CGFloat = 0.0
 
     private var currentVisibleClip: MovieClip? {
-        if let currentClipId {
-            return clipsRepo.clips.first(where: { $0.id == currentClipId })
+        let targetId = settledClipId ?? currentClipId
+        if let targetId {
+            return clipsRepo.clips.first(where: { $0.id == targetId })
         }
         return clipsRepo.clips.first
     }
@@ -673,7 +744,8 @@ public struct ClipsFeedView: View {
                 playback.pause(userInitiated: false)
             } else {
                 if !showsMessenger && selectedDetailsMedia == nil && fullPlayerConfig == nil && showCommentsForClip == nil {
-                    if let clipId = currentClipId, let clip = clipsRepo.clips.first(where: { $0.id == clipId }) {
+                    let targetId = settledClipId ?? currentClipId
+                    if let clipId = targetId, let clip = clipsRepo.clips.first(where: { $0.id == clipId }) {
                         playback.resumeIfAppropriate(for: clip)
                     }
                 }
@@ -692,7 +764,8 @@ public struct ClipsFeedView: View {
             playback.pause(userInitiated: false)
         }
         .onReceive(NotificationCenter.default.publisher(for: NSNotification.Name("SlooshResumeClipsPlayback"))) { _ in
-            if let clipId = currentClipId, let clip = clipsRepo.clips.first(where: { $0.id == clipId }) {
+            let targetId = settledClipId ?? currentClipId
+            if let clipId = targetId, let clip = clipsRepo.clips.first(where: { $0.id == clipId }) {
                 playback.resumeIfAppropriate(for: clip, allClips: clipsRepo.clips)
             } else {
                 ensurePlaybackStarted()
@@ -1019,12 +1092,14 @@ public struct ClipsFeedView: View {
                 let nextClip = clipsRepo.clips.first(where: { $0.id != clip.id })
                 try await clipsRepo.deleteClip(clipId: clip.id)
                 ToastManager.shared.show(title: "Момент удалён", icon: "trash.fill", iconColor: .red)
-                if currentClipId == clip.id {
+                if (settledClipId == clip.id) || (currentClipId == clip.id) {
                     if let nextClip {
                         currentClipId = nextClip.id
+                        settledClipId = nextClip.id
                         playback.setupPlayer(for: nextClip, allClips: clipsRepo.clips)
                     } else {
                         currentClipId = nil
+                        settledClipId = nil
                         playback.cleanup()
                     }
                 }
@@ -1059,6 +1134,7 @@ public struct ClipsFeedView: View {
                     await clipsRepo.fetchFeed(forceRefresh: true)
                     if let first = clipsRepo.clips.first {
                         currentClipId = first.id
+                        settledClipId = first.id
                         playback.setupPlayer(for: first, allClips: clipsRepo.clips)
                     }
                 }
@@ -1093,11 +1169,32 @@ public struct ClipsFeedView: View {
         }
         .scrollTargetBehavior(.paging)
         .scrollPosition(id: $currentClipId)
+        .onScrollPhaseChange { oldPhase, newPhase in
+            scrollPhase = newPhase
+            AppDiagnostics.shared.log("[ClipsFeedView] Scroll phase changed from \(oldPhase) to \(newPhase)")
+            if newPhase == .idle {
+                handleClipSettled()
+            }
+        }
         .onScrollGeometryChange(for: CGFloat.self) { geometry in
             geometry.contentOffset.y
         } action: { oldOffset, newOffset in
             if abs(newOffset - scrollOffsetY) > 0.5 {
                 scrollOffsetY = newOffset
+            }
+            // If user is actively dragging away from the current page (> 60pt), pause playback of the current clip
+            if scrollPhase.isScrolling && height > 0 {
+                let remainder = newOffset.truncatingRemainder(dividingBy: height)
+                let distFromPage = min(remainder, height - remainder)
+                if distFromPage > 60.0 {
+                    if playback.isPlaying && !playback.wasUserPaused {
+                        playback.pause(userInitiated: false)
+                    }
+                }
+            }
+            // If scroll offset landed exactly on a page boundary while idle
+            if !scrollPhase.isScrolling && isOffsetAtRest(newOffset, height: height) {
+                handleClipSettled()
             }
         }
         .ignoresSafeArea()
@@ -1105,11 +1202,38 @@ public struct ClipsFeedView: View {
             await clipsRepo.fetchFeed(forceRefresh: true)
         }
         .onChange(of: currentClipId) { oldId, newId in
-            AppDiagnostics.shared.log("[ClipsFeedView] currentClipId changed from \(String(describing: oldId)) to \(String(describing: newId))")
+            AppDiagnostics.shared.log("[ClipsFeedView] currentClipId changed from \(String(describing: oldId)) to \(String(describing: newId)) (phase: \(scrollPhase))")
             isTextExpanded = false
-            guard let newId = newId, newId != oldId, let clip = clipsRepo.clips.first(where: { $0.id == newId }) else { return }
-            playback.setupPlayer(for: clip, allClips: clipsRepo.clips)
+            // CRITICAL: Only transition playback if scroll is completely idle / settled!
+            // During active dragging (tracking / decelerating), do NOT start the new clip!
+            if !scrollPhase.isScrolling {
+                handleClipSettled()
+            }
         }
+    }
+
+    private func handleClipSettled() {
+        guard let targetId = currentClipId,
+              let clip = clipsRepo.clips.first(where: { $0.id == targetId }) else { return }
+
+        if targetId == settledClipId {
+            // User scrolled slightly and snapped back to same clip: unpause if was paused during drag
+            if !playback.isPlaying && !playback.wasUserPaused {
+                playback.playWithCurrentSpeed()
+            }
+            return
+        }
+
+        AppDiagnostics.shared.log("[ClipsFeedView] Settled on new clip=\(clip.id) title=\(clip.title)")
+        settledClipId = targetId
+        playback.setupPlayer(for: clip, allClips: clipsRepo.clips)
+    }
+
+    private func isOffsetAtRest(_ offset: CGFloat, height: CGFloat) -> Bool {
+        guard height > 0 else { return true }
+        let remainder = offset.truncatingRemainder(dividingBy: height)
+        let dist = min(remainder, height - remainder)
+        return dist < 1.0
     }
 
     private func setupPlaybackCallbacks() {
@@ -1123,16 +1247,22 @@ public struct ClipsFeedView: View {
     }
 
     private func advanceToNextClip() {
-        guard let currentClipId,
-              let currentIndex = clipsRepo.clips.firstIndex(where: { $0.id == currentClipId }) else { return }
+        guard let activeId = settledClipId ?? currentClipId,
+              let currentIndex = clipsRepo.clips.firstIndex(where: { $0.id == activeId }) else { return }
+        let nextClip: MovieClip
         if currentIndex + 1 < clipsRepo.clips.count {
-            let nextClip = clipsRepo.clips[currentIndex + 1]
-            withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) {
-                self.currentClipId = nextClip.id
-            }
+            nextClip = clipsRepo.clips[currentIndex + 1]
         } else if let first = clipsRepo.clips.first {
-            withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) {
-                self.currentClipId = first.id
+            nextClip = first
+        } else {
+            return
+        }
+        withAnimation(.spring(response: 0.45, dampingFraction: 0.85)) {
+            self.currentClipId = nextClip.id
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            if self.settledClipId != nextClip.id && self.currentClipId == nextClip.id {
+                self.handleClipSettled()
             }
         }
     }
@@ -1140,7 +1270,7 @@ public struct ClipsFeedView: View {
     // MARK: - Clip Card
 
     private func clipCard(_ clip: MovieClip, width: CGFloat, height: CGFloat, topSafeArea: CGFloat, bottomSafeArea: CGFloat) -> some View {
-        let isCurrent = (currentClipId == clip.id) || (currentClipId == nil && clip.id == clipsRepo.clips.first?.id)
+        let isCurrent = (settledClipId == clip.id) || (settledClipId == nil && (currentClipId == clip.id || clip.id == clipsRepo.clips.first?.id))
 
         // The vertical player area extends precisely to the phone's status bar
         let topClearance: CGFloat = topSafeArea
@@ -2068,10 +2198,14 @@ private struct ClipGestureSurfaceRepresentable: UIViewRepresentable {
 extension ClipsFeedView {
 
     private func ensurePlaybackStarted() {
-        if let clipId = currentClipId, let clip = clipsRepo.clips.first(where: { $0.id == clipId }) {
+        let targetId = settledClipId ?? currentClipId
+        if let clipId = targetId, let clip = clipsRepo.clips.first(where: { $0.id == clipId }) {
+            settledClipId = clip.id
+            currentClipId = clip.id
             playback.resume(for: clip, allClips: clipsRepo.clips)
         } else if let first = clipsRepo.clips.first {
             currentClipId = first.id
+            settledClipId = first.id
             playback.setupPlayer(for: first, allClips: clipsRepo.clips)
         }
     }
