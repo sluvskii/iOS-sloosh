@@ -1305,7 +1305,6 @@ public struct ClipsFeedView: View {
             .buttonStyle(.glassPress)
             .contentShape(HeartShape())
             .glassEffect(.regular.interactive(), in: HeartShape())
-            .clipShape(HeartShape())
             .scaleEffect(isLiked ? 1.08 : 1.0)
             .animation(.spring(response: 0.28, dampingFraction: 0.55), value: isLiked)
 
@@ -1339,7 +1338,6 @@ public struct ClipsFeedView: View {
             .buttonStyle(.glassPress)
             .contentShape(SpeechBubbleShape(), eoFill: true)
             .glassEffect(.regular.interactive(), in: SpeechBubbleShape())
-            .clipShape(SpeechBubbleShape(), style: FillStyle(eoFill: true))
 
             Text("\(clip.commentsCount)")
                 .font(.system(size: 11, weight: .semibold))
@@ -1367,7 +1365,6 @@ public struct ClipsFeedView: View {
             .buttonStyle(.glassPress)
             .contentShape(ShareArrowShape())
             .glassEffect(.regular.interactive(), in: ShareArrowShape())
-            .clipShape(ShareArrowShape())
 
             Text("Поделиться")
                 .font(.system(size: 9.0, weight: .semibold))
@@ -1396,7 +1393,6 @@ public struct ClipsFeedView: View {
             .buttonStyle(.glassPress)
             .contentShape(AspectExpandShape())
             .glassEffect(.regular.interactive(), in: AspectExpandShape())
-            .clipShape(AspectExpandShape())
 
             Text(currentScaleMode == .fit ? "9:16" : "В кадре")
                 .font(.system(size: 9.0, weight: .semibold))
