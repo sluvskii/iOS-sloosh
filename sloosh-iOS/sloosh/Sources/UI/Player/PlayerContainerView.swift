@@ -102,7 +102,9 @@ struct PlayerContainerView: View {
                 scheduleAutoHide()
             }
         }
-        .sheet(isPresented: $vm.isShowingClipTrimmer) {
+        .sheet(isPresented: $vm.isShowingClipTrimmer, onDismiss: {
+            AppDelegate.lockToLandscape()
+        }) {
             ClipTrimmerSheetView(
                 mediaId: vm.tmdbId ?? vm.currentKpId ?? 0,
                 mediaType: vm.isMovie ? "movie" : "tv",
@@ -116,6 +118,7 @@ struct PlayerContainerView: View {
                 currentPlaybackTime: vm.currentTime,
                 totalDuration: vm.currentDuration,
                 streamUrl: vm.activeStreamUrlString,
+                headers: vm.activeHeaders,
                 iframeUrl: vm.activeIframeUrl,
                 kpId: vm.currentKpId,
                 tmdbId: vm.tmdbId

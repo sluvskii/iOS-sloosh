@@ -116,6 +116,7 @@ struct TopBarView: View {
         Button {
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
             vm.player?.pause()
+            AppDelegate.lockToPortrait()
             vm.isShowingClipTrimmer = true
         } label: {
             Image(systemName: "scissors")

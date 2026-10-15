@@ -7,13 +7,30 @@ import UIKit
 final class PlayerHostingController<Content: View>: UIHostingController<Content> {
 
     var onDismissed: (() -> Void)?
+    var isTrimmerPresented: Bool = false {
+        didSet {
+            setNeedsUpdateOfSupportedInterfaceOrientations()
+        }
+    }
 
-    override var supportedInterfaceOrientations: UIInterfaceOrientationMask { .landscape }
-    override var preferredInterfaceOrientationForPresentation: UIInterfaceOrientation { .landscapeRight }
+    override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
+        if isTrimmerPresented || AppDelegate.orientationLock == .portrait {
+            return .portrait
+        }
+        return .landscape
+    }
+
+    override var preferredInterfaceOrientationForPresentation: UIInterfaceOrientation {
+        if isTrimmerPresented || AppDelegate.orientationLock == .portrait {
+            return .portrait
+        }
+        return .landscapeRight
+    }
+
     override var shouldAutorotate: Bool { true }
 
-    override var prefersStatusBarHidden: Bool { true }
-    override var prefersHomeIndicatorAutoHidden: Bool { true }
+    override var prefersStatusBarHidden: Bool { !isTrimmerPresented }
+    override var prefersHomeIndicatorAutoHidden: Bool { !isTrimmerPresented }
 
     override init(rootView: Content) {
         super.init(rootView: rootView)
@@ -36,7 +53,11 @@ final class PlayerHostingController<Content: View>: UIHostingController<Content>
         super.viewWillAppear(animated)
         overrideUserInterfaceStyle = .dark
         view.tintColor = .white
-        AppDelegate.lockToLandscape()
+        if isTrimmerPresented || AppDelegate.orientationLock == .portrait {
+            AppDelegate.lockToPortrait()
+        } else {
+            AppDelegate.lockToLandscape()
+        }
     }
 
     override func viewWillDisappear(_ animated: Bool) {
