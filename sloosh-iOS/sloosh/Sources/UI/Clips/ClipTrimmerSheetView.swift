@@ -740,6 +740,7 @@ public struct ClipTrimmerSheetView: View {
                 translationName: translationName,
                 startTime: startTime,
                 endTime: endTime,
+                caption: "",
                 authorId: "",
                 authorName: "",
                 streamUrl: streamUrl,
