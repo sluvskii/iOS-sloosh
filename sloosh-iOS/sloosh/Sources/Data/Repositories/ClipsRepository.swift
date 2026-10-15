@@ -14,10 +14,14 @@ public final class ClipsRepository: ObservableObject {
 
     private let databaseBaseURL = "https://sloosh-77434-default-rtdb.firebaseio.com"
     private let likedClipsStorageKey = "sloosh_liked_clips_v1"
+    private let viewedClipsStorageKey = "sloosh_viewed_clips_v1"
     private let feedDiskCacheKey = "sloosh_cached_clips_v1"
+
+    @Published public private(set) var viewedClipIds: Set<String> = []
 
     private init() {
         loadLikedClipsFromDisk()
+        loadViewedClipsFromDisk()
         loadFeedFromDisk()
     }
 
@@ -205,6 +209,64 @@ public final class ClipsRepository: ObservableObject {
         }
 
         return (newIsLiked, currentCount)
+    }
+
+    // MARK: - Views Tracking (Single view per user/device deduplicated)
+
+    private func loadViewedClipsFromDisk() {
+        if let array = UserDefaults.standard.stringArray(forKey: viewedClipsStorageKey) {
+            self.viewedClipIds = Set(array)
+        }
+    }
+
+    private func saveViewedClipsToDisk() {
+        UserDefaults.standard.set(Array(viewedClipIds), forKey: viewedClipsStorageKey)
+    }
+
+    public func isViewed(clipId: String) -> Bool {
+        viewedClipIds.contains(clipId)
+    }
+
+    public func registerView(for clipId: String) async {
+        guard !clipId.isEmpty else { return }
+
+        // Deduplication: count only once per clip per user/device
+        if isViewed(clipId: clipId) {
+            return
+        }
+
+        viewedClipIds.insert(clipId)
+        saveViewedClipsToDisk()
+
+        var currentViews = 1
+        if let idx = clips.firstIndex(where: { $0.id == clipId }) {
+            clips[idx].viewsCount += 1
+            currentViews = clips[idx].viewsCount
+            saveFeedToDisk(clips)
+        }
+
+        let userId = AuthRepository.shared.currentUser?.id ?? "guest_\(UIDevice.current.identifierForVendor?.uuidString ?? "user")"
+
+        // Network sync in background (RTDB)
+        Task {
+            // 1. Record per-user view marker
+            if let userViewUrl = await makeURL(path: "media_stats/clips_views/\(clipId)/\(userId)") {
+                var req = URLRequest(url: userViewUrl)
+                req.httpMethod = "PUT"
+                req.httpBody = try? JSONEncoder().encode(Int64(Date().timeIntervalSince1970 * 1000))
+                req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                _ = try? await URLSession.shared.data(for: req)
+            }
+
+            // 2. Update clips/\(clipId)/viewsCount
+            if let countUrl = await makeURL(path: "media_stats/clips/\(clipId)/viewsCount") {
+                var countReq = URLRequest(url: countUrl)
+                countReq.httpMethod = "PUT"
+                countReq.httpBody = try? JSONEncoder().encode(currentViews)
+                countReq.setValue("application/json", forHTTPHeaderField: "Content-Type")
+                _ = try? await URLSession.shared.data(for: countReq)
+            }
+        }
     }
 
     // MARK: - Comments

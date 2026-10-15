@@ -17,17 +17,34 @@ public struct UserProfileDetailView: View {
     @State private var tagCopiedToast: Bool = false
     @State private var activeMomentClip: MovieClip? = nil
     @State private var showDirectChat: Bool = false
+    @State private var scrollOffsetY: CGFloat = 0.0
+
+    @AppStorage("cardDensity") private var cardDensity: CardDensity = .regular
+    @AppStorage("cardStyle") private var cardStyle: CardStyle = .classic
 
     @Environment(\.dismiss) private var dismiss
     @StateObject private var repo = MessengerRepository.shared
     @StateObject private var authRepo = AuthRepository.shared
     @StateObject private var clipsRepo = ClipsRepository.shared
 
-    private let gridColumns = [
-        GridItem(.flexible(), spacing: 12),
-        GridItem(.flexible(), spacing: 12),
-        GridItem(.flexible(), spacing: 12)
-    ]
+    private var columns: [GridItem] {
+        let spacing: CGFloat = cardDensity == .compact ? 8 : 16
+        let minWidth: CGFloat = cardDensity == .compact ? 95 : 105
+        return [GridItem(.adaptive(minimum: minWidth), spacing: spacing)]
+    }
+
+    private var gridSpacing: CGFloat {
+        cardDensity == .compact ? 8 : 16
+    }
+
+    private var contentPadding: CGFloat {
+        cardDensity == .compact ? 12 : 16
+    }
+
+    private var navBarBlurOpacity: Double {
+        let progress = max(0, scrollOffsetY) / 30.0
+        return min(1.0, Double(progress))
+    }
 
     public init(user: SlooshUser, chatContext: Bool = false) {
         self.initialUser = user
@@ -66,8 +83,13 @@ public struct UserProfileDetailView: View {
                     // 3. Published Moments Grid (Standard 3-column poster grid matching app design)
                     publishedClipsSection
                 }
-                .padding(.horizontal, 16)
+                .padding(.horizontal, contentPadding)
                 .padding(.bottom, 100)
+            }
+            .onScrollGeometryChange(for: CGFloat.self) { geometry in
+                geometry.contentOffset.y
+            } action: { _, newOffset in
+                scrollOffsetY = newOffset
             }
             .scrollDismissesKeyboard(.interactively)
         }
@@ -117,7 +139,15 @@ public struct UserProfileDetailView: View {
         .navigationDestination(isPresented: $showDirectChat) {
             ChatDetailView(peerUser: user)
         }
-        .fullScreenCover(item: $activeMomentClip) { clip in
+        .fullScreenCover(item: $activeMomentClip, onDismiss: {
+            activeMomentClip = nil
+            Task {
+                let fresh = await clipsRepo.fetchClips(forAuthorId: user.id)
+                await MainActor.run {
+                    self.authorClips = fresh
+                }
+            }
+        }) { clip in
             ClipsFeedView(customClips: authorClips, initialClipId: clip.id, isModal: true)
                 .preferredColorScheme(.dark)
                 .environment(\.colorScheme, .dark)
@@ -158,6 +188,9 @@ public struct UserProfileDetailView: View {
             VariableBlurView(tintColor: .black, tintOpacity: 0.88)
                 .padding(.bottom, -30)
                 .ignoresSafeArea(edges: .top)
+                .opacity(navBarBlurOpacity)
+                .animation(.easeInOut(duration: 0.2), value: navBarBlurOpacity)
+                .allowsHitTesting(false)
         )
     }
 
@@ -165,13 +198,13 @@ public struct UserProfileDetailView: View {
 
     private var heroHeaderView: some View {
         VStack(spacing: 12) {
-            // Large Avatar with presence badge
+            // Large Avatar without online indicator (status is displayed in text below)
             SlooshAvatarView(
                 avatarSource: user.avatarUrl,
                 fallbackText: user.displayTitle,
                 size: 96,
-                showOnline: true,
-                isOnline: livePresence.isOnline
+                showOnline: false,
+                isOnline: false
             )
 
             VStack(spacing: 5) {
@@ -238,7 +271,7 @@ public struct UserProfileDetailView: View {
     private var actionsBarView: some View {
         if !isCurrentSessionUser {
             HStack(spacing: 12) {
-                // Primary Action Button: "Написать"
+                // Primary Action Button: "Написать" (matching DetailsView playButton style)
                 Button {
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                     if chatContext {
@@ -249,19 +282,22 @@ public struct UserProfileDetailView: View {
                 } label: {
                     HStack(spacing: 8) {
                         Image(systemName: "bubble.left.and.bubble.right.fill")
-                            .font(.system(size: 14, weight: .bold))
+                            .font(.system(size: 15, weight: .bold))
 
                         Text("Написать")
-                            .font(.system(size: 14, weight: .bold))
+                            .font(.system(size: 16, weight: .heavy))
                     }
-                    .foregroundStyle(.white)
+                    .foregroundStyle(Color.black)
                     .padding(.horizontal, 28)
-                    .frame(height: 42)
-                    .background(Color.slooshAccent)
-                    .clipShape(Capsule())
-                    .glassEffect(.regular.interactive(), in: Capsule())
+                    .frame(height: 48)
+                    .background(
+                        Capsule()
+                            .fill(Color.white.opacity(0.94))
+                    )
+                    .glassEffect(.regular.interactive(), in: .capsule)
+                    .shadow(color: Color.black.opacity(0.22), radius: 10, x: 0, y: 4)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.glassPress)
 
                 // Delete Chat (if opened from chat context)
                 if chatContext {
@@ -271,7 +307,7 @@ public struct UserProfileDetailView: View {
                         Image(systemName: "trash.fill")
                             .font(.system(size: 14))
                             .foregroundStyle(Color.red)
-                            .frame(width: 42, height: 42)
+                            .frame(width: 48, height: 48)
                             .glassEffect(.regular.interactive(), in: Circle())
                     }
                     .buttonStyle(.plain)
@@ -291,7 +327,7 @@ public struct UserProfileDetailView: View {
                 }
                 .foregroundStyle(Color.red)
                 .padding(.horizontal, 20)
-                .frame(height: 40)
+                .frame(height: 42)
                 .glassEffect(.regular.interactive(), in: Capsule())
             }
             .buttonStyle(.plain)
@@ -299,7 +335,7 @@ public struct UserProfileDetailView: View {
         }
     }
 
-    // MARK: - Published Clips Shelf (3-Column Poster Grid)
+    // MARK: - Published Clips Shelf (Adaptive Poster Grid Matching App Catalog)
 
     private var publishedClipsSection: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -325,7 +361,7 @@ public struct UserProfileDetailView: View {
             // Content
             if isLoadingClips {
                 // Skeleton loading state
-                LazyVGrid(columns: gridColumns, spacing: 14) {
+                LazyVGrid(columns: columns, spacing: gridSpacing) {
                     ForEach(0..<6, id: \.self) { _ in
                         VStack(alignment: .leading, spacing: 6) {
                             RoundedRectangle(cornerRadius: 12, style: .continuous)
@@ -365,10 +401,10 @@ public struct UserProfileDetailView: View {
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, 40)
             } else {
-                // Standard 3-column poster grid matching app design
-                LazyVGrid(columns: gridColumns, spacing: 14) {
+                // Adaptive grid respecting cardDensity & cardStyle
+                LazyVGrid(columns: columns, spacing: gridSpacing) {
                     ForEach(authorClips) { clip in
-                        AuthorMomentPosterCard(clip: clip) {
+                        AuthorMomentPosterCard(clip: clip, cardStyle: cardStyle) {
                             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                             self.activeMomentClip = clip
                         }
@@ -379,10 +415,11 @@ public struct UserProfileDetailView: View {
     }
 }
 
-// MARK: - Author Moment Poster Card (Standard 2:3 Movie Poster Design)
+// MARK: - Author Moment Poster Card (Standard Movie Poster Design with Views & Catalog Style)
 
 private struct AuthorMomentPosterCard: View {
     let clip: MovieClip
+    let cardStyle: CardStyle
     let onTap: () -> Void
 
     private var thumbnailURL: URL? {
@@ -397,114 +434,164 @@ private struct AuthorMomentPosterCard: View {
         return nil
     }
 
+    private func formatViewsCount(_ count: Int) -> String {
+        if count >= 1_000_000 {
+            return String(format: "%.1fM", Double(count) / 1_000_000.0)
+        } else if count >= 1_000 {
+            return String(format: "%.1fK", Double(count) / 1_000.0)
+        } else {
+            return "\(count)"
+        }
+    }
+
     var body: some View {
         Button {
             onTap()
         } label: {
-            VStack(alignment: .leading, spacing: 6) {
-                // 1. Poster Container (2:3 Aspect Ratio)
-                ZStack(alignment: .topTrailing) {
-                    // Image
-                    if let url = thumbnailURL {
-                        AsyncCachedImage(url: url) {
-                            Color.white.opacity(0.06)
-                                .aspectRatio(2/3, contentMode: .fit)
-                                .shimmer()
-                        } content: { img in
-                            Image(uiImage: img)
-                                .resizable()
-                                .aspectRatio(2/3, contentMode: .fill)
-                        } fallback: {
-                            Color.white.opacity(0.06)
-                                .aspectRatio(2/3, contentMode: .fit)
-                                .overlay(
-                                    Image(systemName: "film")
-                                        .font(.system(size: 22))
-                                        .foregroundStyle(.white.opacity(0.3))
-                                )
-                        }
-                    } else {
-                        Color.white.opacity(0.06)
-                            .aspectRatio(2/3, contentMode: .fit)
-                            .overlay(
-                                Image(systemName: "film")
-                                    .font(.system(size: 22))
-                                    .foregroundStyle(.white.opacity(0.3))
-                            )
-                    }
-
-                    // Scrim gradient for contrast
-                    LinearGradient(
-                        stops: [
-                            .init(color: .black.opacity(0.4), location: 0.0),
-                            .init(color: .clear, location: 0.35),
-                            .init(color: .clear, location: 0.65),
-                            .init(color: .black.opacity(0.6), location: 1.0)
-                        ],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-
-                    // Top-Right Duration Pill
-                    Text(clip.formattedDuration)
-                        .font(.system(size: 9.5, weight: .bold))
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, 5)
-                        .padding(.vertical, 2.5)
-                        .glassEffect(.regular, in: Capsule())
-                        .padding(5)
-
-                    // Bottom Row: Center Play & Bottom-Left Likes
-                    VStack {
-                        Spacer()
-                        HStack {
-                            if clip.likesCount > 0 {
-                                HStack(spacing: 2.5) {
-                                    Image(systemName: "heart.fill")
-                                        .font(.system(size: 8))
-                                        .foregroundStyle(.red)
-                                    Text("\(clip.likesCount)")
-                                        .font(.system(size: 9.5, weight: .bold))
-                                        .foregroundStyle(.white)
-                                }
-                                .padding(.horizontal, 5)
-                                .padding(.vertical, 2)
-                                .glassEffect(.regular, in: Capsule())
-                                .padding(5)
-                            }
-
-                            Spacer()
-
-                            Image(systemName: "play.fill")
-                                .font(.system(size: 8, weight: .bold))
-                                .foregroundStyle(.white)
-                                .frame(width: 20, height: 20)
-                                .glassEffect(.regular, in: Circle())
-                                .padding(5)
-                        }
-                    }
-                }
-                .aspectRatio(2/3, contentMode: .fit)
-                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-
-                // 2. Metadata Below Poster (Standard sloosh typography)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(clip.title)
-                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-
-                    Text(clip.subtitleInfo)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.white.opacity(0.55))
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                }
-                .padding(.horizontal, 2)
+            switch cardStyle {
+            case .classic:
+                classicBody
+            case .overlay:
+                overlayBody
             }
         }
         .buttonStyle(.cardPress)
+    }
+
+    private var posterImageView: some View {
+        Group {
+            if let url = thumbnailURL {
+                AsyncCachedImage(url: url) {
+                    Color.white.opacity(0.06)
+                        .aspectRatio(2/3, contentMode: .fit)
+                        .shimmer()
+                } content: { img in
+                    Image(uiImage: img)
+                        .resizable()
+                        .aspectRatio(2/3, contentMode: .fill)
+                } fallback: {
+                    posterFallback
+                }
+            } else {
+                posterFallback
+            }
+        }
+    }
+
+    private var posterFallback: some View {
+        Color.white.opacity(0.06)
+            .aspectRatio(2/3, contentMode: .fit)
+            .overlay(
+                Image(systemName: "film")
+                    .font(.system(size: 22))
+                    .foregroundStyle(.white.opacity(0.3))
+            )
+    }
+
+    // Views badge pill
+    private var viewsBadge: some View {
+        HStack(spacing: 3) {
+            Image(systemName: "eye.fill")
+                .font(.system(size: 8, weight: .bold))
+            Text(formatViewsCount(clip.viewsCount))
+                .font(.system(size: 9.5, weight: .bold))
+        }
+        .foregroundStyle(.white)
+        .padding(.horizontal, 5.5)
+        .padding(.vertical, 2.5)
+        .glassEffect(.regular, in: Capsule())
+        .padding(6)
+    }
+
+    // MARK: - Classic Layout (Metadata below poster)
+
+    private var classicBody: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            // 1. Poster Container
+            ZStack(alignment: .bottomLeading) {
+                posterImageView
+                    .aspectRatio(2/3, contentMode: .fill)
+
+                // Scrim at bottom of poster for views badge contrast
+                LinearGradient(
+                    colors: [.clear, .black.opacity(0.45)],
+                    startPoint: .center,
+                    endPoint: .bottom
+                )
+                .allowsHitTesting(false)
+
+                // Views badge at bottom-leading
+                viewsBadge
+            }
+            .aspectRatio(2/3, contentMode: .fit)
+            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+            // 2. Metadata Below Poster
+            VStack(alignment: .leading, spacing: 2) {
+                Text(clip.title)
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+
+                Text(clip.subtitleInfo)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.white.opacity(0.55))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+            .padding(.horizontal, 2)
+        }
+    }
+
+    // MARK: - Overlay Layout (Metadata inside poster matching HomeView overlay style)
+
+    private var overlayBody: some View {
+        ZStack(alignment: .bottomLeading) {
+            posterImageView
+                .aspectRatio(2/3, contentMode: .fill)
+
+            // Views badge at top-trailing
+            VStack {
+                HStack {
+                    Spacer()
+                    viewsBadge
+                }
+                Spacer()
+            }
+
+            // Progressive blur and dark gradient at bottom of poster
+            VariableBlurView(
+                maxBlurRadius: 2,
+                direction: .blurredBottomClearTop,
+                tintColor: .black,
+                tintOpacity: 0.78,
+                style: .dark
+            )
+            .frame(height: 52)
+            .frame(maxWidth: .infinity, alignment: .bottom)
+            .allowsHitTesting(false)
+
+            // Metadata inside poster
+            VStack(alignment: .leading, spacing: 2) {
+                Text(clip.title)
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(Color.white.opacity(0.95))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+
+                Text(clip.subtitleInfo)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(Color.white.opacity(0.65))
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+            }
+            .padding(.horizontal, 6)
+            .padding(.bottom, 6)
+        }
+        .aspectRatio(2/3, contentMode: .fit)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }

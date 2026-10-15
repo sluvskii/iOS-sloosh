@@ -1272,6 +1272,9 @@ public struct ClipsFeedView: View {
         AppDiagnostics.shared.log("[ClipsFeedView] Settled on new clip=\(clip.id) title=\(clip.title)")
         settledClipId = targetId
         playback.setupPlayer(for: clip, allClips: activeClips)
+        Task {
+            await clipsRepo.registerView(for: clip.id)
+        }
     }
 
     private func isOffsetAtRest(_ offset: CGFloat, height: CGFloat) -> Bool {
@@ -2254,10 +2257,16 @@ extension ClipsFeedView {
             settledClipId = clip.id
             currentClipId = clip.id
             playback.resume(for: clip, allClips: activeClips)
+            Task {
+                await clipsRepo.registerView(for: clip.id)
+            }
         } else if let first = activeClips.first {
             currentClipId = first.id
             settledClipId = first.id
             playback.setupPlayer(for: first, allClips: activeClips)
+            Task {
+                await clipsRepo.registerView(for: first.id)
+            }
         }
     }
 
