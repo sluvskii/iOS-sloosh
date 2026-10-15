@@ -74,7 +74,7 @@ public struct MovieClip: Identifiable, Codable, Equatable, Hashable, Sendable {
         translationName: String? = nil,
         startTime: Double,
         endTime: Double,
-        caption: String,
+        caption: String = "",
         authorId: String,
         authorName: String,
         authorAvatar: String? = nil,
