@@ -49,16 +49,30 @@ public struct MovieClip: Identifiable, Codable, Equatable, Hashable, Sendable {
     }
 
     public var formattedDuration: String {
-        let sec = Int(duration.rounded())
-        return "\(sec) сек"
+        let totalSec = Int(duration.rounded())
+        if totalSec >= 60 {
+            let m = totalSec / 60
+            let s = totalSec % 60
+            if s == 0 {
+                return "\(m) мин"
+            }
+            return "\(m) мин \(s) сек"
+        }
+        return "\(totalSec) сек"
     }
 
     public var timecodeRangeFormatted: String {
-        let startMin = Int(startTime) / 60
-        let startSec = Int(startTime) % 60
-        let endMin = Int(endTime) / 60
-        let endSec = Int(endTime) % 60
-        return String(format: "%02d:%02d – %02d:%02d", startMin, startSec, endMin, endSec)
+        func fmt(_ sec: Double) -> String {
+            let total = Int(sec)
+            let h = total / 3600
+            let m = (total % 3600) / 60
+            let s = total % 60
+            if h > 0 {
+                return String(format: "%d:%02d:%02d", h, m, s)
+            }
+            return String(format: "%02d:%02d", m, s)
+        }
+        return "\(fmt(startTime)) – \(fmt(endTime))"
     }
 
     public init(
