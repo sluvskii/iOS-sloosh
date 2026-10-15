@@ -26,6 +26,14 @@ struct PlayerPresenter: UIViewControllerRepresentable {
 
     func updateUIViewController(_ uiViewController: PlayerHostingController<PlayerContainerView>, context: Context) {
         uiViewController.overrideUserInterfaceStyle = .dark
+        if uiViewController.isTrimmerPresented != vm.isShowingClipTrimmer {
+            uiViewController.isTrimmerPresented = vm.isShowingClipTrimmer
+            if vm.isShowingClipTrimmer {
+                AppDelegate.lockToPortrait()
+            } else {
+                AppDelegate.lockToLandscape()
+            }
+        }
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(vm: vm, onDismiss: onDismiss) }
@@ -421,6 +429,10 @@ class PlayerViewModel: ObservableObject {
 
     public var activeStreamUrlString: String? {
         originalStreamURL?.absoluteString ?? currentPlaybackSourceURL?.absoluteString ?? targetDirectStreamUrl
+    }
+
+    public var activeHeaders: [String: String] {
+        customHeaders ?? currentHeaders
     }
 
     var rootMediaKey: String? {
