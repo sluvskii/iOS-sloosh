@@ -9,19 +9,25 @@ final class PlayerHostingController<Content: View>: UIHostingController<Content>
     var onDismissed: (() -> Void)?
     var isTrimmerPresented: Bool = false {
         didSet {
+            guard oldValue != isTrimmerPresented else { return }
+            if isTrimmerPresented {
+                AppDelegate.lockToPortrait()
+            } else {
+                AppDelegate.lockToLandscape()
+            }
             setNeedsUpdateOfSupportedInterfaceOrientations()
         }
     }
 
     override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
-        if isTrimmerPresented || AppDelegate.orientationLock == .portrait {
+        if isTrimmerPresented {
             return .portrait
         }
         return .landscape
     }
 
     override var preferredInterfaceOrientationForPresentation: UIInterfaceOrientation {
-        if isTrimmerPresented || AppDelegate.orientationLock == .portrait {
+        if isTrimmerPresented {
             return .portrait
         }
         return .landscapeRight
@@ -53,7 +59,7 @@ final class PlayerHostingController<Content: View>: UIHostingController<Content>
         super.viewWillAppear(animated)
         overrideUserInterfaceStyle = .dark
         view.tintColor = .white
-        if isTrimmerPresented || AppDelegate.orientationLock == .portrait {
+        if isTrimmerPresented {
             AppDelegate.lockToPortrait()
         } else {
             AppDelegate.lockToLandscape()
@@ -62,12 +68,16 @@ final class PlayerHostingController<Content: View>: UIHostingController<Content>
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
-        AppDelegate.lockToPortrait()
+        if isBeingDismissed {
+            AppDelegate.lockToPortrait()
+        }
     }
 
     override func viewDidDisappear(_ animated: Bool) {
         super.viewDidDisappear(animated)
-        AppDelegate.lockToPortrait()
-        onDismissed?()
+        if isBeingDismissed {
+            AppDelegate.lockToPortrait()
+            onDismissed?()
+        }
     }
 }
