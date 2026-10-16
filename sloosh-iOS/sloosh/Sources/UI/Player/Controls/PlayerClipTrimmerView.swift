@@ -221,17 +221,21 @@ struct PlayerClipTrimmerView: View {
 
             ZStack(alignment: .leading) {
                 // 1. БАЗОВАЯ ПОДЛОЖКА С ОБЛОЖКОЙ ФИЛЬМА (Исключает черную полосу даже без загруженных кадров)
-                if let backdrop = vm.backdropUrl, !backdrop.isEmpty {
-                    AsyncCachedImage(urlString: backdrop) { uiImage in
-                        Image(uiImage: uiImage)
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .frame(width: totalW, height: 56)
-                            .clipped()
-                            .overlay(Color.black.opacity(0.35))
-                    } placeholder: {
-                        Color.black.opacity(0.85)
-                    }
+                if let backdropStr = vm.backdropUrl ?? vm.posterUrl, let url = URL(string: backdropStr) {
+                    AsyncCachedImage(
+                        url: url,
+                        placeholder: {
+                            Color.black.opacity(0.85)
+                        },
+                        content: { uiImage in
+                            Image(uiImage: uiImage)
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: totalW, height: 56)
+                                .clipped()
+                                .overlay(Color.black.opacity(0.35))
+                        }
+                    )
                 } else {
                     Color.black.opacity(0.85)
                 }
