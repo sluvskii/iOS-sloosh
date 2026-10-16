@@ -1500,6 +1500,19 @@ class PlayerViewModel: ObservableObject {
         }
     }
 
+    func seekClipFast(to seconds: Double) {
+        guard let player else { return }
+        let time = CMTime(seconds: seconds, preferredTimescale: 600)
+        let tol = CMTime(seconds: 0.75, preferredTimescale: 600)
+        player.seek(to: time, toleranceBefore: tol, toleranceAfter: tol) { [weak self] finished in
+            if finished {
+                Task { @MainActor [weak self] in
+                    self?.captureClipFrameIfNeeded(at: seconds)
+                }
+            }
+        }
+    }
+
     func publishClip() async throws {
         guard !isClipPublishing else { return }
         isClipPublishing = true
