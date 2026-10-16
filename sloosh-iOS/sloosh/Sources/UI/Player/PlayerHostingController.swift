@@ -7,36 +7,18 @@ import UIKit
 final class PlayerHostingController<Content: View>: UIHostingController<Content> {
 
     var onDismissed: (() -> Void)?
-    var isTrimmerPresented: Bool = false {
-        didSet {
-            guard oldValue != isTrimmerPresented else { return }
-            if isTrimmerPresented {
-                AppDelegate.lockToPortrait()
-            } else {
-                AppDelegate.lockToLandscape()
-            }
-            setNeedsUpdateOfSupportedInterfaceOrientations()
-        }
-    }
-
     override var supportedInterfaceOrientations: UIInterfaceOrientationMask {
-        if isTrimmerPresented {
-            return .portrait
-        }
-        return .landscape
+        .landscape
     }
 
     override var preferredInterfaceOrientationForPresentation: UIInterfaceOrientation {
-        if isTrimmerPresented {
-            return .portrait
-        }
-        return .landscapeRight
+        .landscapeRight
     }
 
     override var shouldAutorotate: Bool { true }
 
-    override var prefersStatusBarHidden: Bool { !isTrimmerPresented }
-    override var prefersHomeIndicatorAutoHidden: Bool { !isTrimmerPresented }
+    override var prefersStatusBarHidden: Bool { true }
+    override var prefersHomeIndicatorAutoHidden: Bool { true }
 
     override init(rootView: Content) {
         super.init(rootView: rootView)
@@ -59,11 +41,7 @@ final class PlayerHostingController<Content: View>: UIHostingController<Content>
         super.viewWillAppear(animated)
         overrideUserInterfaceStyle = .dark
         view.tintColor = .white
-        if isTrimmerPresented {
-            AppDelegate.lockToPortrait()
-        } else {
-            AppDelegate.lockToLandscape()
-        }
+        AppDelegate.lockToLandscape()
     }
 
     override func viewWillDisappear(_ animated: Bool) {

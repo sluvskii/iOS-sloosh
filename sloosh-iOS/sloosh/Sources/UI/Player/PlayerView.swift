@@ -26,14 +26,6 @@ struct PlayerPresenter: UIViewControllerRepresentable {
 
     func updateUIViewController(_ uiViewController: PlayerHostingController<PlayerContainerView>, context: Context) {
         uiViewController.overrideUserInterfaceStyle = .dark
-        if uiViewController.isTrimmerPresented != vm.isShowingClipTrimmer {
-            uiViewController.isTrimmerPresented = vm.isShowingClipTrimmer
-            if vm.isShowingClipTrimmer {
-                AppDelegate.lockToPortrait()
-            } else {
-                AppDelegate.lockToLandscape()
-            }
-        }
     }
 
     func makeCoordinator() -> Coordinator { Coordinator(vm: vm, onDismiss: onDismiss) }
@@ -377,7 +369,15 @@ class PlayerViewModel: ObservableObject {
 
     // MARK: - PiP
     @Published var isPiPActive = false
-    @Published var isShowingClipTrimmer = false
+
+    // MARK: - In-Player Clip Trimmer
+    @Published var isClipMode = false
+    @Published var clipStartTime: Double = 0.0
+    @Published var clipEndTime: Double = 0.0
+    @Published var isClipPublishing: Bool = false
+    @Published var showClipPublishOverlay: Bool = false
+    @Published var clipCaption: String = ""
+    @Published var clipPublishErrorMessage: String? = nil
     var pipController: AVPictureInPictureController?
 
     // MARK: - Meta
@@ -1353,6 +1353,114 @@ class PlayerViewModel: ObservableObject {
         } else {
             pip.startPictureInPicture()
         }
+    }
+
+    // MARK: - In-Player Clip Trimmer Actions
+
+    func enterClipMode() {
+        let current = (currentTime.isFinite && !currentTime.isNaN && currentTime >= 0) ? currentTime : 0
+        let dur = currentDuration > 0 ? currentDuration : (current + 600)
+        let s = max(0.0, current - 10.0)
+        let e = min(dur, s + 30.0)
+        clipStartTime = s
+        clipEndTime = max(s + 3.0, e)
+        clipCaption = ""
+        clipPublishErrorMessage = nil
+        showClipPublishOverlay = false
+        isClipMode = true
+        seekClip(to: clipStartTime)
+        if !isPlaying {
+            player?.play()
+            isPlaying = true
+        }
+    }
+
+    func exitClipMode() {
+        showClipPublishOverlay = false
+        isClipMode = false
+    }
+
+    func setClipDurationPreset(_ seconds: Double) {
+        let dur = currentDuration > 0 ? currentDuration : (clipStartTime + seconds + 60)
+        clipEndTime = min(dur, clipStartTime + seconds)
+        seekClip(to: clipStartTime)
+    }
+
+    func nudgeClipStart(by delta: Double) {
+        let newStart = max(0.0, min(clipEndTime - 3.0, clipStartTime + delta))
+        clipStartTime = newStart
+        seekClip(to: newStart)
+    }
+
+    func nudgeClipEnd(by delta: Double) {
+        let maxLimit = currentDuration > 0 ? currentDuration : (clipStartTime + 600)
+        let newEnd = min(maxLimit, max(clipStartTime + 3.0, clipEndTime + delta))
+        clipEndTime = newEnd
+        seekClip(to: max(clipStartTime, newEnd - 2.0))
+    }
+
+    func shiftClip(by delta: Double) {
+        let dur = clipEndTime - clipStartTime
+        let maxLimit = currentDuration > 0 ? currentDuration : (clipEndTime + 600)
+        var newStart = clipStartTime + delta
+        var newEnd = newStart + dur
+
+        if newStart < 0 {
+            newStart = 0
+            newEnd = newStart + dur
+        }
+        if newEnd > maxLimit {
+            newEnd = maxLimit
+            newStart = max(0, newEnd - dur)
+        }
+
+        clipStartTime = newStart
+        clipEndTime = newEnd
+        seekClip(to: newStart)
+    }
+
+    func seekClip(to seconds: Double) {
+        guard let player else { return }
+        let time = CMTime(seconds: seconds, preferredTimescale: 600)
+        let tol = CMTime(seconds: 0.1, preferredTimescale: 600)
+        player.seek(to: time, toleranceBefore: tol, toleranceAfter: tol)
+    }
+
+    func publishClip() async throws {
+        guard !isClipPublishing else { return }
+        isClipPublishing = true
+        clipPublishErrorMessage = nil
+        defer { isClipPublishing = false }
+
+        let user = AuthRepository.shared.currentUser
+        let authorId = user?.id ?? "guest_\(UIDevice.current.identifierForVendor?.uuidString ?? "user")"
+        let authorName = (user?.displayName?.isEmpty == false ? user?.displayName : nil) ?? user?.displayTitle ?? "Зритель"
+        let authorAvatar = user?.photoURL
+
+        let clip = MovieClip(
+            mediaId: tmdbId ?? currentKpId ?? 0,
+            mediaType: isMovie ? "movie" : "tv",
+            title: fallbackTitle,
+            posterPath: posterUrl,
+            backdropPath: backdropUrl,
+            logoPath: logoUrl,
+            season: currentSeason,
+            episode: currentEpisode,
+            translationName: currentTranslationName,
+            startTime: clipStartTime,
+            endTime: clipEndTime,
+            caption: clipCaption.trimmingCharacters(in: .whitespacesAndNewlines),
+            authorId: authorId,
+            authorName: authorName,
+            authorAvatar: authorAvatar,
+            streamUrl: activeStreamUrlString,
+            iframeUrl: activeIframeUrl,
+            kpId: currentKpId,
+            tmdbId: tmdbId
+        )
+
+        try await ClipsRepository.shared.publishClip(clip)
+        exitClipMode()
     }
 
     func setPlaybackRate(_ rate: Float) {
@@ -2457,6 +2565,12 @@ class PlayerViewModel: ObservableObject {
                 if self.isUserSeeking || self.isInitialSeekPending { return }
                 let t = player.currentTime().seconds
                 if t.isFinite && !t.isNaN && t >= 0 {
+                    if self.isClipMode && !self.isUserSeeking {
+                        if t >= self.clipEndTime || t < self.clipStartTime - 0.5 {
+                            self.seekClip(to: self.clipStartTime)
+                            return
+                        }
+                    }
                     if abs(self.currentTime - t) >= 0.1 {
                         self.currentTime = t
                     }
