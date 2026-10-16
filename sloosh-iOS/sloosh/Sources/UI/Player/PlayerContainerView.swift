@@ -61,26 +61,32 @@ struct PlayerContainerView: View {
                     .allowsHitTesting(false)
                     .zIndex(5)
 
-                // 7. Контролы
-                let isSeeking = multiSeekSeconds != nil || isInteracting
-                PlayerControlsView(
-                    vm: vm,
-                    onDismiss: onDismiss,
-                    onBackgroundTap: {
-                        withAnimation(hideAnimation) {
-                            showControls = false
+                // 7. Контролы или Режим создания момента
+                if vm.isClipMode {
+                    PlayerClipTrimmerView(vm: vm)
+                        .zIndex(7)
+                        .transition(.opacity.combined(with: .scale(scale: 0.98)))
+                } else {
+                    let isSeeking = multiSeekSeconds != nil || isInteracting
+                    PlayerControlsView(
+                        vm: vm,
+                        onDismiss: onDismiss,
+                        onBackgroundTap: {
+                            withAnimation(hideAnimation) {
+                                showControls = false
+                            }
+                            hideTask?.cancel()
+                        },
+                        isInteracting: $isInteracting,
+                        showControls: showControls,
+                        isSeeking: isSeeking,
+                        onInteraction: {
+                            resetHideTimer()
                         }
-                        hideTask?.cancel()
-                    },
-                    isInteracting: $isInteracting,
-                    showControls: showControls,
-                    isSeeking: isSeeking,
-                    onInteraction: {
-                        resetHideTimer()
-                    }
-                )
-                .allowsHitTesting(showControls)
-                .zIndex(6)
+                    )
+                    .allowsHitTesting(showControls)
+                    .zIndex(6)
+                }
             }
         }
         .environment(\.colorScheme, .dark)
@@ -102,28 +108,6 @@ struct PlayerContainerView: View {
                 scheduleAutoHide()
             }
         }
-        .sheet(isPresented: $vm.isShowingClipTrimmer, onDismiss: {
-            AppDelegate.lockToLandscape()
-        }) {
-            ClipTrimmerSheetView(
-                mediaId: vm.tmdbId ?? vm.currentKpId ?? 0,
-                mediaType: vm.isMovie ? "movie" : "tv",
-                title: vm.fallbackTitle,
-                posterPath: vm.posterUrl,
-                backdropPath: vm.backdropUrl,
-                logoPath: vm.logoUrl,
-                season: vm.currentSeason,
-                episode: vm.currentEpisode,
-                translationName: vm.currentTranslationName,
-                currentPlaybackTime: vm.currentTime,
-                totalDuration: vm.currentDuration,
-                streamUrl: vm.activeStreamUrlString,
-                headers: vm.activeHeaders,
-                iframeUrl: vm.activeIframeUrl,
-                kpId: vm.currentKpId,
-                tmdbId: vm.tmdbId
-            )
-        }
         .gesture(
             MagnificationGesture()
                 .onEnded { val in
@@ -141,25 +125,29 @@ struct PlayerContainerView: View {
     // MARK: - Gesture layer
 
     private var gestureLayer: some View {
-        HStack(spacing: 0) {
-            // Левая половина — -10с
-            Color.clear
-                .contentShape(Rectangle())
-                .onTapGesture { handleTap(side: .left) }
+        Group {
+            if !vm.isClipMode {
+                HStack(spacing: 0) {
+                    // Левая половина — -10с
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture { handleTap(side: .left) }
 
-            // Правая половина — +10с
-            Color.clear
-                .contentShape(Rectangle())
-                .onTapGesture { handleTap(side: .right) }
-        }
-        .playerGestures(
-            onInteractionBegan: {
-                isInteracting = true
-            },
-            onInteractionEnded: {
-                isInteracting = false
+                    // Правая половина — +10с
+                    Color.clear
+                        .contentShape(Rectangle())
+                        .onTapGesture { handleTap(side: .right) }
+                }
+                .playerGestures(
+                    onInteractionBegan: {
+                        isInteracting = true
+                    },
+                    onInteractionEnded: {
+                        isInteracting = false
+                    }
+                )
             }
-        )
+        }
     }
 
     private func handleTap(side: TapSide) {

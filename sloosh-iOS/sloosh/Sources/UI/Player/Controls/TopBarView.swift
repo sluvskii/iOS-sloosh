@@ -115,9 +115,9 @@ struct TopBarView: View {
     private var clipButton: some View {
         Button {
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-            vm.player?.pause()
-            AppDelegate.lockToPortrait()
-            vm.isShowingClipTrimmer = true
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                vm.enterClipMode()
+            }
         } label: {
             Image(systemName: "scissors")
                 .font(.system(size: 17, weight: .semibold))
