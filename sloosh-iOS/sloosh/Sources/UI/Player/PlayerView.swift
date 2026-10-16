@@ -298,6 +298,25 @@ class PlayerViewModel: ObservableObject {
     private static let sharedCIContext = CIContext(options: [.useSoftwareRenderer: false])
     @Published var isLocalPlayback: Bool = false
 
+    // MARK: - Video Output for live frames (Clip trimmer & scrubbing)
+    private var videoOutput: AVPlayerItemVideoOutput?
+    @Published var liveClipFrames: [Double: UIImage] = [:]
+
+    func captureClipFrameIfNeeded(at seconds: Double) {
+        guard isClipMode, let videoOutput, let player, let item = player.currentItem else { return }
+        let itemTime = item.currentTime()
+        guard let pixelBuffer = videoOutput.copyPixelBuffer(forItemTime: itemTime, itemTimeForDisplay: nil) else {
+            return
+        }
+        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+        guard let cgImage = Self.sharedCIContext.createCGImage(ciImage, from: ciImage.extent) else { return }
+        let uiImage = UIImage(cgImage: cgImage)
+        let roundedSec = round(seconds * 2.0) / 2.0
+        if liveClipFrames[roundedSec] == nil {
+            liveClipFrames[roundedSec] = uiImage
+        }
+    }
+
     func setupImageGenerator(asset: AVAsset) {
         let gen = AVAssetImageGenerator(asset: asset)
         gen.appliesPreferredTrackTransform = true
@@ -1403,6 +1422,7 @@ class PlayerViewModel: ObservableObject {
         if imageGenerator == nil, let asset = player?.currentItem?.asset {
             setupImageGenerator(asset: asset)
         }
+        liveClipFrames.removeAll()
         seekClip(to: clipStartTime)
         if !isPlaying {
             player?.play()
@@ -1458,7 +1478,13 @@ class PlayerViewModel: ObservableObject {
         guard let player else { return }
         let time = CMTime(seconds: seconds, preferredTimescale: 600)
         let tol = CMTime(seconds: 0.1, preferredTimescale: 600)
-        player.seek(to: time, toleranceBefore: tol, toleranceAfter: tol)
+        player.seek(to: time, toleranceBefore: tol, toleranceAfter: tol) { [weak self] finished in
+            if finished {
+                Task { @MainActor [weak self] in
+                    self?.captureClipFrameIfNeeded(at: seconds)
+                }
+            }
+        }
     }
 
     func publishClip() async throws {
@@ -2321,6 +2347,13 @@ class PlayerViewModel: ObservableObject {
         self.legibleDelegate = delegate
         self.legibleOutput = legible
 
+        let pixelBufferAttributes: [String: Any] = [
+            kCVPixelBufferPixelFormatTypeKey as String: Int(kCVPixelFormatType_32BGRA)
+        ]
+        let vOutput = AVPlayerItemVideoOutput(pixelBufferAttributes: pixelBufferAttributes)
+        playerItem.add(vOutput)
+        self.videoOutput = vOutput
+
         if let playbackEndObserver {
             NotificationCenter.default.removeObserver(playbackEndObserver)
             self.playbackEndObserver = nil
@@ -2597,6 +2630,7 @@ class PlayerViewModel: ObservableObject {
                             self.seekClip(to: self.clipStartTime)
                             return
                         }
+                        self.captureClipFrameIfNeeded(at: t)
                     }
                     if abs(self.currentTime - t) >= 0.1 {
                         self.currentTime = t
