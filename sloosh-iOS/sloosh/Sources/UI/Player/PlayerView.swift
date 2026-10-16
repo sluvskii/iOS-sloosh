@@ -308,6 +308,38 @@ class PlayerViewModel: ObservableObject {
         self.thumbnailCache.removeAll()
     }
 
+    func generateFilmstrip(times: [Double], completion: @escaping ([Double: UIImage]) -> Void) {
+        guard let asset = player?.currentItem?.asset else {
+            completion([:])
+            return
+        }
+        if imageGenerator == nil {
+            setupImageGenerator(asset: asset)
+        }
+        guard let gen = imageGenerator else {
+            completion([:])
+            return
+        }
+
+        let cmTimes = times.map { NSValue(time: CMTime(seconds: max(0, $0), preferredTimescale: 600)) }
+        var collected: [Double: UIImage] = [:]
+        let totalCount = cmTimes.count
+        var receivedCount = 0
+
+        gen.generateCGImagesAsynchronously(forTimes: cmTimes) { requestedTime, cgImage, actualTime, result, error in
+            DispatchQueue.main.async {
+                receivedCount += 1
+                if result == .succeeded, let cgImage {
+                    let img = UIImage(cgImage: cgImage)
+                    collected[requestedTime.seconds] = img
+                }
+                if receivedCount >= totalCount {
+                    completion(collected)
+                }
+            }
+        }
+    }
+
     func generateScrubThumbnail(at seconds: Double) {
         guard seconds >= 0 else { return }
         let cacheKey = Int(seconds / 5.0) * 5
@@ -1368,6 +1400,9 @@ class PlayerViewModel: ObservableObject {
         clipPublishErrorMessage = nil
         showClipPublishOverlay = false
         isClipMode = true
+        if imageGenerator == nil, let asset = player?.currentItem?.asset {
+            setupImageGenerator(asset: asset)
+        }
         seekClip(to: clipStartTime)
         if !isPlaying {
             player?.play()
@@ -2221,16 +2256,8 @@ class PlayerViewModel: ObservableObject {
                 playerItem.preferredMaximumResolution = res
             }
         }
-        // Превью кадров доступно только для локального (скачанного) или MP4 контента
-        let supportsThumbnails = isLocalFile || isMp4
-        self.isLocalPlayback = supportsThumbnails
-        if supportsThumbnails {
-            setupImageGenerator(asset: asset)
-        } else {
-            self.imageGenerator = nil
-            self.scrubPreviewImage = nil
-            self.thumbnailCache.removeAll()
-        }
+        self.isLocalPlayback = isLocalFile || isMp4
+        setupImageGenerator(asset: asset)
 
         if self.player == nil {
             let newPlayer = AVPlayer()

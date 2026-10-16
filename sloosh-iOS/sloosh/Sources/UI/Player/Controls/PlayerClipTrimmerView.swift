@@ -2,19 +2,31 @@ import SwiftUI
 import UIKit
 import AVFoundation
 
-// MARK: - Native iOS Video Trimmer (Нативная обрезка момента)
-// 1. Строго нативный стиль iOS / Apple Photos.
-// 2. Никакого визуального шума: нет названий фильмов, нет лишних кнопок и выдуманных тегов.
+// MARK: - Native Filmstrip Video Trimmer (Кинематографичная галерейная обрезка)
+// Вдохновлено Telegram и Apple Photos:
+// 1. Непрерывная лента РЕАЛЬНЫХ кадров (thumbnails) из видеопотока.
+// 2. Масштабирование дорожки (Pinch-to-zoom жестом двумя пальцами + кнопка зума 1x/2x/4x).
 // 3. Иконическая желтая рамка обрезки с тактильными ручками захвата.
-// 4. Плавная навигация и перемотка по дорожке без конфликтов жестов.
-// 5. Нативный системный лист публикации (Form + NavigationStack).
+// 4. Свободная перемотка и навигация по кадрам без конфликтов жестов.
+// 5. Нативный системный лист публикации без лишнего мусора и выдуманных тегов.
 
 struct PlayerClipTrimmerView: View {
     @ObservedObject var vm: PlayerViewModel
 
     @State private var isShowingPublishSheet: Bool = false
 
-    // Жесты на дорожке
+    // Кадры киноленты (Filmstrip thumbnails)
+    @State private var filmstripThumbnails: [Int: UIImage] = [:]
+    @State private var lastRequestedWindow: (start: Double, end: Double)? = nil
+    @State private var isGeneratingThumbnails: Bool = false
+
+    // Масштабирование дорожки (Span времени в секундах)
+    // 30с = микро-подгонка кадров, 60с = детальная сцена, 120с = стандарт, 300с = общий план
+    @State private var sceneSpan: Double = 90.0
+    @State private var basePinchSpan: Double? = nil
+    @State private var sceneCenterTime: Double = 0.0
+
+    // Координатор жестов на дорожке
     private enum DragTarget {
         case none
         case leftHandle
@@ -31,34 +43,34 @@ struct PlayerClipTrimmerView: View {
     // Иконический желтый цвет обрезки Apple Photos
     private let appleYellow = Color(red: 1.0, green: 0.83, blue: 0.04)
 
-    // Окно сцены: 120 секунд вокруг момента (достаточно для точной подгонки)
-    private let sceneSpan: Double = 120.0
+    // Количество кадров в ленте по ширине экрана
+    private let thumbnailSlotCount = 14
 
     var body: some View {
         ZStack {
-            // Градиенты сверху и снизу для читаемости
+            // Градиенты сверху и снизу для читаемости интерфейса поверх видео
             VStack {
                 LinearGradient(
-                    colors: [Color.black.opacity(0.8), .clear],
+                    colors: [Color.black.opacity(0.85), Color.black.opacity(0.3), .clear],
                     startPoint: .top,
                     endPoint: .bottom
                 )
-                .frame(height: 70)
+                .frame(height: 75)
                 .ignoresSafeArea()
 
                 Spacer()
 
                 LinearGradient(
-                    colors: [.clear, Color.black.opacity(0.85)],
+                    colors: [.clear, Color.black.opacity(0.4), Color.black.opacity(0.92)],
                     startPoint: .top,
                     endPoint: .bottom
                 )
-                .frame(height: 120)
+                .frame(height: 140)
                 .ignoresSafeArea()
             }
             .allowsHitTesting(false)
 
-            // Центральная область: тап для Play / Pause
+            // Центральная область: тап для Play / Pause видео
             Color.clear
                 .contentShape(Rectangle())
                 .onTapGesture {
@@ -69,27 +81,32 @@ struct PlayerClipTrimmerView: View {
                     if !vm.isPlaying {
                         Image(systemName: "play.fill")
                             .font(.system(size: 36))
-                            .foregroundStyle(.white.opacity(0.9))
-                            .frame(width: 64, height: 64)
+                            .foregroundStyle(.white.opacity(0.92))
+                            .frame(width: 68, height: 68)
                             .glassEffect(.regular.interactive(), in: .circle)
+                            .shadow(color: .black.opacity(0.4), radius: 10)
                             .transition(.scale.combined(with: .opacity))
                     }
                 }
 
-            // Основной интерфейс: Верхняя панель + Нижний нативный триммер
-            VStack {
-                // Нативная верхняя панель (Отмена / Длительность / Готово)
-                nativeTopBar
-                    .padding(.top, 14)
+            // Основной интерфейс: Верхняя шапка + Нижняя кинолента
+            VStack(spacing: 0) {
+                // Шапка: Отмена • Зум / Длительность • Готово
+                topBar
+                    .padding(.top, 12)
                     .padding(.horizontal, 20)
 
                 Spacer()
 
-                // Нативная нижняя дорожка обрезки
-                nativeTrimmerBar
+                // Нижний блок: Кинолента кадров с желтой рамкой
+                filmstripTrimmerSection
                     .padding(.horizontal, 20)
                     .padding(.bottom, 16)
             }
+        }
+        .onAppear {
+            sceneCenterTime = (vm.clipStartTime + vm.clipEndTime) / 2.0
+            loadThumbnailsForCurrentWindow()
         }
         .sheet(isPresented: $isShowingPublishSheet) {
             PublishMomentSheet(vm: vm)
@@ -97,11 +114,11 @@ struct PlayerClipTrimmerView: View {
         .animation(.spring(response: 0.3, dampingFraction: 0.85), value: vm.isPlaying)
     }
 
-    // MARK: - Native Top Bar
+    // MARK: - Top Bar
 
-    private var nativeTopBar: some View {
+    private var topBar: some View {
         HStack {
-            // Отмена
+            // Кнопка «Отмена»
             Button {
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                 withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
@@ -109,7 +126,7 @@ struct PlayerClipTrimmerView: View {
                 }
             } label: {
                 Text("Отмена")
-                    .font(.system(size: 17, weight: .regular))
+                    .font(.system(size: 16, weight: .regular))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 14)
                     .padding(.vertical, 8)
@@ -119,76 +136,159 @@ struct PlayerClipTrimmerView: View {
 
             Spacer()
 
-            // Длительность по центру (например: 0:30)
-            Text(formattedDuration(vm.clipEndTime - vm.clipStartTime))
-                .font(.system(size: 15, weight: .semibold, design: .monospaced))
-                .foregroundStyle(.white)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
-                .glassEffect(.regular, in: .capsule)
+            // Центральный блок: Длительность клипа + Кнопка зума (масштабирования)
+            HStack(spacing: 8) {
+                // Длительность
+                Text(formattedDuration(vm.clipEndTime - vm.clipStartTime))
+                    .font(.system(size: 15, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.white)
+
+                Text("•")
+                    .font(.system(size: 12))
+                    .foregroundStyle(.white.opacity(0.35))
+
+                // Кнопка масштабирования дорожки (1x / 2x / 4x)
+                Button {
+                    cycleZoom()
+                } label: {
+                    HStack(spacing: 3) {
+                        Image(systemName: "arrow.left.and.right")
+                            .font(.system(size: 11, weight: .bold))
+                        Text(currentZoomLabel)
+                            .font(.system(size: 12, weight: .bold))
+                    }
+                    .foregroundStyle(Color.slooshAccent)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 4)
+                    .background(Color.white.opacity(0.12))
+                    .clipShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .glassEffect(.regular, in: .capsule)
 
             Spacer()
 
-            // Готово
+            // Кнопка «Готово»
             Button {
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                 isShowingPublishSheet = true
             } label: {
                 Text("Готово")
-                    .font(.system(size: 17, weight: .semibold))
+                    .font(.system(size: 16, weight: .bold))
                     .foregroundStyle(.black)
                     .padding(.horizontal, 18)
                     .padding(.vertical, 8)
                     .background(Color.white)
                     .clipShape(Capsule())
+                    .shadow(color: Color.white.opacity(0.2), radius: 6)
             }
             .buttonStyle(.glassPress)
         }
     }
 
-    // MARK: - Native Trimmer Bar (Apple Photos Yellow Frame)
+    // MARK: - Filmstrip Trimmer Section
 
-    private var nativeTrimmerBar: some View {
+    private var filmstripTrimmerSection: some View {
+        VStack(spacing: 6) {
+            // Основная дорожка с реальными кадрами и желтой рамкой
+            filmstripTrackView
+                .frame(height: 54)
+                // Pinch-to-zoom двумя пальцами для масштабирования дорожки
+                .gesture(
+                    MagnificationGesture()
+                        .onChanged { scale in
+                            if basePinchSpan == nil {
+                                basePinchSpan = sceneSpan
+                            }
+                            guard let base = basePinchSpan, scale > 0.1 else { return }
+                            let target = max(20.0, min(360.0, base / Double(scale)))
+                            sceneSpan = target
+                        }
+                        .onEnded { _ in
+                            basePinchSpan = nil
+                            UISelectionFeedbackGenerator().selectionChanged()
+                            loadThumbnailsForCurrentWindow()
+                        }
+                )
+
+            // Подписи точного времени начала и конца под ручками
+            HStack {
+                Text(formatTimecode(vm.clipStartTime))
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.75))
+
+                Spacer()
+
+                Text("Щипок для зума кадров")
+                    .font(.system(size: 10, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.35))
+
+                Spacer()
+
+                Text(formatTimecode(vm.clipEndTime))
+                    .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.75))
+            }
+            .padding(.horizontal, 4)
+        }
+    }
+
+    // MARK: - Filmstrip Track View (Кадры из фильма + Желтая рамка Apple)
+
+    private var filmstripTrackView: some View {
         GeometryReader { proxy in
             let totalW = max(100.0, proxy.size.width)
-            let (wStart, wEnd) = activeWindow()
+            let (wStart, wEnd) = currentSceneWindow()
             let span = max(1.0, wEnd - wStart)
 
-            // Нормализованные координаты
+            // Координаты начала и конца клипа
             let startNorm = max(0.0, min(1.0, (vm.clipStartTime - wStart) / span))
-            let endNorm = max(startNorm + 0.03, min(1.0, (vm.clipEndTime - wStart) / span))
+            let endNorm = max(startNorm + 0.02, min(1.0, (vm.clipEndTime - wStart) / span))
 
             let startX = startNorm * totalW
             let endX = endNorm * totalW
             let frameW = max(34.0, endX - startX)
 
+            // Позиция бегунка
             let playNorm = max(0.0, min(1.0, (vm.currentTime - wStart) / span))
             let playX = max(0.0, min(totalW - 2.5, playNorm * totalW))
 
             ZStack(alignment: .leading) {
-                // 1. Фоновая дорожка
-                RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(Color.black.opacity(0.6))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .stroke(Color.white.opacity(0.12), lineWidth: 1)
-                    )
-
-                // Насечки ленты
+                // 1. ЛЕНТА КАДРОВ ИЗ ФИЛЬМА (Filmstrip Thumbnails)
                 HStack(spacing: 0) {
-                    ForEach(0..<20, id: \.self) { _ in
-                        Spacer()
-                        Rectangle()
-                            .fill(Color.white.opacity(0.1))
-                            .frame(width: 1, height: 16)
+                    ForEach(0..<thumbnailSlotCount, id: \.self) { slotIdx in
+                        if let img = filmstripThumbnails[slotIdx] {
+                            Image(uiImage: img)
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: totalW / CGFloat(thumbnailSlotCount), height: 54)
+                                .clipped()
+                        } else {
+                            // Аккуратный тёмный плейсхолдер с легким делением
+                            ZStack {
+                                Color.black.opacity(0.75)
+                                Rectangle()
+                                    .fill(Color.white.opacity(0.06))
+                                    .frame(width: 1)
+                                    .frame(maxHeight: .infinity)
+                            }
+                            .frame(width: totalW / CGFloat(thumbnailSlotCount), height: 54)
+                        }
                     }
-                    Spacer()
                 }
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .stroke(Color.white.opacity(0.18), lineWidth: 1)
+                )
 
-                // 2. Затемнение слева от рамки
+                // 2. Затемнение слева от рамки (кадры вне клипа приглушены)
                 if startX > 0 {
                     Rectangle()
-                        .fill(Color.black.opacity(0.55))
+                        .fill(Color.black.opacity(0.6))
                         .frame(width: startX)
                         .clipShape(
                             UnevenRoundedRectangle(
@@ -203,7 +303,7 @@ struct PlayerClipTrimmerView: View {
                 // 3. Затемнение справа от рамки
                 if endX < totalW {
                     Rectangle()
-                        .fill(Color.black.opacity(0.55))
+                        .fill(Color.black.opacity(0.6))
                         .frame(width: totalW - endX)
                         .offset(x: endX)
                         .clipShape(
@@ -216,7 +316,7 @@ struct PlayerClipTrimmerView: View {
                         )
                 }
 
-                // 4. Жёлтая рамка Apple Photos
+                // 4. ИКОНИЧЕСКАЯ ЖЕЛТАЯ РАМКА ОБРЕЗКИ APPLE PHOTOS
                 ZStack {
                     // Верхняя и нижняя границы
                     VStack {
@@ -229,7 +329,7 @@ struct PlayerClipTrimmerView: View {
                             .frame(height: 3)
                     }
 
-                    // Левая и правая ручки
+                    // Левая и правая ручки захвата
                     HStack {
                         // Левая ручка
                         ZStack {
@@ -269,16 +369,16 @@ struct PlayerClipTrimmerView: View {
                 .frame(width: frameW)
                 .offset(x: startX)
 
-                // 5. Белый бегунок воспроизведения
+                // 5. Белый бегунок текущего кадра (Playhead)
                 Rectangle()
                     .fill(Color.white)
-                    .frame(width: 2.5, height: 50)
-                    .shadow(color: .black.opacity(0.7), radius: 3)
+                    .frame(width: 2.5, height: 54)
+                    .shadow(color: .black.opacity(0.8), radius: 3)
                     .offset(x: playX)
                     .allowsHitTesting(false)
             }
             .contentShape(Rectangle())
-            // Единый координатор жестов
+            // Единый координатор жестов без конфликтов
             .gesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { val in
@@ -339,14 +439,17 @@ struct PlayerClipTrimmerView: View {
                     .onEnded { _ in
                         activeDragTarget = .none
                         UISelectionFeedbackGenerator().selectionChanged()
+                        syncSceneCenter()
+                        loadThumbnailsForCurrentWindow()
                     }
             )
         }
-        .frame(height: 50)
     }
 
-    private func activeWindow() -> (Double, Double) {
-        let center = (vm.clipStartTime + vm.clipEndTime) / 2.0
+    // MARK: - Scene Window & Thumbnails Loader
+
+    private func currentSceneWindow() -> (Double, Double) {
+        let center = sceneCenterTime > 0 ? sceneCenterTime : ((vm.clipStartTime + vm.clipEndTime) / 2.0)
         let maxLimit = vm.currentDuration > 0 ? vm.currentDuration : (center + sceneSpan)
         let half = sceneSpan / 2.0
         var wStart = max(0.0, center - half)
@@ -364,6 +467,70 @@ struct PlayerClipTrimmerView: View {
         return (wStart, max(wStart + 10.0, wEnd))
     }
 
+    private func syncSceneCenter() {
+        sceneCenterTime = (vm.clipStartTime + vm.clipEndTime) / 2.0
+    }
+
+    private func loadThumbnailsForCurrentWindow() {
+        let (wStart, wEnd) = currentSceneWindow()
+        if let last = lastRequestedWindow, abs(last.start - wStart) < 3.0 && abs(last.end - wEnd) < 3.0 {
+            return
+        }
+        lastRequestedWindow = (wStart, wEnd)
+
+        let span = max(1.0, wEnd - wStart)
+        let step = span / Double(thumbnailSlotCount)
+        var times: [Double] = []
+        var slotMap: [Double: Int] = [:]
+
+        for i in 0..<thumbnailSlotCount {
+            let t = wStart + (Double(i) + 0.5) * step
+            times.append(t)
+            slotMap[t] = i
+        }
+
+        vm.generateFilmstrip(times: times) { results in
+            for (t, img) in results {
+                // Находим ближайший слот
+                if let closestSlot = slotMap.min(by: { abs($0.key - t) < abs($1.key - t) })?.value {
+                    filmstripThumbnails[closestSlot] = img
+                }
+            }
+        }
+    }
+
+    // MARK: - Zoom Controls
+
+    private var currentZoomLabel: String {
+        if sceneSpan <= 35.0 {
+            return "4x"
+        } else if sceneSpan <= 75.0 {
+            return "2x"
+        } else if sceneSpan <= 150.0 {
+            return "1x"
+        } else {
+            return "0.5x"
+        }
+    }
+
+    private func cycleZoom() {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+            if sceneSpan <= 35.0 {
+                sceneSpan = 120.0 // 1x
+            } else if sceneSpan <= 75.0 {
+                sceneSpan = 30.0  // 4x
+            } else if sceneSpan <= 150.0 {
+                sceneSpan = 60.0  // 2x
+            } else {
+                sceneSpan = 120.0 // 1x
+            }
+        }
+        loadThumbnailsForCurrentWindow()
+    }
+
+    // MARK: - Formatters
+
     private func formattedDuration(_ dur: Double) -> String {
         let total = Int(round(max(1.0, dur)))
         let m = total / 60
@@ -372,6 +539,17 @@ struct PlayerClipTrimmerView: View {
             return String(format: "%d:%02d", m, s)
         }
         return String(format: "0:%02d", s)
+    }
+
+    private func formatTimecode(_ seconds: Double) -> String {
+        let total = Int(max(0, seconds))
+        let h = total / 3600
+        let m = (total % 3600) / 60
+        let s = total % 60
+        if h > 0 {
+            return String(format: "%d:%02d:%02d", h, m, s)
+        }
+        return String(format: "%02d:%02d", m, s)
     }
 }
 
