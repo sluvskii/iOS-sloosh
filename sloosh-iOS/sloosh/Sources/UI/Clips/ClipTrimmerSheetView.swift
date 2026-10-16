@@ -3,14 +3,13 @@ import UIKit
 import AVFoundation
 import Combine
 
-// MARK: - Flagship Apple Photos Gallery-Style Moment Creator
-// Features:
-// 1. Full-movie scene navigator (mini-map) to jump across the entire 2-hour movie effortlessly.
-// 2. Iconic Apple Photos yellow trim frame with tactile dual-grip handles (||), top/bottom bars, and dimmed outside scrim.
-// 3. Jitter-free coordinateSpace drag gestures with real-time zero-tolerance video seeking.
-// 4. Pinch-to-zoom (0.5x - 5x) + 1-tap zoom pills ([0.5x | 1x | 2x | 5x]).
-// 5. Default duration: 1 minute (60s), Maximum duration: 10 minutes (600s), Minimum: 3s.
-// 6. Real-time looping playback of the selected clip with play/pause overlay.
+// MARK: - Flagship Moment Creator (Создание момента)
+// Clean, intuitive, and tactile:
+// 1. Live looping video preview of the chosen moment with play/pause on tap.
+// 2. 1-tap duration presets (15 сек | 30 сек | 60 сек | 2 мин).
+// 3. Focused scene timeline with draggable start/end handles and whole-clip shifting.
+// 4. Precision step buttons ([-1с] / [+1с]) for exact frame-level accuracy.
+// 5. Minimalist Liquid Glass styling without visual clutter or tiny 2-hour sliders.
 
 public struct ClipTrimmerSheetView: View {
     let mediaId: Int
@@ -40,12 +39,11 @@ public struct ClipTrimmerSheetView: View {
     @State private var endTime: Double
     @State private var windowStart: Double
     @State private var windowEnd: Double
-    @State private var zoomLevel: Double = 1.0
+    @State private var activePreset: Int? = 30
     @State private var caption: String = ""
 
-    // Gesture tracking state (anchored to gesture start to prevent jitter)
+    // Drag Tracking State
     @State private var centerDragInitialStart: Double? = nil
-    @State private var pinchBaseSpan: Double? = nil
 
     // Player State
     @State private var player: AVPlayer? = nil
@@ -61,8 +59,7 @@ public struct ClipTrimmerSheetView: View {
     private let minDuration: Double = 3.0
     private let maxDuration: Double = 600.0 // 10 minutes maximum
 
-    // Iconic Apple Photos Edit Yellow Accent
-    private let trimYellow = Color(red: 1.0, green: 0.82, blue: 0.15)
+    private let sampleTags = ["#эпик", "#цитата", "#лучшиймомент", "#юмор", "#шедевр", "#мурашки"]
 
     public init(
         mediaId: Int,
@@ -103,18 +100,17 @@ public struct ClipTrimmerSheetView: View {
 
         let resolvedTotal = totalDuration > 0 ? totalDuration : max(currentPlaybackTime + 600.0, 1800.0)
 
-        // Default duration: 1 minute (60s) centered on current playback time
-        let initialStart = max(0.0, currentPlaybackTime - 10.0)
-        let initialEnd = min(resolvedTotal, initialStart + 60.0)
+        // Default: 30-second window centered around current playback time
+        let initialStart = max(0.0, currentPlaybackTime - 15.0)
+        let initialEnd = min(resolvedTotal, initialStart + 30.0)
 
         _startTime = State(initialValue: initialStart)
         _endTime = State(initialValue: max(initialStart + 3.0, initialEnd))
         _playbackSec = State(initialValue: initialStart)
 
-        // Scene window: 3 minutes (180s) at 1x zoom
-        let span = 180.0
+        // Focused scene window: ±45 seconds around the initial selection
         let wStart = max(0.0, initialStart - 30.0)
-        let wEnd = min(resolvedTotal, wStart + span)
+        let wEnd = min(resolvedTotal, initialEnd + 45.0)
         _windowStart = State(initialValue: wStart)
         _windowEnd = State(initialValue: max(wStart + 60.0, wEnd))
     }
@@ -155,22 +151,28 @@ public struct ClipTrimmerSheetView: View {
 
                 ScrollView(.vertical, showsIndicators: false) {
                     VStack(spacing: 16) {
-                        // 1. Subtle movie context bar
+                        // 1. Clean Movie Context Card
                         movieContextBar
 
-                        // 2. Video Preview Player (16:9, live stream, looped playback)
+                        // 2. Live Video Preview (16:9, Looped Playback)
                         videoPreviewCard
 
-                        // 3. Apple Photos Gallery-Style Trimmer Section
-                        galleryTrimmerSection
+                        // 3. Quick Duration Presets (15с | 30с | 60с | 2 мин)
+                        durationPresetsBar
 
-                        // 4. Caption Input
+                        // 4. Precision Trimmer Section with Step Nudge Buttons
+                        focusedTrimmerSection
+
+                        // 5. Caption Input & Hashtags
                         captionSection
 
-                        // 5. Error banner if any
+                        // 6. Error Banner if any
                         if let error = publishErrorMessage {
                             errorBanner(error)
                         }
+
+                        // 7. Prominent Publish Button
+                        publishButton
                     }
                     .padding(.horizontal, 16)
                     .padding(.top, 10)
@@ -187,27 +189,6 @@ public struct ClipTrimmerSheetView: View {
                     }
                     .font(.system(size: 16))
                     .foregroundStyle(.white.opacity(0.85))
-                }
-
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        publishMoment()
-                    } label: {
-                        if isPublishing {
-                            ProgressView()
-                                .tint(.black)
-                                .frame(width: 72, height: 32)
-                        } else {
-                            Text("Опубликовать")
-                                .font(.system(size: 14, weight: .bold))
-                                .foregroundStyle(Color.black)
-                                .padding(.horizontal, 14)
-                                .padding(.vertical, 7)
-                                .background(Capsule().fill(Color.white))
-                        }
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(isPublishing)
                 }
             }
         }
@@ -230,24 +211,37 @@ public struct ClipTrimmerSheetView: View {
     // MARK: - Movie Context Bar
 
     private var movieContextBar: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "film")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(trimYellow)
-
-            Text(title)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(.white)
-                .lineLimit(1)
+        HStack(spacing: 10) {
+            if let logoPath, !logoPath.isEmpty, let url = resolveImageUrl(logoPath) {
+                AsyncCachedImage(url: url) {
+                    Text(title)
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(.white)
+                } content: { img in
+                    Image(uiImage: img)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(maxHeight: 26, alignment: .leading)
+                } fallback: {
+                    Text(title)
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(.white)
+                }
+            } else {
+                Text(title)
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+            }
 
             if !movieSubtitle.isEmpty {
                 Text("•")
                     .font(.system(size: 12))
-                    .foregroundStyle(.white.opacity(0.4))
+                    .foregroundStyle(.white.opacity(0.35))
 
                 Text(movieSubtitle)
-                    .font(.system(size: 12, weight: .regular))
-                    .foregroundStyle(.white.opacity(0.6))
+                    .font(.system(size: 12, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.65))
                     .lineLimit(1)
             }
 
@@ -256,7 +250,7 @@ public struct ClipTrimmerSheetView: View {
         .padding(.horizontal, 4)
     }
 
-    // MARK: - Video Preview Card
+    // MARK: - Video Preview Card (16:9 Looped Playback)
 
     private var videoPreviewCard: some View {
         ZStack {
@@ -275,7 +269,7 @@ public struct ClipTrimmerSheetView: View {
                     ProgressView()
                         .tint(.white)
                         .scaleEffect(1.2)
-                    Text("Загрузка видео...")
+                    Text("Подготовка видео...")
                         .font(.system(size: 13, weight: .medium))
                         .foregroundStyle(.white.opacity(0.7))
                 }
@@ -289,11 +283,11 @@ public struct ClipTrimmerSheetView: View {
                     ZStack {
                         Circle()
                             .fill(Color.black.opacity(0.45))
-                            .frame(width: 56, height: 56)
+                            .frame(width: 54, height: 54)
                             .glassEffect(.regular.interactive(), in: Circle())
 
                         Image(systemName: isPlaying ? "pause.fill" : "play.fill")
-                            .font(.system(size: 24, weight: .semibold))
+                            .font(.system(size: 22, weight: .semibold))
                             .foregroundStyle(.white)
                             .offset(x: isPlaying ? 0 : 2)
                     }
@@ -303,19 +297,19 @@ public struct ClipTrimmerSheetView: View {
                 .animation(.easeInOut(duration: 0.2), value: isPlaying)
             }
 
-            // Top-Right Current Position Pill
+            // Top-Right Time Badge
             VStack {
                 HStack {
                     Spacer()
                     HStack(spacing: 4) {
                         Image(systemName: "clock")
-                            .font(.system(size: 10))
+                            .font(.system(size: 10, weight: .medium))
                         Text(formatSeconds(playbackSec))
                             .font(.system(size: 11, weight: .semibold).monospacedDigit())
                     }
                     .foregroundStyle(.white)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
+                    .padding(.horizontal, 9)
+                    .padding(.vertical, 4.5)
                     .glassEffect(.regular, in: Capsule())
                     .padding(10)
                 }
@@ -334,167 +328,168 @@ public struct ClipTrimmerSheetView: View {
         }
     }
 
-    // MARK: - Apple Photos Gallery-Style Trimmer Section
+    // MARK: - Duration Presets Bar
 
-    private var galleryTrimmerSection: some View {
+    private var durationPresetsBar: some View {
+        HStack(spacing: 8) {
+            Text("Длительность:")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(.white.opacity(0.6))
+
+            Spacer()
+
+            durationPresetChip(title: "15 сек", seconds: 15)
+            durationPresetChip(title: "30 сек", seconds: 30)
+            durationPresetChip(title: "60 сек", seconds: 60)
+            durationPresetChip(title: "2 мин", seconds: 120)
+        }
+        .padding(.horizontal, 4)
+    }
+
+    private func durationPresetChip(title: String, seconds: Int) -> some View {
+        let isSelected = (activePreset == seconds)
+        return Button {
+            applyDurationPreset(seconds: Double(seconds))
+        } label: {
+            Text(title)
+                .font(.system(size: 12, weight: .semibold, design: .rounded))
+                .foregroundStyle(isSelected ? Color.black : Color.white.opacity(0.85))
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(
+                    Capsule()
+                        .fill(isSelected ? Color.slooshAccent : Color.white.opacity(0.08))
+                )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func applyDurationPreset(seconds: Double) {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+            activePreset = Int(seconds)
+            let newEnd = min(totalMovieDuration, startTime + seconds)
+            endTime = newEnd
+
+            // Adjust window comfortably around the selection
+            ensureWindowComfortable()
+            seekTo(startTime, andPause: false)
+        }
+    }
+
+    // MARK: - Focused Trimmer Section
+
+    private var focusedTrimmerSection: some View {
         VStack(spacing: 12) {
-            // 1. Timestamps and Duration Pill Header
+            // Header with Start / Duration / End & Step Nudge Buttons
             HStack(alignment: .center) {
-                // Start Time
-                VStack(alignment: .leading, spacing: 2) {
+                // START TIME BLOCK WITH [-1с] / [+1с]
+                VStack(alignment: .leading, spacing: 4) {
                     Text("НАЧАЛО")
                         .font(.system(size: 9.5, weight: .bold))
                         .foregroundStyle(.white.opacity(0.45))
 
-                    Text(formatSeconds(startTime))
-                        .font(.system(size: 14, weight: .bold).monospacedDigit())
-                        .foregroundStyle(.white)
+                    HStack(spacing: 5) {
+                        Button {
+                            nudgeStart(delta: -1.0)
+                        } label: {
+                            Text("-1с")
+                                .font(.system(size: 10, weight: .semibold).monospacedDigit())
+                                .foregroundStyle(.white.opacity(0.85))
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 3)
+                                .background(Capsule().fill(Color.white.opacity(0.1)))
+                        }
+                        .buttonStyle(.plain)
+
+                        Text(formatSeconds(startTime))
+                            .font(.system(size: 13.5, weight: .bold).monospacedDigit())
+                            .foregroundStyle(.white)
+
+                        Button {
+                            nudgeStart(delta: 1.0)
+                        } label: {
+                            Text("+1с")
+                                .font(.system(size: 10, weight: .semibold).monospacedDigit())
+                                .foregroundStyle(.white.opacity(0.85))
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 3)
+                                .background(Capsule().fill(Color.white.opacity(0.1)))
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
 
                 Spacer()
 
-                // Center Duration Badge
+                // CENTER DURATION PILL
                 VStack(spacing: 2) {
-                    HStack(spacing: 5) {
+                    HStack(spacing: 4) {
                         Image(systemName: "scissors")
                             .font(.system(size: 11, weight: .bold))
                         Text(formattedDuration)
-                            .font(.system(size: 13, weight: .bold).monospacedDigit())
+                            .font(.system(size: 12.5, weight: .bold).monospacedDigit())
                     }
-                    .foregroundStyle(trimYellow)
+                    .foregroundStyle(Color.slooshAccent)
                     .padding(.horizontal, 10)
-                    .padding(.vertical, 4)
+                    .padding(.vertical, 4.5)
                     .background(Capsule().fill(Color.white.opacity(0.08)))
-
-                    Text("макс. 10 мин")
-                        .font(.system(size: 9.5, weight: .medium))
-                        .foregroundStyle(.white.opacity(0.4))
                 }
 
                 Spacer()
 
-                // End Time
-                VStack(alignment: .trailing, spacing: 2) {
+                // END TIME BLOCK WITH [-1с] / [+1с]
+                VStack(alignment: .trailing, spacing: 4) {
                     Text("КОНЕЦ")
                         .font(.system(size: 9.5, weight: .bold))
                         .foregroundStyle(.white.opacity(0.45))
 
-                    Text(formatSeconds(endTime))
-                        .font(.system(size: 14, weight: .bold).monospacedDigit())
-                        .foregroundStyle(.white)
-                }
-            }
-            .padding(.horizontal, 4)
+                    HStack(spacing: 5) {
+                        Button {
+                            nudgeEnd(delta: -1.0)
+                        } label: {
+                            Text("-1с")
+                                .font(.system(size: 10, weight: .semibold).monospacedDigit())
+                                .foregroundStyle(.white.opacity(0.85))
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 3)
+                                .background(Capsule().fill(Color.white.opacity(0.1)))
+                        }
+                        .buttonStyle(.plain)
 
-            // 2. Full Movie Mini-map Navigator (Jump anywhere in the entire film)
-            movieMiniMapNavigator
+                        Text(formatSeconds(endTime))
+                            .font(.system(size: 13.5, weight: .bold).monospacedDigit())
+                            .foregroundStyle(.white)
 
-            // 3. Zoom Scale Switcher (0.5x, 1x, 2x, 5x)
-            HStack(spacing: 6) {
-                Text("Масштаб сцены:")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.4))
-
-                Spacer()
-
-                ForEach([0.5, 1.0, 2.0, 5.0], id: \.self) { z in
-                    Button {
-                        setZoom(z)
-                    } label: {
-                        Text(zoomLabel(z))
-                            .font(.system(size: 11, weight: .semibold).monospacedDigit())
-                            .foregroundStyle(zoomLevel == z ? Color.black : Color.white.opacity(0.8))
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3.5)
-                            .background(
-                                Capsule()
-                                    .fill(zoomLevel == z ? trimYellow : Color.white.opacity(0.08))
-                            )
+                        Button {
+                            nudgeEnd(delta: 1.0)
+                        } label: {
+                            Text("+1с")
+                                .font(.system(size: 10, weight: .semibold).monospacedDigit())
+                                .foregroundStyle(.white.opacity(0.85))
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 3)
+                                .background(Capsule().fill(Color.white.opacity(0.1)))
+                        }
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
             }
             .padding(.horizontal, 4)
 
-            // 4. The Iconic Photos Yellow Frame Precision Trimmer
-            photosFilmstripTrackView
-                .frame(height: 68)
+            // Timeline Track
+            timelineTrackView
+                .frame(height: 54)
                 .coordinateSpace(name: "trimmerTrack")
-                .simultaneousGesture(
-                    MagnificationGesture()
-                        .onChanged { val in
-                            handlePinchZoom(scale: val)
-                        }
-                        .onEnded { _ in
-                            pinchBaseSpan = nil
-                        }
-                )
         }
         .padding(14)
         .background(Color.white.opacity(0.05))
         .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
     }
 
-    // MARK: - Movie Mini-map Navigator (Slim top bar to jump anywhere in the movie)
+    // MARK: - Timeline Track View
 
-    private var movieMiniMapNavigator: some View {
-        VStack(alignment: .leading, spacing: 4) {
-            GeometryReader { geo in
-                let totalW = geo.size.width
-                let movieDuration = max(1.0, totalMovieDuration)
-
-                let navStartX = CGFloat(windowStart / movieDuration) * totalW
-                let navEndX = CGFloat(windowEnd / movieDuration) * totalW
-                let navWidth = max(24.0, navEndX - navStartX)
-
-                ZStack(alignment: .leading) {
-                    // Movie track background
-                    RoundedRectangle(cornerRadius: 4, style: .continuous)
-                        .fill(Color.white.opacity(0.08))
-                        .frame(height: 18)
-
-                    // Current scene window indicator
-                    RoundedRectangle(cornerRadius: 4, style: .continuous)
-                        .fill(Color.white.opacity(0.25))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 4, style: .continuous)
-                                .stroke(trimYellow, lineWidth: 1.5)
-                        )
-                        .frame(width: min(totalW - navStartX, navWidth), height: 18)
-                        .offset(x: max(0, min(totalW - navWidth, navStartX)))
-                }
-                .contentShape(Rectangle())
-                .gesture(
-                    DragGesture(minimumDistance: 1)
-                        .onChanged { val in
-                            handleMiniMapDrag(locationDragX: val.location.x, totalWidth: totalW)
-                        }
-                )
-                .onTapGesture { loc in
-                    handleMiniMapDrag(locationDragX: loc.x, totalWidth: totalW)
-                }
-            }
-            .frame(height: 18)
-
-            HStack {
-                Text("00:00")
-                    .font(.system(size: 9).monospacedDigit())
-                    .foregroundStyle(.white.opacity(0.35))
-                Spacer()
-                Text("Весь фильм")
-                    .font(.system(size: 9, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.3))
-                Spacer()
-                Text(formatSeconds(totalMovieDuration))
-                    .font(.system(size: 9).monospacedDigit())
-                    .foregroundStyle(.white.opacity(0.35))
-            }
-        }
-    }
-
-    // MARK: - Photos Filmstrip Track View (Iconic Apple Yellow Box)
-
-    private var photosFilmstripTrackView: some View {
+    private var timelineTrackView: some View {
         GeometryReader { geo in
             let totalW = geo.size.width
             let span = max(10.0, windowEnd - windowStart)
@@ -503,36 +498,36 @@ public struct ClipTrimmerSheetView: View {
             let endX = CGFloat((endTime - windowStart) / span) * totalW
             let playheadX = CGFloat((playbackSec - windowStart) / span) * totalW
 
-            let handleWidth: CGFloat = 22.0
+            let handleWidth: CGFloat = 20.0
             let clampedStartX = max(0, min(totalW - (handleWidth * 2), startX))
             let clampedEndX = max(clampedStartX + (handleWidth * 2), min(totalW, endX))
             let clampedPlayheadX = max(0, min(totalW, playheadX))
 
             ZStack(alignment: .leading) {
-                // 1. Filmstrip Ruler Track
-                rulerBackgroundTrack(width: totalW, span: span)
+                // 1. Background Track with Subtle Hash Marks
+                rulerBackgroundTrack(width: totalW)
                     .contentShape(Rectangle())
                     .onTapGesture { loc in
                         let tappedTime = windowStart + Double(max(0, min(1, loc.x / totalW))) * span
                         seekTo(tappedTime, andPause: true)
                     }
 
-                // 2. Dimmed Outside Scrim (Left & Right)
+                // 2. Dimmed Outside Scrims
                 Rectangle()
                     .fill(Color.black.opacity(0.70))
-                    .frame(width: clampedStartX, height: 68)
+                    .frame(width: clampedStartX, height: 54)
                     .allowsHitTesting(false)
 
                 Rectangle()
                     .fill(Color.black.opacity(0.70))
-                    .frame(width: max(0, totalW - clampedEndX), height: 68)
+                    .frame(width: max(0, totalW - clampedEndX), height: 54)
                     .offset(x: clampedEndX)
                     .allowsHitTesting(false)
 
-                // 3. Center Highlight Area (Draggable to shift whole clip without changing duration)
+                // 3. Highlighted Selected Region (Draggable to shift whole clip)
                 Rectangle()
-                    .fill(trimYellow.opacity(0.12))
-                    .frame(width: max(handleWidth * 2, clampedEndX - clampedStartX), height: 68)
+                    .fill(Color.slooshAccent.opacity(0.15))
+                    .frame(width: max(handleWidth * 2, clampedEndX - clampedStartX), height: 54)
                     .offset(x: clampedStartX)
                     .contentShape(Rectangle())
                     .gesture(
@@ -545,33 +540,33 @@ public struct ClipTrimmerSheetView: View {
                             }
                     )
 
-                // 4. Top & Bottom Connecting Yellow Bars
+                // 4. Top & Bottom Border Lines
                 VStack {
                     Rectangle()
-                        .fill(trimYellow)
-                        .frame(width: max(handleWidth * 2, clampedEndX - clampedStartX), height: 3.5)
+                        .fill(Color.slooshAccent)
+                        .frame(width: max(handleWidth * 2, clampedEndX - clampedStartX), height: 2.5)
                         .offset(x: clampedStartX)
 
                     Spacer()
 
                     Rectangle()
-                        .fill(trimYellow)
-                        .frame(width: max(handleWidth * 2, clampedEndX - clampedStartX), height: 3.5)
+                        .fill(Color.slooshAccent)
+                        .frame(width: max(handleWidth * 2, clampedEndX - clampedStartX), height: 2.5)
                         .offset(x: clampedStartX)
                 }
-                .frame(height: 68)
+                .frame(height: 54)
                 .allowsHitTesting(false)
 
-                // 5. Playhead Needle (White Line with Drop Shadow)
+                // 5. White Needle Playhead
                 Capsule()
                     .fill(Color.white)
-                    .frame(width: 3, height: 68)
-                    .shadow(color: Color.black.opacity(0.75), radius: 2)
-                    .offset(x: clampedPlayheadX - 1.5)
+                    .frame(width: 2.5, height: 54)
+                    .shadow(color: Color.black.opacity(0.8), radius: 2)
+                    .offset(x: clampedPlayheadX - 1.25)
                     .allowsHitTesting(false)
 
-                // 6. Left Handle (Start: Rounded Left with Dual Grip Bars)
-                leftHandleView(handleWidth: handleWidth)
+                // 6. Left Handle (Start)
+                handleView(isLeft: true, handleWidth: handleWidth)
                     .offset(x: clampedStartX)
                     .gesture(
                         DragGesture(minimumDistance: 1, coordinateSpace: .named("trimmerTrack"))
@@ -580,8 +575,8 @@ public struct ClipTrimmerSheetView: View {
                             }
                     )
 
-                // 7. Right Handle (End: Rounded Right with Dual Grip Bars)
-                rightHandleView(handleWidth: handleWidth)
+                // 7. Right Handle (End)
+                handleView(isLeft: false, handleWidth: handleWidth)
                     .offset(x: clampedEndX - handleWidth)
                     .gesture(
                         DragGesture(minimumDistance: 1, coordinateSpace: .named("trimmerTrack"))
@@ -590,123 +585,199 @@ public struct ClipTrimmerSheetView: View {
                             }
                     )
             }
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
-                    .stroke(Color.white.opacity(0.1), lineWidth: 1)
+                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
             )
         }
     }
 
-    // MARK: - Left & Right Handles (Apple Photos Style)
-
-    private func leftHandleView(handleWidth: CGFloat) -> some View {
+    private func handleView(isLeft: Bool, handleWidth: CGFloat) -> some View {
         ZStack {
             Rectangle()
                 .fill(Color.clear)
-                .frame(width: 44, height: 68)
+                .frame(width: 40, height: 54)
                 .contentShape(Rectangle())
 
             UnevenRoundedRectangle(
-                topLeadingRadius: 10,
-                bottomLeadingRadius: 10,
-                bottomTrailingRadius: 0,
-                topTrailingRadius: 0
+                topLeadingRadius: isLeft ? 8 : 0,
+                bottomLeadingRadius: isLeft ? 8 : 0,
+                bottomTrailingRadius: isLeft ? 0 : 8,
+                topTrailingRadius: isLeft ? 0 : 8
             )
-            .fill(trimYellow)
-            .frame(width: handleWidth, height: 68)
+            .fill(Color.slooshAccent)
+            .frame(width: handleWidth, height: 54)
 
-            HStack(spacing: 2.5) {
+            HStack(spacing: 2) {
                 Capsule()
                     .fill(Color.black.opacity(0.65))
-                    .frame(width: 2, height: 22)
+                    .frame(width: 1.5, height: 18)
                 Capsule()
                     .fill(Color.black.opacity(0.65))
-                    .frame(width: 2, height: 22)
+                    .frame(width: 1.5, height: 18)
             }
         }
     }
 
-    private func rightHandleView(handleWidth: CGFloat) -> some View {
-        ZStack {
-            Rectangle()
-                .fill(Color.clear)
-                .frame(width: 44, height: 68)
-                .contentShape(Rectangle())
-
-            UnevenRoundedRectangle(
-                topLeadingRadius: 0,
-                bottomLeadingRadius: 0,
-                bottomTrailingRadius: 10,
-                topTrailingRadius: 10
-            )
-            .fill(trimYellow)
-            .frame(width: handleWidth, height: 68)
-
-            HStack(spacing: 2.5) {
-                Capsule()
-                    .fill(Color.black.opacity(0.65))
-                    .frame(width: 2, height: 22)
-                Capsule()
-                    .fill(Color.black.opacity(0.65))
-                    .frame(width: 2, height: 22)
-            }
-        }
-    }
-
-    // MARK: - Ruler Background Track
-
-    private func rulerBackgroundTrack(width: CGFloat, span: Double) -> some View {
+    private func rulerBackgroundTrack(width: CGFloat) -> some View {
         ZStack(alignment: .leading) {
-            Color.white.opacity(0.06)
-
-            let step: Double = span > 300 ? 30.0 : (span > 120 ? 15.0 : 5.0)
-            let tickCount = max(2, Int(span / step))
+            Color.white.opacity(0.04)
 
             HStack(spacing: 0) {
-                ForEach(0..<tickCount, id: \.self) { idx in
-                    let t = windowStart + Double(idx) * step
-                    VStack(spacing: 2) {
-                        Rectangle()
-                            .fill(Color.white.opacity(0.2))
-                            .frame(width: 1, height: idx % 2 == 0 ? 18 : 10)
-
-                        if idx % 2 == 0 && span <= 360 {
-                            Text(formatSeconds(t))
-                                .font(.system(size: 7.5, weight: .regular).monospacedDigit())
-                                .foregroundStyle(.white.opacity(0.35))
-                        }
-                    }
-                    if idx < tickCount - 1 {
+                let segments = 24
+                ForEach(0..<segments, id: \.self) { i in
+                    VStack {
+                        Capsule()
+                            .fill(Color.white.opacity(i % 4 == 0 ? 0.35 : 0.15))
+                            .frame(width: 1, height: i % 4 == 0 ? 16 : 8)
                         Spacer()
                     }
+                    .frame(maxWidth: .infinity)
                 }
             }
-            .padding(.horizontal, 8)
-            .allowsHitTesting(false)
+            .padding(.top, 4)
         }
-        .frame(height: 68)
     }
 
-    // MARK: - Caption Section
+    // MARK: - Drag Handlers
+
+    private func handleStartHandleDrag(trackLocationX: CGFloat, totalWidth: CGFloat, span: Double) {
+        let clampedX = max(0, min(totalWidth, trackLocationX))
+        let targetTime = windowStart + (Double(clampedX / totalWidth) * span)
+        let maxStart = max(windowStart, endTime - minDuration)
+        let resolvedStart = max(0.0, min(maxStart, targetTime))
+
+        startTime = resolvedStart
+        activePreset = nil
+
+        // Auto-expand window if handle touches boundary
+        if startTime <= windowStart + 3.0 && windowStart > 0 {
+            windowStart = max(0.0, windowStart - 15.0)
+        }
+
+        seekTo(startTime, andPause: true)
+        UISelectionFeedbackGenerator().selectionChanged()
+    }
+
+    private func handleEndHandleDrag(trackLocationX: CGFloat, totalWidth: CGFloat, span: Double) {
+        let clampedX = max(0, min(totalWidth, trackLocationX))
+        let targetTime = windowStart + (Double(clampedX / totalWidth) * span)
+        let minEnd = startTime + minDuration
+        let maxEnd = min(totalMovieDuration, startTime + maxDuration)
+        let resolvedEnd = max(minEnd, min(maxEnd, targetTime))
+
+        endTime = resolvedEnd
+        activePreset = nil
+
+        // Auto-expand window if handle touches boundary
+        if endTime >= windowEnd - 3.0 && windowEnd < totalMovieDuration {
+            windowEnd = min(totalMovieDuration, windowEnd + 15.0)
+        }
+
+        seekTo(endTime, andPause: true)
+        UISelectionFeedbackGenerator().selectionChanged()
+    }
+
+    private func handleCenterBoxDrag(translationX: CGFloat, totalWidth: CGFloat, span: Double) {
+        if centerDragInitialStart == nil {
+            centerDragInitialStart = startTime
+            player?.pause()
+            isPlaying = false
+        }
+        guard let baseStart = centerDragInitialStart else { return }
+
+        let deltaSeconds = Double(translationX / totalWidth) * span
+        let clipLen = clipDuration
+        let maxStart = totalMovieDuration - clipLen
+        let targetStart = max(0.0, min(maxStart, baseStart + deltaSeconds))
+
+        startTime = targetStart
+        endTime = targetStart + clipLen
+
+        ensureWindowComfortable()
+        seekTo(startTime, andPause: true)
+        UISelectionFeedbackGenerator().selectionChanged()
+    }
+
+    private func nudgeStart(delta: Double) {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        activePreset = nil
+        let newStart = max(0.0, min(endTime - minDuration, startTime + delta))
+        startTime = newStart
+        ensureWindowComfortable()
+        seekTo(startTime, andPause: true)
+    }
+
+    private func nudgeEnd(delta: Double) {
+        UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        activePreset = nil
+        let newEnd = min(totalMovieDuration, max(startTime + minDuration, endTime + delta))
+        endTime = newEnd
+        ensureWindowComfortable()
+        seekTo(endTime, andPause: true)
+    }
+
+    private func ensureWindowComfortable() {
+        let span = max(60.0, (endTime - startTime) * 1.8)
+        let center = (startTime + endTime) / 2.0
+        var wStart = max(0.0, center - (span / 2.0))
+        var wEnd = min(totalMovieDuration, wStart + span)
+
+        if wStart > startTime {
+            wStart = max(0.0, startTime - 15.0)
+            wEnd = min(totalMovieDuration, wStart + span)
+        }
+        if wEnd < endTime {
+            wEnd = min(totalMovieDuration, endTime + 15.0)
+            wStart = max(0.0, wEnd - span)
+        }
+
+        windowStart = wStart
+        windowEnd = max(wStart + 30.0, wEnd)
+    }
+
+    // MARK: - Caption & Tags Section
 
     private var captionSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Описание к моменту")
-                .font(.system(size: 14, weight: .semibold))
-                .foregroundStyle(.white)
+            Text("Подпись к моменту")
+                .font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.85))
 
-            TextField("Добавьте подпись или цитату (необязательно)...", text: $caption, axis: .vertical)
-                .lineLimit(2...3)
-                .font(.system(size: 15))
+            TextField("Добавьте подпись или цитату...", text: $caption, axis: .vertical)
+                .font(.system(size: 14))
                 .foregroundStyle(.white)
+                .lineLimit(2...4)
                 .padding(12)
                 .background(Color.white.opacity(0.06))
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+
+            // Quick Tag Chips
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 8) {
+                    ForEach(sampleTags, id: \.self) { tag in
+                        Button {
+                            UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            if !caption.contains(tag) {
+                                caption = caption.isEmpty ? tag : "\(caption) \(tag)"
+                            }
+                        } label: {
+                            Text(tag)
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(.white.opacity(0.8))
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 5)
+                                .background(Color.white.opacity(0.08))
+                                .clipShape(Capsule())
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .padding(.vertical, 2)
+            }
         }
-        .padding(14)
-        .background(Color.white.opacity(0.05))
-        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .padding(.horizontal, 4)
     }
 
     // MARK: - Error Banner
@@ -714,168 +785,48 @@ public struct ClipTrimmerSheetView: View {
     private func errorBanner(_ message: String) -> some View {
         HStack(spacing: 8) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .font(.system(size: 15))
+                .font(.system(size: 14))
                 .foregroundStyle(.red)
 
             Text(message)
                 .font(.system(size: 13, weight: .medium))
                 .foregroundStyle(.red.opacity(0.95))
-                .fixedSize(horizontal: false, vertical: true)
 
             Spacer()
         }
         .padding(12)
         .background(Color.red.opacity(0.12))
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .transition(.opacity.combined(with: .scale(scale: 0.95)))
     }
 
-    // MARK: - Gestures: Jitter-Free Left Handle, Right Handle, Center Box
+    // MARK: - Publish Button
 
-    private func handleStartHandleDrag(trackLocationX: CGFloat, totalWidth: CGFloat, span: Double) {
-        guard totalWidth > 0 else { return }
-        let fraction = max(0.0, min(1.0, Double(trackLocationX / totalWidth)))
-        let timeAtLocation = windowStart + fraction * span
-        let newStart = max(0.0, min(endTime - minDuration, timeAtLocation))
+    private var publishButton: some View {
+        Button {
+            publishMoment()
+        } label: {
+            HStack(spacing: 8) {
+                if isPublishing {
+                    ProgressView()
+                        .tint(.black)
+                } else {
+                    Image(systemName: "sparkles.tv.fill")
+                        .font(.system(size: 16, weight: .bold))
 
-        if endTime - newStart > maxDuration {
-            endTime = newStart + maxDuration
-        }
-        startTime = newStart
-        seekTo(newStart, andPause: true)
-        UISelectionFeedbackGenerator().selectionChanged()
-    }
-
-    private func handleEndHandleDrag(trackLocationX: CGFloat, totalWidth: CGFloat, span: Double) {
-        guard totalWidth > 0 else { return }
-        let fraction = max(0.0, min(1.0, Double(trackLocationX / totalWidth)))
-        let timeAtLocation = windowStart + fraction * span
-        let maxLimit = totalMovieDuration
-        let newEnd = max(startTime + minDuration, min(maxLimit, timeAtLocation))
-
-        if newEnd - startTime > maxDuration {
-            startTime = max(0.0, newEnd - maxDuration)
-        }
-        endTime = newEnd
-        seekTo(newEnd, andPause: true)
-        UISelectionFeedbackGenerator().selectionChanged()
-    }
-
-    private func handleCenterBoxDrag(translationX: CGFloat, totalWidth: CGFloat, span: Double) {
-        guard totalWidth > 0 else { return }
-        if centerDragInitialStart == nil {
-            centerDragInitialStart = startTime
-        }
-        guard let baseStart = centerDragInitialStart else { return }
-
-        let deltaSec = Double(translationX / totalWidth) * span
-        let currentLen = endTime - startTime
-        let maxLimit = totalMovieDuration
-
-        let targetStart = max(0.0, min(maxLimit - currentLen, baseStart + deltaSec))
-        let targetEnd = targetStart + currentLen
-
-        startTime = targetStart
-        endTime = targetEnd
-        seekTo(targetStart, andPause: true)
-        UISelectionFeedbackGenerator().selectionChanged()
-    }
-
-    private func handleMiniMapDrag(locationDragX: CGFloat, totalWidth: CGFloat) {
-        guard totalWidth > 0 else { return }
-        let fraction = max(0.0, min(1.0, Double(locationDragX / totalWidth)))
-        let targetCenter = fraction * totalMovieDuration
-        let windowSpan = windowEnd - windowStart
-
-        let newWStart = max(0.0, min(totalMovieDuration - windowSpan, targetCenter - windowSpan / 2.0))
-        let newWEnd = newWStart + windowSpan
-
-        windowStart = newWStart
-        windowEnd = newWEnd
-
-        // Keep current clip within visible window
-        let clipLen = endTime - startTime
-        if startTime < newWStart || startTime > newWEnd {
-            startTime = max(newWStart, min(newWEnd - clipLen, targetCenter - clipLen / 2.0))
-            endTime = startTime + clipLen
-            seekTo(startTime, andPause: true)
-        }
-
-        UISelectionFeedbackGenerator().selectionChanged()
-    }
-
-    // MARK: - Zooming & Navigation
-
-    private func zoomLabel(_ z: Double) -> String {
-        if z == 0.5 { return "0.5x" }
-        if z == 1.0 { return "1x" }
-        if z == 2.0 { return "2x" }
-        return "5x"
-    }
-
-    private func setZoom(_ level: Double) {
-        withAnimation(.easeInOut(duration: 0.25)) {
-            zoomLevel = level
-            let center = (startTime + endTime) / 2.0
-            let baseDuration = max(60.0, clipDuration)
-            let newSpan: Double
-
-            switch level {
-            case 0.5:
-                newSpan = max(baseDuration * 3.5, 360.0)
-            case 2.0:
-                newSpan = max(baseDuration * 1.3, 90.0)
-            case 5.0:
-                newSpan = max(baseDuration * 1.1, 45.0)
-            default: // 1.0
-                newSpan = max(baseDuration * 1.8, 180.0)
+                    Text("Опубликовать в Моменты")
+                        .font(.system(size: 15, weight: .bold))
+                }
             }
-
-            let maxLimit = totalMovieDuration
-            var wStart = max(0.0, center - newSpan / 2.0)
-            var wEnd = min(maxLimit, wStart + newSpan)
-
-            // Ensure selection is never outside window
-            if wStart > startTime {
-                wStart = max(0.0, startTime - 10.0)
-                wEnd = min(maxLimit, wStart + newSpan)
-            }
-            if wEnd < endTime {
-                wEnd = min(maxLimit, endTime + 10.0)
-                wStart = max(0.0, wEnd - newSpan)
-            }
-
-            windowStart = wStart
-            windowEnd = max(wStart + 30.0, wEnd)
+            .foregroundStyle(.black)
+            .frame(maxWidth: .infinity)
+            .frame(height: 50)
+            .background(Color.white)
+            .clipShape(Capsule())
+            .shadow(color: Color.white.opacity(0.15), radius: 10, y: 3)
         }
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-    }
-
-    private func handlePinchZoom(scale: CGFloat) {
-        let currentSpan = windowEnd - windowStart
-        if pinchBaseSpan == nil {
-            pinchBaseSpan = currentSpan
-        }
-        guard let base = pinchBaseSpan, scale > 0.05 else { return }
-
-        let targetSpan = max(30.0, min(1800.0, base / Double(scale)))
-        let center = (startTime + endTime) / 2.0
-        let maxLimit = totalMovieDuration
-
-        var wStart = max(0.0, center - targetSpan / 2.0)
-        var wEnd = min(maxLimit, wStart + targetSpan)
-
-        if wStart > startTime {
-            wStart = max(0.0, startTime - 10.0)
-            wEnd = min(maxLimit, wStart + targetSpan)
-        }
-        if wEnd < endTime {
-            wEnd = min(maxLimit, endTime + 10.0)
-            wStart = max(0.0, wEnd - targetSpan)
-        }
-
-        windowStart = wStart
-        windowEnd = max(wStart + 20.0, wEnd)
+        .buttonStyle(.glassPress)
+        .disabled(isPublishing)
+        .padding(.top, 4)
     }
 
     // MARK: - Player Operations
@@ -888,13 +839,11 @@ public struct ClipTrimmerSheetView: View {
             resolvedHeaders["Referer"] = "https://api.alloha.tv/"
         }
 
-        // 1. Try direct streamUrl
         if let directStr = streamUrl?.trimmingCharacters(in: .whitespacesAndNewlines),
            let directUrl = URL(string: directStr) {
             resolvedUrl = directUrl
         }
 
-        // 2. Fallback to ClipStreamResolver
         if resolvedUrl == nil {
             let dummy = MovieClip(
                 mediaId: mediaId,
@@ -934,7 +883,6 @@ public struct ClipTrimmerSheetView: View {
         p.actionAtItemEnd = .none
         p.automaticallyWaitsToMinimizeStalling = true
 
-        // Periodic time observer for looping between startTime and endTime
         let interval = CMTime(seconds: 0.05, preferredTimescale: 600)
         timeObserverToken = p.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak p] time in
             guard let p else { return }
@@ -955,7 +903,6 @@ public struct ClipTrimmerSheetView: View {
 
         self.player = p
 
-        // Initial seek to startTime and auto-play loop
         let sTime = CMTime(seconds: startTime, preferredTimescale: 600)
         p.seek(to: sTime, toleranceBefore: .zero, toleranceAfter: .zero) { _ in
             self.isPlayerReady = true
@@ -1010,6 +957,16 @@ public struct ClipTrimmerSheetView: View {
             return String(format: "%d:%02d:%02d", h, m, s)
         }
         return String(format: "%02d:%02d", m, s)
+    }
+
+    private func resolveImageUrl(_ path: String) -> URL? {
+        if path.hasPrefix("http://") || path.hasPrefix("https://") {
+            return URL(string: path)
+        }
+        if let normalized = normalizeImageUrl(path: path) {
+            return URL(string: normalized)
+        }
+        return nil
     }
 
     // MARK: - Publish Action
