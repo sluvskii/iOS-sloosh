@@ -311,10 +311,23 @@ class PlayerViewModel: ObservableObject {
         let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
         guard let cgImage = Self.sharedCIContext.createCGImage(ciImage, from: ciImage.extent) else { return }
         let uiImage = UIImage(cgImage: cgImage)
-        let roundedSec = round(seconds * 2.0) / 2.0
-        if liveClipFrames[roundedSec] == nil {
-            liveClipFrames[roundedSec] = uiImage
+        let secKey = round(seconds)
+        if liveClipFrames[secKey] == nil {
+            liveClipFrames[secKey] = uiImage
         }
+    }
+
+    func liveFrame(near time: Double) -> UIImage? {
+        guard !liveClipFrames.isEmpty else { return nil }
+        let sec = round(time)
+        if let exact = liveClipFrames[sec] {
+            return exact
+        }
+        if let closest = liveClipFrames.min(by: { abs($0.key - time) < abs($1.key - time) }),
+           abs(closest.key - time) <= 15.0 {
+            return closest.value
+        }
+        return nil
     }
 
     func setupImageGenerator(asset: AVAsset) {
