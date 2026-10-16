@@ -2,12 +2,11 @@ import SwiftUI
 import UIKit
 import AVFoundation
 
-// MARK: - Native Filmstrip Video Trimmer (Кинематографичная галерейная обрезка)
-// Вдохновлено Telegram и Apple Photos:
-// 1. Непрерывная лента РЕАЛЬНЫХ кадров (thumbnails) из видеопотока.
-// 2. Масштабирование дорожки (Pinch-to-zoom жестом двумя пальцами + кнопка зума 1x/2x/4x).
-// 3. Иконическая желтая рамка обрезки с тактильными ручками захвата.
-// 4. Свободная перемотка и навигация по кадрам без конфликтов жестов.
+// MARK: - Native Filmstrip Video Trimmer (Кинематографичная обрезка в фирменном стиле sloosh)
+// 1. Полное масштабирование: от 20 секунд (микро-точность) до 100% хронометража всего фильма (всё кино на одной дорожке).
+// 2. Фирменный акцентный стиль Color.slooshAccent (никакой чужеродной желтизны).
+// 3. Непрерывная лента РЕАЛЬНЫХ кадров (thumbnails) из фильма.
+// 4. Мгновенное переключение зума («Весь фильм» / «Сцена» / «Точно») + свободный щипок двумя пальцами.
 // 5. Нативный системный лист публикации без лишнего мусора и выдуманных тегов.
 
 struct PlayerClipTrimmerView: View {
@@ -18,13 +17,15 @@ struct PlayerClipTrimmerView: View {
     // Кадры киноленты (Filmstrip thumbnails)
     @State private var filmstripThumbnails: [Int: UIImage] = [:]
     @State private var lastRequestedWindow: (start: Double, end: Double)? = nil
-    @State private var isGeneratingThumbnails: Bool = false
 
     // Масштабирование дорожки (Span времени в секундах)
-    // 30с = микро-подгонка кадров, 60с = детальная сцена, 120с = стандарт, 300с = общий план
+    // По умолчанию: обзор сцены (90с)
     @State private var sceneSpan: Double = 90.0
     @State private var basePinchSpan: Double? = nil
     @State private var sceneCenterTime: Double = 0.0
+
+    // Фирменный акцент sloosh
+    private let trimmerAccent = Color.slooshAccent
 
     // Координатор жестов на дорожке
     private enum DragTarget {
@@ -40,11 +41,13 @@ struct PlayerClipTrimmerView: View {
     @State private var dragInitialEnd: Double = 0.0
     @State private var dragInitialTouchX: CGFloat = 0.0
 
-    // Иконический желтый цвет обрезки Apple Photos
-    private let appleYellow = Color(red: 1.0, green: 0.83, blue: 0.04)
-
     // Количество кадров в ленте по ширине экрана
     private let thumbnailSlotCount = 14
+
+    private var totalMovieDuration: Double {
+        let dur = vm.currentDuration
+        return (dur.isFinite && !dur.isNaN && dur > 1.0) ? dur : max(vm.clipEndTime + 60.0, 1800.0)
+    }
 
     var body: some View {
         ZStack {
@@ -91,14 +94,14 @@ struct PlayerClipTrimmerView: View {
 
             // Основной интерфейс: Верхняя шапка + Нижняя кинолента
             VStack(spacing: 0) {
-                // Шапка: Отмена • Зум / Длительность • Готово
+                // Шапка: Отмена • Длительность / Масштаб • Готово
                 topBar
                     .padding(.top, 12)
                     .padding(.horizontal, 20)
 
                 Spacer()
 
-                // Нижний блок: Кинолента кадров с желтой рамкой
+                // Нижний блок: Кинолента кадров с рамкой sloosh
                 filmstripTrimmerSection
                     .padding(.horizontal, 20)
                     .padding(.bottom, 16)
@@ -147,17 +150,17 @@ struct PlayerClipTrimmerView: View {
                     .font(.system(size: 12))
                     .foregroundStyle(.white.opacity(0.35))
 
-                // Кнопка масштабирования дорожки (1x / 2x / 4x)
+                // Кнопка масштабирования дорожки: Весь фильм / Сцена / Точно
                 Button {
                     cycleZoom()
                 } label: {
-                    HStack(spacing: 3) {
+                    HStack(spacing: 4) {
                         Image(systemName: "arrow.left.and.right")
                             .font(.system(size: 11, weight: .bold))
                         Text(currentZoomLabel)
                             .font(.system(size: 12, weight: .bold))
                     }
-                    .foregroundStyle(Color.slooshAccent)
+                    .foregroundStyle(trimmerAccent)
                     .padding(.horizontal, 8)
                     .padding(.vertical, 4)
                     .background(Color.white.opacity(0.12))
@@ -193,18 +196,21 @@ struct PlayerClipTrimmerView: View {
 
     private var filmstripTrimmerSection: some View {
         VStack(spacing: 6) {
-            // Основная дорожка с реальными кадрами и желтой рамкой
+            // Основная дорожка с реальными кадрами и фирменной рамкой
             filmstripTrackView
                 .frame(height: 54)
-                // Pinch-to-zoom двумя пальцами для масштабирования дорожки
+                // Pinch-to-zoom двумя пальцами для масштабирования дорожки от 20с до всего фильма
                 .gesture(
                     MagnificationGesture()
                         .onChanged { scale in
                             if basePinchSpan == nil {
                                 basePinchSpan = sceneSpan
                             }
-                            guard let base = basePinchSpan, scale > 0.1 else { return }
-                            let target = max(20.0, min(360.0, base / Double(scale)))
+                            guard let base = basePinchSpan, scale > 0.05 else { return }
+                            let clipLength = vm.clipEndTime - vm.clipStartTime
+                            let minSpan = max(20.0, clipLength + 4.0)
+                            let maxLimit = totalMovieDuration
+                            let target = max(minSpan, min(maxLimit, base / Double(scale)))
                             sceneSpan = target
                         }
                         .onEnded { _ in
@@ -222,7 +228,7 @@ struct PlayerClipTrimmerView: View {
 
                 Spacer()
 
-                Text("Щипок для зума кадров")
+                Text("Щипок для зума дорожки")
                     .font(.system(size: 10, weight: .medium))
                     .foregroundStyle(.white.opacity(0.35))
 
@@ -236,7 +242,7 @@ struct PlayerClipTrimmerView: View {
         }
     }
 
-    // MARK: - Filmstrip Track View (Кадры из фильма + Желтая рамка Apple)
+    // MARK: - Filmstrip Track View (Кадры из фильма + Рамка sloosh)
 
     private var filmstripTrackView: some View {
         GeometryReader { proxy in
@@ -246,11 +252,15 @@ struct PlayerClipTrimmerView: View {
 
             // Координаты начала и конца клипа
             let startNorm = max(0.0, min(1.0, (vm.clipStartTime - wStart) / span))
-            let endNorm = max(startNorm + 0.02, min(1.0, (vm.clipEndTime - wStart) / span))
+            let endNorm = max(startNorm + 0.005, min(1.0, (vm.clipEndTime - wStart) / span))
 
             let startX = startNorm * totalW
             let endX = endNorm * totalW
-            let frameW = max(34.0, endX - startX)
+            let rawFrameW = max(0.0, endX - startX)
+            let frameW = max(32.0, rawFrameW)
+
+            let visualStartX = startX
+            let visualEndX = startX + frameW
 
             // Позиция бегунка
             let playNorm = max(0.0, min(1.0, (vm.currentTime - wStart) / span))
@@ -267,7 +277,7 @@ struct PlayerClipTrimmerView: View {
                                 .frame(width: totalW / CGFloat(thumbnailSlotCount), height: 54)
                                 .clipped()
                         } else {
-                            // Аккуратный тёмный плейсхолдер с легким делением
+                            // Тёмный плейсхолдер с легким делением
                             ZStack {
                                 Color.black.opacity(0.75)
                                 Rectangle()
@@ -286,10 +296,10 @@ struct PlayerClipTrimmerView: View {
                 )
 
                 // 2. Затемнение слева от рамки (кадры вне клипа приглушены)
-                if startX > 0 {
+                if visualStartX > 0 {
                     Rectangle()
-                        .fill(Color.black.opacity(0.6))
-                        .frame(width: startX)
+                        .fill(Color.black.opacity(0.65))
+                        .frame(width: visualStartX)
                         .clipShape(
                             UnevenRoundedRectangle(
                                 topLeadingRadius: 10,
@@ -301,11 +311,11 @@ struct PlayerClipTrimmerView: View {
                 }
 
                 // 3. Затемнение справа от рамки
-                if endX < totalW {
+                if visualEndX < totalW {
                     Rectangle()
-                        .fill(Color.black.opacity(0.6))
-                        .frame(width: totalW - endX)
-                        .offset(x: endX)
+                        .fill(Color.black.opacity(0.65))
+                        .frame(width: totalW - visualEndX)
+                        .offset(x: visualEndX)
                         .clipShape(
                             UnevenRoundedRectangle(
                                 topLeadingRadius: 0,
@@ -316,16 +326,16 @@ struct PlayerClipTrimmerView: View {
                         )
                 }
 
-                // 4. ИКОНИЧЕСКАЯ ЖЕЛТАЯ РАМКА ОБРЕЗКИ APPLE PHOTOS
+                // 4. ФИРМЕННАЯ РАМКА ОБРЕЗКИ SLOOSH
                 ZStack {
                     // Верхняя и нижняя границы
                     VStack {
                         Rectangle()
-                            .fill(appleYellow)
+                            .fill(trimmerAccent)
                             .frame(height: 3)
                         Spacer()
                         Rectangle()
-                            .fill(appleYellow)
+                            .fill(trimmerAccent)
                             .frame(height: 3)
                     }
 
@@ -339,11 +349,11 @@ struct PlayerClipTrimmerView: View {
                                 bottomTrailingRadius: 0,
                                 topTrailingRadius: 0
                             )
-                            .fill(appleYellow)
+                            .fill(trimmerAccent)
                             .frame(width: 16)
 
                             VStack(spacing: 3) {
-                                Capsule().fill(Color.black.opacity(0.75)).frame(width: 2, height: 14)
+                                Capsule().fill(Color.black.opacity(0.85)).frame(width: 2, height: 14)
                             }
                         }
 
@@ -357,23 +367,23 @@ struct PlayerClipTrimmerView: View {
                                 bottomTrailingRadius: 8,
                                 topTrailingRadius: 8
                             )
-                            .fill(appleYellow)
+                            .fill(trimmerAccent)
                             .frame(width: 16)
 
                             VStack(spacing: 3) {
-                                Capsule().fill(Color.black.opacity(0.75)).frame(width: 2, height: 14)
+                                Capsule().fill(Color.black.opacity(0.85)).frame(width: 2, height: 14)
                             }
                         }
                     }
                 }
                 .frame(width: frameW)
-                .offset(x: startX)
+                .offset(x: visualStartX)
 
                 // 5. Белый бегунок текущего кадра (Playhead)
                 Rectangle()
                     .fill(Color.white)
                     .frame(width: 2.5, height: 54)
-                    .shadow(color: .black.opacity(0.8), radius: 3)
+                    .shadow(color: .black.opacity(0.85), radius: 3)
                     .offset(x: playX)
                     .allowsHitTesting(false)
             }
@@ -389,14 +399,17 @@ struct PlayerClipTrimmerView: View {
                             dragInitialStart = vm.clipStartTime
                             dragInitialEnd = vm.clipEndTime
 
-                            let hitSlop: CGFloat = 24.0
-                            if abs(touchX - startX) <= hitSlop {
+                            let hitSlop: CGFloat = 22.0
+                            let leftHandleCenter = visualStartX + 8.0
+                            let rightHandleCenter = visualEndX - 8.0
+
+                            if abs(touchX - leftHandleCenter) <= hitSlop {
                                 activeDragTarget = .leftHandle
                                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            } else if abs(touchX - endX) <= hitSlop {
+                            } else if abs(touchX - rightHandleCenter) <= hitSlop {
                                 activeDragTarget = .rightHandle
                                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                            } else if touchX > startX && touchX < endX {
+                            } else if touchX >= visualStartX && touchX <= visualEndX {
                                 activeDragTarget = .middleFrame
                                 UIImpactFeedbackGenerator(style: .light).impactOccurred()
                             } else {
@@ -406,7 +419,7 @@ struct PlayerClipTrimmerView: View {
 
                         let deltaX = touchX - dragInitialTouchX
                         let deltaSec = Double(deltaX / totalW) * span
-                        let maxLimit = vm.currentDuration > 0 ? vm.currentDuration : (vm.clipEndTime + 300)
+                        let maxLimit = totalMovieDuration
 
                         switch activeDragTarget {
                         case .leftHandle:
@@ -449,18 +462,23 @@ struct PlayerClipTrimmerView: View {
     // MARK: - Scene Window & Thumbnails Loader
 
     private func currentSceneWindow() -> (Double, Double) {
+        let total = totalMovieDuration
+        // Если масштаб равен или больше всего фильма — показываем весь хронометраж целиком!
+        if sceneSpan >= total - 1.0 {
+            return (0.0, total)
+        }
+
         let center = sceneCenterTime > 0 ? sceneCenterTime : ((vm.clipStartTime + vm.clipEndTime) / 2.0)
-        let maxLimit = vm.currentDuration > 0 ? vm.currentDuration : (center + sceneSpan)
         let half = sceneSpan / 2.0
         var wStart = max(0.0, center - half)
-        var wEnd = min(maxLimit, wStart + sceneSpan)
+        var wEnd = min(total, wStart + sceneSpan)
 
         if wStart > vm.clipStartTime {
             wStart = max(0.0, vm.clipStartTime - 5.0)
-            wEnd = min(maxLimit, wStart + sceneSpan)
+            wEnd = min(total, wStart + sceneSpan)
         }
         if wEnd < vm.clipEndTime {
-            wEnd = min(maxLimit, vm.clipEndTime + 5.0)
+            wEnd = min(total, vm.clipEndTime + 5.0)
             wStart = max(0.0, wEnd - sceneSpan)
         }
 
@@ -491,7 +509,6 @@ struct PlayerClipTrimmerView: View {
 
         vm.generateFilmstrip(times: times) { results in
             for (t, img) in results {
-                // Находим ближайший слот
                 if let closestSlot = slotMap.min(by: { abs($0.key - t) < abs($1.key - t) })?.value {
                     filmstripThumbnails[closestSlot] = img
                 }
@@ -502,28 +519,35 @@ struct PlayerClipTrimmerView: View {
     // MARK: - Zoom Controls
 
     private var currentZoomLabel: String {
-        if sceneSpan <= 35.0 {
-            return "4x"
-        } else if sceneSpan <= 75.0 {
-            return "2x"
-        } else if sceneSpan <= 150.0 {
-            return "1x"
+        let total = totalMovieDuration
+        if sceneSpan >= total - 10.0 {
+            return "Весь фильм"
+        } else if sceneSpan <= 45.0 {
+            return "Точно (30с)"
         } else {
-            return "0.5x"
+            return "Сцена (2м)"
         }
     }
 
     private func cycleZoom() {
         UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-            if sceneSpan <= 35.0 {
-                sceneSpan = 120.0 // 1x
-            } else if sceneSpan <= 75.0 {
-                sceneSpan = 30.0  // 4x
-            } else if sceneSpan <= 150.0 {
-                sceneSpan = 60.0  // 2x
+        let total = totalMovieDuration
+        let clipLength = vm.clipEndTime - vm.clipStartTime
+
+        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+            if sceneSpan >= total - 10.0 {
+                // Из "Весь фильм" переходим в режим высокой точности (30 сек)
+                let preciseSpan = max(25.0, clipLength + 6.0)
+                sceneSpan = min(preciseSpan, total)
+                syncSceneCenter()
+            } else if sceneSpan <= 45.0 {
+                // Из режима точности переходим в "Сцену" (2 минуты)
+                let sceneViewSpan = max(120.0, clipLength + 15.0)
+                sceneSpan = min(sceneViewSpan, total)
+                syncSceneCenter()
             } else {
-                sceneSpan = 120.0 // 1x
+                // Из "Сцены" сразу разворачиваем на "Весь фильм" целиком!
+                sceneSpan = total
             }
         }
         loadThumbnailsForCurrentWindow()
@@ -566,7 +590,7 @@ private struct PublishMomentSheet: View {
                     TextField("Подпись к моменту (необязательно)", text: $vm.clipCaption, axis: .vertical)
                         .lineLimit(2...4)
                 } footer: {
-                    Text("Момент будет опубликован в ленту моментов.")
+                    Text("Момент будет опубликован в общую ленту моментов.")
                 }
 
                 if let error = vm.clipPublishErrorMessage {
