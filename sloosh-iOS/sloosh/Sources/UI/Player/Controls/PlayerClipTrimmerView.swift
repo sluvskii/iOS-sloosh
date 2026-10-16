@@ -237,16 +237,20 @@ struct PlayerClipTrimmerView: View {
                 ZStack {
                     // Фоновая панорама фильма: дорожка никогда не остаётся пустой черной полосой
                     if let backdropStr = vm.backdropUrl ?? vm.posterUrl, let url = URL(string: backdropStr) {
-                        AsyncCachedImage(url: url) { img in
-                            img
-                                .resizable()
-                                .aspectRatio(contentMode: .fill)
-                                .frame(width: totalW, height: 56)
-                                .clipped()
-                                .opacity(0.82)
-                        } placeholder: {
-                            Color.black.opacity(0.75)
-                        }
+                        AsyncCachedImage(
+                            url: url,
+                            placeholder: {
+                                Color.black.opacity(0.75)
+                            },
+                            content: { uiImg in
+                                Image(uiImage: uiImg)
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fill)
+                                    .frame(width: totalW, height: 56)
+                                    .clipped()
+                                    .opacity(0.82)
+                            }
+                        )
                     }
 
                     // Сетка слотов кадров с разделителями кинопленки
