@@ -2,48 +2,64 @@ import SwiftUI
 import UIKit
 import AVFoundation
 
-// MARK: - In-Player Cinema Clip Trimmer (Создание момента прямо в плеере)
-// 1. Полностью горизонтальный (landscape) кинематографичный интерфейс без переворотов экрана.
-// 2. Использует текущее уже загруженное видео из AVPlayer (0 мс ожидания, 0 сетевых перезагрузок).
-// 3. Зацикливание выбранного фрагмента [clipStartTime ... clipEndTime].
-// 4. Пошаговые тактильные кнопки [-1с] / [+1с] для начала и конца.
-// 5. Быстрые пресеты длительности (15с, 30с, 60с, 2 мин).
-// 6. Встроенная компактная карточка публикации с тегами и подписью.
+// MARK: - Apple Gallery Style Video Trimmer (Галерейная обрезка момента)
+// Вдохновлено нативным видеоредактором Apple Photos / Галереи iOS:
+// 1. Иконическая желтая рамка обрезки с тактильными ручками захвата.
+// 2. Единый, плавный координатор жестов без конфликтов и скачков.
+// 3. Свободная перемотка и навигация по всему фильму (мини-бар + детальная дорожка).
+// 4. Ноль визуального шума — никаких лишних кнопок, чипов и громоздких блоков.
+// 5. Зацикленное воспроизведение выбранного фрагмента на уже запущенном AVPlayer.
 
 struct PlayerClipTrimmerView: View {
     @ObservedObject var vm: PlayerViewModel
 
-    @State private var dragInitialStart: Double? = nil
-    @State private var dragInitialEnd: Double? = nil
-    @State private var isDragging: Bool = false
+    // Режим активного перетаскивания
+    private enum DragTarget {
+        case none
+        case leftHandle
+        case rightHandle
+        case middleFrame
+        case playhead
+    }
 
+    @State private var activeDragTarget: DragTarget = .none
+    @State private var dragInitialStart: Double = 0.0
+    @State private var dragInitialEnd: Double = 0.0
+    @State private var dragInitialTouchX: CGFloat = 0.0
+
+    // Окно сцены детальной дорожки (по умолчанию 3 минуты вокруг клипа)
+    @State private var sceneCenterTime: Double = 0.0
+    private let sceneWindowSpan: Double = 180.0 // 3 минуты обзора
+
+    // Иконический желтый цвет обрезки Apple Photos
+    private let appleYellow = Color(red: 1.0, green: 0.83, blue: 0.04)
     private let sampleTags = ["#эпик", "#цитата", "#момент", "#шедевр", "#смешно", "#мурашки"]
 
     var body: some View {
         ZStack {
-            // 1. Градиентные тени сверху и снизу для читаемости поверх любого кадра
+            // 1. Мягкие кинематографичные виньетки сверху и снизу
             VStack {
                 LinearGradient(
                     colors: [Color.black.opacity(0.85), Color.black.opacity(0.4), .clear],
                     startPoint: .top,
                     endPoint: .bottom
                 )
-                .frame(height: 90)
+                .frame(height: 80)
                 .ignoresSafeArea()
 
                 Spacer()
 
                 LinearGradient(
-                    colors: [.clear, Color.black.opacity(0.5), Color.black.opacity(0.92)],
+                    colors: [.clear, Color.black.opacity(0.4), Color.black.opacity(0.92)],
                     startPoint: .top,
                     endPoint: .bottom
                 )
-                .frame(height: 200)
+                .frame(height: 160)
                 .ignoresSafeArea()
             }
             .allowsHitTesting(false)
 
-            // 2. Центральная область тапа: Play/Pause видео
+            // 2. Центральная область экрана: тап ставит на паузу / запускает видео
             Color.clear
                 .contentShape(Rectangle())
                 .onTapGesture {
@@ -53,44 +69,48 @@ struct PlayerClipTrimmerView: View {
                 .overlay {
                     if !vm.isPlaying {
                         Image(systemName: "play.fill")
-                            .font(.system(size: 40))
-                            .foregroundStyle(.white.opacity(0.9))
-                            .frame(width: 80, height: 80)
+                            .font(.system(size: 36))
+                            .foregroundStyle(.white.opacity(0.92))
+                            .frame(width: 72, height: 72)
                             .glassEffect(.regular.interactive(), in: .circle)
-                            .shadow(color: .black.opacity(0.4), radius: 12)
+                            .shadow(color: .black.opacity(0.4), radius: 10)
                             .transition(.scale.combined(with: .opacity))
                     }
                 }
 
-            // 3. Верхняя панель (Header)
-            VStack {
+            // 3. Основной интерфейс: Верхняя шапка + Нижняя галерейная обрезка
+            VStack(spacing: 0) {
+                // Шапка (Отмена • Длительность • Опубликовать)
                 topBar
-                    .padding(.top, 10)
-                    .padding(.horizontal, 16)
+                    .padding(.top, 12)
+                    .padding(.horizontal, 20)
 
                 Spacer()
 
-                // 4. Нижний плавающий пульт обрезки (Cinema Island)
-                bottomTrimmerIsland
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 12)
+                // Галерейный пульт обрезки
+                galleryTrimmerSection
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 16)
             }
 
-            // 5. Карточка публикации (поверх при нажатии «Опубликовать»)
+            // 4. Окно публикации (при нажатии «Опубликовать»)
             if vm.showClipPublishOverlay {
                 publishOverlay
                     .zIndex(10)
-                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
             }
         }
-        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: vm.isPlaying)
+        .onAppear {
+            syncSceneCenter()
+        }
+        .animation(.spring(response: 0.3, dampingFraction: 0.85), value: vm.isPlaying)
         .animation(.spring(response: 0.35, dampingFraction: 0.85), value: vm.showClipPublishOverlay)
     }
 
-    // MARK: - Top Bar
+    // MARK: - Top Bar (Как в галерее iOS)
 
     private var topBar: some View {
-        HStack(spacing: 14) {
+        HStack {
             // Кнопка «Отмена»
             Button {
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
@@ -98,66 +118,39 @@ struct PlayerClipTrimmerView: View {
                     vm.exitClipMode()
                 }
             } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "xmark")
-                        .font(.system(size: 14, weight: .bold))
-                    Text("Отмена")
-                        .font(.system(size: 14, weight: .semibold))
-                }
-                .foregroundStyle(.white)
-                .padding(.horizontal, 14)
-                .frame(height: 38)
+                Text("Отмена")
+                    .font(.system(size: 16, weight: .regular))
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    .glassEffect(.regular.interactive(), in: .capsule)
             }
-            .buttonStyle(.glassPress)
-            .glassEffect(.regular.interactive(), in: .capsule)
+            .buttonStyle(.plain)
 
             Spacer()
 
-            // Центральный бейдж: Название + Создание момента
-            HStack(spacing: 8) {
-                if let logo = vm.logoUrl, !logo.isEmpty, let url = resolveImageUrl(logo) {
-                    AsyncCachedImage(url: url) {
-                        Text(vm.fallbackTitle)
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundStyle(.white)
-                    } content: { img in
-                        Image(uiImage: img)
-                            .resizable()
-                            .aspectRatio(contentMode: .fit)
-                            .frame(maxHeight: 20)
-                    } fallback: {
-                        Text(vm.fallbackTitle)
-                            .font(.system(size: 13, weight: .bold))
-                            .foregroundStyle(.white)
-                    }
-                } else {
-                    Text(vm.fallbackTitle)
-                        .font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
-                }
+            // Бейдж длительности клипа по центру (например: 0:30)
+            HStack(spacing: 6) {
+                Text(formattedDurationOnly(vm.clipEndTime - vm.clipStartTime))
+                    .font(.system(size: 15, weight: .bold, design: .monospaced))
+                    .foregroundStyle(.white)
 
                 Text("•")
                     .font(.system(size: 12))
                     .foregroundStyle(.white.opacity(0.4))
 
-                HStack(spacing: 5) {
-                    Image(systemName: "sparkles.tv.fill")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(Color.slooshAccent)
-
-                    Text("Создание момента")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(Color.slooshAccent)
-                }
+                Text(vm.fallbackTitle)
+                    .font(.system(size: 13, weight: .medium))
+                    .foregroundStyle(.white.opacity(0.75))
+                    .lineLimit(1)
             }
             .padding(.horizontal, 14)
-            .frame(height: 38)
+            .padding(.vertical, 6)
             .glassEffect(.regular, in: .capsule)
 
             Spacer()
 
-            // Кнопка «Опубликовать»
+            // Кнопка «Опубликовать» (яркая, нативная)
             Button {
                 UIImpactFeedbackGenerator(style: .medium).impactOccurred()
                 withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
@@ -165,14 +158,14 @@ struct PlayerClipTrimmerView: View {
                 }
             } label: {
                 HStack(spacing: 6) {
-                    Image(systemName: "arrow.up.circle.fill")
-                        .font(.system(size: 16, weight: .bold))
+                    Image(systemName: "sparkles.tv.fill")
+                        .font(.system(size: 13, weight: .bold))
                     Text("Опубликовать")
-                        .font(.system(size: 14, weight: .bold))
+                        .font(.system(size: 15, weight: .bold))
                 }
                 .foregroundStyle(.black)
-                .padding(.horizontal, 16)
-                .frame(height: 38)
+                .padding(.horizontal, 18)
+                .padding(.vertical, 8)
                 .background(Color.white)
                 .clipShape(Capsule())
                 .shadow(color: Color.white.opacity(0.2), radius: 8)
@@ -181,179 +174,127 @@ struct PlayerClipTrimmerView: View {
         }
     }
 
-    // MARK: - Bottom Trimmer Island (Островок обрезки)
+    // MARK: - Gallery Trimmer Section
 
-    private var bottomTrimmerIsland: some View {
-        VStack(spacing: 10) {
-            // Ряд 1: Время начала, длительность, время конца + кнопки [-1с]/[+1с]
-            HStack(alignment: .center) {
-                // Блок «Начало»
-                HStack(spacing: 8) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("НАЧАЛО")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundStyle(.white.opacity(0.55))
-                        Text(formatSeconds(vm.clipStartTime))
-                            .font(.system(size: 15, weight: .bold, design: .monospaced))
-                            .foregroundStyle(.white)
-                    }
-
-                    HStack(spacing: 4) {
-                        nudgeButton(title: "-1с") {
-                            vm.nudgeClipStart(by: -1.0)
-                        }
-                        nudgeButton(title: "+1с") {
-                            vm.nudgeClipStart(by: 1.0)
-                        }
-                    }
-                }
-
-                Spacer()
-
-                // Центральная капсула длительности
-                HStack(spacing: 5) {
-                    Image(systemName: "clock.arrow.circlepath")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(Color.slooshAccent)
-                    Text("Длительность: \(formattedClipDuration)")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundStyle(Color.slooshAccent)
-                }
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
-                .background(Color.slooshAccent.opacity(0.14))
-                .clipShape(Capsule())
-                .overlay(Capsule().stroke(Color.slooshAccent.opacity(0.35), lineWidth: 1))
-
-                Spacer()
-
-                // Блок «Конец»
-                HStack(spacing: 8) {
-                    HStack(spacing: 4) {
-                        nudgeButton(title: "-1с") {
-                            vm.nudgeClipEnd(by: -1.0)
-                        }
-                        nudgeButton(title: "+1с") {
-                            vm.nudgeClipEnd(by: 1.0)
-                        }
-                    }
-
-                    VStack(alignment: .trailing, spacing: 2) {
-                        Text("КОНЕЦ")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundStyle(.white.opacity(0.55))
-                        Text(formatSeconds(vm.clipEndTime))
-                            .font(.system(size: 15, weight: .bold, design: .monospaced))
-                            .foregroundStyle(.white)
-                    }
-                }
+    private var galleryTrimmerSection: some View {
+        VStack(spacing: 8) {
+            // 1. Мини-полоса всего фильма (для мгновенного перехода в любую сцену)
+            if vm.currentDuration > sceneWindowSpan {
+                fullMovieMiniNavigator
+                    .frame(height: 14)
             }
-            .padding(.horizontal, 4)
 
-            // Ряд 2: Интерактивный кинематографичный таймлайн
-            timelineTrackView
-                .frame(height: 48)
+            // 2. Основная галерейная дорожка с желтой рамкой Apple Photos
+            galleryFilmstripTrack
+                .frame(height: 54)
 
-            // Ряд 3: Пресеты длительности в 1 касание
-            HStack(spacing: 10) {
-                Text("Пресет:")
-                    .font(.system(size: 11, weight: .medium))
-                    .foregroundStyle(.white.opacity(0.5))
-
-                presetChip(seconds: 15, label: "15 сек")
-                presetChip(seconds: 30, label: "30 сек")
-                presetChip(seconds: 60, label: "60 сек")
-                presetChip(seconds: 120, label: "2 мин")
+            // 3. Подписи таймкодов начала и конца клипа
+            HStack {
+                Text(formatTimecode(vm.clipStartTime))
+                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.7))
 
                 Spacer()
 
-                // Кнопка зацикленного воспроизведения с начала
-                Button {
-                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                    vm.seekClip(to: vm.clipStartTime)
-                    if !vm.isPlaying {
-                        vm.player?.play()
-                        vm.isPlaying = true
-                    }
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "repeat")
-                            .font(.system(size: 11, weight: .bold))
-                        Text("С начала клипа")
-                            .font(.system(size: 11, weight: .semibold))
-                    }
-                    .foregroundStyle(.white.opacity(0.8))
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(Color.white.opacity(0.08))
-                    .clipShape(Capsule())
-                }
-                .buttonStyle(.plain)
+                Text(formatTimecode(vm.clipEndTime))
+                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.7))
             }
-            .padding(.horizontal, 4)
+            .padding(.horizontal, 6)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
-        .background(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(Color.black.opacity(0.55))
-        )
-        .glassEffect(.regular, in: .rect(cornerRadius: 22))
-        .overlay(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .stroke(Color.white.opacity(0.12), lineWidth: 1)
-        )
     }
 
-    // MARK: - Timeline Track View
+    // MARK: - Full Movie Mini Navigator (Обзор всего 2-часового фильма)
 
-    private var timelineTrackView: some View {
+    private var fullMovieMiniNavigator: some View {
         GeometryReader { proxy in
-            let totalW = max(100.0, proxy.size.width)
-            let clipDur = max(1.0, vm.clipEndTime - vm.clipStartTime)
+            let w = proxy.size.width
+            let dur = max(1.0, vm.currentDuration)
+            let (wStart, wEnd) = currentSceneWindow()
+            let span = max(1.0, wEnd - wStart)
 
-            // Контекстное окно сцены вокруг клипа:
-            let margin = max(20.0, clipDur * 0.4)
-            let wStart = max(0.0, vm.clipStartTime - margin)
-            let maxTotal = vm.currentDuration > 0 ? vm.currentDuration : (vm.clipEndTime + 60.0)
-            let wEnd = min(maxTotal, vm.clipEndTime + margin)
-            let span = max(15.0, wEnd - wStart)
+            let winX = max(0.0, min(w, (wStart / dur) * w))
+            let winW = max(24.0, min(w - winX, (span / dur) * w))
 
-            let startNorm = max(0.0, min(1.0, (vm.clipStartTime - wStart) / span))
-            let endNorm = max(startNorm + 0.05, min(1.0, (vm.clipEndTime - wStart) / span))
-
-            let leftX = startNorm * totalW
-            let rightX = endNorm * totalW
-            let selW = max(36.0, rightX - leftX)
-
-            let playheadNorm = max(0.0, min(1.0, (vm.currentTime - wStart) / span))
-            let playheadX = playheadNorm * totalW
+            let playheadX = max(0.0, min(w - 2.0, (vm.currentTime / dur) * w))
 
             ZStack(alignment: .leading) {
-                // Фон трека
+                // Фон полосы
+                Capsule()
+                    .fill(Color.white.opacity(0.14))
+                    .frame(height: 4)
+
+                // Окошко текущего участка фильма
+                RoundedRectangle(cornerRadius: 3, style: .continuous)
+                    .fill(Color.white.opacity(0.35))
+                    .frame(width: winW, height: 8)
+                    .offset(x: winX)
+
+                // Точка текущей секунды
+                Circle()
+                    .fill(Color.white)
+                    .frame(width: 8, height: 8)
+                    .shadow(color: .black.opacity(0.5), radius: 2)
+                    .offset(x: max(0, min(w - 8, playheadX - 4)))
+            }
+            .frame(maxHeight: .infinity)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { val in
+                        let progress = max(0.0, min(1.0, val.location.x / w))
+                        let targetSec = progress * dur
+                        jumpToTime(targetSec)
+                    }
+            )
+        }
+    }
+
+    // MARK: - Gallery Filmstrip Track (Иконическая желтая рамка Apple Photos)
+
+    private var galleryFilmstripTrack: some View {
+        GeometryReader { proxy in
+            let totalW = max(100.0, proxy.size.width)
+            let (wStart, wEnd) = currentSceneWindow()
+            let span = max(1.0, wEnd - wStart)
+
+            // Координаты начала и конца клипа
+            let startNorm = max(0.0, min(1.0, (vm.clipStartTime - wStart) / span))
+            let endNorm = max(startNorm + 0.02, min(1.0, (vm.clipEndTime - wStart) / span))
+
+            let startX = startNorm * totalW
+            let endX = endNorm * totalW
+            let frameW = max(34.0, endX - startX)
+
+            // Координата бегунка воспроизведения
+            let playNorm = max(0.0, min(1.0, (vm.currentTime - wStart) / span))
+            let playX = max(0.0, min(totalW - 2.0, playNorm * totalW))
+
+            ZStack(alignment: .leading) {
+                // 1. Фоновая подложка дорожки с легкими насечками кадров
                 RoundedRectangle(cornerRadius: 10, style: .continuous)
-                    .fill(Color.white.opacity(0.08))
+                    .fill(Color.black.opacity(0.65))
                     .overlay(
                         RoundedRectangle(cornerRadius: 10, style: .continuous)
                             .stroke(Color.white.opacity(0.12), lineWidth: 1)
                     )
 
-                // Деления времени по дорожке
+                // Засечки кадров киноленты
                 HStack(spacing: 0) {
-                    ForEach(0..<20, id: \.self) { _ in
+                    ForEach(0..<24, id: \.self) { _ in
                         Spacer()
                         Rectangle()
-                            .fill(Color.white.opacity(0.12))
-                            .frame(width: 1, height: 14)
+                            .fill(Color.white.opacity(0.09))
+                            .frame(width: 1, height: 18)
                     }
                     Spacer()
                 }
 
-                // Затемнение вне выбранного фрагмента (левая шторка)
-                if leftX > 0 {
+                // 2. Затемнение слева от рамки
+                if startX > 0 {
                     Rectangle()
-                        .fill(Color.black.opacity(0.45))
-                        .frame(width: leftX)
+                        .fill(Color.black.opacity(0.55))
+                        .frame(width: startX)
                         .clipShape(
                             UnevenRoundedRectangle(
                                 topLeadingRadius: 10,
@@ -364,12 +305,12 @@ struct PlayerClipTrimmerView: View {
                         )
                 }
 
-                // Затемнение вне выбранного фрагмента (правая шторка)
-                if rightX < totalW {
+                // 3. Затемнение справа от рамки
+                if endX < totalW {
                     Rectangle()
-                        .fill(Color.black.opacity(0.45))
-                        .frame(width: totalW - rightX)
-                        .offset(x: rightX)
+                        .fill(Color.black.opacity(0.55))
+                        .frame(width: totalW - endX)
+                        .offset(x: endX)
                         .clipShape(
                             UnevenRoundedRectangle(
                                 topLeadingRadius: 0,
@@ -380,44 +321,20 @@ struct PlayerClipTrimmerView: View {
                         )
                 }
 
-                // ВЫДЕЛЕННЫЙ ФРАГМЕНТ (Кинематографичная акцентная рамка)
+                // 4. ЖЕЛТАЯ РАМКА ОБРЕЗКИ APPLE PHOTOS
                 ZStack {
-                    // Полупрозрачный фон клипа (перетаскивание всей сцены целиком)
-                    RoundedRectangle(cornerRadius: 8, style: .continuous)
-                        .fill(Color.slooshAccent.opacity(0.16))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                .stroke(Color.slooshAccent, lineWidth: 2.5)
-                        )
-                        .contentShape(Rectangle())
-                        .gesture(
-                            DragGesture(minimumDistance: 1)
-                                .onChanged { val in
-                                    if dragInitialStart == nil {
-                                        dragInitialStart = vm.clipStartTime
-                                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                    }
-                                    guard let initStart = dragInitialStart else { return }
-                                    let deltaSec = Double(val.translation.width / totalW) * span
-                                    let currentLength = vm.clipEndTime - vm.clipStartTime
-                                    let maxLimit = vm.currentDuration > 0 ? vm.currentDuration : (initStart + 600)
-                                    var newS = max(0.0, initStart + deltaSec)
-                                    var newE = newS + currentLength
-                                    if newE > maxLimit {
-                                        newE = maxLimit
-                                        newS = max(0.0, newE - currentLength)
-                                    }
-                                    vm.clipStartTime = newS
-                                    vm.clipEndTime = newE
-                                    vm.seekClip(to: newS)
-                                }
-                                .onEnded { _ in
-                                    dragInitialStart = nil
-                                    UISelectionFeedbackGenerator().selectionChanged()
-                                }
-                        )
+                    // Верхняя и нижняя соединительные перекладины
+                    VStack {
+                        Rectangle()
+                            .fill(appleYellow)
+                            .frame(height: 3)
+                        Spacer()
+                        Rectangle()
+                            .fill(appleYellow)
+                            .frame(height: 3)
+                    }
 
-                    // Левый хэндл (Начало)
+                    // Левая ручка (Начало клипа)
                     HStack {
                         ZStack {
                             UnevenRoundedRectangle(
@@ -426,37 +343,18 @@ struct PlayerClipTrimmerView: View {
                                 bottomTrailingRadius: 0,
                                 topTrailingRadius: 0
                             )
-                            .fill(Color.slooshAccent)
-                            .frame(width: 22)
+                            .fill(appleYellow)
+                            .frame(width: 16)
 
-                            // Засечки захвата ||
+                            // Ребра захвата (как в iOS)
                             VStack(spacing: 3) {
-                                Capsule().fill(Color.black.opacity(0.8)).frame(width: 2.5, height: 14)
+                                Capsule().fill(Color.black.opacity(0.75)).frame(width: 2.2, height: 14)
                             }
                         }
-                        .contentShape(Rectangle())
-                        .gesture(
-                            DragGesture(minimumDistance: 1)
-                                .onChanged { val in
-                                    if dragInitialStart == nil {
-                                        dragInitialStart = vm.clipStartTime
-                                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                    }
-                                    guard let initStart = dragInitialStart else { return }
-                                    let deltaSec = Double(val.translation.width / totalW) * span
-                                    let newStart = max(0.0, min(vm.clipEndTime - 3.0, initStart + deltaSec))
-                                    vm.clipStartTime = newStart
-                                    vm.seekClip(to: newStart)
-                                }
-                                .onEnded { _ in
-                                    dragInitialStart = nil
-                                    UISelectionFeedbackGenerator().selectionChanged()
-                                }
-                        )
 
                         Spacer()
 
-                        // Правый хэндл (Конец)
+                        // Правая ручка (Конец клипа)
                         ZStack {
                             UnevenRoundedRectangle(
                                 topLeadingRadius: 0,
@@ -464,92 +362,137 @@ struct PlayerClipTrimmerView: View {
                                 bottomTrailingRadius: 8,
                                 topTrailingRadius: 8
                             )
-                            .fill(Color.slooshAccent)
-                            .frame(width: 22)
+                            .fill(appleYellow)
+                            .frame(width: 16)
 
-                            // Засечки захвата ||
+                            // Ребра захвата (как в iOS)
                             VStack(spacing: 3) {
-                                Capsule().fill(Color.black.opacity(0.8)).frame(width: 2.5, height: 14)
+                                Capsule().fill(Color.black.opacity(0.75)).frame(width: 2.2, height: 14)
                             }
                         }
-                        .contentShape(Rectangle())
-                        .gesture(
-                            DragGesture(minimumDistance: 1)
-                                .onChanged { val in
-                                    if dragInitialEnd == nil {
-                                        dragInitialEnd = vm.clipEndTime
-                                        UIImpactFeedbackGenerator(style: .light).impactOccurred()
-                                    }
-                                    guard let initEnd = dragInitialEnd else { return }
-                                    let deltaSec = Double(val.translation.width / totalW) * span
-                                    let maxLimit = vm.currentDuration > 0 ? vm.currentDuration : (vm.clipStartTime + 600)
-                                    let newEnd = min(maxLimit, max(vm.clipStartTime + 3.0, initEnd + deltaSec))
-                                    vm.clipEndTime = newEnd
-                                    vm.seekClip(to: max(vm.clipStartTime, newEnd - 1.5))
-                                }
-                                .onEnded { _ in
-                                    dragInitialEnd = nil
-                                    UISelectionFeedbackGenerator().selectionChanged()
-                                }
-                        )
                     }
                 }
-                .frame(width: selW)
-                .offset(x: leftX)
+                .frame(width: frameW)
+                .offset(x: startX)
 
-                // Игла текущей позиции воспроизведения (Playhead needle)
+                // 5. Белый бегунок воспроизведения (Playhead)
                 Rectangle()
                     .fill(Color.white)
-                    .frame(width: 2.5, height: 48)
-                    .shadow(color: .black.opacity(0.6), radius: 3)
-                    .offset(x: max(0, min(totalW - 2.5, playheadX)))
+                    .frame(width: 2.5, height: 54)
+                    .shadow(color: .black.opacity(0.7), radius: 3)
+                    .offset(x: playX)
                     .allowsHitTesting(false)
             }
+            .contentShape(Rectangle())
+            // ЕДИНЫЙ, НАДЕЖНЫЙ КООРДИНАТОР ЖЕСТОВ БЕЗ КОНФЛИКТОВ
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { val in
+                        let touchX = val.location.x
+
+                        if activeDragTarget == .none {
+                            dragInitialTouchX = touchX
+                            dragInitialStart = vm.clipStartTime
+                            dragInitialEnd = vm.clipEndTime
+
+                            let hitSlop: CGFloat = 24.0
+                            if abs(touchX - startX) <= hitSlop {
+                                activeDragTarget = .leftHandle
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            } else if abs(touchX - endX) <= hitSlop {
+                                activeDragTarget = .rightHandle
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            } else if touchX > startX && touchX < endX {
+                                activeDragTarget = .middleFrame
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                            } else {
+                                activeDragTarget = .playhead
+                            }
+                        }
+
+                        let deltaX = touchX - dragInitialTouchX
+                        let deltaSec = Double(deltaX / totalW) * span
+                        let maxLimit = vm.currentDuration > 0 ? vm.currentDuration : (vm.clipEndTime + 300)
+
+                        switch activeDragTarget {
+                        case .leftHandle:
+                            let newStart = max(0.0, min(vm.clipEndTime - 2.0, dragInitialStart + deltaSec))
+                            vm.clipStartTime = newStart
+                            vm.seekClip(to: newStart)
+
+                        case .rightHandle:
+                            let newEnd = min(maxLimit, max(vm.clipStartTime + 2.0, dragInitialEnd + deltaSec))
+                            vm.clipEndTime = newEnd
+                            vm.seekClip(to: max(vm.clipStartTime, newEnd - 1.0))
+
+                        case .middleFrame:
+                            let clipLength = dragInitialEnd - dragInitialStart
+                            var newStart = max(0.0, dragInitialStart + deltaSec)
+                            var newEnd = newStart + clipLength
+                            if newEnd > maxLimit {
+                                newEnd = maxLimit
+                                newStart = max(0.0, newEnd - clipLength)
+                            }
+                            vm.clipStartTime = newStart
+                            vm.clipEndTime = newEnd
+                            vm.seekClip(to: newStart)
+
+                        case .playhead, .none:
+                            let targetSec = max(0.0, min(maxLimit, wStart + (Double(touchX / totalW) * span)))
+                            vm.seekClip(to: targetSec)
+                        }
+                    }
+                    .onEnded { _ in
+                        activeDragTarget = .none
+                        UISelectionFeedbackGenerator().selectionChanged()
+                        syncSceneCenter()
+                    }
+            )
         }
     }
 
-    // MARK: - Helper UI Components
+    // MARK: - Scene Window Helpers
 
-    private func nudgeButton(title: String, action: @escaping () -> Void) -> some View {
-        Button {
-            UIImpactFeedbackGenerator(style: .light).impactOccurred()
-            action()
-        } label: {
-            Text(title)
-                .font(.system(size: 11, weight: .bold, design: .monospaced))
-                .foregroundStyle(.white)
-                .frame(width: 34, height: 26)
-                .background(Color.white.opacity(0.12))
-                .clipShape(RoundedRectangle(cornerRadius: 7, style: .continuous))
+    private func currentSceneWindow() -> (Double, Double) {
+        let center = sceneCenterTime > 0 ? sceneCenterTime : ((vm.clipStartTime + vm.clipEndTime) / 2.0)
+        let maxLimit = vm.currentDuration > 0 ? vm.currentDuration : (center + sceneWindowSpan)
+        let half = sceneWindowSpan / 2.0
+        var wStart = max(0.0, center - half)
+        var wEnd = min(maxLimit, wStart + sceneWindowSpan)
+
+        // Всегда держим рамку клипа внутри окна обзора
+        if wStart > vm.clipStartTime {
+            wStart = max(0.0, vm.clipStartTime - 10.0)
+            wEnd = min(maxLimit, wStart + sceneWindowSpan)
         }
-        .buttonStyle(.plain)
+        if wEnd < vm.clipEndTime {
+            wEnd = min(maxLimit, vm.clipEndTime + 10.0)
+            wStart = max(0.0, wEnd - sceneWindowSpan)
+        }
+
+        return (wStart, max(wStart + 10.0, wEnd))
     }
 
-    private func presetChip(seconds: Double, label: String) -> some View {
-        let isSelected = abs((vm.clipEndTime - vm.clipStartTime) - seconds) < 1.0
-
-        return Button {
-            UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-            withAnimation(.spring(response: 0.25, dampingFraction: 0.8)) {
-                vm.setClipDurationPreset(seconds)
-            }
-        } label: {
-            Text(label)
-                .font(.system(size: 11, weight: isSelected ? .bold : .medium))
-                .foregroundStyle(isSelected ? .black : .white.opacity(0.8))
-                .padding(.horizontal, 10)
-                .padding(.vertical, 4)
-                .background(isSelected ? Color.slooshAccent : Color.white.opacity(0.08))
-                .clipShape(Capsule())
-        }
-        .buttonStyle(.plain)
+    private func syncSceneCenter() {
+        sceneCenterTime = (vm.clipStartTime + vm.clipEndTime) / 2.0
     }
 
-    // MARK: - In-Player Publish Overlay Modal (Карточка публикации)
+    private func jumpToTime(_ seconds: Double) {
+        sceneCenterTime = seconds
+        let currentLen = vm.clipEndTime - vm.clipStartTime
+        let maxLimit = vm.currentDuration > 0 ? vm.currentDuration : (seconds + 300)
+        let newStart = max(0.0, min(maxLimit - currentLen, seconds - currentLen / 2.0))
+        let newEnd = min(maxLimit, newStart + currentLen)
+
+        vm.clipStartTime = newStart
+        vm.clipEndTime = newEnd
+        vm.seekClip(to: newStart)
+    }
+
+    // MARK: - Publish Overlay
 
     private var publishOverlay: some View {
         ZStack {
-            // Размытый полупрозрачный фон
             Color.black.opacity(0.65)
                 .ignoresSafeArea()
                 .onTapGesture {
@@ -558,16 +501,15 @@ struct PlayerClipTrimmerView: View {
                     }
                 }
 
-            // Компактная карточка
             VStack(spacing: 14) {
-                // Заголовок карточки
+                // Заголовок
                 HStack {
                     VStack(alignment: .leading, spacing: 3) {
                         Text("Опубликовать момент")
                             .font(.system(size: 16, weight: .bold))
                             .foregroundStyle(.white)
 
-                        Text("\(vm.fallbackTitle) • \(formattedClipDuration)")
+                        Text("\(vm.fallbackTitle) • \(formattedDurationOnly(vm.clipEndTime - vm.clipStartTime))")
                             .font(.system(size: 12, weight: .medium))
                             .foregroundStyle(.white.opacity(0.65))
                             .lineLimit(1)
@@ -587,7 +529,7 @@ struct PlayerClipTrimmerView: View {
                     .buttonStyle(.plain)
                 }
 
-                // Поле ввода подписи / цитаты
+                // Поле ввода подписи
                 TextField("Добавьте цитату или подпись к моменту...", text: $vm.clipCaption, axis: .vertical)
                     .font(.system(size: 14))
                     .foregroundStyle(.white)
@@ -623,7 +565,6 @@ struct PlayerClipTrimmerView: View {
                     }
                 }
 
-                // Баннер ошибки если есть
                 if let error = vm.clipPublishErrorMessage {
                     Text(error)
                         .font(.system(size: 12, weight: .medium))
@@ -708,11 +649,10 @@ struct PlayerClipTrimmerView: View {
         }
     }
 
-    // MARK: - Utilities
+    // MARK: - Formatters
 
-    private var formattedClipDuration: String {
-        let dur = max(1.0, vm.clipEndTime - vm.clipStartTime)
-        let total = Int(round(dur))
+    private func formattedDurationOnly(_ dur: Double) -> String {
+        let total = Int(round(max(1.0, dur)))
         let m = total / 60
         let s = total % 60
         if m > 0 {
@@ -721,7 +661,7 @@ struct PlayerClipTrimmerView: View {
         return "\(s) сек"
     }
 
-    private func formatSeconds(_ seconds: Double) -> String {
+    private func formatTimecode(_ seconds: Double) -> String {
         let total = Int(max(0, seconds))
         let h = total / 3600
         let m = (total % 3600) / 60
@@ -730,15 +670,5 @@ struct PlayerClipTrimmerView: View {
             return String(format: "%d:%02d:%02d", h, m, s)
         }
         return String(format: "%02d:%02d", m, s)
-    }
-
-    private func resolveImageUrl(_ path: String) -> URL? {
-        if path.hasPrefix("http://") || path.hasPrefix("https://") {
-            return URL(string: path)
-        }
-        if let normalized = normalizeImageUrl(path: path) {
-            return URL(string: normalized)
-        }
-        return nil
     }
 }
